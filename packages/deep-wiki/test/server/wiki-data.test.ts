@@ -11,7 +11,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { WikiData } from '../../src/server/wiki-data';
-import type { ModuleGraph, ModuleAnalysis } from '../../src/types';
+import type { ComponentGraph, ComponentAnalysis } from '../../src/types';
 
 // ============================================================================
 // Test Helpers
@@ -27,7 +27,7 @@ afterEach(() => {
     fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
-function createTestModuleGraph(): ModuleGraph {
+function createTestModuleGraph(): ComponentGraph {
     return {
         project: {
             name: 'TestProject',
@@ -36,7 +36,7 @@ function createTestModuleGraph(): ModuleGraph {
             buildSystem: 'npm',
             entryPoints: ['src/index.ts'],
         },
-        modules: [
+        components: [
             {
                 id: 'auth',
                 name: 'Auth Module',
@@ -79,14 +79,14 @@ function createTestModuleGraph(): ModuleGraph {
     };
 }
 
-function setupWikiDir(graph?: ModuleGraph, markdownFiles?: Record<string, string>): string {
+function setupWikiDir(graph?: ComponentGraph, markdownFiles?: Record<string, string>): string {
     const wikiDir = path.join(tempDir, 'wiki');
-    const modulesDir = path.join(wikiDir, 'modules');
-    fs.mkdirSync(modulesDir, { recursive: true });
+    const componentsDir = path.join(wikiDir, 'components');
+    fs.mkdirSync(componentsDir, { recursive: true });
 
     const g = graph || createTestModuleGraph();
     fs.writeFileSync(
-        path.join(wikiDir, 'module-graph.json'),
+        path.join(wikiDir, 'component-graph.json'),
         JSON.stringify(g, null, 2),
         'utf-8'
     );
@@ -103,7 +103,7 @@ function setupWikiDir(graph?: ModuleGraph, markdownFiles?: Record<string, string
             const filename = id.replace(/^__/, '') + '.md';
             fs.writeFileSync(path.join(wikiDir, filename), content, 'utf-8');
         } else {
-            fs.writeFileSync(path.join(modulesDir, `${id}.md`), content, 'utf-8');
+            fs.writeFileSync(path.join(componentsDir, `${id}.md`), content, 'utf-8');
         }
     }
 
@@ -144,17 +144,17 @@ describe('WikiData', () => {
             expect(wd.isLoaded).toBe(true);
         });
 
-        it('should throw when module-graph.json is missing', () => {
+        it('should throw when component-graph.json is missing', () => {
             const emptyDir = path.join(tempDir, 'empty');
             fs.mkdirSync(emptyDir, { recursive: true });
             const wd = new WikiData(emptyDir);
-            expect(() => wd.load()).toThrow('module-graph.json not found');
+            expect(() => wd.load()).toThrow('component-graph.json not found');
         });
 
-        it('should throw when module-graph.json is invalid JSON', () => {
+        it('should throw when component-graph.json is invalid JSON', () => {
             const badDir = path.join(tempDir, 'bad');
             fs.mkdirSync(badDir, { recursive: true });
-            fs.writeFileSync(path.join(badDir, 'module-graph.json'), 'not json', 'utf-8');
+            fs.writeFileSync(path.join(badDir, 'component-graph.json'), 'not json', 'utf-8');
             const wd = new WikiData(badDir);
             expect(() => wd.load()).toThrow();
         });
@@ -168,13 +168,13 @@ describe('WikiData', () => {
 
             // Modify a file
             fs.writeFileSync(
-                path.join(wikiDir, 'modules', 'auth.md'),
+                path.join(wikiDir, 'components', 'auth.md'),
                 '# Auth Module v2',
                 'utf-8'
             );
 
             wd.reload();
-            const detail = wd.getModuleDetail('auth');
+            const detail = wd.getComponentDetail('auth');
             expect(detail?.markdown).toContain('v2');
         });
     });
@@ -191,7 +191,7 @@ describe('WikiData — graph', () => {
         wd.load();
 
         expect(wd.graph.project.name).toBe('TestProject');
-        expect(wd.graph.modules).toHaveLength(3);
+        expect(wd.graph.components).toHaveLength(3);
     });
 
     it('should throw when accessed before load', () => {
@@ -205,13 +205,13 @@ describe('WikiData — graph', () => {
 // Module Summaries
 // ============================================================================
 
-describe('WikiData — getModuleSummaries', () => {
+describe('WikiData — getComponentSummaries', () => {
     it('should return summaries for all modules', () => {
         const wikiDir = setupWikiDir();
         const wd = new WikiData(wikiDir);
         wd.load();
 
-        const summaries = wd.getModuleSummaries();
+        const summaries = wd.getComponentSummaries();
         expect(summaries).toHaveLength(3);
     });
 
@@ -220,7 +220,7 @@ describe('WikiData — getModuleSummaries', () => {
         const wd = new WikiData(wikiDir);
         wd.load();
 
-        const summaries = wd.getModuleSummaries();
+        const summaries = wd.getComponentSummaries();
         const auth = summaries.find(s => s.id === 'auth');
         expect(auth).toBeDefined();
         expect(auth!.name).toBe('Auth Module');
@@ -235,15 +235,15 @@ describe('WikiData — getModuleSummaries', () => {
 // Module Detail
 // ============================================================================
 
-describe('WikiData — getModuleDetail', () => {
+describe('WikiData — getComponentDetail', () => {
     it('should return detail for an existing module', () => {
         const wikiDir = setupWikiDir();
         const wd = new WikiData(wikiDir);
         wd.load();
 
-        const detail = wd.getModuleDetail('auth');
+        const detail = wd.getComponentDetail('auth');
         expect(detail).not.toBeNull();
-        expect(detail!.module.id).toBe('auth');
+        expect(detail!.component.id).toBe('auth');
         expect(detail!.markdown).toContain('# Auth Module');
     });
 
@@ -252,7 +252,7 @@ describe('WikiData — getModuleDetail', () => {
         const wd = new WikiData(wikiDir);
         wd.load();
 
-        const detail = wd.getModuleDetail('nonexistent');
+        const detail = wd.getComponentDetail('nonexistent');
         expect(detail).toBeNull();
     });
 
@@ -263,7 +263,7 @@ describe('WikiData — getModuleDetail', () => {
         wd.load();
 
         // 'database' module exists in graph but no .md file
-        const detail = wd.getModuleDetail('database');
+        const detail = wd.getComponentDetail('database');
         expect(detail).not.toBeNull();
         expect(detail!.markdown).toBe('');
     });
@@ -273,9 +273,9 @@ describe('WikiData — getModuleDetail', () => {
         const wd = new WikiData(wikiDir);
         wd.load();
 
-        const detail = wd.getModuleDetail('auth');
-        expect(detail!.module.dependencies).toEqual(['database']);
-        expect(detail!.module.dependents).toEqual(['api']);
+        const detail = wd.getComponentDetail('auth');
+        expect(detail!.component.dependencies).toEqual(['database']);
+        expect(detail!.component.dependents).toEqual(['api']);
     });
 });
 
@@ -373,22 +373,22 @@ describe('WikiData — getMarkdownData', () => {
 
 describe('WikiData — hierarchical layout', () => {
     it('should read area-level markdown files', () => {
-        const graph: ModuleGraph = {
+        const graph: ComponentGraph = {
             ...createTestModuleGraph(),
             domains: [
-                { id: 'core', name: 'Core', path: 'src/core/', description: 'Core area', modules: ['auth'] },
+                { id: 'core', name: 'Core', path: 'src/core/', description: 'Core area', components: ['auth'] },
             ],
         };
 
         const wikiDir = path.join(tempDir, 'hierarchical');
-        const domainModulesDir = path.join(wikiDir, 'domains', 'core', 'modules');
-        fs.mkdirSync(domainModulesDir, { recursive: true });
+        const domainComponentsDir = path.join(wikiDir, 'domains', 'core', 'components');
+        fs.mkdirSync(domainComponentsDir, { recursive: true });
         fs.writeFileSync(
-            path.join(wikiDir, 'module-graph.json'),
+            path.join(wikiDir, 'component-graph.json'),
             JSON.stringify(graph),
             'utf-8'
         );
-        fs.writeFileSync(path.join(domainModulesDir, 'auth.md'), '# Area Auth', 'utf-8');
+        fs.writeFileSync(path.join(domainComponentsDir, 'auth.md'), '# Area Auth', 'utf-8');
         fs.writeFileSync(path.join(wikiDir, 'domains', 'core', 'index.md'), '# Core Index', 'utf-8');
 
         const wd = new WikiData(wikiDir);
@@ -410,7 +410,7 @@ describe('WikiData — analysis loading', () => {
         const wd = new WikiData(wikiDir);
         wd.load();
 
-        const detail = wd.getModuleDetail('auth');
+        const detail = wd.getComponentDetail('auth');
         expect(detail).not.toBeNull();
         expect(detail!.analysis).toBeUndefined();
     });
@@ -422,8 +422,8 @@ describe('WikiData — analysis loading', () => {
         const cacheDir = path.join(wikiDir, '.wiki-cache', 'analyses');
         fs.mkdirSync(cacheDir, { recursive: true });
 
-        const analysis: ModuleAnalysis = {
-            moduleId: 'auth',
+        const analysis: ComponentAnalysis = {
+            componentId: 'auth',
             overview: 'Auth overview',
             keyConcepts: [],
             publicAPI: [],
@@ -445,7 +445,7 @@ describe('WikiData — analysis loading', () => {
         const wd = new WikiData(wikiDir);
         wd.load();
 
-        const detail = wd.getModuleDetail('auth');
+        const detail = wd.getComponentDetail('auth');
         expect(detail).not.toBeNull();
         expect(detail!.analysis).toBeDefined();
         expect(detail!.analysis!.overview).toBe('Auth overview');
@@ -472,9 +472,9 @@ describe('WikiData — edge cases', () => {
     it('should handle empty modules directory', () => {
         const graph = createTestModuleGraph();
         const wikiDir = path.join(tempDir, 'empty-modules');
-        fs.mkdirSync(path.join(wikiDir, 'modules'), { recursive: true });
+        fs.mkdirSync(path.join(wikiDir, 'components'), { recursive: true });
         fs.writeFileSync(
-            path.join(wikiDir, 'module-graph.json'),
+            path.join(wikiDir, 'component-graph.json'),
             JSON.stringify(graph),
             'utf-8'
         );
@@ -482,8 +482,8 @@ describe('WikiData — edge cases', () => {
         const wd = new WikiData(wikiDir);
         wd.load();
 
-        expect(wd.getModuleSummaries()).toHaveLength(3);
-        expect(wd.getModuleDetail('auth')!.markdown).toBe('');
+        expect(wd.getComponentSummaries()).toHaveLength(3);
+        expect(wd.getComponentDetail('auth')!.markdown).toBe('');
     });
 
     it('should handle no modules directory at all', () => {
@@ -491,7 +491,7 @@ describe('WikiData — edge cases', () => {
         const wikiDir = path.join(tempDir, 'no-modules');
         fs.mkdirSync(wikiDir, { recursive: true });
         fs.writeFileSync(
-            path.join(wikiDir, 'module-graph.json'),
+            path.join(wikiDir, 'component-graph.json'),
             JSON.stringify(graph),
             'utf-8'
         );
@@ -504,7 +504,7 @@ describe('WikiData — edge cases', () => {
     });
 
     it('should handle graph with no modules', () => {
-        const graph: ModuleGraph = {
+        const graph: ComponentGraph = {
             project: {
                 name: 'Empty',
                 description: 'Empty project',
@@ -512,7 +512,7 @@ describe('WikiData — edge cases', () => {
                 buildSystem: 'npm',
                 entryPoints: [],
             },
-            modules: [],
+            components: [],
             categories: [],
             architectureNotes: '',
         };
@@ -520,7 +520,7 @@ describe('WikiData — edge cases', () => {
         const wikiDir = path.join(tempDir, 'empty-graph');
         fs.mkdirSync(wikiDir, { recursive: true });
         fs.writeFileSync(
-            path.join(wikiDir, 'module-graph.json'),
+            path.join(wikiDir, 'component-graph.json'),
             JSON.stringify(graph),
             'utf-8'
         );
@@ -528,6 +528,6 @@ describe('WikiData — edge cases', () => {
         const wd = new WikiData(wikiDir);
         wd.load();
 
-        expect(wd.getModuleSummaries()).toHaveLength(0);
+        expect(wd.getComponentSummaries()).toHaveLength(0);
     });
 });

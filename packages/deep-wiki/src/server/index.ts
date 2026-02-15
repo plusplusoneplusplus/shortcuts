@@ -166,11 +166,11 @@ export async function createServer(options: WikiServerOptions): Promise<WikiServ
         fileWatcher = new FileWatcher({
             repoPath: options.repoPath,
             wikiDir: options.wikiDir,
-            moduleGraph: wikiData.graph,
+            componentGraph: wikiData.graph,
             debounceMs: options.watchDebounceMs,
-            onChange: (affectedModuleIds) => {
+            onChange: (affectedComponentIds) => {
                 // Notify clients about rebuild
-                wsServer!.broadcast({ type: 'rebuilding', modules: affectedModuleIds });
+                wsServer!.broadcast({ type: 'rebuilding', components: affectedComponentIds });
 
                 // Reload wiki data
                 try {
@@ -184,7 +184,7 @@ export async function createServer(options: WikiServerOptions): Promise<WikiServ
                         // but the router already has a reference, so we just notify
                     }
 
-                    wsServer!.broadcast({ type: 'reload', modules: affectedModuleIds });
+                    wsServer!.broadcast({ type: 'reload', components: affectedComponentIds });
                 } catch (err) {
                     const msg = err instanceof Error ? err.message : 'Unknown error';
                     wsServer!.broadcast({ type: 'error', message: msg });
@@ -246,7 +246,7 @@ export { ContextBuilder } from './context-builder';
 export { WebSocketServer } from './websocket';
 export { FileWatcher } from './file-watcher';
 export type { SpaTemplateOptions } from './spa-template';
-export type { ModuleSummary, ModuleDetail, SpecialPage, TopicArticleContent, TopicArticleDetail } from './wiki-data';
+export type { ComponentSummary, ComponentDetail, SpecialPage, TopicArticleContent, TopicArticleDetail } from './wiki-data';
 export { ConversationSessionManager } from './conversation-session-manager';
 export type { ConversationSession, ConversationSessionManagerOptions, SessionSendResult } from './conversation-session-manager';
 export type { AskAIFunction, AskRequest, ConversationMessage } from './ask-handler';

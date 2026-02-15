@@ -9,7 +9,7 @@ import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import type { ModuleGraph } from '../../src/types';
+import type { ComponentGraph } from '../../src/types';
 import { createServer } from '../../src/server/index';
 import type { WikiServer } from '../../src/server/index';
 
@@ -17,7 +17,7 @@ import type { WikiServer } from '../../src/server/index';
 // Fixtures
 // ============================================================================
 
-function createTestGraph(): ModuleGraph {
+function createTestGraph(): ComponentGraph {
     return {
         project: {
             name: 'TestProject',
@@ -26,7 +26,7 @@ function createTestGraph(): ModuleGraph {
             buildSystem: 'npm',
         },
         categories: ['core', 'ui'],
-        modules: [
+        components: [
             {
                 id: 'auth',
                 name: 'Authentication',
@@ -58,7 +58,7 @@ function setupWikiDir(): string {
 
     // Write module graph
     fs.writeFileSync(
-        path.join(tmpDir, 'module-graph.json'),
+        path.join(tmpDir, 'component-graph.json'),
         JSON.stringify(createTestGraph()),
     );
 
@@ -240,10 +240,10 @@ describe('POST /api/ask integration', () => {
         const events = parseSSEEvents(body);
         const contextEvent = events.find(e => e.type === 'context');
         expect(contextEvent).toBeDefined();
-        expect(contextEvent!.moduleIds).toBeDefined();
-        expect(Array.isArray(contextEvent!.moduleIds)).toBe(true);
+        expect(contextEvent!.componentIds).toBeDefined();
+        expect(Array.isArray(contextEvent!.componentIds)).toBe(true);
         // auth module should be in context since question matches
-        expect(contextEvent!.moduleIds).toContain('auth');
+        expect(contextEvent!.componentIds).toContain('auth');
     });
 
     it('should handle invalid JSON body', async () => {

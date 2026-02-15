@@ -16,7 +16,7 @@ import * as path from 'path';
 import * as os from 'os';
 import * as http from 'http';
 import { createServer, type WikiServer } from '../../src/server';
-import type { ModuleGraph } from '../../src/types';
+import type { ComponentGraph } from '../../src/types';
 
 // ============================================================================
 // Test Helpers
@@ -37,7 +37,7 @@ afterEach(async () => {
     fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
-function createTestModuleGraph(): ModuleGraph {
+function createTestModuleGraph(): ComponentGraph {
     return {
         project: {
             name: 'AdminTestProject',
@@ -46,7 +46,7 @@ function createTestModuleGraph(): ModuleGraph {
             buildSystem: 'npm',
             entryPoints: ['src/index.ts'],
         },
-        modules: [
+        components: [
             {
                 id: 'core',
                 name: 'Core Module',
@@ -69,13 +69,13 @@ function createTestModuleGraph(): ModuleGraph {
 function setupWikiDir(options?: { withSeeds?: boolean; withConfig?: boolean }): { wikiDir: string; repoPath: string } {
     const wikiDir = path.join(tempDir, 'wiki');
     const repoPath = path.join(tempDir, 'repo');
-    const modulesDir = path.join(wikiDir, 'modules');
-    fs.mkdirSync(modulesDir, { recursive: true });
+    const componentsDir = path.join(wikiDir, 'components');
+    fs.mkdirSync(componentsDir, { recursive: true });
     fs.mkdirSync(repoPath, { recursive: true });
 
     const graph = createTestModuleGraph();
-    fs.writeFileSync(path.join(wikiDir, 'module-graph.json'), JSON.stringify(graph, null, 2), 'utf-8');
-    fs.writeFileSync(path.join(modulesDir, 'core.md'), '# Core Module\n\nCore content.', 'utf-8');
+    fs.writeFileSync(path.join(wikiDir, 'component-graph.json'), JSON.stringify(graph, null, 2), 'utf-8');
+    fs.writeFileSync(path.join(componentsDir, 'core.md'), '# Core Module\n\nCore content.', 'utf-8');
     fs.writeFileSync(path.join(wikiDir, 'index.md'), '# Project Index', 'utf-8');
 
     if (options?.withSeeds) {

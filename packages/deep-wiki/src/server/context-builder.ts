@@ -2,15 +2,15 @@
  * Context Builder
  *
  * TF-IDF indexing and context retrieval for the AI Q&A feature.
- * Builds an in-memory index of module articles on startup and
- * retrieves the most relevant modules for a given question.
+ * Builds an in-memory index of component articles on startup and
+ * retrieves the most relevant components for a given question.
  *
  * No external dependencies — TF-IDF is ~100 lines.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { ModuleGraph } from '../types';
+import type { ComponentGraph } from '../types';
 import type { TopicAreaMeta } from '../types';
 
 // ============================================================================
@@ -21,14 +21,14 @@ import type { TopicAreaMeta } from '../types';
  * A document in the TF-IDF index.
  */
 interface IndexedDocument {
-    /** Document ID (module ID or topic:{topicId}:{slug}) */
-    moduleId: string;
+    /** Document ID (component ID or topic:{topicId}:{slug}) */
+    componentId: string;
     /** Display name */
     name: string;
     /** Category */
     category: string;
     /** Source type */
-    source: 'module' | 'topic';
+    source: 'component' | 'topic';
     /** Tokenized terms with their TF values */
     termFrequencies: Map<string, number>;
     /** Total number of terms in the document */
@@ -39,11 +39,11 @@ interface IndexedDocument {
  * Context retrieval result.
  */
 export interface RetrievedContext {
-    /** Module IDs selected as context */
-    moduleIds: string[];
-    /** Markdown content for the selected modules */
+    /** Component IDs selected as context */
+    componentIds: string[];
+    /** Markdown content for the selected components */
     contextText: string;
-    /** Module graph summary for architectural context */
+    /** Component graph summary for architectural context */
     graphSummary: string;
     /** Topic articles included in context */
     topicContexts: TopicContextEntry[];
@@ -67,7 +67,7 @@ export interface TopicContextEntry {
 // Stop Words
 // ============================================================================
 
-/** Boost factor applied when a module name matches a query term */
+/** Boost factor applied when a component name matches a query term */
 const NAME_MATCH_BOOST = 1.5;
 
 const STOP_WORDS = new Set([
@@ -88,16 +88,16 @@ const STOP_WORDS = new Set([
 // ============================================================================
 
 /**
- * Builds a TF-IDF index from module articles and retrieves relevant context.
+ * Builds a TF-IDF index from component articles and retrieves relevant context.
  */
 export class ContextBuilder {
     private documents: IndexedDocument[] = [];
     private inverseDocFreq: Map<string, number> = new Map();
-    private graph: ModuleGraph;
+    private graph: ComponentGraph;
     private markdownData: Record<string, string>;
     private topicMarkdownData: Record<string, string>;
 
-    constructor(graph: ModuleGraph, markdownData: Record<string, string>, topicMarkdownData?: Record<string, string>) {
+    constructor(graph: ComponentGraph, markdownData: Record<string, string>, topicMarkdownData?: Record<string, string>) {
         this.graph = graph;
         this.markdownData = markdownData;
         this.topicMarkdownData = topicMarkdownData || {};
@@ -105,18 +105,18 @@ export class ContextBuilder {
     }
 
     /**
-     * Retrieve the most relevant modules for a question.
+     * Retrieve the most relevant components for a question.
      *
      * @param question - The user's question
-     * @param maxModules - Maximum number of modules to return (default: 5)
+     * @param maxModules - Maximum number of components to return (default: 5)
      * @param maxTopics - Maximum number of topic articles to return (default: 3)
-     * @returns Retrieved context with module IDs, markdown, and graph summary
+     * @returns Retrieved context with component IDs, markdown, and graph summary
      */
     retrieve(question: string, maxModules = 5, maxTopics = 3): RetrievedContext {
         const queryTerms = tokenize(question);
 
         // Score each document
-        const moduleScores: Array<{ moduleId: string; score: number }> = [];
+        const componentScores: Array<{ componentId: string; score: number }> = [];
         const topicScores: Array<{ docId: string; score: number }> = [];
 
         for (const doc of this.documents) {
@@ -127,7 +127,7 @@ export class ContextBuilder {
                 score += tf * idf;
             }
 
-            // Boost if module name matches a query term
+            // Boost if component name matches a query term
             const nameLower = doc.name.toLowerCase();
             for (const term of queryTerms) {
                 if (nameLower.includes(term)) {
@@ -137,26 +137,26 @@ export class ContextBuilder {
 
             if (score > 0) {
                 if (doc.source === 'topic') {
-                    topicScores.push({ docId: doc.moduleId, score });
+                    topicScores.push({ docId: doc.componentId, score });
                 } else {
-                    moduleScores.push({ moduleId: doc.moduleId, score });
+                    componentScores.push({ componentId: doc.componentId, score });
                 }
             }
         }
 
         // Sort by score descending
-        moduleScores.sort((a, b) => b.score - a.score);
+        componentScores.sort((a, b) => b.score - a.score);
         topicScores.sort((a, b) => b.score - a.score);
 
-        // Select top-K modules
-        const topModules = moduleScores.slice(0, maxModules);
-        const selectedIds = topModules.map(s => s.moduleId);
+        // Select top-K components
+        const topComponents = componentScores.slice(0, maxModules);
+        const selectedIds = topComponents.map(s => s.componentId);
 
         // Expand with 1-hop dependency neighbors if we have room
         const expandedIds = new Set(selectedIds);
         if (selectedIds.length < maxModules) {
-            for (const moduleId of selectedIds) {
-                const mod = this.graph.modules.find(m => m.id === moduleId);
+            for (const componentId of selectedIds) {
+                const mod = this.graph.components.find(m => m.id === componentId);
                 if (mod) {
                     for (const dep of mod.dependencies) {
                         if (expandedIds.size >= maxModules) break;
@@ -172,12 +172,12 @@ export class ContextBuilder {
 
         const finalIds = Array.from(expandedIds);
 
-        // Build context text for modules
+        // Build context text for components
         const contextParts: string[] = [];
-        for (const moduleId of finalIds) {
-            const markdown = this.markdownData[moduleId];
+        for (const componentId of finalIds) {
+            const markdown = this.markdownData[componentId];
             if (markdown) {
-                contextParts.push(`## Module: ${moduleId}\n\n${markdown}`);
+                contextParts.push(`## Component: ${componentId}\n\n${markdown}`);
             }
         }
 
@@ -214,7 +214,7 @@ export class ContextBuilder {
         const graphSummary = this.buildGraphSummary();
 
         return {
-            moduleIds: finalIds,
+            componentIds: finalIds,
             contextText: contextParts.join('\n\n---\n\n'),
             graphSummary,
             topicContexts,
@@ -240,10 +240,10 @@ export class ContextBuilder {
     // ========================================================================
 
     private buildIndex(): void {
-        // Index each module article
-        for (const mod of this.graph.modules) {
+        // Index each component article
+        for (const mod of this.graph.components) {
             const markdown = this.markdownData[mod.id] || '';
-            // Combine module metadata with markdown content for better matching
+            // Combine component metadata with markdown content for better matching
             const text = [
                 mod.name,
                 mod.purpose,
@@ -269,10 +269,10 @@ export class ContextBuilder {
             }
 
             this.documents.push({
-                moduleId: mod.id,
+                componentId: mod.id,
                 name: mod.name,
                 category: mod.category,
-                source: 'module',
+                source: 'component',
                 termFrequencies,
                 termCount,
             });
@@ -285,15 +285,15 @@ export class ContextBuilder {
                 const docId = `topic:${topic.id}:${article.slug}`;
                 const markdown = this.topicMarkdownData[docId] || '';
 
-                const involvedModuleNames = topic.involvedModuleIds
-                    .map(id => this.graph.modules.find(m => m.id === id)?.name || '')
+                const involvedComponentNames = topic.involvedComponentIds
+                    .map(id => this.graph.components.find(m => m.id === id)?.name || '')
                     .filter(Boolean);
 
                 const text = [
                     topic.title,
                     topic.description,
                     article.title,
-                    involvedModuleNames.join(' '),
+                    involvedComponentNames.join(' '),
                     markdown,
                 ].join(' ');
 
@@ -312,7 +312,7 @@ export class ContextBuilder {
                 }
 
                 this.documents.push({
-                    moduleId: docId,
+                    componentId: docId,
                     name: article.title || topic.title,
                     category: 'topic',
                     source: 'topic',
@@ -343,11 +343,11 @@ export class ContextBuilder {
         lines.push(`Project: ${this.graph.project.name}`);
         lines.push(`Description: ${this.graph.project.description}`);
         lines.push(`Language: ${this.graph.project.language}`);
-        lines.push(`Modules: ${this.graph.modules.length}`);
+        lines.push(`Components: ${this.graph.components.length}`);
         lines.push('');
-        lines.push('Module Graph:');
+        lines.push('Component Graph:');
 
-        for (const mod of this.graph.modules) {
+        for (const mod of this.graph.components) {
             const deps = mod.dependencies.length > 0
                 ? ` → depends on: ${mod.dependencies.join(', ')}`
                 : '';

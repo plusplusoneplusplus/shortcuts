@@ -12,7 +12,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { FileWatcher } from '../../src/server/file-watcher';
-import type { ModuleGraph } from '../../src/types';
+import type { ComponentGraph } from '../../src/types';
 
 // ============================================================================
 // Helpers
@@ -38,7 +38,7 @@ function supportsRecursiveWatch(): boolean {
 const HAS_RECURSIVE_WATCH = supportsRecursiveWatch();
 const itIfRecursive = HAS_RECURSIVE_WATCH ? it : it.skip;
 
-function createTestGraph(): ModuleGraph {
+function createTestGraph(): ComponentGraph {
     return {
         project: {
             name: 'TestProject',
@@ -47,7 +47,7 @@ function createTestGraph(): ModuleGraph {
             buildSystem: 'npm',
         },
         categories: ['core', 'ui'],
-        modules: [
+        components: [
             {
                 id: 'auth',
                 name: 'Auth',
@@ -122,7 +122,7 @@ describe('FileWatcher', () => {
             const watcher = new FileWatcher({
                 repoPath: tmpDir,
                 wikiDir: tmpDir,
-                moduleGraph: graph,
+                componentGraph: graph,
                 onChange,
             });
 
@@ -136,7 +136,7 @@ describe('FileWatcher', () => {
             const watcher = new FileWatcher({
                 repoPath: tmpDir,
                 wikiDir: tmpDir,
-                moduleGraph: graph,
+                componentGraph: graph,
                 onChange,
             });
 
@@ -150,7 +150,7 @@ describe('FileWatcher', () => {
             const watcher = new FileWatcher({
                 repoPath: tmpDir,
                 wikiDir: tmpDir,
-                moduleGraph: graph,
+                componentGraph: graph,
                 onChange,
             });
 
@@ -167,7 +167,7 @@ describe('FileWatcher', () => {
             const watcher = new FileWatcher({
                 repoPath: tmpDir,
                 wikiDir: tmpDir,
-                moduleGraph: graph,
+                componentGraph: graph,
                 debounceMs: 100, // Short debounce for testing
                 onChange,
             });
@@ -195,7 +195,7 @@ describe('FileWatcher', () => {
             const watcher = new FileWatcher({
                 repoPath: tmpDir,
                 wikiDir: tmpDir,
-                moduleGraph: graph,
+                componentGraph: graph,
                 debounceMs: 200,
                 onChange,
             });
@@ -228,7 +228,7 @@ describe('FileWatcher', () => {
             const watcher = new FileWatcher({
                 repoPath: tmpDir,
                 wikiDir: tmpDir,
-                moduleGraph: graph,
+                componentGraph: graph,
                 debounceMs: 100,
                 onChange,
             });
@@ -268,7 +268,7 @@ describe('FileWatcher', () => {
             const watcher = new FileWatcher({
                 repoPath: tmpDir,
                 wikiDir: tmpDir,
-                moduleGraph: graph,
+                componentGraph: graph,
                 debounceMs: 100,
                 onChange,
             });
@@ -305,7 +305,7 @@ describe('FileWatcher', () => {
             const watcher = new FileWatcher({
                 repoPath: '/nonexistent/path/that/does/not/exist',
                 wikiDir: tmpDir,
-                moduleGraph: graph,
+                componentGraph: graph,
                 onChange,
                 onError,
             });

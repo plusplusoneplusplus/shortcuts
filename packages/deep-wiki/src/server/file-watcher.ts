@@ -7,13 +7,13 @@
  *
  * When changes are detected:
  * 1. Debounce for 2 seconds
- * 2. Determine which modules are affected
- * 3. Notify callback with affected module IDs
+ * 2. Determine which components are affected
+ * 3. Notify callback with affected component IDs
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
-import type { ModuleGraph } from '../types';
+import type { ComponentGraph } from '../types';
 
 // ============================================================================
 // Types
@@ -24,12 +24,12 @@ export interface FileWatcherOptions {
     repoPath: string;
     /** Wiki output directory (to reload data after rebuild) */
     wikiDir: string;
-    /** Module graph for determining affected modules */
-    moduleGraph: ModuleGraph;
+    /** Component graph for determining affected components */
+    componentGraph: ComponentGraph;
     /** Debounce interval in milliseconds (default: 2000) */
     debounceMs?: number;
     /** Callback when changes are detected */
-    onChange: (affectedModuleIds: string[]) => void;
+    onChange: (affectedComponentIds: string[]) => void;
     /** Optional callback for errors */
     onError?: (error: Error) => void;
 }
@@ -123,8 +123,8 @@ export class FileWatcher {
         const files = Array.from(this.changedFiles);
         this.changedFiles.clear();
 
-        // Determine which modules are affected
-        const affectedIds = this.findAffectedModules(files);
+        // Determine which components are affected
+        const affectedIds = this.findAffectedComponents(files);
 
         if (affectedIds.length > 0) {
             this.options.onChange(affectedIds);
@@ -132,21 +132,21 @@ export class FileWatcher {
     }
 
     /**
-     * Determine which modules are affected by the changed files.
+     * Determine which components are affected by the changed files.
      *
-     * A module is affected if any changed file is within the module's path.
+     * A component is affected if any changed file is within the component's path.
      */
-    private findAffectedModules(changedFiles: string[]): string[] {
+    private findAffectedComponents(changedFiles: string[]): string[] {
         const affected = new Set<string>();
 
         for (const file of changedFiles) {
             const normalizedFile = file.replace(/\\/g, '/');
 
-            for (const mod of this.options.moduleGraph.modules) {
-                const modulePath = mod.path.replace(/\\/g, '/');
+            for (const mod of this.options.componentGraph.components) {
+                const componentPath = mod.path.replace(/\\/g, '/');
 
-                // Check if the changed file is within the module's directory
-                if (normalizedFile.startsWith(modulePath + '/') || normalizedFile === modulePath) {
+                // Check if the changed file is within the component's directory
+                if (normalizedFile.startsWith(componentPath + '/') || normalizedFile === componentPath) {
                     affected.add(mod.id);
                     continue;
                 }

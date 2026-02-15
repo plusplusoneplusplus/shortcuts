@@ -32,7 +32,7 @@ export interface WSClient {
 
 export interface WSMessage {
     type: string;
-    modules?: string[];
+    components?: string[];
     message?: string;
 }
 

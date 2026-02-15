@@ -8,14 +8,14 @@ import { Socket } from 'net';
 import { handleAskRequest, buildAskPrompt, chunkText, sendSSE } from '../../src/server/ask-handler';
 import { ContextBuilder } from '../../src/server/context-builder';
 import { ConversationSessionManager } from '../../src/server/conversation-session-manager';
-import type { ModuleGraph } from '../../src/types';
+import type { ComponentGraph } from '../../src/types';
 import type { AskHandlerOptions } from '../../src/server/ask-handler';
 
 // ============================================================================
 // Helpers
 // ============================================================================
 
-function createTestGraph(): ModuleGraph {
+function createTestGraph(): ComponentGraph {
     return {
         project: {
             name: 'TestProject',
@@ -24,7 +24,7 @@ function createTestGraph(): ModuleGraph {
             buildSystem: 'npm',
         },
         categories: ['core'],
-        modules: [
+        components: [
             {
                 id: 'auth',
                 name: 'Auth',
@@ -204,7 +204,7 @@ describe('handleAskRequest', () => {
         expect(headers['Cache-Control']).toBe('no-cache');
     });
 
-    it('should include moduleIds in context event', async () => {
+    it('should include componentIds in context event', async () => {
         const req = createMockRequest(JSON.stringify({ question: 'How does authentication work?' }));
         const { res, getOutput } = createMockResponse();
 
@@ -213,8 +213,8 @@ describe('handleAskRequest', () => {
         const events = parseSSEEvents(getOutput());
         const contextEvent = events.find(e => e.type === 'context');
         expect(contextEvent).toBeDefined();
-        expect(contextEvent!.moduleIds).toBeDefined();
-        expect(Array.isArray(contextEvent!.moduleIds)).toBe(true);
+        expect(contextEvent!.componentIds).toBeDefined();
+        expect(Array.isArray(contextEvent!.componentIds)).toBe(true);
     });
 
     it('should include full response in done event', async () => {
@@ -368,7 +368,7 @@ describe('buildAskPrompt', () => {
     it('should include context text when provided', () => {
         const context = '## Module: auth\n\nHandles JWT tokens.';
         const prompt = buildAskPrompt('test', context, '', undefined);
-        expect(prompt).toContain('Relevant Module Documentation');
+        expect(prompt).toContain('Relevant Component Documentation');
         expect(prompt).toContain('Handles JWT tokens.');
     });
 
@@ -459,9 +459,9 @@ describe('sendSSE', () => {
             write: (data: string) => { written += data; },
         } as unknown as ServerResponse;
 
-        sendSSE(mockRes, { type: 'context', moduleIds: ['a', 'b'] });
+        sendSSE(mockRes, { type: 'context', componentIds: ['a', 'b'] });
 
-        expect(written).toBe('data: {"type":"context","moduleIds":["a","b"]}\n\n');
+        expect(written).toBe('data: {"type":"context","componentIds":["a","b"]}\n\n');
     });
 });
 

@@ -29,12 +29,12 @@ afterEach(() => {
 });
 
 /**
- * Create a minimal valid wiki directory with module-graph.json.
+ * Create a minimal valid wiki directory with component-graph.json.
  */
 function createValidWikiDir(dir: string): string {
     const wikiDir = path.join(dir, 'wiki');
     fs.mkdirSync(wikiDir, { recursive: true });
-    fs.writeFileSync(path.join(wikiDir, 'module-graph.json'), JSON.stringify({
+    fs.writeFileSync(path.join(wikiDir, 'component-graph.json'), JSON.stringify({
         project: {
             name: 'test-project',
             description: 'Test project',
@@ -42,7 +42,7 @@ function createValidWikiDir(dir: string): string {
             buildSystem: 'npm',
             entryPoints: ['src/index.ts'],
         },
-        modules: [],
+        components: [],
         categories: [],
     }));
     return wikiDir;
@@ -143,7 +143,7 @@ describe('executeServe — validation', () => {
         expect(exitCode).toBe(2);
     });
 
-    it('should return CONFIG_ERROR when module-graph.json is missing', async () => {
+    it('should return CONFIG_ERROR when component-graph.json is missing', async () => {
         const emptyDir = path.join(tempDir, 'empty');
         fs.mkdirSync(emptyDir, { recursive: true });
 

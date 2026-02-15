@@ -12,7 +12,7 @@ import * as path from 'path';
 import * as os from 'os';
 import * as http from 'http';
 import { createServer, type WikiServer } from '../../src/server';
-import type { ModuleGraph } from '../../src/types';
+import type { ComponentGraph } from '../../src/types';
 
 // ============================================================================
 // Test Helpers
@@ -33,7 +33,7 @@ afterEach(async () => {
     fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
-function createTestModuleGraph(): ModuleGraph {
+function createTestModuleGraph(): ComponentGraph {
     return {
         project: {
             name: 'TestProject',
@@ -42,7 +42,7 @@ function createTestModuleGraph(): ModuleGraph {
             buildSystem: 'npm',
             entryPoints: ['src/index.ts'],
         },
-        modules: [
+        components: [
             {
                 id: 'auth',
                 name: 'Auth Module',
@@ -73,20 +73,20 @@ function createTestModuleGraph(): ModuleGraph {
     };
 }
 
-function setupWikiDir(graph?: ModuleGraph): string {
+function setupWikiDir(graph?: ComponentGraph): string {
     const wikiDir = path.join(tempDir, 'wiki');
-    const modulesDir = path.join(wikiDir, 'modules');
-    fs.mkdirSync(modulesDir, { recursive: true });
+    const componentsDir = path.join(wikiDir, 'components');
+    fs.mkdirSync(componentsDir, { recursive: true });
 
     const g = graph || createTestModuleGraph();
     fs.writeFileSync(
-        path.join(wikiDir, 'module-graph.json'),
+        path.join(wikiDir, 'component-graph.json'),
         JSON.stringify(g, null, 2),
         'utf-8'
     );
 
-    fs.writeFileSync(path.join(modulesDir, 'auth.md'), '# Auth Module\n\nAuth content.', 'utf-8');
-    fs.writeFileSync(path.join(modulesDir, 'database.md'), '# Database Module\n\nDB content.', 'utf-8');
+    fs.writeFileSync(path.join(componentsDir, 'auth.md'), '# Auth Module\n\nAuth content.', 'utf-8');
+    fs.writeFileSync(path.join(componentsDir, 'database.md'), '# Database Module\n\nDB content.', 'utf-8');
     fs.writeFileSync(path.join(wikiDir, 'index.md'), '# Project Index', 'utf-8');
     fs.writeFileSync(path.join(wikiDir, 'architecture.md'), '# Architecture', 'utf-8');
 
@@ -144,9 +144,9 @@ describe('GET /api/graph', () => {
         const { status, body } = await fetchJson(`${s.url}/api/graph`);
         expect(status).toBe(200);
 
-        const graph = body as ModuleGraph;
+        const graph = body as ComponentGraph;
         expect(graph.project.name).toBe('TestProject');
-        expect(graph.modules).toHaveLength(2);
+        expect(graph.components).toHaveLength(2);
     });
 
     it('should include categories', async () => {
@@ -154,22 +154,22 @@ describe('GET /api/graph', () => {
         const s = await startServer(wikiDir);
 
         const { body } = await fetchJson(`${s.url}/api/graph`);
-        const graph = body as ModuleGraph;
+        const graph = body as ComponentGraph;
         expect(graph.categories).toHaveLength(1);
         expect(graph.categories[0].name).toBe('core');
     });
 });
 
 // ============================================================================
-// GET /api/modules
+// GET /api/components
 // ============================================================================
 
-describe('GET /api/modules', () => {
-    it('should return module summaries', async () => {
+describe('GET /api/components', () => {
+    it('should return component summaries', async () => {
         const wikiDir = setupWikiDir();
         const s = await startServer(wikiDir);
 
-        const { status, body } = await fetchJson(`${s.url}/api/modules`);
+        const { status, body } = await fetchJson(`${s.url}/api/components`);
         expect(status).toBe(200);
 
         const modules = body as Array<{ id: string; name: string }>;
@@ -181,7 +181,7 @@ describe('GET /api/modules', () => {
         const wikiDir = setupWikiDir();
         const s = await startServer(wikiDir);
 
-        const { body } = await fetchJson(`${s.url}/api/modules`);
+        const { body } = await fetchJson(`${s.url}/api/components`);
         const modules = body as Array<Record<string, string>>;
         const auth = modules.find(m => m.id === 'auth')!;
 
@@ -194,36 +194,36 @@ describe('GET /api/modules', () => {
 });
 
 // ============================================================================
-// GET /api/modules/:id
+// GET /api/components/:id
 // ============================================================================
 
-describe('GET /api/modules/:id', () => {
-    it('should return module detail with markdown', async () => {
+describe('GET /api/components/:id', () => {
+    it('should return component detail with markdown', async () => {
         const wikiDir = setupWikiDir();
         const s = await startServer(wikiDir);
 
-        const { status, body } = await fetchJson(`${s.url}/api/modules/auth`);
+        const { status, body } = await fetchJson(`${s.url}/api/components/auth`);
         expect(status).toBe(200);
 
-        const detail = body as { module: { id: string }; markdown: string };
-        expect(detail.module.id).toBe('auth');
+        const detail = body as { component: { id: string }; markdown: string };
+        expect(detail.component.id).toBe('auth');
         expect(detail.markdown).toContain('# Auth Module');
     });
 
-    it('should return 404 for non-existent module', async () => {
+    it('should return 404 for non-existent component', async () => {
         const wikiDir = setupWikiDir();
         const s = await startServer(wikiDir);
 
-        const { status, body } = await fetchJson(`${s.url}/api/modules/nonexistent`);
+        const { status, body } = await fetchJson(`${s.url}/api/components/nonexistent`);
         expect(status).toBe(404);
         expect((body as { error: string }).error).toContain('not found');
     });
 
-    it('should handle URL-encoded module IDs', async () => {
+    it('should handle URL-encoded component IDs', async () => {
         const wikiDir = setupWikiDir();
         const s = await startServer(wikiDir);
 
-        const { status } = await fetchJson(`${s.url}/api/modules/${encodeURIComponent('auth')}`);
+        const { status } = await fetchJson(`${s.url}/api/components/${encodeURIComponent('auth')}`);
         expect(status).toBe(200);
     });
 });

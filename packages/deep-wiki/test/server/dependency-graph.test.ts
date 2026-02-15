@@ -15,7 +15,7 @@ import * as os from 'os';
 import * as http from 'http';
 import { generateSpaHtml } from '../../src/server/spa-template';
 import { createServer, type WikiServer } from '../../src/server';
-import type { ModuleGraph } from '../../src/types';
+import type { ComponentGraph } from '../../src/types';
 
 // ============================================================================
 // Test Helpers
@@ -58,10 +58,10 @@ function getNoGraphHtml(): string {
 
 function setupWikiDir(): string {
     const wikiDir = path.join(tempDir, 'wiki');
-    const modulesDir = path.join(wikiDir, 'modules');
-    fs.mkdirSync(modulesDir, { recursive: true });
+    const componentsDir = path.join(wikiDir, 'components');
+    fs.mkdirSync(componentsDir, { recursive: true });
 
-    const graph: ModuleGraph = {
+    const graph: ComponentGraph = {
         project: {
             name: 'TestProject',
             description: 'A test project',
@@ -69,7 +69,7 @@ function setupWikiDir(): string {
             buildSystem: 'npm',
             entryPoints: ['src/index.ts'],
         },
-        modules: [
+        components: [
             {
                 id: 'auth',
                 name: 'Auth Module',
@@ -112,13 +112,13 @@ function setupWikiDir(): string {
     };
 
     fs.writeFileSync(
-        path.join(wikiDir, 'module-graph.json'),
+        path.join(wikiDir, 'component-graph.json'),
         JSON.stringify(graph, null, 2),
         'utf-8'
     );
-    fs.writeFileSync(path.join(modulesDir, 'auth.md'), '# Auth Module', 'utf-8');
-    fs.writeFileSync(path.join(modulesDir, 'database.md'), '# Database Module', 'utf-8');
-    fs.writeFileSync(path.join(modulesDir, 'utils.md'), '# Utilities', 'utf-8');
+    fs.writeFileSync(path.join(componentsDir, 'auth.md'), '# Auth Module', 'utf-8');
+    fs.writeFileSync(path.join(componentsDir, 'database.md'), '# Database Module', 'utf-8');
+    fs.writeFileSync(path.join(componentsDir, 'utils.md'), '# Utilities', 'utf-8');
 
     return wikiDir;
 }

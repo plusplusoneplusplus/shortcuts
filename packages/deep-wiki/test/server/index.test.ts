@@ -12,7 +12,7 @@ import * as path from 'path';
 import * as os from 'os';
 import * as http from 'http';
 import { createServer, type WikiServer } from '../../src/server';
-import type { ModuleGraph } from '../../src/types';
+import type { ComponentGraph } from '../../src/types';
 
 // ============================================================================
 // Test Helpers
@@ -33,7 +33,7 @@ afterEach(async () => {
     fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
-function createTestModuleGraph(): ModuleGraph {
+function createTestModuleGraph(): ComponentGraph {
     return {
         project: {
             name: 'TestProject',
@@ -42,7 +42,7 @@ function createTestModuleGraph(): ModuleGraph {
             buildSystem: 'npm',
             entryPoints: ['src/index.ts'],
         },
-        modules: [
+        components: [
             {
                 id: 'auth',
                 name: 'Auth Module',
@@ -64,15 +64,15 @@ function createTestModuleGraph(): ModuleGraph {
 
 function setupWikiDir(): string {
     const wikiDir = path.join(tempDir, 'wiki');
-    const modulesDir = path.join(wikiDir, 'modules');
-    fs.mkdirSync(modulesDir, { recursive: true });
+    const componentsDir = path.join(wikiDir, 'components');
+    fs.mkdirSync(componentsDir, { recursive: true });
 
     fs.writeFileSync(
-        path.join(wikiDir, 'module-graph.json'),
+        path.join(wikiDir, 'component-graph.json'),
         JSON.stringify(createTestModuleGraph(), null, 2),
         'utf-8'
     );
-    fs.writeFileSync(path.join(modulesDir, 'auth.md'), '# Auth Module', 'utf-8');
+    fs.writeFileSync(path.join(componentsDir, 'auth.md'), '# Auth Module', 'utf-8');
 
     return wikiDir;
 }
@@ -119,12 +119,12 @@ describe('createServer', () => {
         expect(html).toContain('TestProject');
     });
 
-    it('should throw when wiki dir has no module-graph.json', async () => {
+    it('should throw when wiki dir has no component-graph.json', async () => {
         const emptyDir = path.join(tempDir, 'empty');
         fs.mkdirSync(emptyDir, { recursive: true });
 
         await expect(createServer({ wikiDir: emptyDir, port: 0 }))
-            .rejects.toThrow('module-graph.json not found');
+            .rejects.toThrow('component-graph.json not found');
     });
 });
 

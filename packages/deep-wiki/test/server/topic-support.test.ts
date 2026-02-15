@@ -21,7 +21,7 @@ import * as http from 'http';
 import { WikiData } from '../../src/server/wiki-data';
 import { ContextBuilder } from '../../src/server/context-builder';
 import { createServer, type WikiServer } from '../../src/server';
-import type { ModuleGraph, TopicAreaMeta } from '../../src/types';
+import type { ComponentGraph, TopicAreaMeta } from '../../src/types';
 
 // ============================================================================
 // Test Helpers
@@ -52,7 +52,7 @@ function createTopicMeta(overrides?: Partial<TopicAreaMeta>): TopicAreaMeta {
             { slug: 'compaction-overview', title: 'Compaction Overview', path: 'topics/compaction/compaction-overview.md' },
             { slug: 'compaction-styles', title: 'Compaction Styles', path: 'topics/compaction/compaction-styles.md' },
         ],
-        involvedModuleIds: ['auth'],
+        involvedComponentIds: ['auth'],
         directoryPath: 'topics/compaction',
         generatedAt: Date.now(),
         ...overrides,
@@ -68,13 +68,13 @@ function createSingleTopicMeta(): TopicAreaMeta {
         articles: [
             { slug: 'caching', title: 'Caching Strategy', path: 'topics/caching.md' },
         ],
-        involvedModuleIds: ['database'],
+        involvedComponentIds: ['database'],
         directoryPath: 'topics',
         generatedAt: Date.now(),
     };
 }
 
-function createTestModuleGraph(topics?: TopicAreaMeta[]): ModuleGraph {
+function createTestModuleGraph(topics?: TopicAreaMeta[]): ComponentGraph {
     return {
         project: {
             name: 'TestProject',
@@ -83,7 +83,7 @@ function createTestModuleGraph(topics?: TopicAreaMeta[]): ModuleGraph {
             buildSystem: 'npm',
             entryPoints: ['src/index.ts'],
         },
-        modules: [
+        components: [
             {
                 id: 'auth',
                 name: 'Auth Module',
@@ -115,22 +115,22 @@ function createTestModuleGraph(topics?: TopicAreaMeta[]): ModuleGraph {
     };
 }
 
-function setupWikiDir(graph?: ModuleGraph, options?: {
+function setupWikiDir(graph?: ComponentGraph, options?: {
     topicFiles?: Record<string, string>;
 }): string {
     const wikiDir = path.join(tempDir, 'wiki');
-    const modulesDir = path.join(wikiDir, 'modules');
-    fs.mkdirSync(modulesDir, { recursive: true });
+    const componentsDir = path.join(wikiDir, 'components');
+    fs.mkdirSync(componentsDir, { recursive: true });
 
     const g = graph || createTestModuleGraph();
     fs.writeFileSync(
-        path.join(wikiDir, 'module-graph.json'),
+        path.join(wikiDir, 'component-graph.json'),
         JSON.stringify(g, null, 2),
         'utf-8'
     );
 
-    fs.writeFileSync(path.join(modulesDir, 'auth.md'), '# Auth Module\n\nAuth content about authentication and login.', 'utf-8');
-    fs.writeFileSync(path.join(modulesDir, 'database.md'), '# Database Module\n\nDB content about queries.', 'utf-8');
+    fs.writeFileSync(path.join(componentsDir, 'auth.md'), '# Auth Module\n\nAuth content about authentication and login.', 'utf-8');
+    fs.writeFileSync(path.join(componentsDir, 'database.md'), '# Database Module\n\nDB content about queries.', 'utf-8');
     fs.writeFileSync(path.join(wikiDir, 'index.md'), '# Project Index', 'utf-8');
 
     // Write topic files
@@ -395,7 +395,7 @@ describe('ContextBuilder — topic indexing', () => {
 
         const result = builder.retrieve('authentication');
         expect(result.topicContexts).toEqual([]);
-        expect(result.moduleIds).toContain('auth');
+        expect(result.componentIds).toContain('auth');
     });
 
     it('should respect maxTopics limit', () => {
@@ -410,7 +410,7 @@ describe('ContextBuilder — topic indexing', () => {
                 description: `Topic about compaction variant ${i}`,
                 layout: 'single',
                 articles: [{ slug: id, title: `Topic ${i}`, path: `topics/${id}.md` }],
-                involvedModuleIds: [],
+                involvedComponentIds: [],
                 directoryPath: 'topics',
                 generatedAt: Date.now(),
             });
@@ -439,7 +439,7 @@ describe('ContextBuilder — topic indexing', () => {
         const builder = new ContextBuilder(graph, markdownData, topicMarkdownData);
         const result = builder.retrieve('authentication compaction');
 
-        expect(result.moduleIds.length).toBeGreaterThan(0);
+        expect(result.componentIds.length).toBeGreaterThan(0);
         // topicContexts may or may not have results depending on scoring
         expect(result.topicContexts).toBeDefined();
     });
@@ -568,7 +568,7 @@ describe('GET /api/graph — topic extension', () => {
         const { status, body } = await fetchJson(`${s.url}/api/graph`);
         expect(status).toBe(200);
 
-        const data = body as ModuleGraph;
+        const data = body as ComponentGraph;
         expect(data.topics).toBeDefined();
         expect(data.topics).toHaveLength(1);
         expect(data.topics![0].id).toBe('compaction');
@@ -580,7 +580,7 @@ describe('GET /api/graph — topic extension', () => {
         const s = await startServer(wikiDir);
 
         const { body } = await fetchJson(`${s.url}/api/graph`);
-        const data = body as ModuleGraph;
+        const data = body as ComponentGraph;
         // topics may be undefined or empty array
         expect(data.topics === undefined || data.topics?.length === 0).toBe(true);
     });
@@ -600,10 +600,10 @@ describe('Backward compatibility', () => {
         const graphRes = await fetchJson(`${s.url}/api/graph`);
         expect(graphRes.status).toBe(200);
 
-        const modulesRes = await fetchJson(`${s.url}/api/modules`);
+        const modulesRes = await fetchJson(`${s.url}/api/components`);
         expect(modulesRes.status).toBe(200);
 
-        const moduleRes = await fetchJson(`${s.url}/api/modules/auth`);
+        const moduleRes = await fetchJson(`${s.url}/api/components/auth`);
         expect(moduleRes.status).toBe(200);
 
         const pageRes = await fetchJson(`${s.url}/api/pages/index`);
@@ -638,7 +638,7 @@ describe('Backward compatibility', () => {
         const builder = new ContextBuilder(graph, markdownData);
         const result = builder.retrieve('authentication');
 
-        expect(result.moduleIds).toContain('auth');
+        expect(result.componentIds).toContain('auth');
         expect(result.topicContexts).toEqual([]);
     });
 });

@@ -8,7 +8,7 @@ import { Socket } from 'net';
 import { handleExploreRequest, buildExplorePrompt } from '../../src/server/explore-handler';
 import { WikiData } from '../../src/server/wiki-data';
 import type { ExploreHandlerOptions } from '../../src/server/explore-handler';
-import type { ModuleGraph } from '../../src/types';
+import type { ComponentGraph } from '../../src/types';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -17,7 +17,7 @@ import * as os from 'os';
 // Helpers
 // ============================================================================
 
-function createTestGraph(): ModuleGraph {
+function createTestGraph(): ComponentGraph {
     return {
         project: {
             name: 'TestProject',
@@ -26,7 +26,7 @@ function createTestGraph(): ModuleGraph {
             buildSystem: 'npm',
         },
         categories: ['core'],
-        modules: [
+        components: [
             {
                 id: 'auth',
                 name: 'Authentication',
@@ -55,11 +55,11 @@ function createTestGraph(): ModuleGraph {
 
 function setupWikiDir(): string {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'deep-wiki-explore-'));
-    fs.writeFileSync(path.join(tmpDir, 'module-graph.json'), JSON.stringify(createTestGraph()));
-    const modulesDir = path.join(tmpDir, 'modules');
-    fs.mkdirSync(modulesDir, { recursive: true });
-    fs.writeFileSync(path.join(modulesDir, 'auth.md'), '# Auth\nJWT token management.');
-    fs.writeFileSync(path.join(modulesDir, 'db.md'), '# Database\nConnection pooling.');
+    fs.writeFileSync(path.join(tmpDir, 'component-graph.json'), JSON.stringify(createTestGraph()));
+    const componentsDir = path.join(tmpDir, 'components');
+    fs.mkdirSync(componentsDir, { recursive: true });
+    fs.writeFileSync(path.join(componentsDir, 'auth.md'), '# Auth\nJWT token management.');
+    fs.writeFileSync(path.join(componentsDir, 'db.md'), '# Database\nConnection pooling.');
     return tmpDir;
 }
 
@@ -130,7 +130,7 @@ describe('handleExploreRequest', () => {
         await handleExploreRequest(req, res, 'nonexistent', options);
 
         expect(getStatusCode()).toBe(404);
-        expect(getOutput()).toContain('Module not found');
+        expect(getOutput()).toContain('Component not found');
     });
 
     it('should return 400 for invalid JSON body', async () => {
@@ -300,7 +300,7 @@ describe('buildExplorePrompt', () => {
     };
     const graph = {
         project: { name: 'Test', description: 'test', language: 'TS' },
-        modules: [{ id: 'auth', name: 'Auth', purpose: 'Auth', dependencies: ['db'] }],
+        components: [{ id: 'auth', name: 'Auth', purpose: 'Auth', dependencies: ['db'] }],
     };
 
     it('should include module information', () => {

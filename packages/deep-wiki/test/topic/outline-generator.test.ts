@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { TopicRequest, TopicOutline } from '../../src/types';
-import type { ProbeFoundModule } from '../../src/discovery/iterative/types';
+import type { ProbeFoundComponent } from '../../src/discovery/iterative/types';
 import type { EnrichedProbeResult } from '../../src/topic/topic-probe';
 
 // ─── Mock SDK ──────────────────────────────────────────────────────────
@@ -35,7 +35,7 @@ import { buildOutlinePrompt } from '../../src/topic/outline-prompts';
 
 // ─── Helpers ───────────────────────────────────────────────────────────
 
-function makeModule(overrides: Partial<ProbeFoundModule> = {}): ProbeFoundModule {
+function makeModule(overrides: Partial<ProbeFoundComponent> = {}): ProbeFoundComponent {
     return {
         id: 'mod-a',
         name: 'Module A',
@@ -47,11 +47,11 @@ function makeModule(overrides: Partial<ProbeFoundModule> = {}): ProbeFoundModule
     };
 }
 
-function makeProbeResult(modules: ProbeFoundModule[]): EnrichedProbeResult {
+function makeProbeResult(modules: ProbeFoundComponent[]): EnrichedProbeResult {
     return {
         probeResult: {
             topic: 'test-topic',
-            foundModules: modules,
+            foundComponents: modules,
             discoveredTopics: [],
             dependencies: [],
             confidence: 0.8,
@@ -72,10 +72,10 @@ function makeTopic(overrides: Partial<TopicRequest> = {}): TopicRequest {
 }
 
 function makeOptions(
-    moduleCount: number,
+    componentCount: number,
     overrides: Partial<OutlineGeneratorOptions> = {}
 ): OutlineGeneratorOptions {
-    const modules = Array.from({ length: moduleCount }, (_, i) =>
+    const modules = Array.from({ length: componentCount }, (_, i) =>
         makeModule({
             id: `mod-${i}`,
             name: `Module ${i}`,
@@ -224,7 +224,7 @@ describe('outline-generator', () => {
                     title: 'Compaction Guide',
                     description: 'Full guide',
                     isIndex: true,
-                    coveredModuleIds: ['mod-a'],
+                    coveredComponentIds: ['mod-a'],
                     coveredFiles: ['src/mod-a/index.ts'],
                 }],
             });
@@ -236,7 +236,7 @@ describe('outline-generator', () => {
             expect(outline.layout).toBe('single');
             expect(outline.articles).toHaveLength(1);
             expect(outline.articles[0].isIndex).toBe(true);
-            expect(outline.articles[0].coveredModuleIds).toEqual(['mod-a']);
+            expect(outline.articles[0].coveredComponentIds).toEqual(['mod-a']);
         });
 
         it('should parse a valid area-layout response', () => {
@@ -244,8 +244,8 @@ describe('outline-generator', () => {
                 title: 'Compaction',
                 layout: 'area',
                 articles: [
-                    { slug: 'index', title: 'Overview', description: 'Intro', isIndex: true, coveredModuleIds: ['mod-a'], coveredFiles: [] },
-                    { slug: 'details', title: 'Details', description: 'Deep dive', isIndex: false, coveredModuleIds: ['mod-a'], coveredFiles: ['file.ts'] },
+                    { slug: 'index', title: 'Overview', description: 'Intro', isIndex: true, coveredComponentIds: ['mod-a'], coveredFiles: [] },
+                    { slug: 'details', title: 'Details', description: 'Deep dive', isIndex: false, coveredComponentIds: ['mod-a'], coveredFiles: ['file.ts'] },
                 ],
             });
 
@@ -261,7 +261,7 @@ describe('outline-generator', () => {
             const response = JSON.stringify({
                 title: 'Test',
                 layout: 'unknown',
-                articles: [{ slug: 'x', title: 'X', description: '', isIndex: false, coveredModuleIds: [], coveredFiles: [] }],
+                articles: [{ slug: 'x', title: 'X', description: '', isIndex: false, coveredComponentIds: [], coveredFiles: [] }],
             });
 
             const outline = parseOutlineResponse(response, topic, probe);
@@ -280,7 +280,7 @@ describe('outline-generator', () => {
             expect(outline.articles).toHaveLength(1);
             expect(outline.articles[0].slug).toBe('index');
             expect(outline.articles[0].isIndex).toBe(true);
-            expect(outline.articles[0].coveredModuleIds).toEqual(['mod-a']);
+            expect(outline.articles[0].coveredComponentIds).toEqual(['mod-a']);
         });
 
         it('should skip articles missing required fields', () => {
@@ -288,7 +288,7 @@ describe('outline-generator', () => {
                 title: 'Test',
                 layout: 'single',
                 articles: [
-                    { slug: 'valid', title: 'Valid', description: '', isIndex: false, coveredModuleIds: [], coveredFiles: [] },
+                    { slug: 'valid', title: 'Valid', description: '', isIndex: false, coveredComponentIds: [], coveredFiles: [] },
                     { title: 'No Slug' },  // missing slug
                     { slug: 'no-title' },  // missing title
                     null,
@@ -304,7 +304,7 @@ describe('outline-generator', () => {
         it('should use topic name as title when title is missing', () => {
             const response = JSON.stringify({
                 layout: 'single',
-                articles: [{ slug: 'x', title: 'X', description: '', isIndex: false, coveredModuleIds: [], coveredFiles: [] }],
+                articles: [{ slug: 'x', title: 'X', description: '', isIndex: false, coveredComponentIds: [], coveredFiles: [] }],
             });
 
             const outline = parseOutlineResponse(response, topic, probe);
@@ -315,7 +315,7 @@ describe('outline-generator', () => {
             const response = 'Here is the outline:\n```json\n' + JSON.stringify({
                 title: 'Test',
                 layout: 'single',
-                articles: [{ slug: 'x', title: 'X', description: 'desc', isIndex: true, coveredModuleIds: [], coveredFiles: [] }],
+                articles: [{ slug: 'x', title: 'X', description: 'desc', isIndex: true, coveredComponentIds: [], coveredFiles: [] }],
             }) + '\n```';
 
             const outline = parseOutlineResponse(response, topic, probe);
@@ -335,14 +335,14 @@ describe('outline-generator', () => {
             const response = JSON.stringify({
                 title: 'Test',
                 layout: 'single',
-                articles: [{ slug: 'x', title: 'X', description: '', isIndex: true, coveredModuleIds: [], coveredFiles: [] }],
+                articles: [{ slug: 'x', title: 'X', description: '', isIndex: true, coveredComponentIds: [], coveredFiles: [] }],
             });
 
             const outline = parseOutlineResponse(response, topic, probe);
 
-            expect(outline.involvedModules).toHaveLength(1);
-            expect(outline.involvedModules[0].moduleId).toBe('mod-a');
-            expect(outline.involvedModules[0].keyFiles).toEqual(['src/mod-a/index.ts']);
+            expect(outline.involvedComponents).toHaveLength(1);
+            expect(outline.involvedComponents[0].componentId).toBe('mod-a');
+            expect(outline.involvedComponents[0].keyFiles).toEqual(['src/mod-a/index.ts']);
         });
 
         it('should handle missing coveredModuleIds and coveredFiles gracefully', () => {
@@ -353,7 +353,7 @@ describe('outline-generator', () => {
             });
 
             const outline = parseOutlineResponse(response, topic, probe);
-            expect(outline.articles[0].coveredModuleIds).toEqual([]);
+            expect(outline.articles[0].coveredComponentIds).toEqual([]);
             expect(outline.articles[0].coveredFiles).toEqual([]);
             expect(outline.articles[0].isIndex).toBe(false);
         });
@@ -370,7 +370,7 @@ describe('outline-generator', () => {
             expect(outline.layout).toBe('single');
             expect(outline.articles).toHaveLength(1);
             expect(outline.articles[0].isIndex).toBe(true);
-            expect(outline.articles[0].coveredModuleIds).toEqual(['mod-a']);
+            expect(outline.articles[0].coveredComponentIds).toEqual(['mod-a']);
         });
 
         it('should produce single layout for 2 modules', () => {
@@ -382,7 +382,7 @@ describe('outline-generator', () => {
 
             expect(outline.layout).toBe('single');
             expect(outline.articles).toHaveLength(1);
-            expect(outline.articles[0].coveredModuleIds).toEqual(['mod-1', 'mod-2']);
+            expect(outline.articles[0].coveredComponentIds).toEqual(['mod-1', 'mod-2']);
         });
 
         it('should produce area layout for 3+ modules', () => {
@@ -417,7 +417,7 @@ describe('outline-generator', () => {
 
             expect(outline.layout).toBe('single');
             expect(outline.articles).toHaveLength(1);
-            expect(outline.articles[0].coveredModuleIds).toEqual([]);
+            expect(outline.articles[0].coveredComponentIds).toEqual([]);
         });
 
         it('should format topic title from kebab-case', () => {
@@ -431,9 +431,9 @@ describe('outline-generator', () => {
             const mod = makeModule({ id: 'mod-x', purpose: 'Core compactor' });
             const outline = buildFallbackOutline(makeTopic(), makeProbeResult([mod]));
 
-            expect(outline.involvedModules).toHaveLength(1);
-            expect(outline.involvedModules[0].moduleId).toBe('mod-x');
-            expect(outline.involvedModules[0].role).toBe('Core compactor');
+            expect(outline.involvedComponents).toHaveLength(1);
+            expect(outline.involvedComponents[0].componentId).toBe('mod-x');
+            expect(outline.involvedComponents[0].role).toBe('Core compactor');
         });
     });
 
@@ -446,8 +446,8 @@ describe('outline-generator', () => {
                     title: 'Compaction',
                     layout: 'area',
                     articles: [
-                        { slug: 'index', title: 'Overview', description: 'Intro', isIndex: true, coveredModuleIds: ['mod-0'], coveredFiles: [] },
-                        { slug: 'details', title: 'Details', description: 'Deep', isIndex: false, coveredModuleIds: ['mod-0'], coveredFiles: ['f.ts'] },
+                        { slug: 'index', title: 'Overview', description: 'Intro', isIndex: true, coveredComponentIds: ['mod-0'], coveredFiles: [] },
+                        { slug: 'details', title: 'Details', description: 'Deep', isIndex: false, coveredComponentIds: ['mod-0'], coveredFiles: ['f.ts'] },
                     ],
                 }),
             });
@@ -506,7 +506,7 @@ describe('outline-generator', () => {
                 success: true,
                 response: JSON.stringify({
                     title: 'T', layout: 'single',
-                    articles: [{ slug: 'x', title: 'X', description: '', isIndex: true, coveredModuleIds: [], coveredFiles: [] }],
+                    articles: [{ slug: 'x', title: 'X', description: '', isIndex: true, coveredComponentIds: [], coveredFiles: [] }],
                 }),
             });
 
@@ -523,7 +523,7 @@ describe('outline-generator', () => {
                 success: true,
                 response: JSON.stringify({
                     title: 'T', layout: 'single',
-                    articles: [{ slug: 'x', title: 'X', description: '', isIndex: true, coveredModuleIds: [], coveredFiles: [] }],
+                    articles: [{ slug: 'x', title: 'X', description: '', isIndex: true, coveredComponentIds: [], coveredFiles: [] }],
                 }),
             });
 
@@ -539,7 +539,7 @@ describe('outline-generator', () => {
                 success: true,
                 response: JSON.stringify({
                     title: 'T', layout: 'single',
-                    articles: [{ slug: 'x', title: 'X', description: '', isIndex: true, coveredModuleIds: [], coveredFiles: [] }],
+                    articles: [{ slug: 'x', title: 'X', description: '', isIndex: true, coveredComponentIds: [], coveredFiles: [] }],
                 }),
             });
 
@@ -558,7 +558,7 @@ describe('outline-generator', () => {
                     layout: 'single',
                     articles: [{
                         slug: 'index', title: 'Compaction', description: 'All-in-one',
-                        isIndex: true, coveredModuleIds: ['mod-0', 'mod-1', 'mod-2'], coveredFiles: [],
+                        isIndex: true, coveredComponentIds: ['mod-0', 'mod-1', 'mod-2'], coveredFiles: [],
                     }],
                 }),
             });
@@ -577,11 +577,11 @@ describe('outline-generator', () => {
                     title: 'Compaction',
                     layout: 'area',
                     articles: [
-                        { slug: 'index', title: 'Overview', description: '', isIndex: true, coveredModuleIds: [], coveredFiles: [] },
-                        { slug: 'core', title: 'Core', description: '', isIndex: false, coveredModuleIds: ['mod-0'], coveredFiles: [] },
-                        { slug: 'strategies', title: 'Strategies', description: '', isIndex: false, coveredModuleIds: ['mod-1'], coveredFiles: [] },
-                        { slug: 'internals', title: 'Internals', description: '', isIndex: false, coveredModuleIds: ['mod-2'], coveredFiles: [] },
-                        { slug: 'tuning', title: 'Tuning', description: '', isIndex: false, coveredModuleIds: [], coveredFiles: [] },
+                        { slug: 'index', title: 'Overview', description: '', isIndex: true, coveredComponentIds: [], coveredFiles: [] },
+                        { slug: 'core', title: 'Core', description: '', isIndex: false, coveredComponentIds: ['mod-0'], coveredFiles: [] },
+                        { slug: 'strategies', title: 'Strategies', description: '', isIndex: false, coveredComponentIds: ['mod-1'], coveredFiles: [] },
+                        { slug: 'internals', title: 'Internals', description: '', isIndex: false, coveredComponentIds: ['mod-2'], coveredFiles: [] },
+                        { slug: 'tuning', title: 'Tuning', description: '', isIndex: false, coveredComponentIds: [], coveredFiles: [] },
                     ],
                 }),
             });

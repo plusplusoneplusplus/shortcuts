@@ -19,7 +19,7 @@ import * as fs from 'fs';
 import { sendSSE } from './ask-handler';
 import { sendJson, send400, send404, send500, readBody } from './router';
 import { getErrorMessage } from '../utils/error-utils';
-import type { GenerateCommandOptions, ModuleGraph, ModuleAnalysis, GeneratedArticle } from '../types';
+import type { GenerateCommandOptions, ComponentGraph, ComponentAnalysis, GeneratedArticle } from '../types';
 import type { WikiData } from './wiki-data';
 import type { WebSocketServer } from './websocket';
 
@@ -94,13 +94,13 @@ export function handleGenerateRequest(
         return true;
     }
 
-    // POST /api/admin/generate/module/:moduleId — Regenerate single module article
-    const moduleMatch = pathname.match(/^\/api\/admin\/generate\/module\/(.+)$/);
-    if (method === 'POST' && moduleMatch) {
-        const moduleId = decodeURIComponent(moduleMatch[1]);
-        handleModuleRegenerate(req, res, moduleId, context).catch(() => {
+    // POST /api/admin/generate/component/:componentId — Regenerate single component article
+    const componentMatch = pathname.match(/^\/api\/admin\/generate\/component\/(.+)$/);
+    if (method === 'POST' && componentMatch) {
+        const componentId = decodeURIComponent(componentMatch[1]);
+        handleComponentRegenerate(req, res, componentId, context).catch(() => {
             if (!res.headersSent) {
-                send500(res, 'Failed to regenerate module article');
+                send500(res, 'Failed to regenerate component article');
             }
         });
         return true;
@@ -249,9 +249,9 @@ async function runGeneration(
     }
 
     const usageTracker = new UsageTracker();
-    let graph: ModuleGraph | undefined;
-    let analyses: ModuleAnalysis[] | undefined;
-    let reanalyzedModuleIds: string[] | undefined;
+    let graph: ComponentGraph | undefined;
+    let analyses: ComponentAnalysis[] | undefined;
+    let reanalyzedComponentIds: string[] | undefined;
 
     // ================================================================
     // Phase 1: Discovery
@@ -280,7 +280,7 @@ async function runGeneration(
             }
             sendSSE(res, {
                 type: 'phase-complete', phase: 1, success: true, duration,
-                message: `Discovered ${graph.modules.length} modules`,
+                message: `Discovered ${graph.components.length} components`,
             });
         } catch (error) {
             sendSSE(res, { type: 'error', phase: 1, message: getErrorMessage(error) });
@@ -293,17 +293,17 @@ async function runGeneration(
             ? getCachedGraphAny(outputDir)
             : await getCachedGraph(repoPath, outputDir);
         if (!cached) {
-            sendSSE(res, { type: 'error', message: 'No cached module graph found. Run Discovery first.' });
+            sendSSE(res, { type: 'error', message: 'No cached component graph found. Run Discovery first.' });
             sendSSE(res, { type: 'done', success: false, error: 'Missing prerequisite: Discovery' });
             return;
         }
         graph = cached.graph;
-        sendSSE(res, { type: 'log', phase: startPhase, message: `Loaded cached module graph (${graph.modules.length} modules)` });
+        sendSSE(res, { type: 'log', phase: startPhase, message: `Loaded cached component graph (${graph.components.length} components)` });
     }
 
     if (!graph) {
-        sendSSE(res, { type: 'error', message: 'No module graph available' });
-        sendSSE(res, { type: 'done', success: false, error: 'No module graph' });
+        sendSSE(res, { type: 'error', message: 'No component graph available' });
+        sendSSE(res, { type: 'done', success: false, error: 'No component graph' });
         return;
     }
 
@@ -326,7 +326,7 @@ async function runGeneration(
             const duration = Date.now() - phaseStart;
             sendSSE(res, {
                 type: 'phase-complete', phase: 2, success: true, duration,
-                message: `Consolidated to ${graph.modules.length} modules`,
+                message: `Consolidated to ${graph.components.length} components`,
             });
         } catch (error) {
             sendSSE(res, { type: 'error', phase: 2, message: getErrorMessage(error) });
@@ -358,11 +358,11 @@ async function runGeneration(
                 return;
             }
             analyses = phase3Result.analyses!;
-            reanalyzedModuleIds = phase3Result.reanalyzedModuleIds;
+            reanalyzedComponentIds = phase3Result.reanalyzedModuleIds;
             const duration = Date.now() - phaseStart;
             sendSSE(res, {
                 type: 'phase-complete', phase: 3, success: true, duration,
-                message: `Analyzed ${analyses.length} modules`,
+                message: `Analyzed ${analyses.length} components`,
             });
         } catch (error) {
             sendSSE(res, { type: 'error', phase: 3, message: getErrorMessage(error) });
@@ -402,7 +402,7 @@ async function runGeneration(
         const phaseStart = Date.now();
         try {
             const phase4Result = await runPhase4Writing(
-                repoPath, graph, analyses, options, isCancelled, usageTracker, reanalyzedModuleIds
+                repoPath, graph, analyses, options, isCancelled, usageTracker, reanalyzedComponentIds
             );
             if (phase4Result.exitCode !== undefined) {
                 sendSSE(res, { type: 'error', phase: 4, message: `Writing failed (exit code ${phase4Result.exitCode})` });
@@ -433,9 +433,9 @@ async function runGeneration(
         generationState!.currentPhase = 5;
         sendSSE(res, { type: 'status', phase: 5, state: 'running', message: 'Building website...' });
 
-        // Ensure module-graph.json reflects the current in-memory graph before Phase 5
+        // Ensure component-graph.json reflects the current in-memory graph before Phase 5
         if (graph) {
-            const graphOutputFile = path.join(path.resolve(outputDir), 'module-graph.json');
+            const graphOutputFile = path.join(path.resolve(outputDir), 'component-graph.json');
             try {
                 fs.mkdirSync(path.resolve(outputDir), { recursive: true });
                 fs.writeFileSync(graphOutputFile, JSON.stringify(graph, null, 2), 'utf-8');
@@ -474,7 +474,7 @@ async function runGeneration(
 
         // Broadcast WebSocket refresh event
         if (context.wsServer) {
-            context.wsServer.broadcast({ type: 'reload', modules: [] });
+            context.wsServer.broadcast({ type: 'reload', components: [] });
         }
     }
 
@@ -483,17 +483,17 @@ async function runGeneration(
 }
 
 // ============================================================================
-// Single-Module Article Regeneration
+// Single-Component Article Regeneration
 // ============================================================================
 
 /**
- * POST /api/admin/generate/module/:moduleId — Regenerate article for a single module.
- * Streams progress via SSE. Uses cached analysis + module graph.
+ * POST /api/admin/generate/component/:componentId — Regenerate article for a single component.
+ * Streams progress via SSE. Uses cached analysis + component graph.
  */
-async function handleModuleRegenerate(
+async function handleComponentRegenerate(
     req: http.IncomingMessage,
     res: http.ServerResponse,
-    moduleId: string,
+    componentId: string,
     context: GenerateHandlerContext
 ): Promise<void> {
     // 503: No repo path configured
@@ -508,16 +508,16 @@ async function handleModuleRegenerate(
         return;
     }
 
-    // Validate module exists in graph
+    // Validate component exists in graph
     if (!context.wikiData) {
         send500(res, 'Wiki data not loaded');
         return;
     }
 
     const graph = context.wikiData.graph;
-    const moduleInfo = graph.modules.find(m => m.id === moduleId);
-    if (!moduleInfo) {
-        send404(res, `Module not found: ${moduleId}`);
+    const componentInfo = graph.components.find(m => m.id === componentId);
+    if (!componentInfo) {
+        send404(res, `Component not found: ${componentId}`);
         return;
     }
 
@@ -533,17 +533,17 @@ async function handleModuleRegenerate(
         // Ignore parse errors — use defaults
     }
 
-    // Load analysis for this module
+    // Load analysis for this component
     const { getCachedAnalysis } = await import('../cache');
     const outputDir = context.wikiDir;
-    const analysis = getCachedAnalysis(moduleId, outputDir);
+    const analysis = getCachedAnalysis(componentId, outputDir);
 
     // Also check in-memory analyses from wikiData
-    const detail = context.wikiData.getModuleDetail(moduleId);
-    const moduleAnalysis = analysis || detail?.analysis;
+    const detail = context.wikiData.getComponentDetail(componentId);
+    const componentAnalysis = analysis || detail?.analysis;
 
-    if (!moduleAnalysis) {
-        sendJson(res, { error: `No analysis cached for module "${moduleId}". Run Phase 3 (Analysis) first.` }, 412);
+    if (!componentAnalysis) {
+        sendJson(res, { error: `No analysis cached for component "${componentId}". Run Phase 3 (Analysis) first.` }, 412);
         return;
     }
 
@@ -564,11 +564,11 @@ async function handleModuleRegenerate(
     };
 
     try {
-        await runModuleRegeneration(res, context, moduleId, moduleAnalysis, graph, force);
+        await runComponentRegeneration(res, context, componentId, componentAnalysis, graph, force);
     } catch (error) {
         const message = getErrorMessage(error);
         sendSSE(res, { type: 'error', message });
-        sendSSE(res, { type: 'done', success: false, moduleId, error: message });
+        sendSSE(res, { type: 'done', success: false, componentId, error: message });
     } finally {
         generationState = null;
         res.end();
@@ -576,37 +576,37 @@ async function handleModuleRegenerate(
 }
 
 /**
- * Execute single-module article regeneration.
+ * Execute single-component article regeneration.
  */
-async function runModuleRegeneration(
+async function runComponentRegeneration(
     res: http.ServerResponse,
     context: GenerateHandlerContext,
-    moduleId: string,
-    analysis: ModuleAnalysis,
-    graph: ModuleGraph,
+    componentId: string,
+    analysis: ComponentAnalysis,
+    graph: ComponentGraph,
     _force: boolean
 ): Promise<void> {
     const outputDir = context.wikiDir;
     const repoPath = path.resolve(context.repoPath!);
     const startTime = Date.now();
 
-    const moduleInfo = graph.modules.find(m => m.id === moduleId)!;
-    const moduleName = moduleInfo.name || moduleId;
+    const componentInfo = graph.components.find(m => m.id === componentId)!;
+    const componentName = componentInfo.name || componentId;
 
-    sendSSE(res, { type: 'status', state: 'running', moduleId, message: `Generating article for ${moduleName}...` });
+    sendSSE(res, { type: 'status', state: 'running', componentId, message: `Generating article for ${componentName}...` });
 
     // Check AI availability
     const { checkAIAvailability } = await import('../ai-invoker');
     const availability = await checkAIAvailability();
     if (!availability.available) {
         sendSSE(res, { type: 'error', message: `Copilot SDK not available: ${availability.reason || 'Unknown'}` });
-        sendSSE(res, { type: 'done', success: false, moduleId, error: 'AI service unavailable' });
+        sendSSE(res, { type: 'done', success: false, componentId, error: 'AI service unavailable' });
         return;
     }
 
     // Build prompt using existing utilities
-    const { buildModuleArticlePrompt } = await import('../writing/prompts');
-    const prompt = buildModuleArticlePrompt(analysis, graph, 'normal');
+    const { buildComponentArticlePrompt } = await import('../writing/prompts');
+    const prompt = buildComponentArticlePrompt(analysis, graph, 'normal');
 
     sendSSE(res, { type: 'log', message: 'Sending to AI model...' });
 
@@ -618,21 +618,21 @@ async function runModuleRegeneration(
     if (!aiResult.success || !aiResult.response) {
         const errMsg = aiResult.error || 'AI returned empty response';
         sendSSE(res, { type: 'error', message: errMsg });
-        sendSSE(res, { type: 'done', success: false, moduleId, error: errMsg });
+        sendSSE(res, { type: 'done', success: false, componentId, error: errMsg });
         return;
     }
 
     sendSSE(res, { type: 'log', message: 'Article generated, saving...' });
 
     // Build the GeneratedArticle
-    const { normalizeModuleId } = await import('../schemas');
-    const domainId = moduleInfo.domain;
+    const { normalizeComponentId } = await import('../schemas');
+    const domainId = componentInfo.domain;
     const article: GeneratedArticle = {
-        type: 'module',
-        slug: normalizeModuleId(moduleId),
-        title: moduleName,
+        type: 'component',
+        slug: normalizeComponentId(componentId),
+        title: componentName,
         content: aiResult.response,
-        moduleId,
+        componentId,
         domainId,
     };
 
@@ -640,7 +640,7 @@ async function runModuleRegeneration(
     const { saveArticle } = await import('../cache/article-cache');
     const { getFolderHeadHash } = await import('../cache/git-utils');
     const gitHash = await getFolderHeadHash(repoPath) || 'unknown';
-    saveArticle(moduleId, article, outputDir, gitHash);
+    saveArticle(componentId, article, outputDir, gitHash);
 
     // Write markdown file to disk
     const { getArticleFilePath, normalizeLineEndings } = await import('../writing/file-writer');
@@ -661,11 +661,11 @@ async function runModuleRegeneration(
 
     // Broadcast WebSocket refresh
     if (context.wsServer) {
-        context.wsServer.broadcast({ type: 'reload', modules: [moduleId] });
+        context.wsServer.broadcast({ type: 'reload', components: [componentId] });
     }
 
     const duration = Date.now() - startTime;
-    sendSSE(res, { type: 'done', success: true, moduleId, duration, message: 'Article regenerated' });
+    sendSSE(res, { type: 'done', success: true, componentId, duration, message: 'Article regenerated' });
 }
 
 // ============================================================================
@@ -700,7 +700,7 @@ function handleGetGenerateStatus(
         const outputDir = context.wikiDir;
         const available = !!context.repoPath;
 
-        const phases: Record<string, { cached: boolean; timestamp?: string; modules?: Record<string, { cached: boolean; timestamp?: string }> }> = {};
+        const phases: Record<string, { cached: boolean; timestamp?: string; components?: Record<string, { cached: boolean; timestamp?: string }> }> = {};
 
         if (available) {
             // Phase 1: Check graph cache
@@ -712,22 +712,22 @@ function handleGetGenerateStatus(
             // Phase 3: Check analysis cache
             phases['3'] = checkAnalysisCacheStatus(outputDir);
 
-            // Phase 4: Check article cache + per-module article status
+            // Phase 4: Check article cache + per-component article status
             phases['4'] = checkArticleCacheStatus(outputDir);
 
-            // Add per-module article cache status to Phase 4
+            // Add per-component article cache status to Phase 4
             if (context.wikiData) {
                 try {
-                    const modules: Record<string, { cached: boolean; timestamp?: string }> = {};
+                    const components: Record<string, { cached: boolean; timestamp?: string }> = {};
                     const graph = context.wikiData.graph;
                     const articlesDir = path.join(path.resolve(outputDir), '.wiki-cache', 'articles');
 
-                    for (const mod of graph.modules) {
-                        modules[mod.id] = getModuleArticleCacheStatus(articlesDir, mod.id, mod.domain);
+                    for (const mod of graph.components) {
+                        components[mod.id] = getComponentArticleCacheStatus(articlesDir, mod.id, mod.domain);
                     }
-                    phases['4'].modules = modules;
+                    phases['4'].components = components;
                 } catch {
-                    // Ignore errors reading per-module status
+                    // Ignore errors reading per-component status
                 }
             }
 
@@ -770,7 +770,7 @@ function checkCacheFileStatus(filePath: string): { cached: boolean; timestamp?: 
 }
 
 function checkGraphCacheStatus(outputDir: string): { cached: boolean; timestamp?: string } {
-    return checkCacheFileStatus(path.join(path.resolve(outputDir), '.wiki-cache', 'module-graph.json'));
+    return checkCacheFileStatus(path.join(path.resolve(outputDir), '.wiki-cache', 'component-graph.json'));
 }
 
 function checkConsolidationCacheStatus(outputDir: string): { cached: boolean; timestamp?: string } {
@@ -799,18 +799,18 @@ function checkWebsiteCacheStatus(outputDir: string): { cached: boolean; timestam
 }
 
 /**
- * Check per-module article cache status.
+ * Check per-component article cache status.
  * Looks in both flat and domain-scoped cache directories.
  */
-function getModuleArticleCacheStatus(
+function getComponentArticleCacheStatus(
     articlesDir: string,
-    moduleId: string,
+    componentId: string,
     domainId?: string
 ): { cached: boolean; timestamp?: string } {
     // Check domain-scoped path first, then flat path
     const pathsToTry = domainId
-        ? [path.join(articlesDir, domainId, `${moduleId}.json`), path.join(articlesDir, `${moduleId}.json`)]
-        : [path.join(articlesDir, `${moduleId}.json`)];
+        ? [path.join(articlesDir, domainId, `${componentId}.json`), path.join(articlesDir, `${componentId}.json`)]
+        : [path.join(articlesDir, `${componentId}.json`)];
 
     for (const cachePath of pathsToTry) {
         try {

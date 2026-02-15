@@ -16,7 +16,7 @@ import * as os from 'os';
 import * as http from 'http';
 import { createServer, type WikiServer } from '../../src/server';
 import { resetGenerationState, getGenerationState } from '../../src/server/generate-handler';
-import type { ModuleGraph } from '../../src/types';
+import type { ComponentGraph } from '../../src/types';
 
 // ============================================================================
 // Test Helpers
@@ -39,7 +39,7 @@ afterEach(async () => {
     fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
-function createTestModuleGraph(): ModuleGraph {
+function createTestModuleGraph(): ComponentGraph {
     return {
         project: {
             name: 'GenerateTestProject',
@@ -48,7 +48,7 @@ function createTestModuleGraph(): ModuleGraph {
             buildSystem: 'npm',
             entryPoints: ['src/index.ts'],
         },
-        modules: [
+        components: [
             {
                 id: 'core',
                 name: 'Core Module',
@@ -71,13 +71,13 @@ function createTestModuleGraph(): ModuleGraph {
 function setupWikiDir(options?: { withCacheDir?: boolean }): { wikiDir: string; repoPath: string } {
     const wikiDir = path.join(tempDir, 'wiki');
     const repoPath = path.join(tempDir, 'repo');
-    const modulesDir = path.join(wikiDir, 'modules');
-    fs.mkdirSync(modulesDir, { recursive: true });
+    const componentsDir = path.join(wikiDir, 'components');
+    fs.mkdirSync(componentsDir, { recursive: true });
     fs.mkdirSync(repoPath, { recursive: true });
 
     const graph = createTestModuleGraph();
-    fs.writeFileSync(path.join(wikiDir, 'module-graph.json'), JSON.stringify(graph, null, 2), 'utf-8');
-    fs.writeFileSync(path.join(modulesDir, 'core.md'), '# Core Module\n\nCore content.', 'utf-8');
+    fs.writeFileSync(path.join(wikiDir, 'component-graph.json'), JSON.stringify(graph, null, 2), 'utf-8');
+    fs.writeFileSync(path.join(componentsDir, 'core.md'), '# Core Module\n\nCore content.', 'utf-8');
     fs.writeFileSync(path.join(wikiDir, 'index.md'), '# Project Index', 'utf-8');
 
     if (options?.withCacheDir) {
@@ -94,7 +94,7 @@ function setupWikiDir(options?: { withCacheDir?: boolean }): { wikiDir: string; 
             graph,
         };
         fs.writeFileSync(
-            path.join(cacheDir, 'module-graph.json'),
+            path.join(cacheDir, 'component-graph.json'),
             JSON.stringify(graphCache, null, 2),
             'utf-8'
         );
@@ -103,7 +103,7 @@ function setupWikiDir(options?: { withCacheDir?: boolean }): { wikiDir: string; 
         const consolidatedCache = {
             graph,
             gitHash: 'abc123',
-            inputModuleCount: 1,
+            inputComponentCount: 1,
             timestamp: Date.now(),
         };
         fs.writeFileSync(
@@ -121,7 +121,7 @@ function setupWikiDir(options?: { withCacheDir?: boolean }): { wikiDir: string; 
                 gitHash: 'abc123',
                 timestamp: Date.now(),
                 version: '1.0.0',
-                moduleCount: 1,
+                componentCount: 1,
             }),
             'utf-8'
         );
@@ -129,7 +129,7 @@ function setupWikiDir(options?: { withCacheDir?: boolean }): { wikiDir: string; 
             path.join(analysesDir, 'core.json'),
             JSON.stringify({
                 analysis: {
-                    moduleId: 'core',
+                    componentId: 'core',
                     summary: 'Core module',
                     publicAPI: [],
                     internalPatterns: [],
@@ -151,7 +151,7 @@ function setupWikiDir(options?: { withCacheDir?: boolean }): { wikiDir: string; 
                 gitHash: 'abc123',
                 timestamp: Date.now(),
                 version: '1.0.0',
-                moduleCount: 1,
+                componentCount: 1,
             }),
             'utf-8'
         );
@@ -612,88 +612,88 @@ describe('Admin handler routing for generate', () => {
         expect(status).toBe(404);
     });
 
-    it('should route POST /api/admin/generate/module/:moduleId', async () => {
+    it('should route POST /api/admin/generate/component/:componentId', async () => {
         const { wikiDir, repoPath } = setupWikiDir({ withCacheDir: false });
         const s = await startServer(wikiDir, { repoPath });
 
         // Should return 412 (no analysis cached) — proves the route was matched
-        const { status } = await postJson(`${s.url}/api/admin/generate/module/core`, {});
+        const { status } = await postJson(`${s.url}/api/admin/generate/component/core`, {});
         expect(status).toBe(412);
     });
 });
 
 // ============================================================================
-// POST /api/admin/generate/module/:moduleId (validation)
+// POST /api/admin/generate/component/:componentId (validation)
 // ============================================================================
 
-describe('POST /api/admin/generate/module/:moduleId (validation)', () => {
+describe('POST /api/admin/generate/component/:componentId (validation)', () => {
     it('should return 503 when no repo path is configured', async () => {
         const { wikiDir } = setupWikiDir();
         const s = await startServer(wikiDir);
 
-        const { status, body } = await postJson(`${s.url}/api/admin/generate/module/core`, {});
+        const { status, body } = await postJson(`${s.url}/api/admin/generate/component/core`, {});
         expect(status).toBe(503);
         expect((body as { error: string }).error).toContain('repository path');
     });
 
-    it('should return 404 when module is not in graph', async () => {
+    it('should return 404 when component is not in graph', async () => {
         const { wikiDir, repoPath } = setupWikiDir();
         const s = await startServer(wikiDir, { repoPath });
 
-        const { status, body } = await postJson(`${s.url}/api/admin/generate/module/nonexistent-module`, {});
+        const { status, body } = await postJson(`${s.url}/api/admin/generate/component/nonexistent-component`, {});
         expect(status).toBe(404);
         expect((body as { error: string }).error).toContain('not found');
     });
 
-    it('should return 412 when no analysis is cached for the module', async () => {
+    it('should return 412 when no analysis is cached for the component', async () => {
         // Setup wiki dir without analysis cache for 'core'
         const { wikiDir, repoPath } = setupWikiDir({ withCacheDir: false });
         const s = await startServer(wikiDir, { repoPath });
 
-        const { status, body } = await postJson(`${s.url}/api/admin/generate/module/core`, {});
+        const { status, body } = await postJson(`${s.url}/api/admin/generate/component/core`, {});
         expect(status).toBe(412);
         expect((body as { error: string }).error).toContain('analysis');
     });
 
-    it('should handle URL-encoded module IDs', async () => {
+    it('should handle URL-encoded component IDs', async () => {
         const { wikiDir, repoPath } = setupWikiDir();
         const s = await startServer(wikiDir, { repoPath });
 
-        const { status } = await postJson(`${s.url}/api/admin/generate/module/${encodeURIComponent('nonexistent/module')}`, {});
+        const { status } = await postJson(`${s.url}/api/admin/generate/component/${encodeURIComponent('nonexistent/component')}`, {});
         expect(status).toBe(404);
     });
 });
 
 // ============================================================================
-// GET /api/admin/generate/status (per-module extension)
+// GET /api/admin/generate/status (per-component extension)
 // ============================================================================
 
-describe('GET /api/admin/generate/status (per-module)', () => {
-    it('should include per-module article cache status in phase 4', async () => {
+describe('GET /api/admin/generate/status (per-component)', () => {
+    it('should include per-component article cache status in phase 4', async () => {
         const { wikiDir, repoPath } = setupWikiDir({ withCacheDir: true });
         const s = await startServer(wikiDir, { repoPath });
 
         const { status, body } = await fetchJson(`${s.url}/api/admin/generate/status`);
         expect(status).toBe(200);
 
-        const result = body as { phases: Record<string, { cached: boolean; modules?: Record<string, { cached: boolean; timestamp?: string }> }> };
+        const result = body as { phases: Record<string, { cached: boolean; components?: Record<string, { cached: boolean; timestamp?: string }> }> };
         expect(result.phases['4']).toBeDefined();
-        expect(result.phases['4'].modules).toBeDefined();
-        expect(result.phases['4'].modules!['core']).toBeDefined();
+        expect(result.phases['4'].components).toBeDefined();
+        expect(result.phases['4'].components!['core']).toBeDefined();
     });
 
-    it('should report uncached module when no article cache file exists', async () => {
+    it('should report uncached component when no article cache file exists', async () => {
         const { wikiDir, repoPath } = setupWikiDir({ withCacheDir: true });
         const s = await startServer(wikiDir, { repoPath });
 
         const { body } = await fetchJson(`${s.url}/api/admin/generate/status`);
-        const result = body as { phases: Record<string, { modules?: Record<string, { cached: boolean }> }> };
+        const result = body as { phases: Record<string, { components?: Record<string, { cached: boolean }> }> };
 
         // No individual article cache file for 'core' was created in setupWikiDir
-        expect(result.phases['4'].modules!['core'].cached).toBe(false);
+        expect(result.phases['4'].components!['core'].cached).toBe(false);
     });
 
-    it('should report cached module when article cache file exists', async () => {
+    it('should report cached component when article cache file exists', async () => {
         const { wikiDir, repoPath } = setupWikiDir({ withCacheDir: true });
 
         // Create a cached article file for 'core'
@@ -701,7 +701,7 @@ describe('GET /api/admin/generate/status (per-module)', () => {
         fs.writeFileSync(
             path.join(articlesDir, 'core.json'),
             JSON.stringify({
-                article: { type: 'module', slug: 'core', title: 'Core', content: '# Core', moduleId: 'core' },
+                article: { type: 'component', slug: 'core', title: 'Core', content: '# Core', componentId: 'core' },
                 gitHash: 'abc123',
                 timestamp: Date.now(),
             }),
@@ -710,13 +710,13 @@ describe('GET /api/admin/generate/status (per-module)', () => {
 
         const s = await startServer(wikiDir, { repoPath });
         const { body } = await fetchJson(`${s.url}/api/admin/generate/status`);
-        const result = body as { phases: Record<string, { modules?: Record<string, { cached: boolean; timestamp?: string }> }> };
+        const result = body as { phases: Record<string, { components?: Record<string, { cached: boolean; timestamp?: string }> }> };
 
-        expect(result.phases['4'].modules!['core'].cached).toBe(true);
-        expect(result.phases['4'].modules!['core'].timestamp).toBeDefined();
+        expect(result.phases['4'].components!['core'].cached).toBe(true);
+        expect(result.phases['4'].components!['core'].timestamp).toBeDefined();
     });
 
-    it('should not include modules when no repo path', async () => {
+    it('should not include components when no repo path', async () => {
         const { wikiDir } = setupWikiDir();
         const s = await startServer(wikiDir);
 
@@ -732,8 +732,8 @@ describe('GET /api/admin/generate/status (per-module)', () => {
 // SPA Module Regeneration UI
 // ============================================================================
 
-describe('SPA module regeneration UI', () => {
-    it('should include regenerate button in module page script', async () => {
+describe('SPA component regeneration UI', () => {
+    it('should include regenerate button in component page script', async () => {
         const { wikiDir } = setupWikiDir();
         const s = await startServer(wikiDir);
 
