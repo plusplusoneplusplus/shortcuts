@@ -6,6 +6,7 @@
 import { escapeHtmlClient } from './utils';
 import { getApiBase } from './config';
 import { fetchApi } from './core';
+import { fetchQueue, startQueuePolling } from './queue';
 import { appState, taskPanelState } from './state';
 
 let activeDropdown: HTMLElement | null = null;
@@ -68,6 +69,11 @@ export function showAIActionDropdown(button: HTMLElement, wsId: string, taskPath
             case 'follow-prompt': {
                 const taskName = taskPath.split('/').pop()?.replace(/\.md$/, '') || taskPath;
                 showFollowPromptSubmenu(wsId, taskPath, taskName);
+                break;
+            }
+            case 'update-document': {
+                const name = taskPath.split('/').pop()?.replace(/\.md$/, '') || taskPath;
+                showUpdateDocumentModal(wsId, taskPath, name);
                 break;
             }
             default:
@@ -313,9 +319,148 @@ export function showToast(message: string, type: 'success' | 'error'): void {
 }
 
 // ================================================================
+// Update Document Modal
+// ================================================================
+
+export function showUpdateDocumentModal(wsId: string, taskPath: string, taskName: string): void {
+    // Remove any existing instance
+    const existing = document.getElementById('update-doc-overlay');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'update-doc-overlay';
+    overlay.className = 'enqueue-overlay';
+
+    overlay.innerHTML =
+        '<div class="enqueue-dialog" style="width:500px">' +
+            '<div class="enqueue-dialog-header">' +
+                '<h2>Update Document</h2>' +
+                '<button class="enqueue-close-btn" id="update-doc-close">&times;</button>' +
+            '</div>' +
+            '<form id="update-doc-form" class="enqueue-form">' +
+                '<div class="enqueue-field">' +
+                    '<label>Document</label>' +
+                    '<input type="text" value="' + escapeHtmlClient(taskName) + '" disabled />' +
+                '</div>' +
+                '<div class="enqueue-field">' +
+                    '<label for="update-doc-instruction">Instruction</label>' +
+                    '<textarea id="update-doc-instruction" rows="4" ' +
+                        'placeholder="Describe what changes you want made to this document..." ' +
+                        'required style="width:100%;resize:vertical"></textarea>' +
+                '</div>' +
+                '<div class="enqueue-field">' +
+                    '<label for="update-doc-model">Model <span class="enqueue-optional">(optional)</span></label>' +
+                    '<select id="update-doc-model">' +
+                        '<option value="">Default</option>' +
+                    '</select>' +
+                '</div>' +
+                '<div class="enqueue-actions">' +
+                    '<button type="button" class="enqueue-btn-secondary" id="update-doc-cancel">Cancel</button>' +
+                    '<button type="submit" class="enqueue-btn-primary" id="update-doc-submit">Update</button>' +
+                '</div>' +
+            '</form>' +
+        '</div>';
+
+    document.body.appendChild(overlay);
+
+    // Populate model options from the server-rendered #enqueue-model select
+    const sourceSelect = document.getElementById('enqueue-model') as HTMLSelectElement | null;
+    const targetSelect = document.getElementById('update-doc-model') as HTMLSelectElement | null;
+    if (sourceSelect && targetSelect) {
+        for (const opt of Array.from(sourceSelect.options)) {
+            if (opt.value) {
+                targetSelect.appendChild(opt.cloneNode(true) as HTMLOptionElement);
+            }
+        }
+    }
+
+    // Focus the instruction textarea
+    const instructionEl = document.getElementById('update-doc-instruction') as HTMLTextAreaElement;
+    if (instructionEl) instructionEl.focus();
+
+    // Close handlers
+    const close = () => overlay.remove();
+    document.getElementById('update-doc-close')?.addEventListener('click', close);
+    document.getElementById('update-doc-cancel')?.addEventListener('click', close);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+    // Form submission
+    document.getElementById('update-doc-form')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const instruction = (document.getElementById('update-doc-instruction') as HTMLTextAreaElement)?.value.trim();
+        if (!instruction) return;
+
+        const model = (document.getElementById('update-doc-model') as HTMLSelectElement)?.value || '';
+        const submitBtn = document.getElementById('update-doc-submit') as HTMLButtonElement;
+        if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Updating...'; }
+
+        try {
+            // 1. Fetch document content
+            const data = await fetchApi(
+                `/workspaces/${encodeURIComponent(wsId)}/tasks/content?path=${encodeURIComponent(taskPath)}`
+            );
+            if (!data || data.error) {
+                showToast('Failed to load document content: ' + (data?.error || 'Unknown error'), 'error');
+                if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Update'; }
+                return;
+            }
+
+            const content: string = data.content || '';
+
+            // 2. Build prompt
+            const prompt =
+                'Given this document:\n\n' +
+                content +
+                '\n\nInstruction: ' + instruction +
+                '\n\nReturn the complete updated document.';
+
+            // 3. Enqueue via POST /queue
+            const body: any = {
+                type: 'custom',
+                displayName: 'Update: ' + taskName,
+                payload: {
+                    data: {
+                        prompt,
+                        originalTaskPath: taskPath,
+                    },
+                },
+                config: {},
+            };
+            if (model) {
+                body.config.model = model;
+            }
+
+            const res = await fetch(getApiBase() + '/queue', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({ error: 'Failed' }));
+                showToast('Failed to enqueue: ' + (err.error || 'Unknown error'), 'error');
+                if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Update'; }
+                return;
+            }
+
+            // 4. Close modal and refresh queue
+            overlay.remove();
+            showToast('Task enqueued: Update ' + taskName, 'success');
+            fetchQueue();
+            startQueuePolling();
+        } catch (err) {
+            showToast('Network error: ' + (err instanceof Error ? err.message : String(err)), 'error');
+            if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Update'; }
+        }
+    });
+}
+
+// ================================================================
 // Window globals
 // ================================================================
 
 (window as any).showFollowPromptSubmenu = showFollowPromptSubmenu;
 (window as any).invalidateDiscoveryCache = invalidateDiscoveryCache;
 (window as any).showToast = showToast;
+(window as any).showUpdateDocumentModal = showUpdateDocumentModal;
