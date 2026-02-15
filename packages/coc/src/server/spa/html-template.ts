@@ -62,6 +62,7 @@ ${bundleCss}
     <nav class="tab-bar" id="tab-bar">
         <button class="tab-btn active" data-tab="processes">Processes</button>
         <button class="tab-btn" data-tab="repos">Repos</button>
+        <button class="tab-btn" data-tab="wiki">Wiki</button>
         <button class="tab-btn" data-tab="reports" disabled>Reports</button>
     </nav>
 
@@ -144,6 +145,86 @@ ${bundleCss}
                 <div class="empty-state-title">Reports</div>
                 <div class="empty-state-text">Cross-repo comparison reports coming soon.</div>
             </div>
+        </div>
+    </div>
+
+    <div class="app-view hidden" id="view-wiki">
+        <div class="wiki-layout">
+            <aside class="wiki-sidebar" id="wiki-sidebar">
+                <div class="wiki-selector" id="wiki-selector">
+                    <select id="wiki-select" class="workspace-select">
+                        <option value="">Select wiki...</option>
+                    </select>
+                    <button class="enqueue-btn-primary" id="add-wiki-btn">+ Add Wiki</button>
+                </div>
+                <div class="wiki-component-tree" id="wiki-component-tree"></div>
+            </aside>
+            <main class="wiki-content" id="wiki-content">
+                <div class="empty-state" id="wiki-empty">
+                    <div class="empty-state-icon">&#128214;</div>
+                    <div class="empty-state-title">Select a wiki</div>
+                    <div class="empty-state-text">Choose a wiki from the sidebar or add a new one.</div>
+                </div>
+                <div class="wiki-component-detail hidden" id="wiki-component-detail"></div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Add Wiki Dialog Overlay -->
+    <div id="add-wiki-overlay" class="enqueue-overlay hidden">
+        <div class="enqueue-dialog" style="width: 480px;">
+            <div class="enqueue-dialog-header">
+                <h2>Add Wiki</h2>
+                <button class="enqueue-close-btn" id="add-wiki-cancel">&times;</button>
+            </div>
+            <form id="add-wiki-form" class="enqueue-form">
+                <div class="enqueue-field">
+                    <label for="wiki-path">Repository Path</label>
+                    <div class="path-input-row">
+                        <input type="text" id="wiki-path" placeholder="/path/to/repository" required />
+                        <button type="button" class="browse-btn" id="wiki-browse-btn">Browse</button>
+                    </div>
+                    <span class="enqueue-optional">Absolute path to the git repo to generate a wiki for</span>
+                    <div id="wiki-path-browser" class="path-browser hidden">
+                        <div class="path-browser-breadcrumb" id="wiki-path-breadcrumb"></div>
+                        <div class="path-browser-list" id="wiki-path-browser-list">
+                            <div class="path-browser-loading">Loading...</div>
+                        </div>
+                        <div class="path-browser-actions">
+                            <button type="button" class="enqueue-btn-secondary path-browser-cancel-btn" id="wiki-path-browser-cancel">Cancel</button>
+                            <button type="button" class="enqueue-btn-primary path-browser-select-btn" id="wiki-path-browser-select">Select This Directory</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="enqueue-field">
+                    <label for="wiki-name">Name <span class="enqueue-optional">(optional)</span></label>
+                    <input type="text" id="wiki-name" placeholder="Auto-detected from directory name" />
+                </div>
+                <div class="enqueue-field-row">
+                    <div class="enqueue-field">
+                        <label for="wiki-color">Color</label>
+                        <select id="wiki-color">
+                            <option value="#0078d4">&#128309; Blue</option>
+                            <option value="#16825d">&#128994; Green</option>
+                            <option value="#f14c4c">&#128308; Red</option>
+                            <option value="#e8912d">&#128992; Orange</option>
+                            <option value="#b180d7">&#128995; Purple</option>
+                            <option value="#848484">&#9898; Gray</option>
+                        </select>
+                    </div>
+                    <div class="enqueue-field">
+                        <label class="enqueue-checkbox-label">
+                            <input type="checkbox" id="wiki-generate-ai" checked />
+                            Generate with AI
+                        </label>
+                    </div>
+                </div>
+                <div id="wiki-validation" class="repo-validation"></div>
+                <div class="enqueue-actions">
+                    <button type="button" class="enqueue-btn-secondary" id="add-wiki-cancel-btn">Cancel</button>
+                    <button type="submit" class="enqueue-btn-primary" id="add-wiki-submit">Add Wiki</button>
+                </div>
+            </form>
         </div>
     </div>
 

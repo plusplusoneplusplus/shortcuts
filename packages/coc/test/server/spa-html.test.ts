@@ -66,14 +66,16 @@ describe('generateDashboardHtml', () => {
         expect(html).toContain('id="theme-toggle"');
     });
 
-    it('contains tab bar with Processes, Repos, and Reports tabs', () => {
+    it('contains tab bar with Processes, Repos, Wiki, and Reports tabs', () => {
         const html = generateDashboardHtml();
         expect(html).toContain('id="tab-bar"');
         expect(html).toContain('data-tab="processes"');
         expect(html).toContain('data-tab="repos"');
+        expect(html).toContain('data-tab="wiki"');
         expect(html).toContain('data-tab="reports"');
         expect(html).toContain('>Processes<');
         expect(html).toContain('>Repos<');
+        expect(html).toContain('>Wiki<');
         expect(html).toContain('>Reports<');
     });
 

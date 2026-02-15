@@ -35,10 +35,14 @@ import './repos';
 // 9. Tasks (workspace task CRUD, tree rendering)
 import './tasks';
 
-// 10. AI Actions (dropdown for task AI operations)
+// 10. Wiki (wiki list, component browser, add wiki dialog)
+import './wiki';
+import './wiki-components';
+
+// 11. AI Actions (dropdown for task AI operations)
 import './ai-actions';
 
-// 11. WebSocket (calls connectWebSocket())
+// 12. WebSocket (calls connectWebSocket())
 import './websocket';
 
 // Bootstrap the app

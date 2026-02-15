@@ -22,7 +22,7 @@ export function switchTab(tab: DashboardTab): void {
     });
 
     // Show/hide views
-    const viewIds = ['view-processes', 'view-repos', 'view-reports'];
+    const viewIds = ['view-processes', 'view-repos', 'view-wiki', 'view-reports'];
     viewIds.forEach(id => {
         const el = document.getElementById(id);
         if (el) {
@@ -33,6 +33,11 @@ export function switchTab(tab: DashboardTab): void {
     // Refresh data when switching to repos
     if (tab === 'repos') {
         fetchReposData();
+    }
+
+    // Refresh data when switching to wiki
+    if (tab === 'wiki') {
+        (window as any).fetchWikisData?.();
     }
 }
 

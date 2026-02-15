@@ -3,7 +3,7 @@
  * to break circular dependency chains between modules.
  */
 
-export type DashboardTab = 'processes' | 'repos' | 'reports';
+export type DashboardTab = 'processes' | 'repos' | 'wiki' | 'reports';
 export type RepoSubTab = 'info' | 'pipelines' | 'tasks';
 
 export interface AppState {
@@ -19,6 +19,7 @@ export interface AppState {
     workspaces: any[];
     selectedRepoId: string | null;
     activeRepoSubTab: RepoSubTab;
+    selectedWikiId: string | null;
 }
 
 export const appState: AppState = {
@@ -34,6 +35,7 @@ export const appState: AppState = {
     workspaces: [],
     selectedRepoId: null,
     activeRepoSubTab: 'info',
+    selectedWikiId: null,
 };
 
 export interface QueueState {
