@@ -44,13 +44,13 @@ import { getRepoHeadHash, getFolderHeadHash } from '../../src/cache/git-utils';
 let tempDir: string;
 let outputDir: string;
 
-function createTestArticle(moduleId: string): GeneratedArticle {
+function createTestArticle(componentId: string): GeneratedArticle {
     return {
-        type: 'module',
-        slug: moduleId,
-        title: `${moduleId} Module`,
-        content: `# ${moduleId}\n\nArticle content for ${moduleId}.`,
-        moduleId,
+        type: 'component',
+        slug: componentId,
+        title: `${componentId} Module`,
+        content: `# ${componentId}\n\nArticle content for ${componentId}.`,
+        componentId,
     };
 }
 
@@ -96,7 +96,7 @@ describe('single article cache', () => {
 
         const loaded = getCachedArticle('auth', outputDir);
         expect(loaded).not.toBeNull();
-        expect(loaded!.moduleId).toBe('auth');
+        expect(loaded!.componentId).toBe('auth');
         expect(loaded!.slug).toBe('auth');
         expect(loaded!.content).toContain('auth');
     });
@@ -138,7 +138,7 @@ describe('single article cache', () => {
         fs.writeFileSync(
             path.join(articlesDir, 'no-slug.json'),
             JSON.stringify({
-                article: { type: 'module', title: 'No Slug', content: 'test' },
+                article: { type: 'component', title: 'No Slug', content: 'test' },
                 gitHash: 'abc',
                 timestamp: Date.now(),
             }),
@@ -165,7 +165,7 @@ describe('single article cache', () => {
         saveArticle('database', article, outputDir, 'hash1');
 
         const loaded = getCachedArticle('database', outputDir);
-        expect(loaded!.type).toBe('module');
+        expect(loaded!.type).toBe('component');
         expect(loaded!.title).toBe('database Module');
     });
 });
@@ -187,7 +187,7 @@ describe('bulk article cache', () => {
         const loaded = getCachedArticles(outputDir);
         expect(loaded).not.toBeNull();
         expect(loaded).toHaveLength(3);
-        expect(loaded!.map(a => a.moduleId).sort()).toEqual(['api', 'auth', 'database']);
+        expect(loaded!.map(a => a.componentId).sort()).toEqual(['api', 'auth', 'database']);
     });
 
     it('should write metadata file', async () => {
@@ -198,7 +198,7 @@ describe('bulk article cache', () => {
         expect(fs.existsSync(metadataPath)).toBe(true);
 
         const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf-8'));
-        expect(metadata.moduleCount).toBe(1);
+        expect(metadata.componentCount).toBe(1);
         expect(metadata.version).toBe('1.0.0');
     });
 
@@ -214,12 +214,12 @@ describe('bulk article cache', () => {
         const loaded = getCachedArticles(outputDir);
         expect(loaded).not.toBeNull();
         expect(loaded).toHaveLength(1);
-        expect(loaded![0].moduleId).toBe('auth');
+        expect(loaded![0].componentId).toBe('auth');
 
         // Verify metadata count reflects only module articles
         const metadataPath = getArticlesMetadataPath(outputDir);
         const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf-8'));
-        expect(metadata.moduleCount).toBe(1);
+        expect(metadata.componentCount).toBe(1);
     });
 
     it('should return null when no cache exists', () => {
@@ -261,7 +261,7 @@ describe('bulk article cache', () => {
         const loaded = getCachedArticles(outputDir);
         expect(loaded).not.toBeNull();
         expect(loaded).toHaveLength(1);
-        expect(loaded![0].moduleId).toBe('db');
+        expect(loaded![0].componentId).toBe('db');
     });
 });
 
@@ -304,7 +304,7 @@ describe('scanIndividualArticlesCache', () => {
         );
 
         expect(result.found).toHaveLength(2);
-        expect(result.found.map(a => a.moduleId).sort()).toEqual(['auth', 'db']);
+        expect(result.found.map(a => a.componentId).sort()).toEqual(['auth', 'db']);
         expect(result.missing).toEqual(['api']);
     });
 
@@ -330,7 +330,7 @@ describe('scanIndividualArticlesCache', () => {
         );
 
         expect(result.found).toHaveLength(1);
-        expect(result.found[0].moduleId).toBe('db');
+        expect(result.found[0].componentId).toBe('db');
         expect(result.missing).toEqual(['auth']);
     });
 
@@ -383,7 +383,7 @@ describe('scanIndividualArticlesCache', () => {
         );
 
         expect(result.found).toHaveLength(2);
-        expect(result.found.map(a => a.moduleId).sort()).toEqual(['mod-1', 'mod-2']);
+        expect(result.found.map(a => a.componentId).sort()).toEqual(['mod-1', 'mod-2']);
         expect(result.missing).toEqual(['mod-3']);
     });
 
@@ -447,18 +447,18 @@ describe('scanIndividualArticlesCache', () => {
         );
 
         expect(result.found).toHaveLength(1);
-        expect(result.found[0].moduleId).toBe('valid');
+        expect(result.found[0].componentId).toBe('valid');
         expect(result.missing.sort()).toEqual(['corrupted', 'missing', 'stale']);
     });
 
     it('should preserve full article content through save/scan round-trip', () => {
         const hash = 'test_hash';
         const article: GeneratedArticle = {
-            type: 'module',
+            type: 'component',
             slug: 'my-module',
             title: 'My Module',
             content: '# My Module\n\n## Overview\n\nDetailed content with **markdown**.\n\n```typescript\nconst x = 42;\n```',
-            moduleId: 'my-module',
+            componentId: 'my-module',
         };
 
         saveArticle('my-module', article, outputDir, hash);
@@ -547,7 +547,7 @@ describe('cache structure', () => {
         expect(metadataPath).toContain('articles');
     });
 
-    it('should store per-module article as moduleId.json', () => {
+    it('should store per-component article as componentId.json', () => {
         saveArticle('my-component', createTestArticle('my-component'), outputDir, 'hash');
 
         const articlesDir = getArticlesCacheDir(outputDir);
@@ -568,7 +568,7 @@ describe('cache structure', () => {
         expect(metadata.gitHash).toBe('abc123def456abc123def456abc123def456abc1');
         expect(metadata.timestamp).toBeGreaterThan(0);
         expect(metadata.version).toBe('1.0.0');
-        expect(metadata.moduleCount).toBe(3);
+        expect(metadata.componentCount).toBe(3);
     });
 });
 
@@ -578,22 +578,22 @@ describe('cache structure', () => {
 
 describe('edge cases', () => {
     it('should handle module ID with special characters', () => {
-        const article = createTestArticle('my-complex_module.v2');
-        saveArticle('my-complex_module.v2', article, outputDir, 'hash');
+        const article = createTestArticle('my-complex_component.v2');
+        saveArticle('my-complex_component.v2', article, outputDir, 'hash');
 
-        const loaded = getCachedArticle('my-complex_module.v2', outputDir);
+        const loaded = getCachedArticle('my-complex_component.v2', outputDir);
         expect(loaded).not.toBeNull();
-        expect(loaded!.moduleId).toBe('my-complex_module.v2');
+        expect(loaded!.componentId).toBe('my-complex_component.v2');
     });
 
     it('should handle article with very long content', () => {
         const longContent = '#'.repeat(100_000);
         const article: GeneratedArticle = {
-            type: 'module',
+            type: 'component',
             slug: 'big-module',
             title: 'Big Module',
             content: longContent,
-            moduleId: 'big-module',
+            componentId: 'big-module',
         };
 
         saveArticle('big-module', article, outputDir, 'hash');
@@ -605,11 +605,11 @@ describe('edge cases', () => {
 
     it('should handle article with empty content', () => {
         const article: GeneratedArticle = {
-            type: 'module',
+            type: 'component',
             slug: 'empty',
             title: 'Empty Module',
             content: '',
-            moduleId: 'empty',
+            componentId: 'empty',
         };
 
         saveArticle('empty', article, outputDir, 'hash');
@@ -619,16 +619,16 @@ describe('edge cases', () => {
         expect(loaded!.content).toBe('');
     });
 
-    it('should handle concurrent saves to different modules', () => {
+    it('should handle concurrent saves to different components', () => {
         const hash = 'concurrent_hash';
-        const moduleIds = Array.from({ length: 20 }, (_, i) => `module-${i}`);
+        const componentIds = Array.from({ length: 20 }, (_, i) => `component-${i}`);
 
         // Save all concurrently (synchronous, but simulates multiple saves)
-        for (const id of moduleIds) {
+        for (const id of componentIds) {
             saveArticle(id, createTestArticle(id), outputDir, hash);
         }
 
-        const result = scanIndividualArticlesCache(moduleIds, outputDir, hash);
+        const result = scanIndividualArticlesCache(componentIds, outputDir, hash);
         expect(result.found).toHaveLength(20);
         expect(result.missing).toHaveLength(0);
     });
@@ -658,7 +658,7 @@ describe('restampArticles', () => {
         // After re-stamp: article passes new hash validation
         const afterScan = scanIndividualArticlesCache(['auth'], outputDir, newHash);
         expect(afterScan.found).toHaveLength(1);
-        expect(afterScan.found[0].moduleId).toBe('auth');
+        expect(afterScan.found[0].componentId).toBe('auth');
         expect(afterScan.found[0].content).toBe(article.content);
         expect(afterScan.found[0].title).toBe(article.title);
         expect(afterScan.missing).toHaveLength(0);
@@ -697,7 +697,7 @@ describe('restampArticles', () => {
 
         const scan = scanIndividualArticlesCache(['auth', 'missing-module'], outputDir, newHash);
         expect(scan.found).toHaveLength(1);
-        expect(scan.found[0].moduleId).toBe('auth');
+        expect(scan.found[0].componentId).toBe('auth');
         expect(scan.missing).toEqual(['missing-module']);
     });
 
@@ -738,11 +738,11 @@ describe('restampArticles', () => {
         const oldHash = 'old_hash';
         const newHash = 'new_hash';
         const article: GeneratedArticle = {
-            type: 'module',
+            type: 'component',
             slug: 'complex-module',
             title: 'Complex Module',
             content: '# Complex\n\n## Overview\n\nRich **markdown** with `code`.\n\n```ts\nconst x = 42;\n```',
-            moduleId: 'complex-module',
+            componentId: 'complex-module',
             domainId: undefined,
         };
 
@@ -758,11 +758,11 @@ describe('restampArticles', () => {
         const oldHash = 'old_hash';
         const newHash = 'new_hash';
         const article: GeneratedArticle = {
-            type: 'module',
+            type: 'component',
             slug: 'auth-service',
             title: 'Auth Service',
             content: '# Auth Service\n\nContent.',
-            moduleId: 'auth-service',
+            componentId: 'auth-service',
             domainId: 'backend',
         };
 
@@ -776,7 +776,7 @@ describe('restampArticles', () => {
         // Verify article is found with new hash
         const scan = scanIndividualArticlesCache(['auth-service'], outputDir, newHash);
         expect(scan.found).toHaveLength(1);
-        expect(scan.found[0].moduleId).toBe('auth-service');
+        expect(scan.found[0].componentId).toBe('auth-service');
         expect(scan.found[0].domainId).toBe('backend');
     });
 
@@ -785,8 +785,8 @@ describe('restampArticles', () => {
         const newHash = 'new_commit_hash';
 
         // Simulate 5 modules with articles cached under old hash
-        const moduleIds = ['auth', 'db', 'api', 'ui', 'config'];
-        for (const id of moduleIds) {
+        const componentIds = ['auth', 'db', 'api', 'ui', 'config'];
+        for (const id of componentIds) {
             saveArticle(id, createTestArticle(id), outputDir, oldHash);
         }
 
@@ -799,11 +799,11 @@ describe('restampArticles', () => {
         expect(count).toBe(4);
 
         // Scan with new hash
-        const scan = scanIndividualArticlesCache(moduleIds, outputDir, newHash);
+        const scan = scanIndividualArticlesCache(componentIds, outputDir, newHash);
 
         // 4 unchanged modules should be found (re-stamped)
         expect(scan.found).toHaveLength(4);
-        expect(scan.found.map(a => a.moduleId).sort()).toEqual(['api', 'config', 'db', 'ui']);
+        expect(scan.found.map(a => a.componentId).sort()).toEqual(['api', 'config', 'db', 'ui']);
 
         // 1 changed module should be missing (needs regeneration)
         expect(scan.missing).toEqual(['auth']);

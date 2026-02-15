@@ -1,21 +1,21 @@
 /**
  * Analysis Module — Public API
  *
- * Phase 3 (Deep Analysis) entry point. Converts ModuleGraph modules
+ * Phase 3 (Deep Analysis) entry point. Converts ComponentGraph components
  * into PromptItems and runs parallel AI sessions with MCP tools
- * to produce detailed ModuleAnalysis results.
+ * to produce detailed ComponentAnalysis results.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { AnalysisOptions, AnalysisResult, ModuleAnalysis } from '../types';
+import type { AnalysisOptions, AnalysisResult, ComponentAnalysis } from '../types';
 import type { AIInvoker, JobProgress, ItemCompleteCallback } from '@plusplusoneplusplus/pipeline-core';
 import { runAnalysisExecutor } from './analysis-executor';
 
 // Re-export for convenience
 export { parseAnalysisResponse, extractJSON } from './response-parser';
 export { buildAnalysisPromptTemplate, getAnalysisOutputFields, getInvestigationSteps } from './prompts';
-export { moduleToPromptItem, runAnalysisExecutor } from './analysis-executor';
+export { componentToPromptItem, runAnalysisExecutor } from './analysis-executor';
 export type { AnalysisExecutorOptions, AnalysisExecutorResult } from './analysis-executor';
 
 // ============================================================================
@@ -23,7 +23,7 @@ export type { AnalysisExecutorOptions, AnalysisExecutorResult } from './analysis
 // ============================================================================
 
 /**
- * Analyze all modules in the graph using AI with MCP tool access.
+ * Analyze all components in the graph using AI with MCP tool access.
  *
  * @param options Analysis options
  * @param aiInvoker Configured AI invoker for analysis (with MCP tools)
@@ -32,7 +32,7 @@ export type { AnalysisExecutorOptions, AnalysisExecutorResult } from './analysis
  * @param onItemComplete Optional per-item completion callback for incremental saving
  * @returns Analysis results
  */
-export async function analyzeModules(
+export async function analyzeComponents(
     options: AnalysisOptions,
     aiInvoker: AIInvoker,
     onProgress?: (progress: JobProgress) => void,

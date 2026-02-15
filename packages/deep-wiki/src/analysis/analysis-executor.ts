@@ -2,9 +2,9 @@
  * Analysis Executor
  *
  * Orchestrates Phase 3 (Deep Analysis) using the MapReduceExecutor
- * from pipeline-core. Converts ModuleInfo items into PromptItems,
+ * from pipeline-core. Converts ComponentInfo items into PromptItems,
  * runs parallel AI sessions with MCP tools, and parses results
- * into ModuleAnalysis objects.
+ * into ComponentAnalysis objects.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
@@ -24,7 +24,7 @@ import type {
     JobProgress,
     ItemCompleteCallback,
 } from '@plusplusoneplusplus/pipeline-core';
-import type { ModuleInfo, ModuleGraph, ModuleAnalysis } from '../types';
+import type { ComponentInfo, ComponentGraph, ComponentAnalysis } from '../types';
 import { buildAnalysisPromptTemplate, getAnalysisOutputFields } from './prompts';
 import { parseAnalysisResponse } from './response-parser';
 
@@ -38,13 +38,13 @@ import { parseAnalysisResponse } from './response-parser';
 export interface AnalysisExecutorOptions {
     /** AI invoker configured for analysis (with MCP tools) */
     aiInvoker: AIInvoker;
-    /** Module graph from Phase 1 (Discovery) */
-    graph: ModuleGraph;
+    /** Component graph from Phase 1 (Discovery) */
+    graph: ComponentGraph;
     /** Analysis depth */
     depth: 'shallow' | 'normal' | 'deep';
     /** Maximum concurrent AI sessions (default: 5) */
     concurrency?: number;
-    /** Timeout per module in milliseconds */
+    /** Timeout per component in milliseconds */
     timeoutMs?: number;
     /** Number of retry attempts for failed map operations (default: 1) */
     retryAttempts?: number;
@@ -55,8 +55,8 @@ export interface AnalysisExecutorOptions {
     /** Cancellation check function */
     isCancelled?: () => boolean;
     /**
-     * Optional callback invoked after each individual module analysis completes.
-     * Useful for incremental per-module cache writes during long-running analysis.
+     * Optional callback invoked after each individual component analysis completes.
+     * Useful for incremental per-component cache writes during long-running analysis.
      */
     onItemComplete?: ItemCompleteCallback;
 }
@@ -66,32 +66,32 @@ export interface AnalysisExecutorOptions {
  */
 export interface AnalysisExecutorResult {
     /** Successfully parsed analyses */
-    analyses: ModuleAnalysis[];
-    /** Module IDs that failed analysis */
-    failedModuleIds: string[];
+    analyses: ComponentAnalysis[];
+    /** Component IDs that failed analysis */
+    failedComponentIds: string[];
     /** Total duration in milliseconds */
     duration: number;
 }
 
 // ============================================================================
-// Module → PromptItem Conversion
+// Component → PromptItem Conversion
 // ============================================================================
 
 /**
- * Convert a ModuleInfo into a PromptItem for template substitution.
+ * Convert a ComponentInfo into a PromptItem for template substitution.
  * PromptItem requires flat string key-value pairs.
  */
-export function moduleToPromptItem(module: ModuleInfo, graph: ModuleGraph): PromptItem {
+export function componentToPromptItem(component: ComponentInfo, graph: ComponentGraph): PromptItem {
     return {
-        moduleId: module.id,
-        moduleName: module.name,
-        modulePath: module.path,
-        purpose: module.purpose,
-        keyFiles: module.keyFiles.join(', '),
-        dependencies: module.dependencies.join(', ') || 'none',
-        dependents: module.dependents.join(', ') || 'none',
-        complexity: module.complexity,
-        category: module.category,
+        componentId: component.id,
+        componentName: component.name,
+        componentPath: component.path,
+        purpose: component.purpose,
+        keyFiles: component.keyFiles.join(', '),
+        dependencies: component.dependencies.join(', ') || 'none',
+        dependents: component.dependents.join(', ') || 'none',
+        complexity: component.complexity,
+        category: component.category,
         projectName: graph.project.name,
         architectureNotes: graph.architectureNotes || 'No architecture notes available.',
     };
@@ -102,7 +102,7 @@ export function moduleToPromptItem(module: ModuleInfo, graph: ModuleGraph): Prom
 // ============================================================================
 
 /**
- * Run the analysis executor on all modules in the graph.
+ * Run the analysis executor on all components in the graph.
  *
  * Uses MapReduceExecutor from pipeline-core with:
  * - PromptMapJob for template substitution + AI invocation
@@ -129,9 +129,9 @@ export async function runAnalysisExecutor(
         onItemComplete,
     } = options;
 
-    const modules = graph.modules;
-    if (modules.length === 0) {
-        return { analyses: [], failedModuleIds: [], duration: 0 };
+    const components = graph.components;
+    if (components.length === 0) {
+        return { analyses: [], failedComponentIds: [], duration: 0 };
     }
 
     // Build the prompt template and output fields (shared across all rounds)
@@ -139,26 +139,26 @@ export async function runAnalysisExecutor(
     const outputFields = getAnalysisOutputFields();
 
     // Run initial analysis round
-    const { analyses, failedModuleIds } = await executeAnalysisRound({
-        modules, graph, aiInvoker, promptTemplate, outputFields,
+    const { analyses, failedComponentIds } = await executeAnalysisRound({
+        components, graph, aiInvoker, promptTemplate, outputFields,
         concurrency, timeoutMs, model, onProgress, isCancelled, onItemComplete,
     });
 
-    // Retry failed modules (up to retryAttempts rounds)
-    if (failedModuleIds.length > 0 && retryAttempts > 0) {
+    // Retry failed components (up to retryAttempts rounds)
+    if (failedComponentIds.length > 0 && retryAttempts > 0) {
         const logger = getLogger();
-        let remainingFailed = [...failedModuleIds];
+        let remainingFailed = [...failedComponentIds];
 
         for (let attempt = 0; attempt < retryAttempts && remainingFailed.length > 0; attempt++) {
             if (isCancelled?.()) break;
 
-            logger.debug(LogCategory.MAP_REDUCE, `Retrying ${remainingFailed.length} failed module(s) (attempt ${attempt + 1}/${retryAttempts})`);
+            logger.debug(LogCategory.MAP_REDUCE, `Retrying ${remainingFailed.length} failed component(s) (attempt ${attempt + 1}/${retryAttempts})`);
 
-            // Get the modules that failed
-            const retryModules = modules.filter(m => remainingFailed.includes(m.id));
+            // Get the components that failed
+            const retryComponents = components.filter(m => remainingFailed.includes(m.id));
 
             const retryResult = await executeAnalysisRound({
-                modules: retryModules, graph, aiInvoker, promptTemplate, outputFields,
+                components: retryComponents, graph, aiInvoker, promptTemplate, outputFields,
                 concurrency, timeoutMs, model, onProgress, isCancelled, onItemComplete,
             });
 
@@ -166,17 +166,17 @@ export async function runAnalysisExecutor(
             analyses.push(...retryResult.analyses);
 
             // Update remaining failures
-            remainingFailed = retryResult.failedModuleIds;
+            remainingFailed = retryResult.failedComponentIds;
         }
 
-        // Replace failedModuleIds with the final set of failures
-        failedModuleIds.length = 0;
-        failedModuleIds.push(...remainingFailed);
+        // Replace failedComponentIds with the final set of failures
+        failedComponentIds.length = 0;
+        failedComponentIds.push(...remainingFailed);
     }
 
     return {
         analyses,
-        failedModuleIds,
+        failedComponentIds,
         duration: Date.now() - startTime,
     };
 }
@@ -185,8 +185,8 @@ export async function runAnalysisExecutor(
  * Options for a single analysis round.
  */
 interface AnalysisRoundOptions {
-    modules: ModuleInfo[];
-    graph: ModuleGraph;
+    components: ComponentInfo[];
+    graph: ComponentGraph;
     aiInvoker: AIInvoker;
     promptTemplate: string;
     outputFields: string[];
@@ -199,15 +199,15 @@ interface AnalysisRoundOptions {
 }
 
 /**
- * Execute a single round of analysis for the given modules.
- * Returns successfully parsed analyses and the IDs of modules that failed.
+ * Execute a single round of analysis for the given components.
+ * Returns successfully parsed analyses and the IDs of components that failed.
  */
 async function executeAnalysisRound(
     options: AnalysisRoundOptions
-): Promise<{ analyses: ModuleAnalysis[]; failedModuleIds: string[] }> {
-    const { modules, graph, aiInvoker, promptTemplate, outputFields, concurrency, timeoutMs, model, onProgress, isCancelled, onItemComplete } = options;
-    // Convert modules to PromptItems
-    const items: PromptItem[] = modules.map(m => moduleToPromptItem(m, graph));
+): Promise<{ analyses: ComponentAnalysis[]; failedComponentIds: string[] }> {
+    const { components, graph, aiInvoker, promptTemplate, outputFields, concurrency, timeoutMs, model, onProgress, isCancelled, onItemComplete } = options;
+    // Convert components to PromptItems
+    const items: PromptItem[] = components.map(c => componentToPromptItem(c, graph));
 
     // Create prompt map input
     const input = createPromptMapInput(items, promptTemplate, outputFields);
@@ -237,71 +237,71 @@ async function executeAnalysisRound(
     // Execute map-reduce
     const result = await executor.execute(job, input);
 
-    // Parse results into ModuleAnalysis objects
-    const analyses: ModuleAnalysis[] = [];
-    const failedModuleIds: string[] = [];
+    // Parse results into ComponentAnalysis objects
+    const analyses: ComponentAnalysis[] = [];
+    const failedComponentIds: string[] = [];
 
     if (result.output) {
         const logger = getLogger();
         const output = result.output as PromptMapOutput;
         for (const mapResult of output.results) {
-            const moduleId = mapResult.item.moduleId;
+            const componentId = mapResult.item.componentId;
 
             if (mapResult.success && mapResult.rawResponse) {
                 try {
-                    const analysis = parseAnalysisResponse(mapResult.rawResponse, moduleId);
+                    const analysis = parseAnalysisResponse(mapResult.rawResponse, componentId);
                     analyses.push(analysis);
                 } catch (parseErr1) {
                     // Parse failed — try with the output fields
                     try {
-                        const analysis = parseOutputAsAnalysis(mapResult.output, moduleId);
+                        const analysis = parseOutputAsAnalysis(mapResult.output, componentId);
                         analyses.push(analysis);
                     } catch (parseErr2) {
-                        logger.debug(LogCategory.MAP_REDUCE, `Analysis parse failed for module "${moduleId}". rawResponse (${mapResult.rawResponse.length} chars): ${mapResult.rawResponse.substring(0, 500)}`);
+                        logger.debug(LogCategory.MAP_REDUCE, `Analysis parse failed for component "${componentId}". rawResponse (${mapResult.rawResponse.length} chars): ${mapResult.rawResponse.substring(0, 500)}`);
                         logger.debug(LogCategory.MAP_REDUCE, `  Parse error 1: ${parseErr1 instanceof Error ? parseErr1.message : String(parseErr1)}`);
                         logger.debug(LogCategory.MAP_REDUCE, `  Parse error 2: ${parseErr2 instanceof Error ? parseErr2.message : String(parseErr2)}`);
-                        failedModuleIds.push(moduleId);
+                        failedComponentIds.push(componentId);
                     }
                 }
             } else if (mapResult.success && mapResult.output) {
                 // No raw response but has parsed output
                 try {
-                    const analysis = parseOutputAsAnalysis(mapResult.output, moduleId);
+                    const analysis = parseOutputAsAnalysis(mapResult.output, componentId);
                     analyses.push(analysis);
                 } catch {
-                    failedModuleIds.push(moduleId);
+                    failedComponentIds.push(componentId);
                 }
             } else if (!mapResult.success && mapResult.rawResponse) {
                 // Map-reduce reported failure (e.g. pipeline-core JSON parse failed),
                 // but raw response is available — try deep-wiki's more tolerant parser
                 try {
-                    const analysis = parseAnalysisResponse(mapResult.rawResponse, moduleId);
+                    const analysis = parseAnalysisResponse(mapResult.rawResponse, componentId);
                     analyses.push(analysis);
-                    logger.debug(LogCategory.MAP_REDUCE, `Analysis recovered for module "${moduleId}" from rawResponse (pipeline-core parse had failed: ${mapResult.error})`);
+                    logger.debug(LogCategory.MAP_REDUCE, `Analysis recovered for component "${componentId}" from rawResponse (pipeline-core parse had failed: ${mapResult.error})`);
                 } catch (recoveryErr) {
                     // Recovery also failed — try output fields as last resort
                     try {
-                        const analysis = parseOutputAsAnalysis(mapResult.output, moduleId);
+                        const analysis = parseOutputAsAnalysis(mapResult.output, componentId);
                         analyses.push(analysis);
                     } catch {
-                        logger.debug(LogCategory.MAP_REDUCE, `Analysis failed for module "${moduleId}": success=${mapResult.success}, error=${mapResult.error || 'none'}, rawResponse=${mapResult.rawResponse.length} chars: ${mapResult.rawResponse.substring(0, 300)}`);
+                        logger.debug(LogCategory.MAP_REDUCE, `Analysis failed for component "${componentId}": success=${mapResult.success}, error=${mapResult.error || 'none'}, rawResponse=${mapResult.rawResponse.length} chars: ${mapResult.rawResponse.substring(0, 300)}`);
                         logger.debug(LogCategory.MAP_REDUCE, `  Recovery parse error: ${recoveryErr instanceof Error ? recoveryErr.message : String(recoveryErr)}`);
-                        failedModuleIds.push(moduleId);
+                        failedComponentIds.push(componentId);
                     }
                 }
             } else {
-                logger.debug(LogCategory.MAP_REDUCE, `Analysis failed for module "${moduleId}": success=${mapResult.success}, error=${mapResult.error || 'none'}, rawResponse=${mapResult.rawResponse ? `${mapResult.rawResponse.length} chars: ${mapResult.rawResponse.substring(0, 300)}` : 'none'}`);
-                failedModuleIds.push(moduleId);
+                logger.debug(LogCategory.MAP_REDUCE, `Analysis failed for component "${componentId}": success=${mapResult.success}, error=${mapResult.error || 'none'}, rawResponse=${mapResult.rawResponse ? `${mapResult.rawResponse.length} chars: ${mapResult.rawResponse.substring(0, 300)}` : 'none'}`);
+                failedComponentIds.push(componentId);
             }
         }
     } else {
         // All failed
-        for (const module of modules) {
-            failedModuleIds.push(module.id);
+        for (const component of components) {
+            failedComponentIds.push(component.id);
         }
     }
 
-    return { analyses, failedModuleIds };
+    return { analyses, failedComponentIds };
 }
 
 // ============================================================================
@@ -309,14 +309,14 @@ async function executeAnalysisRound(
 // ============================================================================
 
 /**
- * Parse a map result output (Record<string, unknown>) as a ModuleAnalysis.
+ * Parse a map result output (Record<string, unknown>) as a ComponentAnalysis.
  * Used as a fallback when rawResponse parsing fails but we have structured output.
  */
 function parseOutputAsAnalysis(
     output: Record<string, unknown>,
-    expectedModuleId: string
-): ModuleAnalysis {
+    expectedComponentId: string
+): ComponentAnalysis {
     // Wrap the output in a JSON string and pass through the main parser
     const jsonStr = JSON.stringify(output);
-    return parseAnalysisResponse(jsonStr, expectedModuleId);
+    return parseAnalysisResponse(jsonStr, expectedComponentId);
 }

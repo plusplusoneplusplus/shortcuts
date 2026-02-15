@@ -2,20 +2,20 @@
  * Analysis Response Parser Tests
  *
  * Tests for JSON extraction, field normalization, Mermaid validation,
- * and ModuleAnalysis construction from raw AI responses.
+ * and ComponentAnalysis construction from raw AI responses.
  */
 
 import { describe, it, expect } from 'vitest';
 import { parseAnalysisResponse, extractJSON } from '../../src/analysis/response-parser';
-import type { ModuleAnalysis } from '../../src/types';
+import type { ComponentAnalysis } from '../../src/types';
 
 // ============================================================================
 // Test Data
 // ============================================================================
 
 const VALID_ANALYSIS_JSON = {
-    moduleId: 'auth',
-    overview: 'The auth module handles authentication and authorization.',
+    componentId: 'auth',
+    overview: 'The auth component handles authentication and authorization.',
     keyConcepts: [
         { name: 'JWT', description: 'JSON Web Token for stateless auth', codeRef: 'src/auth/jwt.ts' },
         { name: 'Session', description: 'Server-side session management' },
@@ -32,7 +32,7 @@ const VALID_ANALYSIS_JSON = {
         { title: 'Token Validation', code: 'const user = await verify(token);', file: 'src/auth/jwt.ts', lines: [10, 15] },
     ],
     dependencies: {
-        internal: [{ module: 'database', usage: 'User lookup' }],
+        internal: [{ component: 'database', usage: 'User lookup' }],
         external: [{ package: 'jsonwebtoken', usage: 'JWT signing/verification' }],
     },
     suggestedDiagram: 'graph TD\n  A[Request] --> B[Middleware]\n  B --> C[JWT Verify]',
@@ -87,10 +87,10 @@ describe('extractJSON', () => {
         const response = `Perfect! Now I have enough information. Let me create the JSON output:
 
 \`\`\`json
-{"moduleId": "auth", "overview": "The auth module handles authentication."}
+{"componentId": "auth", "overview": "The auth component handles authentication."}
 \`\`\``;
         const result = extractJSON(response);
-        expect(result).toEqual({ moduleId: 'auth', overview: 'The auth module handles authentication.' });
+        expect(result).toEqual({ componentId: 'auth', overview: 'The auth component handles authentication.' });
     });
 
     it('should extract JSON from code block without newline after fence', () => {
@@ -121,7 +121,7 @@ And some trailing explanation text.`;
 Now the actual result:
 
 \`\`\`json
-{"moduleId": "real", "overview": "The real result"}
+{"componentId": "real", "overview": "The real result"}
 \`\`\``;
         // Strategy 2 picks the first block; Strategy 4 tries the last block as fallback
         const result = extractJSON(response);
@@ -137,8 +137,8 @@ The module is well-structured with clear separation of concerns. Let me provide 
 
 \`\`\`json
 {
-  "moduleId": "test-module",
-  "overview": "A well-structured module.",
+  "componentId": "test-component",
+  "overview": "A well-structured component.",
   "keyConcepts": [{"name": "Concept1", "description": "Desc"}]
 }
 \`\`\`
@@ -146,15 +146,15 @@ The module is well-structured with clear separation of concerns. Let me provide 
 I hope this analysis is helpful!`;
         const result = extractJSON(response) as Record<string, unknown>;
         expect(result).not.toBeNull();
-        expect(result.moduleId).toBe('test-module');
-        expect(result.overview).toBe('A well-structured module.');
+        expect(result.componentId).toBe('test-component');
+        expect(result.overview).toBe('A well-structured component.');
     });
 
     it('should extract JSON using brace matching when no code blocks present', () => {
-        const response = `Here is the analysis: {"moduleId": "test", "overview": "Test overview"} — that's the result.`;
+        const response = `Here is the analysis: {"componentId": "test", "overview": "Test overview"} — that's the result.`;
         const result = extractJSON(response) as Record<string, unknown>;
         expect(result).not.toBeNull();
-        expect(result.moduleId).toBe('test');
+        expect(result.componentId).toBe('test');
     });
 
     it('should handle code block with extra whitespace around fences', () => {
@@ -173,7 +173,7 @@ describe('parseAnalysisResponse', () => {
         const response = JSON.stringify(VALID_ANALYSIS_JSON);
         const result = parseAnalysisResponse(response, 'auth');
 
-        expect(result.moduleId).toBe('auth');
+        expect(result.componentId).toBe('auth');
         expect(result.overview).toContain('authentication');
         expect(result.keyConcepts).toHaveLength(2);
         expect(result.publicAPI).toHaveLength(2);
@@ -188,21 +188,21 @@ describe('parseAnalysisResponse', () => {
     it('should parse from markdown code block', () => {
         const response = `Here is the analysis:\n\`\`\`json\n${JSON.stringify(VALID_ANALYSIS_JSON)}\n\`\`\``;
         const result = parseAnalysisResponse(response, 'auth');
-        expect(result.moduleId).toBe('auth');
+        expect(result.componentId).toBe('auth');
         expect(result.overview).toContain('authentication');
     });
 
-    it('should use expected moduleId when response has wrong ID', () => {
-        const modified = { ...VALID_ANALYSIS_JSON, moduleId: 'wrong-id' };
+    it('should use expected componentId when response has wrong ID', () => {
+        const modified = { ...VALID_ANALYSIS_JSON, componentId: 'wrong-id' };
         const result = parseAnalysisResponse(JSON.stringify(modified), 'auth');
-        // Should use the response's moduleId if it's a valid string
-        expect(result.moduleId).toBe('wrong-id');
+        // Should use the response's componentId if it's a valid string
+        expect(result.componentId).toBe('wrong-id');
     });
 
-    it('should use expected moduleId when response is missing it', () => {
-        const { moduleId, ...rest } = VALID_ANALYSIS_JSON;
+    it('should use expected componentId when response is missing it', () => {
+        const { componentId, ...rest } = VALID_ANALYSIS_JSON;
         const result = parseAnalysisResponse(JSON.stringify(rest), 'auth');
-        expect(result.moduleId).toBe('auth');
+        expect(result.componentId).toBe('auth');
     });
 
     // ========================================================================
@@ -211,13 +211,13 @@ describe('parseAnalysisResponse', () => {
 
     it('should fill defaults for missing optional fields', () => {
         const minimal = {
-            moduleId: 'minimal',
-            overview: 'A minimal module.',
+            componentId: 'minimal',
+            overview: 'A minimal component.',
         };
         const result = parseAnalysisResponse(JSON.stringify(minimal), 'minimal');
 
-        expect(result.moduleId).toBe('minimal');
-        expect(result.overview).toBe('A minimal module.');
+        expect(result.componentId).toBe('minimal');
+        expect(result.overview).toBe('A minimal component.');
         expect(result.keyConcepts).toEqual([]);
         expect(result.publicAPI).toEqual([]);
         expect(result.internalArchitecture).toBe('');
@@ -231,7 +231,7 @@ describe('parseAnalysisResponse', () => {
     });
 
     it('should handle missing overview with default', () => {
-        const result = parseAnalysisResponse(JSON.stringify({ moduleId: 'test' }), 'test');
+        const result = parseAnalysisResponse(JSON.stringify({ componentId: 'test' }), 'test');
         expect(result.overview).toBe('No overview available.');
     });
 
@@ -322,7 +322,7 @@ describe('parseAnalysisResponse', () => {
 
     it('should filter out invalid keyConcepts', () => {
         const json = {
-            moduleId: 'test',
+            componentId: 'test',
             overview: 'Test',
             keyConcepts: [
                 { name: 'Valid', description: 'Yes' },
@@ -338,7 +338,7 @@ describe('parseAnalysisResponse', () => {
 
     it('should filter out invalid publicAPI entries', () => {
         const json = {
-            moduleId: 'test',
+            componentId: 'test',
             overview: 'Test',
             publicAPI: [
                 { name: 'valid', signature: 'fn()', description: 'works' },
@@ -352,7 +352,7 @@ describe('parseAnalysisResponse', () => {
 
     it('should filter non-string patterns', () => {
         const json = {
-            moduleId: 'test',
+            componentId: 'test',
             overview: 'Test',
             patterns: ['Factory', 123, null, '', 'Observer'],
         };
@@ -382,7 +382,7 @@ describe('parseAnalysisResponse', () => {
 ${JSON.stringify(VALID_ANALYSIS_JSON)}
 \`\`\``;
         const result = parseAnalysisResponse(response, 'auth');
-        expect(result.moduleId).toBe('auth');
+        expect(result.componentId).toBe('auth');
         expect(result.overview).toContain('authentication');
         expect(result.keyConcepts).toHaveLength(2);
     });
@@ -396,7 +396,7 @@ ${JSON.stringify(VALID_ANALYSIS_JSON)}
 
 This analysis covers the main authentication patterns used in the codebase.`;
         const result = parseAnalysisResponse(response, 'auth');
-        expect(result.moduleId).toBe('auth');
+        expect(result.componentId).toBe('auth');
         expect(result.overview).toContain('authentication');
         expect(result.patterns).toEqual(['Middleware', 'Factory', 'Strategy']);
     });
@@ -412,7 +412,7 @@ After thorough analysis, here is the structured output:
 ${JSON.stringify(VALID_ANALYSIS_JSON, null, 2)}
 \`\`\``;
         const result = parseAnalysisResponse(response, 'auth');
-        expect(result.moduleId).toBe('auth');
+        expect(result.componentId).toBe('auth');
         expect(result.overview).toContain('authentication');
         expect(result.dependencies.internal).toHaveLength(1);
         expect(result.dependencies.external).toHaveLength(1);
@@ -421,20 +421,20 @@ ${JSON.stringify(VALID_ANALYSIS_JSON, null, 2)}
     it('should parse response with inline JSON (no code block) after preamble', () => {
         const response = `Here is the analysis result: ${JSON.stringify(VALID_ANALYSIS_JSON)}`;
         const result = parseAnalysisResponse(response, 'auth');
-        expect(result.moduleId).toBe('auth');
+        expect(result.componentId).toBe('auth');
         expect(result.overview).toContain('authentication');
     });
 
     it('should parse pretty-printed JSON in code block with preamble', () => {
         const prettyJson = JSON.stringify({
-            moduleId: 'test-mod',
-            overview: 'A test module for unit testing.',
+            componentId: 'test-mod',
+            overview: 'A test component for unit testing.',
             keyConcepts: [{ name: 'Testing', description: 'Unit test patterns' }],
         }, null, 2);
         const response = `Analysis complete! Here's the output:\n\n\`\`\`json\n${prettyJson}\n\`\`\``;
         const result = parseAnalysisResponse(response, 'test-mod');
-        expect(result.moduleId).toBe('test-mod');
-        expect(result.overview).toBe('A test module for unit testing.');
+        expect(result.componentId).toBe('test-mod');
+        expect(result.overview).toBe('A test component for unit testing.');
         expect(result.keyConcepts).toHaveLength(1);
     });
 });

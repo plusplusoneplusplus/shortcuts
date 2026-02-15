@@ -10,7 +10,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import type { ModuleGraph, CachedConsolidation } from '../../src/types';
+import type { ComponentGraph, CachedConsolidation } from '../../src/types';
 
 // Mock git-utils before importing cache
 vi.mock('../../src/cache/git-utils', () => ({
@@ -40,7 +40,7 @@ import { getRepoHeadHash, getFolderHeadHash } from '../../src/cache/git-utils';
 let tempDir: string;
 let outputDir: string;
 
-function createTestGraph(moduleCount: number): ModuleGraph {
+function createTestGraph(componentCount: number): ComponentGraph {
     return {
         project: {
             name: 'test-project',
@@ -49,7 +49,7 @@ function createTestGraph(moduleCount: number): ModuleGraph {
             buildSystem: 'npm',
             entryPoints: ['src/index.ts'],
         },
-        modules: Array.from({ length: moduleCount }, (_, i) => ({
+        components: Array.from({ length: componentCount }, (_, i) => ({
             id: `mod-${i}`,
             name: `Module ${i}`,
             path: `src/mod-${i}/`,
@@ -136,7 +136,7 @@ describe('getCachedConsolidation', () => {
             getConsolidatedGraphCachePath(outputDir),
             JSON.stringify({
                 gitHash: 'abc123def456abc123def456abc123def456abc1',
-                inputModuleCount: 10,
+                inputComponentCount: 10,
                 timestamp: Date.now(),
             }),
             'utf-8'
@@ -153,7 +153,7 @@ describe('getCachedConsolidation', () => {
             getConsolidatedGraphCachePath(outputDir),
             JSON.stringify({
                 graph: createTestGraph(5),
-                inputModuleCount: 10,
+                inputComponentCount: 10,
                 timestamp: Date.now(),
             }),
             'utf-8'
@@ -167,7 +167,7 @@ describe('getCachedConsolidation', () => {
         writeConsolidationCache(outputDir, {
             graph: createTestGraph(5),
             gitHash: 'abc123def456abc123def456abc123def456abc1',
-            inputModuleCount: 10,
+            inputComponentCount: 10,
             timestamp: Date.now(),
         });
 
@@ -180,7 +180,7 @@ describe('getCachedConsolidation', () => {
         writeConsolidationCache(outputDir, {
             graph: createTestGraph(5),
             gitHash: '0000000000000000000000000000000000000000',
-            inputModuleCount: 10,
+            inputComponentCount: 10,
             timestamp: Date.now(),
         });
 
@@ -193,14 +193,14 @@ describe('getCachedConsolidation', () => {
         writeConsolidationCache(outputDir, {
             graph: consolidatedGraph,
             gitHash: 'abc123def456abc123def456abc123def456abc1',
-            inputModuleCount: 10,
+            inputComponentCount: 10,
             timestamp: Date.now(),
         });
 
         const result = await getCachedConsolidation('/some/repo', outputDir, 10);
         expect(result).not.toBeNull();
-        expect(result!.graph.modules).toHaveLength(5);
-        expect(result!.inputModuleCount).toBe(10);
+        expect(result!.graph.components).toHaveLength(5);
+        expect(result!.inputComponentCount).toBe(10);
     });
 
     it('should return null when getFolderHeadHash fails', async () => {
@@ -209,7 +209,7 @@ describe('getCachedConsolidation', () => {
         writeConsolidationCache(outputDir, {
             graph: createTestGraph(5),
             gitHash: 'abc123def456abc123def456abc123def456abc1',
-            inputModuleCount: 10,
+            inputComponentCount: 10,
             timestamp: Date.now(),
         });
 
@@ -223,7 +223,7 @@ describe('getCachedConsolidation', () => {
         writeConsolidationCache(outputDir, {
             graph: createTestGraph(5),
             gitHash: 'abc123def456abc123def456abc123def456abc1',
-            inputModuleCount: 10,
+            inputComponentCount: 10,
             timestamp: Date.now(),
         });
 
@@ -259,7 +259,7 @@ describe('getCachedConsolidationAny', () => {
         writeConsolidationCache(outputDir, {
             graph: createTestGraph(5),
             gitHash: 'any-hash',
-            inputModuleCount: 10,
+            inputComponentCount: 10,
             timestamp: Date.now(),
         });
 
@@ -271,14 +271,14 @@ describe('getCachedConsolidationAny', () => {
         writeConsolidationCache(outputDir, {
             graph: createTestGraph(5),
             gitHash: 'completely-different-hash',
-            inputModuleCount: 10,
+            inputComponentCount: 10,
             timestamp: Date.now(),
         });
 
         const result = getCachedConsolidationAny(outputDir, 10);
         expect(result).not.toBeNull();
-        expect(result!.graph.modules).toHaveLength(5);
-        expect(result!.inputModuleCount).toBe(10);
+        expect(result!.graph.components).toHaveLength(5);
+        expect(result!.inputComponentCount).toBe(10);
     });
 
     it('should return null for cache with missing graph', () => {
@@ -288,7 +288,7 @@ describe('getCachedConsolidationAny', () => {
             getConsolidatedGraphCachePath(outputDir),
             JSON.stringify({
                 gitHash: 'some-hash',
-                inputModuleCount: 10,
+                inputComponentCount: 10,
                 timestamp: Date.now(),
             }),
             'utf-8'
@@ -298,7 +298,7 @@ describe('getCachedConsolidationAny', () => {
         expect(result).toBeNull();
     });
 
-    it('should return null for cache with missing inputModuleCount', () => {
+    it('should return null for cache with missing inputComponentCount', () => {
         const cacheDir = getCacheDir(outputDir);
         fs.mkdirSync(cacheDir, { recursive: true });
         fs.writeFileSync(
@@ -331,9 +331,9 @@ describe('saveConsolidation', () => {
 
         const content = fs.readFileSync(cachePath, 'utf-8');
         const parsed = JSON.parse(content) as CachedConsolidation;
-        expect(parsed.graph.modules).toHaveLength(5);
+        expect(parsed.graph.components).toHaveLength(5);
         expect(parsed.gitHash).toBe('abc123def456abc123def456abc123def456abc1');
-        expect(parsed.inputModuleCount).toBe(10);
+        expect(parsed.inputComponentCount).toBe(10);
         expect(parsed.timestamp).toBeGreaterThan(0);
     });
 
@@ -357,8 +357,8 @@ describe('saveConsolidation', () => {
         const cachePath = getConsolidatedGraphCachePath(outputDir);
         const content = fs.readFileSync(cachePath, 'utf-8');
         const parsed = JSON.parse(content) as CachedConsolidation;
-        expect(parsed.graph.modules).toHaveLength(3);
-        expect(parsed.inputModuleCount).toBe(8);
+        expect(parsed.graph.components).toHaveLength(3);
+        expect(parsed.inputComponentCount).toBe(8);
     });
 
     it('should produce cache readable by getCachedConsolidation', async () => {
@@ -367,7 +367,7 @@ describe('saveConsolidation', () => {
 
         const cached = await getCachedConsolidation('/some/repo', outputDir, 10);
         expect(cached).not.toBeNull();
-        expect(cached!.graph.modules).toHaveLength(5);
+        expect(cached!.graph.components).toHaveLength(5);
         expect(cached!.graph.project.name).toBe('test-project');
     });
 
@@ -377,7 +377,7 @@ describe('saveConsolidation', () => {
 
         const cached = getCachedConsolidationAny(outputDir, 10);
         expect(cached).not.toBeNull();
-        expect(cached!.graph.modules).toHaveLength(5);
+        expect(cached!.graph.components).toHaveLength(5);
     });
 });
 
@@ -394,7 +394,7 @@ describe('clearConsolidationCache', () => {
         writeConsolidationCache(outputDir, {
             graph: createTestGraph(5),
             gitHash: 'some-hash',
-            inputModuleCount: 10,
+            inputComponentCount: 10,
             timestamp: Date.now(),
         });
 
@@ -410,12 +410,12 @@ describe('clearConsolidationCache', () => {
         writeConsolidationCache(outputDir, {
             graph: createTestGraph(5),
             gitHash: 'some-hash',
-            inputModuleCount: 10,
+            inputComponentCount: 10,
             timestamp: Date.now(),
         });
 
         // Write another file in cache dir
-        const otherFile = path.join(cacheDir, 'module-graph.json');
+        const otherFile = path.join(cacheDir, 'component-graph.json');
         fs.writeFileSync(otherFile, '{}', 'utf-8');
 
         clearConsolidationCache(outputDir);
@@ -428,7 +428,7 @@ describe('clearConsolidationCache', () => {
         writeConsolidationCache(outputDir, {
             graph: createTestGraph(5),
             gitHash: 'some-hash',
-            inputModuleCount: 10,
+            inputComponentCount: 10,
             timestamp: Date.now(),
         });
 
@@ -439,6 +439,6 @@ describe('clearConsolidationCache', () => {
 
         const cached = getCachedConsolidationAny(outputDir, 8);
         expect(cached).not.toBeNull();
-        expect(cached!.graph.modules).toHaveLength(3);
+        expect(cached!.graph.components).toHaveLength(3);
     });
 });

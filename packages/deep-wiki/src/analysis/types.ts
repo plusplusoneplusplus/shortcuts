@@ -1,14 +1,14 @@
 /**
- * Analysis Detail Types — Sub-interfaces for ModuleAnalysis.
+ * Analysis Detail Types — Sub-interfaces for ComponentAnalysis.
  *
  * These types are used exclusively by the analysis response parser
- * to normalize raw AI output into structured ModuleAnalysis objects.
+ * to normalize raw AI output into structured ComponentAnalysis objects.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 /**
- * A key concept identified in a module.
+ * A key concept identified in a component.
  */
 export interface KeyConcept {
     /** Concept name */
@@ -20,7 +20,7 @@ export interface KeyConcept {
 }
 
 /**
- * A public API entry point of a module.
+ * A public API entry point of a component.
  */
 export interface PublicAPIEntry {
     /** Function/class/constant name */
@@ -32,7 +32,7 @@ export interface PublicAPIEntry {
 }
 
 /**
- * An illustrative code example from a module.
+ * An illustrative code example from a component.
  */
 export interface CodeExample {
     /** Short title for the example */
@@ -46,12 +46,12 @@ export interface CodeExample {
 }
 
 /**
- * An internal dependency (another module in the same project).
+ * An internal dependency (another component in the same project).
  */
 export interface InternalDependency {
-    /** Module ID of the dependency */
-    module: string;
-    /** How this module uses the dependency */
+    /** Component ID of the dependency */
+    component: string;
+    /** How this component uses the dependency */
     usage: string;
 }
 
@@ -61,6 +61,6 @@ export interface InternalDependency {
 export interface ExternalDependency {
     /** Package name */
     package: string;
-    /** How this module uses the package */
+    /** How this component uses the package */
     usage: string;
 }

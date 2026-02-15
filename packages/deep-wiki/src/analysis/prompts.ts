@@ -1,14 +1,14 @@
 /**
  * Analysis Prompt Templates
  *
- * Prompt templates for Phase 3 (Deep Analysis). Each module is analyzed
+ * Prompt templates for Phase 3 (Deep Analysis). Each component is analyzed
  * by an AI session with MCP tool access. Three depth variants control
  * the level of investigation detail.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import { MODULE_ANALYSIS_SCHEMA } from '../schemas';
+import { COMPONENT_ANALYSIS_SCHEMA } from '../schemas';
 
 // ============================================================================
 // Depth Variants
@@ -19,10 +19,10 @@ import { MODULE_ANALYSIS_SCHEMA } from '../schemas';
  * Fastest, least detailed — suitable for large repos or quick surveys.
  */
 const SHALLOW_INVESTIGATION_STEPS = `
-Use the grep, glob, and view tools to investigate this module:
+Use the grep, glob, and view tools to investigate this component:
 
 1. Read the main entry file(s) and understand the public API
-2. Identify the module's primary purpose and key abstractions
+2. Identify the component's primary purpose and key abstractions
 
 Return a JSON object matching the schema below. For shallow analysis, you may leave
 internalArchitecture, dataFlow, and errorHandling as brief one-sentence summaries.
@@ -33,7 +33,7 @@ Keep codeExamples to 1 example maximum.`;
  * Balanced depth — default for most projects.
  */
 const NORMAL_INVESTIGATION_STEPS = `
-Use the grep, glob, and view tools to deeply investigate this module:
+Use the grep, glob, and view tools to deeply investigate this component:
 
 1. Read all key files and understand the public API
 2. Trace the main control flow and data flow
@@ -41,18 +41,18 @@ Use the grep, glob, and view tools to deeply investigate this module:
 4. Find error handling strategies
 5. Extract 2-3 illustrative code examples
 6. Map internal dependencies to external packages
-7. Suggest a Mermaid diagram showing the module's internal structure
+7. Suggest a Mermaid diagram showing the component's internal structure
 
 Return a JSON object matching the schema below.`;
 
 /**
  * Deep analysis: exhaustive investigation including performance and edge cases.
- * Most thorough — suitable for critical modules or small repos.
+ * Most thorough — suitable for critical components or small repos.
  */
 const DEEP_INVESTIGATION_STEPS = `
-Use the grep, glob, and view tools to exhaustively investigate this module:
+Use the grep, glob, and view tools to exhaustively investigate this component:
 
-1. Read ALL files in the module, not just key files
+1. Read ALL files in the component, not just key files
 2. Map the complete public API with full type signatures
 3. Trace every control flow path and data flow
 4. Identify ALL design patterns and coding conventions
@@ -61,7 +61,7 @@ Use the grep, glob, and view tools to exhaustively investigate this module:
 7. Map ALL internal dependencies and external packages with usage details
 8. Analyze performance characteristics and potential bottlenecks
 9. Identify any security considerations or sensitive operations
-10. Suggest a detailed Mermaid diagram showing the module's internal structure
+10. Suggest a detailed Mermaid diagram showing the component's internal structure
 
 Return a JSON object matching the schema below. Be thorough and comprehensive —
 include all details you can find.`;
@@ -85,7 +85,7 @@ export function getInvestigationSteps(depth: 'shallow' | 'normal' | 'deep'): str
  * Build the full analysis prompt template.
  *
  * Uses {{variable}} placeholders that will be substituted by the map-reduce framework:
- * - {{moduleName}}, {{moduleId}}, {{modulePath}}, {{purpose}}
+ * - {{componentName}}, {{componentId}}, {{componentPath}}, {{purpose}}
  * - {{keyFiles}}, {{dependencies}}, {{dependents}}
  * - {{complexity}}, {{category}}, {{projectName}}, {{architectureNotes}}
  *
@@ -95,16 +95,16 @@ export function getInvestigationSteps(depth: 'shallow' | 'normal' | 'deep'): str
 export function buildAnalysisPromptTemplate(depth: 'shallow' | 'normal' | 'deep'): string {
     const steps = getInvestigationSteps(depth);
 
-    return `You are analyzing module "{{moduleName}}" in the {{projectName}} codebase.
+    return `You are analyzing component "{{componentName}}" in the {{projectName}} codebase.
 
-Module ID: {{moduleId}}
-Module path: {{modulePath}}
+Component ID: {{componentId}}
+Component path: {{componentPath}}
 Purpose: {{purpose}}
 Complexity: {{complexity}}
 Category: {{category}}
 Key files: {{keyFiles}}
-Dependencies (other modules): {{dependencies}}
-Dependents (modules that depend on this): {{dependents}}
+Dependencies (other components): {{dependencies}}
+Dependents (components that depend on this): {{dependents}}
 
 Architecture context:
 {{architectureNotes}}
@@ -112,11 +112,11 @@ ${steps}
 
 **Output JSON Schema:**
 \`\`\`json
-${MODULE_ANALYSIS_SCHEMA}
+${COMPONENT_ANALYSIS_SCHEMA}
 \`\`\`
 
 IMPORTANT:
-- The "moduleId" field MUST be exactly "{{moduleId}}"
+- The "componentId" field MUST be exactly "{{componentId}}"
 - All file paths should be relative to the repository root
 - The "suggestedDiagram" field should contain valid Mermaid syntax
 - The "sourceFiles" field should list ALL files you read or examined during analysis
@@ -130,7 +130,7 @@ IMPORTANT:
  */
 export function getAnalysisOutputFields(): string[] {
     return [
-        'moduleId',
+        'componentId',
         'overview',
         'keyConcepts',
         'publicAPI',

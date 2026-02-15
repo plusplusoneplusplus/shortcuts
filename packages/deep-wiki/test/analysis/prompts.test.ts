@@ -21,7 +21,7 @@ describe('Analysis Prompts', () => {
         it('should contain all required template variables', () => {
             const template = buildAnalysisPromptTemplate('normal');
             const requiredVars = [
-                '{{moduleName}}', '{{moduleId}}', '{{modulePath}}',
+                '{{componentName}}', '{{componentId}}', '{{componentPath}}',
                 '{{purpose}}', '{{keyFiles}}', '{{dependencies}}',
                 '{{dependents}}', '{{complexity}}', '{{category}}',
                 '{{projectName}}', '{{architectureNotes}}',
@@ -33,7 +33,7 @@ describe('Analysis Prompts', () => {
 
         it('should contain the JSON schema', () => {
             const template = buildAnalysisPromptTemplate('normal');
-            expect(template).toContain('"moduleId"');
+            expect(template).toContain('"componentId"');
             expect(template).toContain('"overview"');
             expect(template).toContain('"keyConcepts"');
         });
@@ -56,7 +56,7 @@ describe('Analysis Prompts', () => {
 
             // All should have the base context
             for (const template of [shallow, normal, deep]) {
-                expect(template).toContain('{{moduleName}}');
+                expect(template).toContain('{{componentName}}');
                 expect(template).toContain('{{projectName}}');
             }
 
@@ -119,7 +119,7 @@ describe('Analysis Prompts', () => {
     describe('getAnalysisOutputFields', () => {
         it('should return all expected fields', () => {
             const fields = getAnalysisOutputFields();
-            expect(fields).toContain('moduleId');
+            expect(fields).toContain('componentId');
             expect(fields).toContain('overview');
             expect(fields).toContain('keyConcepts');
             expect(fields).toContain('publicAPI');

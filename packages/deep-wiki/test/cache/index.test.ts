@@ -22,7 +22,7 @@ import {
     getArticleCachePath,
     scanIndividualArticlesCacheAny,
 } from '../../src/cache';
-import type { ModuleGraph, CachedGraph, CachedAnalysis, CachedArticle } from '../../src/types';
+import type { ComponentGraph, CachedGraph, CachedAnalysis, CachedArticle } from '../../src/types';
 
 // ============================================================================
 // Test Helpers
@@ -30,7 +30,7 @@ import type { ModuleGraph, CachedGraph, CachedAnalysis, CachedArticle } from '..
 
 let tmpDir: string;
 
-const createTestGraph = (): ModuleGraph => ({
+const createTestGraph = (): ComponentGraph => ({
     project: {
         name: 'test-project',
         description: 'A test project',
@@ -38,7 +38,7 @@ const createTestGraph = (): ModuleGraph => ({
         buildSystem: 'npm',
         entryPoints: ['src/index.ts'],
     },
-    modules: [
+    components: [
         {
             id: 'core',
             name: 'Core Module',
@@ -80,9 +80,9 @@ describe('Cache Paths', () => {
     });
 
     describe('getGraphCachePath', () => {
-        it('should return path to module-graph.json', () => {
+        it('should return path to component-graph.json', () => {
             const cachePath = getGraphCachePath('/output/wiki');
-            expect(path.basename(cachePath)).toBe('module-graph.json');
+            expect(path.basename(cachePath)).toBe('component-graph.json');
         });
 
         it('should be inside the cache directory', () => {
@@ -314,7 +314,7 @@ describe('getCachedGraphAny', () => {
         const result = getCachedGraphAny(outputDir);
         expect(result).not.toBeNull();
         expect(result!.graph.project.name).toBe('test-project');
-        expect(result!.graph.modules).toHaveLength(1);
+        expect(result!.graph.components).toHaveLength(1);
     });
 });
 
@@ -338,7 +338,7 @@ describe('scanIndividualAnalysesCacheAny', () => {
 
         const cachedAnalysis: CachedAnalysis = {
             analysis: {
-                moduleId: 'mod-a',
+                componentId: 'mod-a',
                 overview: 'Test overview',
                 keyConcepts: [],
                 publicAPI: [],
@@ -361,7 +361,7 @@ describe('scanIndividualAnalysesCacheAny', () => {
 
         const { found, missing } = scanIndividualAnalysesCacheAny(['mod-a', 'mod-b'], outputDir);
         expect(found).toHaveLength(1);
-        expect(found[0].moduleId).toBe('mod-a');
+        expect(found[0].componentId).toBe('mod-a');
         expect(missing).toEqual(['mod-b']);
     });
 
@@ -399,11 +399,11 @@ describe('scanIndividualArticlesCacheAny', () => {
 
         const cachedArticle: CachedArticle = {
             article: {
-                type: 'module',
+                type: 'component',
                 slug: 'mod-a',
                 title: 'Module A',
                 content: '# Module A',
-                moduleId: 'mod-a',
+                componentId: 'mod-a',
             },
             gitHash: 'completely-different-hash',
             timestamp: Date.now(),

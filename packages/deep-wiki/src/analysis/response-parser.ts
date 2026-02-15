@@ -1,7 +1,7 @@
 /**
  * Analysis Response Parser
  *
- * Parses AI responses from Phase 3 analysis into structured ModuleAnalysis objects.
+ * Parses AI responses from Phase 3 analysis into structured ComponentAnalysis objects.
  * Handles JSON extraction from markdown code blocks, field validation, default filling,
  * and Mermaid diagram validation.
  *
@@ -9,7 +9,7 @@
  */
 
 import type {
-    ModuleAnalysis,
+    ComponentAnalysis,
 } from '../types';
 import type {
     KeyConcept,
@@ -189,10 +189,12 @@ function normalizeCodeExample(raw: unknown): CodeExample | null {
 function normalizeInternalDependency(raw: unknown): InternalDependency | null {
     if (!raw || typeof raw !== 'object') { return null; }
     const obj = raw as Record<string, unknown>;
-    if (!obj.module || typeof obj.module !== 'string') { return null; }
+    // Accept both 'component' (new) and 'module' (legacy)
+    const comp = obj.component || obj.module;
+    if (!comp || typeof comp !== 'string') { return null; }
 
     return {
-        module: obj.module,
+        component: comp as string,
         usage: ensureString(obj.usage),
     };
 }
@@ -252,14 +254,14 @@ function normalizeMermaidDiagram(value: unknown): string {
 // ============================================================================
 
 /**
- * Parse an AI response string into a ModuleAnalysis object.
+ * Parse an AI response string into a ComponentAnalysis object.
  *
  * @param response The raw AI response text
- * @param expectedModuleId The expected moduleId (for validation)
- * @returns Parsed ModuleAnalysis
+ * @param expectedComponentId The expected componentId (for validation)
+ * @returns Parsed ComponentAnalysis
  * @throws Error if the response cannot be parsed at all
  */
-export function parseAnalysisResponse(response: string, expectedModuleId: string): ModuleAnalysis {
+export function parseAnalysisResponse(response: string, expectedComponentId: string): ComponentAnalysis {
     const parsed = extractJSON(response);
     if (!parsed || typeof parsed !== 'object') {
         throw new Error('Failed to extract JSON from analysis response');
@@ -267,12 +269,14 @@ export function parseAnalysisResponse(response: string, expectedModuleId: string
 
     const raw = parsed as Record<string, unknown>;
 
-    // Validate moduleId — use expected if missing or mismatched
-    const moduleId = typeof raw.moduleId === 'string' ? raw.moduleId : expectedModuleId;
+    // Validate componentId — use expected if missing or mismatched (also accepts legacy moduleId)
+    const componentId = typeof raw.componentId === 'string' ? raw.componentId
+        : typeof raw.moduleId === 'string' ? raw.moduleId
+        : expectedComponentId;
 
-    // Build the ModuleAnalysis with defaults for missing fields
-    const analysis: ModuleAnalysis = {
-        moduleId,
+    // Build the ComponentAnalysis with defaults for missing fields
+    const analysis: ComponentAnalysis = {
+        componentId,
         overview: ensureString(raw.overview, 'No overview available.'),
         keyConcepts: ensureArray(raw.keyConcepts)
             .map(normalizeKeyConcept)

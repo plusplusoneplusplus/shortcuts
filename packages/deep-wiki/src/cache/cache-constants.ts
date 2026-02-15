@@ -10,13 +10,13 @@ import * as path from 'path';
 /** Name of the cache directory */
 export const CACHE_DIR_NAME = '.wiki-cache';
 
-/** Name of the cached module graph file */
-export const GRAPH_CACHE_FILE = 'module-graph.json';
+/** Name of the cached component graph file */
+export const GRAPH_CACHE_FILE = 'component-graph.json';
 
-/** Subdirectory for per-module analysis cache */
+/** Subdirectory for per-component analysis cache */
 export const ANALYSES_DIR = 'analyses';
 
-/** Subdirectory for per-module article cache */
+/** Subdirectory for per-component article cache */
 export const ARTICLES_DIR = 'articles';
 
 /** Name of the cached consolidated graph file */

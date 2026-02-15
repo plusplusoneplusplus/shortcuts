@@ -10,7 +10,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import type { ModuleAnalysis, ModuleGraph } from '../../src/types';
+import type { ComponentAnalysis, ComponentGraph } from '../../src/types';
 
 // Mock git-utils before importing cache
 vi.mock('../../src/cache/git-utils', () => ({
@@ -29,7 +29,7 @@ import {
     saveAllAnalyses,
     getCachedAnalyses,
     clearAnalysesCache,
-    getModulesNeedingReanalysis,
+    getComponentsNeedingReanalysis,
     getAnalysesCacheDir,
     getAnalysesMetadataPath,
     scanIndividualAnalysesCache,
@@ -43,10 +43,10 @@ import { getChangedFiles, getRepoHeadHash, getFolderHeadHash } from '../../src/c
 let tempDir: string;
 let outputDir: string;
 
-function createTestAnalysis(moduleId: string): ModuleAnalysis {
+function createTestAnalysis(componentId: string): ComponentAnalysis {
     return {
-        moduleId,
-        overview: `Overview of ${moduleId}`,
+        componentId,
+        overview: `Overview of ${componentId}`,
         keyConcepts: [{ name: 'Concept', description: 'Test' }],
         publicAPI: [],
         internalArchitecture: 'Architecture',
@@ -59,7 +59,7 @@ function createTestAnalysis(moduleId: string): ModuleAnalysis {
     };
 }
 
-function createTestGraph(moduleIds: string[]): ModuleGraph {
+function createTestGraph(componentIds: string[]): ComponentGraph {
     return {
         project: {
             name: 'Test',
@@ -68,11 +68,11 @@ function createTestGraph(moduleIds: string[]): ModuleGraph {
             buildSystem: 'npm',
             entryPoints: [],
         },
-        modules: moduleIds.map(id => ({
+        components: componentIds.map(id => ({
             id,
             name: id,
             path: `src/${id}/`,
-            purpose: `${id} module`,
+            purpose: `${id} component`,
             keyFiles: [`src/${id}/index.ts`],
             dependencies: [],
             dependents: [],
@@ -109,7 +109,7 @@ describe('single module analysis cache', () => {
 
         const loaded = getCachedAnalysis('auth', outputDir);
         expect(loaded).not.toBeNull();
-        expect(loaded!.moduleId).toBe('auth');
+        expect(loaded!.componentId).toBe('auth');
         expect(loaded!.overview).toContain('auth');
     });
 
@@ -173,7 +173,7 @@ describe('bulk analysis cache', () => {
         const loaded = getCachedAnalyses(outputDir);
         expect(loaded).not.toBeNull();
         expect(loaded).toHaveLength(3);
-        expect(loaded!.map(a => a.moduleId).sort()).toEqual(['api', 'auth', 'database']);
+        expect(loaded!.map(a => a.componentId).sort()).toEqual(['api', 'auth', 'database']);
     });
 
     it('should write metadata file', async () => {
@@ -184,7 +184,7 @@ describe('bulk analysis cache', () => {
         expect(fs.existsSync(metadataPath)).toBe(true);
 
         const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf-8'));
-        expect(metadata.moduleCount).toBe(1);
+        expect(metadata.componentCount).toBe(1);
         expect(metadata.version).toBe('1.0.0');
     });
 
@@ -227,7 +227,7 @@ describe('bulk analysis cache', () => {
         const loaded = getCachedAnalyses(outputDir);
         expect(loaded).not.toBeNull();
         expect(loaded).toHaveLength(1);
-        expect(loaded![0].moduleId).toBe('db');
+        expect(loaded![0].componentId).toBe('db');
     });
 });
 
@@ -254,13 +254,13 @@ describe('clearAnalysesCache', () => {
 });
 
 // ============================================================================
-// getModulesNeedingReanalysis
+// getComponentsNeedingReanalysis
 // ============================================================================
 
-describe('getModulesNeedingReanalysis', () => {
+describe('getComponentsNeedingReanalysis', () => {
     it('should return null when no cache metadata exists', async () => {
         const graph = createTestGraph(['auth', 'db']);
-        const result = await getModulesNeedingReanalysis(graph, outputDir, '/repo');
+        const result = await getComponentsNeedingReanalysis(graph, outputDir, '/repo');
         expect(result).toBeNull();
     });
 
@@ -269,12 +269,12 @@ describe('getModulesNeedingReanalysis', () => {
         const analyses = [createTestAnalysis('auth'), createTestAnalysis('db')];
         await saveAllAnalyses(analyses, outputDir, '/repo');
 
-        // Same git hash (getFolderHeadHash is what getModulesNeedingReanalysis calls)
+        // Same git hash (getFolderHeadHash is what getComponentsNeedingReanalysis calls)
         vi.mocked(getFolderHeadHash).mockResolvedValue('abc123def456abc123def456abc123def456abc1');
         vi.mocked(getChangedFiles).mockResolvedValue([]);
 
         const graph = createTestGraph(['auth', 'db']);
-        const result = await getModulesNeedingReanalysis(graph, outputDir, '/repo');
+        const result = await getComponentsNeedingReanalysis(graph, outputDir, '/repo');
         expect(result).toEqual([]);
     });
 
@@ -287,7 +287,7 @@ describe('getModulesNeedingReanalysis', () => {
         vi.mocked(getChangedFiles).mockResolvedValue(['src/auth/jwt.ts']);
 
         const graph = createTestGraph(['auth', 'db']);
-        const result = await getModulesNeedingReanalysis(graph, outputDir, '/repo');
+        const result = await getComponentsNeedingReanalysis(graph, outputDir, '/repo');
 
         expect(result).not.toBeNull();
         expect(result).toContain('auth');
@@ -302,7 +302,7 @@ describe('getModulesNeedingReanalysis', () => {
         vi.mocked(getChangedFiles).mockResolvedValue(['src/auth/index.ts']);
 
         const graph = createTestGraph(['auth']);
-        const result = await getModulesNeedingReanalysis(graph, outputDir, '/repo');
+        const result = await getComponentsNeedingReanalysis(graph, outputDir, '/repo');
 
         expect(result).toContain('auth');
     });
@@ -314,7 +314,7 @@ describe('getModulesNeedingReanalysis', () => {
         vi.mocked(getFolderHeadHash).mockResolvedValue(null);
 
         const graph = createTestGraph(['auth']);
-        const result = await getModulesNeedingReanalysis(graph, outputDir, '/repo');
+        const result = await getComponentsNeedingReanalysis(graph, outputDir, '/repo');
         expect(result).toBeNull();
     });
 
@@ -326,7 +326,7 @@ describe('getModulesNeedingReanalysis', () => {
         vi.mocked(getChangedFiles).mockResolvedValue(null);
 
         const graph = createTestGraph(['auth']);
-        const result = await getModulesNeedingReanalysis(graph, outputDir, '/repo');
+        const result = await getComponentsNeedingReanalysis(graph, outputDir, '/repo');
         expect(result).toBeNull();
     });
 
@@ -338,7 +338,7 @@ describe('getModulesNeedingReanalysis', () => {
         vi.mocked(getChangedFiles).mockResolvedValue(['src\\auth\\jwt.ts']);
 
         const graph = createTestGraph(['auth']);
-        const result = await getModulesNeedingReanalysis(graph, outputDir, '/repo');
+        const result = await getComponentsNeedingReanalysis(graph, outputDir, '/repo');
 
         expect(result).toContain('auth');
     });
@@ -361,7 +361,7 @@ describe('scanIndividualAnalysesCache', () => {
         );
 
         expect(result.found).toHaveLength(2);
-        expect(result.found.map(a => a.moduleId).sort()).toEqual(['auth', 'db']);
+        expect(result.found.map(a => a.componentId).sort()).toEqual(['auth', 'db']);
         expect(result.missing).toEqual(['api']);
     });
 
@@ -387,7 +387,7 @@ describe('scanIndividualAnalysesCache', () => {
         );
 
         expect(result.found).toHaveLength(1);
-        expect(result.found[0].moduleId).toBe('db');
+        expect(result.found[0].componentId).toBe('db');
         expect(result.missing).toEqual(['auth']);
     });
 
@@ -440,7 +440,7 @@ describe('scanIndividualAnalysesCache', () => {
         );
 
         expect(result.found).toHaveLength(2);
-        expect(result.found.map(a => a.moduleId).sort()).toEqual(['mod-1', 'mod-2']);
+        expect(result.found.map(a => a.componentId).sort()).toEqual(['mod-1', 'mod-2']);
         expect(result.missing).toEqual(['mod-3']);
     });
 
@@ -504,7 +504,7 @@ describe('scanIndividualAnalysesCache', () => {
         );
 
         expect(result.found).toHaveLength(1);
-        expect(result.found[0].moduleId).toBe('valid');
+        expect(result.found[0].componentId).toBe('valid');
         expect(result.missing.sort()).toEqual(['corrupted', 'missing', 'stale']);
     });
 });

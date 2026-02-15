@@ -4,11 +4,11 @@
  * Re-exports all cache functions from domain-specific modules.
  * Consumers can import everything from 'cache/' or 'cache/index'.
  *
- * Also contains cross-domain functions (getModulesNeedingReanalysis, clearCache,
+ * Also contains cross-domain functions (getComponentsNeedingReanalysis, clearCache,
  * hasCachedGraph) that depend on multiple cache domains.
  */
 
-import type { ModuleGraph } from '../types';
+import type { ComponentGraph } from '../types';
 import { getFolderHeadHash, getChangedFiles } from './git-utils';
 import { clearCacheFile } from './cache-utils';
 
@@ -67,20 +67,20 @@ import { getGraphCachePath, getCachedGraph } from './graph-cache';
 import { getAnalysesCacheMetadata } from './analysis-cache';
 
 /**
- * Determine which modules need re-analysis based on git changes.
+ * Determine which components need re-analysis based on git changes.
  *
  * Algorithm:
  * 1. Get changed files since the cached git hash
- * 2. For each module, check if any changed file falls under module.path or matches module.keyFiles
- * 3. Return affected module IDs
+ * 2. For each component, check if any changed file falls under component.path or matches module.keyFiles
+ * 3. Return affected component IDs
  *
- * @param graph - Module graph
+ * @param graph - Component graph
  * @param outputDir - Output directory (for cache access)
  * @param repoPath - Path to the git repository
- * @returns Array of module IDs that need re-analysis, or null if full rebuild needed
+ * @returns Array of component IDs that need re-analysis, or null if full rebuild needed
  */
-export async function getModulesNeedingReanalysis(
-    graph: ModuleGraph,
+export async function getComponentsNeedingReanalysis(
+    graph: ComponentGraph,
     outputDir: string,
     repoPath: string
 ): Promise<string[] | null> {
@@ -103,7 +103,7 @@ export async function getModulesNeedingReanalysis(
         return [];
     }
 
-    // Get changed files, scoped to repoPath so paths align with module paths in the graph
+    // Get changed files, scoped to repoPath so paths align with component paths in the graph
     const changedFiles = await getChangedFiles(repoPath, metadata.gitHash, repoPath);
     if (changedFiles === null) {
         // Can't determine changes — full rebuild
@@ -117,15 +117,15 @@ export async function getModulesNeedingReanalysis(
     // Normalize changed file paths (forward slashes)
     const normalizedChanged = changedFiles.map(f => f.replace(/\\/g, '/'));
 
-    // Check each module
-    const affectedModules: string[] = [];
-    for (const module of graph.modules) {
-        const modulePath = module.path.replace(/\\/g, '/').replace(/\/$/, '');
-        const keyFiles = module.keyFiles.map(f => f.replace(/\\/g, '/'));
+    // Check each component
+    const affectedComponents: string[] = [];
+    for (const component of graph.components) {
+        const componentPath = component.path.replace(/\\/g, '/').replace(/\/$/, '');
+        const keyFiles = component.keyFiles.map(f => f.replace(/\\/g, '/'));
 
         const isAffected = normalizedChanged.some(changedFile => {
-            // Check if changed file is under the module's path
-            if (changedFile.startsWith(modulePath + '/') || changedFile === modulePath) {
+            // Check if changed file is under the component's path
+            if (changedFile.startsWith(componentPath + '/') || changedFile === componentPath) {
                 return true;
             }
 
@@ -138,11 +138,11 @@ export async function getModulesNeedingReanalysis(
         });
 
         if (isAffected) {
-            affectedModules.push(module.id);
+            affectedComponents.push(component.id);
         }
     }
 
-    return affectedModules;
+    return affectedComponents;
 }
 
 // ============================================================================

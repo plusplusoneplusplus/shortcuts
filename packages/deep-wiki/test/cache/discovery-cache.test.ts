@@ -14,7 +14,7 @@ import type {
     TopicSeed,
     TopicProbeResult,
     StructuralScanResult,
-    ModuleGraph,
+    ComponentGraph,
     DiscoveryProgressMetadata,
 } from '../../src/types';
 
@@ -58,7 +58,7 @@ function createTestSeeds(count: number = 3): TopicSeed[] {
 function createTestProbeResult(topic: string): TopicProbeResult {
     return {
         topic,
-        foundModules: [
+        foundComponents: [
             {
                 id: `${topic}-service`,
                 name: `${topic} Service`,
@@ -95,7 +95,7 @@ function createTestScanResult(): StructuralScanResult {
     };
 }
 
-function createTestGraph(moduleIds: string[]): ModuleGraph {
+function createTestGraph(componentIds: string[]): ComponentGraph {
     return {
         project: {
             name: 'Test',
@@ -104,18 +104,18 @@ function createTestGraph(moduleIds: string[]): ModuleGraph {
             buildSystem: 'npm',
             entryPoints: [],
         },
-        modules: moduleIds.map(id => ({
+        components: componentIds.map(id => ({
             id,
             name: id,
             path: `src/${id}/`,
-            purpose: `${id} module`,
+            purpose: `${id} component`,
             keyFiles: [`src/${id}/index.ts`],
             dependencies: [],
             dependents: [],
             complexity: 'medium' as const,
             category: 'core',
         })),
-        categories: [{ name: 'core', description: 'Core modules' }],
+        categories: [{ name: 'core', description: 'Core components' }],
         architectureNotes: 'Test architecture',
     };
 }
@@ -219,7 +219,7 @@ describe('probe results cache', () => {
         const loaded = getCachedProbeResult('authentication', outputDir, gitHash);
         expect(loaded).not.toBeNull();
         expect(loaded!.topic).toBe('authentication');
-        expect(loaded!.foundModules).toHaveLength(1);
+        expect(loaded!.foundComponents).toHaveLength(1);
         expect(loaded!.confidence).toBe(0.85);
     });
 
@@ -393,8 +393,8 @@ describe('domain sub-graph cache', () => {
 
         const loaded = getCachedDomainSubGraph('packages/frontend', outputDir, gitHash);
         expect(loaded).not.toBeNull();
-        expect(loaded!.modules).toHaveLength(2);
-        expect(loaded!.modules[0].id).toBe('fe-component');
+        expect(loaded!.components).toHaveLength(2);
+        expect(loaded!.components[0].id).toBe('fe-component');
     });
 
     it('should return null for git hash mismatch', () => {
@@ -623,7 +623,7 @@ describe('clearDiscoveryCache', () => {
         // Create a file in the parent cache dir (simulate graph cache)
         const cacheDir = path.resolve(outputDir, '.wiki-cache');
         fs.writeFileSync(
-            path.join(cacheDir, 'module-graph.json'),
+            path.join(cacheDir, 'component-graph.json'),
             '{"test": true}',
             'utf-8'
         );
@@ -632,7 +632,7 @@ describe('clearDiscoveryCache', () => {
         clearDiscoveryCache(outputDir);
 
         // Graph cache should still exist
-        expect(fs.existsSync(path.join(cacheDir, 'module-graph.json'))).toBe(true);
+        expect(fs.existsSync(path.join(cacheDir, 'component-graph.json'))).toBe(true);
     });
 });
 

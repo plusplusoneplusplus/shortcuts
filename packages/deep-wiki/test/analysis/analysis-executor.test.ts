@@ -1,20 +1,20 @@
 /**
  * Analysis Executor Tests
  *
- * Tests for the analysis map-reduce orchestration: module→PromptItem conversion,
+ * Tests for the analysis map-reduce orchestration: component→PromptItem conversion,
  * executor integration, progress callbacks, and failure handling.
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { moduleToPromptItem, runAnalysisExecutor } from '../../src/analysis/analysis-executor';
-import type { ModuleGraph, ModuleInfo } from '../../src/types';
+import { componentToPromptItem, runAnalysisExecutor } from '../../src/analysis/analysis-executor';
+import type { ComponentGraph, ComponentInfo } from '../../src/types';
 import type { AIInvoker } from '@plusplusoneplusplus/pipeline-core';
 
 // ============================================================================
 // Test Data
 // ============================================================================
 
-function createTestGraph(modules: Partial<ModuleInfo>[] = []): ModuleGraph {
+function createTestGraph(modules: Partial<ComponentInfo>[] = []): ComponentGraph {
     return {
         project: {
             name: 'TestProject',
@@ -23,7 +23,7 @@ function createTestGraph(modules: Partial<ModuleInfo>[] = []): ModuleGraph {
             buildSystem: 'npm + webpack',
             entryPoints: ['src/index.ts'],
         },
-        modules: modules.map((m, i) => ({
+        components: modules.map((m, i) => ({
             id: m.id || `module-${i}`,
             name: m.name || `Module ${i}`,
             path: m.path || `src/module-${i}/`,
@@ -33,14 +33,14 @@ function createTestGraph(modules: Partial<ModuleInfo>[] = []): ModuleGraph {
             dependents: m.dependents || [],
             complexity: m.complexity || 'medium',
             category: m.category || 'core',
-        })) as ModuleInfo[],
+        })) as ComponentInfo[],
         categories: [{ name: 'core', description: 'Core modules' }],
         architectureNotes: 'Test architecture notes',
     };
 }
 
 const VALID_ANALYSIS_RESPONSE = JSON.stringify({
-    moduleId: 'auth',
+    componentId: 'auth',
     overview: 'Auth module overview',
     keyConcepts: [{ name: 'JWT', description: 'Token auth' }],
     publicAPI: [{ name: 'login', signature: 'login(): Promise<void>', description: 'Login' }],
@@ -54,10 +54,10 @@ const VALID_ANALYSIS_RESPONSE = JSON.stringify({
 });
 
 // ============================================================================
-// moduleToPromptItem
+// componentToPromptItem
 // ============================================================================
 
-describe('moduleToPromptItem', () => {
+describe('componentToPromptItem', () => {
     it('should flatten all module fields to strings', () => {
         const graph = createTestGraph([{
             id: 'auth',
@@ -71,11 +71,11 @@ describe('moduleToPromptItem', () => {
             category: 'security',
         }]);
 
-        const item = moduleToPromptItem(graph.modules[0], graph);
+        const item = componentToPromptItem(graph.components[0], graph);
 
-        expect(item.moduleId).toBe('auth');
-        expect(item.moduleName).toBe('Auth Module');
-        expect(item.modulePath).toBe('src/auth/');
+        expect(item.componentId).toBe('auth');
+        expect(item.componentName).toBe('Auth Module');
+        expect(item.componentPath).toBe('src/auth/');
         expect(item.purpose).toBe('Handles authentication');
         expect(item.keyFiles).toBe('src/auth/index.ts, src/auth/jwt.ts');
         expect(item.dependencies).toBe('database, cache');
@@ -93,7 +93,7 @@ describe('moduleToPromptItem', () => {
             dependents: [],
         }]);
 
-        const item = moduleToPromptItem(graph.modules[0], graph);
+        const item = componentToPromptItem(graph.components[0], graph);
         expect(item.dependencies).toBe('none');
         expect(item.dependents).toBe('none');
     });
@@ -104,7 +104,7 @@ describe('moduleToPromptItem', () => {
             keyFiles: ['a.ts', 'b.ts', 'c.ts'],
         }]);
 
-        const item = moduleToPromptItem(graph.modules[0], graph);
+        const item = componentToPromptItem(graph.components[0], graph);
         expect(item.keyFiles).toBe('a.ts, b.ts, c.ts');
     });
 });
@@ -125,7 +125,7 @@ describe('runAnalysisExecutor', () => {
         });
 
         expect(result.analyses).toEqual([]);
-        expect(result.failedModuleIds).toEqual([]);
+        expect(result.failedComponentIds).toEqual([]);
         expect(result.duration).toBe(0);
         expect(mockInvoker).not.toHaveBeenCalled();
     });
@@ -173,7 +173,7 @@ describe('runAnalysisExecutor', () => {
         });
 
         // At least one should succeed or fail gracefully
-        expect(result.analyses.length + result.failedModuleIds.length).toBeGreaterThan(0);
+        expect(result.analyses.length + result.failedComponentIds.length).toBeGreaterThan(0);
     });
 
     it('should fire progress callbacks', async () => {
@@ -305,7 +305,7 @@ describe('runAnalysisExecutor', () => {
         expect(mockInvoker).toHaveBeenCalledTimes(2);
         // Should succeed on retry
         expect(result.analyses).toHaveLength(1);
-        expect(result.failedModuleIds).toHaveLength(0);
+        expect(result.failedComponentIds).toHaveLength(0);
     });
 
     it('should fail after exhausting retry attempts', async () => {
@@ -327,7 +327,7 @@ describe('runAnalysisExecutor', () => {
         // Should have been called twice (initial + 1 retry round)
         expect(mockInvoker).toHaveBeenCalledTimes(2);
         // Should record the module as failed
-        expect(result.failedModuleIds).toContain('broken');
+        expect(result.failedComponentIds).toContain('broken');
     });
 
     it('should use default retryAttempts of 1 when not specified', async () => {
@@ -400,7 +400,7 @@ describe('runAnalysisExecutor', () => {
         // 2 initial calls + 1 retry for the failed module
         expect(mockInvoker).toHaveBeenCalledTimes(3);
         // Both should eventually succeed
-        expect(result.failedModuleIds).toHaveLength(0);
+        expect(result.failedComponentIds).toHaveLength(0);
     });
 
     it('should not retry when retryAttempts is 0', async () => {
@@ -421,7 +421,7 @@ describe('runAnalysisExecutor', () => {
 
         // Only called once — no retry
         expect(mockInvoker).toHaveBeenCalledTimes(1);
-        expect(result.failedModuleIds).toContain('no-retry');
+        expect(result.failedComponentIds).toContain('no-retry');
     });
 
     it('should call onItemComplete for every module regardless of AI result', async () => {
