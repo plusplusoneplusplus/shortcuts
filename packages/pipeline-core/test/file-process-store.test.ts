@@ -299,6 +299,140 @@ describe('FileProcessStore', () => {
         expect(updated).toBeUndefined();
     });
 
+    // --- Wiki registration ---
+    it('should register and retrieve wikis', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.registerWiki({
+            id: 'wiki-1',
+            name: 'Project Wiki',
+            wikiDir: '/home/user/.wiki',
+            repoPath: '/home/user/project',
+            aiEnabled: true,
+            registeredAt: '2026-01-15T10:00:00.000Z',
+        });
+        await store.registerWiki({
+            id: 'wiki-2',
+            name: 'Docs Wiki',
+            wikiDir: '/home/user/.docs-wiki',
+            aiEnabled: false,
+            registeredAt: '2026-01-15T11:00:00.000Z',
+            color: '#00ff00',
+        });
+
+        const wikis = await store.getWikis();
+        expect(wikis).toHaveLength(2);
+        expect(wikis.find(w => w.id === 'wiki-1')!.name).toBe('Project Wiki');
+        expect(wikis.find(w => w.id === 'wiki-2')!.color).toBe('#00ff00');
+    });
+
+    it('should return empty wikis list on fresh store', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        const wikis = await store.getWikis();
+        expect(wikis).toEqual([]);
+    });
+
+    it('should upsert wiki on duplicate registration (idempotent)', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.registerWiki({
+            id: 'wiki-1',
+            name: 'Original',
+            wikiDir: '/path/a',
+            aiEnabled: true,
+            registeredAt: '2026-01-01T00:00:00.000Z',
+        });
+        await store.registerWiki({
+            id: 'wiki-1',
+            name: 'Updated',
+            wikiDir: '/path/b',
+            aiEnabled: false,
+            registeredAt: '2026-02-01T00:00:00.000Z',
+        });
+
+        const wikis = await store.getWikis();
+        expect(wikis).toHaveLength(1);
+        expect(wikis[0].name).toBe('Updated');
+        expect(wikis[0].wikiDir).toBe('/path/b');
+        expect(wikis[0].aiEnabled).toBe(false);
+    });
+
+    // --- Wiki removal ---
+    it('should remove a wiki by ID', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.registerWiki({
+            id: 'wiki-1', name: 'A', wikiDir: '/a', aiEnabled: true, registeredAt: '2026-01-01T00:00:00.000Z',
+        });
+        await store.registerWiki({
+            id: 'wiki-2', name: 'B', wikiDir: '/b', aiEnabled: false, registeredAt: '2026-01-01T00:00:00.000Z',
+        });
+
+        const removed = await store.removeWiki('wiki-1');
+        expect(removed).toBe(true);
+
+        const wikis = await store.getWikis();
+        expect(wikis).toHaveLength(1);
+        expect(wikis[0].id).toBe('wiki-2');
+    });
+
+    it('should return false when removing non-existent wiki', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        const removed = await store.removeWiki('does-not-exist');
+        expect(removed).toBe(false);
+    });
+
+    // --- Wiki update ---
+    it('should update wiki fields', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.registerWiki({
+            id: 'wiki-1', name: 'Old', wikiDir: '/old', aiEnabled: true,
+            registeredAt: '2026-01-01T00:00:00.000Z', color: '#000',
+        });
+
+        const updated = await store.updateWiki('wiki-1', { name: 'New', color: '#fff', aiEnabled: false });
+        expect(updated).toBeDefined();
+        expect(updated!.name).toBe('New');
+        expect(updated!.color).toBe('#fff');
+        expect(updated!.aiEnabled).toBe(false);
+        expect(updated!.wikiDir).toBe('/old'); // unchanged
+
+        const wikis = await store.getWikis();
+        expect(wikis[0].name).toBe('New');
+    });
+
+    it('should return undefined when updating non-existent wiki', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        const updated = await store.updateWiki('nope', { name: 'x' });
+        expect(updated).toBeUndefined();
+    });
+
+    // --- Wiki persistence across instances ---
+    it('should persist wikis across separate store instances', async () => {
+        const store1 = new FileProcessStore({ dataDir: tmpDir });
+        await store1.registerWiki({
+            id: 'wiki-1', name: 'Persisted', wikiDir: '/wiki', aiEnabled: true,
+            registeredAt: '2026-01-01T00:00:00.000Z',
+        });
+
+        const store2 = new FileProcessStore({ dataDir: tmpDir });
+        const wikis = await store2.getWikis();
+        expect(wikis).toHaveLength(1);
+        expect(wikis[0].name).toBe('Persisted');
+    });
+
+    // --- Wiki atomic write safety ---
+    it('should persist wikis to wikis.json with atomic writes', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.registerWiki({
+            id: 'wiki-1', name: 'Test', wikiDir: '/test', aiEnabled: true,
+            registeredAt: '2026-01-01T00:00:00.000Z',
+        });
+
+        const raw = await fs.readFile(path.join(tmpDir, 'wikis.json'), 'utf-8');
+        expect(() => JSON.parse(raw)).not.toThrow();
+        const parsed = JSON.parse(raw);
+        expect(parsed).toHaveLength(1);
+        expect(parsed[0].id).toBe('wiki-1');
+    });
+
     // --- Filter by status ---
     it('should filter by status', async () => {
         const store = new FileProcessStore({ dataDir: tmpDir });

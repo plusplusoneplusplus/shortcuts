@@ -39,6 +39,27 @@ export interface WorkspaceInfo {
 }
 
 /**
+ * Wiki identity for multi-wiki support in the CoC server.
+ * `id` is a stable hash of the wikiDir path.
+ */
+export interface WikiInfo {
+    /** Stable unique identifier — typically a hash of wikiDir */
+    id: string;
+    /** Human-readable name (e.g. "My Project Wiki") */
+    name: string;
+    /** Absolute path to the generated wiki directory */
+    wikiDir: string;
+    /** Absolute path to the source repository (optional — wiki may be standalone) */
+    repoPath?: string;
+    /** Optional UI color for dashboard differentiation */
+    color?: string;
+    /** Whether AI Q&A is enabled for this wiki */
+    aiEnabled: boolean;
+    /** ISO 8601 timestamp of when the wiki was registered */
+    registeredAt: string;
+}
+
+/**
  * Filter criteria for querying processes.
  * All fields are optional; omitted fields impose no constraint.
  */
@@ -79,6 +100,15 @@ export interface ProcessStore {
     removeWorkspace(id: string): Promise<boolean>;
     /** Partial-update a workspace. Returns updated workspace or undefined if not found. */
     updateWorkspace(id: string, updates: Partial<Omit<WorkspaceInfo, 'id'>>): Promise<WorkspaceInfo | undefined>;
+
+    /** Return all known wikis. */
+    getWikis(): Promise<WikiInfo[]>;
+    /** Register (or update) a wiki identity. */
+    registerWiki(wiki: WikiInfo): Promise<void>;
+    /** Remove a wiki by ID. Returns true if found and removed. */
+    removeWiki(id: string): Promise<boolean>;
+    /** Partial-update a wiki. Returns updated wiki or undefined if not found. */
+    updateWiki(id: string, updates: Partial<Omit<WikiInfo, 'id'>>): Promise<WikiInfo | undefined>;
 
     /** Optional callback invoked on every process mutation. */
     onProcessChange?: ProcessChangeCallback;

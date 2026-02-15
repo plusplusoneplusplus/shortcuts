@@ -350,6 +350,7 @@ export {
 export {
     ProcessOutputEvent,
     WorkspaceInfo,
+    WikiInfo,
     ProcessFilter,
     ProcessChangeCallback,
     ProcessStore
