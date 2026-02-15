@@ -3,7 +3,7 @@
  *
  * Tests for Phase 4 reduce-phase article caching:
  * - Save/load reduce articles (index, architecture, getting-started)
- * - Area-scoped reduce articles (area-index, area-architecture)
+ * - Domain-scoped reduce articles (domain-index, domain-architecture)
  * - Reduce metadata read/write
  * - Git hash validation
  * - Cache invalidation when module articles change
@@ -54,14 +54,14 @@ import { getRepoHeadHash, getFolderHeadHash } from '../../src/cache/git-utils';
 let tempDir: string;
 let outputDir: string;
 
-function createModuleArticle(moduleId: string, areaId?: string): GeneratedArticle {
+function createModuleArticle(moduleId: string, domainId?: string): GeneratedArticle {
     return {
         type: 'module',
         slug: moduleId,
         title: `${moduleId} Module`,
         content: `# ${moduleId}\n\nArticle content for ${moduleId}.`,
         moduleId,
-        areaId,
+        domainId,
     };
 }
 
@@ -92,23 +92,23 @@ function createGettingStartedArticle(): GeneratedArticle {
     };
 }
 
-function createAreaIndexArticle(areaId: string): GeneratedArticle {
+function createDomainIndexArticle(domainId: string): GeneratedArticle {
     return {
-        type: 'area-index',
-        slug: `${areaId}-index`,
-        title: `${areaId} Index`,
-        content: `# ${areaId}\n\nIndex for area ${areaId}.`,
-        areaId,
+        type: 'domain-index',
+        slug: `${domainId}-index`,
+        title: `${domainId} Index`,
+        content: `# ${domainId}\n\nIndex for domain ${domainId}.`,
+        domainId,
     };
 }
 
-function createAreaArchitectureArticle(areaId: string): GeneratedArticle {
+function createAreaArchitectureArticle(domainId: string): GeneratedArticle {
     return {
-        type: 'area-architecture',
-        slug: `${areaId}-architecture`,
-        title: `${areaId} Architecture`,
-        content: `# ${areaId} Architecture\n\nArchitecture for area ${areaId}.`,
-        areaId,
+        type: 'domain-architecture',
+        slug: `${domainId}-architecture`,
+        title: `${domainId} Architecture`,
+        content: `# ${domainId} Architecture\n\nArchitecture for domain ${domainId}.`,
+        domainId,
     };
 }
 
@@ -231,11 +231,11 @@ describe('saveReduceArticles / getCachedReduceArticles', () => {
 // Area-Scoped Reduce Articles
 // ============================================================================
 
-describe('area-scoped reduce articles', () => {
-    it('should save and load area-index articles', () => {
+describe('domain-scoped reduce articles', () => {
+    it('should save and load domain-index articles', () => {
         const articles = [
-            createAreaIndexArticle('packages-core'),
-            createAreaIndexArticle('packages-api'),
+            createDomainIndexArticle('packages-core'),
+            createDomainIndexArticle('packages-api'),
         ];
 
         saveReduceArticles(articles, outputDir, 'hash123');
@@ -243,10 +243,10 @@ describe('area-scoped reduce articles', () => {
         const loaded = getCachedReduceArticles(outputDir);
         expect(loaded).not.toBeNull();
         expect(loaded).toHaveLength(2);
-        expect(loaded!.every(a => a.type === 'area-index')).toBe(true);
+        expect(loaded!.every(a => a.type === 'domain-index')).toBe(true);
     });
 
-    it('should save and load area-architecture articles', () => {
+    it('should save and load domain-architecture articles', () => {
         const articles = [
             createAreaArchitectureArticle('packages-core'),
         ];
@@ -256,18 +256,18 @@ describe('area-scoped reduce articles', () => {
         const loaded = getCachedReduceArticles(outputDir);
         expect(loaded).not.toBeNull();
         expect(loaded).toHaveLength(1);
-        expect(loaded![0].type).toBe('area-architecture');
-        expect(loaded![0].areaId).toBe('packages-core');
+        expect(loaded![0].type).toBe('domain-architecture');
+        expect(loaded![0].domainId).toBe('packages-core');
     });
 
-    it('should handle mixed reduce articles (global + area-scoped)', () => {
+    it('should handle mixed reduce articles (global + domain-scoped)', () => {
         const articles = [
             createIndexArticle(),
             createArchitectureArticle(),
             createGettingStartedArticle(),
-            createAreaIndexArticle('packages-core'),
+            createDomainIndexArticle('packages-core'),
             createAreaArchitectureArticle('packages-core'),
-            createAreaIndexArticle('packages-api'),
+            createDomainIndexArticle('packages-api'),
         ];
 
         saveReduceArticles(articles, outputDir, 'hash123');
@@ -277,13 +277,13 @@ describe('area-scoped reduce articles', () => {
         expect(loaded).toHaveLength(6);
     });
 
-    it('should preserve areaId through save/load round-trip', () => {
-        const article = createAreaIndexArticle('my-area');
+    it('should preserve domainId through save/load round-trip', () => {
+        const article = createDomainIndexArticle('my-domain');
         saveReduceArticles([article], outputDir, 'hash123');
 
         const loaded = getCachedReduceArticles(outputDir);
         expect(loaded).not.toBeNull();
-        expect(loaded![0].areaId).toBe('my-area');
+        expect(loaded![0].domainId).toBe('my-domain');
     });
 });
 
@@ -297,9 +297,9 @@ describe('getReduceArticleCachePath', () => {
         expect(cachePath).toContain('_reduce-index.json');
     });
 
-    it('should return path with area prefix for area articles', () => {
+    it('should return path with domain prefix for domain articles', () => {
         const cachePath = getReduceArticleCachePath(outputDir, 'index', 'packages-core');
-        expect(cachePath).toContain('_reduce-area-packages-core-index.json');
+        expect(cachePath).toContain('_reduce-domain-packages-core-index.json');
     });
 
     it('should return path for architecture article', () => {
@@ -312,9 +312,9 @@ describe('getReduceArticleCachePath', () => {
         expect(cachePath).toContain('_reduce-getting-started.json');
     });
 
-    it('should return path for area-architecture article', () => {
-        const cachePath = getReduceArticleCachePath(outputDir, 'area-architecture', 'my-area');
-        expect(cachePath).toContain('_reduce-area-my-area-area-architecture.json');
+    it('should return path for domain-architecture article', () => {
+        const cachePath = getReduceArticleCachePath(outputDir, 'domain-architecture', 'my-domain');
+        expect(cachePath).toContain('_reduce-domain-my-domain-domain-architecture.json');
     });
 });
 
@@ -538,16 +538,16 @@ describe('reduce cache file structure', () => {
         expect(fs.existsSync(path.join(articlesDir, '_reduce-metadata.json'))).toBe(true);
     });
 
-    it('should create area-scoped reduce file names', () => {
+    it('should create domain-scoped reduce file names', () => {
         saveReduceArticles(
-            [createAreaIndexArticle('packages-core')],
+            [createDomainIndexArticle('packages-core')],
             outputDir,
             'hash123'
         );
 
         const articlesDir = getArticlesCacheDir(outputDir);
         expect(
-            fs.existsSync(path.join(articlesDir, '_reduce-area-packages-core-area-index.json'))
+            fs.existsSync(path.join(articlesDir, '_reduce-domain-packages-core-domain-index.json'))
         ).toBe(true);
     });
 
@@ -850,17 +850,17 @@ describe('real-world scenarios', () => {
         expect(loaded).toHaveLength(1);
     });
 
-    it('scenario: large repo with area-scoped articles', () => {
+    it('scenario: large repo with domain-scoped articles', () => {
         const hash = 'large_repo_hash';
 
-        // Save area-scoped reduce articles
+        // Save domain-scoped reduce articles
         const articles = [
             createIndexArticle(),
             createArchitectureArticle(),
             createGettingStartedArticle(),
-            createAreaIndexArticle('packages-core'),
+            createDomainIndexArticle('packages-core'),
             createAreaArchitectureArticle('packages-core'),
-            createAreaIndexArticle('packages-api'),
+            createDomainIndexArticle('packages-api'),
             createAreaArchitectureArticle('packages-api'),
         ];
 
@@ -870,8 +870,8 @@ describe('real-world scenarios', () => {
         expect(loaded).not.toBeNull();
         expect(loaded).toHaveLength(7);
 
-        // Verify area-scoped articles preserved their areaId
-        const areaArticles = loaded!.filter(a => a.areaId);
-        expect(areaArticles).toHaveLength(4);
+        // Verify domain-scoped articles preserved their domainId
+        const domainArticles = loaded!.filter(a => a.domainId);
+        expect(domainArticles).toHaveLength(4);
     });
 });

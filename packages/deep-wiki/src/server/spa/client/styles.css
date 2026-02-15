@@ -271,8 +271,8 @@ body {
 .nav-section.collapsed .nav-section-arrow { transform: rotate(-90deg); }
 .nav-section.collapsed .nav-section-items { display: none; }
 
-/* Area-based sidebar (DeepWiki-style hierarchy) */
-.nav-area-item {
+/* Domain-based sidebar (DeepWiki-style hierarchy) */
+.nav-domain-item {
     padding: 8px 14px;
     cursor: pointer;
     font-size: 14px;
@@ -284,16 +284,16 @@ body {
     align-items: center;
     transition: background 0.1s, color 0.1s;
 }
-.nav-area-item:hover { background: var(--sidebar-hover); }
-.nav-area-item.active {
+.nav-domain-item:hover { background: var(--sidebar-hover); }
+.nav-domain-item.active {
     background: var(--sidebar-active-bg);
     color: var(--sidebar-active-text);
     font-weight: 600;
 }
-.nav-area-item .nav-item-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-domain-item .nav-item-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.nav-area-children { padding-left: 8px; }
-.nav-area-module {
+.nav-domain-children { padding-left: 8px; }
+.nav-domain-module {
     padding: 5px 14px 5px 20px;
     cursor: pointer;
     font-size: 13px;
@@ -304,16 +304,16 @@ body {
     align-items: center;
     transition: background 0.1s, color 0.1s;
 }
-.nav-area-module:hover { background: var(--sidebar-hover); color: var(--sidebar-text); }
-.nav-area-module.active {
+.nav-domain-module:hover { background: var(--sidebar-hover); color: var(--sidebar-text); }
+.nav-domain-module.active {
     background: var(--sidebar-active-bg);
     color: var(--sidebar-active-text);
     font-weight: 500;
     border-left: 3px solid var(--sidebar-active-border);
 }
-.nav-area-module .nav-item-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-domain-module .nav-item-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* Category timestamp in sidebar (for non-area repos) */
+/* Category timestamp in sidebar (for non-domain repos) */
 .nav-last-indexed {
     font-size: 12px;
     color: var(--sidebar-muted);

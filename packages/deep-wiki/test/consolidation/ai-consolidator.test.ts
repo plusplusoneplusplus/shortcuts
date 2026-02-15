@@ -315,10 +315,10 @@ describe('applyClusterMerge', () => {
         expect(result.categories.length).toBeGreaterThan(0);
     });
 
-    it('preserves area when consistent', () => {
+    it('preserves domain when consistent', () => {
         const modules = [
-            makeModule({ id: 'a', path: 'pkg/core/a.ts', area: 'pkg-core' }),
-            makeModule({ id: 'b', path: 'pkg/core/b.ts', area: 'pkg-core' }),
+            makeModule({ id: 'a', path: 'pkg/core/a.ts', domain: 'pkg-core' }),
+            makeModule({ id: 'b', path: 'pkg/core/b.ts', domain: 'pkg-core' }),
         ];
         const graph = makeGraph(modules);
 
@@ -327,7 +327,7 @@ describe('applyClusterMerge', () => {
         ];
 
         const result = applyClusterMerge(graph, clusters);
-        expect(result.modules[0].area).toBe('pkg-core');
+        expect(result.modules[0].domain).toBe('pkg-core');
     });
 
     it('removes dangling dependency references', () => {

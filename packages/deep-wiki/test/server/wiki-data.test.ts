@@ -375,28 +375,28 @@ describe('WikiData — hierarchical layout', () => {
     it('should read area-level markdown files', () => {
         const graph: ModuleGraph = {
             ...createTestModuleGraph(),
-            areas: [
+            domains: [
                 { id: 'core', name: 'Core', path: 'src/core/', description: 'Core area', modules: ['auth'] },
             ],
         };
 
         const wikiDir = path.join(tempDir, 'hierarchical');
-        const areaModulesDir = path.join(wikiDir, 'areas', 'core', 'modules');
-        fs.mkdirSync(areaModulesDir, { recursive: true });
+        const domainModulesDir = path.join(wikiDir, 'domains', 'core', 'modules');
+        fs.mkdirSync(domainModulesDir, { recursive: true });
         fs.writeFileSync(
             path.join(wikiDir, 'module-graph.json'),
             JSON.stringify(graph),
             'utf-8'
         );
-        fs.writeFileSync(path.join(areaModulesDir, 'auth.md'), '# Area Auth', 'utf-8');
-        fs.writeFileSync(path.join(wikiDir, 'areas', 'core', 'index.md'), '# Core Index', 'utf-8');
+        fs.writeFileSync(path.join(domainModulesDir, 'auth.md'), '# Area Auth', 'utf-8');
+        fs.writeFileSync(path.join(wikiDir, 'domains', 'core', 'index.md'), '# Core Index', 'utf-8');
 
         const wd = new WikiData(wikiDir);
         wd.load();
 
         const data = wd.getMarkdownData();
         expect(data['auth']).toContain('# Area Auth');
-        expect(data['__area_core_index']).toContain('# Core Index');
+        expect(data['__domain_core_index']).toContain('# Core Index');
     });
 });
 

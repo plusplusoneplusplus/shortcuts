@@ -85,8 +85,8 @@ export function processMarkdownContent(): void {
         }
 
         const slug = href.replace(/^(\.\.\/|\.\/)+/g, '')
-            .replace(/^areas\/[^/]+\/modules\//, '')
-            .replace(/^areas\/[^/]+\//, '')
+            .replace(/^domains\/[^/]+\/modules\//, '')
+            .replace(/^domains\/[^/]+\//, '')
             .replace(/^modules\//, '')
             .replace(/\.md$/, '');
 

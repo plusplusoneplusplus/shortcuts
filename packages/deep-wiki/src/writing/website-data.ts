@@ -39,7 +39,7 @@ export function readModuleGraph(wikiDir: string): ModuleGraph {
  *
  * Supports both flat and hierarchical layouts:
  *   - Flat: modules/{slug}.md
- *   - Hierarchical: areas/{areaId}/modules/{slug}.md
+ *   - Hierarchical: domains/{domainId}/modules/{slug}.md
  *
  * Also reads top-level markdown files (index.md, architecture.md, getting-started.md)
  * and area-level index/architecture files.
@@ -111,34 +111,34 @@ export function readMarkdownFiles(
         }
     }
 
-    // Read hierarchical-layout area files
-    const areasDir = path.join(wikiDir, 'areas');
-    if (fs.existsSync(areasDir) && fs.statSync(areasDir).isDirectory()) {
-        const areaDirs = fs.readdirSync(areasDir).filter(d =>
-            fs.statSync(path.join(areasDir, d)).isDirectory()
+    // Read hierarchical-layout domain files
+    const domainsDir = path.join(wikiDir, 'domains');
+    if (fs.existsSync(domainsDir) && fs.statSync(domainsDir).isDirectory()) {
+        const domainDirs = fs.readdirSync(domainsDir).filter(d =>
+            fs.statSync(path.join(domainsDir, d)).isDirectory()
         );
 
-        for (const areaId of areaDirs) {
-            const areaDir = path.join(areasDir, areaId);
+        for (const domainId of domainDirs) {
+            const domainDir = path.join(domainsDir, domainId);
 
             // Area-level files
             for (const file of ['index.md', 'architecture.md']) {
-                const filePath = path.join(areaDir, file);
+                const filePath = path.join(domainDir, file);
                 if (fs.existsSync(filePath)) {
                     const key = path.basename(file, '.md');
-                    data[`__area_${areaId}_${key}`] = fs.readFileSync(filePath, 'utf-8');
+                    data[`__domain_${domainId}_${key}`] = fs.readFileSync(filePath, 'utf-8');
                 }
             }
 
             // Area module files
-            const areaModulesDir = path.join(areaDir, 'modules');
-            if (fs.existsSync(areaModulesDir) && fs.statSync(areaModulesDir).isDirectory()) {
-                const files = fs.readdirSync(areaModulesDir).filter(f => f.endsWith('.md'));
+            const domainModulesDir = path.join(domainDir, 'modules');
+            if (fs.existsSync(domainModulesDir) && fs.statSync(domainModulesDir).isDirectory()) {
+                const files = fs.readdirSync(domainModulesDir).filter(f => f.endsWith('.md'));
                 for (const file of files) {
                     const slug = path.basename(file, '.md');
                     const moduleId = findModuleIdBySlug(slug, moduleGraph);
                     const key = moduleId || slug;
-                    data[key] = fs.readFileSync(path.join(areaModulesDir, file), 'utf-8');
+                    data[key] = fs.readFileSync(path.join(domainModulesDir, file), 'utf-8');
                 }
             }
         }

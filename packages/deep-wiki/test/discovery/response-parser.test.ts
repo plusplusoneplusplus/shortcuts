@@ -441,7 +441,7 @@ describe('parseStructuralScanResponse', () => {
     it('should parse a valid structural scan response', () => {
         const json = JSON.stringify({
             fileCount: 5000,
-            areas: [
+            domains: [
                 { name: 'src', path: 'src/', description: 'Source code' },
                 { name: 'packages', path: 'packages/', description: 'Sub-packages' },
             ],
@@ -454,14 +454,14 @@ describe('parseStructuralScanResponse', () => {
 
         const result = parseStructuralScanResponse(json);
         expect(result.fileCount).toBe(5000);
-        expect(result.areas).toHaveLength(2);
-        expect(result.areas[0].name).toBe('src');
+        expect(result.domains).toHaveLength(2);
+        expect(result.domains[0].name).toBe('src');
         expect(result.projectInfo.name).toBe('test-project');
     });
 
     it('should default fileCount to 0 if missing', () => {
         const json = JSON.stringify({
-            areas: [],
+            domains: [],
             projectInfo: {},
         });
 
@@ -469,20 +469,20 @@ describe('parseStructuralScanResponse', () => {
         expect(result.fileCount).toBe(0);
     });
 
-    it('should handle missing areas gracefully', () => {
+    it('should handle missing domains gracefully', () => {
         const json = JSON.stringify({
             fileCount: 100,
             projectInfo: { name: 'test' },
         });
 
         const result = parseStructuralScanResponse(json);
-        expect(result.areas).toEqual([]);
+        expect(result.domains).toEqual([]);
     });
 
     it('should handle missing projectInfo gracefully', () => {
         const json = JSON.stringify({
             fileCount: 100,
-            areas: [],
+            domains: [],
         });
 
         const result = parseStructuralScanResponse(json);
@@ -501,7 +501,7 @@ describe('parseStructuralScanResponse', () => {
         const response = `\`\`\`json
 {
   "fileCount": 200,
-  "areas": [{"name": "src", "path": "src/", "description": "Source"}],
+  "domains": [{"name": "src", "path": "src/", "description": "Source"}],
   "projectInfo": {"name": "test"}
 }
 \`\`\``;

@@ -2,7 +2,7 @@
  * Discovery Cache Tests
  *
  * Tests for Phase 1 intermediate discovery caching:
- * seeds, probe results, structural scan, area sub-graphs,
+ * seeds, probe results, structural scan, domain sub-graphs,
  * metadata, and cleanup.
  */
 
@@ -30,10 +30,10 @@ import {
     saveStructuralScan,
     getCachedStructuralScan,
     getCachedStructuralScanAny,
-    saveAreaSubGraph,
-    getCachedAreaSubGraph,
-    scanCachedAreas,
-    scanCachedAreasAny,
+    saveDomainSubGraph,
+    getCachedDomainSubGraph,
+    scanCachedDomains,
+    scanCachedDomainsAny,
     saveDiscoveryMetadata,
     getDiscoveryMetadata,
     clearDiscoveryCache,
@@ -84,7 +84,7 @@ function createTestProbeResult(topic: string): TopicProbeResult {
 function createTestScanResult(): StructuralScanResult {
     return {
         fileCount: 5000,
-        areas: [
+        domains: [
             { name: 'Frontend', path: 'packages/frontend', description: 'React UI' },
             { name: 'Backend', path: 'packages/backend', description: 'Express API' },
         ],
@@ -337,8 +337,8 @@ describe('structural scan cache', () => {
         const loaded = getCachedStructuralScan(outputDir, gitHash);
         expect(loaded).not.toBeNull();
         expect(loaded!.fileCount).toBe(5000);
-        expect(loaded!.areas).toHaveLength(2);
-        expect(loaded!.areas[0].name).toBe('Frontend');
+        expect(loaded!.domains).toHaveLength(2);
+        expect(loaded!.domains[0].name).toBe('Frontend');
     });
 
     it('should return null for git hash mismatch', () => {
@@ -381,56 +381,56 @@ describe('structural scan cache', () => {
 });
 
 // ============================================================================
-// Area Sub-Graph Cache
+// Domain Sub-Graph Cache
 // ============================================================================
 
-describe('area sub-graph cache', () => {
+describe('domain sub-graph cache', () => {
     const gitHash = 'area_hash';
 
-    it('should save and load area sub-graph (round-trip)', () => {
+    it('should save and load domain sub-graph (round-trip)', () => {
         const graph = createTestGraph(['fe-component', 'fe-router']);
-        saveAreaSubGraph('packages/frontend', graph, outputDir, gitHash);
+        saveDomainSubGraph('packages/frontend', graph, outputDir, gitHash);
 
-        const loaded = getCachedAreaSubGraph('packages/frontend', outputDir, gitHash);
+        const loaded = getCachedDomainSubGraph('packages/frontend', outputDir, gitHash);
         expect(loaded).not.toBeNull();
         expect(loaded!.modules).toHaveLength(2);
         expect(loaded!.modules[0].id).toBe('fe-component');
     });
 
     it('should return null for git hash mismatch', () => {
-        saveAreaSubGraph('frontend', createTestGraph(['fe']), outputDir, 'old');
+        saveDomainSubGraph('frontend', createTestGraph(['fe']), outputDir, 'old');
 
-        const loaded = getCachedAreaSubGraph('frontend', outputDir, 'new');
+        const loaded = getCachedDomainSubGraph('frontend', outputDir, 'new');
         expect(loaded).toBeNull();
     });
 
     it('should return null when no cache exists', () => {
-        const loaded = getCachedAreaSubGraph('nonexistent', outputDir, gitHash);
+        const loaded = getCachedDomainSubGraph('nonexistent', outputDir, gitHash);
         expect(loaded).toBeNull();
     });
 
     it('should handle corrupted area file', () => {
-        const areasDir = path.join(getDiscoveryCacheDir(outputDir), 'areas');
-        fs.mkdirSync(areasDir, { recursive: true });
-        fs.writeFileSync(path.join(areasDir, 'bad.json'), 'not json', 'utf-8');
+        const domainsDir = path.join(getDiscoveryCacheDir(outputDir), 'domains');
+        fs.mkdirSync(domainsDir, { recursive: true });
+        fs.writeFileSync(path.join(domainsDir, 'bad.json'), 'not json', 'utf-8');
 
-        const loaded = getCachedAreaSubGraph('bad', outputDir, gitHash);
+        const loaded = getCachedDomainSubGraph('bad', outputDir, gitHash);
         expect(loaded).toBeNull();
     });
 });
 
 // ============================================================================
-// scanCachedAreas
+// scanCachedDomains
 // ============================================================================
 
-describe('scanCachedAreas', () => {
+describe('scanCachedDomains', () => {
     const gitHash = 'areas_hash';
 
-    it('should find cached areas and identify missing ones', () => {
-        saveAreaSubGraph('frontend', createTestGraph(['fe']), outputDir, gitHash);
-        saveAreaSubGraph('backend', createTestGraph(['be']), outputDir, gitHash);
+    it('should find cached domains and identify missing ones', () => {
+        saveDomainSubGraph('frontend', createTestGraph(['fe']), outputDir, gitHash);
+        saveDomainSubGraph('backend', createTestGraph(['be']), outputDir, gitHash);
 
-        const { found, missing } = scanCachedAreas(
+        const { found, missing } = scanCachedDomains(
             ['frontend', 'backend', 'shared'],
             outputDir,
             gitHash
@@ -443,7 +443,7 @@ describe('scanCachedAreas', () => {
     });
 
     it('should return all missing when no cache exists', () => {
-        const { found, missing } = scanCachedAreas(
+        const { found, missing } = scanCachedDomains(
             ['frontend', 'backend'],
             outputDir,
             gitHash
@@ -453,11 +453,11 @@ describe('scanCachedAreas', () => {
         expect(missing).toEqual(['frontend', 'backend']);
     });
 
-    it('should exclude stale areas', () => {
-        saveAreaSubGraph('frontend', createTestGraph(['fe']), outputDir, 'old');
-        saveAreaSubGraph('backend', createTestGraph(['be']), outputDir, gitHash);
+    it('should exclude stale domains', () => {
+        saveDomainSubGraph('frontend', createTestGraph(['fe']), outputDir, 'old');
+        saveDomainSubGraph('backend', createTestGraph(['be']), outputDir, gitHash);
 
-        const { found, missing } = scanCachedAreas(
+        const { found, missing } = scanCachedDomains(
             ['frontend', 'backend'],
             outputDir,
             gitHash
@@ -468,11 +468,11 @@ describe('scanCachedAreas', () => {
         expect(missing).toEqual(['frontend']);
     });
 
-    it('scanCachedAreasAny should ignore git hash', () => {
-        saveAreaSubGraph('frontend', createTestGraph(['fe']), outputDir, 'hash1');
-        saveAreaSubGraph('backend', createTestGraph(['be']), outputDir, 'hash2');
+    it('scanCachedDomainsAny should ignore git hash', () => {
+        saveDomainSubGraph('frontend', createTestGraph(['fe']), outputDir, 'hash1');
+        saveDomainSubGraph('backend', createTestGraph(['be']), outputDir, 'hash2');
 
-        const { found, missing } = scanCachedAreasAny(
+        const { found, missing } = scanCachedDomainsAny(
             ['frontend', 'backend', 'shared'],
             outputDir
         );
@@ -482,7 +482,7 @@ describe('scanCachedAreas', () => {
     });
 
     it('should handle empty area list', () => {
-        const { found, missing } = scanCachedAreas([], outputDir, gitHash);
+        const { found, missing } = scanCachedDomains([], outputDir, gitHash);
         expect(found.size).toBe(0);
         expect(missing).toEqual([]);
     });
@@ -576,7 +576,7 @@ describe('clearDiscoveryCache', () => {
         saveSeedsCache(createTestSeeds(), outputDir, gitHash);
         saveProbeResult('auth', createTestProbeResult('auth'), outputDir, gitHash);
         saveStructuralScan(createTestScanResult(), outputDir, gitHash);
-        saveAreaSubGraph('frontend', createTestGraph(['fe']), outputDir, gitHash);
+        saveDomainSubGraph('frontend', createTestGraph(['fe']), outputDir, gitHash);
         saveDiscoveryMetadata({
             gitHash,
             timestamp: Date.now(),
@@ -601,7 +601,7 @@ describe('clearDiscoveryCache', () => {
         expect(getCachedSeeds(outputDir, gitHash)).toBeNull();
         expect(getCachedProbeResult('auth', outputDir, gitHash)).toBeNull();
         expect(getCachedStructuralScan(outputDir, gitHash)).toBeNull();
-        expect(getCachedAreaSubGraph('frontend', outputDir, gitHash)).toBeNull();
+        expect(getCachedDomainSubGraph('frontend', outputDir, gitHash)).toBeNull();
         expect(getDiscoveryMetadata(outputDir)).toBeNull();
 
         // Verify directory is gone
@@ -646,7 +646,7 @@ describe('edge cases', () => {
         expect(getCachedSeeds('/nonexistent/path', 'hash')).toBeNull();
         expect(getCachedProbeResult('topic', '/nonexistent/path', 'hash')).toBeNull();
         expect(getCachedStructuralScan('/nonexistent/path', 'hash')).toBeNull();
-        expect(getCachedAreaSubGraph('area', '/nonexistent/path', 'hash')).toBeNull();
+        expect(getCachedDomainSubGraph('area', '/nonexistent/path', 'hash')).toBeNull();
         expect(getDiscoveryMetadata('/nonexistent/path')).toBeNull();
     });
 
@@ -691,16 +691,16 @@ describe('edge cases', () => {
     });
 
     it('should handle area with missing graph field', () => {
-        const areasDir = path.join(getDiscoveryCacheDir(outputDir), 'areas');
-        fs.mkdirSync(areasDir, { recursive: true });
+        const domainsDir = path.join(getDiscoveryCacheDir(outputDir), 'domains');
+        fs.mkdirSync(domainsDir, { recursive: true });
 
         fs.writeFileSync(
-            path.join(areasDir, 'incomplete.json'),
+            path.join(domainsDir, 'incomplete.json'),
             JSON.stringify({ gitHash: 'hash', timestamp: Date.now() }),
             'utf-8'
         );
 
-        expect(getCachedAreaSubGraph('incomplete', outputDir, 'hash')).toBeNull();
+        expect(getCachedDomainSubGraph('incomplete', outputDir, 'hash')).toBeNull();
     });
 
     it('should handle mixed cache states in scanCachedProbes', () => {

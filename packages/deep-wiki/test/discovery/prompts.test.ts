@@ -2,7 +2,7 @@
  * Prompts Tests
  *
  * Tests for discovery prompt template generation.
- * Verifies template variable substitution and focus area filtering.
+ * Verifies template variable substitution and focus domain filtering.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -50,7 +50,7 @@ describe('buildDiscoveryPrompt', () => {
         expect(prompt).toContain('package.json');
     });
 
-    describe('focus area', () => {
+    describe('focus domain', () => {
         it('should include focus section when focus is provided', () => {
             const prompt = buildDiscoveryPrompt('/repo', 'src/');
             expect(prompt).toContain('Focus your analysis on the subtree: src/');
@@ -132,7 +132,7 @@ describe('buildStructuralScanPrompt', () => {
     it('should include the structural scan schema', () => {
         const prompt = buildStructuralScanPrompt('/repo');
         expect(prompt).toContain('fileCount');
-        expect(prompt).toContain('areas');
+        expect(prompt).toContain('domains');
         expect(prompt).toContain('projectInfo');
     });
 
@@ -155,20 +155,20 @@ describe('buildStructuralScanPrompt', () => {
         expect(readmeIndex).toBeLessThan(globIndex);
     });
 
-    it('should include area naming guidance for functionality focus', () => {
+    it('should include domain naming guidance for functionality focus', () => {
         const prompt = buildStructuralScanPrompt('/repo');
-        expect(prompt).toContain('Area Naming Guidance');
+        expect(prompt).toContain('Domain Naming Guidance');
         expect(prompt).toContain('FUNCTIONALITY');
     });
 
-    it('should instruct area descriptions to explain what the area DOES', () => {
+    it('should instruct domain descriptions to explain what the domain DOES', () => {
         const prompt = buildStructuralScanPrompt('/repo');
-        expect(prompt).toContain('what the area DOES');
+        expect(prompt).toContain('what the domain DOES');
     });
 
-    it('should focus on understanding what each area DOES', () => {
+    it('should focus on understanding what each domain DOES', () => {
         const prompt = buildStructuralScanPrompt('/repo');
-        expect(prompt).toContain('what each area DOES');
+        expect(prompt).toContain('what each domain DOES');
     });
 });
 
@@ -178,12 +178,12 @@ describe('buildFocusedDiscoveryPrompt', () => {
         expect(prompt).toContain('/repo');
     });
 
-    it('should include the area path', () => {
+    it('should include the domain path', () => {
         const prompt = buildFocusedDiscoveryPrompt('/repo', 'packages/core', 'Core package', 'proj');
         expect(prompt).toContain('packages/core');
     });
 
-    it('should include the area description', () => {
+    it('should include the domain description', () => {
         const prompt = buildFocusedDiscoveryPrompt('/repo', 'src/', 'Source code directory', 'proj');
         expect(prompt).toContain('Source code directory');
     });
@@ -193,14 +193,14 @@ describe('buildFocusedDiscoveryPrompt', () => {
         expect(prompt).toContain('my-awesome-project');
     });
 
-    it('should include glob pattern for the area', () => {
+    it('should include glob pattern for the domain', () => {
         const prompt = buildFocusedDiscoveryPrompt('/repo', 'packages/core', 'Core', 'proj');
         expect(prompt).toContain('glob("packages/core/**/*")');
     });
 
     it('should include module ID prefix convention', () => {
         const prompt = buildFocusedDiscoveryPrompt('/repo', 'src/', 'Source', 'proj');
-        expect(prompt).toContain('prefixed with the area name');
+        expect(prompt).toContain('prefixed with the domain name');
     });
 
     it('should include the JSON schema', () => {
@@ -232,7 +232,7 @@ describe('buildFocusedDiscoveryPrompt', () => {
         expect(prompt).toContain('features, capabilities, and behavioral patterns');
     });
 
-    it('should instruct to read docs within the area first', () => {
+    it('should instruct to read docs within the domain first', () => {
         const prompt = buildFocusedDiscoveryPrompt('/repo', 'packages/core', 'Core', 'proj');
         expect(prompt).toContain('Read any README, docs, or config files');
     });

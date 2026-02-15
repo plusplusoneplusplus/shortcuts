@@ -31,12 +31,12 @@ import {
     buildReducePromptTemplate,
     getReduceOutputFields,
     buildModuleSummaryForReduce,
-    buildAreaReducePromptTemplate,
-    getAreaReduceOutputFields,
+    buildDomainReducePromptTemplate,
+    getDomainReduceOutputFields,
     buildHierarchicalReducePromptTemplate,
 } from './reduce-prompts';
 import { normalizeModuleId } from '../schemas';
-import type { AreaInfo } from '../types';
+import type { DomainInfo } from '../types';
 
 // ============================================================================
 // Types
@@ -112,9 +112,9 @@ export function analysisToPromptItem(
 
 /**
  * Run the article executor to generate wiki articles.
- * Detects if `graph.areas` exists (large repo mode) and switches to hierarchical execution:
- * - If areas: group analyses by area → per-area map-reduce → project-level reduce
- * - If no areas: existing flat map-reduce (backward compat)
+ * Detects if `graph.domains` exists (large repo mode) and switches to hierarchical execution:
+ * - If domains: group analyses by domain → per-domain map-reduce → project-level reduce
+ * - If no domains: existing flat map-reduce (backward compat)
  *
  * @param options Executor options
  * @returns Generated articles
@@ -125,7 +125,7 @@ export async function runArticleExecutor(
     const { graph } = options;
 
     // Detect hierarchical mode
-    if (graph.areas && graph.areas.length > 0) {
+    if (graph.domains && graph.domains.length > 0) {
         return runHierarchicalArticleExecutor(options);
     }
 
@@ -133,7 +133,7 @@ export async function runArticleExecutor(
 }
 
 /**
- * Flat article executor — original behavior for small repos without areas.
+ * Flat article executor — original behavior for small repos without domains.
  */
 async function runFlatArticleExecutor(
     options: ArticleExecutorOptions
@@ -318,10 +318,10 @@ async function runFlatArticleExecutor(
 // Hierarchical Article Executor (Large Repos with Areas)
 // ============================================================================
 
-/** Result of grouping analyses by area. */
-export interface AreaGrouping {
-    moduleAreaMap: Map<string, string>;
-    analysesByArea: Map<string, ModuleAnalysis[]>;
+/** Result of grouping analyses by domain. */
+export interface DomainGrouping {
+    moduleDomainMap: Map<string, string>;
+    analysesByDomain: Map<string, ModuleAnalysis[]>;
     unassignedAnalyses: ModuleAnalysis[];
 }
 
@@ -331,52 +331,52 @@ interface ModuleMapResult {
     failedIds: Set<string>;
 }
 
-/** Result of a single area reduce phase. */
-interface AreaReduceResult {
+/** Result of a single domain reduce phase. */
+interface DomainReduceResult {
     articles: GeneratedArticle[];
-    areaSummary: { areaId: string; name: string; description: string; summary: string; moduleCount: number };
+    domainSummary: { domainId: string; name: string; description: string; summary: string; moduleCount: number };
 }
 
 /**
- * Group analyses by their area assignment.
- * Builds module→area mapping and buckets analyses accordingly.
+ * Group analyses by their domain assignment.
+ * Builds module→domain mapping and buckets analyses accordingly.
  */
-export function groupAnalysesByArea(
+export function groupAnalysesByDomain(
     analyses: ModuleAnalysis[],
-    areas: AreaInfo[]
-): AreaGrouping {
-    const moduleAreaMap = new Map<string, string>();
-    for (const area of areas) {
-        for (const moduleId of area.modules) {
-            moduleAreaMap.set(moduleId, area.id);
+    domains: DomainInfo[]
+): DomainGrouping {
+    const moduleDomainMap = new Map<string, string>();
+    for (const domain of domains) {
+        for (const moduleId of domain.modules) {
+            moduleDomainMap.set(moduleId, domain.id);
         }
     }
 
-    const analysesByArea = new Map<string, ModuleAnalysis[]>();
+    const analysesByDomain = new Map<string, ModuleAnalysis[]>();
     const unassignedAnalyses: ModuleAnalysis[] = [];
     for (const analysis of analyses) {
-        const areaId = moduleAreaMap.get(analysis.moduleId);
-        if (areaId) {
-            if (!analysesByArea.has(areaId)) {
-                analysesByArea.set(areaId, []);
+        const domainId = moduleDomainMap.get(analysis.moduleId);
+        if (domainId) {
+            if (!analysesByDomain.has(domainId)) {
+                analysesByDomain.set(domainId, []);
             }
-            analysesByArea.get(areaId)!.push(analysis);
+            analysesByDomain.get(domainId)!.push(analysis);
         } else {
             unassignedAnalyses.push(analysis);
         }
     }
 
-    return { moduleAreaMap, analysesByArea, unassignedAnalyses };
+    return { moduleDomainMap, analysesByDomain, unassignedAnalyses };
 }
 
 /**
- * Run the unified map phase across all modules, tagging results with their area.
+ * Run the unified map phase across all modules, tagging results with their domain.
  */
 async function runModuleMapPhase(
     options: ArticleExecutorOptions,
     analyses: ModuleAnalysis[],
     graph: ModuleGraph,
-    moduleAreaMap: Map<string, string>
+    moduleDomainMap: Map<string, string>
 ): Promise<ModuleMapResult> {
     const {
         aiInvoker,
@@ -424,7 +424,7 @@ async function runModuleMapPhase(
             const moduleId = result.item.moduleId;
             const moduleInfo = graph.modules.find(m => m.id === moduleId);
             const moduleName = moduleInfo?.name || moduleId;
-            const areaId = moduleAreaMap.get(moduleId);
+            const domainId = moduleDomainMap.get(moduleId);
 
             if (result.success && (result.rawText || result.rawResponse)) {
                 const content = result.rawText || result.rawResponse || '';
@@ -434,7 +434,7 @@ async function runModuleMapPhase(
                     title: moduleName,
                     content,
                     moduleId,
-                    areaId,
+                    domainId,
                 });
             } else {
                 failedIds.add(moduleId);
@@ -446,18 +446,18 @@ async function runModuleMapPhase(
 }
 
 /**
- * Run reduce for a single area: generates area index and architecture articles.
+ * Run reduce for a single domain: generates domain index and architecture articles.
  * Falls back to static pages on failure.
  */
-async function runAreaReducePhase(
-    area: AreaInfo,
-    areaAnalyses: ModuleAnalysis[],
+async function runDomainReducePhase(
+    domain: DomainInfo,
+    domainAnalyses: ModuleAnalysis[],
     graph: ModuleGraph,
     options: ArticleExecutorOptions
-): Promise<AreaReduceResult> {
+): Promise<DomainReduceResult> {
     const { aiInvoker, timeoutMs, model, isCancelled } = options;
 
-    const areaModuleSummaries = areaAnalyses.map(a => {
+    const domainModuleSummaries = domainAnalyses.map(a => {
         const mod = graph.modules.find(m => m.id === a.moduleId);
         return buildModuleSummaryForReduce(
             a.moduleId,
@@ -467,118 +467,118 @@ async function runAreaReducePhase(
         );
     });
 
-    const areaReduceInput = createPromptMapInput(
-        areaModuleSummaries.map((summary, i) => ({
+    const domainReduceInput = createPromptMapInput(
+        domainModuleSummaries.map((summary, i) => ({
             summary,
-            moduleId: areaAnalyses[i].moduleId,
+            moduleId: domainAnalyses[i].moduleId,
         })),
         '{{summary}}',
         []
     );
 
-    const areaReduceJob = createPromptMapJob({
+    const domainReduceJob = createPromptMapJob({
         aiInvoker,
         outputFormat: 'ai',
         model,
         maxConcurrency: 1,
-        aiReducePrompt: buildAreaReducePromptTemplate(),
-        aiReduceOutput: getAreaReduceOutputFields(),
+        aiReducePrompt: buildDomainReducePromptTemplate(),
+        aiReduceOutput: getDomainReduceOutputFields(),
         aiReduceModel: model,
         aiReduceParameters: {
-            areaName: area.name,
-            areaDescription: area.description,
-            areaPath: area.path,
+            domainName: domain.name,
+            domainDescription: domain.description,
+            domainPath: domain.path,
             projectName: graph.project.name,
         },
     });
 
-    const areaReduceExecutor = createExecutor({
+    const domainReduceExecutor = createExecutor({
         aiInvoker,
         maxConcurrency: 1,
         reduceMode: 'deterministic',
         showProgress: false,
         retryOnFailure: false,
         timeoutMs,
-        jobName: `Area Reduce: ${area.name}`,
+        jobName: `Domain Reduce: ${domain.name}`,
         isCancelled,
     });
 
     const fallbackSummary = {
-        areaId: area.id,
-        name: area.name,
-        description: area.description,
-        summary: area.description,
-        moduleCount: areaAnalyses.length,
+        domainId: domain.id,
+        name: domain.name,
+        description: domain.description,
+        summary: domain.description,
+        moduleCount: domainAnalyses.length,
     };
 
     try {
-        const areaResult = await areaReduceExecutor.execute(areaReduceJob, areaReduceInput);
-        const areaOutput = areaResult.output as PromptMapOutput | undefined;
-        const formattedOutput = areaOutput?.formattedOutput;
+        const domainResult = await domainReduceExecutor.execute(domainReduceJob, domainReduceInput);
+        const domainOutput = domainResult.output as PromptMapOutput | undefined;
+        const formattedOutput = domainOutput?.formattedOutput;
 
         if (formattedOutput) {
             const parsed = JSON.parse(formattedOutput) as Record<string, string>;
             const articles: GeneratedArticle[] = [];
 
-            let areaSummary = fallbackSummary;
+            let domainSummary = fallbackSummary;
             if (parsed.index) {
                 articles.push({
-                    type: 'area-index',
+                    type: 'domain-index',
                     slug: 'index',
-                    title: `${area.name} — Overview`,
+                    title: `${domain.name} — Overview`,
                     content: parsed.index,
-                    areaId: area.id,
+                    domainId: domain.id,
                 });
-                areaSummary = {
-                    areaId: area.id,
-                    name: area.name,
-                    description: area.description,
+                domainSummary = {
+                    domainId: domain.id,
+                    name: domain.name,
+                    description: domain.description,
                     summary: parsed.index.substring(0, 1000),
-                    moduleCount: areaAnalyses.length,
+                    moduleCount: domainAnalyses.length,
                 };
             }
 
             if (parsed.architecture) {
                 articles.push({
-                    type: 'area-architecture',
+                    type: 'domain-architecture',
                     slug: 'architecture',
-                    title: `${area.name} — Architecture`,
+                    title: `${domain.name} — Architecture`,
                     content: parsed.architecture,
-                    areaId: area.id,
+                    domainId: domain.id,
                 });
             }
 
-            return { articles, areaSummary };
+            return { articles, domainSummary };
         } else {
             return {
-                articles: generateStaticAreaPages(area, areaAnalyses, graph),
-                areaSummary: fallbackSummary,
+                articles: generateStaticDomainPages(domain, domainAnalyses, graph),
+                domainSummary: fallbackSummary,
             };
         }
     } catch {
         return {
-            articles: generateStaticAreaPages(area, areaAnalyses, graph),
-            areaSummary: fallbackSummary,
+            articles: generateStaticDomainPages(domain, domainAnalyses, graph),
+            domainSummary: fallbackSummary,
         };
     }
 }
 
 /**
- * Run project-level reduce across all area summaries.
+ * Run project-level reduce across all domain summaries.
  * Generates top-level index, architecture, and getting-started articles.
  * Falls back to static pages on failure.
  */
 async function runProjectReducePhase(
-    areaSummaries: Array<{ areaId: string; name: string; description: string; summary: string; moduleCount: number }>,
-    areas: AreaInfo[],
+    domainSummaries: Array<{ domainId: string; name: string; description: string; summary: string; moduleCount: number }>,
+    domains: DomainInfo[],
     graph: ModuleGraph,
     options: ArticleExecutorOptions
 ): Promise<GeneratedArticle[]> {
     const { aiInvoker, timeoutMs, model, isCancelled } = options;
 
-    const projectReduceItems = areaSummaries.map(s => ({
-        areaId: s.areaId,
-        areaName: s.name,
+    const projectReduceItems = domainSummaries.map(s => ({
+        domainId: s.domainId,
+        domainName: s.name,
         summary: JSON.stringify(s),
     }));
 
@@ -653,18 +653,18 @@ async function runProjectReducePhase(
 
             return articles;
         } else {
-            return generateStaticHierarchicalIndexPages(graph, areas, areaSummaries);
+            return generateStaticHierarchicalIndexPages(graph, domains, domainSummaries);
         }
     } catch {
-        return generateStaticHierarchicalIndexPages(graph, areas, areaSummaries);
+        return generateStaticHierarchicalIndexPages(graph, domains, domainSummaries);
     }
 }
 
 /**
- * Hierarchical article executor for large repos with areas.
+ * Hierarchical article executor for large repos with domains.
  * Orchestrates a 3-step pipeline:
- *   1. Map: Generate per-module articles (grouped by area)
- *   2. Per-area reduce: Generate area index + area architecture
+ *   1. Map: Generate per-module articles (grouped by domain)
+ *   2. Per-domain reduce: Generate domain index + domain architecture
  *   3. Project-level reduce: Generate project index + architecture + getting-started
  */
 async function runHierarchicalArticleExecutor(
@@ -677,27 +677,27 @@ async function runHierarchicalArticleExecutor(
         return { articles: [], failedModuleIds: [], duration: 0 };
     }
 
-    const areas = graph.areas!;
+    const domains = graph.domains!;
 
-    // Step 1: Group analyses by area
-    const { moduleAreaMap, analysesByArea } = groupAnalysesByArea(analyses, areas);
+    // Step 1: Group analyses by domain
+    const { moduleDomainMap, analysesByDomain } = groupAnalysesByDomain(analyses, domains);
 
     // Step 2: Generate per-module articles
-    const mapResult = await runModuleMapPhase(options, analyses, graph, moduleAreaMap);
+    const mapResult = await runModuleMapPhase(options, analyses, graph, moduleDomainMap);
 
-    // Step 3: Per-area reduce
-    const areaSummaries: Array<{ areaId: string; name: string; description: string; summary: string; moduleCount: number }> = [];
-    for (const area of areas) {
-        const areaAnalyses = analysesByArea.get(area.id) || [];
-        if (areaAnalyses.length === 0) { continue; }
+    // Step 3: Per-domain reduce
+    const domainSummaries: Array<{ domainId: string; name: string; description: string; summary: string; moduleCount: number }> = [];
+    for (const domain of domains) {
+        const domainAnalyses = analysesByDomain.get(domain.id) || [];
+        if (domainAnalyses.length === 0) { continue; }
 
-        const result = await runAreaReducePhase(area, areaAnalyses, graph, options);
+        const result = await runDomainReducePhase(domain, domainAnalyses, graph, options);
         mapResult.articles.push(...result.articles);
-        areaSummaries.push(result.areaSummary);
+        domainSummaries.push(result.domainSummary);
     }
 
     // Step 4: Project-level reduce
-    const projectArticles = await runProjectReducePhase(areaSummaries, areas, graph, options);
+    const projectArticles = await runProjectReducePhase(domainSummaries, domains, graph, options);
     mapResult.articles.push(...projectArticles);
 
     return {
@@ -712,10 +712,10 @@ async function runHierarchicalArticleExecutor(
 // ============================================================================
 
 /**
- * Generate static area-level pages when area AI reduce fails.
+ * Generate static domain-level pages when domain AI reduce fails.
  */
-export function generateStaticAreaPages(
-    area: AreaInfo,
+export function generateStaticDomainPages(
+    domain: DomainInfo,
     analyses: ModuleAnalysis[],
     graph: ModuleGraph
 ): GeneratedArticle[] {
@@ -723,9 +723,9 @@ export function generateStaticAreaPages(
 
     // Area index
     const indexLines: string[] = [
-        `# ${area.name}`,
+        `# ${domain.name}`,
         '',
-        area.description || '',
+        domain.description || '',
         '',
         '## Modules',
         '',
@@ -739,24 +739,24 @@ export function generateStaticAreaPages(
     }
 
     articles.push({
-        type: 'area-index',
+        type: 'domain-index',
         slug: 'index',
-        title: `${area.name} — Overview`,
+        title: `${domain.name} — Overview`,
         content: indexLines.join('\n'),
-        areaId: area.id,
+        domainId: domain.id,
     });
 
     // Area architecture placeholder
     articles.push({
-        type: 'area-architecture',
+        type: 'domain-architecture',
         slug: 'architecture',
-        title: `${area.name} — Architecture`,
+        title: `${domain.name} — Architecture`,
         content: [
-            `# ${area.name} — Architecture`,
+            `# ${domain.name} — Architecture`,
             '',
-            area.description || 'No architecture description available.',
+            domain.description || 'No architecture description available.',
         ].join('\n'),
-        areaId: area.id,
+        domainId: domain.id,
     });
 
     return articles;
@@ -767,8 +767,8 @@ export function generateStaticAreaPages(
  */
 export function generateStaticHierarchicalIndexPages(
     graph: ModuleGraph,
-    areas: AreaInfo[],
-    areaSummaries: Array<{ areaId: string; name: string; description: string; moduleCount: number }>
+    domains: DomainInfo[],
+    domainSummaries: Array<{ domainId: string; name: string; description: string; moduleCount: number }>
 ): GeneratedArticle[] {
     const articles: GeneratedArticle[] = [];
 
@@ -778,12 +778,12 @@ export function generateStaticHierarchicalIndexPages(
         '',
         graph.project.description || '',
         '',
-        '## Areas',
+        '## Domains',
         '',
     ];
 
-    for (const summary of areaSummaries) {
-        indexLines.push(`- [${summary.name}](./areas/${summary.areaId}/index.md) — ${summary.description} (${summary.moduleCount} modules)`);
+    for (const summary of domainSummaries) {
+        indexLines.push(`- [${summary.name}](./domains/${summary.domainId}/index.md) — ${summary.description} (${summary.moduleCount} modules)`);
     }
 
     articles.push({

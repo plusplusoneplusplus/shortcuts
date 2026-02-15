@@ -2,7 +2,7 @@
  * Large Repo Handler Tests
  *
  * Tests for multi-round discovery logic: file count threshold,
- * structural scanning, per-area drill-down, and sub-graph merging.
+ * structural scanning, per-domain drill-down, and sub-graph merging.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -64,7 +64,7 @@ describe('Large Repo Handler', () => {
 
         const defaultScanResult: StructuralScanResult = {
             fileCount: 5000,
-            areas: [],
+            domains: [],
             projectInfo: {},
         };
 
@@ -140,7 +140,7 @@ describe('Large Repo Handler', () => {
 
             const scanWithInfo: StructuralScanResult = {
                 fileCount: 5000,
-                areas: [],
+                domains: [],
                 projectInfo: {
                     name: 'from-scan',
                     language: 'Rust',
@@ -160,7 +160,7 @@ describe('Large Repo Handler', () => {
 
             const scanPartial: StructuralScanResult = {
                 fileCount: 5000,
-                areas: [],
+                domains: [],
                 projectInfo: { name: 'from-scan' },
             };
 

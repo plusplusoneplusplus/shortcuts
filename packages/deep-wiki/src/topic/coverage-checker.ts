@@ -242,11 +242,11 @@ function resolveModuleArticlePath(
 ): string {
     const mod = graph.modules.find(m => m.id === moduleId);
 
-    // Hierarchical layout with areas
-    if (mod?.area && graph.areas) {
-        const area = graph.areas.find(a => a.modules.includes(moduleId));
+    // Hierarchical layout with domains
+    if (mod?.domain && graph.domains) {
+        const area = graph.domains.find(a => a.modules.includes(moduleId));
         if (area) {
-            return `areas/${area.id}/modules/${moduleId}.md`;
+            return `domains/${area.id}/modules/${moduleId}.md`;
         }
     }
 

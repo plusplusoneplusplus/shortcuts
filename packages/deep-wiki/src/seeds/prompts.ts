@@ -39,7 +39,7 @@ Follow these steps in order — understanding PURPOSE before STRUCTURE is critic
    - Java/Kotlin: pom.xml, build.gradle
    - General: Makefile, Dockerfile, .github/workflows/
 3. **Entry points**: Read main entry point files (index.ts, main.go, main.rs, app.py) to understand what the project exposes and how features are wired together.
-4. **Directory structure**: Run glob("*") to see the overall layout, then examine top-level directories to confirm feature areas you identified from docs.
+4. **Directory structure**: Run glob("*") to see the overall layout, then examine top-level directories to confirm feature domains you identified from docs.
 5. **CI/CD configs**: Check .github/workflows/, .gitlab-ci.yml, or similar for build/test patterns.
 6. **Config files**: Look for configuration directories (config/, conf/, etc.) that might indicate separate concerns.
 

@@ -305,8 +305,8 @@ export async function executeGenerate(
         process.stderr.write('\n');
         printHeader('Generation Summary');
         printKeyValue('Modules Discovered', String(graph.modules.length));
-        if (graph.areas && graph.areas.length > 0) {
-            printKeyValue('Areas', String(graph.areas.length));
+        if (graph.domains && graph.domains.length > 0) {
+            printKeyValue('Areas', String(graph.domains.length));
             printKeyValue('Layout', 'Hierarchical (3-level)');
         }
         printKeyValue('Modules Analyzed', String(analyses.length));

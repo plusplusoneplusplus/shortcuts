@@ -733,29 +733,29 @@ describe('readMarkdownFiles', () => {
     it('should read hierarchical area layout', () => {
         const graph: ModuleGraph = {
             ...createTestModuleGraph(),
-            areas: [
+            domains: [
                 { id: 'core', name: 'Core', path: 'src/core/', description: 'Core modules', modules: ['auth'] },
             ],
         };
 
         // Set up area structure
         const wikiDir = path.join(tempDir, 'hierarchical-wiki');
-        const areaModulesDir = path.join(wikiDir, 'areas', 'core', 'modules');
-        fs.mkdirSync(areaModulesDir, { recursive: true });
+        const domainModulesDir = path.join(wikiDir, 'domains', 'core', 'modules');
+        fs.mkdirSync(domainModulesDir, { recursive: true });
         fs.writeFileSync(
             path.join(wikiDir, 'module-graph.json'),
             JSON.stringify(graph),
             'utf-8'
         );
-        fs.writeFileSync(path.join(areaModulesDir, 'auth.md'), '# Area Auth', 'utf-8');
-        fs.writeFileSync(path.join(wikiDir, 'areas', 'core', 'index.md'), '# Core Index', 'utf-8');
-        fs.writeFileSync(path.join(wikiDir, 'areas', 'core', 'architecture.md'), '# Core Arch', 'utf-8');
+        fs.writeFileSync(path.join(domainModulesDir, 'auth.md'), '# Area Auth', 'utf-8');
+        fs.writeFileSync(path.join(wikiDir, 'domains', 'core', 'index.md'), '# Core Index', 'utf-8');
+        fs.writeFileSync(path.join(wikiDir, 'domains', 'core', 'architecture.md'), '# Core Arch', 'utf-8');
 
         const result = readMarkdownFiles(wikiDir, graph);
 
         expect(result['auth']).toContain('# Area Auth');
-        expect(result['__area_core_index']).toContain('# Core Index');
-        expect(result['__area_core_architecture']).toContain('# Core Arch');
+        expect(result['__domain_core_index']).toContain('# Core Index');
+        expect(result['__domain_core_architecture']).toContain('# Core Arch');
     });
 
     it('should ignore non-md files in modules directory', () => {
@@ -1051,7 +1051,7 @@ describe('generateWebsite', () => {
 // ============================================================================
 
 describe('generateWebsite — hierarchical layout', () => {
-    it('should handle areas with module files', () => {
+    it('should handle domains with module files', () => {
         const graph: ModuleGraph = {
             project: {
                 name: 'LargeProject',
@@ -1076,21 +1076,21 @@ describe('generateWebsite — hierarchical layout', () => {
             ],
             categories: [{ name: 'core', description: 'Core' }],
             architectureNotes: '',
-            areas: [
+            domains: [
                 { id: 'core', name: 'Core', path: 'src/core/', description: 'Core area', modules: ['core-auth'] },
             ],
         };
 
         const wikiDir = path.join(tempDir, 'hierarchical');
-        const areaModulesDir = path.join(wikiDir, 'areas', 'core', 'modules');
-        fs.mkdirSync(areaModulesDir, { recursive: true });
+        const domainModulesDir = path.join(wikiDir, 'domains', 'core', 'modules');
+        fs.mkdirSync(domainModulesDir, { recursive: true });
         fs.writeFileSync(
             path.join(wikiDir, 'module-graph.json'),
             JSON.stringify(graph),
             'utf-8'
         );
         fs.writeFileSync(
-            path.join(areaModulesDir, 'core-auth.md'),
+            path.join(domainModulesDir, 'core-auth.md'),
             '# Core Auth Module',
             'utf-8'
         );
@@ -1418,10 +1418,10 @@ describe('generateHtmlTemplate — browser history management', () => {
 // Area-Based Sidebar (DeepWiki-style hierarchy)
 // ============================================================================
 
-describe('generateHtmlTemplate — area-based sidebar', () => {
-    it('should include buildAreaSidebar function', () => {
+describe('generateHtmlTemplate — domain-based sidebar', () => {
+    it('should include buildDomainSidebar function', () => {
         const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
-        expect(html).toContain('function buildAreaSidebar');
+        expect(html).toContain('function buildDomainSidebar');
     });
 
     it('should include buildCategorySidebar function', () => {
@@ -1429,28 +1429,28 @@ describe('generateHtmlTemplate — area-based sidebar', () => {
         expect(html).toContain('function buildCategorySidebar');
     });
 
-    it('should detect areas via moduleGraph.areas', () => {
+    it('should detect domains via moduleGraph.domains', () => {
         const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
-        expect(html).toContain('moduleGraph.areas && moduleGraph.areas.length > 0');
+        expect(html).toContain('moduleGraph.domains && moduleGraph.domains.length > 0');
     });
 
     it('should include nav-area CSS classes', () => {
         const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
-        expect(html).toContain('.nav-area-item');
-        expect(html).toContain('.nav-area-children');
-        expect(html).toContain('.nav-area-module');
-        expect(html).toContain('.nav-area-group');
+        expect(html).toContain('.nav-domain-item');
+        expect(html).toContain('.nav-domain-children');
+        expect(html).toContain('.nav-domain-module');
+        expect(html).toContain('.nav-domain-group');
     });
 
     it('should include area active styles', () => {
         const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
-        expect(html).toContain('.nav-area-item.active');
-        expect(html).toContain('.nav-area-module.active');
+        expect(html).toContain('.nav-domain-item.active');
+        expect(html).toContain('.nav-domain-module.active');
     });
 
-    it('should handle module assignment via mod.area field', () => {
+    it('should handle module assignment via mod.domain field', () => {
         const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
-        expect(html).toContain('mod.area');
+        expect(html).toContain('mod.domain');
     });
 
     it('should fall back to area.modules list for assignment', () => {
@@ -1463,36 +1463,36 @@ describe('generateHtmlTemplate — area-based sidebar', () => {
         expect(html).toContain("'__other'");
     });
 
-    it('should include data-area-id attribute on area items', () => {
+    it('should include data-domain-id attribute on area items', () => {
         const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
-        expect(html).toContain('data-area-id');
+        expect(html).toContain('data-domain-id');
     });
 
     it('should set active state on area modules via setActive', () => {
         const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
-        expect(html).toContain('.nav-area-module');
-        expect(html).toContain("'.nav-area-module[data-id=");
+        expect(html).toContain('.nav-domain-module');
+        expect(html).toContain("'.nav-domain-module[data-id=");
     });
 
-    it('should include area-based sidebar in all themes', () => {
+    it('should include domain-based sidebar in all themes', () => {
         const themes: Array<'auto' | 'dark' | 'light'> = ['auto', 'dark', 'light'];
         for (const theme of themes) {
             const html = generateHtmlTemplate({ theme, title: 'Test', enableSearch: true });
-            expect(html).toContain('buildAreaSidebar');
+            expect(html).toContain('buildDomainSidebar');
             expect(html).toContain('buildCategorySidebar');
-            expect(html).toContain('.nav-area-item');
+            expect(html).toContain('.nav-domain-item');
         }
     });
 
-    it('should include area-based search filtering', () => {
+    it('should include domain-based search filtering', () => {
         const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
-        expect(html).toContain('.nav-area-module[data-id]');
-        expect(html).toContain('.nav-area-group');
+        expect(html).toContain('.nav-domain-module[data-id]');
+        expect(html).toContain('.nav-domain-group');
     });
 
     it('should group modules by area in showHome overview', () => {
         const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
-        expect(html).toContain('var hasAreas = moduleGraph.areas && moduleGraph.areas.length > 0');
+        expect(html).toContain('var hasDomains = moduleGraph.domains && moduleGraph.domains.length > 0');
     });
 
     it('should show area description in home overview', () => {
@@ -1501,7 +1501,7 @@ describe('generateHtmlTemplate — area-based sidebar', () => {
         expect(html).toContain('area.name');
     });
 
-    it('should fall back to All Modules when no areas present', () => {
+    it('should fall back to All Modules when no domains present', () => {
         const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
         expect(html).toContain('All Modules');
     });
@@ -1512,22 +1512,22 @@ describe('generateHtmlTemplate — area-based sidebar', () => {
         expect(html).toContain('unassigned');
     });
 
-    it('area-based sidebar should also work in generated website', () => {
+    it('domain-based sidebar should also work in generated website', () => {
         const graph = createTestModuleGraph();
         const wikiDir = setupWikiDir(graph);
         generateWebsite(wikiDir);
 
         const html = fs.readFileSync(path.join(wikiDir, 'index.html'), 'utf-8');
-        expect(html).toContain('buildAreaSidebar');
+        expect(html).toContain('buildDomainSidebar');
         expect(html).toContain('buildCategorySidebar');
-        expect(html).toContain('.nav-area-item');
-        expect(html).toContain('.nav-area-module');
+        expect(html).toContain('.nav-domain-item');
+        expect(html).toContain('.nav-domain-module');
     });
 
-    it('area-based sidebar should work with areas in module graph', () => {
+    it('domain-based sidebar should work with domains in module graph', () => {
         const graph = createTestModuleGraph();
-        // Add areas to the test graph
-        graph.areas = [
+        // Add domains to the test graph
+        graph.domains = [
             {
                 id: 'core-system',
                 name: 'Core System',
@@ -1552,14 +1552,14 @@ describe('generateHtmlTemplate — area-based sidebar', () => {
 
         const html = fs.readFileSync(path.join(wikiDir, 'index.html'), 'utf-8');
         // Should still include all area infrastructure
-        expect(html).toContain('buildAreaSidebar');
-        expect(html).toContain('.nav-area-item');
-        expect(html).toContain('.nav-area-children');
+        expect(html).toContain('buildDomainSidebar');
+        expect(html).toContain('.nav-domain-item');
+        expect(html).toContain('.nav-domain-children');
     });
 
     it('area children should have indented padding', () => {
         const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
-        expect(html).toContain('.nav-area-children { padding-left: 8px; }');
+        expect(html).toContain('.nav-domain-children { padding-left: 8px; }');
     });
 });
 
@@ -1836,7 +1836,7 @@ describe('generateWebsite — topic integration', () => {
         ];
         const wikiDir = setupWikiDir(graph);
 
-        // Create topic area files
+        // Create topic domain files
         const topicDir = path.join(wikiDir, 'topics', 'compaction');
         fs.mkdirSync(topicDir, { recursive: true });
         fs.writeFileSync(path.join(topicDir, 'index.md'), '# Compaction Overview\n\n```mermaid\ngraph TD\n  A-->B\n```', 'utf-8');

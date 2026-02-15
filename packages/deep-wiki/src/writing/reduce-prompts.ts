@@ -130,38 +130,38 @@ export function buildModuleSummaryForReduce(
 }
 
 // ============================================================================
-// Area-Level Reduce Prompt (Hierarchical — Large Repos Only)
+// Domain-Level Reduce Prompt (Hierarchical — Large Repos Only)
 // ============================================================================
 
 /**
- * Build the reduce prompt for generating area-level index and architecture pages.
- * Used in the 2-tier reduce for large repos: per-area reduce first, then project-level.
+ * Build the reduce prompt for generating domain-level index and architecture pages.
+ * Used in the 2-tier reduce for large repos: per-domain reduce first, then project-level.
  *
  * Template variables:
- * - {{RESULTS}}: JSON array of module summaries for this area only
- * - {{COUNT}}: Number of modules in this area
+ * - {{RESULTS}}: JSON array of module summaries for this domain only
+ * - {{COUNT}}: Number of modules in this domain
  * - {{SUCCESS_COUNT}}: Successfully analyzed modules
  * - {{FAILURE_COUNT}}: Failed modules
- * - {{areaName}}: Area name
- * - {{areaDescription}}: Area description
- * - {{areaPath}}: Area path
+ * - {{domainName}}: Domain name
+ * - {{domainDescription}}: Domain description
+ * - {{domainPath}}: Domain path
  * - {{projectName}}: Project name
  *
  * @returns Reduce prompt template string
  */
-export function buildAreaReducePromptTemplate(): string {
-    return `You are generating overview pages for the "{{areaName}}" area of a codebase wiki.
+export function buildDomainReducePromptTemplate(): string {
+    return `You are generating overview pages for the "{{domainName}}" domain of a codebase wiki.
 
-## Area Information
+## Domain Information
 
-- **Area:** {{areaName}}
-- **Path:** {{areaPath}}
-- **Description:** {{areaDescription}}
+- **Domain:** {{domainName}}
+- **Path:** {{domainPath}}
+- **Description:** {{domainDescription}}
 - **Project:** {{projectName}}
 
 ## Module Articles
 
-The following {{COUNT}} modules in this area have been analyzed and documented:
+The following {{COUNT}} modules in this domain have been analyzed and documented:
 
 {{RESULTS}}
 
@@ -169,26 +169,26 @@ The following {{COUNT}} modules in this area have been analyzed and documented:
 
 Generate TWO pages as a single JSON object. Each page should be a complete markdown document.
 
-### 1. index.md (Area Index)
+### 1. index.md (Domain Index)
 
-Create an area-level index page following DeepWiki structure:
-- Area name (level-1 heading) and a short overview summary paragraph (2-3 sentences)
+Create an domain-level index page following DeepWiki structure:
+- Domain name (level-1 heading) and a short overview summary paragraph (2-3 sentences)
 - **Table of Contents** with anchor links to every section on the page
 - Module listing with brief (1-2 sentence) summary for each module
 - Links to module articles using: [Module Name](./modules/module-id.md)
-- Overview of how modules in this area interact
+- Overview of how modules in this domain interact
 
-### 2. architecture.md (Area Architecture)
+### 2. architecture.md (Domain Architecture)
 
-Create an area-level architecture page following DeepWiki structure:
+Create an domain-level architecture page following DeepWiki structure:
 - Title (level-1 heading) and short overview summary
 - **Table of Contents** with anchor links to all sections
-- Mermaid component diagram showing module relationships within this area
-- Description of the area's internal architecture
-- Key design decisions specific to this area
-- Data flow between modules in this area
-- External dependencies (modules from other areas this area depends on)
-- **Sources** section at the end listing the key source files in this area
+- Mermaid component diagram showing module relationships within this domain
+- Description of the domain's internal architecture
+- Key design decisions specific to this domain
+- Data flow between modules in this domain
+- External dependencies (modules from other domains this domain depends on)
+- **Sources** section at the end listing the key source files in this domain
 
 ## Output Format
 
@@ -201,8 +201,8 @@ Return a JSON object with exactly two fields:
 \`\`\`
 
 IMPORTANT:
-- All links to modules WITHIN this area must use: [Module Name](./modules/module-id.md)
-- Links to modules in OTHER areas must use: [Module Name](../../other-area-id/modules/module-id.md)
+- All links to modules WITHIN this domain must use: [Module Name](./modules/module-id.md)
+- Links to modules in OTHER domains must use: [Module Name](../../other-domain-id/modules/module-id.md)
 - Mermaid diagrams should use \`\`\`mermaid code blocks
 - Each page should be a complete, standalone markdown document
 - Use proper heading hierarchy starting with # for each page
@@ -214,9 +214,9 @@ Do NOT write, create, or save any files to disk. Return ONLY the JSON object in 
 }
 
 /**
- * Get the output fields for the area-level reduce phase.
+ * Get the output fields for the domain-level reduce phase.
  */
-export function getAreaReduceOutputFields(): string[] {
+export function getDomainReduceOutputFields(): string[] {
     return ['index', 'architecture'];
 }
 
@@ -225,14 +225,14 @@ export function getAreaReduceOutputFields(): string[] {
 // ============================================================================
 
 /**
- * Build the project-level reduce prompt for large repos with area hierarchy.
- * Receives area summaries instead of raw module summaries.
+ * Build the project-level reduce prompt for large repos with domain hierarchy.
+ * Receives domain summaries instead of raw module summaries.
  *
  * Template variables:
- * - {{RESULTS}}: JSON array of area summaries
- * - {{COUNT}}: Number of areas
- * - {{SUCCESS_COUNT}}: Successfully processed areas
- * - {{FAILURE_COUNT}}: Failed areas
+ * - {{RESULTS}}: JSON array of domain summaries
+ * - {{COUNT}}: Number of domains
+ * - {{SUCCESS_COUNT}}: Successfully processed domains
+ * - {{FAILURE_COUNT}}: Failed domains
  * - {{projectName}}: Project name
  * - {{projectDescription}}: Project description
  * - {{buildSystem}}: Build system
@@ -242,7 +242,7 @@ export function getAreaReduceOutputFields(): string[] {
  */
 export function buildHierarchicalReducePromptTemplate(): string {
     return `You are generating project-level overview pages for a large codebase wiki.
-This project uses a hierarchical structure organized by areas.
+This project uses a hierarchical structure organized by domains.
 
 ## Project Information
 
@@ -251,9 +251,9 @@ This project uses a hierarchical structure organized by areas.
 - **Language:** {{language}}
 - **Build System:** {{buildSystem}}
 
-## Areas
+## Domains
 
-The project is organized into {{COUNT}} top-level areas:
+The project is organized into {{COUNT}} top-level domains:
 
 {{RESULTS}}
 
@@ -266,7 +266,7 @@ Generate THREE pages as a single JSON object. Each page should be a complete mar
 Create a project-level index page following DeepWiki structure:
 - Project title (level-1 heading) and a short overview summary paragraph (2-3 sentences)
 - **Table of Contents** with anchor links to every section on the page
-- Table of areas with brief descriptions and links: [Area Name](./areas/area-id/index.md)
+- Table of domains with brief descriptions and links: [Domain Name](./domains/domain-id/index.md)
 - Quick start section pointing to getting-started.md
 - High-level project structure overview
 
@@ -276,9 +276,9 @@ Create a project-level architecture overview following DeepWiki structure:
 - Title (level-1 heading) and short overview summary
 - **Table of Contents** with anchor links to all sections
 - System Overview section describing the high-level architecture
-- High-level Mermaid diagram showing area relationships
+- High-level Mermaid diagram showing domain relationships
 - Architectural Layers section describing tiers and boundaries
-- How areas interact with each other
+- How domains interact with each other
 - Key design decisions and patterns at the project level
 - **Sources** section at the end referencing key project-level config/entry files
 
@@ -291,8 +291,8 @@ Create a getting started guide following DeepWiki structure:
 - Installation / Setup section with step-by-step instructions
 - Build Instructions section
 - Running the Project section
-- Key entry points organized by area
-- Links to relevant area indexes
+- Key entry points organized by domain
+- Links to relevant domain indexes
 - **Sources** section at the end referencing relevant config/setup files
 
 ## Output Format
@@ -307,9 +307,9 @@ Return a JSON object with exactly three fields:
 \`\`\`
 
 IMPORTANT:
-- Links to areas must use: [Area Name](./areas/area-id/index.md)
-- Links to area architecture: [Area Architecture](./areas/area-id/architecture.md)
-- Links to specific modules: [Module Name](./areas/area-id/modules/module-id.md)
+- Links to domains must use: [Domain Name](./domains/domain-id/index.md)
+- Links to area architecture: [Domain Architecture](./domains/domain-id/architecture.md)
+- Links to specific modules: [Module Name](./domains/domain-id/modules/module-id.md)
 - Mermaid diagrams should use \`\`\`mermaid code blocks
 - Each page should be a complete, standalone markdown document
 - Use proper heading hierarchy starting with # for each page

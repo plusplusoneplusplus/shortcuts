@@ -9,7 +9,7 @@
  */
 
 import { extractJSON } from '@plusplusoneplusplus/pipeline-core';
-import type { ModuleGraph, ModuleInfo, ProjectInfo, CategoryInfo, TopLevelArea, StructuralScanResult } from '../types';
+import type { ModuleGraph, ModuleInfo, ProjectInfo, CategoryInfo, TopLevelDomain, StructuralScanResult } from '../types';
 import {
     MODULE_GRAPH_REQUIRED_FIELDS,
     PROJECT_INFO_REQUIRED_FIELDS,
@@ -87,7 +87,7 @@ export function parseStructuralScanResponse(response: string): StructuralScanRes
 
     return {
         fileCount: typeof raw.fileCount === 'number' ? raw.fileCount : 0,
-        areas: parseAreas(raw.areas),
+        domains: parseDomains(raw.domains),
         projectInfo: parsePartialProjectInfo(raw.projectInfo),
     };
 }
@@ -303,24 +303,24 @@ function parseCategories(raw: unknown, warnings: string[]): CategoryInfo[] {
 }
 
 /**
- * Parse areas from structural scan response.
+ * Parse domains from structural scan response.
  */
-function parseAreas(raw: unknown): TopLevelArea[] {
+function parseDomains(raw: unknown): TopLevelDomain[] {
     if (!Array.isArray(raw)) { return []; }
 
-    const areas: TopLevelArea[] = [];
+    const domains: TopLevelDomain[] = [];
     for (const item of raw) {
         if (typeof item !== 'object' || item === null) { continue; }
         const obj = item as Record<string, unknown>;
 
-        areas.push({
+        domains.push({
             name: String(obj.name || ''),
             path: normalizePath(String(obj.path || '')),
             description: String(obj.description || ''),
         });
     }
 
-    return areas;
+    return domains;
 }
 
 /**

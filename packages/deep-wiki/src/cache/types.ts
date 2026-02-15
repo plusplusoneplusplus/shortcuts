@@ -149,12 +149,12 @@ export interface CachedStructuralScan {
 }
 
 /**
- * A cached area sub-graph (large repos).
+ * A cached domain sub-graph (large repos).
  */
-export interface CachedAreaGraph {
-    /** The area sub-graph */
+export interface CachedDomainGraph {
+    /** The domain sub-graph */
     graph: ModuleGraph;
-    /** Git hash when this area was discovered */
+    /** Git hash when this domain was discovered */
     gitHash: string;
     /** Timestamp */
     timestamp: number;

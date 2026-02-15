@@ -8,7 +8,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { ModuleAnalysis, ModuleGraph, ModuleInfo, AreaInfo } from '../types';
+import type { ModuleAnalysis, ModuleGraph, ModuleInfo, DomainInfo } from '../types';
 
 // ============================================================================
 // Simplified Graph for Cross-Linking
@@ -109,8 +109,8 @@ export function buildModuleArticlePrompt(
     // Find module info for additional context
     const moduleInfo = graph.modules.find(m => m.id === analysis.moduleId);
     const moduleName = moduleInfo?.name || analysis.moduleId;
-    const areaId = moduleInfo?.area;
-    const crossLinkRules = buildCrossLinkRules(areaId);
+    const domainId = moduleInfo?.domain;
+    const crossLinkRules = buildCrossLinkRules(domainId);
 
     return `You are writing a wiki article for the "${moduleName}" module.
 
@@ -159,13 +159,13 @@ Do NOT write, create, or save any files to disk. Return ONLY the markdown conten
 }
 
 /**
- * Build cross-linking rules based on whether areas exist (hierarchical layout).
+ * Build cross-linking rules based on whether domains exist (hierarchical layout).
  *
- * @param areaId - The area this module belongs to (undefined for flat layout)
+ * @param domainId - The area this module belongs to (undefined for flat layout)
  * @returns Cross-linking rules string for prompt
  */
-export function buildCrossLinkRules(areaId?: string): string {
-    if (!areaId) {
+export function buildCrossLinkRules(domainId?: string): string {
+    if (!domainId) {
         // Flat layout (small repos)
         return `## Cross-Linking Rules
 
@@ -175,15 +175,15 @@ export function buildCrossLinkRules(areaId?: string): string {
 - Only link to modules that actually exist in the graph`;
     }
 
-    // Hierarchical layout (large repos with areas)
+    // Hierarchical layout (large repos with domains)
     return `## Cross-Linking Rules
 
-- This article is located at: areas/${areaId}/modules/<this-module>.md
-- Link to modules in the SAME area: [Module Name](./module-id.md) (they are sibling files)
-- Link to modules in OTHER areas: [Module Name](../../other-area-id/modules/module-id.md)
-- Link to this area's index: [Area Index](../index.md)
+- This article is located at: domains/${domainId}/modules/<this-module>.md
+- Link to modules in the SAME domain: [Module Name](./module-id.md) (they are sibling files)
+- Link to modules in OTHER domains: [Module Name](../../other-domain-id/modules/module-id.md)
+- Link to this domain's index: [Domain Index](../index.md)
 - Link to the project index: [Project Index](../../../index.md)
-- Use the module graph above to find valid module IDs and their areas for links
+- Use the module graph above to find valid module IDs and their domains for links
 - Only link to modules that actually exist in the graph`;
 }
 
@@ -192,12 +192,12 @@ export function buildCrossLinkRules(areaId?: string): string {
  * Uses {{variable}} placeholders for template substitution.
  *
  * @param depth Article depth
- * @param areaId Optional area ID for hierarchical cross-linking
+ * @param domainId Optional domain ID for hierarchical cross-linking
  * @returns Prompt template string
  */
-export function buildModuleArticlePromptTemplate(depth: 'shallow' | 'normal' | 'deep', areaId?: string): string {
+export function buildModuleArticlePromptTemplate(depth: 'shallow' | 'normal' | 'deep', domainId?: string): string {
     const styleGuide = getArticleStyleGuide(depth);
-    const crossLinkRules = buildCrossLinkRules(areaId);
+    const crossLinkRules = buildCrossLinkRules(domainId);
 
     return `You are writing a wiki article for the "{{moduleName}}" module.
 

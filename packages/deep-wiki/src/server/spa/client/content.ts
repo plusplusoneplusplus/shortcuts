@@ -41,14 +41,14 @@ export function showHome(skipHistory?: boolean): void {
         '<div class="stat-card"><h3>Build System</h3><div class="value small">' + escapeHtml(stats.buildSystem) + '</div></div>' +
         '</div>';
 
-    const hasAreas = moduleGraph.areas && moduleGraph.areas.length > 0;
-    if (hasAreas) {
-        moduleGraph.areas.forEach(function (area: any) {
-            const areaModules = moduleGraph.modules.filter(function (mod: any) {
-                if (mod.area === area.id) return true;
+    const hasDomains = moduleGraph.domains && moduleGraph.domains.length > 0;
+    if (hasDomains) {
+        moduleGraph.domains.forEach(function (domain: any) {
+            const domainModules = moduleGraph.modules.filter(function (mod: any) {
+                if (mod.domain === area.id) return true;
                 return area.modules && area.modules.indexOf(mod.id) !== -1;
             });
-            if (areaModules.length === 0) return;
+            if (domainModules.length === 0) return;
 
             html += '<h3 style="margin-top: 24px; margin-bottom: 12px;">' + escapeHtml(area.name) + '</h3>';
             if (area.description) {
@@ -56,7 +56,7 @@ export function showHome(skipHistory?: boolean): void {
                     escapeHtml(area.description) + '</p>';
             }
             html += '<div class="module-grid">';
-            areaModules.forEach(function (mod: any) {
+            domainModules.forEach(function (mod: any) {
                 html += '<div class="module-card" onclick="loadModule(\'' +
                     mod.id.replace(/'/g, "\\'") + '\')">' +
                     '<h4>' + escapeHtml(mod.name) +
@@ -68,9 +68,9 @@ export function showHome(skipHistory?: boolean): void {
         });
 
         const assignedIds = new Set<string>();
-        moduleGraph.areas.forEach(function (area: any) {
+        moduleGraph.domains.forEach(function (domain: any) {
             moduleGraph.modules.forEach(function (mod: any) {
-                if (mod.area === area.id || (area.modules && area.modules.indexOf(mod.id) !== -1)) {
+                if (mod.domain === area.id || (area.modules && area.modules.indexOf(mod.id) !== -1)) {
                     assignedIds.add(mod.id);
                 }
             });

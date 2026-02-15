@@ -125,7 +125,7 @@ export function getScript(enableSearch: boolean, defaultTheme: WebsiteTheme): st
             document.getElementById('project-description').textContent = moduleGraph.project.description;
 
             var navContainer = document.getElementById('nav-container');
-            var hasAreas = moduleGraph.areas && moduleGraph.areas.length > 0;
+            var hasDomains = moduleGraph.domains && moduleGraph.domains.length > 0;
 
             // Home link
             var homeSection = document.createElement('div');
@@ -154,9 +154,9 @@ export function getScript(enableSearch: boolean, defaultTheme: WebsiteTheme): st
             }
             navContainer.appendChild(homeSection);
 
-            if (hasAreas) {
-                // DeepWiki-style: areas as top-level, modules indented underneath
-                buildAreaSidebar(navContainer);
+            if (hasDomains) {
+                // DeepWiki-style: domains as top-level, modules indented underneath
+                buildDomainSidebar(navContainer);
             } else {
                 // Fallback: category-based grouping
                 buildCategorySidebar(navContainer);
@@ -170,7 +170,7 @@ ${enableSearch ? `
             // Search
             document.getElementById('search').addEventListener('input', function(e) {
                 var query = e.target.value.toLowerCase();
-                document.querySelectorAll('.nav-area-module[data-id], .nav-item[data-id], .nav-topic-item[data-id], .nav-topic-article[data-id]').forEach(function(item) {
+                document.querySelectorAll('.nav-domain-module[data-id], .nav-item[data-id], .nav-topic-item[data-id], .nav-topic-article[data-id]').forEach(function(item) {
                     var id = item.getAttribute('data-id');
                     if (id === '__home' || id === '__index' || id === '__architecture' || id === '__getting-started') {
                         return;
@@ -179,13 +179,13 @@ ${enableSearch ? `
                     item.style.display = text.includes(query) ? '' : 'none';
                 });
                 // Hide area headers when no children match
-                document.querySelectorAll('.nav-area-group').forEach(function(group) {
-                    var visibleChildren = group.querySelectorAll('.nav-area-module:not([style*="display: none"])');
-                    var areaItem = group.querySelector('.nav-area-item');
-                    if (areaItem) {
-                        areaItem.style.display = visibleChildren.length === 0 ? 'none' : '';
+                document.querySelectorAll('.nav-domain-group').forEach(function(group) {
+                    var visibleChildren = group.querySelectorAll('.nav-domain-module:not([style*="display: none"])');
+                    var domainItem = group.querySelector('.nav-domain-item');
+                    if (domainItem) {
+                        domainItem.style.display = visibleChildren.length === 0 ? 'none' : '';
                     }
-                    var childrenEl = group.querySelector('.nav-area-children');
+                    var childrenEl = group.querySelector('.nav-domain-children');
                     if (childrenEl) {
                         childrenEl.style.display = visibleChildren.length === 0 ? 'none' : '';
                     }
@@ -213,44 +213,44 @@ ${enableSearch ? `
             });` : ''}
         }
 
-        // Build area-based sidebar (DeepWiki-style hierarchy)
-        function buildAreaSidebar(navContainer) {
-            var areaModules = {};
-            moduleGraph.areas.forEach(function(area) {
-                areaModules[area.id] = [];
+        // Build domain-based sidebar (DeepWiki-style hierarchy)
+        function buildDomainSidebar(navContainer) {
+            var domainModules = {};
+            moduleGraph.domains.forEach(function(area) {
+                domainModules[area.id] = [];
             });
 
             moduleGraph.modules.forEach(function(mod) {
-                var areaId = mod.area;
-                if (areaId && areaModules[areaId]) {
-                    areaModules[areaId].push(mod);
+                var domainId = mod.domain;
+                if (domainId && domainModules[domainId]) {
+                    domainModules[domainId].push(mod);
                 } else {
                     var found = false;
-                    moduleGraph.areas.forEach(function(area) {
+                    moduleGraph.domains.forEach(function(area) {
                         if (area.modules && area.modules.indexOf(mod.id) !== -1) {
-                            areaModules[area.id].push(mod);
+                            domainModules[area.id].push(mod);
                             found = true;
                         }
                     });
                     if (!found) {
-                        if (!areaModules['__other']) areaModules['__other'] = [];
-                        areaModules['__other'].push(mod);
+                        if (!domainModules['__other']) domainModules['__other'] = [];
+                        domainModules['__other'].push(mod);
                     }
                 }
             });
 
-            moduleGraph.areas.forEach(function(area) {
-                var modules = areaModules[area.id] || [];
+            moduleGraph.domains.forEach(function(area) {
+                var modules = domainModules[area.id] || [];
                 if (modules.length === 0) return;
 
                 var group = document.createElement('div');
                 group.className = 'nav-area-group';
 
-                var areaItem = document.createElement('div');
-                areaItem.className = 'nav-area-item';
-                areaItem.setAttribute('data-area-id', area.id);
-                areaItem.innerHTML = escapeHtml(area.name);
-                group.appendChild(areaItem);
+                var domainItem = document.createElement('div');
+                domainItem.className = 'nav-area-item';
+                domainItem.setAttribute('data-domain-id', area.id);
+                domainItem.innerHTML = escapeHtml(area.name);
+                group.appendChild(domainItem);
 
                 var childrenEl = document.createElement('div');
                 childrenEl.className = 'nav-area-children';
@@ -268,14 +268,14 @@ ${enableSearch ? `
                 navContainer.appendChild(group);
             });
 
-            var otherModules = areaModules['__other'] || [];
+            var otherModules = domainModules['__other'] || [];
             if (otherModules.length > 0) {
                 var group = document.createElement('div');
                 group.className = 'nav-area-group';
-                var areaItem = document.createElement('div');
-                areaItem.className = 'nav-area-item';
-                areaItem.innerHTML = 'Other';
-                group.appendChild(areaItem);
+                var domainItem = document.createElement('div');
+                domainItem.className = 'nav-area-item';
+                domainItem.innerHTML = 'Other';
+                group.appendChild(domainItem);
 
                 var childrenEl = document.createElement('div');
                 childrenEl.className = 'nav-area-children';
@@ -292,7 +292,7 @@ ${enableSearch ? `
             }
         }
 
-        // Build category-based sidebar (fallback, uses same visual style as area-based)
+        // Build category-based sidebar (fallback, uses same visual style as domain-based)
         function buildCategorySidebar(navContainer) {
             var categories = {};
             moduleGraph.modules.forEach(function(mod) {
@@ -350,14 +350,14 @@ ${enableSearch ? `
                     topicSection.appendChild(item);
                 } else {
                     // Area topic: expandable group
-                    var areaItem = document.createElement('div');
-                    areaItem.className = 'nav-topic-item';
-                    areaItem.setAttribute('data-id', '__topic_' + topic.id + '_index');
-                    areaItem.innerHTML = escapeHtml(topic.title);
-                    areaItem.onclick = function() {
+                    var domainItem = document.createElement('div');
+                    domainItem.className = 'nav-topic-item';
+                    domainItem.setAttribute('data-id', '__topic_' + topic.id + '_index');
+                    domainItem.innerHTML = escapeHtml(topic.title);
+                    domainItem.onclick = function() {
                         loadTopicPage(topic.id, null, topic.title, topic.layout);
                     };
-                    topicSection.appendChild(areaItem);
+                    topicSection.appendChild(domainItem);
 
                     if (topic.articles && topic.articles.length > 0) {
                         var childrenEl = document.createElement('div');
@@ -381,11 +381,11 @@ ${enableSearch ? `
         }
 
         function setActive(id) {
-            document.querySelectorAll('.nav-item, .nav-area-module, .nav-area-item, .nav-topic-item, .nav-topic-article').forEach(function(el) {
+            document.querySelectorAll('.nav-item, .nav-domain-module, .nav-domain-item, .nav-topic-item, .nav-topic-article').forEach(function(el) {
                 el.classList.remove('active');
             });
             var target = document.querySelector('.nav-item[data-id="' + id + '"]') ||
-                         document.querySelector('.nav-area-module[data-id="' + id + '"]') ||
+                         document.querySelector('.nav-domain-module[data-id="' + id + '"]') ||
                          document.querySelector('.nav-topic-item[data-id="' + id + '"]') ||
                          document.querySelector('.nav-topic-article[data-id="' + id + '"]');
             if (target) target.classList.add('active');
@@ -429,14 +429,14 @@ ${enableSearch ? `
                 html += '</ul>';
             }
 
-            var hasAreas = moduleGraph.areas && moduleGraph.areas.length > 0;
-            if (hasAreas) {
-                moduleGraph.areas.forEach(function(area) {
-                    var areaModules = moduleGraph.modules.filter(function(mod) {
-                        if (mod.area === area.id) return true;
+            var hasDomains = moduleGraph.domains && moduleGraph.domains.length > 0;
+            if (hasDomains) {
+                moduleGraph.domains.forEach(function(area) {
+                    var domainModules = moduleGraph.modules.filter(function(mod) {
+                        if (mod.domain === area.id) return true;
                         return area.modules && area.modules.indexOf(mod.id) !== -1;
                     });
-                    if (areaModules.length === 0) return;
+                    if (domainModules.length === 0) return;
 
                     html += '<h3 style="margin-top: 24px; margin-bottom: 12px;">' + escapeHtml(area.name) + '</h3>';
                     if (area.description) {
@@ -444,7 +444,7 @@ ${enableSearch ? `
                             escapeHtml(area.description) + '</p>';
                     }
                     html += '<div class="module-grid">';
-                    areaModules.forEach(function(mod) {
+                    domainModules.forEach(function(mod) {
                         html += '<div class="module-card" onclick="loadModule(\\'' +
                             mod.id.replace(/'/g, "\\\\'") + '\\')">' +
                             '<h4>' + escapeHtml(mod.name) +
@@ -456,9 +456,9 @@ ${enableSearch ? `
                 });
 
                 var assignedIds = new Set();
-                moduleGraph.areas.forEach(function(area) {
+                moduleGraph.domains.forEach(function(area) {
                     moduleGraph.modules.forEach(function(mod) {
-                        if (mod.area === area.id || (area.modules && area.modules.indexOf(mod.id) !== -1)) {
+                        if (mod.domain === area.id || (area.modules && area.modules.indexOf(mod.id) !== -1)) {
                             assignedIds.add(mod.id);
                         }
                     });

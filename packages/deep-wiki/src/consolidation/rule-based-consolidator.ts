@@ -179,9 +179,9 @@ function mergeModuleGroup(group: DirectoryGroup): ModuleInfo {
     // Track provenance
     const mergedFrom = modules.map(m => m.id);
 
-    // Preserve area if all modules share the same area
-    const areas = new Set(modules.map(m => m.area).filter(Boolean));
-    const area = areas.size === 1 ? [...areas][0] : undefined;
+    // Preserve domain if all modules share the same domain
+    const domains = new Set(modules.map(m => m.domain).filter(Boolean));
+    const domain = domains.size === 1 ? [...domains][0] : undefined;
 
     return {
         id,
@@ -193,7 +193,7 @@ function mergeModuleGroup(group: DirectoryGroup): ModuleInfo {
         dependents,
         complexity,
         category,
-        area,
+        domain,
         mergedFrom,
     };
 }

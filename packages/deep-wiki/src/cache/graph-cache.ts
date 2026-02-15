@@ -86,7 +86,7 @@ export function getCachedGraphAny(outputDir: string): CachedGraph | null {
  * @param repoPath - Path to the git repository
  * @param graph - The module graph to cache
  * @param outputDir - Output directory for the cache
- * @param focus - Optional focus area used during discovery
+ * @param focus - Optional focus domain used during discovery
  */
 export async function saveGraph(
     repoPath: string,

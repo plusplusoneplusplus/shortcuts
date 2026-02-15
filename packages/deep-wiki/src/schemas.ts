@@ -54,11 +54,11 @@ export const MODULE_GRAPH_SCHEMA = `{
  */
 export const STRUCTURAL_SCAN_SCHEMA = `{
   "fileCount": "number — estimated total number of files",
-  "areas": [
+  "domains": [
     {
-      "name": "string — descriptive area name focusing on FUNCTIONALITY (e.g., 'AI Pipeline Engine' not just 'packages/core')",
+      "name": "string — descriptive domain name focusing on FUNCTIONALITY (e.g., 'AI Pipeline Engine' not just 'packages/core')",
       "path": "string — path relative to repo root",
-      "description": "string — what this area DOES, not just what directory it is"
+      "description": "string — what this domain DOES, not just what directory it is"
     }
   ],
   "projectInfo": {

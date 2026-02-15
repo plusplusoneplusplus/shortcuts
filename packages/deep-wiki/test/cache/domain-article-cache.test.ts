@@ -1,12 +1,12 @@
 /**
  * Area-Scoped Article Cache Tests
  *
- * Tests for hierarchical article caching with area subdirectories:
- * - Save/load articles with areaId
- * - Backward compat: articles without areaId still work
- * - scanIndividualArticlesCache finds articles in area subdirectories
+ * Tests for hierarchical article caching with domain subdirectories:
+ * - Save/load articles with domainId
+ * - Backward compat: articles without domainId still work
+ * - scanIndividualArticlesCache finds articles in domain subdirectories
  * - getCachedArticles handles mixed flat + area layouts
- * - clearArticlesCache removes area subdirectories
+ * - clearArticlesCache removes domain subdirectories
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -46,14 +46,14 @@ import { getRepoHeadHash, getFolderHeadHash } from '../../src/cache/git-utils';
 let tempDir: string;
 let outputDir: string;
 
-function createTestArticle(moduleId: string, areaId?: string): GeneratedArticle {
+function createTestArticle(moduleId: string, domainId?: string): GeneratedArticle {
     return {
         type: 'module',
         slug: moduleId,
         title: `${moduleId} Module`,
         content: `# ${moduleId}\n\nArticle content for ${moduleId}.`,
         moduleId,
-        areaId,
+        domainId,
     };
 }
 
@@ -73,8 +73,8 @@ afterEach(() => {
 // Area-Scoped Save/Load
 // ============================================================================
 
-describe('area-scoped article save/load', () => {
-    it('should save article in area subdirectory when areaId is set', () => {
+describe('domain-scoped article save/load', () => {
+    it('should save article in area subdirectory when domainId is set', () => {
         const article = createTestArticle('core-auth', 'packages-core');
         saveArticle('core-auth', article, outputDir, 'hash123');
 
@@ -84,7 +84,7 @@ describe('area-scoped article save/load', () => {
         expect(cachePath).toContain(path.join('articles', 'packages-core', 'core-auth.json'));
     });
 
-    it('should save article in flat directory when no areaId', () => {
+    it('should save article in flat directory when no domainId', () => {
         const article = createTestArticle('auth');
         saveArticle('auth', article, outputDir, 'hash123');
 
@@ -94,17 +94,17 @@ describe('area-scoped article save/load', () => {
         expect(cachePath).not.toContain(path.join('articles', 'packages-core'));
     });
 
-    it('should load area-scoped article with areaId hint', () => {
+    it('should load domain-scoped article with domainId hint', () => {
         const article = createTestArticle('core-auth', 'packages-core');
         saveArticle('core-auth', article, outputDir, 'hash123');
 
         const loaded = getCachedArticle('core-auth', outputDir, 'packages-core');
         expect(loaded).not.toBeNull();
         expect(loaded!.moduleId).toBe('core-auth');
-        expect(loaded!.areaId).toBe('packages-core');
+        expect(loaded!.domainId).toBe('packages-core');
     });
 
-    it('should load flat article without areaId hint', () => {
+    it('should load flat article without domainId hint', () => {
         const article = createTestArticle('auth');
         saveArticle('auth', article, outputDir, 'hash123');
 
@@ -113,7 +113,7 @@ describe('area-scoped article save/load', () => {
         expect(loaded!.moduleId).toBe('auth');
     });
 
-    it('should save multiple articles in different area subdirectories', () => {
+    it('should save multiple articles in different domain subdirectories', () => {
         saveArticle('core-auth', createTestArticle('core-auth', 'packages-core'), outputDir, 'hash');
         saveArticle('api-routes', createTestArticle('api-routes', 'packages-api'), outputDir, 'hash');
 
@@ -122,16 +122,16 @@ describe('area-scoped article save/load', () => {
 
         expect(coreArticle).not.toBeNull();
         expect(apiArticle).not.toBeNull();
-        expect(coreArticle!.areaId).toBe('packages-core');
-        expect(apiArticle!.areaId).toBe('packages-api');
+        expect(coreArticle!.domainId).toBe('packages-core');
+        expect(apiArticle!.domainId).toBe('packages-api');
     });
 
-    it('should preserve areaId through save/load round-trip', () => {
+    it('should preserve domainId through save/load round-trip', () => {
         const article = createTestArticle('my-module', 'my-area');
         saveArticle('my-module', article, outputDir, 'hash');
 
         const loaded = getCachedArticle('my-module', outputDir, 'my-area');
-        expect(loaded!.areaId).toBe('my-area');
+        expect(loaded!.domainId).toBe('my-area');
     });
 });
 
@@ -140,7 +140,7 @@ describe('area-scoped article save/load', () => {
 // ============================================================================
 
 describe('scanIndividualArticlesCache — area support', () => {
-    it('should find articles cached in area subdirectories', () => {
+    it('should find articles cached in domain subdirectories', () => {
         const hash = 'current_hash';
         saveArticle('core-auth', createTestArticle('core-auth', 'packages-core'), outputDir, hash);
         saveArticle('api-routes', createTestArticle('api-routes', 'packages-api'), outputDir, hash);
@@ -173,7 +173,7 @@ describe('scanIndividualArticlesCache — area support', () => {
         expect(result.missing).toHaveLength(0);
     });
 
-    it('should invalidate area-scoped articles with wrong git hash', () => {
+    it('should invalidate domain-scoped articles with wrong git hash', () => {
         saveArticle('mod', createTestArticle('mod', 'area1'), outputDir, 'old_hash');
 
         const result = scanIndividualArticlesCache(
@@ -205,7 +205,7 @@ describe('scanIndividualArticlesCache — area support', () => {
 });
 
 describe('scanIndividualArticlesCacheAny — area support', () => {
-    it('should find area-scoped articles ignoring git hash', () => {
+    it('should find domain-scoped articles ignoring git hash', () => {
         saveArticle('mod', createTestArticle('mod', 'area1'), outputDir, 'some_hash');
 
         const result = scanIndividualArticlesCacheAny(
@@ -223,10 +223,10 @@ describe('scanIndividualArticlesCacheAny — area support', () => {
 // ============================================================================
 
 describe('getCachedArticles — area support', () => {
-    it('should load articles from both flat and area subdirectories', async () => {
+    it('should load articles from both flat and domain subdirectories', async () => {
         // Save flat article
         saveArticle('flat-mod', createTestArticle('flat-mod'), outputDir, 'hash');
-        // Save area-scoped article
+        // Save domain-scoped article
         saveArticle('area-mod', createTestArticle('area-mod', 'my-area'), outputDir, 'hash');
 
         // Write metadata to make getCachedArticles work
@@ -247,7 +247,7 @@ describe('getCachedArticles — area support', () => {
 // ============================================================================
 
 describe('clearArticlesCache — area support', () => {
-    it('should clear area subdirectories', () => {
+    it('should clear domain subdirectories', () => {
         saveArticle('mod1', createTestArticle('mod1', 'area1'), outputDir, 'hash');
         saveArticle('mod2', createTestArticle('mod2', 'area2'), outputDir, 'hash');
 
@@ -276,13 +276,13 @@ describe('clearArticlesCache — area support', () => {
 // ============================================================================
 
 describe('getArticleCachePath', () => {
-    it('should return flat path without areaId', () => {
+    it('should return flat path without domainId', () => {
         const cachePath = getArticleCachePath(outputDir, 'auth');
         expect(cachePath).toContain(path.join('articles', 'auth.json'));
-        expect(cachePath).not.toContain('areas');
+        expect(cachePath).not.toContain('domains');
     });
 
-    it('should return area-scoped path with areaId', () => {
+    it('should return domain-scoped path with domainId', () => {
         const cachePath = getArticleCachePath(outputDir, 'auth', 'packages-core');
         expect(cachePath).toContain(path.join('articles', 'packages-core', 'auth.json'));
     });
@@ -292,15 +292,15 @@ describe('getArticleCachePath', () => {
 // Backward Compatibility
 // ============================================================================
 
-describe('backward compatibility — no areaId', () => {
-    it('should save and load articles exactly as before when no areaId', () => {
+describe('backward compatibility — no domainId', () => {
+    it('should save and load articles exactly as before when no domainId', () => {
         const article = createTestArticle('auth');
         saveArticle('auth', article, outputDir, 'hash');
 
         const loaded = getCachedArticle('auth', outputDir);
         expect(loaded).not.toBeNull();
         expect(loaded!.moduleId).toBe('auth');
-        expect(loaded!.areaId).toBeUndefined();
+        expect(loaded!.domainId).toBeUndefined();
     });
 
     it('should find flat articles in scan', () => {

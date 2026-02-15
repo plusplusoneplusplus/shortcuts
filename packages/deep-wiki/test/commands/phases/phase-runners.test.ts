@@ -202,13 +202,13 @@ vi.mock('../../../src/cache', () => ({
     saveStructuralScan: vi.fn(),
     getCachedStructuralScan: vi.fn().mockReturnValue(null),
     getCachedStructuralScanAny: vi.fn().mockReturnValue(null),
-    saveAreaSubGraph: vi.fn(),
-    getCachedAreaSubGraph: vi.fn().mockReturnValue(null),
-    scanCachedAreas: vi.fn().mockImplementation(
-        (areaIds: string[]) => ({ found: new Map(), missing: [...areaIds] })
+    saveDomainSubGraph: vi.fn(),
+    getCachedDomainSubGraph: vi.fn().mockReturnValue(null),
+    scanCachedDomains: vi.fn().mockImplementation(
+        (domainIds: string[]) => ({ found: new Map(), missing: [...domainIds] })
     ),
-    scanCachedAreasAny: vi.fn().mockImplementation(
-        (areaIds: string[]) => ({ found: new Map(), missing: [...areaIds] })
+    scanCachedDomainsAny: vi.fn().mockImplementation(
+        (domainIds: string[]) => ({ found: new Map(), missing: [...domainIds] })
     ),
     saveDiscoveryMetadata: vi.fn(),
     getDiscoveryMetadata: vi.fn().mockReturnValue(null),

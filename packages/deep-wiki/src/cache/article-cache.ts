@@ -2,7 +2,7 @@
  * Article Cache — Per-Module Article Results and Reduce-Phase Articles
  *
  * Caches per-module articles from Phase 4 and reduce-phase synthesis articles.
- * Supports flat and area-scoped directory layouts, crash recovery scanning,
+ * Supports flat and domain-scoped directory layouts, crash recovery scanning,
  * re-stamping for incremental invalidation, and metadata-based validation.
  */
 
@@ -32,12 +32,12 @@ export function getArticlesCacheDir(outputDir: string): string {
 
 /**
  * Get the path to a single cached article file.
- * When areaId is provided, articles are cached under `articles/{area-id}/{module-id}.json`.
- * Without areaId, articles are cached as `articles/{module-id}.json` (backward compat).
+ * When domainId is provided, articles are cached under `articles/{domain-id}/{module-id}.json`.
+ * Without domainId, articles are cached as `articles/{module-id}.json` (backward compat).
  */
-export function getArticleCachePath(outputDir: string, moduleId: string, areaId?: string): string {
-    if (areaId) {
-        return path.join(getArticlesCacheDir(outputDir), areaId, `${moduleId}.json`);
+export function getArticleCachePath(outputDir: string, moduleId: string, domainId?: string): string {
+    if (domainId) {
+        return path.join(getArticlesCacheDir(outputDir), domainId, `${moduleId}.json`);
     }
     return path.join(getArticlesCacheDir(outputDir), `${moduleId}.json`);
 }
@@ -67,21 +67,21 @@ export function getReduceMetadataPath(outputDir: string): string {
  * - `_reduce-index.json` for index article
  * - `_reduce-architecture.json` for architecture article
  * - `_reduce-getting-started.json` for getting-started article
- * - `_reduce-area-{areaId}-index.json` for area-index article
- * - `_reduce-area-{areaId}-architecture.json` for area-architecture article
+ * - `_reduce-domain-{domainId}-index.json` for domain-index article
+ * - `_reduce-domain-{domainId}-architecture.json` for domain-architecture article
  *
  * @param outputDir - Output directory
  * @param articleType - Article type (e.g., 'index', 'architecture', 'getting-started')
- * @param areaId - Optional area ID for area-scoped reduce articles
+ * @param domainId - Optional domain ID for domain-scoped reduce articles
  * @returns Absolute path to the reduce article cache file
  */
 export function getReduceArticleCachePath(
     outputDir: string,
     articleType: string,
-    areaId?: string
+    domainId?: string
 ): string {
-    const filename = areaId
-        ? `${REDUCE_ARTICLE_PREFIX}area-${areaId}-${articleType}.json`
+    const filename = domainId
+        ? `${REDUCE_ARTICLE_PREFIX}domain-${domainId}-${articleType}.json`
         : `${REDUCE_ARTICLE_PREFIX}${articleType}.json`;
     return path.join(getArticlesCacheDir(outputDir), filename);
 }
@@ -92,17 +92,17 @@ export function getReduceArticleCachePath(
 
 /**
  * Get a single cached module article.
- * Checks area-scoped path first (if areaId provided), then flat path.
+ * Checks domain-scoped path first (if domainId provided), then flat path.
  *
  * @param moduleId - Module ID to look up
  * @param outputDir - Output directory
- * @param areaId - Optional area ID for hierarchical lookup
+ * @param domainId - Optional domain ID for hierarchical lookup
  * @returns The cached article, or null if not found
  */
-export function getCachedArticle(moduleId: string, outputDir: string, areaId?: string): GeneratedArticle | null {
-    // Try area-scoped path first, then flat path
-    const pathsToTry = areaId
-        ? [getArticleCachePath(outputDir, moduleId, areaId), getArticleCachePath(outputDir, moduleId)]
+export function getCachedArticle(moduleId: string, outputDir: string, domainId?: string): GeneratedArticle | null {
+    // Try domain-scoped path first, then flat path
+    const pathsToTry = domainId
+        ? [getArticleCachePath(outputDir, moduleId, domainId), getArticleCachePath(outputDir, moduleId)]
         : [getArticleCachePath(outputDir, moduleId)];
 
     for (const cachePath of pathsToTry) {
@@ -120,7 +120,7 @@ export function getCachedArticle(moduleId: string, outputDir: string, areaId?: s
 
 /**
  * Get all cached articles if the cache is valid (has metadata).
- * Supports both flat and area-scoped directory layouts.
+ * Supports both flat and domain-scoped directory layouts.
  *
  * @param outputDir - Output directory
  * @returns Array of cached articles, or null if cache is invalid/missing
@@ -134,7 +134,7 @@ export function getCachedArticles(outputDir: string): GeneratedArticle[] | null 
         return null;
     }
 
-    // Read all article files (flat + area-scoped)
+    // Read all article files (flat + domain-scoped)
     const articlesDir = getArticlesCacheDir(outputDir);
     const articles: GeneratedArticle[] = [];
     const articleValidator = (d: CachedArticle) => !!d.article && !!d.article.slug;
@@ -154,19 +154,19 @@ export function getCachedArticles(outputDir: string): GeneratedArticle[] | null 
                     articles.push(cached.article);
                 }
             } else if (entry.isDirectory()) {
-                // Area-scoped layout: articles/{area-id}/{module-id}.json
-                const areaDir = path.join(articlesDir, entry.name);
+                // Domain-scoped layout: articles/{domain-id}/{module-id}.json
+                const domainDir = path.join(articlesDir, entry.name);
                 try {
-                    const areaFiles = fs.readdirSync(areaDir);
-                    for (const file of areaFiles) {
+                    const domainFiles = fs.readdirSync(domainDir);
+                    for (const file of domainFiles) {
                         if (!file.endsWith('.json')) { continue; }
-                        const cached = readCacheFileIf<CachedArticle>(path.join(areaDir, file), articleValidator);
+                        const cached = readCacheFileIf<CachedArticle>(path.join(domainDir, file), articleValidator);
                         if (cached) {
                             articles.push(cached.article);
                         }
                     }
                 } catch {
-                    // Skip inaccessible area directories
+                    // Skip inaccessible domain directories
                 }
             }
         }
@@ -261,7 +261,7 @@ export function getCachedReduceArticles(
 
 /**
  * Save a single module article to the cache.
- * Area-scoped articles are cached under `articles/{area-id}/{module-id}.json`.
+ * Domain-scoped articles are cached under `articles/{domain-id}/{module-id}.json`.
  *
  * @param moduleId - Module ID
  * @param article - The article to cache
@@ -274,7 +274,7 @@ export function saveArticle(
     outputDir: string,
     gitHash: string
 ): void {
-    writeCacheFile<CachedArticle>(getArticleCachePath(outputDir, moduleId, article.areaId), {
+    writeCacheFile<CachedArticle>(getArticleCachePath(outputDir, moduleId, article.domainId), {
         article,
         gitHash,
         timestamp: Date.now(),
@@ -298,10 +298,10 @@ export async function saveAllArticles(
         return; // Can't determine git hash
     }
 
-    // Only cache module-type articles (not index/architecture/getting-started/area-*)
+    // Only cache module-type articles (not index/architecture/getting-started/domain-*)
     const moduleArticles = articles.filter(a => a.type === 'module' && a.moduleId);
 
-    // Write individual article files (saveArticle handles area subdirectories)
+    // Write individual article files (saveArticle handles domain subdirectories)
     for (const article of moduleArticles) {
         saveArticle(article.moduleId!, article, outputDir, currentHash);
     }
@@ -343,7 +343,7 @@ export function saveReduceArticles(
 
     // Write individual reduce article files
     for (const article of reduceArticles) {
-        writeCacheFile<CachedArticle>(getReduceArticleCachePath(outputDir, article.type, article.areaId), {
+        writeCacheFile<CachedArticle>(getReduceArticleCachePath(outputDir, article.type, article.domainId), {
             article,
             gitHash,
             timestamp: Date.now(),
@@ -364,7 +364,7 @@ export function saveReduceArticles(
 // ============================================================================
 
 /**
- * Find all possible cache paths for a module article (checks area subdirectories + flat).
+ * Find all possible cache paths for a module article (checks domain subdirectories + flat).
  * Returns the first existing path, or null if none found.
  */
 function findArticleCachePath(outputDir: string, moduleId: string): string | null {
@@ -374,21 +374,21 @@ function findArticleCachePath(outputDir: string, moduleId: string): string | nul
         return flatPath;
     }
 
-    // Check area subdirectories
+    // Check domain subdirectories
     const articlesDir = getArticlesCacheDir(outputDir);
     if (fs.existsSync(articlesDir)) {
         try {
             const entries = fs.readdirSync(articlesDir, { withFileTypes: true });
             for (const entry of entries) {
                 if (entry.isDirectory() && entry.name !== '_metadata.json') {
-                    const areaPath = path.join(articlesDir, entry.name, `${moduleId}.json`);
-                    if (fs.existsSync(areaPath)) {
-                        return areaPath;
+                    const domainPath = path.join(articlesDir, entry.name, `${moduleId}.json`);
+                    if (fs.existsSync(domainPath)) {
+                        return domainPath;
                     }
                 }
             }
         } catch {
-            // Ignore errors scanning area dirs
+            // Ignore errors scanning domain dirs
         }
     }
 
@@ -402,8 +402,8 @@ function findArticleCachePath(outputDir: string, moduleId: string): string | nul
  * `saveAllArticles` wrote the metadata file, individual per-module files
  * may still exist from incremental saves via `onItemComplete`.
  *
- * Supports both flat (`articles/{module-id}.json`) and area-scoped
- * (`articles/{area-id}/{module-id}.json`) cache layouts.
+ * Supports both flat (`articles/{module-id}.json`) and domain-scoped
+ * (`articles/{domain-id}/{module-id}.json`) cache layouts.
  *
  * @param moduleIds - Module IDs to look for in the cache
  * @param outputDir - Output directory
@@ -427,7 +427,7 @@ export function scanIndividualArticlesCache(
 /**
  * Scan for individually cached articles, ignoring git hash validation.
  *
- * Supports both flat and area-scoped cache layouts.
+ * Supports both flat and domain-scoped cache layouts.
  *
  * @param moduleIds - Module IDs to look for in the cache
  * @param outputDir - Output directory
@@ -503,7 +503,7 @@ export function restampArticles(
 // ============================================================================
 
 /**
- * Clear all cached articles (including area subdirectories).
+ * Clear all cached articles (including domain subdirectories).
  *
  * @param outputDir - Output directory
  * @returns True if cache was cleared, false if no cache existed

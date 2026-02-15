@@ -56,8 +56,8 @@ export interface ModuleInfo {
     complexity: 'low' | 'medium' | 'high';
     /** Category this module belongs to */
     category: string;
-    /** Area slug from large-repo discovery (only set for large repos) */
-    area?: string;
+    /** Domain slug from large-repo discovery (only set for large repos) */
+    domain?: string;
     /** Optional line ranges for monolithic files — [[start, end], ...] */
     lineRanges?: [number, number][];
     /** IDs of original modules merged into this one (set by consolidation phase) */
@@ -78,7 +78,7 @@ export interface CategoryInfo {
  * Information about a top-level area in a large repo.
  * Used to organize modules into hierarchical wiki output.
  */
-export interface AreaInfo {
+export interface DomainInfo {
     /** Unique kebab-case identifier (derived from area path) */
     id: string;
     /** Human-readable area name */
@@ -103,8 +103,8 @@ export interface ModuleGraph {
     categories: CategoryInfo[];
     /** Architecture notes (free-text summary) */
     architectureNotes: string;
-    /** Top-level areas (only present for large repos with 3000+ files) */
-    areas?: AreaInfo[];
+    /** Top-level domains (only present for large repos with 3000+ files) */
+    domains?: DomainInfo[];
     /** Topic area metadata (populated by topic command) */
     topics?: TopicAreaMeta[];
 }
@@ -253,7 +253,7 @@ export interface DiscoverCommandOptions {
 /**
  * A top-level area identified during the first pass of large repo discovery.
  */
-export interface TopLevelArea {
+export interface TopLevelDomain {
     /** Area name (e.g., "packages/core") */
     name: string;
     /** Path relative to repo root */
@@ -268,8 +268,8 @@ export interface TopLevelArea {
 export interface StructuralScanResult {
     /** Estimated total file count */
     fileCount: number;
-    /** Identified top-level areas */
-    areas: TopLevelArea[];
+    /** Identified top-level domains */
+    domains: TopLevelDomain[];
     /** Project-level info gathered during scan */
     projectInfo: Partial<ProjectInfo>;
 }
@@ -354,7 +354,7 @@ export interface AnalysisResult {
 /**
  * Type of generated article.
  */
-export type ArticleType = 'module' | 'index' | 'architecture' | 'getting-started' | 'area-index' | 'area-architecture';
+export type ArticleType = 'module' | 'index' | 'architecture' | 'getting-started' | 'domain-index' | 'domain-architecture';
 
 /**
  * A single generated wiki article.
@@ -370,8 +370,8 @@ export interface GeneratedArticle {
     content: string;
     /** Module ID (only for module articles) */
     moduleId?: string;
-    /** Area ID (for area-level and module articles in hierarchical layout) */
-    areaId?: string;
+    /** Domain ID (for domain-level and module articles in hierarchical layout) */
+    domainId?: string;
 }
 
 /**
@@ -791,7 +791,7 @@ export type {
     CachedProbeResult,
     CachedSeeds,
     CachedStructuralScan,
-    CachedAreaGraph,
+    CachedDomainGraph,
     DiscoveryProgressMetadata,
 } from './cache/types';
 

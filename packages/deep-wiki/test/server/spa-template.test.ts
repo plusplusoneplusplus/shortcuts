@@ -677,7 +677,7 @@ describe('generateSpaHtml — nav sections', () => {
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: false, enableGraph: false,
         });
-        // buildCategorySidebar now uses nav-area-group style like buildAreaSidebar
+        // buildCategorySidebar now uses nav-area-group style like buildDomainSidebar
         expect(html).toContain('group.className = "nav-area-group"');
     });
 });
@@ -686,13 +686,13 @@ describe('generateSpaHtml — nav sections', () => {
 // Area-Based Sidebar (DeepWiki-style hierarchy)
 // ============================================================================
 
-describe('generateSpaHtml — area-based sidebar', () => {
-    it('should include buildAreaSidebar function for area-based hierarchy', () => {
+describe('generateSpaHtml — domain-based sidebar', () => {
+    it('should include buildDomainSidebar function for domain-based hierarchy', () => {
         const html = generateSpaHtml({
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: false, enableGraph: false,
         });
-        expect(html).toContain('function buildAreaSidebar');
+        expect(html).toContain('function buildDomainSidebar');
     });
 
     it('should include buildCategorySidebar function for fallback', () => {
@@ -703,23 +703,23 @@ describe('generateSpaHtml — area-based sidebar', () => {
         expect(html).toContain('function buildCategorySidebar');
     });
 
-    it('should detect areas via moduleGraph.areas', () => {
+    it('should detect domains via moduleGraph.domains', () => {
         const html = generateSpaHtml({
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: false, enableGraph: false,
         });
-        expect(html).toContain('moduleGraph.areas && moduleGraph.areas.length > 0');
+        expect(html).toContain('moduleGraph.domains && moduleGraph.domains.length > 0');
     });
 
-    it('should include area-based CSS classes', () => {
+    it('should include domain-based CSS classes', () => {
         const html = generateSpaHtml({
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: false, enableGraph: false,
         });
-        expect(html).toContain('.nav-area-item');
-        expect(html).toContain('.nav-area-children');
-        expect(html).toContain('.nav-area-module');
-        expect(html).toContain('.nav-area-group');
+        expect(html).toContain('.nav-domain-item');
+        expect(html).toContain('.nav-domain-children');
+        expect(html).toContain('.nav-domain-module');
+        expect(html).toContain('.nav-domain-group');
     });
 
     it('should include nav-area-item active styles', () => {
@@ -727,16 +727,16 @@ describe('generateSpaHtml — area-based sidebar', () => {
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: false, enableGraph: false,
         });
-        expect(html).toContain('.nav-area-item.active');
-        expect(html).toContain('.nav-area-module.active');
+        expect(html).toContain('.nav-domain-item.active');
+        expect(html).toContain('.nav-domain-module.active');
     });
 
-    it('should assign modules to areas by mod.area field', () => {
+    it('should assign modules to domains by mod.domain field', () => {
         const html = generateSpaHtml({
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: false, enableGraph: false,
         });
-        expect(html).toContain('mod.area');
+        expect(html).toContain('mod.domain');
     });
 
     it('should fall back to area.modules list for assignment', () => {
@@ -755,21 +755,21 @@ describe('generateSpaHtml — area-based sidebar', () => {
         expect(html).toContain('"__other"');
     });
 
-    it('should include data-area-id attribute on area items', () => {
+    it('should include data-domain-id attribute on area items', () => {
         const html = generateSpaHtml({
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: false, enableGraph: false,
         });
-        expect(html).toContain('data-area-id');
+        expect(html).toContain('data-domain-id');
     });
 
-    it('should support area-based search filtering', () => {
+    it('should support domain-based search filtering', () => {
         const html = generateSpaHtml({
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: false, enableGraph: false,
         });
         // Should search area-module items as well as regular nav-items
-        expect(html).toContain('.nav-area-module[data-id]');
+        expect(html).toContain('.nav-domain-module[data-id]');
     });
 
     it('should hide area headers when no children match search', () => {
@@ -777,7 +777,7 @@ describe('generateSpaHtml — area-based sidebar', () => {
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: false, enableGraph: false,
         });
-        expect(html).toContain('.nav-area-group');
+        expect(html).toContain('.nav-domain-group');
     });
 
     it('should use area indentation via nav-area-children padding', () => {
@@ -794,32 +794,32 @@ describe('generateSpaHtml — area-based sidebar', () => {
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: false, enableGraph: false,
         });
-        // setActive should also handle .nav-area-module
-        expect(html).toContain('.nav-area-module');
-        expect(html).toContain("'.nav-area-module[data-id=");
+        // setActive should also handle .nav-domain-module
+        expect(html).toContain('.nav-domain-module');
+        expect(html).toContain("'.nav-domain-module[data-id=");
     });
 
-    it('should include area-based sidebar in all themes', () => {
+    it('should include domain-based sidebar in all themes', () => {
         const themes: Array<'auto' | 'dark' | 'light'> = ['auto', 'dark', 'light'];
         for (const theme of themes) {
             const html = generateSpaHtml({
                 theme, title: 'Test', enableSearch: true,
                 enableAI: false, enableGraph: false,
             });
-            expect(html).toContain('buildAreaSidebar');
+            expect(html).toContain('buildDomainSidebar');
             expect(html).toContain('buildCategorySidebar');
-            expect(html).toContain('.nav-area-item');
-            expect(html).toContain('.nav-area-module');
+            expect(html).toContain('.nav-domain-item');
+            expect(html).toContain('.nav-domain-module');
         }
     });
 
-    it('should group modules by area in showHome when areas present', () => {
+    it('should group modules by area in showHome when domains present', () => {
         const html = generateSpaHtml({
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: false, enableGraph: false,
         });
-        // showHome should check for areas and group accordingly
-        expect(html).toContain('hasAreas = moduleGraph.areas && moduleGraph.areas.length > 0');
+        // showHome should check for domains and group accordingly
+        expect(html).toContain('hasDomains = moduleGraph.domains && moduleGraph.domains.length > 0');
     });
 
     it('should show area names and descriptions in home overview', () => {
@@ -840,7 +840,7 @@ describe('generateSpaHtml — area-based sidebar', () => {
         expect(html).toContain('unassigned');
     });
 
-    it('should fall back to All Modules when no areas present', () => {
+    it('should fall back to All Modules when no domains present', () => {
         const html = generateSpaHtml({
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: false, enableGraph: false,
@@ -848,7 +848,7 @@ describe('generateSpaHtml — area-based sidebar', () => {
         expect(html).toContain('All Modules');
     });
 
-    it('should include area-based active border for sidebar module items', () => {
+    it('should include domain-based active border for sidebar module items', () => {
         const html = generateSpaHtml({
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: false, enableGraph: false,
@@ -861,7 +861,7 @@ describe('generateSpaHtml — area-based sidebar', () => {
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: false, enableGraph: false,
         });
-        expect(html).toContain('.nav-area-module');
+        expect(html).toContain('.nav-domain-module');
         // Modules use muted color by default, highlight on active
         expect(html).toContain('color: var(--sidebar-muted)');
     });

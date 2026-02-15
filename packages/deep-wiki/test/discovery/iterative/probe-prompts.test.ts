@@ -2,7 +2,7 @@
  * Probe Prompts Tests
  *
  * Tests for probe prompt template generation.
- * Verifies topic information, hints, and focus area filtering.
+ * Verifies topic information, hints, and focus domain filtering.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -64,7 +64,7 @@ describe('buildProbePrompt', () => {
         expect(prompt).toContain('api-gateway');
     });
 
-    describe('focus area', () => {
+    describe('focus domain', () => {
         it('should include focus section when focus is provided', () => {
             const prompt = buildProbePrompt('/repo', topic, 'src/');
             expect(prompt).toContain('Focus your analysis on the subtree: src/');

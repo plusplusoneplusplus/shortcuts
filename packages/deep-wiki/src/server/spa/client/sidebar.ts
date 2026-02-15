@@ -1,5 +1,5 @@
 /**
- * Sidebar navigation: initializeSidebar, buildAreaSidebar, buildCategorySidebar,
+ * Sidebar navigation: initializeSidebar, buildDomainSidebar, buildCategorySidebar,
  * buildTopicsSidebar, setActive, showWikiContent, showAdminContent.
  */
 
@@ -15,7 +15,7 @@ export function initializeSidebar(): void {
 
     const navContainer = document.getElementById('nav-container');
     if (!navContainer) return;
-    const hasAreas = moduleGraph.areas && moduleGraph.areas.length > 0;
+    const hasDomains = moduleGraph.domains && moduleGraph.domains.length > 0;
 
     // Home + special items
     const homeSection = document.createElement('div');
@@ -30,8 +30,8 @@ export function initializeSidebar(): void {
         '';
     navContainer.appendChild(homeSection);
 
-    if (hasAreas) {
-        buildAreaSidebar(navContainer);
+    if (hasDomains) {
+        buildDomainSidebar(navContainer);
     } else {
         buildCategorySidebar(navContainer);
     }
@@ -41,17 +41,17 @@ export function initializeSidebar(): void {
         if (searchEl) {
             searchEl.addEventListener('input', function (e: Event) {
                 const query = (e.target as HTMLInputElement).value.toLowerCase();
-                document.querySelectorAll('.nav-area-module[data-id], .nav-item[data-id]').forEach(function (item) {
+                document.querySelectorAll('.nav-domain-module[data-id], .nav-item[data-id]').forEach(function (item) {
                     const id = item.getAttribute('data-id');
                     if (id === '__home' || id === '__graph') return;
                     const text = item.textContent?.toLowerCase() ?? '';
                     (item as HTMLElement).style.display = text.includes(query) ? '' : 'none';
                 });
-                document.querySelectorAll('.nav-area-group').forEach(function (group) {
-                    const visibleChildren = group.querySelectorAll('.nav-area-module:not([style*="display: none"])');
-                    const areaItem = group.querySelector('.nav-area-item') as HTMLElement | null;
-                    if (areaItem) areaItem.style.display = visibleChildren.length === 0 ? 'none' : '';
-                    const childrenEl = group.querySelector('.nav-area-children') as HTMLElement | null;
+                document.querySelectorAll('.nav-domain-group').forEach(function (group) {
+                    const visibleChildren = group.querySelectorAll('.nav-domain-module:not([style*="display: none"])');
+                    const domainItem = group.querySelector('.nav-domain-item') as HTMLElement | null;
+                    if (domainItem) domainItem.style.display = visibleChildren.length === 0 ? 'none' : '';
+                    const childrenEl = group.querySelector('.nav-domain-children') as HTMLElement | null;
                     if (childrenEl) childrenEl.style.display = visibleChildren.length === 0 ? 'none' : '';
                 });
                 document.querySelectorAll('.nav-section').forEach(function (section) {
@@ -65,48 +65,48 @@ export function initializeSidebar(): void {
     }
 }
 
-function buildAreaSidebar(navContainer: HTMLElement): void {
-    const areaMap: Record<string, any> = {};
-    moduleGraph.areas.forEach(function (area: any) {
-        areaMap[area.id] = area;
+function buildDomainSidebar(navContainer: HTMLElement): void {
+    const domainMap: Record<string, any> = {};
+    moduleGraph.domains.forEach(function (domain: any) {
+        domainMap[area.id] = area;
     });
 
-    const areaModules: Record<string, any[]> = {};
-    moduleGraph.areas.forEach(function (area: any) {
-        areaModules[area.id] = [];
+    const domainModules: Record<string, any[]> = {};
+    moduleGraph.domains.forEach(function (domain: any) {
+        domainModules[area.id] = [];
     });
 
     moduleGraph.modules.forEach(function (mod: any) {
-        const areaId = mod.area;
-        if (areaId && areaModules[areaId]) {
-            areaModules[areaId].push(mod);
+        const domainId = mod.domain;
+        if (domainId && domainModules[domainId]) {
+            domainModules[domainId].push(mod);
         } else {
             let found = false;
-            moduleGraph.areas.forEach(function (area: any) {
+            moduleGraph.domains.forEach(function (domain: any) {
                 if (area.modules && area.modules.indexOf(mod.id) !== -1) {
-                    areaModules[area.id].push(mod);
+                    domainModules[area.id].push(mod);
                     found = true;
                 }
             });
             if (!found) {
-                if (!areaModules['__other']) areaModules['__other'] = [];
-                areaModules['__other'].push(mod);
+                if (!domainModules['__other']) domainModules['__other'] = [];
+                domainModules['__other'].push(mod);
             }
         }
     });
 
-    moduleGraph.areas.forEach(function (area: any) {
-        const modules = areaModules[area.id] || [];
+    moduleGraph.domains.forEach(function (domain: any) {
+        const modules = domainModules[area.id] || [];
         if (modules.length === 0) return;
 
         const group = document.createElement('div');
         group.className = 'nav-area-group';
 
-        const areaItem = document.createElement('div');
-        areaItem.className = 'nav-area-item';
-        areaItem.setAttribute('data-area-id', area.id);
-        areaItem.innerHTML = '<span class="nav-item-name">' + escapeHtml(area.name) + '</span>';
-        group.appendChild(areaItem);
+        const domainItem = document.createElement('div');
+        domainItem.className = 'nav-area-item';
+        domainItem.setAttribute('data-domain-id', area.id);
+        domainItem.innerHTML = '<span class="nav-item-name">' + escapeHtml(area.name) + '</span>';
+        group.appendChild(domainItem);
 
         const childrenEl = document.createElement('div');
         childrenEl.className = 'nav-area-children';
@@ -124,14 +124,14 @@ function buildAreaSidebar(navContainer: HTMLElement): void {
         navContainer.appendChild(group);
     });
 
-    const otherModules = areaModules['__other'] || [];
+    const otherModules = domainModules['__other'] || [];
     if (otherModules.length > 0) {
         const group = document.createElement('div');
         group.className = 'nav-area-group';
-        const areaItem = document.createElement('div');
-        areaItem.className = 'nav-area-item';
-        areaItem.innerHTML = '<span class="nav-item-name">Other</span>';
-        group.appendChild(areaItem);
+        const domainItem = document.createElement('div');
+        domainItem.className = 'nav-area-item';
+        domainItem.innerHTML = '<span class="nav-item-name">Other</span>';
+        group.appendChild(domainItem);
 
         const childrenEl = document.createElement('div');
         childrenEl.className = 'nav-area-children';
@@ -234,11 +234,11 @@ export function buildTopicsSidebar(navContainer: HTMLElement): void {
 }
 
 export function setActive(id: string): void {
-    document.querySelectorAll('.nav-item, .nav-area-module, .nav-area-item').forEach(function (el) {
+    document.querySelectorAll('.nav-item, .nav-domain-module, .nav-domain-item').forEach(function (el) {
         el.classList.remove('active');
     });
     const target = document.querySelector('.nav-item[data-id="' + id + '"]') ||
-                   document.querySelector('.nav-area-module[data-id="' + id + '"]');
+                   document.querySelector('.nav-domain-module[data-id="' + id + '"]');
     if (target) target.classList.add('active');
 }
 

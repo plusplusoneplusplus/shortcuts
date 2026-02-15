@@ -170,7 +170,7 @@ export function scanCacheItems<TCache, TResult>(
  * Scan for individually cached items by ID, returning results as a Map.
  *
  * Similar to `scanCacheItems` but returns a Map<string, TResult> instead of an array.
- * Used by discovery cache functions that return Map-based results (probes, areas).
+ * Used by discovery cache functions that return Map-based results (probes, domains).
  *
  * @param ids - IDs to look up in the cache
  * @param pathResolver - Maps an ID to a cache file path (or null if not found)

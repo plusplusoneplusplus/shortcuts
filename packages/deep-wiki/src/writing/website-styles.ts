@@ -144,9 +144,9 @@ export function getStyles(): string {
         .nav-item-name { display: block; color: var(--sidebar-text); margin-bottom: 2px; }
         .nav-item-path { display: block; font-size: 11px; color: var(--sidebar-muted); }
 
-        /* Area-based sidebar (DeepWiki-style hierarchy) */
-        .nav-area-group { padding: 2px 0; }
-        .nav-area-item {
+        /* Domain-based sidebar (DeepWiki-style hierarchy) */
+        .nav-domain-group { padding: 2px 0; }
+        .nav-domain-item {
             padding: 8px 20px;
             cursor: pointer;
             font-size: 14px;
@@ -155,11 +155,11 @@ export function getStyles(): string {
             display: block;
             transition: background 0.15s;
         }
-        .nav-area-item:hover { background: var(--sidebar-hover); }
-        .nav-area-item.active { background: var(--sidebar-hover); border-left: 3px solid var(--sidebar-active-border); }
+        .nav-domain-item:hover { background: var(--sidebar-hover); }
+        .nav-domain-item.active { background: var(--sidebar-hover); border-left: 3px solid var(--sidebar-active-border); }
 
-        .nav-area-children { padding-left: 8px; }
-        .nav-area-module {
+        .nav-domain-children { padding-left: 8px; }
+        .nav-domain-module {
             padding: 6px 20px 6px 28px;
             cursor: pointer;
             font-size: 13px;
@@ -167,8 +167,8 @@ export function getStyles(): string {
             display: block;
             transition: background 0.15s, color 0.15s;
         }
-        .nav-area-module:hover { background: var(--sidebar-hover); color: var(--sidebar-text); }
-        .nav-area-module.active { background: var(--sidebar-hover); color: var(--sidebar-text); border-left: 3px solid var(--sidebar-active-border); }
+        .nav-domain-module:hover { background: var(--sidebar-hover); color: var(--sidebar-text); }
+        .nav-domain-module.active { background: var(--sidebar-hover); color: var(--sidebar-text); border-left: 3px solid var(--sidebar-active-border); }
 
         .complexity-badge {
             display: inline-block;

@@ -626,14 +626,14 @@ async function runModuleRegeneration(
 
     // Build the GeneratedArticle
     const { normalizeModuleId } = await import('../schemas');
-    const areaId = moduleInfo.area;
+    const domainId = moduleInfo.domain;
     const article: GeneratedArticle = {
         type: 'module',
         slug: normalizeModuleId(moduleId),
         title: moduleName,
         content: aiResult.response,
         moduleId,
-        areaId,
+        domainId,
     };
 
     // Save to cache
@@ -723,7 +723,7 @@ function handleGetGenerateStatus(
                     const articlesDir = path.join(path.resolve(outputDir), '.wiki-cache', 'articles');
 
                     for (const mod of graph.modules) {
-                        modules[mod.id] = getModuleArticleCacheStatus(articlesDir, mod.id, mod.area);
+                        modules[mod.id] = getModuleArticleCacheStatus(articlesDir, mod.id, mod.domain);
                     }
                     phases['4'].modules = modules;
                 } catch {
@@ -800,16 +800,16 @@ function checkWebsiteCacheStatus(outputDir: string): { cached: boolean; timestam
 
 /**
  * Check per-module article cache status.
- * Looks in both flat and area-scoped cache directories.
+ * Looks in both flat and domain-scoped cache directories.
  */
 function getModuleArticleCacheStatus(
     articlesDir: string,
     moduleId: string,
-    areaId?: string
+    domainId?: string
 ): { cached: boolean; timestamp?: string } {
-    // Check area-scoped path first, then flat path
-    const pathsToTry = areaId
-        ? [path.join(articlesDir, areaId, `${moduleId}.json`), path.join(articlesDir, `${moduleId}.json`)]
+    // Check domain-scoped path first, then flat path
+    const pathsToTry = domainId
+        ? [path.join(articlesDir, domainId, `${moduleId}.json`), path.join(articlesDir, `${moduleId}.json`)]
         : [path.join(articlesDir, `${moduleId}.json`)];
 
     for (const cachePath of pathsToTry) {

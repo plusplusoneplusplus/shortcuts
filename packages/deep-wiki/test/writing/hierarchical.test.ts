@@ -3,12 +3,12 @@
  *
  * Tests for 3-level hierarchical wiki output for large repos:
  * - Area-aware cross-link generation
- * - Hierarchical file writer (area directory creation + path routing)
+ * - Hierarchical file writer (domain directory creation + path routing)
  * - Area reduce prompt template
- * - Static fallback generation for areas
+ * - Static fallback generation for domains
  * - Backward compat: small repo still produces flat layout
- * - Integration-level: graph with areas → hierarchical articles + file layout
- * - Integration-level: graph without areas → flat layout (unchanged)
+ * - Integration-level: graph with domains → hierarchical articles + file layout
+ * - Integration-level: graph without domains → flat layout (unchanged)
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -20,7 +20,7 @@ import type {
     ModuleAnalysis,
     GeneratedArticle,
     WikiOutput,
-    AreaInfo,
+    DomainInfo,
 } from '../../src/types';
 import {
     buildModuleArticlePromptTemplate,
@@ -28,8 +28,8 @@ import {
     buildSimplifiedGraph,
 } from '../../src/writing/prompts';
 import {
-    buildAreaReducePromptTemplate,
-    getAreaReduceOutputFields,
+    buildDomainReducePromptTemplate,
+    getDomainReduceOutputFields,
     buildHierarchicalReducePromptTemplate,
 } from '../../src/writing/reduce-prompts';
 import {
@@ -37,11 +37,11 @@ import {
     getArticleFilePath,
 } from '../../src/writing/file-writer';
 import {
-    generateStaticAreaPages,
+    generateStaticDomainPages,
     generateStaticHierarchicalIndexPages,
     generateStaticIndexPages,
     analysisToPromptItem,
-    groupAnalysesByArea,
+    groupAnalysesByDomain,
 } from '../../src/writing/article-executor';
 
 // ============================================================================
@@ -100,7 +100,7 @@ function createSmallGraph(): ModuleGraph {
 }
 
 function createLargeGraph(): ModuleGraph {
-    const areas: AreaInfo[] = [
+    const domains: DomainInfo[] = [
         {
             id: 'packages-core',
             name: 'packages/core',
@@ -136,7 +136,7 @@ function createLargeGraph(): ModuleGraph {
                 dependents: ['api-middleware'],
                 complexity: 'high' as const,
                 category: 'security',
-                area: 'packages-core',
+                domain: 'packages-core',
             },
             {
                 id: 'core-database',
@@ -148,7 +148,7 @@ function createLargeGraph(): ModuleGraph {
                 dependents: ['core-auth'],
                 complexity: 'medium' as const,
                 category: 'infrastructure',
-                area: 'packages-core',
+                domain: 'packages-core',
             },
             {
                 id: 'api-routes',
@@ -160,7 +160,7 @@ function createLargeGraph(): ModuleGraph {
                 dependents: [],
                 complexity: 'medium' as const,
                 category: 'api',
-                area: 'packages-api',
+                domain: 'packages-api',
             },
             {
                 id: 'api-middleware',
@@ -172,7 +172,7 @@ function createLargeGraph(): ModuleGraph {
                 dependents: ['api-routes'],
                 complexity: 'medium' as const,
                 category: 'api',
-                area: 'packages-api',
+                domain: 'packages-api',
             },
         ],
         categories: [
@@ -180,8 +180,8 @@ function createLargeGraph(): ModuleGraph {
             { name: 'infrastructure', description: 'Infrastructure' },
             { name: 'api', description: 'API layer' },
         ],
-        architectureNotes: 'Monorepo with packages/core and packages/api areas',
-        areas,
+        architectureNotes: 'Monorepo with packages/core and packages/api domains',
+        domains,
     };
 }
 
@@ -206,23 +206,23 @@ function createTestAnalysis(moduleId: string): ModuleAnalysis {
 // ============================================================================
 
 describe('buildCrossLinkRules', () => {
-    it('should produce flat cross-link rules when no areaId', () => {
+    it('should produce flat cross-link rules when no domainId', () => {
         const rules = buildCrossLinkRules();
         expect(rules).toContain('./modules/module-id.md');
-        expect(rules).not.toContain('areas/');
+        expect(rules).not.toContain('domains/');
     });
 
-    it('should produce hierarchical cross-link rules when areaId provided', () => {
+    it('should produce hierarchical cross-link rules when domainId provided', () => {
         const rules = buildCrossLinkRules('packages-core');
-        expect(rules).toContain('areas/packages-core/modules/');
-        expect(rules).toContain('../../other-area-id/modules/module-id.md');
-        expect(rules).toContain('Area Index');
+        expect(rules).toContain('domains/packages-core/modules/');
+        expect(rules).toContain('../../other-domain-id/modules/module-id.md');
+        expect(rules).toContain('Domain Index');
         expect(rules).toContain('Project Index');
     });
 
-    it('should include the specific area ID in the location context', () => {
-        const rules = buildCrossLinkRules('my-area');
-        expect(rules).toContain('areas/my-area/modules/');
+    it('should include the specific domain ID in the location context', () => {
+        const rules = buildCrossLinkRules('my-domain');
+        expect(rules).toContain('domains/my-domain/modules/');
     });
 });
 
@@ -230,73 +230,73 @@ describe('buildCrossLinkRules', () => {
 // Prompt Template with Area Context
 // ============================================================================
 
-describe('buildModuleArticlePromptTemplate with area', () => {
+describe('buildModuleArticlePromptTemplate with domain', () => {
     it('should produce flat cross-links by default', () => {
         const template = buildModuleArticlePromptTemplate('normal');
         expect(template).toContain('./modules/module-id.md');
-        expect(template).not.toContain('../../other-area-id');
+        expect(template).not.toContain('../../other-domain-id');
     });
 
-    it('should produce hierarchical cross-links when areaId provided', () => {
+    it('should produce hierarchical cross-links when domainId provided', () => {
         const template = buildModuleArticlePromptTemplate('normal', 'packages-core');
-        expect(template).toContain('areas/packages-core/modules/');
-        expect(template).toContain('../../other-area-id/modules/module-id.md');
+        expect(template).toContain('domains/packages-core/modules/');
+        expect(template).toContain('../../other-domain-id/modules/module-id.md');
     });
 
-    it('should still contain template variables when area is provided', () => {
-        const template = buildModuleArticlePromptTemplate('normal', 'my-area');
+    it('should still contain template variables when domain is provided', () => {
+        const template = buildModuleArticlePromptTemplate('normal', 'my-domain');
         expect(template).toContain('{{moduleName}}');
         expect(template).toContain('{{analysis}}');
         expect(template).toContain('{{moduleGraph}}');
     });
 
-    it('should vary by depth even with area', () => {
-        const shallow = buildModuleArticlePromptTemplate('shallow', 'area-1');
-        const deep = buildModuleArticlePromptTemplate('deep', 'area-1');
+    it('should vary by depth even with domain', () => {
+        const shallow = buildModuleArticlePromptTemplate('shallow', 'domain-1');
+        const deep = buildModuleArticlePromptTemplate('deep', 'domain-1');
         expect(shallow).toContain('concise');
         expect(deep).toContain('thorough');
     });
 });
 
 // ============================================================================
-// Area Reduce Prompt Template
+// Domain Reduce Prompt Template
 // ============================================================================
 
-describe('buildAreaReducePromptTemplate', () => {
-    it('should contain area-specific template variables', () => {
-        const template = buildAreaReducePromptTemplate();
-        expect(template).toContain('{{areaName}}');
-        expect(template).toContain('{{areaDescription}}');
-        expect(template).toContain('{{areaPath}}');
+describe('buildDomainReducePromptTemplate', () => {
+    it('should contain domain-specific template variables', () => {
+        const template = buildDomainReducePromptTemplate();
+        expect(template).toContain('{{domainName}}');
+        expect(template).toContain('{{domainDescription}}');
+        expect(template).toContain('{{domainPath}}');
         expect(template).toContain('{{projectName}}');
     });
 
     it('should request index and architecture pages', () => {
-        const template = buildAreaReducePromptTemplate();
+        const template = buildDomainReducePromptTemplate();
         expect(template).toContain('index.md');
         expect(template).toContain('architecture.md');
     });
 
-    it('should instruct area-relative module links', () => {
-        const template = buildAreaReducePromptTemplate();
+    it('should instruct domain-relative module links', () => {
+        const template = buildDomainReducePromptTemplate();
         expect(template).toContain('./modules/module-id.md');
     });
 
-    it('should include cross-area linking instructions', () => {
-        const template = buildAreaReducePromptTemplate();
-        expect(template).toContain('../../other-area-id/modules/module-id.md');
+    it('should include cross-domain linking instructions', () => {
+        const template = buildDomainReducePromptTemplate();
+        expect(template).toContain('../../other-domain-id/modules/module-id.md');
     });
 
     it('should request JSON output with two fields', () => {
-        const template = buildAreaReducePromptTemplate();
+        const template = buildDomainReducePromptTemplate();
         expect(template).toContain('"index"');
         expect(template).toContain('"architecture"');
     });
 });
 
-describe('getAreaReduceOutputFields', () => {
+describe('getDomainReduceOutputFields', () => {
     it('should return index and architecture', () => {
-        const fields = getAreaReduceOutputFields();
+        const fields = getDomainReduceOutputFields();
         expect(fields).toEqual(['index', 'architecture']);
     });
 });
@@ -314,16 +314,16 @@ describe('buildHierarchicalReducePromptTemplate', () => {
         expect(template).toContain('{{buildSystem}}');
     });
 
-    it('should reference areas structure', () => {
+    it('should reference domains structure', () => {
         const template = buildHierarchicalReducePromptTemplate();
-        expect(template).toContain('areas');
+        expect(template).toContain('domains');
         expect(template).toContain('hierarchical');
     });
 
-    it('should instruct area-relative linking', () => {
+    it('should instruct domain-relative linking', () => {
         const template = buildHierarchicalReducePromptTemplate();
-        expect(template).toContain('./areas/area-id/index.md');
-        expect(template).toContain('./areas/area-id/modules/module-id.md');
+        expect(template).toContain('./domains/domain-id/index.md');
+        expect(template).toContain('./domains/domain-id/modules/module-id.md');
     });
 
     it('should request three output fields', () => {
@@ -339,20 +339,20 @@ describe('buildHierarchicalReducePromptTemplate', () => {
 // ============================================================================
 
 describe('getArticleFilePath — hierarchical', () => {
-    it('should route module articles with areaId to areas/{areaId}/modules/', () => {
+    it('should route module articles with domainId to domains/{domainId}/modules/', () => {
         const article: GeneratedArticle = {
             type: 'module',
             slug: 'core-auth',
             title: 'Core Auth',
             content: '',
             moduleId: 'core-auth',
-            areaId: 'packages-core',
+            domainId: 'packages-core',
         };
         const result = getArticleFilePath(article, '/output');
-        expect(result).toBe(path.join('/output', 'areas', 'packages-core', 'modules', 'core-auth.md'));
+        expect(result).toBe(path.join('/output', 'domains', 'packages-core', 'modules', 'core-auth.md'));
     });
 
-    it('should route module articles without areaId to modules/ (flat)', () => {
+    it('should route module articles without domainId to modules/ (flat)', () => {
         const article: GeneratedArticle = {
             type: 'module',
             slug: 'auth',
@@ -364,28 +364,28 @@ describe('getArticleFilePath — hierarchical', () => {
         expect(result).toBe(path.join('/output', 'modules', 'auth.md'));
     });
 
-    it('should route area-index to areas/{areaId}/index.md', () => {
+    it('should route domain-index to domains/{domainId}/index.md', () => {
         const article: GeneratedArticle = {
-            type: 'area-index',
+            type: 'domain-index',
             slug: 'index',
             title: 'Area Index',
             content: '',
-            areaId: 'packages-core',
+            domainId: 'packages-core',
         };
         const result = getArticleFilePath(article, '/output');
-        expect(result).toBe(path.join('/output', 'areas', 'packages-core', 'index.md'));
+        expect(result).toBe(path.join('/output', 'domains', 'packages-core', 'index.md'));
     });
 
-    it('should route area-architecture to areas/{areaId}/architecture.md', () => {
+    it('should route domain-architecture to domains/{domainId}/architecture.md', () => {
         const article: GeneratedArticle = {
-            type: 'area-architecture',
+            type: 'domain-architecture',
             slug: 'architecture',
             title: 'Area Architecture',
             content: '',
-            areaId: 'packages-api',
+            domainId: 'packages-api',
         };
         const result = getArticleFilePath(article, '/output');
-        expect(result).toBe(path.join('/output', 'areas', 'packages-api', 'architecture.md'));
+        expect(result).toBe(path.join('/output', 'domains', 'packages-api', 'architecture.md'));
     });
 
     it('should route project-level index to root', () => {
@@ -401,7 +401,7 @@ describe('getArticleFilePath — hierarchical', () => {
 });
 
 describe('writeWikiOutput — hierarchical layout', () => {
-    it('should create area directory structure', () => {
+    it('should create domain directory structure', () => {
         const outputDir = path.join(tempDir, 'wiki');
         const output: WikiOutput = {
             articles: [
@@ -411,14 +411,14 @@ describe('writeWikiOutput — hierarchical layout', () => {
                     title: 'Core Auth',
                     content: '# Core Auth',
                     moduleId: 'core-auth',
-                    areaId: 'packages-core',
+                    domainId: 'packages-core',
                 },
                 {
-                    type: 'area-index',
+                    type: 'domain-index',
                     slug: 'index',
                     title: 'Core Overview',
                     content: '# Core',
-                    areaId: 'packages-core',
+                    domainId: 'packages-core',
                 },
             ],
             duration: 100,
@@ -426,11 +426,11 @@ describe('writeWikiOutput — hierarchical layout', () => {
 
         writeWikiOutput(output, outputDir);
 
-        expect(fs.existsSync(path.join(outputDir, 'areas', 'packages-core', 'modules', 'core-auth.md'))).toBe(true);
-        expect(fs.existsSync(path.join(outputDir, 'areas', 'packages-core', 'index.md'))).toBe(true);
+        expect(fs.existsSync(path.join(outputDir, 'domains', 'packages-core', 'modules', 'core-auth.md'))).toBe(true);
+        expect(fs.existsSync(path.join(outputDir, 'domains', 'packages-core', 'index.md'))).toBe(true);
     });
 
-    it('should create multiple area directories', () => {
+    it('should create multiple domain directories', () => {
         const outputDir = path.join(tempDir, 'wiki');
         const output: WikiOutput = {
             articles: [
@@ -440,7 +440,7 @@ describe('writeWikiOutput — hierarchical layout', () => {
                     title: 'Auth',
                     content: '# Auth',
                     moduleId: 'auth',
-                    areaId: 'packages-core',
+                    domainId: 'packages-core',
                 },
                 {
                     type: 'module',
@@ -448,7 +448,7 @@ describe('writeWikiOutput — hierarchical layout', () => {
                     title: 'Routes',
                     content: '# Routes',
                     moduleId: 'routes',
-                    areaId: 'packages-api',
+                    domainId: 'packages-api',
                 },
             ],
             duration: 100,
@@ -456,8 +456,8 @@ describe('writeWikiOutput — hierarchical layout', () => {
 
         writeWikiOutput(output, outputDir);
 
-        expect(fs.existsSync(path.join(outputDir, 'areas', 'packages-core', 'modules', 'auth.md'))).toBe(true);
-        expect(fs.existsSync(path.join(outputDir, 'areas', 'packages-api', 'modules', 'routes.md'))).toBe(true);
+        expect(fs.existsSync(path.join(outputDir, 'domains', 'packages-core', 'modules', 'auth.md'))).toBe(true);
+        expect(fs.existsSync(path.join(outputDir, 'domains', 'packages-api', 'modules', 'routes.md'))).toBe(true);
     });
 
     it('should write complete hierarchical directory structure', () => {
@@ -469,10 +469,10 @@ describe('writeWikiOutput — hierarchical layout', () => {
                 { type: 'architecture', slug: 'architecture', title: 'Arch', content: '# Arch' },
                 { type: 'getting-started', slug: 'getting-started', title: 'GS', content: '# GS' },
                 // Area-level
-                { type: 'area-index', slug: 'index', title: 'Core Index', content: '# Core', areaId: 'packages-core' },
-                { type: 'area-architecture', slug: 'architecture', title: 'Core Arch', content: '# Core Arch', areaId: 'packages-core' },
+                { type: 'domain-index', slug: 'index', title: 'Core Index', content: '# Core', domainId: 'packages-core' },
+                { type: 'domain-architecture', slug: 'architecture', title: 'Core Arch', content: '# Core Arch', domainId: 'packages-core' },
                 // Module-level
-                { type: 'module', slug: 'auth', title: 'Auth', content: '# Auth', moduleId: 'auth', areaId: 'packages-core' },
+                { type: 'module', slug: 'auth', title: 'Auth', content: '# Auth', moduleId: 'auth', domainId: 'packages-core' },
             ],
             duration: 100,
         };
@@ -483,12 +483,12 @@ describe('writeWikiOutput — hierarchical layout', () => {
         expect(fs.existsSync(path.join(outputDir, 'index.md'))).toBe(true);
         expect(fs.existsSync(path.join(outputDir, 'architecture.md'))).toBe(true);
         expect(fs.existsSync(path.join(outputDir, 'getting-started.md'))).toBe(true);
-        expect(fs.existsSync(path.join(outputDir, 'areas', 'packages-core', 'index.md'))).toBe(true);
-        expect(fs.existsSync(path.join(outputDir, 'areas', 'packages-core', 'architecture.md'))).toBe(true);
-        expect(fs.existsSync(path.join(outputDir, 'areas', 'packages-core', 'modules', 'auth.md'))).toBe(true);
+        expect(fs.existsSync(path.join(outputDir, 'domains', 'packages-core', 'index.md'))).toBe(true);
+        expect(fs.existsSync(path.join(outputDir, 'domains', 'packages-core', 'architecture.md'))).toBe(true);
+        expect(fs.existsSync(path.join(outputDir, 'domains', 'packages-core', 'modules', 'auth.md'))).toBe(true);
     });
 
-    it('should still support flat layout (no areaId)', () => {
+    it('should still support flat layout (no domainId)', () => {
         const outputDir = path.join(tempDir, 'wiki');
         const output: WikiOutput = {
             articles: [
@@ -502,19 +502,19 @@ describe('writeWikiOutput — hierarchical layout', () => {
 
         expect(fs.existsSync(path.join(outputDir, 'index.md'))).toBe(true);
         expect(fs.existsSync(path.join(outputDir, 'modules', 'auth.md'))).toBe(true);
-        expect(fs.existsSync(path.join(outputDir, 'areas'))).toBe(false);
+        expect(fs.existsSync(path.join(outputDir, 'domains'))).toBe(false);
     });
 
-    it('should normalize line endings in area articles', () => {
+    it('should normalize line endings in domain articles', () => {
         const outputDir = path.join(tempDir, 'wiki');
         const output: WikiOutput = {
             articles: [
                 {
-                    type: 'area-index',
+                    type: 'domain-index',
                     slug: 'index',
                     title: 'Core',
                     content: 'line1\r\nline2\r\n',
-                    areaId: 'core',
+                    domainId: 'core',
                 },
             ],
             duration: 100,
@@ -522,7 +522,7 @@ describe('writeWikiOutput — hierarchical layout', () => {
 
         writeWikiOutput(output, outputDir);
 
-        const content = fs.readFileSync(path.join(outputDir, 'areas', 'core', 'index.md'), 'utf-8');
+        const content = fs.readFileSync(path.join(outputDir, 'domains', 'core', 'index.md'), 'utf-8');
         expect(content).toBe('line1\nline2\n');
     });
 });
@@ -531,63 +531,63 @@ describe('writeWikiOutput — hierarchical layout', () => {
 // Static Fallback — Area Pages
 // ============================================================================
 
-describe('generateStaticAreaPages', () => {
-    it('should generate area-index and area-architecture articles', () => {
+describe('generateStaticDomainPages', () => {
+    it('should generate domain-index and domain-architecture articles', () => {
         const graph = createLargeGraph();
-        const area = graph.areas![0]; // packages-core
+        const domain = graph.domains![0]; // packages-core
         const analyses = [createTestAnalysis('core-auth'), createTestAnalysis('core-database')];
 
-        const articles = generateStaticAreaPages(area, analyses, graph);
+        const articles = generateStaticDomainPages(domain, analyses, graph);
 
         const types = articles.map(a => a.type);
-        expect(types).toContain('area-index');
-        expect(types).toContain('area-architecture');
+        expect(types).toContain('domain-index');
+        expect(types).toContain('domain-architecture');
     });
 
-    it('should set areaId on generated articles', () => {
+    it('should set domainId on generated articles', () => {
         const graph = createLargeGraph();
-        const area = graph.areas![0];
+        const domain = graph.domains![0];
         const analyses = [createTestAnalysis('core-auth')];
 
-        const articles = generateStaticAreaPages(area, analyses, graph);
+        const articles = generateStaticDomainPages(domain, analyses, graph);
 
         for (const article of articles) {
-            expect(article.areaId).toBe('packages-core');
+            expect(article.domainId).toBe('packages-core');
         }
     });
 
-    it('should include module links in area index', () => {
+    it('should include module links in domain index', () => {
         const graph = createLargeGraph();
-        const area = graph.areas![0];
+        const domain = graph.domains![0];
         const analyses = [createTestAnalysis('core-auth'), createTestAnalysis('core-database')];
 
-        const articles = generateStaticAreaPages(area, analyses, graph);
-        const index = articles.find(a => a.type === 'area-index')!;
+        const articles = generateStaticDomainPages(domain, analyses, graph);
+        const index = articles.find(a => a.type === 'domain-index')!;
 
         expect(index.content).toContain('core-auth.md');
         expect(index.content).toContain('core-database.md');
     });
 
-    it('should use module names in area index', () => {
+    it('should use module names in domain index', () => {
         const graph = createLargeGraph();
-        const area = graph.areas![0];
+        const domain = graph.domains![0];
         const analyses = [createTestAnalysis('core-auth')];
 
-        const articles = generateStaticAreaPages(area, analyses, graph);
-        const index = articles.find(a => a.type === 'area-index')!;
+        const articles = generateStaticDomainPages(domain, analyses, graph);
+        const index = articles.find(a => a.type === 'domain-index')!;
 
         expect(index.content).toContain('Core Auth');
     });
 
-    it('should include area name in both articles', () => {
+    it('should include domain name in both articles', () => {
         const graph = createLargeGraph();
-        const area = graph.areas![0];
+        const domain = graph.domains![0];
         const analyses = [createTestAnalysis('core-auth')];
 
-        const articles = generateStaticAreaPages(area, analyses, graph);
+        const articles = generateStaticDomainPages(domain, analyses, graph);
 
         for (const article of articles) {
-            expect(article.content).toContain(area.name);
+            expect(article.content).toContain(domain.name);
         }
     });
 });
@@ -599,49 +599,49 @@ describe('generateStaticAreaPages', () => {
 describe('generateStaticHierarchicalIndexPages', () => {
     it('should generate project index and architecture', () => {
         const graph = createLargeGraph();
-        const areas = graph.areas!;
-        const areaSummaries = areas.map(a => ({
-            areaId: a.id,
+        const domains = graph.domains!;
+        const domainSummaries = domains.map(a => ({
+            domainId: a.id,
             name: a.name,
             description: a.description,
             moduleCount: a.modules.length,
         }));
 
-        const articles = generateStaticHierarchicalIndexPages(graph, areas, areaSummaries);
+        const articles = generateStaticHierarchicalIndexPages(graph, domains, domainSummaries);
 
         const types = articles.map(a => a.type);
         expect(types).toContain('index');
         expect(types).toContain('architecture');
     });
 
-    it('should include area links in project index', () => {
+    it('should include domain links in project index', () => {
         const graph = createLargeGraph();
-        const areas = graph.areas!;
-        const areaSummaries = areas.map(a => ({
-            areaId: a.id,
+        const domains = graph.domains!;
+        const domainSummaries = domains.map(a => ({
+            domainId: a.id,
             name: a.name,
             description: a.description,
             moduleCount: a.modules.length,
         }));
 
-        const articles = generateStaticHierarchicalIndexPages(graph, areas, areaSummaries);
+        const articles = generateStaticHierarchicalIndexPages(graph, domains, domainSummaries);
         const index = articles.find(a => a.type === 'index')!;
 
-        expect(index.content).toContain('./areas/packages-core/index.md');
-        expect(index.content).toContain('./areas/packages-api/index.md');
+        expect(index.content).toContain('./domains/packages-core/index.md');
+        expect(index.content).toContain('./domains/packages-api/index.md');
     });
 
     it('should show module counts in project index', () => {
         const graph = createLargeGraph();
-        const areas = graph.areas!;
-        const areaSummaries = areas.map(a => ({
-            areaId: a.id,
+        const domains = graph.domains!;
+        const domainSummaries = domains.map(a => ({
+            domainId: a.id,
             name: a.name,
             description: a.description,
             moduleCount: a.modules.length,
         }));
 
-        const articles = generateStaticHierarchicalIndexPages(graph, areas, areaSummaries);
+        const articles = generateStaticHierarchicalIndexPages(graph, domains, domainSummaries);
         const index = articles.find(a => a.type === 'index')!;
 
         expect(index.content).toContain('2 modules');
@@ -649,15 +649,15 @@ describe('generateStaticHierarchicalIndexPages', () => {
 
     it('should include project name', () => {
         const graph = createLargeGraph();
-        const areas = graph.areas!;
-        const areaSummaries = areas.map(a => ({
-            areaId: a.id,
+        const domains = graph.domains!;
+        const domainSummaries = domains.map(a => ({
+            domainId: a.id,
             name: a.name,
             description: a.description,
             moduleCount: a.modules.length,
         }));
 
-        const articles = generateStaticHierarchicalIndexPages(graph, areas, areaSummaries);
+        const articles = generateStaticHierarchicalIndexPages(graph, domains, domainSummaries);
         const index = articles.find(a => a.type === 'index')!;
 
         expect(index.content).toContain('LargeProject');
@@ -669,9 +669,9 @@ describe('generateStaticHierarchicalIndexPages', () => {
 // ============================================================================
 
 describe('backward compatibility — small repos', () => {
-    it('should produce flat layout when graph has no areas', () => {
+    it('should produce flat layout when graph has no domains', () => {
         const graph = createSmallGraph();
-        expect(graph.areas).toBeUndefined();
+        expect(graph.domains).toBeUndefined();
 
         const analyses = [createTestAnalysis('auth'), createTestAnalysis('database')];
         const articles = generateStaticIndexPages(graph, analyses);
@@ -679,28 +679,28 @@ describe('backward compatibility — small repos', () => {
         // All module links should use flat ./modules/ path
         const index = articles.find(a => a.type === 'index')!;
         expect(index.content).toContain('./modules/auth.md');
-        expect(index.content).not.toContain('./areas/');
+        expect(index.content).not.toContain('./domains/');
     });
 
-    it('should not generate area articles for small repos', () => {
+    it('should not generate domain articles for small repos', () => {
         const graph = createSmallGraph();
         const analyses = [createTestAnalysis('auth')];
         const articles = generateStaticIndexPages(graph, analyses);
 
         const types = articles.map(a => a.type);
-        expect(types).not.toContain('area-index');
-        expect(types).not.toContain('area-architecture');
+        expect(types).not.toContain('domain-index');
+        expect(types).not.toContain('domain-architecture');
     });
 
-    it('should produce flat cross-link rules for modules without area', () => {
+    it('should produce flat cross-link rules for modules without domain', () => {
         const graph = createSmallGraph();
         const analysis = createTestAnalysis('auth');
         const item = analysisToPromptItem(analysis, graph);
 
-        // The item should not have area context
+        // The item should not have domain context
         const prompt = buildModuleArticlePromptTemplate('normal');
         expect(prompt).toContain('./modules/module-id.md');
-        expect(prompt).not.toContain('../../other-area-id');
+        expect(prompt).not.toContain('../../other-domain-id');
     });
 });
 
@@ -712,7 +712,7 @@ describe('integration — hierarchical file layout', () => {
     it('should write hierarchical articles to correct paths', () => {
         const outputDir = path.join(tempDir, 'wiki');
         const graph = createLargeGraph();
-        const areas = graph.areas!;
+        const domains = graph.domains!;
 
         // Build a full set of articles similar to what the executor would produce
         const articles: GeneratedArticle[] = [
@@ -722,16 +722,16 @@ describe('integration — hierarchical file layout', () => {
             { type: 'getting-started', slug: 'getting-started', title: 'GS', content: '# GS' },
 
             // Area: packages-core
-            { type: 'area-index', slug: 'index', title: 'Core', content: '# Core', areaId: 'packages-core' },
-            { type: 'area-architecture', slug: 'architecture', title: 'Core Arch', content: '# Core Arch', areaId: 'packages-core' },
-            { type: 'module', slug: 'core-auth', title: 'Auth', content: '# Auth', moduleId: 'core-auth', areaId: 'packages-core' },
-            { type: 'module', slug: 'core-database', title: 'DB', content: '# DB', moduleId: 'core-database', areaId: 'packages-core' },
+            { type: 'domain-index', slug: 'index', title: 'Core', content: '# Core', domainId: 'packages-core' },
+            { type: 'domain-architecture', slug: 'architecture', title: 'Core Arch', content: '# Core Arch', domainId: 'packages-core' },
+            { type: 'module', slug: 'core-auth', title: 'Auth', content: '# Auth', moduleId: 'core-auth', domainId: 'packages-core' },
+            { type: 'module', slug: 'core-database', title: 'DB', content: '# DB', moduleId: 'core-database', domainId: 'packages-core' },
 
             // Area: packages-api
-            { type: 'area-index', slug: 'index', title: 'API', content: '# API', areaId: 'packages-api' },
-            { type: 'area-architecture', slug: 'architecture', title: 'API Arch', content: '# API Arch', areaId: 'packages-api' },
-            { type: 'module', slug: 'api-routes', title: 'Routes', content: '# Routes', moduleId: 'api-routes', areaId: 'packages-api' },
-            { type: 'module', slug: 'api-middleware', title: 'MW', content: '# MW', moduleId: 'api-middleware', areaId: 'packages-api' },
+            { type: 'domain-index', slug: 'index', title: 'API', content: '# API', domainId: 'packages-api' },
+            { type: 'domain-architecture', slug: 'architecture', title: 'API Arch', content: '# API Arch', domainId: 'packages-api' },
+            { type: 'module', slug: 'api-routes', title: 'Routes', content: '# Routes', moduleId: 'api-routes', domainId: 'packages-api' },
+            { type: 'module', slug: 'api-middleware', title: 'MW', content: '# MW', moduleId: 'api-middleware', domainId: 'packages-api' },
         ];
 
         const output: WikiOutput = { articles, duration: 100 };
@@ -744,20 +744,20 @@ describe('integration — hierarchical file layout', () => {
         expect(fs.existsSync(path.join(outputDir, 'architecture.md'))).toBe(true);
         expect(fs.existsSync(path.join(outputDir, 'getting-started.md'))).toBe(true);
 
-        // packages-core area
-        expect(fs.existsSync(path.join(outputDir, 'areas', 'packages-core', 'index.md'))).toBe(true);
-        expect(fs.existsSync(path.join(outputDir, 'areas', 'packages-core', 'architecture.md'))).toBe(true);
-        expect(fs.existsSync(path.join(outputDir, 'areas', 'packages-core', 'modules', 'core-auth.md'))).toBe(true);
-        expect(fs.existsSync(path.join(outputDir, 'areas', 'packages-core', 'modules', 'core-database.md'))).toBe(true);
+        // packages-core domain
+        expect(fs.existsSync(path.join(outputDir, 'domains', 'packages-core', 'index.md'))).toBe(true);
+        expect(fs.existsSync(path.join(outputDir, 'domains', 'packages-core', 'architecture.md'))).toBe(true);
+        expect(fs.existsSync(path.join(outputDir, 'domains', 'packages-core', 'modules', 'core-auth.md'))).toBe(true);
+        expect(fs.existsSync(path.join(outputDir, 'domains', 'packages-core', 'modules', 'core-database.md'))).toBe(true);
 
-        // packages-api area
-        expect(fs.existsSync(path.join(outputDir, 'areas', 'packages-api', 'index.md'))).toBe(true);
-        expect(fs.existsSync(path.join(outputDir, 'areas', 'packages-api', 'architecture.md'))).toBe(true);
-        expect(fs.existsSync(path.join(outputDir, 'areas', 'packages-api', 'modules', 'api-routes.md'))).toBe(true);
-        expect(fs.existsSync(path.join(outputDir, 'areas', 'packages-api', 'modules', 'api-middleware.md'))).toBe(true);
+        // packages-api domain
+        expect(fs.existsSync(path.join(outputDir, 'domains', 'packages-api', 'index.md'))).toBe(true);
+        expect(fs.existsSync(path.join(outputDir, 'domains', 'packages-api', 'architecture.md'))).toBe(true);
+        expect(fs.existsSync(path.join(outputDir, 'domains', 'packages-api', 'modules', 'api-routes.md'))).toBe(true);
+        expect(fs.existsSync(path.join(outputDir, 'domains', 'packages-api', 'modules', 'api-middleware.md'))).toBe(true);
     });
 
-    it('should write flat articles to correct paths (no areas)', () => {
+    it('should write flat articles to correct paths (no domains)', () => {
         const outputDir = path.join(tempDir, 'wiki');
 
         const articles: GeneratedArticle[] = [
@@ -777,8 +777,8 @@ describe('integration — hierarchical file layout', () => {
         expect(fs.existsSync(path.join(outputDir, 'modules', 'auth.md'))).toBe(true);
         expect(fs.existsSync(path.join(outputDir, 'modules', 'database.md'))).toBe(true);
 
-        // No areas directory should be created
-        expect(fs.existsSync(path.join(outputDir, 'areas'))).toBe(false);
+        // No domains directory should be created
+        expect(fs.existsSync(path.join(outputDir, 'domains'))).toBe(false);
     });
 
     it('should correctly read written hierarchical content', () => {
@@ -789,9 +789,9 @@ describe('integration — hierarchical file layout', () => {
                     type: 'module',
                     slug: 'core-auth',
                     title: 'Core Auth',
-                    content: '# Core Auth\n\nAuthentication module in the core area.',
+                    content: '# Core Auth\n\nAuthentication module in the core domain.',
                     moduleId: 'core-auth',
-                    areaId: 'packages-core',
+                    domainId: 'packages-core',
                 },
             ],
             duration: 100,
@@ -799,18 +799,18 @@ describe('integration — hierarchical file layout', () => {
 
         writeWikiOutput(output, outputDir);
 
-        const filePath = path.join(outputDir, 'areas', 'packages-core', 'modules', 'core-auth.md');
+        const filePath = path.join(outputDir, 'domains', 'packages-core', 'modules', 'core-auth.md');
         const content = fs.readFileSync(filePath, 'utf-8');
-        expect(content).toBe('# Core Auth\n\nAuthentication module in the core area.');
+        expect(content).toBe('# Core Auth\n\nAuthentication module in the core domain.');
     });
 });
 
 // ============================================================================
-// groupAnalysesByArea
+// groupAnalysesByDomain
 // ============================================================================
 
-describe('groupAnalysesByArea', () => {
-    it('should map modules to their areas correctly', () => {
+describe('groupAnalysesByDomain', () => {
+    it('should map modules to their domains correctly', () => {
         const graph = createLargeGraph();
         const analyses = [
             createTestAnalysis('core-auth'),
@@ -818,14 +818,14 @@ describe('groupAnalysesByArea', () => {
             createTestAnalysis('api-routes'),
         ];
 
-        const result = groupAnalysesByArea(analyses, graph.areas!);
+        const result = groupAnalysesByDomain(analyses, graph.domains!);
 
-        expect(result.moduleAreaMap.get('core-auth')).toBe('packages-core');
-        expect(result.moduleAreaMap.get('core-database')).toBe('packages-core');
-        expect(result.moduleAreaMap.get('api-routes')).toBe('packages-api');
+        expect(result.moduleDomainMap.get('core-auth')).toBe('packages-core');
+        expect(result.moduleDomainMap.get('core-database')).toBe('packages-core');
+        expect(result.moduleDomainMap.get('api-routes')).toBe('packages-api');
     });
 
-    it('should group analyses by area', () => {
+    it('should group analyses by domain', () => {
         const graph = createLargeGraph();
         const analyses = [
             createTestAnalysis('core-auth'),
@@ -834,10 +834,10 @@ describe('groupAnalysesByArea', () => {
             createTestAnalysis('api-middleware'),
         ];
 
-        const result = groupAnalysesByArea(analyses, graph.areas!);
+        const result = groupAnalysesByDomain(analyses, graph.domains!);
 
-        expect(result.analysesByArea.get('packages-core')!.length).toBe(2);
-        expect(result.analysesByArea.get('packages-api')!.length).toBe(2);
+        expect(result.analysesByDomain.get('packages-core')!.length).toBe(2);
+        expect(result.analysesByDomain.get('packages-api')!.length).toBe(2);
         expect(result.unassignedAnalyses.length).toBe(0);
     });
 
@@ -848,9 +848,9 @@ describe('groupAnalysesByArea', () => {
             createTestAnalysis('unknown-module'),
         ];
 
-        const result = groupAnalysesByArea(analyses, graph.areas!);
+        const result = groupAnalysesByDomain(analyses, graph.domains!);
 
-        expect(result.analysesByArea.get('packages-core')!.length).toBe(1);
+        expect(result.analysesByDomain.get('packages-core')!.length).toBe(1);
         expect(result.unassignedAnalyses.length).toBe(1);
         expect(result.unassignedAnalyses[0].moduleId).toBe('unknown-module');
     });
@@ -858,20 +858,20 @@ describe('groupAnalysesByArea', () => {
     it('should handle empty analyses', () => {
         const graph = createLargeGraph();
 
-        const result = groupAnalysesByArea([], graph.areas!);
+        const result = groupAnalysesByDomain([], graph.domains!);
 
-        expect(result.moduleAreaMap.size).toBe(4); // all area modules still mapped
-        expect(result.analysesByArea.size).toBe(0);
+        expect(result.moduleDomainMap.size).toBe(4); // all domain modules still mapped
+        expect(result.analysesByDomain.size).toBe(0);
         expect(result.unassignedAnalyses.length).toBe(0);
     });
 
-    it('should handle empty areas', () => {
+    it('should handle empty domains', () => {
         const analyses = [createTestAnalysis('core-auth')];
 
-        const result = groupAnalysesByArea(analyses, []);
+        const result = groupAnalysesByDomain(analyses, []);
 
-        expect(result.moduleAreaMap.size).toBe(0);
-        expect(result.analysesByArea.size).toBe(0);
+        expect(result.moduleDomainMap.size).toBe(0);
+        expect(result.analysesByDomain.size).toBe(0);
         expect(result.unassignedAnalyses.length).toBe(1);
     });
 });

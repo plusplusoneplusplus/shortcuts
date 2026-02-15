@@ -324,9 +324,9 @@ function mergeClusterMembers(cluster: ClusterGroup, members: ModuleInfo[]): Modu
         members.flatMap(m => m.mergedFrom || [m.id])
     );
 
-    // Preserve area if consistent
-    const areas = new Set(members.map(m => m.area).filter(Boolean));
-    const area = areas.size === 1 ? [...areas][0] : undefined;
+    // Preserve domain if consistent
+    const domains = new Set(members.map(m => m.domain).filter(Boolean));
+    const domain = domains.size === 1 ? [...domains][0] : undefined;
 
     return {
         id: cluster.id,
@@ -338,7 +338,7 @@ function mergeClusterMembers(cluster: ClusterGroup, members: ModuleInfo[]): Modu
         dependents,
         complexity,
         category,
-        area,
+        domain,
         mergedFrom,
     };
 }

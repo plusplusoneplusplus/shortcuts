@@ -26,7 +26,7 @@ import type { WikiOutput, GeneratedArticle } from '../types';
 const MODULES_DIR = 'modules';
 
 /** Subdirectory for area articles */
-const AREAS_DIR = 'areas';
+const DOMAINS_DIR = 'domains';
 
 // ============================================================================
 // File Writer
@@ -40,8 +40,8 @@ const AREAS_DIR = 'areas';
  *
  * Supports both flat layout (small repos):
  *   wiki/modules/auth.md
- * And hierarchical layout (large repos with areas):
- *   wiki/areas/core/modules/auth.md
+ * And hierarchical layout (large repos with domains):
+ *   wiki/domains/core/modules/auth.md
  *
  * @param output The wiki output containing all articles
  * @param outputDir The output directory path
@@ -57,17 +57,17 @@ export function writeWikiOutput(output: WikiOutput, outputDir: string): string[]
     fs.mkdirSync(modulesDir, { recursive: true });
 
     // Collect unique area IDs to create area directories
-    const areaIds = new Set<string>();
+    const domainIds = new Set<string>();
     for (const article of output.articles) {
-        if (article.areaId) {
-            areaIds.add(article.areaId);
+        if (article.domainId) {
+            domainIds.add(article.domainId);
         }
     }
 
     // Create area directories if needed
-    for (const areaId of areaIds) {
-        const areaModulesDir = path.join(resolvedDir, AREAS_DIR, areaId, MODULES_DIR);
-        fs.mkdirSync(areaModulesDir, { recursive: true });
+    for (const domainId of domainIds) {
+        const domainModulesDir = path.join(resolvedDir, DOMAINS_DIR, domainId, MODULES_DIR);
+        fs.mkdirSync(domainModulesDir, { recursive: true });
     }
 
     for (const article of output.articles) {
@@ -92,14 +92,14 @@ export function writeWikiOutput(output: WikiOutput, outputDir: string): string[]
 // ============================================================================
 
 /**
- * Get the file path for an article based on its type, slug, and optional areaId.
+ * Get the file path for an article based on its type, slug, and optional domainId.
  *
- * For articles with areaId set (hierarchical layout):
- *   - module → areas/{areaId}/modules/{slug}.md
- *   - area-index → areas/{areaId}/index.md
- *   - area-architecture → areas/{areaId}/architecture.md
+ * For articles with domainId set (hierarchical layout):
+ *   - module → domains/{domainId}/modules/{slug}.md
+ *   - area-index → domains/{domainId}/index.md
+ *   - area-architecture → domains/{domainId}/architecture.md
  *
- * For articles without areaId (flat layout):
+ * For articles without domainId (flat layout):
  *   - module → modules/{slug}.md
  *   - index → index.md
  *   - architecture → architecture.md
@@ -110,14 +110,14 @@ export function getArticleFilePath(article: GeneratedArticle, outputDir: string)
 
     switch (article.type) {
         case 'module':
-            if (article.areaId) {
-                return path.join(outputDir, AREAS_DIR, article.areaId, MODULES_DIR, `${slug}.md`);
+            if (article.domainId) {
+                return path.join(outputDir, DOMAINS_DIR, article.domainId, MODULES_DIR, `${slug}.md`);
             }
             return path.join(outputDir, MODULES_DIR, `${slug}.md`);
-        case 'area-index':
-            return path.join(outputDir, AREAS_DIR, article.areaId!, 'index.md');
-        case 'area-architecture':
-            return path.join(outputDir, AREAS_DIR, article.areaId!, 'architecture.md');
+        case 'domain-index':
+            return path.join(outputDir, DOMAINS_DIR, article.domainId!, 'index.md');
+        case 'domain-architecture':
+            return path.join(outputDir, DOMAINS_DIR, article.domainId!, 'architecture.md');
         case 'index':
             return path.join(outputDir, 'index.md');
         case 'architecture':

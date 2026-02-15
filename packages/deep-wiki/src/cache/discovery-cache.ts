@@ -2,7 +2,7 @@
  * Discovery Cache — Intermediate Discovery Artifacts
  *
  * Caches intermediate results from the discovery phase (Phase 1):
- * seeds, probe results, structural scans, area sub-graphs, and
+ * seeds, probe results, structural scans, domain sub-graphs, and
  * round progress metadata. Enables crash recovery and avoids
  * redundant AI calls on retry.
  *
@@ -15,7 +15,7 @@
  *   │   ├── probes/                    # Per-topic probe results
  *   │   │   ├── auth.json
  *   │   │   └── ...
- *   │   └── areas/                     # Per-area sub-graphs (large repo)
+ *   │   └── domains/                     # Per-domain sub-graphs (large repo)
  *   │       ├── frontend.json
  *   │       └── ...
  *
@@ -38,7 +38,7 @@ import type {
     CachedProbeResult,
     CachedSeeds,
     CachedStructuralScan,
-    CachedAreaGraph,
+    CachedDomainGraph,
     DiscoveryProgressMetadata,
 } from './types';
 import { normalizeModuleId } from '../schemas';
@@ -57,8 +57,8 @@ const DISCOVERY_DIR = 'discovery';
 /** Subdirectory for per-topic probe results */
 const PROBES_DIR = 'probes';
 
-/** Subdirectory for per-area sub-graphs */
-const AREAS_DIR = 'areas';
+/** Subdirectory for per-domain sub-graphs */
+const DOMAINS_DIR = 'domains';
 
 /** File name for discovery progress metadata */
 const METADATA_FILE = '_metadata.json';
@@ -91,10 +91,10 @@ function getProbesCacheDir(outputDir: string): string {
 }
 
 /**
- * Get the areas cache directory.
+ * Get the domains cache directory.
  */
-function getAreasCacheDir(outputDir: string): string {
-    return path.join(getDiscoveryCacheDir(outputDir), AREAS_DIR);
+function getDomainsCacheDir(outputDir: string): string {
+    return path.join(getDiscoveryCacheDir(outputDir), DOMAINS_DIR);
 }
 
 /**
@@ -106,11 +106,11 @@ function getProbeCachePath(outputDir: string, topic: string): string {
 }
 
 /**
- * Get the path to a single cached area sub-graph.
+ * Get the path to a single cached domain sub-graph.
  */
-function getAreaCachePath(outputDir: string, areaId: string): string {
-    const slug = normalizeModuleId(areaId);
-    return path.join(getAreasCacheDir(outputDir), `${slug}.json`);
+function getDomainCachePath(outputDir: string, domainId: string): string {
+    const slug = normalizeModuleId(domainId);
+    return path.join(getDomainsCacheDir(outputDir), `${slug}.json`);
 }
 
 // Local helpers (atomicWriteFileSync and safeReadJSON) have been replaced
@@ -309,24 +309,24 @@ export function getCachedStructuralScanAny(
 }
 
 // ============================================================================
-// Area Sub-Graph Cache (Large Repo)
+// Domain Sub-Graph Cache (Large Repo)
 // ============================================================================
 
 /**
- * Save an area sub-graph to the cache.
+ * Save an domain sub-graph to the cache.
  *
- * @param areaId - The area identifier (path or slug)
- * @param graph - The area's sub-graph
+ * @param domainId - The domain identifier (path or slug)
+ * @param graph - The domain's sub-graph
  * @param outputDir - Output directory
  * @param gitHash - Current git hash
  */
-export function saveAreaSubGraph(
-    areaId: string,
+export function saveDomainSubGraph(
+    domainId: string,
     graph: ModuleGraph,
     outputDir: string,
     gitHash: string
 ): void {
-    writeCacheFile<CachedAreaGraph>(getAreaCachePath(outputDir, areaId), {
+    writeCacheFile<CachedDomainGraph>(getDomainCachePath(outputDir, domainId), {
         graph,
         gitHash,
         timestamp: Date.now(),
@@ -334,56 +334,56 @@ export function saveAreaSubGraph(
 }
 
 /**
- * Get a cached area sub-graph if valid (git hash matches).
+ * Get a cached domain sub-graph if valid (git hash matches).
  *
- * @param areaId - The area identifier
+ * @param domainId - The domain identifier
  * @param outputDir - Output directory
  * @param gitHash - Current git hash for validation
  * @returns Cached sub-graph, or null if cache miss
  */
-export function getCachedAreaSubGraph(
-    areaId: string,
+export function getCachedDomainSubGraph(
+    domainId: string,
     outputDir: string,
     gitHash: string
 ): ModuleGraph | null {
-    const cached = readCacheFileIf<CachedAreaGraph>(
-        getAreaCachePath(outputDir, areaId),
+    const cached = readCacheFileIf<CachedDomainGraph>(
+        getDomainCachePath(outputDir, domainId),
         (d) => !!d.graph && d.gitHash === gitHash
     );
     return cached?.graph ?? null;
 }
 
 /**
- * Scan for cached area sub-graphs across multiple area IDs.
+ * Scan for cached domain sub-graphs across multiple domain IDs.
  *
- * @param areaIds - Area identifiers to scan
+ * @param domainIds - Domain identifiers to scan
  * @param outputDir - Output directory
  * @param gitHash - Current git hash for validation
- * @returns Object with `found` (valid cached graphs) and `missing` (area IDs not found or stale)
+ * @returns Object with `found` (valid cached graphs) and `missing` (domain IDs not found or stale)
  */
-export function scanCachedAreas(
-    areaIds: string[],
+export function scanCachedDomains(
+    domainIds: string[],
     outputDir: string,
     gitHash: string
 ): { found: Map<string, ModuleGraph>; missing: string[] } {
-    return scanCacheItemsMap<CachedAreaGraph, ModuleGraph>(
-        areaIds,
-        (areaId) => getAreaCachePath(outputDir, areaId),
+    return scanCacheItemsMap<CachedDomainGraph, ModuleGraph>(
+        domainIds,
+        (domainId) => getDomainCachePath(outputDir, domainId),
         (cached) => !!cached.graph && cached.gitHash === gitHash,
         (cached) => cached.graph
     );
 }
 
 /**
- * Scan for cached area sub-graphs regardless of git hash (--use-cache mode).
+ * Scan for cached domain sub-graphs regardless of git hash (--use-cache mode).
  */
-export function scanCachedAreasAny(
-    areaIds: string[],
+export function scanCachedDomainsAny(
+    domainIds: string[],
     outputDir: string
 ): { found: Map<string, ModuleGraph>; missing: string[] } {
-    return scanCacheItemsMap<CachedAreaGraph, ModuleGraph>(
-        areaIds,
-        (areaId) => getAreaCachePath(outputDir, areaId),
+    return scanCacheItemsMap<CachedDomainGraph, ModuleGraph>(
+        domainIds,
+        (domainId) => getDomainCachePath(outputDir, domainId),
         (cached) => !!cached.graph,
         (cached) => cached.graph
     );

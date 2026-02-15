@@ -28,7 +28,7 @@ export { runIterativeDiscovery } from './iterative/iterative-discovery';
  * It analyzes the repository and returns a structured ModuleGraph.
  *
  * For large repositories (3000+ files), it automatically uses multi-round
- * discovery: first a structural scan, then per-area drill-downs.
+ * discovery: first a structural scan, then per-domain drill-downs.
  *
  * @param options - Discovery options (repoPath is required)
  * @returns DiscoveryResult containing the ModuleGraph and timing info

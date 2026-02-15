@@ -98,7 +98,7 @@ ${MODULE_GRAPH_SCHEMA}
 
 /**
  * Build the structural scan prompt for large repositories.
- * This is the first pass that identifies top-level areas without deep-diving.
+ * This is the first pass that identifies top-level domains without deep-diving.
  *
  * @param repoPath - Absolute path to the repository
  * @returns The rendered prompt string
@@ -109,7 +109,7 @@ You have access to grep, glob, and view tools to explore the repository at ${rep
 
 ## Your Task
 
-This is a LARGE repository. Perform a quick scan to identify the top-level structure WITHOUT deep-diving into any area. Focus on understanding what each area DOES, not just what directory it is.
+This is a LARGE repository. Perform a quick scan to identify the top-level structure WITHOUT deep-diving into any domain. Focus on understanding what each domain DOES, not just what directory it is.
 
 ## Steps
 
@@ -119,9 +119,9 @@ This is a LARGE repository. Perform a quick scan to identify the top-level struc
 4. For each major directory, run glob("<dir>/*") to get a sense of its contents (do NOT recurse deeply).
 5. Estimate the total file count based on what you see.
 
-## Area Naming Guidance
+## Domain Naming Guidance
 
-Area names should describe the FUNCTIONALITY of each area, not just echo the directory name.
+Domain names should describe the FUNCTIONALITY of each domain, not just echo the directory name.
 
 **Good**: "AI Pipeline Engine (packages/core)" — describes what it does
 **Bad**: "packages/core" — just the directory path
@@ -136,9 +136,9 @@ ${STRUCTURAL_SCAN_SCHEMA}
 
 ## Rules
 
-- List only TOP-LEVEL areas (don't go more than 2 levels deep)
+- List only TOP-LEVEL domains (don't go more than 2 levels deep)
 - Estimate fileCount based on directory sizes you observe
-- Area descriptions should explain what the area DOES, not just restate the directory name
+- Domain descriptions should explain what the domain DOES, not just restate the directory name
 - Keep descriptions brief (1 sentence each)
 - Include all significant directories (skip node_modules, .git, dist, build, vendor, etc.)`;
 }
@@ -148,37 +148,37 @@ ${STRUCTURAL_SCAN_SCHEMA}
 // ============================================================================
 
 /**
- * Build a focused discovery prompt for a specific area of a large repository.
- * Used in the second pass where each top-level area gets its own session.
+ * Build a focused discovery prompt for a specific domain of a large repository.
+ * Used in the second pass where each top-level domain gets its own session.
  *
  * @param repoPath - Absolute path to the repository
- * @param areaPath - Path of the area to focus on
- * @param areaDescription - Description of the area
+ * @param domainPath - Path of the domain to focus on
+ * @param domainDescription - Description of the domain
  * @param projectName - Name of the overall project
  * @returns The rendered prompt string
  */
 export function buildFocusedDiscoveryPrompt(
     repoPath: string,
-    areaPath: string,
-    areaDescription: string,
+    domainPath: string,
+    domainDescription: string,
     projectName: string
 ): string {
-    return `You are a senior software architect analyzing a specific area of the ${projectName} codebase.
+    return `You are a senior software architect analyzing a specific domain of the ${projectName} codebase.
 You have access to grep, glob, and view tools to explore the repository at ${repoPath}.
 
 ## Your Task
 
-Analyze the "${areaPath}" directory in detail. This area is described as: ${areaDescription}
+Analyze the "${domainPath}" directory in detail. This domain is described as: ${domainDescription}
 
-Focus on identifying the **features, capabilities, and behavioral patterns** within this area — not just listing its files.
+Focus on identifying the **features, capabilities, and behavioral patterns** within this domain — not just listing its files.
 
 ## Steps
 
-1. Read any README, docs, or config files within "${areaPath}" to understand the area's purpose.
-2. Run glob("${areaPath}/**/*") to see all files in this area.
-3. Read key entry points and config files within this area.
+1. Read any README, docs, or config files within "${domainPath}" to understand the domain's purpose.
+2. Run glob("${domainPath}/**/*") to see all files in this domain.
+3. Read key entry points and config files within this domain.
 4. Identify feature-level sub-modules, their purposes, and dependencies.
-5. Use grep to trace imports/exports to understand internal and cross-area dependencies.
+5. Use grep to trace imports/exports to understand internal and cross-domain dependencies.
 
 ## Module Naming Guidance
 
@@ -195,12 +195,12 @@ ${MODULE_GRAPH_SCHEMA}
 
 ## Rules
 
-- Module IDs should be prefixed with the area name and describe the FEATURE (e.g., "core-auth-engine", "core-data-pipeline")
+- Module IDs should be prefixed with the domain name and describe the FEATURE (e.g., "core-auth-engine", "core-data-pipeline")
 - Do NOT derive module IDs from file paths — describe what the module DOES
-- Paths must be relative to the repo root (include the area path prefix)
-- Dependencies may reference modules outside this area — use your best guess for their IDs
-- For cross-area dependencies, use the convention: area-name + "-" + module-name
-- architectureNotes should describe the architecture of THIS area specifically
-- Categories should be specific to this area's contents
+- Paths must be relative to the repo root (include the domain path prefix)
+- Dependencies may reference modules outside this domain — use your best guess for their IDs
+- For cross-domain dependencies, use the convention: domain-name + "-" + module-name
+- architectureNotes should describe the architecture of THIS domain specifically
+- Categories should be specific to this domain's contents
 - Group related files into feature-level modules — do NOT create one module per file`;
 }

@@ -80,7 +80,7 @@ ${existingGraphSection}
 
 4. **Determine convergence**:
    - converged=true if: coverage >= 0.8 AND no new topics discovered
-   - converged=true if: all major areas have been probed and no gaps remain
+   - converged=true if: all major domains have been probed and no gaps remain
    - converged=false if: significant gaps exist or new topics were discovered
 
 ## Output Format

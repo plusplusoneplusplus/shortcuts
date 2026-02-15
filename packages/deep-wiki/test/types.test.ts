@@ -150,7 +150,7 @@ describe('Types and Schemas', () => {
             expect(typeof STRUCTURAL_SCAN_SCHEMA).toBe('string');
             expect(STRUCTURAL_SCAN_SCHEMA.length).toBeGreaterThan(50);
             expect(STRUCTURAL_SCAN_SCHEMA).toContain('fileCount');
-            expect(STRUCTURAL_SCAN_SCHEMA).toContain('areas');
+            expect(STRUCTURAL_SCAN_SCHEMA).toContain('domains');
             expect(STRUCTURAL_SCAN_SCHEMA).toContain('projectInfo');
         });
 
@@ -169,12 +169,12 @@ describe('Types and Schemas', () => {
             expect(MODULE_GRAPH_SCHEMA).toContain('what this module does for users or the system');
         });
 
-        it('should include feature-focused guidance in STRUCTURAL_SCAN_SCHEMA area name', () => {
+        it('should include feature-focused guidance in STRUCTURAL_SCAN_SCHEMA domain name', () => {
             expect(STRUCTURAL_SCAN_SCHEMA).toContain('FUNCTIONALITY');
         });
 
-        it('should include feature-focused guidance in STRUCTURAL_SCAN_SCHEMA area description', () => {
-            expect(STRUCTURAL_SCAN_SCHEMA).toContain('what this area DOES');
+        it('should include feature-focused guidance in STRUCTURAL_SCAN_SCHEMA domain description', () => {
+            expect(STRUCTURAL_SCAN_SCHEMA).toContain('what this domain DOES');
         });
     });
 
@@ -274,19 +274,19 @@ describe('Types and Schemas', () => {
             expect(cached.metadata.gitHash).toBe('abc123def456');
         });
 
-        it('should allow constructing valid TopLevelArea', () => {
-            const area: TopLevelArea = {
+        it('should allow constructing valid TopLevelDomain', () => {
+            const domain: TopLevelDomain = {
                 name: 'packages/core',
                 path: 'packages/core',
                 description: 'Core package',
             };
-            expect(area.name).toBe('packages/core');
+            expect(domain.name).toBe('packages/core');
         });
 
         it('should allow constructing valid StructuralScanResult', () => {
             const scan: StructuralScanResult = {
                 fileCount: 5000,
-                areas: [{ name: 'src', path: 'src', description: 'Source code' }],
+                domains: [{ name: 'src', path: 'src', description: 'Source code' }],
                 projectInfo: { name: 'my-project', language: 'TypeScript' },
             };
             expect(scan.fileCount).toBe(5000);
@@ -307,31 +307,31 @@ describe('Types and Schemas', () => {
     });
 
     // ========================================================================
-    // AreaInfo Type
+    // DomainInfo Type
     // ========================================================================
 
-    describe('AreaInfo type', () => {
-        it('should allow constructing valid AreaInfo', () => {
-            const area: AreaInfo = {
+    describe('DomainInfo type', () => {
+        it('should allow constructing valid DomainInfo', () => {
+            const domain: DomainInfo = {
                 id: 'packages-core',
                 name: 'packages/core',
                 path: 'packages/core',
                 description: 'Core library modules',
                 modules: ['auth', 'database'],
             };
-            expect(area.id).toBe('packages-core');
-            expect(area.modules).toHaveLength(2);
+            expect(domain.id).toBe('packages-core');
+            expect(domain.modules).toHaveLength(2);
         });
 
         it('should allow empty modules array', () => {
-            const area: AreaInfo = {
-                id: 'empty-area',
+            const domain: DomainInfo = {
+                id: 'empty-domain',
                 name: 'Empty',
                 path: 'empty',
                 description: 'No modules',
                 modules: [],
             };
-            expect(area.modules).toHaveLength(0);
+            expect(domain.modules).toHaveLength(0);
         });
     });
 
@@ -339,8 +339,8 @@ describe('Types and Schemas', () => {
     // ModuleGraph with Areas
     // ========================================================================
 
-    describe('ModuleGraph with areas', () => {
-        it('should allow ModuleGraph without areas (backward compat)', () => {
+    describe('ModuleGraph with domains', () => {
+        it('should allow ModuleGraph without domains (backward compat)', () => {
             const graph: ModuleGraph = {
                 project: {
                     name: 'test',
@@ -353,10 +353,10 @@ describe('Types and Schemas', () => {
                 categories: [],
                 architectureNotes: '',
             };
-            expect(graph.areas).toBeUndefined();
+            expect(graph.domains).toBeUndefined();
         });
 
-        it('should allow ModuleGraph with areas', () => {
+        it('should allow ModuleGraph with domains', () => {
             const graph: ModuleGraph = {
                 project: {
                     name: 'test',
@@ -375,11 +375,11 @@ describe('Types and Schemas', () => {
                     dependents: [],
                     complexity: 'medium',
                     category: 'core',
-                    area: 'packages-core',
+                    domain: 'packages-core',
                 }],
                 categories: [],
                 architectureNotes: '',
-                areas: [{
+                domains: [{
                     id: 'packages-core',
                     name: 'Core',
                     path: 'packages/core',
@@ -387,8 +387,8 @@ describe('Types and Schemas', () => {
                     modules: ['auth'],
                 }],
             };
-            expect(graph.areas).toHaveLength(1);
-            expect(graph.modules[0].area).toBe('packages-core');
+            expect(graph.domains).toHaveLength(1);
+            expect(graph.modules[0].domain).toBe('packages-core');
         });
     });
 
@@ -398,13 +398,13 @@ describe('Types and Schemas', () => {
 
     describe('extended ArticleType', () => {
         it('should support area-index type', () => {
-            const articleType: ArticleType = 'area-index';
-            expect(articleType).toBe('area-index');
+            const articleType: ArticleType = 'domain-index';
+            expect(articleType).toBe('domain-index');
         });
 
         it('should support area-architecture type', () => {
-            const articleType: ArticleType = 'area-architecture';
-            expect(articleType).toBe('area-architecture');
+            const articleType: ArticleType = 'domain-architecture';
+            expect(articleType).toBe('domain-architecture');
         });
 
         it('should still support original types', () => {
@@ -413,8 +413,8 @@ describe('Types and Schemas', () => {
         });
     });
 
-    describe('GeneratedArticle with areaId', () => {
-        it('should allow GeneratedArticle without areaId (backward compat)', () => {
+    describe('GeneratedArticle with domainId', () => {
+        it('should allow GeneratedArticle without domainId (backward compat)', () => {
             const article: GeneratedArticle = {
                 type: 'module',
                 slug: 'auth',
@@ -422,42 +422,42 @@ describe('Types and Schemas', () => {
                 content: '# Auth',
                 moduleId: 'auth',
             };
-            expect(article.areaId).toBeUndefined();
+            expect(article.domainId).toBeUndefined();
         });
 
-        it('should allow GeneratedArticle with areaId', () => {
+        it('should allow GeneratedArticle with domainId', () => {
             const article: GeneratedArticle = {
                 type: 'module',
                 slug: 'auth',
                 title: 'Auth',
                 content: '# Auth',
                 moduleId: 'auth',
-                areaId: 'packages-core',
+                domainId: 'packages-core',
             };
-            expect(article.areaId).toBe('packages-core');
+            expect(article.domainId).toBe('packages-core');
         });
 
-        it('should allow area-index article with areaId', () => {
+        it('should allow area-index article with domainId', () => {
             const article: GeneratedArticle = {
-                type: 'area-index',
+                type: 'domain-index',
                 slug: 'index',
                 title: 'Core Overview',
                 content: '# Core',
-                areaId: 'packages-core',
+                domainId: 'packages-core',
             };
-            expect(article.type).toBe('area-index');
-            expect(article.areaId).toBe('packages-core');
+            expect(article.type).toBe('domain-index');
+            expect(article.domainId).toBe('packages-core');
         });
 
-        it('should allow area-architecture article with areaId', () => {
+        it('should allow area-architecture article with domainId', () => {
             const article: GeneratedArticle = {
-                type: 'area-architecture',
+                type: 'domain-architecture',
                 slug: 'architecture',
                 title: 'Core Architecture',
                 content: '# Core Arch',
-                areaId: 'packages-core',
+                domainId: 'packages-core',
             };
-            expect(article.type).toBe('area-architecture');
+            expect(article.type).toBe('domain-architecture');
         });
     });
 
@@ -750,11 +750,11 @@ describe('Types and Schemas', () => {
     });
 
     // ========================================================================
-    // ModuleInfo with area
+    // ModuleInfo with domain
     // ========================================================================
 
-    describe('ModuleInfo with area', () => {
-        it('should allow ModuleInfo without area (backward compat)', () => {
+    describe('ModuleInfo with domain', () => {
+        it('should allow ModuleInfo without domain (backward compat)', () => {
             const mod: ModuleInfo = {
                 id: 'auth',
                 name: 'Auth',
@@ -766,10 +766,10 @@ describe('Types and Schemas', () => {
                 complexity: 'medium',
                 category: 'core',
             };
-            expect(mod.area).toBeUndefined();
+            expect(mod.domain).toBeUndefined();
         });
 
-        it('should allow ModuleInfo with area', () => {
+        it('should allow ModuleInfo with domain', () => {
             const mod: ModuleInfo = {
                 id: 'auth',
                 name: 'Auth',
@@ -780,9 +780,9 @@ describe('Types and Schemas', () => {
                 dependents: [],
                 complexity: 'medium',
                 category: 'core',
-                area: 'packages-core',
+                domain: 'packages-core',
             };
-            expect(mod.area).toBe('packages-core');
+            expect(mod.domain).toBe('packages-core');
         });
     });
 });

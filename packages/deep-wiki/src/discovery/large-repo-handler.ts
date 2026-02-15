@@ -2,7 +2,7 @@
  * Discovery Phase — Large Repo Handler
  *
  * Handles multi-round discovery for large repositories (3000+ files).
- * First pass identifies top-level structure, second pass drills into each area.
+ * First pass identifies top-level structure, second pass drills into each domain.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
@@ -18,9 +18,9 @@ import type {
     ModuleGraph,
     ModuleInfo,
     CategoryInfo,
-    AreaInfo,
+    DomainInfo,
     StructuralScanResult,
-    TopLevelArea,
+    TopLevelDomain,
 } from '../types';
 import { normalizeModuleId } from '../schemas';
 import { getErrorMessage } from '../utils/error-utils';
@@ -31,8 +31,8 @@ import {
     getCachedStructuralScan,
     getCachedStructuralScanAny,
     saveStructuralScan,
-    getCachedAreaSubGraph,
-    saveAreaSubGraph,
+    getCachedDomainSubGraph,
+    saveDomainSubGraph,
 } from '../cache';
 
 // ============================================================================
@@ -45,8 +45,8 @@ export const LARGE_REPO_THRESHOLD = 3000;
 /** Default timeout for structural scan */
 const STRUCTURAL_SCAN_TIMEOUT_MS = 1_800_000; // 30 minutes
 
-/** Default timeout per area drill-down */
-const PER_AREA_TIMEOUT_MS = 1_800_000; // 30 minutes
+/** Default timeout per domain drill-down */
+const PER_DOMAIN_TIMEOUT_MS = 1_800_000; // 30 minutes
 
 /** Available tools for discovery (read-only file exploration) */
 const DISCOVERY_TOOLS = ['view', 'grep', 'glob'];
@@ -122,8 +122,8 @@ export async function isLargeRepo(repoPath: string, threshold?: number): Promise
 /**
  * Perform multi-round discovery for a large repository.
  *
- * Round 1: Structural scan — identify top-level areas
- * Round 2: Per-area drill-down — focused discovery for each area (sequential)
+ * Round 1: Structural scan — identify top-level domains
+ * Round 2: Per-domain drill-down — focused discovery for each domain (sequential)
  * Final:   Merge all sub-graphs into a unified ModuleGraph
  *
  * @param options - Discovery options
@@ -136,7 +136,7 @@ export async function discoverLargeRepo(options: DiscoveryOptions): Promise<Modu
 
     // Round 1: Structural scan (check cache first)
     printInfo('Large repo detected — using multi-round discovery');
-    printInfo('Round 1: Running structural scan to identify top-level areas...');
+    printInfo('Round 1: Running structural scan to identify top-level domains...');
 
     let scanResult: StructuralScanResult | null = null;
 
@@ -146,7 +146,7 @@ export async function discoverLargeRepo(options: DiscoveryOptions): Promise<Modu
             : getCachedStructuralScan(options.outputDir!, gitHash!);
 
         if (scanResult) {
-            printInfo(`Using cached structural scan (${scanResult.areas.length} areas)`);
+            printInfo(`Using cached structural scan (${scanResult.domains.length} domains)`);
         }
     }
 
@@ -163,59 +163,59 @@ export async function discoverLargeRepo(options: DiscoveryOptions): Promise<Modu
         }
     }
 
-    if (scanResult.areas.length === 0) {
-        throw new Error('Structural scan found no top-level areas. The repository may be empty or inaccessible.');
+    if (scanResult.domains.length === 0) {
+        throw new Error('Structural scan found no top-level domains. The repository may be empty or inaccessible.');
     }
 
-    printInfo(`Structural scan found ${scanResult.areas.length} areas: ${scanResult.areas.map(a => cyan(a.name)).join(', ')}`);
+    printInfo(`Structural scan found ${scanResult.domains.length} domains: ${scanResult.domains.map(a => cyan(a.name)).join(', ')}`);
 
-    // Round 2: Per-area drill-down (sequential to avoid overloading the SDK)
-    printInfo('Round 2: Per-area drill-down...');
+    // Round 2: Per-domain drill-down (sequential to avoid overloading the SDK)
+    printInfo('Round 2: Per-domain drill-down...');
     const subGraphs: ModuleGraph[] = [];
     const projectName = scanResult.projectInfo.name || 'project';
 
-    for (let i = 0; i < scanResult.areas.length; i++) {
-        const area = scanResult.areas[i];
-        const areaSlug = normalizeModuleId(area.path);
+    for (let i = 0; i < scanResult.domains.length; i++) {
+        const domain = scanResult.domains[i];
+        const domainSlug = normalizeModuleId(domain.path);
 
-        // Check area cache
-        let cachedArea: ModuleGraph | null = null;
+        // Check domain cache
+        let cachedDomain: ModuleGraph | null = null;
         if (cacheEnabled && gitHash) {
-            cachedArea = getCachedAreaSubGraph(areaSlug, options.outputDir!, gitHash);
+            cachedDomain = getCachedDomainSubGraph(domainSlug, options.outputDir!, gitHash);
         }
 
-        if (cachedArea) {
-            printInfo(`  Area "${area.name}" loaded from cache (${cachedArea.modules.length} modules)`);
-            subGraphs.push(cachedArea);
+        if (cachedDomain) {
+            printInfo(`  Domain "${domain.name}" loaded from cache (${cachedDomain.modules.length} modules)`);
+            subGraphs.push(cachedDomain);
             continue;
         }
 
-        printInfo(`  Discovering area ${i + 1}/${scanResult.areas.length}: ${cyan(area.name)} ${gray(`(${area.path})`)}`);
+        printInfo(`  Discovering domain ${i + 1}/${scanResult.domains.length}: ${cyan(domain.name)} ${gray(`(${domain.path})`)}`);
         try {
-            const subGraph = await discoverArea(options, area, projectName);
+            const subGraph = await discoverDomain(options, domain, projectName);
             printInfo(`    Found ${subGraph.modules.length} modules`);
             subGraphs.push(subGraph);
 
-            // Save area sub-graph to cache
+            // Save domain sub-graph to cache
             if (cacheEnabled && gitHash) {
                 try {
-                    saveAreaSubGraph(areaSlug, subGraph, options.outputDir!, gitHash);
+                    saveDomainSubGraph(domainSlug, subGraph, options.outputDir!, gitHash);
                 } catch {
                     // Non-fatal: cache write failed
                 }
             }
         } catch (error) {
-            // Log error but continue with other areas
-            printWarning(`Failed to discover area '${area.name}': ${getErrorMessage(error)}`);
+            // Log error but continue with other domains
+            printWarning(`Failed to discover domain '${domain.name}': ${getErrorMessage(error)}`);
         }
     }
 
     if (subGraphs.length === 0) {
-        throw new Error('All area discoveries failed. Cannot produce a module graph.');
+        throw new Error('All domain discoveries failed. Cannot produce a module graph.');
     }
 
     // Merge sub-graphs
-    printInfo(`Merging ${subGraphs.length} area sub-graphs...`);
+    printInfo(`Merging ${subGraphs.length} domain sub-graphs...`);
     const merged = mergeSubGraphs(subGraphs, scanResult);
     printInfo(`Merged result: ${merged.modules.length} modules, ${merged.categories.length} categories`);
     return merged;
@@ -255,22 +255,22 @@ async function performStructuralScan(options: DiscoveryOptions): Promise<Structu
 }
 
 // ============================================================================
-// Round 2: Per-Area Drill-Down
+// Round 2: Per-Domain Drill-Down
 // ============================================================================
 
 /**
- * Discover a single area of a large repository.
+ * Discover a single domain of a large repository.
  */
-async function discoverArea(
+async function discoverDomain(
     options: DiscoveryOptions,
-    area: TopLevelArea,
+    domain: TopLevelDomain,
     projectName: string
 ): Promise<ModuleGraph> {
     const service = getCopilotSDKService();
     const prompt = buildFocusedDiscoveryPrompt(
         options.repoPath,
-        area.path,
-        area.description,
+        domain.path,
+        domain.description,
         projectName
     );
 
@@ -280,7 +280,7 @@ async function discoverArea(
         availableTools: DISCOVERY_TOOLS,
         onPermissionRequest: readOnlyPermissions,
         usePool: false,
-        timeoutMs: PER_AREA_TIMEOUT_MS,
+        timeoutMs: PER_DOMAIN_TIMEOUT_MS,
     };
 
     if (options.model) {
@@ -290,7 +290,7 @@ async function discoverArea(
     const result = await service.sendMessage(sendOptions);
 
     if (!result.success || !result.response) {
-        throw new Error(`Area discovery failed for '${area.name}': ${result.error || 'empty response'}`);
+        throw new Error(`Domain discovery failed for '${domain.name}': ${result.error || 'empty response'}`);
     }
 
     return parseModuleGraphResponse(result.response);
@@ -301,13 +301,13 @@ async function discoverArea(
 // ============================================================================
 
 /**
- * Merge multiple sub-graphs from area discoveries into a unified ModuleGraph.
+ * Merge multiple sub-graphs from domain discoveries into a unified ModuleGraph.
  *
  * - Deduplicates modules by ID
- * - Tags each module with its area slug
- * - Populates graph.areas from TopLevelArea[]
+ * - Tags each module with its domain slug
+ * - Populates graph.domains from TopLevelDomain[]
  * - Merges categories (deduplicating by name)
- * - Resolves cross-area dependencies
+ * - Resolves cross-domain dependencies
  * - Combines architecture notes
  */
 export function mergeSubGraphs(
@@ -324,29 +324,29 @@ export function mergeSubGraphs(
         entryPoints: firstProject.entryPoints,
     };
 
-    // Build area-to-graph mapping for tagging modules with their area
-    // Each sub-graph corresponds to one area (same order as scanResult.areas)
-    const areaModuleMap = new Map<string, string[]>();
+    // Build domain-to-graph mapping for tagging modules with their domain
+    // Each sub-graph corresponds to one domain (same order as scanResult.domains)
+    const domainModuleMap = new Map<string, string[]>();
 
-    // Merge modules (deduplicate by ID) and tag with area slug
+    // Merge modules (deduplicate by ID) and tag with domain slug
     const moduleMap = new Map<string, ModuleInfo>();
     for (let i = 0; i < subGraphs.length; i++) {
         const graph = subGraphs[i];
-        const area = scanResult.areas[i];
-        const areaSlug = area ? normalizeModuleId(area.path) : undefined;
+        const domain = scanResult.domains[i];
+        const domainSlug = domain ? normalizeModuleId(domain.path) : undefined;
 
         for (const mod of graph.modules) {
             if (!moduleMap.has(mod.id)) {
-                // Tag module with its area
-                const taggedMod = areaSlug ? { ...mod, area: areaSlug } : mod;
+                // Tag module with its domain
+                const taggedMod = domainSlug ? { ...mod, domain: domainSlug } : mod;
                 moduleMap.set(mod.id, taggedMod);
 
-                // Track which modules belong to each area
-                if (areaSlug) {
-                    if (!areaModuleMap.has(areaSlug)) {
-                        areaModuleMap.set(areaSlug, []);
+                // Track which modules belong to each domain
+                if (domainSlug) {
+                    if (!domainModuleMap.has(domainSlug)) {
+                        domainModuleMap.set(domainSlug, []);
                     }
-                    areaModuleMap.get(areaSlug)!.push(mod.id);
+                    domainModuleMap.get(domainSlug)!.push(mod.id);
                 }
             }
         }
@@ -364,7 +364,7 @@ export function mergeSubGraphs(
     }
     const categories = Array.from(categoryMap.values());
 
-    // Validate cross-area dependencies
+    // Validate cross-domain dependencies
     const moduleIds = new Set(modules.map(m => m.id));
     for (const mod of modules) {
         mod.dependencies = mod.dependencies.filter(dep => moduleIds.has(dep));
@@ -377,16 +377,16 @@ export function mergeSubGraphs(
         .filter(Boolean)
         .join('\n\n');
 
-    // Build AreaInfo[] from TopLevelArea[] + module assignments
-    const areas: AreaInfo[] | undefined = scanResult.areas.length > 0
-        ? scanResult.areas.map(topLevelArea => {
-            const areaSlug = normalizeModuleId(topLevelArea.path);
+    // Build DomainInfo[] from TopLevelDomain[] + module assignments
+    const domains: DomainInfo[] | undefined = scanResult.domains.length > 0
+        ? scanResult.domains.map(topLevelDomain => {
+            const domainSlug = normalizeModuleId(topLevelDomain.path);
             return {
-                id: areaSlug,
-                name: topLevelArea.name,
-                path: topLevelArea.path,
-                description: topLevelArea.description,
-                modules: areaModuleMap.get(areaSlug) || [],
+                id: domainSlug,
+                name: topLevelDomain.name,
+                path: topLevelDomain.path,
+                description: topLevelDomain.description,
+                modules: domainModuleMap.get(domainSlug) || [],
             };
         })
         : undefined;
@@ -396,6 +396,6 @@ export function mergeSubGraphs(
         modules,
         categories,
         architectureNotes,
-        ...(areas ? { areas } : {}),
+        ...(domains ? { domains } : {}),
     };
 }

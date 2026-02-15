@@ -200,7 +200,7 @@ export async function runPhase4Writing(
                                 title: moduleInfo?.name || moduleId,
                                 content,
                                 moduleId,
-                                areaId: moduleInfo?.area,
+                                domainId: moduleInfo?.domain,
                             };
                             saveArticle(moduleId, article, options.output, gitHash);
                         }
@@ -238,7 +238,7 @@ export async function runPhase4Writing(
         }
 
         // Merge cached + fresh module articles
-        // Module-type articles are the per-module ones; all others are reduce/area artifacts
+        // Module-type articles are the per-module ones; all others are reduce/domain artifacts
         const moduleTypes = new Set(['module']);
         const freshModuleArticles = freshArticles.filter(a => moduleTypes.has(a.type));
         const reduceArticles = freshArticles.filter(a => !moduleTypes.has(a.type));

@@ -13,8 +13,8 @@ import { runArticleExecutor } from './article-executor';
 
 // Re-export for convenience
 export { buildModuleArticlePrompt, buildModuleArticlePromptTemplate, buildSimplifiedGraph, getArticleStyleGuide, buildCrossLinkRules } from './prompts';
-export { buildReducePromptTemplate, getReduceOutputFields, buildModuleSummaryForReduce, buildAreaReducePromptTemplate, getAreaReduceOutputFields, buildHierarchicalReducePromptTemplate } from './reduce-prompts';
-export { runArticleExecutor, analysisToPromptItem, generateStaticIndexPages, generateStaticAreaPages, generateStaticHierarchicalIndexPages } from './article-executor';
+export { buildReducePromptTemplate, getReduceOutputFields, buildModuleSummaryForReduce, buildDomainReducePromptTemplate, getDomainReduceOutputFields, buildHierarchicalReducePromptTemplate } from './reduce-prompts';
+export { runArticleExecutor, analysisToPromptItem, generateStaticIndexPages, generateStaticDomainPages, generateStaticHierarchicalIndexPages } from './article-executor';
 export { writeWikiOutput, getArticleFilePath, slugify, normalizeLineEndings } from './file-writer';
 export { generateWebsite, generateEmbeddedData, generateHtmlTemplate, readModuleGraph, readMarkdownFiles, stableStringify } from './website-generator';
 export type { ArticleExecutorOptions, ArticleExecutorResult } from './article-executor';

@@ -221,26 +221,26 @@ describe('consolidateByDirectory', () => {
         expect(catNames).toEqual(['alpha', 'beta']);
     });
 
-    it('preserves area when all modules share same area', () => {
+    it('preserves domain when all modules share same domain', () => {
         const modules = [
-            makeModule({ id: 'a', path: 'pkg/core/a.ts', area: 'pkg-core' }),
-            makeModule({ id: 'b', path: 'pkg/core/b.ts', area: 'pkg-core' }),
+            makeModule({ id: 'a', path: 'pkg/core/a.ts', domain: 'pkg-core' }),
+            makeModule({ id: 'b', path: 'pkg/core/b.ts', domain: 'pkg-core' }),
         ];
         const graph = makeGraph(modules);
         const result = consolidateByDirectory(graph);
 
-        expect(result.modules[0].area).toBe('pkg-core');
+        expect(result.modules[0].domain).toBe('pkg-core');
     });
 
-    it('clears area when modules have different areas', () => {
+    it('clears domain when modules have different domains', () => {
         const modules = [
-            makeModule({ id: 'a', path: 'src/shared/a.ts', area: 'frontend' }),
-            makeModule({ id: 'b', path: 'src/shared/b.ts', area: 'backend' }),
+            makeModule({ id: 'a', path: 'src/shared/a.ts', domain: 'frontend' }),
+            makeModule({ id: 'b', path: 'src/shared/b.ts', domain: 'backend' }),
         ];
         const graph = makeGraph(modules);
         const result = consolidateByDirectory(graph);
 
-        expect(result.modules[0].area).toBeUndefined();
+        expect(result.modules[0].domain).toBeUndefined();
     });
 
     it('preserves project info and architectureNotes', () => {
@@ -290,16 +290,16 @@ describe('consolidateByDirectory', () => {
         expect(result.modules).toHaveLength(10);
     });
 
-    it('preserves areas array on the graph', () => {
+    it('preserves domains array on the graph', () => {
         const modules = [
             makeModule({ id: 'a', path: 'src/x/a.ts' }),
         ];
         const graph = makeGraph(modules, {
-            areas: [{ id: 'core', name: 'Core', path: 'src/', description: 'Core area', modules: ['a'] }],
+            domains: [{ id: 'core', name: 'Core', path: 'src/', description: 'Core domain', modules: ['a'] }],
         });
         const result = consolidateByDirectory(graph);
 
-        expect(result.areas).toBeDefined();
-        expect(result.areas![0].id).toBe('core');
+        expect(result.domains).toBeDefined();
+        expect(result.domains![0].id).toBe('core');
     });
 });

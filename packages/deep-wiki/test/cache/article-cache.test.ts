@@ -743,7 +743,7 @@ describe('restampArticles', () => {
             title: 'Complex Module',
             content: '# Complex\n\n## Overview\n\nRich **markdown** with `code`.\n\n```ts\nconst x = 42;\n```',
             moduleId: 'complex-module',
-            areaId: undefined,
+            domainId: undefined,
         };
 
         saveArticle('complex-module', article, outputDir, oldHash);
@@ -754,7 +754,7 @@ describe('restampArticles', () => {
         expect(scan.found[0]).toEqual(article);
     });
 
-    it('should work with area-scoped articles', () => {
+    it('should work with domain-scoped articles', () => {
         const oldHash = 'old_hash';
         const newHash = 'new_hash';
         const article: GeneratedArticle = {
@@ -763,7 +763,7 @@ describe('restampArticles', () => {
             title: 'Auth Service',
             content: '# Auth Service\n\nContent.',
             moduleId: 'auth-service',
-            areaId: 'backend',
+            domainId: 'backend',
         };
 
         // Save under area subdirectory
@@ -777,7 +777,7 @@ describe('restampArticles', () => {
         const scan = scanIndividualArticlesCache(['auth-service'], outputDir, newHash);
         expect(scan.found).toHaveLength(1);
         expect(scan.found[0].moduleId).toBe('auth-service');
-        expect(scan.found[0].areaId).toBe('backend');
+        expect(scan.found[0].domainId).toBe('backend');
     });
 
     it('should enable incremental Phase 4: re-stamp unchanged, only regenerate changed', () => {
