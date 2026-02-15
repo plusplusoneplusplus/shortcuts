@@ -32,6 +32,8 @@ export function generateDashboardHtml(options: DashboardOptions = {}): string {
         wsPath = '/ws',
         apiBasePath = '/api',
         enableWiki = false,
+        reviewFilePath,
+        projectDir,
     } = options;
 
     const themeAttr = theme === 'auto' ? '' : ` data-theme="${theme === 'dark' ? 'dark' : 'light'}"`;
@@ -59,6 +61,10 @@ ${bundleCss}
         <div class="top-bar-left">
             <button class="hamburger-btn" id="hamburger-btn" aria-label="Toggle sidebar">&#9776;</button>
             <span class="top-bar-logo">${escapeHtml(title)}</span>
+            <nav class="top-bar-nav">
+                <a href="/" class="nav-link" data-page="dashboard">Dashboard</a>
+                <a href="/review" class="nav-link" data-page="review">Review</a>
+            </nav>
         </div>
         <div class="top-bar-right">
             <select id="workspace-select" class="workspace-select">
@@ -387,12 +393,45 @@ ${getAllModels().map(m => `                            <option value="${escapeHt
         </div>
     </div>
 
+    <!-- File browser page -->
+    <div class="page-container hidden" id="page-review-browser">
+        <div class="review-browser-header">
+            <h2>Markdown Files</h2>
+            <input type="text" id="review-search" placeholder="Filter files..." />
+        </div>
+        <div id="review-browser-content" class="review-browser-content"></div>
+    </div>
+
+    <!-- Review editor page -->
+    <div class="page-container hidden" id="page-review-editor">
+        <div class="review-editor-toolbar" id="review-toolbar">
+            <a href="/review" class="back-link" id="review-back-link">&larr; Files</a>
+            <span class="review-file-name" id="review-file-name"></span>
+            <div class="review-toolbar-actions">
+                <button id="review-resolve-all" class="enqueue-btn-secondary">Resolve All</button>
+                <span class="review-comment-count" id="review-comment-count"></span>
+            </div>
+        </div>
+        <div class="review-editor-layout">
+            <div class="review-content" id="review-content"></div>
+            <aside class="review-comments-panel" id="review-comments-panel"></aside>
+        </div>
+    </div>
+
     <script>
         window.__DASHBOARD_CONFIG__ = {
             apiBasePath: '${escapeHtml(apiBasePath)}',
             wsPath: '${escapeHtml(wsPath)}'
         };
-    </script>
+    </script>${reviewFilePath ? `
+    <script>
+        window.__REVIEW_CONFIG__ = {
+            apiBasePath: '${escapeHtml(apiBasePath)}',
+            wsPath: '${escapeHtml(wsPath)}',
+            filePath: '${escapeHtml(reviewFilePath)}',
+            projectDir: '${escapeHtml(projectDir || '')}'
+        };
+    </script>` : ''}
     <script>
 ${bundleJs}
     </script>

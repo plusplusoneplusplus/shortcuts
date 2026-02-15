@@ -267,6 +267,39 @@ export function registerReviewRoutes(routes: Route[], projectDir: string): { com
     });
 
     // ------------------------------------------------------------------
+    // POST /api/review/files/:path/content — update file content
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/review\/files\/(.+)\/content$/,
+        handler: async (req, res, match) => {
+            const filePath = decodeURIComponent(match![1]);
+            const resolved = safePath(projectDir, filePath);
+            if (!resolved) {
+                return sendError(res, 400, 'Invalid path');
+            }
+
+            let body: any;
+            try {
+                body = await parseBody(req);
+            } catch {
+                return sendError(res, 400, 'Invalid JSON');
+            }
+
+            if (typeof body.content !== 'string') {
+                return sendError(res, 400, 'Missing content field');
+            }
+
+            try {
+                fs.writeFileSync(resolved, body.content, 'utf-8');
+                sendJSON(res, 200, { ok: true });
+            } catch {
+                return sendError(res, 500, 'Failed to write file');
+            }
+        },
+    });
+
+    // ------------------------------------------------------------------
     // POST /api/review/files/:path/comments/resolve-all
     // (must appear before the single-comment PATCH/DELETE regex)
     // ------------------------------------------------------------------

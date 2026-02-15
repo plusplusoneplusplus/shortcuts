@@ -9,6 +9,10 @@ export interface DashboardOptions {
     apiBasePath?: string;
     /** Enable wiki tab with CDN libs for markdown/mermaid rendering */
     enableWiki?: boolean;
+    /** When set, injects __REVIEW_CONFIG__ for the review editor page. */
+    reviewFilePath?: string;
+    /** Server project directory (for display in review editor). */
+    projectDir?: string;
 }
 
 export interface ScriptOptions {

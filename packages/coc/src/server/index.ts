@@ -32,6 +32,7 @@ import { createQueueExecutorBridge } from './queue-executor-bridge';
 import { QueuePersistence } from './queue-persistence';
 import { OutputPruner } from './output-pruner';
 import { TaskWatcher } from './task-watcher';
+import { ReviewFileWatcher } from './review-watcher';
 
 // ============================================================================
 // Stub Process Store
@@ -206,7 +207,17 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     }
 
     // Build request handler (health route is prepended automatically)
-    const handler = createRequestHandler({ routes, spaHtml, store });
+    const handler = createRequestHandler({
+        routes,
+        spaHtml,
+        store,
+        generateReviewHtml: (filePath: string) => {
+            return generateDashboardHtml({
+                reviewFilePath: filePath,
+                projectDir,
+            });
+        },
+    });
     const server = http.createServer(handler);
 
     // Attach WebSocket server and bridge ProcessStore events
@@ -215,6 +226,9 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     // Bridge review comment changes to WebSocket
     bridgeReviewToWebSocket(commentsManager, wsServer);
+
+    // Create file watcher for review editor — lazily watches .md files
+    const reviewWatcher = new ReviewFileWatcher(projectDir, wsServer);
 
     store.onProcessChange = (event) => {
         switch (event.type) {
@@ -355,6 +369,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         close: async () => {
             // Stop output pruner cleanup
             outputPruner.stopListening();
+            // Close review file watchers
+            reviewWatcher.closeAll();
             // Close task file watchers
             taskWatcher.closeAll();
             // Dispose wiki manager (stop file watchers, destroy sessions)
@@ -405,5 +421,6 @@ export { registerReviewRoutes, safePath, walkMarkdownFiles } from './review-hand
 export type { CommentChangeEvent } from './review-handler';
 export { ReviewCommentsManager } from './review-handler';
 export { bridgeReviewToWebSocket } from './review-websocket-bridge';
+export { ReviewFileWatcher } from './review-watcher';
 export { generateReviewEditorHtml, createImageRoute } from './review-editor';
 export type { ReviewEditorOptions } from './review-editor';

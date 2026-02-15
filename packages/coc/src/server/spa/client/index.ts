@@ -49,7 +49,12 @@ import './wiki-admin';
 // 11. AI Actions (dropdown for task AI operations)
 import './ai-actions';
 
-// 12. WebSocket (calls connectWebSocket())
+// 12. Review modules (no side effects — activated by route detection in core.ts)
+import './review-config';
+import './review-browser';
+import './review-editor';
+
+// 13. WebSocket (calls connectWebSocket())
 import './websocket';
 
 // Bootstrap the app

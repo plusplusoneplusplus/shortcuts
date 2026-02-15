@@ -8,10 +8,33 @@ import { initTheme } from './theme';
 import { populateWorkspaces } from './filters';
 import { renderProcessList, selectProcess, updateActiveItem } from './sidebar';
 import { clearDetail } from './detail';
+import { initFileBrowser } from './review-browser';
+import { initReviewEditor } from './review-editor';
+import { isReviewMode } from './review-config';
 
 export async function init(): Promise<void> {
     try {
         initTheme();
+
+        // Pathname-based routing for review pages
+        const reviewEditorMatch = location.pathname.match(/^\/review\/(.+)$/);
+        const isFileBrowser = location.pathname === '/review' || location.pathname === '/review/';
+
+        if (isFileBrowser) {
+            showPage('review-browser');
+            await initFileBrowser();
+            return;
+        }
+
+        if (reviewEditorMatch) {
+            showPage('review-editor');
+            await initReviewEditor();
+            return;
+        }
+
+        // Default: dashboard
+        showPage('dashboard');
+
         const wsRes = await fetchApi('/workspaces');
         if (wsRes && wsRes.workspaces) {
             appState.workspaces = wsRes.workspaces;
@@ -74,6 +97,53 @@ export async function fetchApi(path: string): Promise<any> {
         return null;
     }
 }
+
+// ================================================================
+// Page visibility (pathname-based routing)
+// ================================================================
+
+export function showPage(page: 'dashboard' | 'review-browser' | 'review-editor'): void {
+    const dashboardEls = ['view-processes', 'view-repos', 'view-reports', 'view-wiki', 'tab-bar'];
+    const browserEl = document.getElementById('page-review-browser');
+    const editorEl = document.getElementById('page-review-editor');
+
+    // Toggle dashboard elements
+    for (const id of dashboardEls) {
+        const el = document.getElementById(id);
+        if (el) el.classList.toggle('hidden', page !== 'dashboard');
+    }
+    if (browserEl) browserEl.classList.toggle('hidden', page !== 'review-browser');
+    if (editorEl) editorEl.classList.toggle('hidden', page !== 'review-editor');
+
+    // Update nav link active state
+    document.querySelectorAll('.nav-link').forEach((el) => {
+        const link = el as HTMLAnchorElement;
+        if (page === 'dashboard') {
+            link.classList.toggle('active', link.dataset.page === 'dashboard');
+        } else {
+            link.classList.toggle('active', link.dataset.page === 'review');
+        }
+    });
+}
+
+window.addEventListener('popstate', () => {
+    const reviewEditorMatch = location.pathname.match(/^\/review\/(.+)$/);
+    const isFileBrowser = location.pathname === '/review' || location.pathname === '/review/';
+
+    if (isFileBrowser) {
+        showPage('review-browser');
+        initFileBrowser();
+        return;
+    }
+
+    if (reviewEditorMatch) {
+        showPage('review-editor');
+        initReviewEditor();
+        return;
+    }
+
+    showPage('dashboard');
+});
 
 // ================================================================
 // Hash-based routing
@@ -240,3 +310,13 @@ export function navigateToWikiComponent(wikiId: string, componentId: string): vo
 (window as any).navigateToWikiComponent = navigateToWikiComponent;
 (window as any).__setHashSilent = setHashSilent;
 (window as any).appState = appState;
+
+// Intercept nav-link clicks for SPA navigation
+document.addEventListener('click', (e) => {
+    const link = (e.target as HTMLElement).closest('.nav-link, .back-link') as HTMLAnchorElement | null;
+    if (link && link.href) {
+        e.preventDefault();
+        history.pushState(null, '', link.href);
+        window.dispatchEvent(new PopStateEvent('popstate'));
+    }
+});

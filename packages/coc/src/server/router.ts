@@ -59,6 +59,8 @@ export interface RouterOptions {
     store: ProcessStore;
     /** Optional lookup function to resolve a wiki ID to its filesystem directory. */
     getWikiDir?: (wikiId: string) => string | undefined;
+    /** Optional function to generate SPA HTML with __REVIEW_CONFIG__ for a file. */
+    generateReviewHtml?: (filePath: string) => string;
 }
 
 /**
@@ -74,7 +76,7 @@ export interface RouterOptions {
 export function createRequestHandler(
     options: RouterOptions
 ): (req: http.IncomingMessage, res: http.ServerResponse) => void {
-    const { spaHtml, staticDir, store, getWikiDir } = options;
+    const { spaHtml, staticDir, store, getWikiDir, generateReviewHtml } = options;
 
     // Prepend built-in health route
     const routes: Route[] = [
@@ -171,6 +173,18 @@ export function createRequestHandler(
         if (staticDir && pathname !== '/' && pathname !== '/index.html') {
             const filePath = path.join(staticDir, pathname);
             if (serveStaticFile(filePath, res)) {
+                return;
+            }
+        }
+
+        // Review editor — dynamic SPA with file-specific config
+        if (generateReviewHtml) {
+            const reviewEditorMatch = pathname.match(/^\/review\/(.+)$/);
+            if (reviewEditorMatch) {
+                const filePath = decodeURIComponent(reviewEditorMatch[1]);
+                const reviewHtml = generateReviewHtml(filePath);
+                res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+                res.end(reviewHtml);
                 return;
             }
         }
