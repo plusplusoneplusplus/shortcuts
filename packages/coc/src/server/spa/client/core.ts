@@ -225,8 +225,18 @@ export function navigateToHome(): void {
     location.hash = '#processes';
 }
 
+export function navigateToWiki(wikiId: string): void {
+    location.hash = '#wiki/' + encodeURIComponent(wikiId);
+}
+
+export function navigateToWikiComponent(wikiId: string, componentId: string): void {
+    location.hash = '#wiki/' + encodeURIComponent(wikiId) + '/component/' + encodeURIComponent(componentId);
+}
+
 (window as any).navigateToProcess = navigateToProcess;
 (window as any).navigateToSession = navigateToSession;
 (window as any).navigateToHome = navigateToHome;
+(window as any).navigateToWiki = navigateToWiki;
+(window as any).navigateToWikiComponent = navigateToWikiComponent;
 (window as any).__setHashSilent = setHashSilent;
 (window as any).appState = appState;

@@ -20,6 +20,7 @@ export interface AppState {
     selectedRepoId: string | null;
     activeRepoSubTab: RepoSubTab;
     selectedWikiId: string | null;
+    selectedWikiComponentId: string | null;
 }
 
 export const appState: AppState = {
@@ -36,6 +37,7 @@ export const appState: AppState = {
     selectedRepoId: null,
     activeRepoSubTab: 'info',
     selectedWikiId: null,
+    selectedWikiComponentId: null,
 };
 
 export interface QueueState {

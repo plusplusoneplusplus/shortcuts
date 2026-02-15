@@ -29,6 +29,13 @@ const MIME_TYPES: Record<string, string> = {
     '.png': 'image/png',
     '.svg': 'image/svg+xml',
     '.ico': 'image/x-icon',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.gif': 'image/gif',
+    '.woff': 'font/woff',
+    '.woff2': 'font/woff2',
+    '.ttf': 'font/ttf',
+    '.md': 'text/markdown; charset=utf-8',
 };
 
 /** Default MIME type for unknown extensions */
@@ -50,6 +57,8 @@ export interface RouterOptions {
     staticDir?: string;
     /** Injected process store so /api/health can read count. */
     store: ProcessStore;
+    /** Optional lookup function to resolve a wiki ID to its filesystem directory. */
+    getWikiDir?: (wikiId: string) => string | undefined;
 }
 
 /**
@@ -65,7 +74,7 @@ export interface RouterOptions {
 export function createRequestHandler(
     options: RouterOptions
 ): (req: http.IncomingMessage, res: http.ServerResponse) => void {
-    const { spaHtml, staticDir, store } = options;
+    const { spaHtml, staticDir, store, getWikiDir } = options;
 
     // Prepend built-in health route
     const routes: Route[] = [
@@ -133,6 +142,28 @@ export function createRequestHandler(
 
             // No route matched
             send404(res, `API route not found: ${pathname}`);
+            return;
+        }
+
+        // Wiki static files: /wiki/:wikiId/static/*
+        const wikiStaticMatch = pathname.match(/^\/wiki\/([^/]+)\/static\/(.+)$/);
+        if (wikiStaticMatch) {
+            const wikiId = wikiStaticMatch[1];
+            const fileSuffix = wikiStaticMatch[2];
+            const wikiDir = getWikiDir?.(wikiId);
+            if (!wikiDir) {
+                send404(res, `Wiki not found: ${wikiId}`);
+                return;
+            }
+            const resolved = path.resolve(wikiDir, fileSuffix);
+            if (!resolved.startsWith(path.resolve(wikiDir) + path.sep) && resolved !== path.resolve(wikiDir)) {
+                send404(res, 'Invalid path');
+                return;
+            }
+            if (serveStaticFile(resolved, res)) {
+                return;
+            }
+            send404(res, `File not found: ${fileSuffix}`);
             return;
         }
 
