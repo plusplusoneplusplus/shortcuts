@@ -763,3 +763,45 @@ export {
     // Skill discovery
     findSkills
 } from './discovery';
+
+// ============================================================================
+// Editor Abstractions
+// ============================================================================
+
+export {
+    // Domain types
+    CommentStatus,
+    CommentType,
+    CommentSelection,
+    CommentAnchor,
+    MermaidContext,
+    MarkdownComment,
+    isUserComment,
+    CommentsSettings,
+    CommentsConfig,
+    DEFAULT_COMMENTS_SETTINGS,
+    DEFAULT_COMMENTS_CONFIG,
+    // Message protocol
+    // (PromptFileInfo is already exported from ./discovery)
+    SkillInfo as EditorSkillInfo,
+    SerializedPredefinedComment,
+    WebviewSettings,
+    PendingSelection,
+    AIInstructionType,
+    AskAIContext,
+    RecentPrompt,
+    RecentItem,
+    AIModelOption,
+    FollowPromptDialogOptions,
+    LineChange,
+    WebviewToBackendMessage,
+    BackendToWebviewMessage,
+    EditorMessage,
+    // Transport
+    MessageListener,
+    EditorTransport,
+    // Host
+    EditorHost,
+    // State Store
+    StateStore
+} from './editor';
