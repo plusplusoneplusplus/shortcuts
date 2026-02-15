@@ -241,3 +241,6 @@ export interface WikiServeCommandOptions {
     /** Verbose logging */
     verbose?: boolean;
 }
+
+// Website Theme
+export type WebsiteTheme = 'light' | 'dark' | 'auto';
