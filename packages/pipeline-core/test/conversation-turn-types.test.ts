@@ -1,3 +1,11 @@
+/**
+ * ConversationTurn Type & Serialization Tests
+ *
+ * Tests for the ConversationTurn interface, its serialization via
+ * serializeProcess / deserializeProcess, and edge cases around
+ * backward compatibility and extreme content.
+ */
+
 import { describe, it, expect } from 'vitest';
 import {
     AIProcess,
@@ -155,5 +163,119 @@ describe('ConversationTurn serialization', () => {
         expect(roundTripped.sdkSessionId).toBe(process.sdkSessionId);
         expect(roundTripped.backend).toBe(process.backend);
         expect(roundTripped.workingDirectory).toBe(process.workingDirectory);
+    });
+});
+
+// ============================================================================
+// ConversationTurn Type Shape
+// ============================================================================
+
+describe('ConversationTurn type', () => {
+    it('should have role and content fields', () => {
+        const turn: ConversationTurn = {
+            role: 'user',
+            content: 'Hello',
+            timestamp: new Date(),
+            turnIndex: 0,
+        };
+        expect(turn.role).toBe('user');
+        expect(turn.content).toBe('Hello');
+        expect(turn.turnIndex).toBe(0);
+    });
+
+    it('should accept optional streaming field', () => {
+        const turnWithStreaming: ConversationTurn = {
+            role: 'assistant',
+            content: 'Streaming...',
+            timestamp: new Date(),
+            turnIndex: 1,
+            streaming: true,
+        };
+        expect(turnWithStreaming.streaming).toBe(true);
+
+        const turnWithout: ConversationTurn = {
+            role: 'assistant',
+            content: 'Done',
+            timestamp: new Date(),
+            turnIndex: 2,
+        };
+        expect(turnWithout.streaming).toBeUndefined();
+    });
+});
+
+// ============================================================================
+// Deserialization Edge Cases
+// ============================================================================
+
+describe('deserializeProcess edge cases', () => {
+    it('should deserialize when conversationTurns is null (edge case)', () => {
+        const serialized: SerializedAIProcess = {
+            id: 'null-turns',
+            type: 'clarification',
+            promptPreview: 'prompt',
+            fullPrompt: 'full prompt',
+            status: 'completed',
+            startTime: '2026-01-15T10:00:00.000Z',
+            conversationTurns: null as unknown as undefined,
+        };
+
+        const deserialized = deserializeProcess(serialized);
+        // null?.map() returns undefined, so conversationTurns should be undefined
+        expect(deserialized.conversationTurns).toBeUndefined();
+    });
+
+    it('should restore turn timestamps as Date objects if present', () => {
+        const serialized: SerializedAIProcess = {
+            id: 'ts-check',
+            type: 'clarification',
+            promptPreview: 'p',
+            fullPrompt: 'fp',
+            status: 'completed',
+            startTime: '2026-01-15T10:00:00.000Z',
+            conversationTurns: [
+                { role: 'user', content: 'hi', timestamp: '2026-01-15T10:00:00.000Z', turnIndex: 0 },
+            ],
+        };
+
+        const deserialized = deserializeProcess(serialized);
+        expect(deserialized.conversationTurns![0].timestamp).toBeInstanceOf(Date);
+        expect(deserialized.conversationTurns![0].timestamp.toISOString()).toBe('2026-01-15T10:00:00.000Z');
+    });
+});
+
+// ============================================================================
+// Content Edge Cases
+// ============================================================================
+
+describe('ConversationTurn content edge cases', () => {
+    it('should handle turns with empty content string', () => {
+        const turn: ConversationTurn = {
+            role: 'assistant',
+            content: '',
+            timestamp: new Date('2026-01-15T10:00:00.000Z'),
+            turnIndex: 0,
+        };
+        const process = makeProcess({ conversationTurns: [turn] });
+
+        const roundTripped = deserializeProcess(serializeProcess(process));
+        expect(roundTripped.conversationTurns).toHaveLength(1);
+        expect(roundTripped.conversationTurns![0].content).toBe('');
+        expect(roundTripped.conversationTurns![0].role).toBe('assistant');
+    });
+
+    it('should handle turns with very long content', () => {
+        const longContent = 'x'.repeat(100_000);
+        const turn: ConversationTurn = {
+            role: 'user',
+            content: longContent,
+            timestamp: new Date('2026-01-15T10:00:00.000Z'),
+            turnIndex: 0,
+        };
+        const process = makeProcess({ conversationTurns: [turn] });
+
+        const roundTripped = deserializeProcess(serializeProcess(process));
+        expect(roundTripped.conversationTurns).toHaveLength(1);
+        expect(roundTripped.conversationTurns![0].content).toBe(longContent);
+        expect(roundTripped.conversationTurns![0].content.length).toBe(100_000);
     });
 });
