@@ -20,6 +20,7 @@ import { registerTaskRoutes, registerTaskWriteRoutes } from './tasks-handler';
 import { registerTaskGenerationRoutes } from './task-generation-handler';
 import { registerPromptRoutes } from './prompt-handler';
 import { registerWikiRoutes } from './wiki';
+import { registerReviewRoutes } from './review-handler';
 import { ProcessWebSocketServer, toProcessSummary } from './websocket';
 import { generateDashboardHtml } from './spa';
 import type { ExecutionServerOptions, ExecutionServer } from './types';
@@ -168,6 +169,10 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     registerTaskWriteRoutes(routes, store);
     registerTaskGenerationRoutes(routes, store);
     registerPromptRoutes(routes, store);
+
+    // Register review editor routes
+    const projectDir = options.projectDir ?? process.cwd();
+    registerReviewRoutes(routes, projectDir);
 
     // Register wiki routes if enabled
     let wikiManager: import('./wiki').WikiManager | undefined;
@@ -392,5 +397,6 @@ export { TaskWatcher } from './task-watcher';
 export type { TasksChangedCallback } from './task-watcher';
 export { registerWikiRoutes } from './wiki';
 export type { WikiRouteOptions } from './wiki';
+export { registerReviewRoutes, safePath, walkMarkdownFiles } from './review-handler';
 export { generateReviewEditorHtml, createImageRoute } from './review-editor';
 export type { ReviewEditorOptions } from './review-editor';
