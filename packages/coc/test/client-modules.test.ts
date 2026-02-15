@@ -32,7 +32,7 @@ describe('client source file existence', () => {
         'config.ts', 'state.ts', 'utils.ts', 'theme.ts',
         'core.ts', 'sidebar.ts', 'detail.ts', 'filters.ts',
         'queue.ts', 'websocket.ts', 'index.ts',
-        'tasks.ts', 'repos.ts',
+        'tasks.ts', 'repos.ts', 'ai-actions.ts',
     ];
 
     for (const file of expectedFiles) {
@@ -576,6 +576,7 @@ describe('client/index.ts', () => {
         expect(content).toContain("import './filters'");
         expect(content).toContain("import './queue'");
         expect(content).toContain("import './websocket'");
+        expect(content).toContain("import './ai-actions'");
     });
 
     it('calls init() at end', () => {
@@ -592,6 +593,8 @@ describe('client/index.ts', () => {
         const detailIdx = content.indexOf("import './detail'");
         const filtersIdx = content.indexOf("import './filters'");
         const queueIdx = content.indexOf("import './queue'");
+        const tasksIdx = content.indexOf("import './tasks'");
+        const aiActionsIdx = content.indexOf("import './ai-actions'");
         const wsIdx = content.indexOf("import './websocket'");
 
         expect(configIdx).toBeLessThan(stateIdx);
@@ -602,7 +605,9 @@ describe('client/index.ts', () => {
         expect(sidebarIdx).toBeLessThan(detailIdx);
         expect(detailIdx).toBeLessThan(filtersIdx);
         expect(filtersIdx).toBeLessThan(queueIdx);
-        expect(queueIdx).toBeLessThan(wsIdx);
+        expect(queueIdx).toBeLessThan(tasksIdx);
+        expect(tasksIdx).toBeLessThan(aiActionsIdx);
+        expect(aiActionsIdx).toBeLessThan(wsIdx);
     });
 });
 
@@ -861,6 +866,131 @@ describe('client/tasks.ts', () => {
         expect(content).toContain('<strong>');
         expect(content).toContain('<em>');
     });
+
+    it('imports showAIActionDropdown from ai-actions', () => {
+        expect(content).toContain("from './ai-actions'");
+    });
+
+    it('renders AI action button in document-group file rows', () => {
+        expect(content).toContain('data-action="ai-action"');
+        expect(content).toContain('title="AI Actions"');
+    });
+
+    it('renders AI action button with data-path attribute', () => {
+        expect(content).toContain("data-path=\"' + escapeHtmlClient(docPath) + '\"");
+    });
+
+    it('handles AI action button click before folder/file handlers', () => {
+        expect(content).toContain("target.closest('[data-action=\"ai-action\"]')");
+    });
+
+    it('calls showAIActionDropdown on AI button click', () => {
+        expect(content).toContain('showAIActionDropdown(aiActionBtn, wsId, taskPath)');
+    });
+
+    it('stops propagation on AI action button click', () => {
+        // Ensures AI button click does not bubble to file-path handler
+        expect(content).toContain('e.stopPropagation()');
+    });
+});
+
+// ============================================================================
+// AI Actions module
+// ============================================================================
+
+describe('client/ai-actions.ts', () => {
+    let content: string;
+    beforeAll(() => { content = readClientFile('ai-actions.ts'); });
+
+    it('imports escapeHtmlClient from utils', () => {
+        expect(content).toContain("from './utils'");
+    });
+
+    it('exports showAIActionDropdown function', () => {
+        expect(content).toContain('export function showAIActionDropdown');
+    });
+
+    it('exports hideAIActionDropdown function', () => {
+        expect(content).toContain('export function hideAIActionDropdown');
+    });
+
+    it('showAIActionDropdown accepts button, wsId, and taskPath params', () => {
+        expect(content).toContain('showAIActionDropdown(button: HTMLElement, wsId: string, taskPath: string)');
+    });
+
+    it('creates dropdown with ai-action-dropdown class', () => {
+        expect(content).toContain("dropdown.className = 'ai-action-dropdown'");
+    });
+
+    it('sets data-ws-id and data-task-path attributes on dropdown', () => {
+        expect(content).toContain("data-ws-id");
+        expect(content).toContain("data-task-path");
+    });
+
+    it('renders follow-prompt menu item', () => {
+        expect(content).toContain('data-ai-action="follow-prompt"');
+        expect(content).toContain('Follow Prompt');
+    });
+
+    it('renders update-document menu item', () => {
+        expect(content).toContain('data-ai-action="update-document"');
+        expect(content).toContain('Update Document');
+    });
+
+    it('appends dropdown to document.body', () => {
+        expect(content).toContain('document.body.appendChild(dropdown)');
+    });
+
+    it('positions dropdown using getBoundingClientRect', () => {
+        expect(content).toContain('button.getBoundingClientRect()');
+        expect(content).toContain('dropdown.getBoundingClientRect()');
+    });
+
+    it('handles right-edge overflow', () => {
+        expect(content).toContain('window.innerWidth');
+    });
+
+    it('handles bottom overflow by flipping above button', () => {
+        expect(content).toContain('window.innerHeight');
+    });
+
+    it('calls hideAIActionDropdown before opening a new dropdown', () => {
+        // First line of showAIActionDropdown body should close existing
+        const showIdx = content.indexOf('export function showAIActionDropdown');
+        const hideCallIdx = content.indexOf('hideAIActionDropdown()', showIdx);
+        expect(hideCallIdx).toBeGreaterThan(showIdx);
+    });
+
+    it('uses event delegation with [data-ai-action] for menu clicks', () => {
+        expect(content).toContain("closest('[data-ai-action]')");
+    });
+
+    it('defers outside-click listener with requestAnimationFrame', () => {
+        expect(content).toContain('requestAnimationFrame');
+    });
+
+    it('registers outside-click handler on document with capture', () => {
+        expect(content).toContain("document.addEventListener('click', outsideClickHandler, true)");
+    });
+
+    it('removes outside-click handler on hide', () => {
+        expect(content).toContain("document.removeEventListener('click', outsideClickHandler, true)");
+    });
+
+    it('hideAIActionDropdown removes the dropdown element', () => {
+        expect(content).toContain('activeDropdown.remove()');
+    });
+
+    it('hideAIActionDropdown nullifies activeDropdown', () => {
+        expect(content).toContain('activeDropdown = null');
+    });
+
+    it('uses position fixed via CSS class (no inline position:fixed)', () => {
+        // Dropdown uses CSS class for position:fixed, not inline style
+        expect(content).not.toContain("dropdown.style.position = 'fixed'");
+        expect(content).toContain("dropdown.style.top");
+        expect(content).toContain("dropdown.style.left");
+    });
 });
 
 // ============================================================================
@@ -1014,6 +1144,27 @@ describe('styles.css — Task styles', () => {
 
     it('has folder item count badge style', () => {
         expect(cssContent).toContain('.task-folder-count');
+    });
+
+    it('has AI action dropdown styles', () => {
+        expect(cssContent).toContain('.ai-action-dropdown');
+        expect(cssContent).toContain('.ai-action-menu-item');
+        expect(cssContent).toContain('.ai-action-menu-icon');
+        expect(cssContent).toContain('.ai-action-menu-label');
+    });
+
+    it('AI action dropdown uses position fixed and z-index 300', () => {
+        expect(cssContent).toContain('position: fixed');
+        expect(cssContent).toContain('z-index: 300');
+    });
+
+    it('has dark theme shadow override for AI dropdown', () => {
+        expect(cssContent).toContain('html[data-theme="dark"] .ai-action-dropdown');
+    });
+
+    it('has hover-reveal for AI action button in Miller file rows', () => {
+        expect(cssContent).toContain('.miller-file-row .task-tree-actions');
+        expect(cssContent).toContain('.miller-file-row:hover .task-tree-actions');
     });
 });
 

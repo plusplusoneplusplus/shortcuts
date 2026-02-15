@@ -8,6 +8,7 @@ import { appState, taskPanelState } from './state';
 import { getApiBase } from './config';
 import { fetchApi } from './core';
 import { escapeHtmlClient } from './utils';
+import { showAIActionDropdown, hideAIActionDropdown } from './ai-actions';
 
 // ================================================================
 // Types
@@ -426,6 +427,7 @@ function renderColumn(folder: TaskFolder, folderPath: string, selectedChild: str
                     '<span class="task-tree-icon">📄</span>' +
                     '<span class="miller-row-name">' + escapeHtmlClient(displayName) + '</span>' +
                     (doc.status ? '<span class="miller-status task-status-' + escapeHtmlClient(doc.status) + '">' + (STATUS_ICONS[doc.status] || '') + '</span>' : '') +
+                    '<span class="task-tree-actions"><button class="task-action-btn" data-action="ai-action" data-path="' + escapeHtmlClient(docPath) + '" title="AI Actions">🤖</button></span>' +
                 '</div>';
             }
         }
@@ -440,6 +442,7 @@ function renderColumn(folder: TaskFolder, folderPath: string, selectedChild: str
                 '<span class="task-tree-icon">📄</span>' +
                 '<span class="miller-row-name">' + escapeHtmlClient(doc.baseName) + '</span>' +
                 (doc.status ? '<span class="miller-status task-status-' + escapeHtmlClient(doc.status) + '">' + (STATUS_ICONS[doc.status] || '') + '</span>' : '') +
+                '<span class="task-tree-actions"><button class="task-action-btn" data-action="ai-action" data-path="' + escapeHtmlClient(docPath) + '" title="AI Actions">🤖</button></span>' +
             '</div>';
         }
     }
@@ -458,6 +461,15 @@ function attachMillerEventListeners(container: HTMLElement): void {
         const wsId = taskPanelState.selectedWorkspaceId;
         if (!wsId) return;
         const target = e.target as HTMLElement;
+
+        // 0. AI action button — show dropdown
+        const aiActionBtn = target.closest('[data-action="ai-action"]') as HTMLElement | null;
+        if (aiActionBtn) {
+            e.stopPropagation();
+            const taskPath = aiActionBtn.getAttribute('data-path') || '';
+            showAIActionDropdown(aiActionBtn, wsId, taskPath);
+            return;
+        }
 
         // 1. Folder navigation — push a new column
         const folderRow = target.closest('[data-nav-folder]') as HTMLElement | null;

@@ -35,7 +35,10 @@ import './repos';
 // 9. Tasks (workspace task CRUD, tree rendering)
 import './tasks';
 
-// 10. WebSocket (calls connectWebSocket())
+// 10. AI Actions (dropdown for task AI operations)
+import './ai-actions';
+
+// 11. WebSocket (calls connectWebSocket())
 import './websocket';
 
 // Bootstrap the app

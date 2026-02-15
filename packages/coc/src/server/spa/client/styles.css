@@ -1846,3 +1846,73 @@ body {
     color: var(--status-failed);
     font-size: 13px;
 }
+
+/* ================================================================
+   AI Action Dropdown (positioned menu on 🤖 button click)
+   ================================================================ */
+
+.ai-action-dropdown {
+    position: fixed;
+    z-index: 300;
+    min-width: 180px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+    padding: 4px 0;
+    display: flex;
+    flex-direction: column;
+}
+
+html[data-theme="dark"] .ai-action-dropdown {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.ai-action-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border: none;
+    background: transparent;
+    color: var(--text-primary);
+    font-size: 13px;
+    cursor: pointer;
+    text-align: left;
+    width: 100%;
+    transition: background-color 0.12s;
+}
+
+.ai-action-menu-item:hover {
+    background: var(--hover-bg);
+}
+
+.ai-action-menu-item:active {
+    background: var(--active-bg);
+}
+
+.ai-action-menu-icon {
+    flex-shrink: 0;
+    font-size: 14px;
+    width: 20px;
+    text-align: center;
+}
+
+.ai-action-menu-label {
+    flex: 1;
+    white-space: nowrap;
+}
+
+/* Show AI action button on miller file row hover */
+.miller-file-row .task-tree-actions {
+    display: flex;
+    gap: 2px;
+    opacity: 0;
+    transition: opacity 0.15s;
+    flex-shrink: 0;
+    margin-left: auto;
+}
+
+.miller-file-row:hover .task-tree-actions {
+    opacity: 1;
+}
