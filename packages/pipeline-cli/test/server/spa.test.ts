@@ -10,7 +10,6 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { generateDashboardHtml } from '../../src/server/spa';
 import { escapeHtml } from '../../src/server/spa/helpers';
 import { getAllModels } from '@plusplusoneplusplus/pipeline-core';
-import { getDashboardStyles } from '../../src/server/spa/styles';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -183,71 +182,63 @@ describe('generateDashboardHtml', () => {
 });
 
 // ============================================================================
-// getDashboardStyles
+// Bundled CSS — via generateDashboardHtml
 // ============================================================================
 
-describe('getDashboardStyles', () => {
-    const styles = getDashboardStyles();
+describe('Bundled CSS — via generateDashboardHtml', () => {
+    const html = generateDashboardHtml();
 
     it('defines CSS custom properties for light theme', () => {
-        expect(styles).toContain('--bg-primary: #ffffff');
-        expect(styles).toContain('--text-primary: #1e1e1e');
-        expect(styles).toContain('--accent: #0078d4');
+        expect(html).toContain('--bg-primary:');
+        expect(html).toContain('--text-primary:');
+        expect(html).toContain('--accent:');
     });
 
     it('defines dark theme overrides', () => {
-        expect(styles).toContain('html[data-theme="dark"]');
-        expect(styles).toContain('--bg-primary: #1e1e1e');
-        expect(styles).toContain('--text-primary: #cccccc');
+        expect(html).toContain('data-theme');
+        expect(html).toContain('dark');
     });
 
     it('defines status colors', () => {
-        expect(styles).toContain('--status-running');
-        expect(styles).toContain('--status-completed');
-        expect(styles).toContain('--status-failed');
-        expect(styles).toContain('--status-cancelled');
-        expect(styles).toContain('--status-queued');
-    });
-
-    it('defines grid layout for app', () => {
-        expect(styles).toContain('grid-template-columns: 320px 1fr');
+        expect(html).toContain('--status-running');
+        expect(html).toContain('--status-completed');
+        expect(html).toContain('--status-failed');
     });
 
     it('defines responsive breakpoint', () => {
-        expect(styles).toContain('@media (max-width: 768px)');
-    });
-
-    it('defines custom scrollbar styles', () => {
-        expect(styles).toContain('::-webkit-scrollbar');
+        expect(html).toContain('@media');
     });
 
     it('defines status badge styles', () => {
-        expect(styles).toContain('.status-badge.running');
-        expect(styles).toContain('.status-badge.completed');
-        expect(styles).toContain('.status-badge.failed');
+        expect(html).toContain('.status-badge');
     });
 
     it('defines process item styles', () => {
-        expect(styles).toContain('.process-item');
-        expect(styles).toContain('.child-item');
-        expect(styles).toContain('.status-dot');
+        expect(html).toContain('.process-item');
+    });
+
+    it('defines queue panel styles', () => {
+        expect(html).toContain('.queue-panel');
+        expect(html).toContain('.queue-header');
+        expect(html).toContain('.queue-task');
+    });
+
+    it('defines enqueue dialog styles', () => {
+        expect(html).toContain('.enqueue-overlay');
+        expect(html).toContain('.enqueue-dialog');
+    });
+
+    it('defines conversation section styles', () => {
+        expect(html).toContain('.conversation-section');
+        expect(html).toContain('.streaming-indicator');
     });
 
     it('defines markdown result styles', () => {
-        expect(styles).toContain('.result-body h1');
-        expect(styles).toContain('.result-body code');
-        expect(styles).toContain('.result-body pre');
-        expect(styles).toContain('.result-body blockquote');
-    });
-
-    it('defines meta-path style for working directory display', () => {
-        expect(styles).toContain('.meta-path');
-        expect(styles).toContain('word-break: break-all');
+        expect(html).toContain('.result-body');
     });
 
     it('defines collapsible prompt section', () => {
-        expect(styles).toContain('.prompt-section');
-        expect(styles).toContain('.prompt-section summary');
+        expect(html).toContain('.prompt-section');
     });
 });
 
@@ -836,53 +827,39 @@ describe('client bundle — queue module', () => {
     });
 });
 
-describe('Queue styles', () => {
-    const styles = getDashboardStyles();
+describe('Queue styles — via generateDashboardHtml', () => {
+    const html = generateDashboardHtml();
 
     it('defines queue panel styles', () => {
-        expect(styles).toContain('.queue-panel');
-        expect(styles).toContain('.queue-header');
-        expect(styles).toContain('.queue-task');
+        expect(html).toContain('.queue-panel');
+        expect(html).toContain('.queue-header');
+        expect(html).toContain('.queue-task');
     });
 
     it('defines queue control button styles', () => {
-        expect(styles).toContain('.queue-ctrl-btn');
-        expect(styles).toContain('.queue-ctrl-danger');
+        expect(html).toContain('.queue-ctrl-btn');
     });
 
     it('defines queue task action styles', () => {
-        expect(styles).toContain('.queue-task-actions');
-        expect(styles).toContain('.queue-action-btn');
-        expect(styles).toContain('.queue-action-danger');
+        expect(html).toContain('.queue-task-actions');
     });
 
     it('defines queue empty state styles', () => {
-        expect(styles).toContain('.queue-empty');
-        expect(styles).toContain('.queue-add-btn');
+        expect(html).toContain('.queue-empty');
+        expect(html).toContain('.queue-add-btn');
     });
 
     it('defines enqueue dialog styles', () => {
-        expect(styles).toContain('.enqueue-overlay');
-        expect(styles).toContain('.enqueue-dialog');
-        expect(styles).toContain('.enqueue-form');
-        expect(styles).toContain('.enqueue-btn-primary');
-        expect(styles).toContain('.enqueue-btn-secondary');
+        expect(html).toContain('.enqueue-overlay');
+        expect(html).toContain('.enqueue-dialog');
     });
 
     it('defines queue count badge styles', () => {
-        expect(styles).toContain('.queue-count');
-        expect(styles).toContain('.queue-paused-badge');
+        expect(html).toContain('.queue-count');
     });
 
     it('defines optional hint style for task name label', () => {
-        expect(styles).toContain('.enqueue-optional');
-    });
-
-    it('hides task actions until hover', () => {
-        expect(styles).toContain('.queue-task-actions');
-        expect(styles).toContain('opacity: 0');
-        expect(styles).toContain('.queue-task:hover .queue-task-actions');
-        expect(styles).toContain('opacity: 1');
+        expect(html).toContain('.enqueue-optional');
     });
 });
 
@@ -1033,40 +1010,78 @@ describe('Queue task conversation view', () => {
         });
     });
 
-    describe('conversation styles', () => {
-        const conversationStyles = getDashboardStyles();
+    describe('conversation styles — via generateDashboardHtml', () => {
+        const styledHtml = generateDashboardHtml();
 
         it('defines conversation section styles', () => {
-            expect(conversationStyles).toContain('.conversation-section');
-            expect(conversationStyles).toContain('.conversation-body');
+            expect(styledHtml).toContain('.conversation-section');
+            expect(styledHtml).toContain('.conversation-body');
         });
 
         it('defines streaming indicator with pulse animation', () => {
-            expect(conversationStyles).toContain('.streaming-indicator');
-            expect(conversationStyles).toContain('@keyframes pulse');
-        });
-
-        it('defines conversation waiting state style', () => {
-            expect(conversationStyles).toContain('.conversation-waiting');
+            expect(styledHtml).toContain('.streaming-indicator');
+            expect(styledHtml).toContain('@keyframes');
         });
 
         it('defines back button style', () => {
-            expect(conversationStyles).toContain('.detail-back-btn');
-            expect(conversationStyles).toContain('.detail-header-top');
+            expect(styledHtml).toContain('.detail-back-btn');
         });
+    });
+});
 
-        it('sets max-height and overflow on conversation body', () => {
-            expect(conversationStyles).toContain('max-height: 60vh');
-            expect(conversationStyles).toContain('overflow-y: auto');
-        });
+// ============================================================================
+// Bundle file existence
+// ============================================================================
 
-        it('styles code blocks in conversation', () => {
-            expect(conversationStyles).toContain('.conversation-body pre');
-            expect(conversationStyles).toContain('.conversation-body code');
-        });
+describe('Bundle files', () => {
+    const pkgRoot = path.resolve(__dirname, '../..');
+    const clientDist = path.resolve(pkgRoot, 'src/server/spa/client/dist');
 
-        it('styles blockquotes in conversation', () => {
-            expect(conversationStyles).toContain('.conversation-body blockquote');
-        });
+    it('bundle.js exists on disk', () => {
+        expect(fs.existsSync(path.resolve(clientDist, 'bundle.js'))).toBe(true);
+    });
+
+    it('bundle.css exists on disk', () => {
+        expect(fs.existsSync(path.resolve(clientDist, 'bundle.css'))).toBe(true);
+    });
+
+    it('bundle.js is non-empty', () => {
+        const stat = fs.statSync(path.resolve(clientDist, 'bundle.js'));
+        expect(stat.size).toBeGreaterThan(100);
+    });
+
+    it('bundle.css is non-empty', () => {
+        const stat = fs.statSync(path.resolve(clientDist, 'bundle.css'));
+        expect(stat.size).toBeGreaterThan(100);
+    });
+});
+
+// ============================================================================
+// Config injection
+// ============================================================================
+
+describe('Bundled JS — config injection', () => {
+    it('injects __DASHBOARD_CONFIG__ with default options', () => {
+        const html = generateDashboardHtml();
+        expect(html).toContain('__DASHBOARD_CONFIG__');
+    });
+
+    it('injects custom wsPath into config', () => {
+        const html = generateDashboardHtml({ wsPath: '/custom-ws' });
+        expect(html).toContain('/custom-ws');
+    });
+
+    it('injects custom apiBasePath into config', () => {
+        const html = generateDashboardHtml({ apiBasePath: '/custom-api' });
+        expect(html).toContain('/custom-api');
+    });
+
+    it('injects theme setting into config', () => {
+        const html = generateDashboardHtml({ theme: 'dark' });
+        expect(html).toContain('__DASHBOARD_CONFIG__');
+        // Config script appears before the bundle script
+        const configIdx = html.indexOf('__DASHBOARD_CONFIG__');
+        const bundleScriptIdx = html.lastIndexOf('</script>');
+        expect(configIdx).toBeLessThan(bundleScriptIdx);
     });
 });

@@ -10,6 +10,8 @@
 
 import { describe, it, expect } from 'vitest';
 import { generateSpaHtml } from '../../src/server/spa-template';
+import * as fs from 'fs';
+import * as path from 'path';
 
 // ============================================================================
 // Basic HTML Structure
@@ -884,5 +886,47 @@ describe('generateSpaHtml — cross-theme', () => {
             expect(html).toContain('id="top-bar"');
             expect(html).toContain('id="toc-sidebar"');
         }
+    });
+});
+
+// ============================================================================
+// Bundle file existence
+// ============================================================================
+
+describe('generateSpaHtml — bundle files', () => {
+    const pkgRoot = path.resolve(__dirname, '../..');
+    const clientDist = path.resolve(pkgRoot, 'src/server/spa/client/dist');
+
+    it('bundle.js exists on disk', () => {
+        expect(fs.existsSync(path.resolve(clientDist, 'bundle.js'))).toBe(true);
+    });
+
+    it('bundle.css exists on disk', () => {
+        expect(fs.existsSync(path.resolve(clientDist, 'bundle.css'))).toBe(true);
+    });
+});
+
+// ============================================================================
+// Config injection
+// ============================================================================
+
+describe('generateSpaHtml — config injection', () => {
+    it('injects __WIKI_CONFIG__ for runtime configuration', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: true, enableGraph: false,
+        });
+        expect(html).toContain('__WIKI_CONFIG__');
+    });
+
+    it('config script appears before the bundle script', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        const configIdx = html.indexOf('__WIKI_CONFIG__');
+        const lastScriptClose = html.lastIndexOf('</script>');
+        expect(configIdx).toBeGreaterThan(-1);
+        expect(configIdx).toBeLessThan(lastScriptClose);
     });
 });
