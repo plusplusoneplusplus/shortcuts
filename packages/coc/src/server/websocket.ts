@@ -17,7 +17,7 @@
 import * as http from 'http';
 import * as crypto from 'crypto';
 import type { Socket } from 'net';
-import type { AIProcess } from '@plusplusoneplusplus/pipeline-core';
+import type { AIProcess, MarkdownComment } from '@plusplusoneplusplus/pipeline-core';
 
 // ============================================================================
 // Types
@@ -30,7 +30,23 @@ export interface WSClient {
     close: () => void;
     workspaceId?: string;
     subscribedWikiIds?: Set<string>;
+    subscribedFiles?: Set<string>;
     lastSeen: number;
+}
+
+/** Lightweight comment projection for WebSocket messages. */
+export interface MarkdownCommentSummary {
+    id: string;
+    filePath: string;
+    selection: MarkdownComment['selection'];
+    selectedText: string;
+    comment: string;
+    status: string;
+    type?: string;
+    author?: string;
+    tags?: string[];
+    createdAt: string;
+    updatedAt: string;
 }
 
 /** Lightweight process summary for WebSocket messages. */
@@ -97,13 +113,21 @@ export type ServerMessage =
     | { type: 'tasks-changed'; workspaceId: string; timestamp: number }
     | { type: 'wiki-reload'; wikiId: string; components: string[] }
     | { type: 'wiki-rebuilding'; wikiId: string; components: string[] }
-    | { type: 'wiki-error'; wikiId: string; message: string };
+    | { type: 'wiki-error'; wikiId: string; message: string }
+    | { type: 'comment-added'; filePath: string; comment: MarkdownCommentSummary }
+    | { type: 'comment-updated'; filePath: string; comment: MarkdownCommentSummary }
+    | { type: 'comment-deleted'; filePath: string; commentId: string }
+    | { type: 'comment-resolved'; filePath: string; commentId: string }
+    | { type: 'comments-cleared'; filePath: string; count: number }
+    | { type: 'document-updated'; filePath: string; content: string; comments: MarkdownCommentSummary[] };
 
 /** Client → Server message types */
 export type ClientMessage =
     | { type: 'ping' }
     | { type: 'subscribe'; workspaceId: string }
-    | { type: 'subscribe-wiki'; wikiId: string };
+    | { type: 'subscribe-wiki'; wikiId: string }
+    | { type: 'subscribe-file'; filePath: string }
+    | { type: 'unsubscribe-file'; filePath: string };
 
 // ============================================================================
 // ProcessWebSocketServer
@@ -259,6 +283,20 @@ export class ProcessWebSocketServer {
     }
 
     /**
+     * Broadcast a file-scoped event to connected clients.
+     * Only sends to clients whose `subscribedFiles` includes the given path.
+     * Clients with no file subscriptions do NOT receive file events.
+     */
+    broadcastFileEvent(filePath: string, message: ServerMessage): void {
+        const data = JSON.stringify(message);
+        for (const client of this.clients) {
+            if (client.subscribedFiles && client.subscribedFiles.has(filePath)) {
+                client.send(data);
+            }
+        }
+    }
+
+    /**
      * Close all connections and clear the heartbeat interval.
      */
     closeAll(): void {
@@ -292,6 +330,17 @@ export class ProcessWebSocketServer {
                     client.subscribedWikiIds = new Set();
                 }
                 client.subscribedWikiIds.add(message.wikiId);
+                break;
+            case 'subscribe-file':
+                client.lastSeen = Date.now();
+                if (!client.subscribedFiles) {
+                    client.subscribedFiles = new Set();
+                }
+                client.subscribedFiles.add(message.filePath);
+                break;
+            case 'unsubscribe-file':
+                client.lastSeen = Date.now();
+                client.subscribedFiles?.delete(message.filePath);
                 break;
         }
     }
@@ -345,6 +394,25 @@ export function toProcessSummary(process: AIProcess): ProcessSummary {
         endTime: process.endTime instanceof Date ? process.endTime.toISOString() : (process.endTime ? String(process.endTime) : undefined),
         error: process.error,
         workspaceId: process.metadata?.workspaceId,
+    };
+}
+
+/**
+ * Convert a MarkdownComment to a lightweight MarkdownCommentSummary for WebSocket messages.
+ */
+export function toCommentSummary(comment: MarkdownComment): MarkdownCommentSummary {
+    return {
+        id: comment.id,
+        filePath: comment.filePath,
+        selection: comment.selection,
+        selectedText: comment.selectedText,
+        comment: comment.comment,
+        status: comment.status,
+        type: comment.type,
+        author: comment.author,
+        tags: comment.tags,
+        createdAt: comment.createdAt,
+        updatedAt: comment.updatedAt,
     };
 }
 

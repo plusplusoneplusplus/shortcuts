@@ -21,6 +21,7 @@ import { registerTaskGenerationRoutes } from './task-generation-handler';
 import { registerPromptRoutes } from './prompt-handler';
 import { registerWikiRoutes } from './wiki';
 import { registerReviewRoutes } from './review-handler';
+import { bridgeReviewToWebSocket } from './review-websocket-bridge';
 import { ProcessWebSocketServer, toProcessSummary } from './websocket';
 import { generateDashboardHtml } from './spa';
 import type { ExecutionServerOptions, ExecutionServer } from './types';
@@ -172,7 +173,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     // Register review editor routes
     const projectDir = options.projectDir ?? process.cwd();
-    registerReviewRoutes(routes, projectDir);
+    const { commentsManager } = registerReviewRoutes(routes, projectDir);
 
     // Register wiki routes if enabled
     let wikiManager: import('./wiki').WikiManager | undefined;
@@ -211,6 +212,9 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // Attach WebSocket server and bridge ProcessStore events
     const wsServer = new ProcessWebSocketServer();
     wsServer.attach(server);
+
+    // Bridge review comment changes to WebSocket
+    bridgeReviewToWebSocket(commentsManager, wsServer);
 
     store.onProcessChange = (event) => {
         switch (event.type) {
@@ -384,8 +388,8 @@ export { registerQueueRoutes } from './queue-handler';
 export { registerTaskRoutes, registerTaskWriteRoutes } from './tasks-handler';
 export { registerTaskGenerationRoutes } from './task-generation-handler';
 export { handleProcessStream } from './sse-handler';
-export { ProcessWebSocketServer, toProcessSummary, sendFrame, decodeFrame } from './websocket';
-export type { WSClient, ProcessSummary, QueueTaskSummary, QueueHistoryTaskSummary, QueueSnapshot, ServerMessage, ClientMessage } from './websocket';
+export { ProcessWebSocketServer, toProcessSummary, toCommentSummary, sendFrame, decodeFrame } from './websocket';
+export type { WSClient, ProcessSummary, MarkdownCommentSummary, QueueTaskSummary, QueueHistoryTaskSummary, QueueSnapshot, ServerMessage, ClientMessage } from './websocket';
 export type { RouterOptions } from './router';
 export { generateDashboardHtml } from './spa';
 export type { DashboardOptions } from './spa';
@@ -398,5 +402,8 @@ export type { TasksChangedCallback } from './task-watcher';
 export { registerWikiRoutes } from './wiki';
 export type { WikiRouteOptions } from './wiki';
 export { registerReviewRoutes, safePath, walkMarkdownFiles } from './review-handler';
+export type { CommentChangeEvent } from './review-handler';
+export { ReviewCommentsManager } from './review-handler';
+export { bridgeReviewToWebSocket } from './review-websocket-bridge';
 export { generateReviewEditorHtml, createImageRoute } from './review-editor';
 export type { ReviewEditorOptions } from './review-editor';

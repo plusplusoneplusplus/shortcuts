@@ -11,6 +11,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { EventEmitter } from 'events';
 
 import type {
     MarkdownComment,
@@ -28,17 +29,32 @@ import { sendJSON, sendError, parseBody } from './api-handler';
 
 const CONFIG_FILE = 'md-comments.json';
 
+/** Event emitted when comments change. */
+export type CommentChangeEvent =
+    | { type: 'added'; filePath: string; comment: MarkdownComment }
+    | { type: 'updated'; filePath: string; comment: MarkdownComment }
+    | { type: 'deleted'; filePath: string; commentId: string }
+    | { type: 'resolved'; filePath: string; commentId: string }
+    | { type: 'cleared'; filePath: string; count: number };
+
 /**
  * Minimal file-backed CommentsManager for the standalone server.
  * Reads/writes the same `.vscode/md-comments.json` format as the VS Code extension.
  */
-class ReviewCommentsManager {
+export class ReviewCommentsManager {
     private config: CommentsConfig;
     private readonly configPath: string;
+    private readonly emitter = new EventEmitter();
 
     constructor(private readonly projectDir: string) {
         this.configPath = path.join(projectDir, '.vscode', CONFIG_FILE);
         this.config = { ...DEFAULT_COMMENTS_CONFIG, comments: [] };
+    }
+
+    /** Register a listener for comment change events. */
+    onDidChangeComments(listener: (event: CommentChangeEvent) => void): () => void {
+        this.emitter.on('change', listener);
+        return () => { this.emitter.removeListener('change', listener); };
     }
 
     /** Load or reload comments from the JSON file on disk. */
@@ -102,25 +118,34 @@ class ReviewCommentsManager {
         };
         this.config.comments.push(newComment);
         this.saveComments();
+        this.emitter.emit('change', { type: 'added', filePath: newComment.filePath, comment: newComment } as CommentChangeEvent);
         return newComment;
     }
 
     updateComment(commentId: string, updates: Partial<Pick<MarkdownComment, 'comment' | 'status' | 'tags'>>): MarkdownComment | undefined {
         const c = this.config.comments.find(x => x.id === commentId);
         if (!c) { return undefined; }
+        const isResolve = updates.status === 'resolved' && c.status !== 'resolved';
         if (updates.comment !== undefined) { c.comment = updates.comment; }
         if (updates.status !== undefined) { c.status = updates.status; }
         if (updates.tags !== undefined) { c.tags = updates.tags; }
         c.updatedAt = new Date().toISOString();
         this.saveComments();
+        if (isResolve) {
+            this.emitter.emit('change', { type: 'resolved', filePath: c.filePath, commentId: c.id } as CommentChangeEvent);
+        } else {
+            this.emitter.emit('change', { type: 'updated', filePath: c.filePath, comment: c } as CommentChangeEvent);
+        }
         return c;
     }
 
     deleteComment(commentId: string): boolean {
         const idx = this.config.comments.findIndex(x => x.id === commentId);
         if (idx === -1) { return false; }
+        const removed = this.config.comments[idx];
         this.config.comments.splice(idx, 1);
         this.saveComments();
+        this.emitter.emit('change', { type: 'deleted', filePath: removed.filePath, commentId: removed.id } as CommentChangeEvent);
         return true;
     }
 
@@ -213,7 +238,7 @@ export function walkMarkdownFiles(rootDir: string, dir?: string): string[] {
  * @param routes - Route table to push routes into
  * @param projectDir - Root directory for the review file tree
  */
-export function registerReviewRoutes(routes: Route[], projectDir: string): void {
+export function registerReviewRoutes(routes: Route[], projectDir: string): { commentsManager: ReviewCommentsManager } {
     const mgr = new ReviewCommentsManager(projectDir);
     mgr.loadComments();
 
@@ -449,4 +474,6 @@ export function registerReviewRoutes(routes: Route[], projectDir: string): void 
             fs.createReadStream(resolved).pipe(res);
         },
     });
+
+    return { commentsManager: mgr };
 }
