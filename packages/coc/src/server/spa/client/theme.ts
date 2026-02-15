@@ -28,6 +28,11 @@ export function applyTheme(): void {
         else if (currentTheme === 'dark') btn.textContent = '\u{1F319}';
         else btn.textContent = '\u2600\uFE0F';
     }
+    // Toggle highlight.js theme stylesheets (wiki CDN)
+    const hljsLight = document.getElementById('hljs-light') as HTMLLinkElement | null;
+    const hljsDark = document.getElementById('hljs-dark') as HTMLLinkElement | null;
+    if (hljsLight) hljsLight.disabled = isDark;
+    if (hljsDark) hljsDark.disabled = !isDark;
 }
 
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function() {

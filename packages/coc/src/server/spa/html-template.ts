@@ -31,6 +31,7 @@ export function generateDashboardHtml(options: DashboardOptions = {}): string {
         theme = 'auto',
         wsPath = '/ws',
         apiBasePath = '/api',
+        enableWiki = false,
     } = options;
 
     const themeAttr = theme === 'auto' ? '' : ` data-theme="${theme === 'dark' ? 'dark' : 'light'}"`;
@@ -40,7 +41,15 @@ export function generateDashboardHtml(options: DashboardOptions = {}): string {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${escapeHtml(title)}</title>
+    <title>${escapeHtml(title)}</title>${enableWiki ? `
+    <!-- highlight.js 11.9.0 — syntax highlighting (wiki) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" id="hljs-light">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" id="hljs-dark" disabled>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"><\/script>
+    <!-- mermaid 10.x — diagram rendering (wiki) -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"><\/script>
+    <!-- marked — markdown-to-HTML parser (wiki) -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"><\/script>` : ''}
     <style>
 ${bundleCss}
     </style>
@@ -165,7 +174,22 @@ ${bundleCss}
                     <div class="empty-state-title">Select a wiki</div>
                     <div class="empty-state-text">Choose a wiki from the sidebar or add a new one.</div>
                 </div>
-                <div class="wiki-component-detail hidden" id="wiki-component-detail"></div>
+                <div class="wiki-component-detail hidden" id="wiki-component-detail">
+                    <div id="wiki-content-scroll" class="wiki-content-scroll">
+                        <div class="wiki-content-layout">
+                            <article class="wiki-article">
+                                <div id="wiki-article-content">
+                                </div>
+                            </article>
+                            <aside class="wiki-toc-sidebar" id="wiki-toc-sidebar">
+                                <div class="toc-container">
+                                    <h4 class="toc-title">On this page</h4>
+                                    <nav id="wiki-toc-nav" class="toc-nav"></nav>
+                                </div>
+                            </aside>
+                        </div>
+                    </div>
+                </div>
             </main>
         </div>
     </div>

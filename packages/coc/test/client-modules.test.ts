@@ -34,6 +34,7 @@ describe('client source file existence', () => {
         'queue.ts', 'websocket.ts', 'index.ts',
         'tasks.ts', 'repos.ts', 'ai-actions.ts',
         'wiki.ts', 'wiki-components.ts', 'wiki-types.ts',
+        'wiki-content.ts', 'wiki-markdown.ts', 'wiki-toc.ts', 'wiki-mermaid-zoom.ts',
     ];
 
     for (const file of expectedFiles) {

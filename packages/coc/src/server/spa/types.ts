@@ -7,6 +7,8 @@ export interface DashboardOptions {
     wsPath?: string;
     /** API base path (default: "/api") */
     apiBasePath?: string;
+    /** Enable wiki tab with CDN libs for markdown/mermaid rendering */
+    enableWiki?: boolean;
 }
 
 export interface ScriptOptions {

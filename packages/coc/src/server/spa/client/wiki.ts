@@ -10,6 +10,7 @@ import { getApiBase } from './config';
 import { fetchApi, setHashSilent } from './core';
 import { escapeHtmlClient } from './utils';
 import { buildComponentTree } from './wiki-components';
+import { setWikiGraph, clearWikiState, showWikiHome, loadWikiComponent } from './wiki-content';
 import type { WikiData, ComponentGraph } from './wiki-types';
 
 // ================================================================
@@ -58,6 +59,7 @@ function populateWikiSelect(): void {
 async function onWikiSelected(wikiId: string): Promise<void> {
     if (!wikiId) {
         appState.selectedWikiId = null;
+        clearWikiState();
         clearWikiContent();
         clearComponentTree();
         return;
@@ -70,13 +72,23 @@ async function onWikiSelected(wikiId: string): Promise<void> {
     const graph = await fetchApi(`/wikis/${encodeURIComponent(wikiId)}/graph`) as ComponentGraph | null;
     const treeContainer = document.getElementById('wiki-component-tree');
     if (graph && treeContainer) {
+        setWikiGraph(wikiId, graph);
         buildComponentTree(graph, treeContainer);
     } else if (treeContainer) {
+        clearWikiState();
         treeContainer.innerHTML = '<div class="wiki-tree-empty">No component data available</div>';
     }
 
-    // Show empty state for content until a component is selected
-    showWikiEmptyState();
+    // Show home view with project stats and component grid
+    if (graph) {
+        const detail = document.getElementById('wiki-component-detail');
+        const empty = document.getElementById('wiki-empty');
+        if (detail) detail.classList.remove('hidden');
+        if (empty) empty.classList.add('hidden');
+        showWikiHome();
+    } else {
+        showWikiEmptyState();
+    }
 }
 
 export async function showWikiDetail(wikiId: string): Promise<void> {
@@ -97,30 +109,8 @@ export async function showWikiComponent(wikiId: string, compId: string): Promise
         await showWikiDetail(wikiId);
     }
 
-    const detail = document.getElementById('wiki-component-detail');
-    const empty = document.getElementById('wiki-empty');
-    if (!detail) return;
-
-    // Fetch component content
-    const data = await fetchApi(`/wikis/${encodeURIComponent(wikiId)}/components/${encodeURIComponent(compId)}`);
-    if (data && data.markdown) {
-        detail.innerHTML = `<div class="markdown-body">${data.markdown}</div>`;
-        detail.classList.remove('hidden');
-        if (empty) empty.classList.add('hidden');
-    } else if (data && data.content) {
-        detail.innerHTML = `<div class="markdown-body">${escapeHtmlClient(data.content)}</div>`;
-        detail.classList.remove('hidden');
-        if (empty) empty.classList.add('hidden');
-    } else {
-        detail.innerHTML = '<div class="empty-state"><div class="empty-state-text">Component content not available</div></div>';
-        detail.classList.remove('hidden');
-        if (empty) empty.classList.add('hidden');
-    }
-
-    // Highlight active component in tree
-    document.querySelectorAll('.wiki-tree-component').forEach(el => {
-        el.classList.toggle('active', el.getAttribute('data-id') === compId);
-    });
+    setHashSilent(`#wiki/${encodeURIComponent(wikiId)}/component/${encodeURIComponent(compId)}`);
+    await loadWikiComponent(wikiId, compId);
 }
 
 function showWikiEmptyState(): void {

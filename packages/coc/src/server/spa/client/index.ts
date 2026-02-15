@@ -38,6 +38,10 @@ import './tasks';
 // 10. Wiki (wiki list, component browser, add wiki dialog)
 import './wiki';
 import './wiki-components';
+import './wiki-content';
+import './wiki-markdown';
+import './wiki-toc';
+import './wiki-mermaid-zoom';
 
 // 11. AI Actions (dropdown for task AI operations)
 import './ai-actions';
