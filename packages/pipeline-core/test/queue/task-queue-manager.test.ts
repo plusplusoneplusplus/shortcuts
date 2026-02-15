@@ -792,6 +792,84 @@ describe('TaskQueueManager', () => {
     });
 
     // ========================================================================
+    // restoreHistory
+    // ========================================================================
+
+    describe('restoreHistory', () => {
+        it('prepends restored tasks to history', () => {
+            // Add one task to history via normal flow
+            const id = manager.enqueue(createTestTask({ displayName: 'existing' }));
+            manager.markStarted(id);
+            manager.markCompleted(id);
+
+            const restoredTasks: QueuedTask[] = [
+                { id: 'r1', type: 'custom', priority: 'normal', status: 'completed', createdAt: 1000, completedAt: 2000, payload: { data: {} }, config: {}, displayName: 'restored-1' },
+                { id: 'r2', type: 'custom', priority: 'normal', status: 'failed', createdAt: 900, completedAt: 1500, error: 'oops', payload: { data: {} }, config: {}, displayName: 'restored-2' },
+            ] as QueuedTask[];
+
+            manager.restoreHistory(restoredTasks);
+
+            const history = manager.getHistory();
+            expect(history).toHaveLength(3);
+            // Current history first, then restored
+            expect(history[0].displayName).toBe('existing');
+            expect(history[1].displayName).toBe('restored-1');
+            expect(history[2].displayName).toBe('restored-2');
+        });
+
+        it('respects maxHistorySize when restoring', () => {
+            const m = createTaskQueueManager({ maxHistorySize: 3 });
+
+            // Add 2 existing tasks
+            for (let i = 0; i < 2; i++) {
+                const id = m.enqueue(createTestTask({ displayName: `existing-${i}` }));
+                m.markStarted(id);
+                m.markCompleted(id);
+            }
+
+            // Restore 3 more — should trim to 3 total
+            const restoredTasks = Array.from({ length: 3 }, (_, i) => ({
+                id: `r${i}`, type: 'custom' as const, priority: 'normal' as const,
+                status: 'completed' as const, createdAt: 1000 + i, completedAt: 2000 + i,
+                payload: { data: {} }, config: {}, displayName: `restored-${i}`,
+            })) as QueuedTask[];
+
+            m.restoreHistory(restoredTasks);
+
+            expect(m.getHistory()).toHaveLength(3);
+        });
+
+        it('does nothing when keepHistory is false', () => {
+            const m = createTaskQueueManager({ keepHistory: false });
+
+            const restoredTasks: QueuedTask[] = [
+                { id: 'r1', type: 'custom', priority: 'normal', status: 'completed', createdAt: 1000, payload: { data: {} }, config: {} },
+            ] as QueuedTask[];
+
+            m.restoreHistory(restoredTasks);
+            expect(m.getHistory()).toHaveLength(0);
+        });
+
+        it('does nothing with empty array', () => {
+            manager.restoreHistory([]);
+            expect(manager.getHistory()).toHaveLength(0);
+        });
+
+        it('handles large restore exceeding maxHistorySize', () => {
+            const m = createTaskQueueManager({ maxHistorySize: 5 });
+
+            const restoredTasks = Array.from({ length: 10 }, (_, i) => ({
+                id: `r${i}`, type: 'custom' as const, priority: 'normal' as const,
+                status: 'completed' as const, createdAt: 1000 + i,
+                payload: { data: {} }, config: {}, displayName: `restored-${i}`,
+            })) as QueuedTask[];
+
+            m.restoreHistory(restoredTasks);
+            expect(m.getHistory()).toHaveLength(5);
+        });
+    });
+
+    // ========================================================================
     // Access Methods
     // ========================================================================
 

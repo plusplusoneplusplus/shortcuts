@@ -23,6 +23,7 @@ import type { Route } from './types';
 import type { ProcessStore, AIProcess, ProcessChangeCallback, ProcessOutputEvent } from '@plusplusoneplusplus/pipeline-core';
 import { TaskQueueManager } from '@plusplusoneplusplus/pipeline-core';
 import { createQueueExecutorBridge } from './queue-executor-bridge';
+import { QueuePersistence } from './queue-persistence';
 
 // ============================================================================
 // Stub Process Store
@@ -124,6 +125,10 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         keepHistory: true,
         maxHistorySize: 100,
     });
+
+    // Restore persisted queue state before executor starts processing
+    const queuePersistence = new QueuePersistence(queueManager, dataDir);
+    queuePersistence.restore();
 
     // Create queue executor to actually process queued tasks
     const queueExecutor = createQueueExecutorBridge(queueManager, store, {
@@ -256,6 +261,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         host,
         url,
         close: async () => {
+            // Flush persisted queue state before stopping executor
+            queuePersistence.dispose();
             // Stop the queue executor first
             queueExecutor.dispose();
             wsServer.closeAll();
@@ -288,3 +295,4 @@ export { generateDashboardHtml } from './spa';
 export type { DashboardOptions } from './spa';
 export { CLITaskExecutor, createQueueExecutorBridge } from './queue-executor-bridge';
 export type { QueueExecutorBridgeOptions } from './queue-executor-bridge';
+export { QueuePersistence } from './queue-persistence';

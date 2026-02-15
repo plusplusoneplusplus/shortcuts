@@ -511,6 +511,22 @@ export class TaskQueueManager extends EventEmitter {
     }
 
     /**
+     * Restore history entries (e.g. from persisted state on startup).
+     * Prepends tasks to history, respecting maxHistorySize.
+     */
+    restoreHistory(tasks: QueuedTask[]): void {
+        if (!this.options.keepHistory || tasks.length === 0) {
+            return;
+        }
+        // Prepend restored tasks (older) after current history (newer)
+        this.history = [...this.history, ...tasks];
+        // Trim to max size
+        if (this.history.length > this.options.maxHistorySize) {
+            this.history = this.history.slice(0, this.options.maxHistorySize);
+        }
+    }
+
+    /**
      * Clear history
      */
     clearHistory(): void {
