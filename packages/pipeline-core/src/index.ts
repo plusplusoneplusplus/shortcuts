@@ -355,6 +355,7 @@ export {
 export {
     FileProcessStore,
     FileProcessStoreOptions,
+    StoredProcessEntry,
     getDefaultDataDir,
     ensureDataDir
 } from './file-process-store';

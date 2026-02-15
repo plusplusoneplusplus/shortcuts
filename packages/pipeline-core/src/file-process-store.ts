@@ -23,7 +23,7 @@ import {
 } from './ai/process-types';
 
 /** On-disk shape inside processes.json */
-interface StoredProcessEntry {
+export interface StoredProcessEntry {
     workspaceId: string;
     process: SerializedAIProcess;
 }
@@ -33,6 +33,8 @@ export interface FileProcessStoreOptions {
     dataDir?: string;
     /** Maximum number of stored processes before pruning. Default: 500 */
     maxProcesses?: number;
+    /** Optional callback invoked with entries removed during pruneIfNeeded() */
+    onPrune?: (prunedEntries: StoredProcessEntry[]) => void;
 }
 
 /** Returns ~/.coc/ with ~ expanded via os.homedir() */
@@ -56,6 +58,8 @@ export class FileProcessStore implements ProcessStore {
     private readonly emitters: Map<string, EventEmitter> = new Map();
 
     onProcessChange?: ProcessChangeCallback;
+    /** Optional callback invoked with entries removed during pruneIfNeeded() */
+    onPrune?: (prunedEntries: StoredProcessEntry[]) => void;
 
     constructor(options?: FileProcessStoreOptions) {
         this.dataDir = options?.dataDir ?? getDefaultDataDir();
@@ -63,6 +67,7 @@ export class FileProcessStore implements ProcessStore {
         this.processesPath = path.join(this.dataDir, 'processes.json');
         this.workspacesPath = path.join(this.dataDir, 'workspaces.json');
         this.writeQueue = Promise.resolve();
+        this.onPrune = options?.onPrune;
     }
 
     async addProcess(process: AIProcess): Promise<void> {
@@ -342,6 +347,15 @@ export class FileProcessStore implements ProcessStore {
         // Remove oldest terminal entries until within limit
         const toKeep = this.maxProcesses - nonTerminal.length;
         const keptTerminal = toKeep > 0 ? terminal.slice(terminal.length - toKeep) : [];
+
+        // Notify about pruned entries
+        if (this.onPrune) {
+            const prunedCount = terminal.length - keptTerminal.length;
+            if (prunedCount > 0) {
+                const pruned = terminal.slice(0, prunedCount);
+                this.onPrune(pruned);
+            }
+        }
 
         return [...nonTerminal, ...keptTerminal];
     }

@@ -21,9 +21,10 @@ import { generateDashboardHtml } from './spa';
 import type { ExecutionServerOptions, ExecutionServer } from './types';
 import type { Route } from './types';
 import type { ProcessStore, AIProcess, ProcessChangeCallback, ProcessOutputEvent } from '@plusplusoneplusplus/pipeline-core';
-import { TaskQueueManager } from '@plusplusoneplusplus/pipeline-core';
+import { TaskQueueManager, FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
 import { createQueueExecutorBridge } from './queue-executor-bridge';
 import { QueuePersistence } from './queue-persistence';
+import { OutputPruner } from './output-pruner';
 
 // ============================================================================
 // Stub Process Store
@@ -130,6 +131,14 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const queuePersistence = new QueuePersistence(queueManager, dataDir);
     queuePersistence.restore();
 
+    // Wire up output file pruner for automatic cleanup
+    const outputPruner = new OutputPruner(store, dataDir);
+
+    // Wire prune hook so pruned entries trigger output file deletion
+    if (store instanceof FileProcessStore) {
+        store.onPrune = (entries) => outputPruner.handlePrunedEntries(entries);
+    }
+
     // Create queue executor to actually process queued tasks
     const queueExecutor = createQueueExecutorBridge(queueManager, store, {
         maxConcurrency: 1,
@@ -137,6 +146,11 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         approvePermissions: true,
         dataDir,
     });
+
+    // Start event-driven output cleanup and run initial orphan scan
+    outputPruner.startListening();
+    outputPruner.cleanupOrphans().catch(() => {});
+    outputPruner.cleanupStaleQueueEntries().catch(() => {});
 
     // Generate SPA dashboard HTML (cached — it's static)
     const spaHtml = generateDashboardHtml();
@@ -261,6 +275,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         host,
         url,
         close: async () => {
+            // Stop output pruner cleanup
+            outputPruner.stopListening();
             // Flush persisted queue state before stopping executor
             queuePersistence.dispose();
             // Stop the queue executor first
@@ -296,3 +312,4 @@ export type { DashboardOptions } from './spa';
 export { CLITaskExecutor, createQueueExecutorBridge } from './queue-executor-bridge';
 export type { QueueExecutorBridgeOptions } from './queue-executor-bridge';
 export { QueuePersistence } from './queue-persistence';
+export { OutputPruner } from './output-pruner';
