@@ -17,6 +17,7 @@ import { createRequestHandler } from './router';
 import { registerApiRoutes } from './api-handler';
 import { registerQueueRoutes } from './queue-handler';
 import { registerTaskRoutes, registerTaskWriteRoutes } from './tasks-handler';
+import { registerTaskGenerationRoutes } from './task-generation-handler';
 import { ProcessWebSocketServer, toProcessSummary } from './websocket';
 import { generateDashboardHtml } from './spa';
 import type { ExecutionServerOptions, ExecutionServer } from './types';
@@ -163,6 +164,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     registerQueueRoutes(routes, queueManager);
     registerTaskRoutes(routes, store);
     registerTaskWriteRoutes(routes, store);
+    registerTaskGenerationRoutes(routes, store);
 
     // Build request handler (health route is prepended automatically)
     const handler = createRequestHandler({ routes, spaHtml, store });
@@ -339,6 +341,7 @@ export { sendJson, send404, send400, send500, readJsonBody, createRequestHandler
 export { registerApiRoutes, sendJSON, sendError, parseBody, parseQueryParams } from './api-handler';
 export { registerQueueRoutes } from './queue-handler';
 export { registerTaskRoutes, registerTaskWriteRoutes } from './tasks-handler';
+export { registerTaskGenerationRoutes } from './task-generation-handler';
 export { handleProcessStream } from './sse-handler';
 export { ProcessWebSocketServer, toProcessSummary, sendFrame, decodeFrame } from './websocket';
 export type { WSClient, ProcessSummary, QueueTaskSummary, QueueHistoryTaskSummary, QueueSnapshot, ServerMessage, ClientMessage } from './websocket';

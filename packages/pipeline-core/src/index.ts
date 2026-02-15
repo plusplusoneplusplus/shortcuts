@@ -727,4 +727,21 @@ export {
     // TaskManager facade
     TaskManager,
     TaskManagerOptions,
+    // Task prompt builders
+    buildCreateTaskPrompt,
+    buildCreateTaskPromptWithName,
+    buildCreateFromFeaturePrompt,
+    buildDeepModePrompt,
+    gatherFeatureContext,
+    parseCreatedFilePath,
+    cleanAIResponse,
+    FeatureContextInput,
+    SelectedContext,
+    TaskGenerationOptions,
+    // Discovery prompt builders
+    buildDiscoveryPrompt,
+    parseDiscoveryResponse,
+    DiscoveryPromptInput,
+    DiscoveryScope,
+    DiscoveredItem,
 } from './tasks';

@@ -93,3 +93,26 @@ export {
     TaskManager,
     TaskManagerOptions,
 } from './task-manager';
+
+export {
+    // Task prompt builders (pure Node.js, no VS Code deps)
+    buildCreateTaskPrompt,
+    buildCreateTaskPromptWithName,
+    buildCreateFromFeaturePrompt,
+    buildDeepModePrompt,
+    gatherFeatureContext,
+    parseCreatedFilePath,
+    cleanAIResponse,
+    FeatureContextInput,
+    SelectedContext,
+    TaskGenerationOptions,
+} from './task-prompt-builder';
+
+export {
+    // Discovery prompt builders
+    buildDiscoveryPrompt,
+    parseDiscoveryResponse,
+    DiscoveryPromptInput,
+    DiscoveryScope,
+    DiscoveredItem,
+} from './discovery-prompt-builder';

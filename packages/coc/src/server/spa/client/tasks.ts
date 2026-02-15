@@ -532,6 +532,155 @@ export function populateTasksWorkspaces(workspaces: any[]): void {
 }
 
 // ================================================================
+// AI Task Generation Dialog
+// ================================================================
+
+function showAIGenerateDialog(): void {
+    const wsId = taskPanelState.selectedWorkspaceId;
+    if (!wsId) {
+        alert('Select a workspace first');
+        return;
+    }
+
+    const existing = document.getElementById('ai-generate-overlay');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'ai-generate-overlay';
+    overlay.className = 'enqueue-overlay';
+
+    overlay.innerHTML =
+        '<div class="enqueue-dialog" style="width:500px;max-height:80vh;overflow-y:auto">' +
+            '<div class="enqueue-dialog-header">' +
+                '<h2>Generate Task with AI</h2>' +
+                '<button class="enqueue-close-btn" id="ai-gen-close">&times;</button>' +
+            '</div>' +
+            '<form id="ai-gen-form" class="enqueue-form">' +
+                '<div class="enqueue-field">' +
+                    '<label for="ai-gen-prompt">Description / Prompt</label>' +
+                    '<textarea id="ai-gen-prompt" rows="3" placeholder="Describe the task you want to create..." required style="width:100%;resize:vertical"></textarea>' +
+                '</div>' +
+                '<div class="enqueue-field">' +
+                    '<label for="ai-gen-name">Task Name (optional)</label>' +
+                    '<input type="text" id="ai-gen-name" placeholder="kebab-case name, or leave empty for AI to generate" />' +
+                '</div>' +
+                '<div class="enqueue-field">' +
+                    '<label for="ai-gen-folder">Target Folder (optional)</label>' +
+                    '<input type="text" id="ai-gen-folder" placeholder="relative path under .vscode/tasks/" />' +
+                '</div>' +
+                '<div class="enqueue-field">' +
+                    '<label for="ai-gen-mode">Mode</label>' +
+                    '<select id="ai-gen-mode">' +
+                        '<option value="create">Create from prompt</option>' +
+                        '<option value="from-feature">From feature context</option>' +
+                    '</select>' +
+                '</div>' +
+                '<div class="enqueue-field">' +
+                    '<label for="ai-gen-depth">Depth</label>' +
+                    '<select id="ai-gen-depth">' +
+                        '<option value="simple">Simple</option>' +
+                        '<option value="deep">Deep (go-deep skill)</option>' +
+                    '</select>' +
+                '</div>' +
+                '<div id="ai-gen-progress" class="hidden" style="margin:8px 0;padding:8px;background:var(--bg-secondary,#f5f5f5);border-radius:4px;font-size:0.85em;max-height:200px;overflow-y:auto;white-space:pre-wrap"></div>' +
+                '<div class="enqueue-actions">' +
+                    '<button type="button" class="enqueue-btn-secondary" id="ai-gen-cancel">Cancel</button>' +
+                    '<button type="submit" class="enqueue-btn-primary" id="ai-gen-submit">Generate</button>' +
+                '</div>' +
+            '</form>' +
+        '</div>';
+
+    document.body.appendChild(overlay);
+
+    const promptEl = document.getElementById('ai-gen-prompt') as HTMLTextAreaElement;
+    if (promptEl) promptEl.focus();
+
+    const close = () => overlay.remove();
+    document.getElementById('ai-gen-close')?.addEventListener('click', close);
+    document.getElementById('ai-gen-cancel')?.addEventListener('click', close);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+    document.getElementById('ai-gen-form')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const prompt = (document.getElementById('ai-gen-prompt') as HTMLTextAreaElement)?.value.trim();
+        if (!prompt) return;
+
+        const name = (document.getElementById('ai-gen-name') as HTMLInputElement)?.value.trim() || undefined;
+        const targetFolder = (document.getElementById('ai-gen-folder') as HTMLInputElement)?.value.trim() || undefined;
+        const mode = (document.getElementById('ai-gen-mode') as HTMLSelectElement)?.value || 'create';
+        const depth = (document.getElementById('ai-gen-depth') as HTMLSelectElement)?.value || 'simple';
+
+        const submitBtn = document.getElementById('ai-gen-submit') as HTMLButtonElement;
+        const progressEl = document.getElementById('ai-gen-progress') as HTMLDivElement;
+        if (submitBtn) submitBtn.disabled = true;
+        if (progressEl) { progressEl.classList.remove('hidden'); progressEl.textContent = 'Starting...\n'; }
+
+        try {
+            const res = await fetch(
+                getApiBase() + `/workspaces/${encodeURIComponent(wsId!)}/tasks/generate`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt, name, targetFolder, mode, depth }),
+                }
+            );
+
+            if (!res.ok || !res.body) {
+                const data = await res.json().catch(() => ({ error: 'Request failed' }));
+                if (progressEl) progressEl.textContent += 'Error: ' + (data.error || 'Unknown error') + '\n';
+                if (submitBtn) submitBtn.disabled = false;
+                return;
+            }
+
+            // Read SSE stream
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+
+                let eventType = '';
+                for (const line of lines) {
+                    if (line.startsWith('event: ')) {
+                        eventType = line.substring(7).trim();
+                    } else if (line.startsWith('data: ')) {
+                        try {
+                            const data = JSON.parse(line.substring(6));
+                            if (eventType === 'progress' && progressEl) {
+                                progressEl.textContent += data.message + '\n';
+                            } else if (eventType === 'chunk' && progressEl) {
+                                progressEl.textContent += data.content || '';
+                            } else if (eventType === 'error' && progressEl) {
+                                progressEl.textContent += 'Error: ' + (data.message || '') + '\n';
+                            } else if (eventType === 'done') {
+                                if (data.success) {
+                                    if (progressEl) progressEl.textContent += '\n✅ Task generated' + (data.filePath ? ': ' + data.filePath : '') + '\n';
+                                    await fetchTasksData();
+                                } else {
+                                    if (progressEl) progressEl.textContent += '\n❌ Generation failed\n';
+                                }
+                            }
+                        } catch { /* ignore parse errors */ }
+                        eventType = '';
+                    }
+                }
+            }
+        } catch (err) {
+            if (progressEl) progressEl.textContent += 'Network error: ' + (err instanceof Error ? err.message : String(err)) + '\n';
+        } finally {
+            if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Generate Again'; }
+        }
+    });
+}
+
+// ================================================================
 // Init
 // ================================================================
 
@@ -543,6 +692,9 @@ if (newTaskBtn) newTaskBtn.addEventListener('click', () => createTask());
 
 const newFolderBtn = document.getElementById('tasks-new-folder-btn');
 if (newFolderBtn) newFolderBtn.addEventListener('click', () => createFolder());
+
+const aiGenerateBtn = document.getElementById('tasks-ai-generate-btn');
+if (aiGenerateBtn) aiGenerateBtn.addEventListener('click', () => showAIGenerateDialog());
 
 // Expose for tab switching
 (window as any).fetchTasksData = fetchTasksData;

@@ -141,6 +141,7 @@ ${bundleCss}
                     </select>
                     <button class="enqueue-btn-primary" id="tasks-new-task-btn">+ New Task</button>
                     <button class="enqueue-btn-primary" id="tasks-new-folder-btn">+ New Folder</button>
+                    <button class="enqueue-btn-primary" id="tasks-ai-generate-btn" title="Generate task with AI">🤖 AI Generate</button>
                 </div>
             </div>
             <div class="tasks-tree" id="tasks-tree">

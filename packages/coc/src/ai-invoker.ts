@@ -39,6 +39,8 @@ export interface CLIAIInvokerOptions {
     timeoutMs?: number;
     /** Whether to load default MCP config */
     loadMcpConfig?: boolean;
+    /** Optional callback invoked with each AI output chunk for streaming */
+    onChunk?: (chunk: string) => void;
 }
 
 /**
@@ -100,6 +102,7 @@ export function createCLIAIInvoker(options: CLIAIInvokerOptions = {}): AIInvoker
                 usePool: false, // Direct session for permission handling
                 onPermissionRequest: permissionHandler,
                 loadDefaultMcpConfig: options.loadMcpConfig !== false,
+                onStreamingChunk: options.onChunk,
             };
 
             const result = await service.sendMessage(sendOptions);
