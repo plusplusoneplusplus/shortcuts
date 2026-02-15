@@ -16,6 +16,7 @@
  */
 
 import * as fs from 'fs';
+import { OutputFileManager } from './output-file-manager';
 import {
     QueueExecutor,
     createQueueExecutor,
@@ -47,6 +48,8 @@ export interface QueueExecutorBridgeOptions {
     approvePermissions?: boolean;
     /** Working directory for AI sessions */
     workingDirectory?: string;
+    /** Directory for persisted data (output files, etc.). Default: ~/.coc */
+    dataDir?: string;
 }
 
 // ============================================================================
@@ -62,11 +65,15 @@ export class CLITaskExecutor implements TaskExecutor {
     private readonly cancelledTasks: Set<string> = new Set();
     private readonly approvePermissions: boolean;
     private readonly defaultWorkingDirectory?: string;
+    private readonly dataDir?: string;
+    /** Per-process output accumulator for persisting conversation output */
+    private readonly outputBuffers: Map<string, string> = new Map();
 
-    constructor(store: ProcessStore, options: { approvePermissions?: boolean; workingDirectory?: string } = {}) {
+    constructor(store: ProcessStore, options: { approvePermissions?: boolean; workingDirectory?: string; dataDir?: string } = {}) {
         this.store = store;
         this.approvePermissions = options.approvePermissions !== false;
         this.defaultWorkingDirectory = options.workingDirectory;
+        this.dataDir = options.dataDir;
     }
 
     async execute(task: QueuedTask): Promise<TaskExecutionResult> {
@@ -155,6 +162,11 @@ export class CLITaskExecutor implements TaskExecutor {
                 error: error instanceof Error ? error : new Error(errorMsg),
                 durationMs: Date.now() - startTime,
             };
+        } finally {
+            // Persist accumulated conversation output to disk (both success and failure)
+            const buffer = this.outputBuffers.get(processId) ?? '';
+            this.outputBuffers.delete(processId);
+            await this.persistOutput(processId, buffer);
         }
     }
 
@@ -233,6 +245,9 @@ export class CLITaskExecutor implements TaskExecutor {
         const sdkService = getCopilotSDKService();
         const processId = `queue-${task.id}`;
 
+        // Initialize output accumulator for this process
+        this.outputBuffers.set(processId, '');
+
         const availability = await sdkService.isAvailable();
         if (!availability.available) {
             throw new Error(`Copilot SDK not available: ${availability.error || 'unknown reason'}`);
@@ -250,6 +265,9 @@ export class CLITaskExecutor implements TaskExecutor {
             onPermissionRequest: this.approvePermissions ? approveAllPermissions : undefined,
             // Stream response chunks to the process store for real-time UI updates
             onStreamingChunk: (chunk: string) => {
+                // Accumulate output for disk persistence
+                const existing = this.outputBuffers.get(processId) ?? '';
+                this.outputBuffers.set(processId, existing + chunk);
                 try {
                     this.store.emitProcessOutput(processId, chunk);
                 } catch {
@@ -277,6 +295,22 @@ export class CLITaskExecutor implements TaskExecutor {
         }
         return this.defaultWorkingDirectory;
     }
+
+    /**
+     * Persist accumulated conversation output to disk.
+     * Non-fatal: errors are silently ignored.
+     */
+    private async persistOutput(processId: string, content: string): Promise<void> {
+        if (!content || !this.dataDir) { return; }
+        try {
+            const outputPath = await OutputFileManager.saveOutput(processId, content, this.dataDir);
+            if (outputPath) {
+                await this.store.updateProcess(processId, { rawStdoutFilePath: outputPath });
+            }
+        } catch {
+            // Non-fatal: don't fail the task because of output persistence
+        }
+    }
 }
 
 // ============================================================================
@@ -296,6 +330,7 @@ export function createQueueExecutorBridge(
     const taskExecutor = new CLITaskExecutor(store, {
         approvePermissions: options.approvePermissions !== false,
         workingDirectory: options.workingDirectory,
+        dataDir: options.dataDir,
     });
 
     const executor = createQueueExecutor(queueManager, taskExecutor, {

@@ -130,6 +130,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         maxConcurrency: 1,
         autoStart: true,
         approvePermissions: true,
+        dataDir,
     });
 
     // Generate SPA dashboard HTML (cached — it's static)

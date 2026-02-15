@@ -1248,4 +1248,196 @@ describe('Queue execution via HTTP API', () => {
             workingDirectory: '/task/dir',
         }));
     });
+
+    // ========================================================================
+    // Output Persistence
+    // ========================================================================
+
+    describe('output persistence', () => {
+        let tmpDir: string;
+
+        beforeEach(async () => {
+            const os = await import('os');
+            const fsPromises = await import('fs/promises');
+            const path = await import('path');
+            tmpDir = await fsPromises.mkdtemp(path.join(os.tmpdir(), 'coc-bridge-test-'));
+        });
+
+        afterEach(async () => {
+            const fsPromises = await import('fs/promises');
+            await fsPromises.rm(tmpDir, { recursive: true, force: true });
+        });
+
+        it('should accumulate streaming chunks and save output file on success', async () => {
+            mockSendMessage.mockImplementation(async (opts: any) => {
+                opts.onStreamingChunk?.('chunk1');
+                opts.onStreamingChunk?.('chunk2');
+                opts.onStreamingChunk?.('chunk3');
+                return { success: true, response: 'done', sessionId: 's1' };
+            });
+
+            const executor = new CLITaskExecutor(store, { dataDir: tmpDir });
+
+            const task: QueuedTask = {
+                id: 'task-output-1',
+                type: 'ai-clarification',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: { prompt: 'test output' },
+                config: {},
+            };
+
+            const result = await executor.execute(task);
+            expect(result.success).toBe(true);
+
+            // Verify output file was written with concatenated chunks
+            const path = await import('path');
+            const fsPromises = await import('fs/promises');
+            const outputPath = path.join(tmpDir, 'outputs', 'queue-task-output-1.md');
+            const content = await fsPromises.readFile(outputPath, 'utf-8');
+            expect(content).toBe('chunk1chunk2chunk3');
+        });
+
+        it('should set rawStdoutFilePath on the process after completion', async () => {
+            mockSendMessage.mockImplementation(async (opts: any) => {
+                opts.onStreamingChunk?.('output data');
+                return { success: true, response: 'done', sessionId: 's2' };
+            });
+
+            const executor = new CLITaskExecutor(store, { dataDir: tmpDir });
+
+            const task: QueuedTask = {
+                id: 'task-output-path',
+                type: 'ai-clarification',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: { prompt: 'test' },
+                config: {},
+            };
+
+            await executor.execute(task);
+
+            // Check that updateProcess was called with rawStdoutFilePath
+            const path = await import('path');
+            const expectedPath = path.join(tmpDir, 'outputs', 'queue-task-output-path.md');
+            expect(store.updateProcess).toHaveBeenCalledWith('queue-task-output-path', {
+                rawStdoutFilePath: expectedPath,
+            });
+        });
+
+        it('should save output file on task failure too', async () => {
+            mockSendMessage.mockImplementation(async (opts: any) => {
+                opts.onStreamingChunk?.('partial1');
+                opts.onStreamingChunk?.('partial2');
+                throw new Error('AI execution failed mid-stream');
+            });
+
+            const executor = new CLITaskExecutor(store, { dataDir: tmpDir });
+
+            const task: QueuedTask = {
+                id: 'task-output-fail',
+                type: 'ai-clarification',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: { prompt: 'test' },
+                config: {},
+            };
+
+            const result = await executor.execute(task);
+            expect(result.success).toBe(false);
+
+            // Verify partial output was still saved
+            const path = await import('path');
+            const fsPromises = await import('fs/promises');
+            const outputPath = path.join(tmpDir, 'outputs', 'queue-task-output-fail.md');
+            const content = await fsPromises.readFile(outputPath, 'utf-8');
+            expect(content).toBe('partial1partial2');
+        });
+
+        it('should still emit streaming chunks to store alongside file persistence', async () => {
+            mockSendMessage.mockImplementation(async (opts: any) => {
+                opts.onStreamingChunk?.('chunk-a');
+                opts.onStreamingChunk?.('chunk-b');
+                return { success: true, response: 'done', sessionId: 's3' };
+            });
+
+            const executor = new CLITaskExecutor(store, { dataDir: tmpDir });
+
+            const task: QueuedTask = {
+                id: 'task-output-sse',
+                type: 'ai-clarification',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: { prompt: 'test' },
+                config: {},
+            };
+
+            await executor.execute(task);
+
+            // Verify streaming chunks were emitted to store (SSE/WS)
+            expect(store.emitProcessOutput).toHaveBeenCalledWith('queue-task-output-sse', 'chunk-a');
+            expect(store.emitProcessOutput).toHaveBeenCalledWith('queue-task-output-sse', 'chunk-b');
+
+            // And also verify file was written
+            const path = await import('path');
+            const fsPromises = await import('fs/promises');
+            const outputPath = path.join(tmpDir, 'outputs', 'queue-task-output-sse.md');
+            const content = await fsPromises.readFile(outputPath, 'utf-8');
+            expect(content).toBe('chunk-achunk-b');
+        });
+
+        it('should not create output file when no dataDir is provided', async () => {
+            mockSendMessage.mockImplementation(async (opts: any) => {
+                opts.onStreamingChunk?.('chunk');
+                return { success: true, response: 'done', sessionId: 's4' };
+            });
+
+            // No dataDir — should skip persistence
+            const executor = new CLITaskExecutor(store);
+
+            const task: QueuedTask = {
+                id: 'task-no-datadir',
+                type: 'ai-clarification',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: { prompt: 'test' },
+                config: {},
+            };
+
+            const result = await executor.execute(task);
+            expect(result.success).toBe(true);
+
+            // updateProcess should not be called with rawStdoutFilePath
+            const calls = (store.updateProcess as any).mock.calls;
+            const pathCalls = calls.filter((c: any) => c[1]?.rawStdoutFilePath);
+            expect(pathCalls).toHaveLength(0);
+        });
+
+        it('should not create output file for non-AI task types', async () => {
+            const executor = new CLITaskExecutor(store, { dataDir: tmpDir });
+
+            const task: QueuedTask = {
+                id: 'task-noop',
+                type: 'code-review',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: {},
+                config: {},
+            };
+
+            await executor.execute(task);
+
+            // No output file should exist (no-op tasks produce no output)
+            const path = await import('path');
+            const fsPromises = await import('fs/promises');
+            const outputsDir = path.join(tmpDir, 'outputs');
+            await expect(fsPromises.access(outputsDir)).rejects.toThrow();
+        });
+    });
 });
