@@ -292,10 +292,24 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore): void {
     // ------------------------------------------------------------------
 
     // GET /api/processes — List processes with filtering + pagination
+    // Supports ?sdkSessionId={id} to find a single process by SDK session ID
     routes.push({
         method: 'GET',
         pattern: '/api/processes',
         handler: async (req, res) => {
+            const parsed = url.parse(req.url || '/', true);
+            const sdkSessionId = typeof parsed.query.sdkSessionId === 'string' ? parsed.query.sdkSessionId : '';
+
+            // Session ID lookup: find the first process matching the given sdkSessionId
+            if (sdkSessionId) {
+                const all = await store.getAllProcesses();
+                const match = all.find(p => p.sdkSessionId === sdkSessionId);
+                if (!match) {
+                    return sendError(res, 404, 'No process found with sdkSessionId: ' + sdkSessionId);
+                }
+                return sendJSON(res, 200, { process: match });
+            }
+
             const filter = parseQueryParams(req.url || '/');
 
             // Get total count (without pagination) for the response

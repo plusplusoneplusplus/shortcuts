@@ -47,6 +47,11 @@ export function renderDetail(id: string): void {
     if (process.metadata && process.metadata.model) {
         html += '<div class="meta-item"><label>Model</label><span>' + escapeHtmlClient(process.metadata.model) + '</span></div>';
     }
+    if (process.sdkSessionId) {
+        html += '<div class="meta-item"><label>Session ID</label><span class="meta-copyable" onclick="copyToClipboard(\'' +
+            escapeHtmlClient(process.sdkSessionId) + '\')" title="Click to copy">' +
+            escapeHtmlClient(process.sdkSessionId) + '</span></div>';
+    }
     if (process.workingDirectory) {
         html += '<div class="meta-item"><label>Working Directory</label><span class="meta-path">' + escapeHtmlClient(process.workingDirectory) + '</span></div>';
     }

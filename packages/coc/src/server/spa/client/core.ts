@@ -101,6 +101,14 @@ export function handleHashChange(): void {
         return;
     }
 
+    // #session/{sdkSessionId} — resolve session ID to process, then navigate
+    const sessionMatch = hash.match(/^session\/(.+)$/);
+    if (sessionMatch) {
+        (window as any).switchTab?.('processes');
+        resolveSession(decodeURIComponent(sessionMatch[1]));
+        return;
+    }
+
     // #repos/{id}
     const repoMatch = hash.match(/^repos\/(.+)$/);
     if (repoMatch) {
@@ -145,10 +153,31 @@ export function navigateToProcess(id: string): void {
     location.hash = '#process/' + encodeURIComponent(id);
 }
 
+export function navigateToSession(sdkSessionId: string): void {
+    location.hash = '#session/' + encodeURIComponent(sdkSessionId);
+}
+
+async function resolveSession(sdkSessionId: string): Promise<void> {
+    // First try local lookup
+    const local = appState.processes.find(function(p: any) { return p.sdkSessionId === sdkSessionId; });
+    if (local) {
+        selectProcess(local.id);
+        return;
+    }
+    // Fallback: fetch from API
+    const data = await fetchApi('/processes?sdkSessionId=' + encodeURIComponent(sdkSessionId));
+    if (data && data.process) {
+        selectProcess(data.process.id);
+    } else {
+        clearDetail();
+    }
+}
+
 export function navigateToHome(): void {
     location.hash = '#processes';
 }
 
 (window as any).navigateToProcess = navigateToProcess;
+(window as any).navigateToSession = navigateToSession;
 (window as any).navigateToHome = navigateToHome;
 (window as any).appState = appState;

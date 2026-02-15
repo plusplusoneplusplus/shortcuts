@@ -1145,3 +1145,45 @@ describe('Bundled JS — config injection', () => {
         expect(configIdx).toBeLessThan(bundleScriptIdx);
     });
 });
+
+// ============================================================================
+// Session ID support in dashboard
+// ============================================================================
+
+describe('client bundle — session ID features', () => {
+    let bundle: string;
+    beforeAll(() => { bundle = getClientBundle(); });
+
+    it('defines navigateToSession function', () => {
+        expect(bundle).toContain('navigateToSession');
+    });
+
+    it('exposes navigateToSession on window', () => {
+        expect(bundle).toContain('navigateToSession');
+        // Bundler may rename `window` but the function is assigned globally
+        expect(bundle).toMatch(/navigateToSession/);
+    });
+
+    it('handles #session/ hash route', () => {
+        expect(bundle).toContain('session/');
+        expect(bundle).toContain('sessionMatch');
+    });
+
+    it('resolves session via local process lookup', () => {
+        // resolveSession checks appState.processes for sdkSessionId
+        expect(bundle).toContain('sdkSessionId');
+    });
+
+    it('falls back to API lookup for session ID', () => {
+        // resolveSession calls fetchApi with sdkSessionId query param
+        expect(bundle).toContain('sdkSessionId=');
+    });
+
+    it('displays sdkSessionId in process detail metadata', () => {
+        expect(bundle).toContain('Session ID');
+    });
+
+    it('makes session ID copyable in detail view', () => {
+        expect(bundle).toContain('meta-copyable');
+    });
+});

@@ -883,4 +883,58 @@ describe('API Handler', () => {
             expect(body.format).toBe('markdown');
         });
     });
+
+    // ========================================================================
+    // GET /api/processes?sdkSessionId= — Session ID lookup
+    // ========================================================================
+
+    describe('GET /api/processes?sdkSessionId=', () => {
+        it('should return process matching sdkSessionId', async () => {
+            const srv = await startServer();
+            const proc = makeProcess({ sdkSessionId: 'sess-abc-123' });
+            await postJSON(`${srv.url}/api/processes`, proc);
+
+            const res = await request(`${srv.url}/api/processes?sdkSessionId=sess-abc-123`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.process).toBeDefined();
+            expect(body.process.id).toBe(proc.id);
+            expect(body.process.sdkSessionId).toBe('sess-abc-123');
+        });
+
+        it('should return 404 when sdkSessionId not found', async () => {
+            const srv = await startServer();
+            const res = await request(`${srv.url}/api/processes?sdkSessionId=nonexistent`);
+            expect(res.status).toBe(404);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('nonexistent');
+        });
+
+        it('should find correct process among multiple', async () => {
+            const srv = await startServer();
+            const proc1 = makeProcess({ id: 'p1', sdkSessionId: 'sess-111' });
+            const proc2 = makeProcess({ id: 'p2', sdkSessionId: 'sess-222' });
+            const proc3 = makeProcess({ id: 'p3' }); // no sdkSessionId
+            await postJSON(`${srv.url}/api/processes`, proc1);
+            await postJSON(`${srv.url}/api/processes`, proc2);
+            await postJSON(`${srv.url}/api/processes`, proc3);
+
+            const res = await request(`${srv.url}/api/processes?sdkSessionId=sess-222`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.process.id).toBe('p2');
+        });
+
+        it('should still support normal listing without sdkSessionId param', async () => {
+            const srv = await startServer();
+            const proc = makeProcess({ sdkSessionId: 'sess-xyz' });
+            await postJSON(`${srv.url}/api/processes`, proc);
+
+            const res = await request(`${srv.url}/api/processes`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.processes).toBeDefined();
+            expect(Array.isArray(body.processes)).toBe(true);
+        });
+    });
 });
