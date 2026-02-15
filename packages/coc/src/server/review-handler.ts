@@ -168,6 +168,11 @@ export class ReviewCommentsManager {
         const rel = this.getRelativePath(filePath);
         return this.config.comments.filter(c => c.filePath === rel).length;
     }
+
+    /** Return all comments across all files. */
+    getAllComments(): MarkdownComment[] {
+        return [...this.config.comments];
+    }
 }
 
 // ============================================================================

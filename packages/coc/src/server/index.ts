@@ -21,6 +21,7 @@ import { registerTaskGenerationRoutes } from './task-generation-handler';
 import { registerPromptRoutes } from './prompt-handler';
 import { registerWikiRoutes } from './wiki';
 import { registerReviewRoutes } from './review-handler';
+import { registerReviewAIRoutes } from './review-ai-handler';
 import { bridgeReviewToWebSocket } from './review-websocket-bridge';
 import { ProcessWebSocketServer, toProcessSummary } from './websocket';
 import { generateDashboardHtml } from './spa';
@@ -175,6 +176,14 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // Register review editor routes
     const projectDir = options.projectDir ?? process.cwd();
     const { commentsManager } = registerReviewRoutes(routes, projectDir);
+
+    // Register review AI routes (ask-ai, queued, prompt generation, prompt listing)
+    registerReviewAIRoutes(routes, {
+        projectDir,
+        store,
+        queueManager,
+        commentsManager,
+    });
 
     // Register wiki routes if enabled
     let wikiManager: import('./wiki').WikiManager | undefined;
@@ -420,6 +429,12 @@ export type { WikiRouteOptions } from './wiki';
 export { registerReviewRoutes, safePath, walkMarkdownFiles } from './review-handler';
 export type { CommentChangeEvent } from './review-handler';
 export { ReviewCommentsManager } from './review-handler';
+export { registerReviewAIRoutes } from './review-ai-handler';
+export type { ReviewAIDeps } from './review-ai-handler';
+export { executeAIClarification, buildClarificationPrompt, createReviewTaskExecutor } from './review-ai-executor';
+export type { ReviewAIClarificationRequest, ReviewAIClarificationResult } from './review-ai-executor';
+export { discoverPromptFiles, readPromptFileContent } from './prompt-utils';
+export type { PromptFileInfo } from './prompt-utils';
 export { bridgeReviewToWebSocket } from './review-websocket-bridge';
 export { ReviewFileWatcher } from './review-watcher';
 export { generateReviewEditorHtml, createImageRoute } from './review-editor';
