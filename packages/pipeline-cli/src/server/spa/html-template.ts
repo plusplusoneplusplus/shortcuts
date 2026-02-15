@@ -8,11 +8,19 @@
  * Mirrors packages/deep-wiki/src/server/spa/html-template.ts pattern.
  */
 
+import * as fs from 'fs';
+import * as path from 'path';
+
 import type { DashboardOptions } from './types';
 import { escapeHtml } from './helpers';
 import { getDashboardStyles } from './styles';
-import { getDashboardScript } from './scripts';
 import { getAllModels } from '@plusplusoneplusplus/pipeline-core';
+
+/** Read the esbuild-bundled client JS (built by npm run build:client). */
+function getClientBundle(): string {
+    const bundlePath = path.join(__dirname, 'client', 'dist', 'bundle.js');
+    return fs.readFileSync(bundlePath, 'utf8');
+}
 
 export function generateDashboardHtml(options: DashboardOptions = {}): string {
     const {
@@ -152,7 +160,13 @@ ${getAllModels().map(m => `                            <option value="${escapeHt
     </div>
 
     <script>
-${getDashboardScript({ defaultTheme: theme, wsPath, apiBasePath })}
+        window.__DASHBOARD_CONFIG__ = {
+            apiBasePath: '${escapeHtml(apiBasePath)}',
+            wsPath: '${escapeHtml(wsPath)}'
+        };
+    </script>
+    <script>
+${getClientBundle()}
     </script>
 </body>
 </html>`;

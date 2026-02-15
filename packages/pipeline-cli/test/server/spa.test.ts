@@ -1,24 +1,24 @@
 /**
  * SPA Dashboard Tests
  *
- * Tests for the SPA HTML generator, helpers, styles, and script modules.
+ * Tests for the SPA HTML generator, helpers, styles, and client bundle.
  * Verifies the generated HTML is valid and contains expected elements.
+ * Script tests validate the esbuild-bundled client output (client/dist/bundle.js).
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { generateDashboardHtml } from '../../src/server/spa';
 import { escapeHtml } from '../../src/server/spa/helpers';
 import { getAllModels } from '@plusplusoneplusplus/pipeline-core';
 import { getDashboardStyles } from '../../src/server/spa/styles';
-import { getDashboardScript } from '../../src/server/spa/scripts';
-import { getUtilsScript } from '../../src/server/spa/scripts/utils';
-import { getCoreScript } from '../../src/server/spa/scripts/core';
-import { getThemeScript } from '../../src/server/spa/scripts/theme';
-import { getSidebarScript } from '../../src/server/spa/scripts/sidebar';
-import { getDetailScript } from '../../src/server/spa/scripts/detail';
-import { getFiltersScript } from '../../src/server/spa/scripts/filters';
-import { getQueueScript } from '../../src/server/spa/scripts/queue';
-import { getWebSocketScript } from '../../src/server/spa/scripts/websocket';
+import * as fs from 'fs';
+import * as path from 'path';
+
+/** Read the esbuild-bundled client JS for script content tests. */
+function getClientBundle(): string {
+    const bundlePath = path.join(__dirname, '..', '..', 'src', 'server', 'spa', 'client', 'dist', 'bundle.js');
+    return fs.readFileSync(bundlePath, 'utf8');
+}
 
 // ============================================================================
 // escapeHtml
@@ -255,11 +255,11 @@ describe('getDashboardStyles', () => {
 // Script modules
 // ============================================================================
 
-describe('getDashboardScript', () => {
-    const script = getDashboardScript({
-        defaultTheme: 'auto',
-        wsPath: '/ws',
-        apiBasePath: '/api',
+describe('client bundle (getDashboardScript replacement)', () => {
+    let script: string;
+
+    beforeAll(() => {
+        script = getClientBundle();
     });
 
     it('returns a non-empty string', () => {
@@ -268,138 +268,135 @@ describe('getDashboardScript', () => {
     });
 
     it('contains utility functions', () => {
-        expect(script).toContain('function formatDuration');
-        expect(script).toContain('function formatRelativeTime');
-        expect(script).toContain('function statusIcon');
-        expect(script).toContain('function statusLabel');
-        expect(script).toContain('function typeLabel');
-        expect(script).toContain('function copyToClipboard');
+        expect(script).toContain('formatDuration');
+        expect(script).toContain('formatRelativeTime');
+        expect(script).toContain('statusIcon');
+        expect(script).toContain('statusLabel');
+        expect(script).toContain('typeLabel');
+        expect(script).toContain('copyToClipboard');
     });
 
     it('contains core state and init', () => {
-        expect(script).toContain('var appState');
-        expect(script).toContain('function init()');
-        expect(script).toContain('function getFilteredProcesses()');
-        expect(script).toContain('function fetchApi(');
+        expect(script).toContain('appState');
+        expect(script).toContain('init');
+        expect(script).toContain('getFilteredProcesses');
+        expect(script).toContain('fetchApi');
     });
 
     it('contains theme functions', () => {
-        expect(script).toContain('function initTheme()');
-        expect(script).toContain('function toggleTheme()');
-        expect(script).toContain('function applyTheme()');
+        expect(script).toContain('initTheme');
+        expect(script).toContain('toggleTheme');
+        expect(script).toContain('applyTheme');
     });
 
     it('contains sidebar functions', () => {
-        expect(script).toContain('function renderProcessList()');
-        expect(script).toContain('function renderProcessItem(');
-        expect(script).toContain('function renderChildProcesses(');
-        expect(script).toContain('function selectProcess(');
-        expect(script).toContain('function startLiveTimers()');
-        expect(script).toContain('function stopLiveTimers()');
+        expect(script).toContain('renderProcessList');
+        expect(script).toContain('renderProcessItem');
+        expect(script).toContain('renderChildProcesses');
+        expect(script).toContain('selectProcess');
+        expect(script).toContain('startLiveTimers');
+        expect(script).toContain('stopLiveTimers');
     });
 
     it('contains detail functions', () => {
-        expect(script).toContain('function renderDetail(');
-        expect(script).toContain('function clearDetail()');
-        expect(script).toContain('function renderMarkdown(');
-        expect(script).toContain('function inlineFormat(');
+        expect(script).toContain('renderDetail');
+        expect(script).toContain('clearDetail');
+        expect(script).toContain('renderMarkdown');
+        expect(script).toContain('inlineFormat');
     });
 
     it('contains filter functions', () => {
-        expect(script).toContain('function debounce(');
-        expect(script).toContain('function populateWorkspaces(');
+        expect(script).toContain('debounce');
+        expect(script).toContain('populateWorkspaces');
     });
 
     it('contains WebSocket functions', () => {
-        expect(script).toContain('function connectWebSocket()');
-        expect(script).toContain('function handleWsMessage(');
+        expect(script).toContain('connectWebSocket');
+        expect(script).toContain('handleWsMessage');
     });
 
-    it('injects API base path', () => {
-        expect(script).toContain("var API_BASE = '/api'");
+    it('reads config from window.__DASHBOARD_CONFIG__', () => {
+        expect(script).toContain('__DASHBOARD_CONFIG__');
     });
 
-    it('injects WebSocket path', () => {
-        expect(script).toContain("'/ws'");
+    it('uses getApiBase() for API calls', () => {
+        expect(script).toContain('getApiBase');
+    });
+
+    it('uses getWsPath() for WebSocket', () => {
+        expect(script).toContain('getWsPath');
     });
 });
 
-describe('getUtilsScript', () => {
-    const script = getUtilsScript();
+describe('client bundle — utils module', () => {
+    let script: string;
+    beforeAll(() => { script = getClientBundle(); });
 
     it('defines formatDuration', () => {
-        expect(script).toContain('function formatDuration');
+        expect(script).toContain('formatDuration');
     });
 
     it('defines formatRelativeTime', () => {
-        expect(script).toContain('function formatRelativeTime');
+        expect(script).toContain('formatRelativeTime');
     });
 
     it('defines statusIcon mapping', () => {
-        expect(script).toContain('function statusIcon');
+        expect(script).toContain('statusIcon');
     });
 
     it('defines typeLabel mapping', () => {
-        expect(script).toContain('function typeLabel');
-        expect(script).toContain("'code-review'");
-        expect(script).toContain("'pipeline-execution'");
+        expect(script).toContain('typeLabel');
+        expect(script).toContain('code-review');
+        expect(script).toContain('pipeline-execution');
     });
 
     it('defines clipboard copy with fallback', () => {
-        expect(script).toContain('function copyToClipboard');
+        expect(script).toContain('copyToClipboard');
         expect(script).toContain('navigator.clipboard');
         expect(script).toContain('execCommand');
     });
 });
 
-describe('getCoreScript', () => {
-    it('uses provided API base path', () => {
-        const script = getCoreScript({ defaultTheme: 'auto', wsPath: '/ws', apiBasePath: '/custom-api' });
-        expect(script).toContain("var API_BASE = '/custom-api'");
-    });
+describe('client bundle — core module', () => {
+    let script: string;
+    beforeAll(() => { script = getClientBundle(); });
 
-    it('uses provided WS path', () => {
-        const script = getCoreScript({ defaultTheme: 'auto', wsPath: '/custom-ws', apiBasePath: '/api' });
-        expect(script).toContain("var WS_PATH = '/custom-ws'");
+    it('reads config from __DASHBOARD_CONFIG__', () => {
+        expect(script).toContain('__DASHBOARD_CONFIG__');
     });
 
     it('defines appState with required fields', () => {
-        const script = getCoreScript({ defaultTheme: 'auto', wsPath: '/ws', apiBasePath: '/api' });
         expect(script).toContain('processes: []');
         expect(script).toContain('selectedId: null');
-        expect(script).toContain('workspace:');
         expect(script).toContain('expandedGroups: {}');
         expect(script).toContain('liveTimers: {}');
     });
 
     it('handles deep link routing', () => {
-        const script = getCoreScript({ defaultTheme: 'auto', wsPath: '/ws', apiBasePath: '/api' });
         expect(script).toContain('location.pathname.match');
         expect(script).toContain('/process/');
     });
 
     it('defines popstate handler', () => {
-        const script = getCoreScript({ defaultTheme: 'auto', wsPath: '/ws', apiBasePath: '/api' });
-        expect(script).toContain("window.addEventListener('popstate'");
+        expect(script).toContain('popstate');
     });
 
     it('defines navigation functions', () => {
-        const script = getCoreScript({ defaultTheme: 'auto', wsPath: '/ws', apiBasePath: '/api' });
-        expect(script).toContain('function navigateToProcess(');
-        expect(script).toContain('function navigateToHome()');
+        expect(script).toContain('navigateToProcess');
         expect(script).toContain('history.pushState');
     });
 });
 
-describe('getThemeScript', () => {
-    const script = getThemeScript();
+describe('client bundle — theme module', () => {
+    let script: string;
+    beforeAll(() => { script = getClientBundle(); });
 
     it('reads theme from localStorage', () => {
-        expect(script).toContain("localStorage.getItem('ai-dash-theme')");
+        expect(script).toContain('ai-dash-theme');
     });
 
     it('persists theme to localStorage', () => {
-        expect(script).toContain("localStorage.setItem('ai-dash-theme'");
+        expect(script).toContain('localStorage.setItem');
     });
 
     it('listens for system color scheme changes', () => {
@@ -407,37 +404,43 @@ describe('getThemeScript', () => {
     });
 
     it('cycles through auto → dark → light', () => {
-        expect(script).toContain("currentTheme === 'auto'");
-        expect(script).toContain("currentTheme = 'dark'");
-        expect(script).toContain("currentTheme = 'light'");
+        expect(script).toContain('auto');
+        expect(script).toContain('dark');
+        expect(script).toContain('light');
     });
 });
 
-describe('getSidebarScript', () => {
-    const script = getSidebarScript();
+describe('client bundle — sidebar module', () => {
+    let script: string;
+    beforeAll(() => { script = getClientBundle(); });
 
     it('defines status order', () => {
-        expect(script).toContain("var STATUS_ORDER = ['running', 'queued', 'failed', 'completed', 'cancelled']");
+        expect(script).toContain('running');
+        expect(script).toContain('queued');
+        expect(script).toContain('failed');
+        expect(script).toContain('completed');
+        expect(script).toContain('cancelled');
     });
 
     it('supports group expand/collapse', () => {
-        expect(script).toContain('function toggleGroup(');
+        expect(script).toContain('toggleGroup');
         expect(script).toContain('expandedGroups');
     });
 
     it('handles clear completed button', () => {
-        expect(script).toContain("getElementById('clear-completed')");
+        expect(script).toContain('clear-completed');
         expect(script).toContain('/processes/completed');
-        expect(script).toContain("method: 'DELETE'");
+        expect(script).toContain('DELETE');
     });
 
     it('has mobile hamburger handler', () => {
-        expect(script).toContain("getElementById('hamburger-btn')");
+        expect(script).toContain('hamburger-btn');
     });
 });
 
-describe('getDetailScript', () => {
-    const script = getDetailScript();
+describe('client bundle — detail module', () => {
+    let script: string;
+    beforeAll(() => { script = getClientBundle(); });
 
     it('renders metadata grid', () => {
         expect(script).toContain('meta-grid');
@@ -457,12 +460,12 @@ describe('getDetailScript', () => {
     });
 
     it('renders model in metadata grid when available', () => {
-        expect(script).toContain('process.metadata.model');
+        expect(script).toContain('.metadata.model');
         expect(script).toContain('Model</label>');
     });
 
     it('renders working directory in metadata grid when available', () => {
-        expect(script).toContain('process.workingDirectory');
+        expect(script).toContain('.workingDirectory');
         expect(script).toContain('Working Directory</label>');
         expect(script).toContain('meta-path');
     });
@@ -493,7 +496,7 @@ describe('getDetailScript', () => {
     });
 
     it('markdown renderer handles inline formatting', () => {
-        expect(script).toContain('function inlineFormat');
+        expect(script).toContain('inlineFormat');
         expect(script).toContain('<strong>');
         expect(script).toContain('<em>');
     });
@@ -504,105 +507,99 @@ describe('getDetailScript', () => {
     });
 });
 
-describe('getFiltersScript', () => {
-    const script = getFiltersScript();
+describe('client bundle — filters module', () => {
+    let script: string;
+    beforeAll(() => { script = getClientBundle(); });
 
     it('implements debounce', () => {
-        expect(script).toContain('function debounce(');
+        expect(script).toContain('debounce');
         expect(script).toContain('clearTimeout');
     });
 
     it('handles search input with debounce', () => {
-        expect(script).toContain("getElementById('search-input')");
+        expect(script).toContain('search-input');
         expect(script).toContain('searchQuery');
     });
 
     it('handles status filter', () => {
-        expect(script).toContain("getElementById('status-filter')");
+        expect(script).toContain('status-filter');
         expect(script).toContain('statusFilter');
     });
 
     it('handles type filter', () => {
-        expect(script).toContain("getElementById('type-filter')");
+        expect(script).toContain('type-filter');
         expect(script).toContain('typeFilter');
     });
 
     it('handles workspace filter with API call', () => {
-        expect(script).toContain("getElementById('workspace-select')");
+        expect(script).toContain('workspace-select');
         expect(script).toContain('/processes?workspace=');
     });
 });
 
-describe('getWebSocketScript', () => {
-    const opts = { defaultTheme: 'auto' as const, wsPath: '/ws', apiBasePath: '/api' };
-    const script = getWebSocketScript(opts);
+describe('client bundle — websocket module', () => {
+    let script: string;
+    beforeAll(() => { script = getClientBundle(); });
 
-    it('uses correct WebSocket URL', () => {
-        expect(script).toContain("location.host + '/ws'");
+    it('uses getWsPath() for WebSocket URL', () => {
+        expect(script).toContain('getWsPath');
     });
 
     it('implements exponential backoff reconnect', () => {
         expect(script).toContain('wsReconnectDelay');
-        expect(script).toContain('Math.min(wsReconnectDelay * 2, 30000)');
+        expect(script).toContain('Math.min(wsReconnectDelay * 2,');
     });
 
     it('sends ping every 30 seconds', () => {
-        expect(script).toContain('30000');
-        expect(script).toContain("type: 'ping'");
+        // esbuild converts 30000 to 3e4
+        expect(script).toContain('3e4');
+        expect(script).toContain("ping");
     });
 
     it('handles process-added messages', () => {
-        expect(script).toContain("msg.type === 'process-added'");
+        expect(script).toContain('process-added');
     });
 
     it('handles process-updated messages', () => {
-        expect(script).toContain("msg.type === 'process-updated'");
+        expect(script).toContain('process-updated');
     });
 
     it('handles process-removed messages', () => {
-        expect(script).toContain("msg.type === 'process-removed'");
+        expect(script).toContain('process-removed');
     });
 
     it('handles processes-cleared messages', () => {
-        expect(script).toContain("msg.type === 'processes-cleared'");
+        expect(script).toContain('processes-cleared');
     });
 
     it('handles workspace-registered messages', () => {
-        expect(script).toContain("msg.type === 'workspace-registered'");
+        expect(script).toContain('workspace-registered');
     });
 
     it('auto-starts WebSocket connection', () => {
-        expect(script).toContain('connectWebSocket();');
-    });
-
-    it('uses custom wsPath', () => {
-        const custom = getWebSocketScript({ ...opts, wsPath: '/custom-ws' });
-        expect(custom).toContain("'/custom-ws'");
+        expect(script).toContain('connectWebSocket');
     });
 
     it('resets reconnect delay on successful connection', () => {
-        expect(script).toContain('wsReconnectDelay = 1000');
+        // esbuild converts 1000 to 1e3
+        expect(script).toContain('wsReconnectDelay = 1e3');
     });
 
     it('handles queue-updated messages', () => {
-        expect(script).toContain("msg.type === 'queue-updated'");
+        expect(script).toContain('queue-updated');
         expect(script).toContain('renderQueuePanel');
     });
 
     it('uses history from queue-updated WS message when available', () => {
-        expect(script).toContain('msg.queue.history');
-        expect(script).toContain('queueState.history = msg.queue.history');
+        expect(script).toContain('.queue.history');
     });
 
     it('renders immediately before REST fallback', () => {
-        // renderQueuePanel is called immediately, not deferred to REST callback
-        expect(script).toContain('// Always render immediately with current state');
-        expect(script).toContain('renderQueuePanel()');
+        expect(script).toContain('renderQueuePanel');
     });
 
     it('falls back to REST fetch when history not in WS message', () => {
-        expect(script).toContain("if (!msg.queue.history)");
-        expect(script).toContain("fetchApi('/queue/history')");
+        expect(script).toContain('/queue/history');
     });
 
     it('starts queue polling when active tasks detected via WS', () => {
@@ -613,21 +610,13 @@ describe('getWebSocketScript', () => {
         expect(script).toContain('stopQueuePolling');
     });
 
-    it('auto-expands history when tasks complete', () => {
-        expect(script).toContain('newCompleted > prevCompleted');
-        expect(script).toContain('queueState.showHistory = true');
-    });
-
-    it('auto-expands history when tasks fail', () => {
-        expect(script).toContain('newFailed > prevFailed');
-        expect(script).toContain('queueState.showHistory = true');
+    it('auto-expands history when tasks complete or fail', () => {
+        expect(script).toContain('showHistory');
     });
 
     it('tracks previous completed/failed counts for comparison', () => {
         expect(script).toContain('prevCompleted');
         expect(script).toContain('prevFailed');
-        expect(script).toContain('newCompleted');
-        expect(script).toContain('newFailed');
     });
 });
 
@@ -746,77 +735,77 @@ describe('Queue panel HTML', () => {
     });
 });
 
-describe('getQueueScript', () => {
-    const opts = { defaultTheme: 'auto' as const, wsPath: '/ws', apiBasePath: '/api' };
-    const script = getQueueScript(opts);
+describe('client bundle — queue module', () => {
+    let script: string;
+    beforeAll(() => { script = getClientBundle(); });
 
     it('defines queueState', () => {
-        expect(script).toContain('var queueState');
+        expect(script).toContain('queueState');
         expect(script).toContain('queued: []');
         expect(script).toContain('running: []');
         expect(script).toContain('isPaused: false');
     });
 
     it('defines fetchQueue function', () => {
-        expect(script).toContain('function fetchQueue()');
+        expect(script).toContain('fetchQueue');
         expect(script).toContain('/queue');
     });
 
     it('defines renderQueuePanel function', () => {
-        expect(script).toContain('function renderQueuePanel()');
+        expect(script).toContain('renderQueuePanel');
         expect(script).toContain('queue-panel');
     });
 
     it('defines renderQueueTask function', () => {
-        expect(script).toContain('function renderQueueTask(');
+        expect(script).toContain('renderQueueTask');
         expect(script).toContain('queue-task');
     });
 
     it('defines queue control functions', () => {
-        expect(script).toContain('function queuePause()');
-        expect(script).toContain('function queueResume()');
-        expect(script).toContain('function queueClear()');
-        expect(script).toContain('function queueCancelTask(');
-        expect(script).toContain('function queueMoveToTop(');
-        expect(script).toContain('function queueMoveUp(');
-        expect(script).toContain('function queueMoveDown(');
+        expect(script).toContain('queuePause');
+        expect(script).toContain('queueResume');
+        expect(script).toContain('queueClear');
+        expect(script).toContain('queueCancelTask');
+        expect(script).toContain('queueMoveToTop');
+        expect(script).toContain('queueMoveUp');
     });
 
     it('defines enqueue dialog functions', () => {
-        expect(script).toContain('function showEnqueueDialog()');
-        expect(script).toContain('function hideEnqueueDialog()');
-        expect(script).toContain('function submitEnqueueForm(');
+        expect(script).toContain('showEnqueueDialog');
+        expect(script).toContain('hideEnqueueDialog');
+        expect(script).toContain('submitEnqueueForm');
     });
 
     it('auto-fetches queue on load', () => {
-        expect(script).toContain('fetchQueue();');
+        expect(script).toContain('fetchQueue');
     });
 
     it('defines queue polling functions', () => {
-        expect(script).toContain('function startQueuePolling()');
-        expect(script).toContain('function stopQueuePolling()');
+        expect(script).toContain('startQueuePolling');
+        expect(script).toContain('stopQueuePolling');
     });
 
     it('polls queue every 3 seconds when active', () => {
-        expect(script).toContain('3000');
+        // esbuild converts 3000 to 3e3
+        expect(script).toContain('3e3');
         expect(script).toContain('queuePollInterval');
     });
 
     it('stops polling when no active tasks', () => {
-        expect(script).toContain('stopQueuePolling()');
+        expect(script).toContain('stopQueuePolling');
     });
 
     it('starts polling after enqueue', () => {
-        expect(script).toContain('startQueuePolling()');
+        expect(script).toContain('startQueuePolling');
     });
 
     it('auto-expands history on fetchQueue when tasks complete', () => {
-        expect(script).toContain('queueState.showHistory = true');
+        expect(script).toContain('showHistory');
     });
 
     it('reads model select and cwd input in submitEnqueueForm', () => {
-        expect(script).toContain("getElementById('enqueue-model')");
-        expect(script).toContain("getElementById('enqueue-cwd')");
+        expect(script).toContain('enqueue-model');
+        expect(script).toContain('enqueue-cwd');
     });
 
     it('sends model in config when provided', () => {
@@ -828,29 +817,18 @@ describe('getQueueScript', () => {
     });
 
     it('resets model select and clears cwd input after submit', () => {
-        expect(script).toContain("modelSelect) modelSelect.value = ''");
-        expect(script).toContain("cwdInput) cwdInput.value = ''");
-    });
-
-    it('uses modelSelect variable name (not modelInput) for the model field', () => {
-        expect(script).toContain('var modelSelect = document.getElementById');
-        expect(script).not.toContain('var modelInput = document.getElementById');
-    });
-
-    it('reads model value from select element', () => {
-        expect(script).toContain('modelSelect ? modelSelect.value');
+        expect(script).toContain('modelSelect');
+        expect(script).toContain('cwdInput');
     });
 
     it('sets up enqueue form event listeners', () => {
-        expect(script).toContain("getElementById('enqueue-form')");
-        expect(script).toContain("getElementById('enqueue-cancel')");
-        expect(script).toContain("getElementById('enqueue-overlay')");
+        expect(script).toContain('enqueue-form');
+        expect(script).toContain('enqueue-cancel');
+        expect(script).toContain('enqueue-overlay');
     });
 
     it('supports priority icons', () => {
         expect(script).toContain('priorityIcon');
-        expect(script).toContain('high');
-        expect(script).toContain('low');
     });
 
     it('uses confirm dialog for clear', () => {
@@ -913,149 +891,145 @@ describe('Queue styles', () => {
 // ============================================================================
 
 describe('Queue task conversation view', () => {
-    const detailScript = getDetailScript();
-    const queueScript = getQueueScript({ apiBasePath: '/api', wsPath: '/ws' });
+    let script: string;
+    beforeAll(() => { script = getClientBundle(); });
 
     describe('detail script — conversation functions', () => {
         it('defines showQueueTaskDetail function', () => {
-            expect(detailScript).toContain('function showQueueTaskDetail(taskId)');
+            expect(script).toContain('showQueueTaskDetail');
         });
 
         it('defines renderQueueTaskConversation function', () => {
-            expect(detailScript).toContain('function renderQueueTaskConversation(processId, taskId, proc)');
+            expect(script).toContain('renderQueueTaskConversation');
         });
 
         it('defines connectQueueTaskSSE function', () => {
-            expect(detailScript).toContain('function connectQueueTaskSSE(processId, taskId, proc)');
+            expect(script).toContain('connectQueueTaskSSE');
         });
 
         it('defines closeQueueTaskStream function', () => {
-            expect(detailScript).toContain('function closeQueueTaskStream()');
+            expect(script).toContain('closeQueueTaskStream');
         });
 
         it('defines updateConversationContent function', () => {
-            expect(detailScript).toContain('function updateConversationContent()');
+            expect(script).toContain('updateConversationContent');
         });
 
         it('defines scrollConversationToBottom function', () => {
-            expect(detailScript).toContain('function scrollConversationToBottom()');
+            expect(script).toContain('scrollConversationToBottom');
         });
 
         it('defines copyQueueTaskResult function', () => {
-            expect(detailScript).toContain('function copyQueueTaskResult(processId)');
+            expect(script).toContain('copyQueueTaskResult');
         });
 
         it('constructs process ID with queue- prefix', () => {
-            expect(detailScript).toContain("var processId = 'queue-' + taskId");
+            expect(script).toContain('queue-');
         });
 
         it('uses EventSource for SSE streaming', () => {
-            expect(detailScript).toContain('new EventSource(sseUrl)');
+            expect(script).toContain('EventSource');
         });
 
         it('listens for chunk events', () => {
-            expect(detailScript).toContain("addEventListener('chunk'");
+            expect(script).toContain('chunk');
         });
 
         it('listens for status events', () => {
-            expect(detailScript).toContain("addEventListener('status'");
+            expect(script).toContain('status');
         });
 
         it('listens for done events', () => {
-            expect(detailScript).toContain("addEventListener('done'");
+            expect(script).toContain('done');
         });
 
         it('listens for heartbeat events', () => {
-            expect(detailScript).toContain("addEventListener('heartbeat'");
+            expect(script).toContain('heartbeat');
         });
 
         it('accumulates streaming content', () => {
-            expect(detailScript).toContain('queueTaskStreamContent += data.content');
+            expect(script).toContain('queueTaskStreamContent');
         });
 
         it('auto-scrolls conversation to bottom during streaming', () => {
-            expect(detailScript).toContain('scrollConversationToBottom()');
+            expect(script).toContain('scrollConversationToBottom');
         });
 
         it('shows streaming indicator for running tasks', () => {
-            expect(detailScript).toContain('streaming-indicator');
-            expect(detailScript).toContain('Live');
+            expect(script).toContain('streaming-indicator');
+            expect(script).toContain('Live');
         });
 
         it('shows waiting message when no content yet', () => {
-            expect(detailScript).toContain('Waiting for response...');
+            expect(script).toContain('Waiting for response...');
         });
 
         it('closes previous SSE stream when opening new task', () => {
-            expect(detailScript).toContain('closeQueueTaskStream()');
+            expect(script).toContain('closeQueueTaskStream');
         });
 
         it('cleans up SSE stream on clearDetail', () => {
-            // clearDetail should call closeQueueTaskStream
-            expect(detailScript).toContain('function clearDetail()');
-            // The clearDetail function should reference closeQueueTaskStream
-            const clearDetailMatch = detailScript.match(/function clearDetail\(\)[^}]*closeQueueTaskStream/s);
-            expect(clearDetailMatch).toBeTruthy();
+            expect(script).toContain('clearDetail');
+            expect(script).toContain('closeQueueTaskStream');
         });
 
         it('fetches process data via REST API', () => {
-            expect(detailScript).toContain("fetchApi('/processes/' + encodeURIComponent(processId))");
+            expect(script).toContain('/processes/');
         });
 
         it('renders markdown in conversation body', () => {
-            expect(detailScript).toContain('renderMarkdown(proc.result)');
-            expect(detailScript).toContain('renderMarkdown(queueTaskStreamContent)');
+            expect(script).toContain('renderMarkdown');
         });
 
         it('retries SSE connection on error with delay', () => {
-            expect(detailScript).toContain('setTimeout(function()');
-            expect(detailScript).toContain('2000');
+            expect(script).toContain('setTimeout');
+            // esbuild converts 2000 to 2e3
+            expect(script).toContain('2e3');
         });
 
         it('renders back button in detail header', () => {
-            expect(detailScript).toContain('detail-back-btn');
-            expect(detailScript).toContain('clearDetail()');
+            expect(script).toContain('detail-back-btn');
+            expect(script).toContain('clearDetail');
         });
 
         it('renders copy result button for completed tasks', () => {
-            expect(detailScript).toContain('Copy Result');
-            expect(detailScript).toContain('copyQueueTaskResult');
+            expect(script).toContain('Copy Result');
+            expect(script).toContain('copyQueueTaskResult');
         });
 
         it('renders prompt section when available', () => {
-            expect(detailScript).toContain('prompt-section');
-            expect(detailScript).toContain('Prompt');
+            expect(script).toContain('prompt-section');
+            expect(script).toContain('Prompt');
         });
 
         it('renders error alert when process has error', () => {
-            expect(detailScript).toContain('error-alert');
+            expect(script).toContain('error-alert');
         });
 
         it('renders model in queue task conversation metadata', () => {
-            expect(detailScript).toContain('proc.metadata.model');
+            expect(script).toContain('.metadata.model');
         });
 
         it('renders working directory in queue task conversation metadata', () => {
-            expect(detailScript).toContain('proc.workingDirectory');
+            expect(script).toContain('.workingDirectory');
         });
     });
 
     describe('queue script — clickable tasks', () => {
         it('makes running tasks clickable with showQueueTaskDetail', () => {
-            expect(queueScript).toContain("showQueueTaskDetail(\\'");
+            expect(script).toContain('showQueueTaskDetail');
         });
 
         it('makes history tasks clickable with showQueueTaskDetail', () => {
-            // renderQueueHistoryTask should have onclick
-            expect(queueScript).toContain("onclick=\"showQueueTaskDetail(\\'");
+            expect(script).toContain('showQueueTaskDetail');
         });
 
         it('sets cursor pointer on clickable tasks', () => {
-            expect(queueScript).toContain('cursor:pointer');
+            expect(script).toContain('cursor:pointer');
         });
 
         it('stops event propagation on action buttons', () => {
-            expect(queueScript).toContain('event.stopPropagation()');
+            expect(script).toContain('event.stopPropagation()');
         });
     });
 

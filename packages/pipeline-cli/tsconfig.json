@@ -15,5 +15,5 @@
     "declarationMap": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "test", "src/**/client/dist"]
+  "exclude": ["node_modules", "dist", "test", "src/**/client"]
 }

@@ -34,9 +34,19 @@ describe('Client Build Infrastructure', () => {
             expect(fs.existsSync(path.join(CLIENT_DIR, 'styles.css'))).toBe(true);
         });
 
-        it('client/index.ts should be a valid placeholder', () => {
+        it('client/index.ts should import all client modules', () => {
             const content = fs.readFileSync(path.join(CLIENT_DIR, 'index.ts'), 'utf8');
-            expect(content).toContain('export {}');
+            expect(content).toContain("import './config'");
+            expect(content).toContain("import './state'");
+            expect(content).toContain("import './utils'");
+            expect(content).toContain("import './theme'");
+            expect(content).toContain("import { init } from './core'");
+            expect(content).toContain("import './sidebar'");
+            expect(content).toContain("import './detail'");
+            expect(content).toContain("import './filters'");
+            expect(content).toContain("import './queue'");
+            expect(content).toContain("import './websocket'");
+            expect(content).toContain('init()');
         });
 
         it('client/styles.css should contain real CSS', () => {
@@ -135,9 +145,9 @@ describe('Client Build Infrastructure', () => {
             tsconfig = JSON.parse(fs.readFileSync(path.join(PKG_ROOT, 'tsconfig.json'), 'utf8'));
         });
 
-        it('should exclude client/dist from compilation', () => {
+        it('should exclude client directory from compilation', () => {
             const exclude = tsconfig.exclude as string[];
-            expect(exclude).toContain('src/**/client/dist');
+            expect(exclude).toContain('src/**/client');
         });
     });
 
@@ -163,10 +173,14 @@ describe('Client Build Infrastructure', () => {
             expect(fs.existsSync(path.join(CLIENT_DIST, 'bundle.css'))).toBe(true);
         });
 
-        it('bundle.js should be a valid IIFE wrapper (placeholder is minimal)', () => {
+        it('bundle.js should be a valid IIFE wrapper with client code', () => {
             const content = fs.readFileSync(path.join(CLIENT_DIST, 'bundle.js'), 'utf8');
             // esbuild IIFE wraps in (() => { ... })();
-            expect(content.length).toBeGreaterThan(0);
+            expect(content.length).toBeGreaterThan(1000);
+            // Should contain key functions from client modules
+            expect(content).toContain('fetchApi');
+            expect(content).toContain('renderProcessList');
+            expect(content).toContain('connectWebSocket');
         });
 
         it('bundle.css should be a valid CSS file', () => {
