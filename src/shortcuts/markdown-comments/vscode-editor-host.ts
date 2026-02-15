@@ -9,12 +9,14 @@ import * as vscode from 'vscode';
 import { isMarkdownFile } from './file-path-utils';
 import { EditorHost } from './editor-host';
 import { ReviewEditorViewProvider } from './review-editor-view-provider';
+import type { StateStore } from './state-store';
 
 export class VscodeEditorHost implements EditorHost {
     constructor(
         private readonly webviewPanel: vscode.WebviewPanel,
         private readonly context: vscode.ExtensionContext,
-        private readonly document: vscode.TextDocument
+        private readonly document: vscode.TextDocument,
+        private readonly stateStore: StateStore
     ) {}
 
     // --- Notifications ---
@@ -134,11 +136,11 @@ export class VscodeEditorHost implements EditorHost {
     // --- State persistence ---
 
     getState<T>(key: string, defaultValue: T): T {
-        return this.context.workspaceState.get<T>(key, defaultValue);
+        return this.stateStore.get<T>(key, defaultValue);
     }
 
     async setState(key: string, value: unknown): Promise<void> {
-        await this.context.workspaceState.update(key, value);
+        await this.stateStore.update(key, value);
     }
 
     // --- Configuration ---

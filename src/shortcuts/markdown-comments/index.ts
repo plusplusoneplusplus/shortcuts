@@ -20,6 +20,7 @@ export * from './file-path-utils';
 export * from './markdown-parser';
 export { PromptGenerator } from './prompt-generator';
 export { ReviewEditorViewProvider } from './review-editor-view-provider';
+export { StateStore, VscodeStateStore, InMemoryStateStore } from './state-store';
 export * from './types';
 export { VscodeEditorHost } from './vscode-editor-host';
 export * from './webview-utils';

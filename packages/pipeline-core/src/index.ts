@@ -803,5 +803,6 @@ export {
     // Host
     EditorHost,
     // State Store
-    StateStore
+    StateStore,
+    FileStateStore
 } from './editor';

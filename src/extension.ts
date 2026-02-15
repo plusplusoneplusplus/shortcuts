@@ -42,7 +42,8 @@ import {
     MarkdownCommentsCommands,
     MarkdownCommentsTreeDataProvider,
     PromptGenerator,
-    ReviewEditorViewProvider
+    ReviewEditorViewProvider,
+    VscodeStateStore
 } from './shortcuts/markdown-comments';
 import { createVSCodeFileWatcherFactory } from './shortcuts/markdown-comments/vscode-file-watcher';
 import { NotificationManager } from './shortcuts/notification-manager';
@@ -2168,7 +2169,7 @@ export async function activate(context: vscode.ExtensionContext) {
         );
 
         // Register the Review Editor View provider for markdown files with comments
-        const customEditorDisposable = ReviewEditorViewProvider.register(context, commentsManager, aiProcessManager);
+        const customEditorDisposable = ReviewEditorViewProvider.register(context, commentsManager, new VscodeStateStore(context.workspaceState), aiProcessManager);
 
         // Register comments tree view
         const commentsTreeView = vscode.window.createTreeView('markdownCommentsView', {

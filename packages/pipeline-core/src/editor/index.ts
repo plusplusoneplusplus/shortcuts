@@ -58,3 +58,7 @@ export {
 export {
     StateStore
 } from './state-store';
+
+export {
+    FileStateStore
+} from './file-state-store';

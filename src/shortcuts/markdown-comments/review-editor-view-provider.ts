@@ -20,6 +20,7 @@ import { getWebviewContent, WebviewContentOptions } from './webview-content';
 import { MessageContext } from './editor-host';
 import { EditorMessageRouter, WebviewMessage } from './editor-message-router';
 import { VscodeEditorHost } from './vscode-editor-host';
+import { StateStore } from './state-store';
 
 /**
  * Review Editor View - Custom editor provider for markdown files with inline comments
@@ -42,6 +43,7 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
     constructor(
         private readonly context: vscode.ExtensionContext,
         private readonly commentsManager: CommentsManager,
+        private readonly stateStore: StateStore,
         private readonly aiProcessManager?: IAIProcessManager
     ) {}
 
@@ -50,7 +52,7 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
      */
     private getCollapsedSections(filePath: string): string[] {
         const key = ReviewEditorViewProvider.COLLAPSED_SECTIONS_KEY_PREFIX + filePath;
-        return this.context.workspaceState.get<string[]>(key, []);
+        return this.stateStore.get<string[]>(key, []);
     }
 
     /**
@@ -116,9 +118,10 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
     public static register(
         context: vscode.ExtensionContext,
         commentsManager: CommentsManager,
+        stateStore: StateStore,
         aiProcessManager?: IAIProcessManager
     ): vscode.Disposable {
-        const provider = new ReviewEditorViewProvider(context, commentsManager, aiProcessManager);
+        const provider = new ReviewEditorViewProvider(context, commentsManager, stateStore, aiProcessManager);
 
         const providerRegistration = vscode.window.registerCustomEditorProvider(
             ReviewEditorViewProvider.viewType,
@@ -280,7 +283,7 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
         );
 
         // Create per-editor host and router instances
-        const host = new VscodeEditorHost(webviewPanel, this.context, document);
+        const host = new VscodeEditorHost(webviewPanel, this.context, document, this.stateStore);
         const router = new EditorMessageRouter(host, this.commentsManager, this.aiProcessManager);
 
         // Handle messages from webview
