@@ -157,6 +157,94 @@ describe('Tasks Handler', () => {
             expect(allDocs.length).toBeGreaterThanOrEqual(2);
         });
 
+        it('should return singleDocuments with baseName and fileName fields', async () => {
+            const srv = await startServer();
+
+            createTaskFiles({
+                'my-task.md': '---\nstatus: pending\n---\n# My Task',
+            });
+
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            const res = await request(`${srv.url}/api/workspaces/${wsId}/tasks`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+
+            expect(body.singleDocuments.length).toBeGreaterThanOrEqual(1);
+            const doc = body.singleDocuments.find((d: any) => d.baseName === 'my-task');
+            expect(doc).toBeDefined();
+            expect(doc.baseName).toBe('my-task');
+            expect(doc.fileName).toBe('my-task.md');
+            // Verify the document does NOT have a 'name' field at the top level
+            // (the client must use baseName/fileName, not name)
+            expect(doc.name).toBeUndefined();
+        });
+
+        it('should return documentGroups with baseName and documents array', async () => {
+            const srv = await startServer();
+
+            createTaskFiles({
+                'feature-x.plan.md': '# Feature X Plan',
+                'feature-x.spec.md': '# Feature X Spec',
+            });
+
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            const res = await request(`${srv.url}/api/workspaces/${wsId}/tasks`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+
+            expect(body.documentGroups.length).toBeGreaterThanOrEqual(1);
+            const group = body.documentGroups.find((g: any) => g.baseName === 'feature-x');
+            expect(group).toBeDefined();
+            expect(group.baseName).toBe('feature-x');
+            // Group should NOT have a 'name' field
+            expect(group.name).toBeUndefined();
+            // Group should have documents array
+            expect(group.documents).toBeDefined();
+            expect(group.documents.length).toBe(2);
+            // Each document should have baseName, fileName, and docType
+            for (const doc of group.documents) {
+                expect(doc.baseName).toBe('feature-x');
+                expect(doc.fileName).toBeDefined();
+                expect(doc.docType).toBeDefined();
+                expect(doc.name).toBeUndefined();
+            }
+            const docTypes = group.documents.map((d: any) => d.docType).sort();
+            expect(docTypes).toEqual(['plan', 'spec']);
+        });
+
+        it('should return nested folder documents with correct baseName and relativePath', async () => {
+            const srv = await startServer();
+
+            createTaskFiles({
+                'feature1/task1.md': '# Task 1',
+                'feature1/task1.plan.md': '# Task 1 Plan',
+                'feature1/task1.spec.md': '# Task 1 Spec',
+                'feature1/standalone.md': '# Standalone',
+            });
+
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            const res = await request(`${srv.url}/api/workspaces/${wsId}/tasks`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+
+            // feature1 folder should exist
+            expect(body.children.length).toBe(1);
+            const feature1 = body.children[0];
+            expect(feature1.name).toBe('feature1');
+
+            // Should have a document group for task1
+            expect(feature1.documentGroups.length).toBeGreaterThanOrEqual(1);
+            const group = feature1.documentGroups.find((g: any) => g.baseName === 'task1');
+            expect(group).toBeDefined();
+            expect(group.documents.length).toBeGreaterThanOrEqual(2);
+
+            // Should have standalone as a single document
+            const standalone = feature1.singleDocuments.find((d: any) => d.baseName === 'standalone');
+            expect(standalone).toBeDefined();
+            expect(standalone.fileName).toBe('standalone.md');
+            expect(standalone.relativePath).toBe('feature1');
+        });
+
         it('should return hierarchy with nested folders', async () => {
             const srv = await startServer();
 

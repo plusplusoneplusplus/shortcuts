@@ -13,22 +13,37 @@ import { escapeHtmlClient } from './utils';
 // Types
 // ================================================================
 
-interface TaskItem {
+/** Mirrors pipeline-core TaskFolder (serialized to JSON by the API). */
+interface TaskFolder {
     name: string;
     relativePath: string;
+    children: TaskFolder[];
+    documentGroups: TaskDocumentGroup[];
+    singleDocuments: TaskDocument[];
+}
+
+/** Mirrors pipeline-core TaskDocumentGroup. */
+interface TaskDocumentGroup {
+    baseName: string;
+    documents: TaskDocument[];
+    isArchived: boolean;
+}
+
+/** Mirrors pipeline-core TaskDocument. */
+interface TaskDocument {
+    baseName: string;
+    docType?: string;
+    fileName: string;
+    relativePath?: string;
     status?: string;
-    type: 'file' | 'folder' | 'documentGroup';
-    children?: TaskItem[];
-    documents?: Array<{ name: string; relativePath: string; status?: string }>;
-    singleDocuments?: TaskItem[];
-    documentGroups?: TaskItem[];
+    isArchived: boolean;
 }
 
 // ================================================================
 // Data fetching
 // ================================================================
 
-let currentTasks: TaskItem | null = null;
+let currentTasks: TaskFolder | null = null;
 
 export async function fetchRepoTasks(wsId: string): Promise<void> {
     taskPanelState.selectedWorkspaceId = wsId;
@@ -297,7 +312,7 @@ function renderTasksInRepo(): void {
     attachTreeEventListeners(container);
 }
 
-function renderFolder(folder: TaskItem, parentPath: string): string {
+function renderFolder(folder: TaskFolder, parentPath: string): string {
     let html = '';
 
     // Render child folders
@@ -329,16 +344,20 @@ function renderFolder(folder: TaskItem, parentPath: string): string {
     // Render document groups
     if (folder.documentGroups) {
         for (const group of folder.documentGroups) {
-            const groupPath = group.relativePath || group.name;
+            // Derive the group path from the first document's relativePath + baseName
+            const firstDoc = group.documents[0];
+            const groupPath = firstDoc?.relativePath
+                ? firstDoc.relativePath + '/' + group.baseName
+                : group.baseName;
             html += '<div class="task-tree-group">' +
                 '<div class="task-tree-row task-group-row">' +
                     '<span class="task-tree-icon">📑</span>' +
-                    '<span class="task-tree-name">' + escapeHtmlClient(group.name) + '</span>' +
-                    renderStatusBadge(group) +
+                    '<span class="task-tree-name">' + escapeHtmlClient(group.baseName) + '</span>' +
+                    renderGroupStatusBadge(group) +
                     '<span class="task-tree-actions">' +
-                        '<button class="task-action-btn" data-action="rename" data-path="' + escapeHtmlClient(groupPath) + '" data-name="' + escapeHtmlClient(group.name) + '" title="Rename">✏️</button>' +
-                        renderArchiveButton(groupPath, group.name) +
-                        '<button class="task-action-btn" data-action="delete" data-path="' + escapeHtmlClient(groupPath) + '" data-name="' + escapeHtmlClient(group.name) + '" title="Delete">🗑️</button>' +
+                        '<button class="task-action-btn" data-action="rename" data-path="' + escapeHtmlClient(groupPath) + '" data-name="' + escapeHtmlClient(group.baseName) + '" title="Rename">✏️</button>' +
+                        renderArchiveButton(groupPath, group.baseName) +
+                        '<button class="task-action-btn" data-action="delete" data-path="' + escapeHtmlClient(groupPath) + '" data-name="' + escapeHtmlClient(group.baseName) + '" title="Delete">🗑️</button>' +
                     '</span>' +
                 '</div>';
             if (group.documents) {
@@ -360,37 +379,56 @@ function renderFolder(folder: TaskItem, parentPath: string): string {
     return html;
 }
 
-function renderTaskRow(item: TaskItem): string {
-    const itemPath = item.relativePath || item.name;
+function renderTaskRow(doc: TaskDocument): string {
+    const docPath = doc.relativePath
+        ? doc.relativePath + '/' + doc.fileName
+        : doc.fileName;
+    const displayName = doc.baseName;
     return '<div class="task-tree-row task-file-row">' +
         '<span class="task-tree-icon">📄</span>' +
-        '<span class="task-tree-name">' + escapeHtmlClient(item.name) + '</span>' +
-        renderStatusBadge(item) +
+        '<span class="task-tree-name">' + escapeHtmlClient(displayName) + '</span>' +
+        renderDocStatusBadge(doc) +
         '<span class="task-tree-actions">' +
-            '<button class="task-action-btn" data-action="rename" data-path="' + escapeHtmlClient(itemPath) + '" data-name="' + escapeHtmlClient(item.name) + '" title="Rename">✏️</button>' +
-            renderArchiveButton(itemPath, item.name) +
-            '<button class="task-action-btn" data-action="delete" data-path="' + escapeHtmlClient(itemPath) + '" data-name="' + escapeHtmlClient(item.name) + '" title="Delete">🗑️</button>' +
+            '<button class="task-action-btn" data-action="rename" data-path="' + escapeHtmlClient(docPath) + '" data-name="' + escapeHtmlClient(displayName) + '" title="Rename">✏️</button>' +
+            renderArchiveButton(docPath, displayName) +
+            '<button class="task-action-btn" data-action="delete" data-path="' + escapeHtmlClient(docPath) + '" data-name="' + escapeHtmlClient(displayName) + '" title="Delete">🗑️</button>' +
         '</span>' +
     '</div>';
 }
 
-function renderDocumentRow(doc: { name: string; relativePath: string; status?: string }): string {
-    const docPath = doc.relativePath || doc.name;
+function renderDocumentRow(doc: TaskDocument): string {
+    const docPath = doc.relativePath
+        ? doc.relativePath + '/' + doc.fileName
+        : doc.fileName;
+    // Show the doc type suffix (e.g., "plan") or the full filename for clarity
+    const displayName = doc.docType || doc.fileName;
     return '<div class="task-tree-row task-doc-row">' +
         '<span class="task-tree-icon">📄</span>' +
-        '<span class="task-tree-name task-doc-name">' + escapeHtmlClient(doc.name) + '</span>' +
+        '<span class="task-tree-name task-doc-name">' + escapeHtmlClient(displayName) + '</span>' +
         (doc.status ? renderStatusBadgeRaw(doc.status, docPath) : '') +
         '<span class="task-tree-actions">' +
-            '<button class="task-action-btn" data-action="delete" data-path="' + escapeHtmlClient(docPath) + '" data-name="' + escapeHtmlClient(doc.name) + '" title="Delete">🗑️</button>' +
+            '<button class="task-action-btn" data-action="delete" data-path="' + escapeHtmlClient(docPath) + '" data-name="' + escapeHtmlClient(doc.fileName) + '" title="Delete">🗑️</button>' +
         '</span>' +
     '</div>';
 }
 
-function renderStatusBadge(item: TaskItem): string {
-    const status = item.status || '';
+function renderDocStatusBadge(doc: TaskDocument): string {
+    const status = doc.status || '';
     if (!status) return '';
-    const itemPath = item.relativePath || item.name;
-    return renderStatusBadgeRaw(status, itemPath);
+    const docPath = doc.relativePath
+        ? doc.relativePath + '/' + doc.fileName
+        : doc.fileName;
+    return renderStatusBadgeRaw(status, docPath);
+}
+
+function renderGroupStatusBadge(group: TaskDocumentGroup): string {
+    // Use the status from the first document in the group (if any)
+    const firstDoc = group.documents[0];
+    if (!firstDoc || !firstDoc.status) return '';
+    const docPath = firstDoc.relativePath
+        ? firstDoc.relativePath + '/' + firstDoc.fileName
+        : firstDoc.fileName;
+    return renderStatusBadgeRaw(firstDoc.status, docPath);
 }
 
 function renderStatusBadgeRaw(status: string, itemPath: string): string {

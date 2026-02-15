@@ -869,6 +869,45 @@ describe('Tasks as repo sub-page — client bundle tasks module', () => {
     });
 });
 
+describe('Tasks as repo sub-page — task name display (baseName/fileName)', () => {
+    let script: string;
+    beforeAll(() => { script = getClientBundle(); });
+
+    it('uses baseName for document group display name', () => {
+        // The rendering code should reference group.baseName for display
+        expect(script).toContain('.baseName');
+    });
+
+    it('uses fileName for document path construction', () => {
+        // The rendering code should reference doc.fileName for paths
+        expect(script).toContain('.fileName');
+    });
+
+    it('uses docType for document row display in groups', () => {
+        // Document rows within groups show the docType suffix
+        expect(script).toContain('.docType');
+    });
+
+    it('defines TaskFolder interface with children, documentGroups, singleDocuments', () => {
+        // The client-side types should match the API response shape
+        expect(script).toContain('documentGroups');
+        expect(script).toContain('singleDocuments');
+        expect(script).toContain('children');
+    });
+
+    it('renders single documents using baseName', () => {
+        // renderTaskRow should use doc.baseName for display
+        expect(script).toContain('task-tree-name');
+        expect(script).toContain('baseName');
+    });
+
+    it('constructs document paths from relativePath and fileName', () => {
+        // Path construction should combine relativePath + "/" + fileName
+        expect(script).toContain('relativePath');
+        expect(script).toContain('fileName');
+    });
+});
+
 describe('Tasks as repo sub-page — URL routing', () => {
     let script: string;
     beforeAll(() => { script = getClientBundle(); });
