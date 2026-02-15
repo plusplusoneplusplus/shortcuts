@@ -45,6 +45,28 @@ NEVER create document file unless user's explicit ask.
 - **Debugging Serve Mode:** Build with `cd packages/deep-wiki && npm run build && npm link && cd ../..`, then `deep-wiki serve ./.wiki` to start the server. Test the Ask AI endpoint with `curl -s -N -X POST http://localhost:3000/api/ask -H 'Content-Type: application/json' -d '{"question":"test"}'`. See `packages/deep-wiki/AGENTS.md` for full debugging instructions.
 - **Testing:** Vitest tests across 23 test files
 
+**CoC (Copilot of Copilot) CLI** - A standalone Node.js CLI for executing YAML-based AI pipelines outside VS Code:
+
+- **New Package:** `coc` in `packages/coc/`
+- **Pure Node.js:** No VS Code dependencies, consumes `@plusplusoneplusplus/pipeline-core`
+- **CLI Commands:**
+  - `coc run <path>` - Execute a pipeline from a YAML file or package directory
+  - `coc validate <path>` - Validate pipeline YAML without executing
+  - `coc list [dir]` - List pipeline packages in a directory
+  - `coc serve` - Start the AI Execution Dashboard web server
+- **Modules:**
+  - `cli` - Commander-based argument parsing and command routing
+  - `commands/` - Command implementations (run, validate, list, serve)
+  - `server/` - HTTP server with REST API, WebSocket, SSE streaming, and SPA dashboard
+  - `ai-invoker` - CopilotSDKService factory with session pooling
+  - `logger` - Colored console output, spinners, and progress bars
+  - `output-formatter` - Result formatting (table, JSON, CSV, markdown)
+  - `config` - Configuration resolution from `~/.coc.yaml` with defaults
+- **Configuration:** `~/.coc.yaml` for persistent defaults (model, parallelism, output format, timeout, serve options); CLI flags override config file values
+- **Exit Codes:** 0 (success), 1 (execution error), 2 (config/validation error), 3 (AI unavailable), 130 (SIGINT)
+- **Debugging:** `cd packages/coc && npm run build && npm link && cd ../..`, then `coc run <path>` or `coc serve --no-open`
+- **Testing:** Vitest tests across 18 test files; run with `npm run test:run` in `packages/coc/` directory
+
 **Tree Data Provider Base Classes** - A refactoring was completed to eliminate code duplication across tree data providers:
 
 - **Created 5 new shared modules:**
@@ -779,8 +801,10 @@ interface ShortcutsConfig {
 - Run with `npm run test:run` in `packages/pipeline-core/` directory
 
 **CoC Tests** (Vitest) - Located in `packages/coc/test/`:
-- CLI argument parsing, run/validate/list commands, config, output formatter, AI invoker, logger
-- 8 test files; run with `npm run test:run` in `packages/coc/` directory
+- CLI argument parsing, run/validate/list/serve commands, config, output formatter, AI invoker, logger
+- Server: API handler, integration, SPA, WebSocket, queue handler, queue-executor bridge
+- Client: build and modules tests
+- 18 test files; run with `npm run test:run` in `packages/coc/` directory
 
 **Deep Wiki Tests** (Vitest) - Located in `packages/deep-wiki/test/`:
 - Discovery: prompt templates, response parsing, large repo handler, domain tagging
