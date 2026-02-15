@@ -14,11 +14,3 @@ export interface SpaTemplateOptions {
     /** Enable watch mode (WebSocket live reload) */
     enableWatch?: boolean;
 }
-
-export interface ScriptOptions {
-    enableSearch: boolean;
-    enableAI: boolean;
-    enableGraph: boolean;
-    enableWatch: boolean;
-    defaultTheme: WebsiteTheme;
-}
