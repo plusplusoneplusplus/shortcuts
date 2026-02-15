@@ -187,17 +187,17 @@ The existing `serveStaticFile` function in `router.ts` (line 161) is module-priv
 - `appState.selectedWikiId` and `appState.selectedWikiComponentId` default to `null`
 
 ## Acceptance Criteria
-- [ ] Wiki static files served at `/wiki/:wikiId/static/*` with correct MIME types
-- [ ] Path traversal attacks blocked (resolved path must stay within wikiDir)
-- [ ] MIME types map includes `.jpg`, `.jpeg`, `.gif`, `.woff`, `.woff2`, `.ttf`, `.md`
-- [ ] Deep-link `#wiki/:wikiId` navigates to wiki home tab
-- [ ] Deep-link `#wiki/:wikiId/component/:compId` navigates to specific component
-- [ ] `navigateToWiki()` and `navigateToWikiComponent()` helpers exported and registered on window
-- [ ] `DashboardTab` type includes `'wiki'`
-- [ ] `AppState` includes `selectedWikiId` and `selectedWikiComponentId`
-- [ ] Missing wiki returns 404 JSON with descriptive error
-- [ ] Missing file in valid wiki returns 404
-- [ ] CoC build succeeds (`npm run build` in `packages/coc/`)
+- [x] Wiki static files served at `/wiki/:wikiId/static/*` with correct MIME types
+- [x] Path traversal attacks blocked (resolved path must stay within wikiDir)
+- [x] MIME types map includes `.jpg`, `.jpeg`, `.gif`, `.woff`, `.woff2`, `.ttf`, `.md`
+- [x] Deep-link `#wiki/:wikiId` navigates to wiki home tab
+- [x] Deep-link `#wiki/:wikiId/component/:compId` navigates to specific component
+- [x] `navigateToWiki()` and `navigateToWikiComponent()` helpers exported and registered on window
+- [x] `DashboardTab` type includes `'wiki'`
+- [x] `AppState` includes `selectedWikiId` and `selectedWikiComponentId`
+- [x] Missing wiki returns 404 JSON with descriptive error
+- [x] Missing file in valid wiki returns 404
+- [ ] CoC build succeeds (`npm run build` in `packages/coc/`) — pre-existing TS error in index.ts unrelated to this task
 
 ## Dependencies
 - Depends on: 004 (wiki API routes — provides `/api/wiki/:wikiId/components/:id` endpoint), 006 (wiki tab shell — provides the wiki tab container in the SPA HTML template)
