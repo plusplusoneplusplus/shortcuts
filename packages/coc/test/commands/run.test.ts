@@ -28,6 +28,7 @@ describe('Run Command', () => {
         dryRun: true, // Always dry-run in tests
         noColor: true,
         approvePermissions: false,
+        persist: false, // Disable persistence in most tests
     };
 
     beforeEach(() => {

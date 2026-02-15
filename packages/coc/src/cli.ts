@@ -64,6 +64,7 @@ export function createProgram(): Command {
         .option('--timeout <seconds>', 'Overall execution timeout in seconds', parseInt)
         .option('--no-color', 'Disable colored output')
         .option('--approve-permissions', 'Auto-approve all AI permission requests', false)
+        .option('--no-persist', 'Do not save run results to process store')
         .action(async (pipelinePath: string, opts: Record<string, unknown>) => {
             const config = resolveConfig();
             applyGlobalOptions(opts, config);
@@ -80,6 +81,8 @@ export function createProgram(): Command {
                 timeout: (opts.timeout as number) || config.timeout,
                 noColor: !opts.color,
                 approvePermissions: Boolean(opts.approvePermissions) || config.approvePermissions,
+                persist: (opts.persist as boolean) ?? config.persist,
+                dataDir: config.serve?.dataDir,
             };
 
             const exitCode = await executeRun(pipelinePath, options);

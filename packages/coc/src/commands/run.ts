@@ -13,11 +13,13 @@ import {
     parsePipelineYAMLSync,
     executePipeline,
     setLogger,
+    FileProcessStore,
 } from '@plusplusoneplusplus/pipeline-core';
 import type {
     PipelineConfig,
     JobProgress,
     PipelineExecutionResult,
+    AIProcess,
 } from '@plusplusoneplusplus/pipeline-core';
 import {
     createCLIAIInvoker,
@@ -70,6 +72,10 @@ export interface RunCommandOptions {
     noColor: boolean;
     /** Auto-approve AI permissions */
     approvePermissions: boolean;
+    /** Save run results to the process store (default: true) */
+    persist: boolean;
+    /** Data directory for process store (overrides config) */
+    dataDir?: string;
 }
 
 // ============================================================================
@@ -210,7 +216,14 @@ export async function executeRun(
 
         // 8. Handle results
         const elapsed = Date.now() - startTime;
-        return handleResults(result, options, elapsed, cancelled);
+        const exitCode = handleResults(result, options, elapsed, cancelled);
+
+        // 9. Persist to process store
+        if (options.persist) {
+            await persistProcess(config, yamlPath, result, exitCode, startTime, elapsed, options);
+        }
+
+        return exitCode;
     } catch (error) {
         spinner.fail('Pipeline execution failed');
         const message = error instanceof Error ? error.message : String(error);
@@ -292,4 +305,47 @@ function handleResults(
     }
 
     return 0;
+}
+
+// ============================================================================
+// Process Persistence
+// ============================================================================
+
+async function persistProcess(
+    config: PipelineConfig,
+    yamlPath: string,
+    result: PipelineExecutionResult,
+    exitCode: number,
+    startTime: number,
+    elapsed: number,
+    options: RunCommandOptions
+): Promise<void> {
+    try {
+        const endTime = new Date();
+        const formatted = formatResults(result, options.output);
+        const process: AIProcess = {
+            id: `cli-pipeline-${Date.now()}`,
+            type: 'pipeline-execution',
+            promptPreview: config.name,
+            fullPrompt: yamlPath,
+            status: exitCode === 0 ? 'completed' : 'failed',
+            startTime: new Date(startTime),
+            endTime,
+            result: formatted.length > 100_000 ? formatted.slice(0, 100_000) + '\n... (truncated)' : formatted,
+            metadata: {
+                type: 'cli-pipeline',
+                pipelineName: config.name,
+                itemCount: result.executionStats.totalItems,
+                successCount: result.executionStats.successfulMaps,
+                failCount: result.executionStats.failedMaps,
+            },
+        };
+        const store = new FileProcessStore({
+            dataDir: options.dataDir,
+        });
+        await store.addProcess(process);
+    } catch (err) {
+        // Persistence errors should never fail the run command
+        printError(`Failed to persist process: ${err instanceof Error ? err.message : String(err)}`);
+    }
 }

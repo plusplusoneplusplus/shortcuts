@@ -32,6 +32,8 @@ export interface CLIConfig {
     mcpConfig?: string;
     /** Default timeout in seconds */
     timeout?: number;
+    /** Save CLI run results to process store (default: true) */
+    persist?: boolean;
     /** Serve command defaults */
     serve?: {
         port?: number;
@@ -51,6 +53,7 @@ export interface ResolvedCLIConfig {
     approvePermissions: boolean;
     mcpConfig?: string;
     timeout?: number;
+    persist: boolean;
     serve?: {
         port: number;
         host: string;
@@ -77,6 +80,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     parallel: 5,
     output: 'table',
     approvePermissions: false,
+    persist: true,
     serve: {
         port: 4000,
         host: 'localhost',
@@ -199,6 +203,10 @@ function validateConfig(config: unknown): CLIConfig | undefined {
         result.timeout = raw.timeout;
     }
 
+    if (typeof raw.persist === 'boolean') {
+        result.persist = raw.persist;
+    }
+
     // Validate serve sub-object
     if (typeof raw.serve === 'object' && raw.serve !== null) {
         const s = raw.serve as Record<string, unknown>;
@@ -247,6 +255,7 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
         approvePermissions: override.approvePermissions ?? base.approvePermissions,
         mcpConfig: override.mcpConfig ?? base.mcpConfig,
         timeout: override.timeout ?? base.timeout,
+        persist: override.persist ?? base.persist,
         serve: {
             port: override.serve?.port ?? base.serve?.port ?? 4000,
             host: override.serve?.host ?? base.serve?.host ?? 'localhost',

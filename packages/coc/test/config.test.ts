@@ -51,6 +51,7 @@ describe('Config', () => {
             expect(DEFAULT_CONFIG.parallel).toBe(5);
             expect(DEFAULT_CONFIG.output).toBe('table');
             expect(DEFAULT_CONFIG.approvePermissions).toBe(false);
+            expect(DEFAULT_CONFIG.persist).toBe(true);
             expect(DEFAULT_CONFIG.model).toBeUndefined();
             expect(DEFAULT_CONFIG.mcpConfig).toBeUndefined();
             expect(DEFAULT_CONFIG.timeout).toBeUndefined();
@@ -208,6 +209,30 @@ timeout: 300
             expect(result!.timeout).toBeUndefined();
         });
 
+        it('should load persist: true', () => {
+            const configPath = path.join(tmpDir, 'persist-true.yaml');
+            fs.writeFileSync(configPath, 'persist: true\n');
+            const result = loadConfigFile(configPath);
+            expect(result).toBeDefined();
+            expect(result!.persist).toBe(true);
+        });
+
+        it('should load persist: false', () => {
+            const configPath = path.join(tmpDir, 'persist-false.yaml');
+            fs.writeFileSync(configPath, 'persist: false\n');
+            const result = loadConfigFile(configPath);
+            expect(result).toBeDefined();
+            expect(result!.persist).toBe(false);
+        });
+
+        it('should reject non-boolean persist', () => {
+            const configPath = path.join(tmpDir, 'bad-persist.yaml');
+            fs.writeFileSync(configPath, 'persist: "yes"\n');
+            const result = loadConfigFile(configPath);
+            expect(result).toBeDefined();
+            expect(result!.persist).toBeUndefined();
+        });
+
         it('should bypass fallback and migration when explicit configPath is provided', () => {
             const configPath = path.join(tmpDir, 'custom.yaml');
             fs.writeFileSync(configPath, 'model: custom-model\n');
@@ -332,6 +357,7 @@ timeout: 300
                 approvePermissions: true,
                 mcpConfig: '/path/to/mcp.json',
                 timeout: 600,
+                persist: false,
             };
             const result = mergeConfig(DEFAULT_CONFIG, override);
             expect(result.model).toBe('claude');
@@ -340,6 +366,7 @@ timeout: 300
             expect(result.approvePermissions).toBe(true);
             expect(result.mcpConfig).toBe('/path/to/mcp.json');
             expect(result.timeout).toBe(600);
+            expect(result.persist).toBe(false);
         });
 
         it('should not let undefined override overwrite base', () => {
@@ -348,11 +375,13 @@ timeout: 300
                 parallel: 10,
                 output: 'json',
                 approvePermissions: true,
+                persist: false,
             };
             const override: CLIConfig = {};
             const result = mergeConfig(base, override);
             expect(result.model).toBe('gpt-4');
             expect(result.parallel).toBe(10);
+            expect(result.persist).toBe(false);
         });
     });
 
