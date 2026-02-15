@@ -113,22 +113,29 @@ ${bundleCss}
         </main>
     </div>
 
-    <div class="app-view hidden" id="view-repos">
-        <div class="repos-container" id="repos-container">
-            <div class="repos-header">
+    <div class="app-layout hidden" id="view-repos">
+        <aside class="sidebar repos-sidebar" id="repos-sidebar">
+            <div class="repos-sidebar-header">
                 <h2>Repos</h2>
-                <button class="enqueue-btn-primary" id="add-repo-btn">+ Add Repo</button>
+                <button class="enqueue-btn-primary repos-add-btn" id="add-repo-btn">+ Add Repo</button>
             </div>
-            <div class="repos-grid" id="repos-grid">
+            <nav id="repos-list" class="repos-list">
                 <div class="empty-state" id="repos-empty">
                     <div class="empty-state-icon">&#128193;</div>
                     <div class="empty-state-title">No repos registered</div>
-                    <div class="empty-state-text">Add a repository to manage pipelines and track processes.</div>
+                    <div class="empty-state-text">Add a repo to get started.</div>
                 </div>
+            </nav>
+            <div class="repos-sidebar-footer" id="repos-footer"></div>
+        </aside>
+        <main class="detail-panel" id="repo-detail-panel">
+            <div class="detail-empty" id="repo-detail-empty">
+                <div class="detail-empty-icon">&#128193;</div>
+                <div class="detail-empty-text">Select a repo to view details</div>
             </div>
-            <div class="repos-footer" id="repos-footer"></div>
-        </div>
-        <div class="repo-detail-panel hidden" id="repo-detail-panel"></div>
+            <div class="detail-content hidden" id="repo-detail-content">
+            </div>
+        </main>
     </div>
 
     <div class="app-view hidden" id="view-tasks">

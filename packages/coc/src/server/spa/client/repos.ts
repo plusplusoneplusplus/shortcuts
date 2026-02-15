@@ -1,5 +1,7 @@
 /**
- * Repos view: tab switching, repo card grid, add repo dialog, repo detail.
+ * Repos view: sidebar list + detail panel layout.
+ * Mirrors the Processes view pattern with a sidebar listing repos
+ * and a main detail panel showing repo information.
  */
 
 import { appState, DashboardTab } from './state';
@@ -103,95 +105,92 @@ export async function fetchReposData(): Promise<void> {
     );
 
     reposData = enriched;
-    renderReposGrid();
+    renderReposList();
+
+    // If a repo was selected, refresh its detail
+    if (appState.selectedRepoId) {
+        const stillExists = reposData.find(r => r.workspace.id === appState.selectedRepoId);
+        if (stillExists) {
+            renderRepoDetail(appState.selectedRepoId);
+        } else {
+            clearRepoDetail();
+        }
+    }
 }
 
 // ================================================================
-// Repos grid rendering
+// Repos sidebar list rendering
 // ================================================================
 
-export function renderReposGrid(): void {
-    const grid = document.getElementById('repos-grid');
-    const empty = document.getElementById('repos-empty');
+export function renderReposList(): void {
+    const container = document.getElementById('repos-list');
+    const emptyState = document.getElementById('repos-empty');
     const footer = document.getElementById('repos-footer');
-    if (!grid) return;
+    if (!container) return;
 
-    // Clear grid
-    while (grid.firstChild) grid.removeChild(grid.firstChild);
+    // Clear existing items but keep empty state element
+    const children = container.children;
+    for (let i = children.length - 1; i >= 0; i--) {
+        if (children[i].id !== 'repos-empty') {
+            container.removeChild(children[i]);
+        }
+    }
 
     if (reposData.length === 0) {
-        if (empty) {
-            grid.appendChild(empty);
-            empty.classList.remove('hidden');
-        }
+        if (emptyState) emptyState.classList.remove('hidden');
         if (footer) footer.textContent = '';
         return;
     }
 
-    if (empty) empty.classList.add('hidden');
+    if (emptyState) emptyState.classList.add('hidden');
 
     for (const repo of reposData) {
-        const card = createRepoCard(repo);
-        grid.appendChild(card);
+        renderRepoItem(repo, container);
     }
-
-    // Add the "+" card
-    const addCard = document.createElement('div');
-    addCard.className = 'repo-add-card';
-    addCard.textContent = '+ Add Repo';
-    addCard.addEventListener('click', showAddRepoDialog);
-    grid.appendChild(addCard);
 
     // Footer stats
     if (footer) {
         const totalRunning = reposData.reduce((s, r) => s + (r.stats?.running || 0), 0);
         const totalCompleted = reposData.reduce((s, r) => s + (r.stats?.success || 0), 0);
-        footer.textContent = `${reposData.length} repo${reposData.length !== 1 ? 's' : ''} │ ${totalRunning} running │ ${totalCompleted} completed`;
+        footer.textContent = `${reposData.length} repo${reposData.length !== 1 ? 's' : ''} | ${totalRunning} running | ${totalCompleted} completed`;
     }
 }
 
-function createRepoCard(repo: RepoData): HTMLElement {
+function renderRepoItem(repo: RepoData, container: HTMLElement): void {
     const ws = repo.workspace;
-    const card = document.createElement('div');
-    card.className = 'repo-card';
-    card.setAttribute('data-repo-id', ws.id);
-
     const color = ws.color || '#848484';
     const branch = repo.gitInfo?.branch || 'n/a';
     const pipelineCount = repo.pipelines?.length || 0;
     const stats = repo.stats || { success: 0, failed: 0, running: 0 };
-    const truncPath = truncatePath(ws.rootPath || '', 35);
+    const truncPath = truncatePath(ws.rootPath || '', 30);
 
-    card.innerHTML =
-        '<div class="repo-card-header">' +
+    const div = document.createElement('div');
+    div.className = 'repo-item' + (ws.id === appState.selectedRepoId ? ' active' : '');
+    div.setAttribute('data-repo-id', ws.id);
+
+    div.innerHTML =
+        '<div class="repo-item-row">' +
             '<span class="repo-color-dot" style="background:' + escapeHtmlClient(color) + '"></span>' +
-            '<span class="repo-card-name">' + escapeHtmlClient(ws.name) + '</span>' +
+            '<span class="repo-item-name">' + escapeHtmlClient(ws.name) + '</span>' +
         '</div>' +
-        '<div class="repo-card-path" title="' + escapeHtmlClient(ws.rootPath || '') + '">' + escapeHtmlClient(truncPath) + '</div>' +
-        '<div class="repo-card-branch">branch: ' + escapeHtmlClient(branch) + '</div>' +
-        '<div class="repo-card-stats">' +
+        '<div class="repo-item-meta">' +
+            '<span class="repo-item-path" title="' + escapeHtmlClient(ws.rootPath || '') + '">' + escapeHtmlClient(truncPath) + '</span>' +
+        '</div>' +
+        '<div class="repo-item-stats">' +
+            '<span>branch: ' + escapeHtmlClient(branch) + '</span>' +
             '<span>Pipelines: ' + pipelineCount + '</span>' +
-            '<span>✓ ' + stats.success + '</span>' +
-            '<span>✗ ' + stats.failed + '</span>' +
-            '<span>⏳ ' + stats.running + '</span>' +
-        '</div>' +
-        '<div class="repo-card-actions">' +
-            '<button class="action-primary repo-view-btn">View</button>' +
-            '<button class="repo-menu-btn">•••</button>' +
+            '<span class="repo-stat-counts">' +
+                '&#10003; ' + stats.success +
+                ' &nbsp;&#10007; ' + stats.failed +
+                ' &nbsp;&#9719; ' + stats.running +
+            '</span>' +
         '</div>';
 
-    // Click on card => drill into detail
-    card.addEventListener('click', (e: Event) => {
-        const target = e.target as HTMLElement;
-        if (target.classList.contains('repo-menu-btn')) {
-            e.stopPropagation();
-            showRepoContextMenu(ws.id, target);
-            return;
-        }
+    div.addEventListener('click', () => {
         showRepoDetail(ws.id);
     });
 
-    return card;
+    container.appendChild(div);
 }
 
 function truncatePath(p: string, max: number): string {
@@ -205,51 +204,71 @@ function truncatePath(p: string, max: number): string {
 
 export function showRepoDetail(wsId: string): void {
     appState.selectedRepoId = wsId;
+
+    // Update hash silently
+    setHashSilent('#repos/' + encodeURIComponent(wsId));
+
+    // Update active state in sidebar
+    updateActiveRepoItem();
+
+    // Render detail
+    renderRepoDetail(wsId);
+}
+
+function updateActiveRepoItem(): void {
+    const items = document.querySelectorAll('.repo-item');
+    items.forEach(el => {
+        if (el.getAttribute('data-repo-id') === appState.selectedRepoId) {
+            el.classList.add('active');
+        } else {
+            el.classList.remove('active');
+        }
+    });
+}
+
+function renderRepoDetail(wsId: string): void {
     const repo = reposData.find(r => r.workspace.id === wsId);
     if (!repo) return;
 
-    // Update hash silently (switchTab already dispatched us here)
-    setHashSilent('#repos/' + encodeURIComponent(wsId));
+    const emptyEl = document.getElementById('repo-detail-empty');
+    const contentEl = document.getElementById('repo-detail-content');
+    if (!emptyEl || !contentEl) return;
 
-    const container = document.getElementById('repos-container');
-    const detail = document.getElementById('repo-detail-panel');
-    if (!container || !detail) return;
-
-    container.classList.add('hidden');
-    detail.classList.remove('hidden');
+    emptyEl.classList.add('hidden');
+    contentEl.classList.remove('hidden');
 
     const ws = repo.workspace;
     const color = ws.color || '#848484';
     const branch = repo.gitInfo?.branch || 'n/a';
     const dirty = repo.gitInfo?.dirty ? ' (dirty)' : '';
+    const stats = repo.stats || { success: 0, failed: 0, running: 0 };
 
-    let html = '<button class="repo-detail-back" id="repo-detail-back-btn">← Back to Repos</button>';
-    html += '<div class="repo-detail-header">' +
+    let html = '<div class="repo-detail-header">' +
         '<span class="repo-color-dot" style="background:' + escapeHtmlClient(color) + ';width:14px;height:14px"></span>' +
         '<h1>' + escapeHtmlClient(ws.name) + '</h1>' +
         '<button class="action-btn" id="repo-edit-btn">Edit</button>' +
-        '<button class="action-btn" id="repo-remove-btn">Remove</button>' +
+        '<button class="action-btn repo-remove-action" id="repo-remove-btn">Remove</button>' +
     '</div>';
 
-    html += '<div class="repo-detail-layout">';
-
-    // Left info panel
-    html += '<div class="repo-detail-info">' +
-        '<label>Path</label><div class="info-value meta-path">' + escapeHtmlClient(ws.rootPath || '') + '</div>' +
-        '<label>Branch</label><div class="info-value">' + escapeHtmlClient(branch + dirty) + '</div>' +
-        '<label>Color</label><div class="info-value"><span class="repo-color-dot" style="background:' + escapeHtmlClient(color) + ';display:inline-block;vertical-align:middle"></span> ' + escapeHtmlClient(color) + '</div>' +
+    // Metadata grid
+    html += '<div class="meta-grid">' +
+        '<div class="meta-item"><label>Path</label><span class="meta-path">' + escapeHtmlClient(ws.rootPath || '') + '</span></div>' +
+        '<div class="meta-item"><label>Branch</label><span>' + escapeHtmlClient(branch + dirty) + '</span></div>' +
+        '<div class="meta-item"><label>Color</label><span><span class="repo-color-dot" style="background:' + escapeHtmlClient(color) + ';display:inline-block;vertical-align:middle"></span> ' + escapeHtmlClient(color) + '</span></div>' +
+        '<div class="meta-item"><label>Pipelines</label><span>' + (repo.pipelines?.length || 0) + '</span></div>' +
+        '<div class="meta-item"><label>Completed</label><span>' + stats.success + '</span></div>' +
+        '<div class="meta-item"><label>Failed</label><span>' + stats.failed + '</span></div>' +
+        '<div class="meta-item"><label>Running</label><span>' + stats.running + '</span></div>' +
     '</div>';
-
-    // Right content
-    html += '<div>';
 
     // Pipelines list
-    html += '<h2 style="font-size:14px;font-weight:600;margin-bottom:8px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.3px">Pipelines</h2>';
+    html += '<div class="result-section">';
+    html += '<h2>Pipelines</h2>';
     if (repo.pipelines && repo.pipelines.length > 0) {
         html += '<ul class="repo-pipeline-list">';
         for (const p of repo.pipelines) {
             html += '<li class="repo-pipeline-item">' +
-                '<span class="pipeline-name">📋 ' + escapeHtmlClient(p.name) + '</span>' +
+                '<span class="pipeline-name">&#128203; ' + escapeHtmlClient(p.name) + '</span>' +
                 '<div class="repo-pipeline-actions">' +
                     '<button class="action-btn">View</button>' +
                 '</div>' +
@@ -257,22 +276,17 @@ export function showRepoDetail(wsId: string): void {
         }
         html += '</ul>';
     } else {
-        html += '<div style="color:var(--text-secondary);font-size:13px">No pipelines found</div>';
+        html += '<div style="color:var(--text-secondary);font-size:13px">No pipelines found in this repository.</div>';
     }
+    html += '</div>';
 
     // Recent processes
-    html += '<h2 style="font-size:14px;font-weight:600;margin:20px 0 8px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.3px">Recent Processes</h2>';
+    html += '<div class="result-section">';
+    html += '<h2>Recent Processes</h2>';
     html += '<div id="repo-processes-list" style="font-size:13px;color:var(--text-secondary)">Loading...</div>';
+    html += '</div>';
 
-    html += '</div></div>';
-
-    detail.innerHTML = html;
-
-    // Wire back button
-    const backBtn = document.getElementById('repo-detail-back-btn');
-    if (backBtn) {
-        backBtn.addEventListener('click', hideRepoDetail);
-    }
+    contentEl.innerHTML = html;
 
     // Wire remove button
     const removeBtn = document.getElementById('repo-remove-btn');
@@ -302,12 +316,12 @@ async function fetchRepoProcesses(wsId: string): Promise<void> {
     }
 
     const statusIcon: Record<string, string> = {
-        running: '⏳', completed: '✓', failed: '✗', cancelled: '🚫', queued: '⏳'
+        running: '&#9203;', completed: '&#10003;', failed: '&#10007;', cancelled: '&#128683;', queued: '&#9203;'
     };
 
     let html = '';
     for (const p of processes) {
-        const icon = statusIcon[p.status] || '•';
+        const icon = statusIcon[p.status] || '&#8226;';
         const title = p.promptPreview || p.id || 'Untitled';
         const time = p.startTime ? formatRelativeTime(p.startTime) : '';
         html += '<div style="padding:4px 0;display:flex;gap:8px;align-items:center">' +
@@ -319,25 +333,19 @@ async function fetchRepoProcesses(wsId: string): Promise<void> {
     el.innerHTML = html;
 }
 
-function hideRepoDetail(): void {
+function clearRepoDetail(): void {
     appState.selectedRepoId = null;
     setHashSilent('#repos');
-    const container = document.getElementById('repos-container');
-    const detail = document.getElementById('repo-detail-panel');
-    if (container) container.classList.remove('hidden');
-    if (detail) detail.classList.add('hidden');
+    const emptyEl = document.getElementById('repo-detail-empty');
+    const contentEl = document.getElementById('repo-detail-content');
+    if (emptyEl) emptyEl.classList.remove('hidden');
+    if (contentEl) contentEl.classList.add('hidden');
+    updateActiveRepoItem();
 }
 
 // ================================================================
 // Repo context menu (simple)
 // ================================================================
-
-function showRepoContextMenu(wsId: string, anchor: HTMLElement): void {
-    // Simple confirm-based removal
-    if (confirm('Remove this repo from the dashboard?')) {
-        removeRepo(wsId);
-    }
-}
 
 async function confirmRemoveRepo(wsId: string): Promise<void> {
     if (!confirm('Remove this repo from the dashboard? Processes will be preserved.')) return;
@@ -346,7 +354,7 @@ async function confirmRemoveRepo(wsId: string): Promise<void> {
 
 async function removeRepo(wsId: string): Promise<void> {
     await fetch(getApiBase() + '/workspaces/' + encodeURIComponent(wsId), { method: 'DELETE' });
-    hideRepoDetail();
+    clearRepoDetail();
     fetchReposData();
 }
 
@@ -392,7 +400,7 @@ async function navigateToDir(dirPath: string): Promise<void> {
         let html = '';
         if (data.parent) {
             html += '<div class="path-browser-entry path-browser-parent" data-path="' + escapeHtmlClient(data.parent) + '">' +
-                '<span class="entry-icon">📁</span>' +
+                '<span class="entry-icon">&#128193;</span>' +
                 '<span class="entry-name">..</span>' +
             '</div>';
         }
@@ -403,7 +411,7 @@ async function navigateToDir(dirPath: string): Promise<void> {
             for (const entry of data.entries) {
                 const entryPath = data.path + (data.path.endsWith('/') ? '' : '/') + entry.name;
                 html += '<div class="path-browser-entry" data-path="' + escapeHtmlClient(entryPath) + '">' +
-                    '<span class="entry-icon">📁</span>' +
+                    '<span class="entry-icon">&#128193;</span>' +
                     '<span class="entry-name">' + escapeHtmlClient(entry.name) + '</span>' +
                     (entry.isGitRepo ? '<span class="git-badge">git</span>' : '') +
                 '</div>';
