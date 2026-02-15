@@ -29,6 +29,7 @@ export interface WSClient {
     send: (data: string) => void;
     close: () => void;
     workspaceId?: string;
+    subscribedWikiIds?: Set<string>;
     lastSeen: number;
 }
 
@@ -93,12 +94,16 @@ export type ServerMessage =
     | { type: 'process-removed'; processId: string }
     | { type: 'processes-cleared'; count: number }
     | { type: 'queue-updated'; queue: QueueSnapshot }
-    | { type: 'tasks-changed'; workspaceId: string; timestamp: number };
+    | { type: 'tasks-changed'; workspaceId: string; timestamp: number }
+    | { type: 'wiki-reload'; wikiId: string; components: string[] }
+    | { type: 'wiki-rebuilding'; wikiId: string; components: string[] }
+    | { type: 'wiki-error'; wikiId: string; message: string };
 
 /** Client → Server message types */
 export type ClientMessage =
     | { type: 'ping' }
-    | { type: 'subscribe'; workspaceId: string };
+    | { type: 'subscribe'; workspaceId: string }
+    | { type: 'subscribe-wiki'; wikiId: string };
 
 // ============================================================================
 // ProcessWebSocketServer
@@ -233,6 +238,27 @@ export class ProcessWebSocketServer {
     }
 
     /**
+     * Broadcast a wiki event to connected clients, applying wiki-scoped filtering.
+     * Clients subscribed to specific wikiIds only receive matching events.
+     * Clients with no wiki subscriptions receive all wiki events (backward compat).
+     */
+    broadcastWikiEvent(message: ServerMessage): void {
+        const data = JSON.stringify(message);
+        const wikiId = 'wikiId' in message ? (message as any).wikiId as string : undefined;
+
+        for (const client of this.clients) {
+            if (client.subscribedWikiIds && client.subscribedWikiIds.size > 0) {
+                if (wikiId && client.subscribedWikiIds.has(wikiId)) {
+                    client.send(data);
+                }
+                continue;
+            }
+            // Clients with no wiki subscription get all wiki events
+            client.send(data);
+        }
+    }
+
+    /**
      * Close all connections and clear the heartbeat interval.
      */
     closeAll(): void {
@@ -260,6 +286,13 @@ export class ProcessWebSocketServer {
                 client.lastSeen = Date.now();
                 client.workspaceId = message.workspaceId;
                 break;
+            case 'subscribe-wiki':
+                client.lastSeen = Date.now();
+                if (!client.subscribedWikiIds) {
+                    client.subscribedWikiIds = new Set();
+                }
+                client.subscribedWikiIds.add(message.wikiId);
+                break;
         }
     }
 
@@ -280,6 +313,10 @@ export class ProcessWebSocketServer {
     }
 
     private getMessageWorkspaceId(message: ServerMessage): string | undefined {
+        // Wiki events use their own filtering path (broadcastWikiEvent), not workspace filtering
+        if (message.type === 'wiki-reload' || message.type === 'wiki-rebuilding' || message.type === 'wiki-error') {
+            return undefined;
+        }
         if ('process' in message && message.process) {
             return (message.process as ProcessSummary).workspaceId;
         }

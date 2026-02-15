@@ -175,6 +175,27 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         wikiManager = registerWikiRoutes(routes, {
             wikis: options.wiki.wikis,
             aiEnabled: options.wiki.aiEnabled,
+            onWikiRebuilding: (wikiId, affectedComponentIds) => {
+                wsServer.broadcastWikiEvent({
+                    type: 'wiki-rebuilding',
+                    wikiId,
+                    components: affectedComponentIds,
+                });
+            },
+            onWikiReloaded: (wikiId, affectedComponentIds) => {
+                wsServer.broadcastWikiEvent({
+                    type: 'wiki-reload',
+                    wikiId,
+                    components: affectedComponentIds,
+                });
+            },
+            onWikiError: (wikiId, error) => {
+                wsServer.broadcastWikiEvent({
+                    type: 'wiki-error',
+                    wikiId,
+                    message: error.message,
+                });
+            },
         });
     }
 
@@ -318,6 +339,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     return {
         server,
         store,
+        wsServer,
         port: actualPort,
         host,
         url,

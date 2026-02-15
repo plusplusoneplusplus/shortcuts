@@ -1012,4 +1012,234 @@ describe('WebSocket Server', () => {
             fs.rmSync(tmpRoot, { recursive: true, force: true });
         });
     });
+
+    // ========================================================================
+    // Wiki Event Broadcasting
+    // ========================================================================
+
+    describe('Wiki Event Broadcasting', () => {
+        it('should broadcast wiki-reload to all clients when no wiki subscriptions', async () => {
+            const srv = await startServer();
+            const conn = await connectWebSocket(srv.port);
+            await waitForMessages(conn.messages, 1); // welcome
+
+            srv.wsServer.broadcastWikiEvent({
+                type: 'wiki-reload',
+                wikiId: 'w1',
+                components: ['auth-module'],
+            });
+            await waitForMessages(conn.messages, 2);
+
+            const wikiMsg = JSON.parse(conn.messages[1]);
+            expect(wikiMsg.type).toBe('wiki-reload');
+            expect(wikiMsg.wikiId).toBe('w1');
+            expect(wikiMsg.components).toEqual(['auth-module']);
+
+            conn.socket.destroy();
+        });
+
+        it('should broadcast wiki-rebuilding event', async () => {
+            const srv = await startServer();
+            const conn = await connectWebSocket(srv.port);
+            await waitForMessages(conn.messages, 1);
+
+            srv.wsServer.broadcastWikiEvent({
+                type: 'wiki-rebuilding',
+                wikiId: 'w1',
+                components: ['db-layer'],
+            });
+            await waitForMessages(conn.messages, 2);
+
+            const msg = JSON.parse(conn.messages[1]);
+            expect(msg.type).toBe('wiki-rebuilding');
+            expect(msg.wikiId).toBe('w1');
+            expect(msg.components).toEqual(['db-layer']);
+
+            conn.socket.destroy();
+        });
+
+        it('should broadcast wiki-error event', async () => {
+            const srv = await startServer();
+            const conn = await connectWebSocket(srv.port);
+            await waitForMessages(conn.messages, 1);
+
+            srv.wsServer.broadcastWikiEvent({
+                type: 'wiki-error',
+                wikiId: 'w1',
+                message: 'Reload failed',
+            });
+            await waitForMessages(conn.messages, 2);
+
+            const msg = JSON.parse(conn.messages[1]);
+            expect(msg.type).toBe('wiki-error');
+            expect(msg.wikiId).toBe('w1');
+            expect(msg.message).toBe('Reload failed');
+
+            conn.socket.destroy();
+        });
+
+        it('should filter wiki events by subscription', async () => {
+            const srv = await startServer();
+            const connA = await connectWebSocket(srv.port);
+            const connB = await connectWebSocket(srv.port);
+            await waitForMessages(connA.messages, 1);
+            await waitForMessages(connB.messages, 1);
+
+            // Subscribe A to w1, B to w2
+            sendMaskedFrame(connA.socket, JSON.stringify({ type: 'subscribe-wiki', wikiId: 'w1' }));
+            sendMaskedFrame(connB.socket, JSON.stringify({ type: 'subscribe-wiki', wikiId: 'w2' }));
+            await delay(100);
+
+            // Broadcast wiki-reload for w1
+            srv.wsServer.broadcastWikiEvent({
+                type: 'wiki-reload',
+                wikiId: 'w1',
+                components: ['comp-a'],
+            });
+            await delay(200);
+
+            // Client A (subscribed to w1) should receive it
+            const aWikiEvents = connA.messages
+                .map(m => { try { return JSON.parse(m); } catch { return null; } })
+                .filter(m => m?.type === 'wiki-reload');
+            expect(aWikiEvents).toHaveLength(1);
+            expect(aWikiEvents[0].wikiId).toBe('w1');
+
+            // Client B (subscribed to w2) should NOT receive it
+            const bWikiEvents = connB.messages
+                .map(m => { try { return JSON.parse(m); } catch { return null; } })
+                .filter(m => m?.type === 'wiki-reload');
+            expect(bWikiEvents).toHaveLength(0);
+
+            connA.socket.destroy();
+            connB.socket.destroy();
+        });
+
+        it('should send wiki events to unsubscribed clients (backward compat)', async () => {
+            const srv = await startServer();
+            const connSubscribed = await connectWebSocket(srv.port);
+            const connUnsubscribed = await connectWebSocket(srv.port);
+            await waitForMessages(connSubscribed.messages, 1);
+            await waitForMessages(connUnsubscribed.messages, 1);
+
+            // Only subscribe one client
+            sendMaskedFrame(connSubscribed.socket, JSON.stringify({ type: 'subscribe-wiki', wikiId: 'w1' }));
+            await delay(100);
+
+            // Broadcast wiki event for w1
+            srv.wsServer.broadcastWikiEvent({
+                type: 'wiki-reload',
+                wikiId: 'w1',
+                components: ['comp-x'],
+            });
+            await delay(200);
+
+            // Subscribed client receives it (matches w1)
+            const subEvents = connSubscribed.messages
+                .map(m => { try { return JSON.parse(m); } catch { return null; } })
+                .filter(m => m?.type === 'wiki-reload');
+            expect(subEvents).toHaveLength(1);
+
+            // Unsubscribed client also receives it (no wiki filter = gets all)
+            const unsubEvents = connUnsubscribed.messages
+                .map(m => { try { return JSON.parse(m); } catch { return null; } })
+                .filter(m => m?.type === 'wiki-reload');
+            expect(unsubEvents).toHaveLength(1);
+
+            connSubscribed.socket.destroy();
+            connUnsubscribed.socket.destroy();
+        });
+
+        it('should handle subscribe-wiki client message and store wikiId', async () => {
+            const srv = await startServer();
+            const conn = await connectWebSocket(srv.port);
+            await waitForMessages(conn.messages, 1);
+
+            sendMaskedFrame(conn.socket, JSON.stringify({ type: 'subscribe-wiki', wikiId: 'w1' }));
+            await delay(100);
+
+            // Verify by sending wiki event for w1 — client should receive it
+            srv.wsServer.broadcastWikiEvent({
+                type: 'wiki-rebuilding',
+                wikiId: 'w1',
+                components: ['auth'],
+            });
+
+            // Also send for w2 — client should NOT receive it
+            srv.wsServer.broadcastWikiEvent({
+                type: 'wiki-rebuilding',
+                wikiId: 'w2',
+                components: ['db'],
+            });
+            await delay(200);
+
+            const wikiEvents = conn.messages
+                .map(m => { try { return JSON.parse(m); } catch { return null; } })
+                .filter(m => m?.type === 'wiki-rebuilding');
+            expect(wikiEvents).toHaveLength(1);
+            expect(wikiEvents[0].wikiId).toBe('w1');
+
+            conn.socket.destroy();
+        });
+
+        it('should support multiple wiki subscriptions per client', async () => {
+            const srv = await startServer();
+            const conn = await connectWebSocket(srv.port);
+            await waitForMessages(conn.messages, 1);
+
+            // Subscribe to w1 and w2
+            sendMaskedFrame(conn.socket, JSON.stringify({ type: 'subscribe-wiki', wikiId: 'w1' }));
+            await delay(50);
+            sendMaskedFrame(conn.socket, JSON.stringify({ type: 'subscribe-wiki', wikiId: 'w2' }));
+            await delay(100);
+
+            // Broadcast events for w1, w2, and w3
+            srv.wsServer.broadcastWikiEvent({ type: 'wiki-reload', wikiId: 'w1', components: ['a'] });
+            await delay(100);
+            srv.wsServer.broadcastWikiEvent({ type: 'wiki-reload', wikiId: 'w2', components: ['b'] });
+            await delay(100);
+            srv.wsServer.broadcastWikiEvent({ type: 'wiki-reload', wikiId: 'w3', components: ['c'] });
+            await delay(300);
+
+            const wikiEvents = conn.messages
+                .map(m => { try { return JSON.parse(m); } catch { return null; } })
+                .filter(m => m?.type === 'wiki-reload');
+
+            // Should receive w1 and w2 but not w3
+            expect(wikiEvents).toHaveLength(2);
+            expect(wikiEvents.map((e: any) => e.wikiId).sort()).toEqual(['w1', 'w2']);
+
+            conn.socket.destroy();
+        });
+
+        it('should not affect existing process event broadcasting', async () => {
+            const srv = await startServer();
+            const conn = await connectWebSocket(srv.port);
+            await waitForMessages(conn.messages, 1);
+
+            // Subscribe to a wiki — should not affect process events
+            sendMaskedFrame(conn.socket, JSON.stringify({ type: 'subscribe-wiki', wikiId: 'w1' }));
+            await delay(100);
+
+            // Broadcast a process event
+            srv.wsServer.broadcastProcessEvent({
+                type: 'process-added',
+                process: {
+                    id: 'proc-1',
+                    promptPreview: 'Test',
+                    status: 'running',
+                    startTime: new Date().toISOString(),
+                },
+            });
+            await delay(200);
+
+            const processEvents = conn.messages
+                .map(m => { try { return JSON.parse(m); } catch { return null; } })
+                .filter(m => m?.type === 'process-added');
+            expect(processEvents).toHaveLength(1);
+            expect(processEvents[0].process.id).toBe('proc-1');
+
+            conn.socket.destroy();
+        });
+    });
 });

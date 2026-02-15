@@ -62,6 +62,8 @@ export interface WikiRuntime {
 export interface WikiManagerOptions {
     /** AI send function shared across wikis */
     aiSendMessage?: AskAIFunction;
+    /** Callback fired before wiki data reload starts (rebuild in progress) */
+    onWikiRebuilding?: (wikiId: string, affectedComponentIds: string[]) => void;
     /** Callback fired when wiki data is reloaded after file changes */
     onWikiReloaded?: (wikiId: string, affectedComponentIds: string[]) => void;
     /** Callback fired when a wiki-level error occurs */
@@ -75,11 +77,13 @@ export interface WikiManagerOptions {
 export class WikiManager {
     private wikis = new Map<string, WikiRuntime>();
     private aiSendMessage: AskAIFunction | null;
+    private onWikiRebuilding: ((wikiId: string, affectedComponentIds: string[]) => void) | null;
     private onWikiReloaded: ((wikiId: string, affectedComponentIds: string[]) => void) | null;
     private onWikiError: ((wikiId: string, error: Error) => void) | null;
 
     constructor(options?: WikiManagerOptions) {
         this.aiSendMessage = options?.aiSendMessage ?? null;
+        this.onWikiRebuilding = options?.onWikiRebuilding ?? null;
         this.onWikiReloaded = options?.onWikiReloaded ?? null;
         this.onWikiError = options?.onWikiError ?? null;
     }
@@ -135,6 +139,9 @@ export class WikiManager {
                     componentGraph: wikiData.graph,
                     debounceMs: registration.watchDebounceMs,
                     onChange: (affectedIds) => {
+                        if (this.onWikiRebuilding) {
+                            this.onWikiRebuilding(registration.wikiId, affectedIds);
+                        }
                         this.reloadWikiData(registration.wikiId);
                         if (this.onWikiReloaded) {
                             this.onWikiReloaded(registration.wikiId, affectedIds);

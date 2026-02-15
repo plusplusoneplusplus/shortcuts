@@ -37,6 +37,12 @@ export interface WikiRouteOptions {
     aiModel?: string;
     /** AI working directory override. */
     aiWorkingDirectory?: string;
+    /** Callback fired before wiki data reload starts (rebuild in progress). */
+    onWikiRebuilding?: (wikiId: string, affectedComponentIds: string[]) => void;
+    /** Callback fired when wiki data is reloaded after file changes. */
+    onWikiReloaded?: (wikiId: string, affectedComponentIds: string[]) => void;
+    /** Callback fired when a wiki-level error occurs. */
+    onWikiError?: (wikiId: string, error: Error) => void;
 }
 
 // ============================================================================
@@ -53,6 +59,9 @@ export function registerWikiRoutes(
 ): WikiManager {
     const wikiManager = new WikiManager({
         aiSendMessage: options.aiSendMessage,
+        onWikiRebuilding: options.onWikiRebuilding,
+        onWikiReloaded: options.onWikiReloaded,
+        onWikiError: options.onWikiError,
     });
 
     // Register initial wikis

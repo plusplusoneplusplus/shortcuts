@@ -58,6 +58,7 @@ export interface ExecutionServerOptions {
 export interface ExecutionServer {
     server: http.Server;
     store: ProcessStore;
+    wsServer: import('./websocket').ProcessWebSocketServer;
     port: number;
     host: string;
     url: string;
