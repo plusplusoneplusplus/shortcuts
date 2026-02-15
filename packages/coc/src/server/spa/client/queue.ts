@@ -274,7 +274,7 @@ export async function submitEnqueueForm(e: Event): Promise<void> {
     let payload: any = type === 'ai-clarification'
         ? { prompt: prompt || displayName || 'AI clarification task' }
         : type === 'follow-prompt'
-            ? { promptFilePath: prompt || '' }
+            ? { promptContent: prompt || '' }
             : { data: { prompt: prompt || displayName || '' } };
 
     // Add workingDirectory to payload if provided

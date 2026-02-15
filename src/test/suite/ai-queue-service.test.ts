@@ -89,6 +89,50 @@ suite('AIQueueService Tests', () => {
             );
         });
 
+        test('should use promptContent directly when provided', () => {
+            const text = buildFollowPromptText({
+                promptContent: 'Analyze the code for security vulnerabilities.',
+                planFilePath: '/test/task.plan.md',
+            });
+
+            assert.strictEqual(
+                text,
+                'Analyze the code for security vulnerabilities. /test/task.plan.md'
+            );
+        });
+
+        test('should use promptContent with additional context', () => {
+            const text = buildFollowPromptText({
+                promptContent: 'Refactor the auth module.',
+                additionalContext: 'Focus on tests.'
+            });
+
+            assert.strictEqual(
+                text,
+                'Refactor the auth module.\n\nAdditional context: Focus on tests.'
+            );
+        });
+
+        test('should prefer promptContent over promptFilePath when both present', () => {
+            const text = buildFollowPromptText({
+                promptContent: 'Direct prompt text.',
+                promptFilePath: '/test/prompt.md',
+                planFilePath: '/test/plan.md',
+            });
+
+            // promptContent takes precedence
+            assert.ok(text.startsWith('Direct prompt text.'));
+            assert.ok(!text.includes('Follow the instruction'));
+        });
+
+        test('should fall back to promptFilePath when promptContent is absent', () => {
+            const text = buildFollowPromptText({
+                promptFilePath: '/test/prompt.md',
+            });
+
+            assert.strictEqual(text, 'Follow the instruction /test/prompt.md.');
+        });
+
         test('should queue a task', () => {
             const service = initializeAIQueueService(processManager as unknown as AIProcessManager);
 

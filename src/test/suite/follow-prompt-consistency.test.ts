@@ -138,6 +138,84 @@ suite('Follow Prompt Consistency Tests', () => {
         });
     });
 
+    suite('Direct Prompt Content (promptContent)', () => {
+
+        test('should use promptContent directly instead of file indirection', () => {
+            const promptContent = 'Analyze the codebase for security vulnerabilities.';
+            
+            const payload: FollowPromptPayload = { promptContent };
+            const prompt = buildFollowPromptText(payload);
+            
+            assert.strictEqual(prompt, promptContent,
+                'Should use promptContent as-is when no plan file');
+        });
+
+        test('should append planFilePath to promptContent', () => {
+            const promptContent = 'Implement the feature described in the plan.';
+            const planFilePath = '/workspace/.vscode/tasks/feature.plan.md';
+            
+            const payload: FollowPromptPayload = { promptContent, planFilePath };
+            const prompt = buildFollowPromptText(payload);
+            
+            assert.strictEqual(prompt, `${promptContent} ${planFilePath}`,
+                'Should append plan file path to direct content');
+        });
+
+        test('should append additionalContext to promptContent', () => {
+            const promptContent = 'Refactor the auth module.';
+            const additionalContext = 'Focus on error handling.';
+            
+            const payload: FollowPromptPayload = { promptContent, additionalContext };
+            const prompt = buildFollowPromptText(payload);
+            
+            assert.strictEqual(
+                prompt,
+                `${promptContent}\n\nAdditional context: ${additionalContext}`,
+                'Should append additional context to direct content'
+            );
+        });
+
+        test('should prefer promptContent over promptFilePath', () => {
+            const payload: FollowPromptPayload = {
+                promptContent: 'Direct prompt.',
+                promptFilePath: '/workspace/.github/prompts/test.prompt.md',
+                planFilePath: '/workspace/plan.md'
+            };
+            const prompt = buildFollowPromptText(payload);
+            
+            assert.ok(prompt.startsWith('Direct prompt.'),
+                'Should prefer promptContent when both are present');
+            assert.ok(!prompt.includes('Follow the instruction'),
+                'Should not use file indirection when promptContent is present');
+        });
+
+        test('should fall back to promptFilePath when promptContent is empty', () => {
+            const payload: FollowPromptPayload = {
+                promptContent: '',
+                promptFilePath: '/workspace/.github/prompts/test.prompt.md'
+            };
+            const prompt = buildFollowPromptText(payload);
+            
+            assert.ok(prompt.includes('Follow the instruction'),
+                'Empty promptContent should fall back to promptFilePath');
+        });
+
+        test('backward compat: payload with only promptFilePath still works', () => {
+            const payload: FollowPromptPayload = {
+                promptFilePath: '/workspace/.github/prompts/test.prompt.md',
+                planFilePath: '/workspace/plan.md',
+                additionalContext: 'context'
+            };
+            const prompt = buildFollowPromptText(payload);
+            
+            assert.strictEqual(
+                prompt,
+                'Follow the instruction /workspace/.github/prompts/test.prompt.md. /workspace/plan.md\n\nAdditional context: context',
+                'Old payloads with only promptFilePath should still work'
+            );
+        });
+    });
+
     suite('Skill-Based Execution Consistency', () => {
 
         test('should track skill name in process metadata for all execution modes', () => {

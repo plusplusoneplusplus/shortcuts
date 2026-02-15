@@ -97,8 +97,17 @@ export interface BatchQueueResult {
 // ============================================================================
 
 export function buildFollowPromptText(payload: FollowPromptPayload): string {
-    // Keep this aligned with the interactive/background Follow Prompt behavior.
-    let fullPrompt = `Follow the instruction ${payload.promptFilePath}. ${payload.planFilePath || ''}`.trim();
+    // When direct prompt content is available, use it directly (no file indirection).
+    // Fall back to "Follow the instruction {filePath}" for file-based payloads (skills, backward compat).
+    let fullPrompt: string;
+    if (payload.promptContent) {
+        fullPrompt = payload.promptContent;
+        if (payload.planFilePath) {
+            fullPrompt += ` ${payload.planFilePath}`;
+        }
+    } else {
+        fullPrompt = `Follow the instruction ${payload.promptFilePath}. ${payload.planFilePath || ''}`.trim();
+    }
     if (payload.additionalContext && payload.additionalContext.trim()) {
         fullPrompt += `\n\nAdditional context: ${payload.additionalContext.trim()}`;
     }

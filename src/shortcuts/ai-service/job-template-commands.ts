@@ -6,7 +6,6 @@
  */
 
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { getAIQueueService } from './ai-queue-service';
@@ -262,7 +261,8 @@ export async function queueFromTemplate(
     }
 
     // Resolve prompt file and queue the job
-    let promptFilePath: string;
+    let promptFilePath: string | undefined;
+    let promptContent: string | undefined;
     let displayName: string;
     let skillName: string | undefined;
 
@@ -290,10 +290,8 @@ export async function queueFromTemplate(
         skillName = template.skillName;
         displayName = `Template: ${template.name} (Skill: ${template.skillName})`;
     } else {
-        // Freeform mode
-        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'queue-template-'));
-        promptFilePath = path.join(tmpDir, 'prompt.prompt.md');
-        fs.writeFileSync(promptFilePath, finalPrompt, 'utf-8');
+        // Freeform mode — store prompt content directly (no temp file for SDK)
+        promptContent = finalPrompt;
         displayName = `Template: ${template.name}`;
     }
 
@@ -310,6 +308,7 @@ export async function queueFromTemplate(
         type: 'follow-prompt',
         payload: {
             promptFilePath,
+            promptContent,
             skillName,
             workingDirectory,
             model: template.model,

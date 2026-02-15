@@ -288,6 +288,87 @@ describe('CLITaskExecutor', () => {
                 workingDirectory: '/my/workspace',
             }));
         });
+
+        it('should execute a follow-prompt task with promptContent directly', async () => {
+            const executor = new CLITaskExecutor(store);
+
+            const task: QueuedTask = {
+                id: 'task-6b',
+                type: 'follow-prompt',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: {
+                    promptContent: 'Analyze codebase for vulnerabilities.',
+                    workingDirectory: '/my/workspace',
+                },
+                config: {},
+            };
+
+            const result = await executor.execute(task);
+
+            expect(result.success).toBe(true);
+            expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+                prompt: 'Analyze codebase for vulnerabilities.',
+                workingDirectory: '/my/workspace',
+            }));
+        });
+
+        it('should prefer promptContent over promptFilePath', async () => {
+            const executor = new CLITaskExecutor(store);
+
+            const task: QueuedTask = {
+                id: 'task-6c',
+                type: 'follow-prompt',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: {
+                    promptContent: 'Direct prompt text.',
+                    promptFilePath: '/some/file.md',
+                    planFilePath: '/some/plan.md',
+                    workingDirectory: '/my/workspace',
+                },
+                config: {},
+            };
+
+            const result = await executor.execute(task);
+
+            expect(result.success).toBe(true);
+            expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+                prompt: expect.stringContaining('Direct prompt text.'),
+            }));
+            // Should NOT use file indirection
+            expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+                prompt: expect.not.stringContaining('Follow the instruction'),
+            }));
+        });
+
+        it('should append planFilePath and additionalContext to promptContent', async () => {
+            const executor = new CLITaskExecutor(store);
+
+            const task: QueuedTask = {
+                id: 'task-6d',
+                type: 'follow-prompt',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: {
+                    promptContent: 'Refactor the auth module.',
+                    planFilePath: '/workspace/plan.md',
+                    additionalContext: 'Focus on tests.',
+                    workingDirectory: '/my/workspace',
+                },
+                config: {},
+            };
+
+            const result = await executor.execute(task);
+
+            expect(result.success).toBe(true);
+            expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+                prompt: 'Refactor the auth module. /workspace/plan.md\n\nAdditional context: Focus on tests.',
+            }));
+        });
     });
 
     // ========================================================================

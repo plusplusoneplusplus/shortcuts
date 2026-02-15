@@ -172,10 +172,20 @@ export class CLITaskExecutor implements TaskExecutor {
         }
 
         if (isFollowPromptPayload(task.payload)) {
-            // Try to read the prompt file content
+            // Prefer direct prompt content when available (no file I/O needed)
+            if (task.payload.promptContent) {
+                let prompt = task.payload.promptContent;
+                if (task.payload.planFilePath) {
+                    prompt += ` ${task.payload.planFilePath}`;
+                }
+                if (task.payload.additionalContext) {
+                    prompt += `\n\nAdditional context: ${task.payload.additionalContext}`;
+                }
+                return prompt;
+            }
+            // Fall back to file-based prompt for backward compatibility / skill jobs
             try {
                 if (task.payload.promptFilePath && fs.existsSync(task.payload.promptFilePath)) {
-                    const content = fs.readFileSync(task.payload.promptFilePath, 'utf-8');
                     let prompt = `Follow the instruction ${task.payload.promptFilePath}.`;
                     if (task.payload.planFilePath) {
                         prompt += ` ${task.payload.planFilePath}`;

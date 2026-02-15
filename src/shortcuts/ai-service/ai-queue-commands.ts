@@ -5,7 +5,6 @@
  */
 
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { getAIQueueService } from './ai-queue-service';
@@ -257,16 +256,15 @@ export function registerQueueCommands(context: vscode.ExtensionContext): void {
         const options = dialogResult.options;
         const workspaceRoot = getWorkspaceRoot();
 
-        let promptFilePath: string;
+        let promptFilePath: string | undefined;
+        let promptContent: string | undefined;
         let displayName: string;
         let skillName: string | undefined;
         let additionalContext: string | undefined;
 
         if (options.mode === 'prompt') {
-            // Write freeform prompt to a temp .prompt.md file
-            const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'queue-job-'));
-            promptFilePath = path.join(tmpDir, 'prompt.prompt.md');
-            fs.writeFileSync(promptFilePath, options.prompt!, 'utf-8');
+            // Store freeform prompt directly in payload (no temp file needed for SDK)
+            promptContent = options.prompt!;
             displayName = 'Queue Job: Prompt';
         } else {
             // Skill mode: resolve the skill's prompt file path
@@ -297,6 +295,7 @@ export function registerQueueCommands(context: vscode.ExtensionContext): void {
             type: 'follow-prompt',
             payload: {
                 promptFilePath,
+                promptContent,
                 skillName,
                 additionalContext,
                 workingDirectory: options.workingDirectory || workspaceRoot || undefined,

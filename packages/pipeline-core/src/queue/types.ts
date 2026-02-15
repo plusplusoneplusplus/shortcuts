@@ -45,8 +45,10 @@ export type QueueStatus =
  * Payload for follow-prompt tasks
  */
 export interface FollowPromptPayload {
-    /** Path to the prompt file */
-    promptFilePath: string;
+    /** Path to the prompt file (required for skill-based jobs; optional when promptContent is provided) */
+    promptFilePath?: string;
+    /** Direct prompt content (preferred over promptFilePath for freeform prompts) */
+    promptContent?: string;
     /** Optional path to the plan file */
     planFilePath?: string;
     /** Optional skill name to use */
@@ -413,7 +415,7 @@ export function comparePriority(a: QueuedTask, b: QueuedTask): number {
  * Check if a payload is a FollowPromptPayload
  */
 export function isFollowPromptPayload(payload: TaskPayload): payload is FollowPromptPayload {
-    return 'promptFilePath' in payload;
+    return 'promptFilePath' in payload || 'promptContent' in payload;
 }
 
 /**
