@@ -239,6 +239,118 @@ describe('API Handler', () => {
             });
             expect(res.status).toBe(400);
         });
+
+        it('should delete a workspace', async () => {
+            const srv = await startServer();
+            await postJSON(`${srv.url}/api/workspaces`, {
+                id: 'ws-del', name: 'to-delete', rootPath: '/tmp/del',
+            });
+
+            const delRes = await request(`${srv.url}/api/workspaces/ws-del`, { method: 'DELETE' });
+            expect(delRes.status).toBe(204);
+
+            const listRes = await request(`${srv.url}/api/workspaces`);
+            const listed = JSON.parse(listRes.body);
+            expect(listed.workspaces.find((w: any) => w.id === 'ws-del')).toBeUndefined();
+        });
+
+        it('should return 404 when deleting non-existent workspace', async () => {
+            const srv = await startServer();
+            const res = await request(`${srv.url}/api/workspaces/no-such-ws`, { method: 'DELETE' });
+            expect(res.status).toBe(404);
+        });
+
+        it('should patch workspace fields', async () => {
+            const srv = await startServer();
+            await postJSON(`${srv.url}/api/workspaces`, {
+                id: 'ws-patch', name: 'old-name', rootPath: '/tmp/patch', color: '#000',
+            });
+
+            const patchRes = await patchJSON(`${srv.url}/api/workspaces/ws-patch`, {
+                name: 'new-name', color: '#fff',
+            });
+            expect(patchRes.status).toBe(200);
+            const body = JSON.parse(patchRes.body);
+            expect(body.workspace.name).toBe('new-name');
+            expect(body.workspace.color).toBe('#fff');
+            expect(body.workspace.rootPath).toBe('/tmp/patch');
+        });
+
+        it('should return 404 when patching non-existent workspace', async () => {
+            const srv = await startServer();
+            const res = await patchJSON(`${srv.url}/api/workspaces/nope`, { name: 'x' });
+            expect(res.status).toBe(404);
+        });
+
+        it('should return git-info for a workspace with git repo', async () => {
+            const srv = await startServer();
+            // Use the project root itself as a real git repo
+            const repoPath = path.resolve(__dirname, '..', '..', '..', '..');
+            await postJSON(`${srv.url}/api/workspaces`, {
+                id: 'ws-git', name: 'git-test', rootPath: repoPath,
+            });
+
+            const res = await request(`${srv.url}/api/workspaces/ws-git/git-info`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.isGitRepo).toBe(true);
+            expect(typeof body.branch).toBe('string');
+            expect(body.branch.length).toBeGreaterThan(0);
+        });
+
+        it('should return isGitRepo false for non-git directory', async () => {
+            const srv = await startServer();
+            await postJSON(`${srv.url}/api/workspaces`, {
+                id: 'ws-nogit', name: 'no-git', rootPath: os.tmpdir(),
+            });
+
+            const res = await request(`${srv.url}/api/workspaces/ws-nogit/git-info`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.isGitRepo).toBe(false);
+        });
+
+        it('should return 404 for git-info of non-existent workspace', async () => {
+            const srv = await startServer();
+            const res = await request(`${srv.url}/api/workspaces/nonexistent/git-info`);
+            expect(res.status).toBe(404);
+        });
+
+        it('should discover pipelines in a workspace', async () => {
+            const srv = await startServer();
+            // Create a fake pipeline directory structure
+            const wsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-pipeline-'));
+            const pipelinesDir = path.join(wsRoot, '.vscode', 'pipelines', 'test-pipeline');
+            fs.mkdirSync(pipelinesDir, { recursive: true });
+            fs.writeFileSync(path.join(pipelinesDir, 'pipeline.yaml'), 'name: test');
+
+            await postJSON(`${srv.url}/api/workspaces`, {
+                id: 'ws-pipe', name: 'pipe-test', rootPath: wsRoot,
+            });
+
+            const res = await request(`${srv.url}/api/workspaces/ws-pipe/pipelines`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.pipelines).toHaveLength(1);
+            expect(body.pipelines[0].name).toBe('test-pipeline');
+
+            fs.rmSync(wsRoot, { recursive: true, force: true });
+        });
+
+        it('should return empty array when no pipelines folder exists', async () => {
+            const srv = await startServer();
+            const wsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-nopipe-'));
+            await postJSON(`${srv.url}/api/workspaces`, {
+                id: 'ws-nopipe', name: 'no-pipe', rootPath: wsRoot,
+            });
+
+            const res = await request(`${srv.url}/api/workspaces/ws-nopipe/pipelines`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.pipelines).toEqual([]);
+
+            fs.rmSync(wsRoot, { recursive: true, force: true });
+        });
     });
 
     // ========================================================================

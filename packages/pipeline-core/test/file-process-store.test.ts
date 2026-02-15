@@ -258,6 +258,47 @@ describe('FileProcessStore', () => {
         expect(workspaces[0].rootPath).toBe('/path/b');
     });
 
+    // --- Workspace removal ---
+    it('should remove a workspace by ID', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.registerWorkspace({ id: 'ws-1', name: 'A', rootPath: '/a' });
+        await store.registerWorkspace({ id: 'ws-2', name: 'B', rootPath: '/b' });
+
+        const removed = await store.removeWorkspace('ws-1');
+        expect(removed).toBe(true);
+
+        const workspaces = await store.getWorkspaces();
+        expect(workspaces).toHaveLength(1);
+        expect(workspaces[0].id).toBe('ws-2');
+    });
+
+    it('should return false when removing non-existent workspace', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        const removed = await store.removeWorkspace('does-not-exist');
+        expect(removed).toBe(false);
+    });
+
+    // --- Workspace update ---
+    it('should update workspace fields', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.registerWorkspace({ id: 'ws-1', name: 'Old', rootPath: '/old', color: '#000' });
+
+        const updated = await store.updateWorkspace('ws-1', { name: 'New', color: '#fff' });
+        expect(updated).toBeDefined();
+        expect(updated!.name).toBe('New');
+        expect(updated!.color).toBe('#fff');
+        expect(updated!.rootPath).toBe('/old'); // unchanged
+
+        const workspaces = await store.getWorkspaces();
+        expect(workspaces[0].name).toBe('New');
+    });
+
+    it('should return undefined when updating non-existent workspace', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        const updated = await store.updateWorkspace('nope', { name: 'x' });
+        expect(updated).toBeUndefined();
+    });
+
     // --- Filter by status ---
     it('should filter by status', async () => {
         const store = new FileProcessStore({ dataDir: tmpDir });

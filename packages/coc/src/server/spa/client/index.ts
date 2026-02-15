@@ -29,7 +29,10 @@ import './filters';
 // 7. Queue (calls fetchQueue(), registers enqueue form listeners)
 import './queue';
 
-// 8. WebSocket (calls connectWebSocket())
+// 8. Repos (tab switching, repos grid, add repo dialog, detail)
+import './repos';
+
+// 9. WebSocket (calls connectWebSocket())
 import './websocket';
 
 // Bootstrap the app

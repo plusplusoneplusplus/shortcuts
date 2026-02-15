@@ -213,6 +213,36 @@ export class FileProcessStore implements ProcessStore {
         return this.readWorkspaces();
     }
 
+    async removeWorkspace(id: string): Promise<boolean> {
+        let found = false;
+        await this.enqueueWrite(async () => {
+            const workspaces = await this.readWorkspaces();
+            const idx = workspaces.findIndex(w => w.id === id);
+            if (idx >= 0) {
+                workspaces.splice(idx, 1);
+                await this.writeWorkspaces(workspaces);
+                found = true;
+            }
+        });
+        return found;
+    }
+
+    async updateWorkspace(id: string, updates: Partial<Omit<WorkspaceInfo, 'id'>>): Promise<WorkspaceInfo | undefined> {
+        let updated: WorkspaceInfo | undefined;
+        await this.enqueueWrite(async () => {
+            const workspaces = await this.readWorkspaces();
+            const idx = workspaces.findIndex(w => w.id === id);
+            if (idx >= 0) {
+                if (updates.name !== undefined) { workspaces[idx].name = updates.name; }
+                if (updates.rootPath !== undefined) { workspaces[idx].rootPath = updates.rootPath; }
+                if (updates.color !== undefined) { workspaces[idx].color = updates.color; }
+                updated = { ...workspaces[idx] };
+                await this.writeWorkspaces(workspaces);
+            }
+        });
+        return updated;
+    }
+
     // --- Streaming support (in-memory, not persisted) ---
 
     onProcessOutput(id: string, callback: (event: ProcessOutputEvent) => void): () => void {

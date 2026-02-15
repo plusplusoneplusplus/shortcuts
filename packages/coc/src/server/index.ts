@@ -68,6 +68,8 @@ function createStubStore(): ProcessStore {
         clearProcesses: async () => { const count = processes.size; processes.clear(); changeCallback?.({ type: 'processes-cleared' }); return count; },
         getWorkspaces: async () => [],
         registerWorkspace: async () => {},
+        removeWorkspace: async () => false,
+        updateWorkspace: async () => undefined,
         onProcessOutput: (id, callback) => {
             const emitter = getOrCreateEmitter(id);
             const listener = (event: ProcessOutputEvent) => callback(event);

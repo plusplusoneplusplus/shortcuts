@@ -10,6 +10,9 @@
 
 import * as http from 'http';
 import * as url from 'url';
+import * as path from 'path';
+import * as childProcess from 'child_process';
+import * as fs from 'fs';
 import type { ProcessStore, ProcessFilter, AIProcess, AIProcessStatus, AIProcessType, WorkspaceInfo } from '@plusplusoneplusplus/pipeline-core';
 import { deserializeProcess } from '@plusplusoneplusplus/pipeline-core';
 import type { Route } from './types';
@@ -162,6 +165,92 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore): void {
         handler: async (_req, res) => {
             const workspaces = await store.getWorkspaces();
             sendJSON(res, 200, { workspaces });
+        },
+    });
+
+    // DELETE /api/workspaces/:id — Remove a workspace
+    routes.push({
+        method: 'DELETE',
+        pattern: /^\/api\/workspaces\/([^/]+)$/,
+        handler: async (_req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const removed = await store.removeWorkspace(id);
+            if (!removed) {
+                return sendError(res, 404, 'Workspace not found');
+            }
+            res.writeHead(204);
+            res.end();
+        },
+    });
+
+    // PATCH /api/workspaces/:id — Update workspace fields
+    routes.push({
+        method: 'PATCH',
+        pattern: /^\/api\/workspaces\/([^/]+)$/,
+        handler: async (req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            let body: any;
+            try {
+                body = await parseBody(req);
+            } catch {
+                return sendError(res, 400, 'Invalid JSON');
+            }
+
+            const updates: Partial<Omit<WorkspaceInfo, 'id'>> = {};
+            if (body.name !== undefined) { updates.name = body.name; }
+            if (body.color !== undefined) { updates.color = body.color; }
+            if (body.rootPath !== undefined) { updates.rootPath = body.rootPath; }
+
+            const updated = await store.updateWorkspace(id, updates);
+            if (!updated) {
+                return sendError(res, 404, 'Workspace not found');
+            }
+            sendJSON(res, 200, { workspace: updated });
+        },
+    });
+
+    // GET /api/workspaces/:id/git-info — Git branch and status
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git-info$/,
+        handler: async (_req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const workspaces = await store.getWorkspaces();
+            const ws = workspaces.find(w => w.id === id);
+            if (!ws) {
+                return sendError(res, 404, 'Workspace not found');
+            }
+
+            try {
+                const branch = execGitSync('rev-parse --abbrev-ref HEAD', ws.rootPath);
+                const status = execGitSync('status --porcelain', ws.rootPath);
+                const dirty = status.trim().length > 0;
+                sendJSON(res, 200, { branch, dirty, isGitRepo: true });
+            } catch {
+                sendJSON(res, 200, { branch: null, dirty: false, isGitRepo: false });
+            }
+        },
+    });
+
+    // GET /api/workspaces/:id/pipelines — Discover pipelines in repo
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/pipelines$/,
+        handler: async (req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const workspaces = await store.getWorkspaces();
+            const ws = workspaces.find(w => w.id === id);
+            if (!ws) {
+                return sendError(res, 404, 'Workspace not found');
+            }
+
+            const parsed = url.parse(req.url || '/', true);
+            const folder = (typeof parsed.query.folder === 'string' && parsed.query.folder)
+                ? parsed.query.folder
+                : '.vscode/pipelines';
+            const pipelinesDir = path.resolve(ws.rootPath, folder);
+            const pipelines = discoverPipelines(pipelinesDir);
+            sendJSON(res, 200, { pipelines });
         },
     });
 
@@ -408,4 +497,35 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore): void {
             });
         },
     });
+}
+
+// ============================================================================
+// Utility helpers for workspace endpoints
+// ============================================================================
+
+/** Run a git command synchronously in the given directory. */
+export function execGitSync(args: string, cwd: string): string {
+    return childProcess.execSync(`git ${args}`, { cwd, encoding: 'utf-8', timeout: 5000 }).trim();
+}
+
+/** Discover pipeline packages in a directory. Each subdirectory with a pipeline.yaml is a package. */
+export function discoverPipelines(pipelinesDir: string): Array<{ name: string; path: string }> {
+    try {
+        if (!fs.existsSync(pipelinesDir) || !fs.statSync(pipelinesDir).isDirectory()) {
+            return [];
+        }
+        const entries = fs.readdirSync(pipelinesDir, { withFileTypes: true });
+        const pipelines: Array<{ name: string; path: string }> = [];
+        for (const entry of entries) {
+            if (entry.isDirectory()) {
+                const yamlPath = path.join(pipelinesDir, entry.name, 'pipeline.yaml');
+                if (fs.existsSync(yamlPath)) {
+                    pipelines.push({ name: entry.name, path: path.join(pipelinesDir, entry.name) });
+                }
+            }
+        }
+        return pipelines;
+    } catch {
+        return [];
+    }
 }

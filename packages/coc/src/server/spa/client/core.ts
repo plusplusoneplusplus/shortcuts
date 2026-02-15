@@ -13,7 +13,11 @@ export async function init(): Promise<void> {
     try {
         initTheme();
         const wsRes = await fetchApi('/workspaces');
-        if (wsRes && Array.isArray(wsRes)) {
+        if (wsRes && wsRes.workspaces) {
+            appState.workspaces = wsRes.workspaces;
+            populateWorkspaces(wsRes.workspaces);
+        } else if (wsRes && Array.isArray(wsRes)) {
+            appState.workspaces = wsRes;
             populateWorkspaces(wsRes);
         }
         const pRes = await fetchApi('/processes');

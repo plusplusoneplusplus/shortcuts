@@ -3,6 +3,8 @@
  * to break circular dependency chains between modules.
  */
 
+export type DashboardTab = 'processes' | 'repos' | 'reports';
+
 export interface AppState {
     processes: any[];
     selectedId: string | null;
@@ -12,6 +14,9 @@ export interface AppState {
     searchQuery: string;
     expandedGroups: Record<string, boolean>;
     liveTimers: Record<string, ReturnType<typeof setInterval>>;
+    activeTab: DashboardTab;
+    workspaces: any[];
+    selectedRepoId: string | null;
 }
 
 export const appState: AppState = {
@@ -23,6 +28,9 @@ export const appState: AppState = {
     searchQuery: '',
     expandedGroups: {},
     liveTimers: {},
+    activeTab: 'processes',
+    workspaces: [],
+    selectedRepoId: null,
 };
 
 export interface QueueState {

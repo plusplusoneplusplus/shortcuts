@@ -75,6 +75,10 @@ export interface ProcessStore {
     getWorkspaces(): Promise<WorkspaceInfo[]>;
     /** Register (or update) a workspace identity. */
     registerWorkspace(workspace: WorkspaceInfo): Promise<void>;
+    /** Remove a workspace by ID. Returns true if found and removed. */
+    removeWorkspace(id: string): Promise<boolean>;
+    /** Partial-update a workspace. Returns updated workspace or undefined if not found. */
+    updateWorkspace(id: string, updates: Partial<Omit<WorkspaceInfo, 'id'>>): Promise<WorkspaceInfo | undefined>;
 
     /** Optional callback invoked on every process mutation. */
     onProcessChange?: ProcessChangeCallback;

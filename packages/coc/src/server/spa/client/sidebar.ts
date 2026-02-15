@@ -72,6 +72,14 @@ export function renderProcessItem(p: any, container: HTMLElement): void {
     let title = p.promptPreview || p.id || 'Untitled';
     if (title.length > 40) title = title.substring(0, 40) + '...';
 
+    // Workspace color dot
+    const wsId = p.workspaceId || (p.metadata && p.metadata.workspaceId) || '';
+    const ws = wsId ? appState.workspaces.find(function(w: any) { return w.id === wsId; }) : null;
+    const wsColor = ws && ws.color ? ws.color : '';
+    const wsColorHtml = wsColor
+        ? '<span class="repo-color-dot" style="background:' + escapeHtmlClient(wsColor) + ';width:6px;height:6px;display:inline-block;border-radius:50%;flex-shrink:0"></span>'
+        : '';
+
     const div = document.createElement('div');
     div.className = 'process-item' + (p.id === appState.selectedId ? ' active' : '');
     div.setAttribute('data-id', p.id);
@@ -79,6 +87,7 @@ export function renderProcessItem(p: any, container: HTMLElement): void {
         '<div class="process-item-row">' +
             (isGroup ? '<span class="expand-chevron' + (isExpanded ? ' expanded' : '') + '" data-group-id="' + escapeHtmlClient(p.id) + '">&#9654;</span>' : '') +
             '<span class="status-dot ' + (p.status || 'queued') + '"></span>' +
+            wsColorHtml +
             '<span class="title">' + escapeHtmlClient(title) + '</span>' +
         '</div>' +
         '<div class="meta">' +

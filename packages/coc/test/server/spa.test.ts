@@ -103,15 +103,53 @@ describe('generateDashboardHtml', () => {
         expect(html).toContain('class="top-bar-logo"');
     });
 
-    it('contains workspace dropdown with All Workspaces option', () => {
+    it('contains workspace dropdown with All Repos option', () => {
         const html = generateDashboardHtml();
         expect(html).toContain('id="workspace-select"');
-        expect(html).toContain('All Workspaces');
+        expect(html).toContain('All Repos');
     });
 
     it('contains theme toggle button', () => {
         const html = generateDashboardHtml();
         expect(html).toContain('id="theme-toggle"');
+    });
+
+    it('contains tab bar with Processes, Repos, and Reports tabs', () => {
+        const html = generateDashboardHtml();
+        expect(html).toContain('id="tab-bar"');
+        expect(html).toContain('data-tab="processes"');
+        expect(html).toContain('data-tab="repos"');
+        expect(html).toContain('data-tab="reports"');
+        expect(html).toContain('>Processes<');
+        expect(html).toContain('>Repos<');
+        expect(html).toContain('>Reports<');
+    });
+
+    it('contains repos view with grid and add repo button', () => {
+        const html = generateDashboardHtml();
+        expect(html).toContain('id="view-repos"');
+        expect(html).toContain('id="repos-grid"');
+        expect(html).toContain('id="add-repo-btn"');
+    });
+
+    it('contains add repo dialog overlay', () => {
+        const html = generateDashboardHtml();
+        expect(html).toContain('id="add-repo-overlay"');
+        expect(html).toContain('id="repo-path"');
+        expect(html).toContain('id="repo-alias"');
+        expect(html).toContain('id="repo-color"');
+        expect(html).toContain('Add Repository');
+    });
+
+    it('contains repo detail panel', () => {
+        const html = generateDashboardHtml();
+        expect(html).toContain('id="repo-detail-panel"');
+    });
+
+    it('contains reports placeholder view', () => {
+        const html = generateDashboardHtml();
+        expect(html).toContain('id="view-reports"');
+        expect(html).toContain('coming soon');
     });
 
     it('contains sidebar with filter bar', () => {
