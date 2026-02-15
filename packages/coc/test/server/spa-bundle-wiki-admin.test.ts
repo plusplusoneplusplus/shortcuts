@@ -451,7 +451,7 @@ describe('HTML template — wiki admin toggle', () => {
 // ============================================================================
 
 describe('CSS — wiki admin styles', () => {
-    const css = readClientFile('styles.css');
+    const css = readClientFile('styles.css') + readClientFile('wiki-styles.css');
 
     it('defines wiki-admin-toggle-btn style', () => {
         expect(css).toContain('.wiki-admin-toggle-btn');

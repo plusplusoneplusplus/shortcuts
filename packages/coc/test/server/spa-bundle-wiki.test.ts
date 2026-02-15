@@ -401,4 +401,55 @@ describe('CSS — wiki styles', () => {
     it('defines checkbox label styles for Generate with AI toggle', () => {
         expect(html).toContain('.enqueue-checkbox-label');
     });
+
+    it('defines wiki article markdown styles', () => {
+        expect(html).toContain('.wiki-article .markdown-body');
+    });
+
+    it('defines wiki ToC sidebar styles', () => {
+        expect(html).toContain('.wiki-toc-sidebar');
+        expect(html).toContain('.toc-nav a');
+    });
+
+    it('defines mermaid diagram styles', () => {
+        expect(html).toContain('.mermaid-toolbar');
+        expect(html).toContain('.mermaid-viewport');
+        expect(html).toContain('.mermaid-zoom-btn');
+    });
+
+    it('defines wiki dependency graph styles', () => {
+        expect(html).toContain('.wiki-graph-container');
+        expect(html).toContain('.wiki-graph-toolbar');
+        expect(html).toContain('.wiki-graph-legend');
+        expect(html).toContain('.wiki-graph-tooltip');
+    });
+
+    it('defines source files section styles', () => {
+        expect(html).toContain('.source-files-section');
+        expect(html).toContain('.source-pill');
+    });
+
+    it('defines wiki admin panel styles', () => {
+        expect(html).toContain('.admin-page');
+        expect(html).toContain('.admin-editor');
+        expect(html).toContain('.admin-btn');
+    });
+
+    it('defines generate tab styles', () => {
+        expect(html).toContain('.generate-phases');
+        expect(html).toContain('.generate-phase-card');
+        expect(html).toContain('.phase-card-header');
+    });
+
+    it('defines home view and component card styles', () => {
+        expect(html).toContain('.home-view');
+        expect(html).toContain('.stat-card');
+        expect(html).toContain('.component-card');
+        expect(html).toContain('.complexity-badge');
+    });
+
+    it('defines copy button styles', () => {
+        expect(html).toContain('.copy-btn');
+        expect(html).toContain('.heading-anchor');
+    });
 });

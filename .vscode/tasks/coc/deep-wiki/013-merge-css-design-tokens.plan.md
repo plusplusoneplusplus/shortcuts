@@ -1,5 +1,5 @@
 ---
-status: pending
+status: done
 ---
 
 # 013: Merge CSS Design Tokens and Wiki Styles
@@ -232,13 +232,13 @@ The top bar, sidebar structure, and app layout are already shared by CoC's SPA s
 - Ask widget styling is consistent
 
 ## Acceptance Criteria
-- [ ] Unified CSS variable set covers both CoC and wiki needs
-- [ ] Dark and light themes work across all tabs
-- [ ] Wiki-specific styles (markdown, code, mermaid, graph, TOC, ask widget) render correctly
-- [ ] No visual regressions in existing Processes/Repos/Tasks tabs
-- [ ] CoC build succeeds
-- [ ] Alias variables correctly delegate to CoC base tokens
-- [ ] `.wiki-tab` scoping prevents style leakage into other tabs
+- [x] Unified CSS variable set covers both CoC and wiki needs
+- [x] Dark and light themes work across all tabs
+- [x] Wiki-specific styles (markdown, code, mermaid, graph, TOC, ask widget) render correctly
+- [x] No visual regressions in existing Processes/Repos/Tasks tabs
+- [x] CoC build succeeds
+- [x] Alias variables correctly delegate to CoC base tokens
+- [x] `.wiki-tab` scoping prevents style leakage into other tabs
 
 ## Dependencies
 - Depends on: 006 (Wiki tab scaffold exists to apply styles to)

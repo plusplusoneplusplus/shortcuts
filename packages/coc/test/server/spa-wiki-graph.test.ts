@@ -532,7 +532,7 @@ describe('HTML template — wiki graph button', () => {
 // ============================================================================
 
 describe('CSS — wiki graph styles', () => {
-    const css = fs.readFileSync(path.join(CLIENT_DIR, 'styles.css'), 'utf8');
+    const css = fs.readFileSync(path.join(CLIENT_DIR, 'styles.css'), 'utf8') + fs.readFileSync(path.join(CLIENT_DIR, 'wiki-styles.css'), 'utf8');
 
     it('defines wiki-graph-container', () => {
         expect(css).toContain('.wiki-graph-container');

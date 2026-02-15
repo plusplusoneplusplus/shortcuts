@@ -559,7 +559,7 @@ describe('spa/types.ts — enableWiki option', () => {
 
 describe('styles.css — wiki content styles', () => {
     let cssContent: string;
-    beforeAll(() => { cssContent = readClientFile('styles.css'); });
+    beforeAll(() => { cssContent = readClientFile('styles.css') + readClientFile('wiki-styles.css'); });
 
     // CSS variables
     it('defines --code-bg variable', () => {

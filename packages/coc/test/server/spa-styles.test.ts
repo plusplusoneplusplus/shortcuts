@@ -62,6 +62,57 @@ describe('Bundled CSS — via generateDashboardHtml', () => {
     });
 });
 
+describe('Unified design tokens — wiki variables', () => {
+    const html = generateDashboardHtml();
+
+    it('defines wiki sidebar detail tokens in light theme', () => {
+        expect(html).toContain('--sidebar-header-bg:');
+        expect(html).toContain('--sidebar-border:');
+        expect(html).toContain('--sidebar-text:');
+        expect(html).toContain('--sidebar-muted:');
+        expect(html).toContain('--sidebar-active-bg:');
+        expect(html).toContain('--sidebar-active-text:');
+        expect(html).toContain('--sidebar-active-border:');
+    });
+
+    it('defines wiki header and search tokens', () => {
+        expect(html).toContain('--header-bg:');
+        expect(html).toContain('--header-shadow:');
+        expect(html).toContain('--search-bg:');
+        expect(html).toContain('--search-text:');
+        expect(html).toContain('--search-placeholder:');
+    });
+
+    it('defines ask bar and topbar muted tokens', () => {
+        expect(html).toContain('--ask-bar-bg:');
+        expect(html).toContain('--ask-bar-border:');
+        expect(html).toContain('--topbar-muted:');
+    });
+
+    it('defines content-bg-rgb for rgba() usage', () => {
+        expect(html).toContain('--content-bg-rgb:');
+    });
+
+    it('defines alias variables for wiki component compatibility', () => {
+        expect(html).toContain('--content-bg: var(--bg-primary)');
+        expect(html).toContain('--content-text: var(--text-primary)');
+        expect(html).toContain('--sidebar-bg: var(--bg-sidebar)');
+        expect(html).toContain('--sidebar-hover: var(--hover-bg)');
+    });
+
+    it('preserves all existing CoC base tokens', () => {
+        expect(html).toContain('--bg-primary:');
+        expect(html).toContain('--bg-secondary:');
+        expect(html).toContain('--bg-sidebar:');
+        expect(html).toContain('--text-primary:');
+        expect(html).toContain('--text-secondary:');
+        expect(html).toContain('--border-color:');
+        expect(html).toContain('--accent:');
+        expect(html).toContain('--hover-bg:');
+        expect(html).toContain('--active-bg:');
+    });
+});
+
 describe('Chat bubble CSS styles', () => {
     const html = generateDashboardHtml();
 
