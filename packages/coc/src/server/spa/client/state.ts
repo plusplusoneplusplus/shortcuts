@@ -46,6 +46,8 @@ export interface QueueState {
     };
     showDialog: boolean;
     showHistory: boolean;
+    isFollowUpStreaming: boolean;
+    currentStreamingTurnIndex: number | null;
 }
 
 export const queueState: QueueState = {
@@ -55,6 +57,8 @@ export const queueState: QueueState = {
     stats: { queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0, total: 0, isPaused: false },
     showDialog: false,
     showHistory: false,
+    isFollowUpStreaming: false,
+    currentStreamingTurnIndex: null,
 };
 
 (window as any).appState = appState;

@@ -418,6 +418,18 @@ function renderQueueTaskConversation(processId: string, taskId: string, proc: an
 
     html += '</div></div>';
 
+    // Chat input bar
+    const inputDisabled = (status === 'running' && queueState.isFollowUpStreaming) ||
+        status === 'queued' || status === 'cancelled';
+    const placeholderText = getInputPlaceholder(status);
+
+    html += '<div class="chat-input-bar' + (inputDisabled ? ' disabled' : '') + '">' +
+        '<textarea id="chat-input" rows="1" placeholder="' + escapeHtmlClient(placeholderText) + '"' +
+        (inputDisabled ? ' disabled' : '') + '></textarea>' +
+        '<button id="chat-send-btn" class="send-btn" title="Send message"' +
+        (inputDisabled ? ' disabled' : '') + '>\u27A4</button>' +
+        '</div>';
+
     // Action buttons
     html += '<div class="action-buttons">';
     if (proc && proc.result) {
@@ -451,6 +463,200 @@ function renderQueueTaskConversation(processId: string, taskId: string, proc: an
     // Auto-scroll to bottom if streaming
     if (isRunning) {
         scrollConversationToBottom();
+    }
+
+    // Wire chat input handlers
+    initChatInputHandlers(processId);
+}
+
+function getInputPlaceholder(status: string): string {
+    if (queueState.isFollowUpStreaming) return 'Waiting for response...';
+    if (status === 'completed') return 'Continue this conversation...';
+    if (status === 'queued') return 'Follow-ups available once task starts...';
+    if (status === 'failed') return 'Retry or ask a follow-up...';
+    if (status === 'running') return 'Waiting for response...';
+    if (status === 'cancelled') return 'Task was cancelled';
+    return 'Send a message...';
+}
+
+function initChatInputHandlers(processId: string): void {
+    const textarea = document.getElementById('chat-input') as HTMLTextAreaElement | null;
+    const sendBtn = document.getElementById('chat-send-btn') as HTMLButtonElement | null;
+    if (!textarea || !sendBtn) return;
+
+    // Auto-grow textarea (1–4 lines)
+    textarea.addEventListener('input', function() {
+        textarea.style.height = 'auto';
+        const maxHeight = parseInt(getComputedStyle(textarea).lineHeight || '20', 10) * 4;
+        textarea.style.height = Math.min(textarea.scrollHeight, maxHeight) + 'px';
+    });
+
+    // Enter sends, Shift+Enter inserts newline
+    textarea.addEventListener('keydown', function(e: KeyboardEvent) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            const content = textarea.value.trim();
+            if (content && !textarea.disabled) {
+                sendFollowUpMessage(processId, content);
+                textarea.value = '';
+                textarea.style.height = 'auto';
+            }
+        }
+    });
+
+    // Send button click
+    sendBtn.addEventListener('click', function() {
+        const content = textarea.value.trim();
+        if (content && !textarea.disabled) {
+            sendFollowUpMessage(processId, content);
+            textarea.value = '';
+            textarea.style.height = 'auto';
+        }
+    });
+}
+
+function sendFollowUpMessage(processId: string, content: string): void {
+    if (!content.trim()) return;
+
+    // Disable input bar
+    setInputBarDisabled(true);
+    queueState.isFollowUpStreaming = true;
+
+    // Optimistic UI: append user bubble immediately
+    const conversationEl = document.getElementById('queue-task-conversation');
+    if (conversationEl) {
+        const userBubble = document.createElement('div');
+        userBubble.className = 'chat-bubble user';
+        userBubble.innerHTML = renderMarkdown(content);
+        conversationEl.appendChild(userBubble);
+
+        // Append empty assistant bubble with streaming indicator
+        const assistantBubble = document.createElement('div');
+        assistantBubble.className = 'chat-bubble assistant streaming';
+        assistantBubble.id = 'follow-up-assistant-bubble';
+        assistantBubble.innerHTML = '<span class="streaming-indicator">\u25CF</span>';
+        conversationEl.appendChild(assistantBubble);
+
+        scrollConversationToBottom();
+    }
+
+    // POST the message
+    fetch(getApiBase() + '/processes/' + encodeURIComponent(processId) + '/message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: content }),
+    }).then(function(res) {
+        if (!res.ok) throw new Error('Failed to send message: ' + res.status);
+        return res.json();
+    }).then(function(data) {
+        // Success — connect SSE for the streaming response
+        const turnIndex = data && data.turnIndex != null ? data.turnIndex : null;
+        queueState.currentStreamingTurnIndex = turnIndex;
+        connectFollowUpSSE(processId);
+    }).catch(function(err) {
+        // Error — mark the assistant bubble with error state
+        queueState.isFollowUpStreaming = false;
+        queueState.currentStreamingTurnIndex = null;
+        setInputBarDisabled(false);
+
+        const bubble = document.getElementById('follow-up-assistant-bubble');
+        if (bubble) {
+            bubble.classList.remove('streaming');
+            bubble.classList.add('error');
+            bubble.innerHTML = '<div class="bubble-error">' +
+                escapeHtmlClient(err.message || 'Failed to send message') +
+                '<button class="retry-btn" onclick="sendFollowUpMessage(\'' +
+                escapeHtmlClient(processId) + '\', ' +
+                escapeHtmlClient(JSON.stringify(content)) + ')">Retry</button></div>';
+        }
+    });
+}
+
+function connectFollowUpSSE(processId: string): void {
+    const sseUrl = getApiBase() + '/processes/' + encodeURIComponent(processId) + '/stream';
+    const eventSource = new EventSource(sseUrl);
+    let accumulatedContent = '';
+
+    eventSource.addEventListener('chunk', function(e: MessageEvent) {
+        try {
+            const data = JSON.parse(e.data);
+            if (data.content) {
+                accumulatedContent += data.content;
+                const bubble = document.getElementById('follow-up-assistant-bubble');
+                if (bubble) {
+                    bubble.classList.remove('streaming');
+                    bubble.innerHTML = renderMarkdown(accumulatedContent);
+                }
+                scrollConversationToBottom();
+            }
+        } catch(err) {}
+    });
+
+    eventSource.addEventListener('done', function() {
+        eventSource.close();
+        queueState.isFollowUpStreaming = false;
+        queueState.currentStreamingTurnIndex = null;
+        setInputBarDisabled(false);
+
+        // Remove the temporary id so future follow-ups get a fresh bubble
+        const bubble = document.getElementById('follow-up-assistant-bubble');
+        if (bubble) {
+            bubble.removeAttribute('id');
+        }
+
+        // Update placeholder text
+        const textarea = document.getElementById('chat-input') as HTMLTextAreaElement | null;
+        if (textarea) {
+            textarea.placeholder = getInputPlaceholder('completed');
+            textarea.focus();
+        }
+    });
+
+    eventSource.addEventListener('status', function() {
+        // Status change during follow-up — no full re-render needed
+    });
+
+    eventSource.addEventListener('heartbeat', function() {
+        // Keep-alive — no action needed
+    });
+
+    eventSource.onerror = function() {
+        eventSource.close();
+        queueState.isFollowUpStreaming = false;
+        queueState.currentStreamingTurnIndex = null;
+        setInputBarDisabled(false);
+
+        const bubble = document.getElementById('follow-up-assistant-bubble');
+        if (bubble && !accumulatedContent) {
+            bubble.classList.remove('streaming');
+            bubble.classList.add('error');
+            bubble.innerHTML = '<div class="bubble-error">Connection lost. ' +
+                '<button class="retry-btn" onclick="connectFollowUpSSE(\'' +
+                escapeHtmlClient(processId) + '\')">Reconnect</button></div>';
+        } else if (bubble) {
+            // Partial content received — keep what we have, remove streaming state
+            bubble.classList.remove('streaming');
+            bubble.removeAttribute('id');
+        }
+    };
+}
+
+function setInputBarDisabled(disabled: boolean): void {
+    const textarea = document.getElementById('chat-input') as HTMLTextAreaElement | null;
+    const sendBtn = document.getElementById('chat-send-btn') as HTMLButtonElement | null;
+    const bar = textarea?.closest('.chat-input-bar');
+
+    if (textarea) textarea.disabled = disabled;
+    if (sendBtn) sendBtn.disabled = disabled;
+    if (bar) {
+        if (disabled) bar.classList.add('disabled');
+        else bar.classList.remove('disabled');
+    }
+
+    // Update placeholder
+    if (textarea) {
+        const status = disabled ? 'running' : 'completed';
+        textarea.placeholder = getInputPlaceholder(status);
     }
 }
 
@@ -797,3 +1003,5 @@ function showToast(message: string, type: 'success' | 'error'): void {
 (window as any).copyQueueTaskResult = copyQueueTaskResult;
 (window as any).copyConversationOutput = copyConversationOutput;
 (window as any).showQueueTaskDetail = showQueueTaskDetail;
+(window as any).sendFollowUpMessage = sendFollowUpMessage;
+(window as any).connectFollowUpSSE = connectFollowUpSSE;
