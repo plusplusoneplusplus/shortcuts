@@ -4,7 +4,7 @@
 
 import { appState, DashboardTab } from './state';
 import { getApiBase } from './config';
-import { fetchApi } from './core';
+import { fetchApi, setHashSilent } from './core';
 import { escapeHtmlClient, formatRelativeTime } from './utils';
 
 // ================================================================
@@ -41,7 +41,10 @@ if (tabBar) {
         const btn = (e.target as HTMLElement).closest('.tab-btn') as HTMLButtonElement | null;
         if (btn && !btn.disabled) {
             const tab = btn.getAttribute('data-tab') as DashboardTab;
-            if (tab) switchTab(tab);
+            if (tab) {
+                // Update hash via normal navigation (triggers hashchange → handleHashChange)
+                location.hash = '#' + tab;
+            }
         }
     });
 }
@@ -199,6 +202,9 @@ export function showRepoDetail(wsId: string): void {
     const repo = reposData.find(r => r.workspace.id === wsId);
     if (!repo) return;
 
+    // Update hash silently (switchTab already dispatched us here)
+    setHashSilent('#repos/' + encodeURIComponent(wsId));
+
     const container = document.getElementById('repos-container');
     const detail = document.getElementById('repo-detail-panel');
     if (!container || !detail) return;
@@ -309,6 +315,7 @@ async function fetchRepoProcesses(wsId: string): Promise<void> {
 
 function hideRepoDetail(): void {
     appState.selectedRepoId = null;
+    setHashSilent('#repos');
     const container = document.getElementById('repos-container');
     const detail = document.getElementById('repo-detail-panel');
     if (container) container.classList.remove('hidden');
@@ -635,3 +642,4 @@ if (addRepoOverlay) {
 (window as any).switchTab = switchTab;
 (window as any).showAddRepoDialog = showAddRepoDialog;
 (window as any).hideAddRepoDialog = hideAddRepoDialog;
+(window as any).showRepoDetail = showRepoDetail;

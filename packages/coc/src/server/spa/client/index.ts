@@ -14,7 +14,7 @@ import './utils';
 // 2. Theme (registers media-query listener, theme-button click)
 import './theme';
 
-// 3. Core (registers popstate listener)
+// 3. Core (registers hashchange listener)
 import { init } from './core';
 
 // 4. Sidebar (registers clear-completed, hamburger listeners)

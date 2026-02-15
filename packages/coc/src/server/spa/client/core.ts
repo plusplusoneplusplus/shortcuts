@@ -26,11 +26,15 @@ export async function init(): Promise<void> {
         }
         renderProcessList();
 
-        // Deep link support
+        // Backward compat: redirect old /process/:id paths to hash route
         const pathMatch = location.pathname.match(/^\/process\/(.+)$/);
         if (pathMatch) {
-            selectProcess(decodeURIComponent(pathMatch[1]));
+            location.replace('#process/' + pathMatch[1]);
+            return;
         }
+
+        // Handle initial hash route (or default to #processes)
+        handleHashChange();
     } catch(err) {
         // silently fail init
     }
@@ -72,31 +76,73 @@ export async function fetchApi(path: string): Promise<any> {
 }
 
 // ================================================================
-// Routing
+// Hash-based routing
 // ================================================================
 
-window.addEventListener('popstate', function(e: PopStateEvent) {
-    const state = e.state;
-    if (!state || !state.processId) {
-        appState.selectedId = null;
-        clearDetail();
-        updateActiveItem();
-    } else {
-        selectProcess(state.processId);
-    }
-});
+let _hashChangeGuard = false;
 
-export function navigateToProcess(id: string): void {
-    history.pushState({ processId: id }, '', '/process/' + encodeURIComponent(id));
-    selectProcess(id);
+export function setHashSilent(hash: string): void {
+    _hashChangeGuard = true;
+    location.hash = hash;
+    // Guard is reset asynchronously after the hashchange event fires
+    setTimeout(() => { _hashChangeGuard = false; }, 0);
 }
 
-export function navigateToHome(): void {
-    history.pushState({}, '', '/');
+export function handleHashChange(): void {
+    if (_hashChangeGuard) return;
+
+    const hash = location.hash.replace(/^#/, '');
+
+    // #process/{id}
+    const processMatch = hash.match(/^process\/(.+)$/);
+    if (processMatch) {
+        (window as any).switchTab?.('processes');
+        selectProcess(decodeURIComponent(processMatch[1]));
+        return;
+    }
+
+    // #repos/{id}
+    const repoMatch = hash.match(/^repos\/(.+)$/);
+    if (repoMatch) {
+        (window as any).switchTab?.('repos');
+        (window as any).showRepoDetail?.(decodeURIComponent(repoMatch[1]));
+        return;
+    }
+
+    // #repos
+    if (hash === 'repos') {
+        (window as any).switchTab?.('repos');
+        return;
+    }
+
+    // #reports
+    if (hash === 'reports') {
+        (window as any).switchTab?.('reports');
+        return;
+    }
+
+    // #processes or default
+    if (hash !== 'processes') {
+        setHashSilent('#processes');
+    }
+    (window as any).switchTab?.('processes');
     appState.selectedId = null;
     clearDetail();
     updateActiveItem();
 }
 
+window.addEventListener('hashchange', function() {
+    handleHashChange();
+});
+
+export function navigateToProcess(id: string): void {
+    location.hash = '#process/' + encodeURIComponent(id);
+}
+
+export function navigateToHome(): void {
+    location.hash = '#processes';
+}
+
 (window as any).navigateToProcess = navigateToProcess;
+(window as any).navigateToHome = navigateToHome;
 (window as any).appState = appState;

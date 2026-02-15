@@ -401,18 +401,36 @@ describe('client bundle — core module', () => {
         expect(script).toContain('liveTimers: {}');
     });
 
-    it('handles deep link routing', () => {
+    it('handles deep link routing via hash', () => {
+        expect(script).toContain('location.hash');
+        expect(script).toContain('handleHashChange');
+    });
+
+    it('supports backward compat redirect from pathname', () => {
         expect(script).toContain('location.pathname.match');
-        expect(script).toContain('/process/');
+        expect(script).toContain('location.replace');
     });
 
-    it('defines popstate handler', () => {
-        expect(script).toContain('popstate');
+    it('defines hashchange handler', () => {
+        expect(script).toContain('hashchange');
     });
 
-    it('defines navigation functions', () => {
+    it('defines navigation functions with hash routing', () => {
         expect(script).toContain('navigateToProcess');
-        expect(script).toContain('history.pushState');
+        expect(script).toContain('navigateToHome');
+        expect(script).not.toContain('history.pushState');
+    });
+
+    it('routes hash to correct tab', () => {
+        expect(script).toContain('#process/');
+        expect(script).toContain('#repos/');
+        expect(script).toContain('#processes');
+        expect(script).toContain('reports');
+    });
+
+    it('has setHashSilent guard to prevent double-dispatch', () => {
+        expect(script).toContain('setHashSilent');
+        expect(script).toContain('_hashChangeGuard');
     });
 });
 
