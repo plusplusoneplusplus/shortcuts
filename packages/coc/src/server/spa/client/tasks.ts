@@ -297,6 +297,10 @@ function nextStatus(current: string): string {
 // Rendering (into repo detail Tasks sub-tab)
 // ================================================================
 
+/** Track whether the tree event listener is already attached to avoid duplicates. */
+let treeListenerAttached = false;
+let treeListenerContainer: HTMLElement | null = null;
+
 function renderTasksInRepo(): void {
     const container = document.getElementById('repo-tasks-tree');
     if (!container) return;
@@ -309,7 +313,13 @@ function renderTasksInRepo(): void {
     }
 
     container.innerHTML = renderFolder(currentTasks, '');
-    attachTreeEventListeners(container);
+
+    // Only attach the event listener once per container element
+    if (!treeListenerAttached || treeListenerContainer !== container) {
+        treeListenerAttached = true;
+        treeListenerContainer = container;
+        attachTreeEventListeners(container);
+    }
 }
 
 function renderFolder(folder: TaskFolder, parentPath: string): string {
@@ -384,7 +394,7 @@ function renderTaskRow(doc: TaskDocument): string {
         ? doc.relativePath + '/' + doc.fileName
         : doc.fileName;
     const displayName = doc.baseName;
-    return '<div class="task-tree-row task-file-row">' +
+    return '<div class="task-tree-row task-file-row" data-file-path="' + escapeHtmlClient(docPath) + '">' +
         '<span class="task-tree-icon">📄</span>' +
         '<span class="task-tree-name">' + escapeHtmlClient(displayName) + '</span>' +
         renderDocStatusBadge(doc) +
@@ -402,7 +412,7 @@ function renderDocumentRow(doc: TaskDocument): string {
         : doc.fileName;
     // Show the doc type suffix (e.g., "plan") or the full filename for clarity
     const displayName = doc.docType || doc.fileName;
-    return '<div class="task-tree-row task-doc-row">' +
+    return '<div class="task-tree-row task-doc-row" data-file-path="' + escapeHtmlClient(docPath) + '">' +
         '<span class="task-tree-icon">📄</span>' +
         '<span class="task-tree-name task-doc-name">' + escapeHtmlClient(displayName) + '</span>' +
         (doc.status ? renderStatusBadgeRaw(doc.status, docPath) : '') +
@@ -455,56 +465,198 @@ function renderArchiveButton(itemPath: string, name: string): string {
 // ================================================================
 
 function attachTreeEventListeners(container: HTMLElement): void {
-    const wsId = taskPanelState.selectedWorkspaceId;
-    if (!wsId) return;
-
     container.addEventListener('click', (e: Event) => {
+        const wsId = taskPanelState.selectedWorkspaceId;
+        if (!wsId) return;
+
         const target = e.target as HTMLElement;
+
+        // 1. Check for action buttons first (highest priority)
         const btn = target.closest('[data-action]') as HTMLElement | null;
-        if (!btn) {
-            // Check for folder toggle
-            const toggle = target.closest('.task-tree-toggle') as HTMLElement | null;
-            if (toggle) {
-                const folderKey = toggle.getAttribute('data-folder');
-                if (folderKey) {
-                    taskPanelState.expandedFolders[folderKey] = !(taskPanelState.expandedFolders[folderKey] !== false);
-                    renderTasksInRepo();
-                }
+        if (btn) {
+            const action = btn.getAttribute('data-action');
+            const itemPath = btn.getAttribute('data-path') || '';
+            const name = btn.getAttribute('data-name') || '';
+            const folder = btn.getAttribute('data-folder') || '';
+            const parent = btn.getAttribute('data-parent') || '';
+            const status = btn.getAttribute('data-status') || '';
+
+            switch (action) {
+                case 'new-task':
+                    createRepoTask(wsId, folder || undefined);
+                    break;
+                case 'new-folder':
+                    createRepoFolder(wsId, parent || undefined);
+                    break;
+                case 'rename':
+                    renameItem(wsId, itemPath, name);
+                    break;
+                case 'delete':
+                    deleteItem(wsId, itemPath, name);
+                    break;
+                case 'archive':
+                    archiveItem(wsId, itemPath, 'archive');
+                    break;
+                case 'unarchive':
+                    archiveItem(wsId, itemPath, 'unarchive');
+                    break;
+                case 'status':
+                    updateStatus(wsId, itemPath, status);
+                    break;
             }
             return;
         }
 
-        const action = btn.getAttribute('data-action');
-        const itemPath = btn.getAttribute('data-path') || '';
-        const name = btn.getAttribute('data-name') || '';
-        const folder = btn.getAttribute('data-folder') || '';
-        const parent = btn.getAttribute('data-parent') || '';
-        const status = btn.getAttribute('data-status') || '';
+        // 2. Check for folder row click (toggle expand/collapse on full row)
+        const folderRow = target.closest('.task-folder-row') as HTMLElement | null;
+        if (folderRow) {
+            const folderKey = folderRow.getAttribute('data-path');
+            if (folderKey) {
+                taskPanelState.expandedFolders[folderKey] = !(taskPanelState.expandedFolders[folderKey] !== false);
+                renderTasksInRepo();
+            }
+            return;
+        }
 
-        switch (action) {
-            case 'new-task':
-                createRepoTask(wsId, folder || undefined);
-                break;
-            case 'new-folder':
-                createRepoFolder(wsId, parent || undefined);
-                break;
-            case 'rename':
-                renameItem(wsId, itemPath, name);
-                break;
-            case 'delete':
-                deleteItem(wsId, itemPath, name);
-                break;
-            case 'archive':
-                archiveItem(wsId, itemPath, 'archive');
-                break;
-            case 'unarchive':
-                archiveItem(wsId, itemPath, 'unarchive');
-                break;
-            case 'status':
-                updateStatus(wsId, itemPath, status);
-                break;
+        // 3. Check for file row click (open markdown preview)
+        const fileRow = target.closest('[data-file-path]') as HTMLElement | null;
+        if (fileRow) {
+            const filePath = fileRow.getAttribute('data-file-path');
+            if (filePath) {
+                openTaskFile(wsId, filePath);
+            }
+            return;
         }
     });
+}
+
+// ================================================================
+// Markdown file preview
+// ================================================================
+
+/** Currently open file path (to highlight active row). */
+let currentOpenFile: string | null = null;
+
+async function openTaskFile(wsId: string, filePath: string): Promise<void> {
+    currentOpenFile = filePath;
+
+    // Highlight the active row
+    const container = document.getElementById('repo-tasks-tree');
+    if (container) {
+        container.querySelectorAll('[data-file-path]').forEach(el => {
+            el.classList.toggle('task-file-active', el.getAttribute('data-file-path') === filePath);
+        });
+    }
+
+    // Show or create the preview panel
+    let previewPanel = document.getElementById('task-file-preview');
+    if (!previewPanel) {
+        // Create the preview panel after the tree
+        const treeEl = document.getElementById('repo-tasks-tree');
+        if (!treeEl) return;
+        previewPanel = document.createElement('div');
+        previewPanel.id = 'task-file-preview';
+        previewPanel.className = 'task-file-preview';
+        treeEl.parentElement!.appendChild(previewPanel);
+    }
+
+    previewPanel.innerHTML = '<div class="task-preview-loading">Loading...</div>';
+    previewPanel.classList.remove('hidden');
+
+    try {
+        const data = await fetchApi(`/workspaces/${encodeURIComponent(wsId)}/tasks/content?path=${encodeURIComponent(filePath)}`);
+        if (!data || data.error) {
+            previewPanel.innerHTML = '<div class="task-preview-error">' + escapeHtmlClient(data?.error || 'Failed to load file') + '</div>';
+            return;
+        }
+
+        const content: string = data.content || '';
+        const fileName = filePath.split('/').pop() || filePath;
+
+        previewPanel.innerHTML =
+            '<div class="task-preview-header">' +
+                '<span class="task-preview-title">' + escapeHtmlClient(fileName) + '</span>' +
+                '<button class="task-preview-close" id="task-preview-close" title="Close">&times;</button>' +
+            '</div>' +
+            '<div class="task-preview-body">' + renderMarkdown(content) + '</div>';
+
+        document.getElementById('task-preview-close')?.addEventListener('click', closeTaskPreview);
+    } catch {
+        previewPanel.innerHTML = '<div class="task-preview-error">Network error loading file</div>';
+    }
+}
+
+function closeTaskPreview(): void {
+    currentOpenFile = null;
+    const previewPanel = document.getElementById('task-file-preview');
+    if (previewPanel) {
+        previewPanel.classList.add('hidden');
+        previewPanel.innerHTML = '';
+    }
+    // Remove active highlight
+    const container = document.getElementById('repo-tasks-tree');
+    if (container) {
+        container.querySelectorAll('.task-file-active').forEach(el => el.classList.remove('task-file-active'));
+    }
+}
+
+// ================================================================
+// Simple markdown renderer (no external deps)
+// ================================================================
+
+function renderMarkdown(md: string): string {
+    // Strip YAML frontmatter
+    let text = md.replace(/^---\n[\s\S]*?\n---\n*/, '');
+
+    // Escape HTML first
+    text = escapeHtmlClient(text);
+
+    // Code blocks (``` ... ```)
+    text = text.replace(/```(\w*)\n([\s\S]*?)```/g, (_m, lang, code) => {
+        return '<pre><code class="lang-' + (lang || 'text') + '">' + code.trimEnd() + '</code></pre>';
+    });
+
+    // Inline code
+    text = text.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+
+    // Headings (must be done after escaping)
+    text = text.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
+    text = text.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+    text = text.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+    text = text.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+
+    // Horizontal rule
+    text = text.replace(/^---$/gm, '<hr>');
+
+    // Bold and italic
+    text = text.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+    text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    text = text.replace(/\*(.+?)\*/g, '<em>$1</em>');
+
+    // Checkboxes
+    text = text.replace(/^(\s*)- \[x\] (.+)$/gm, '$1<div class="task-checkbox checked">&#9745; $2</div>');
+    text = text.replace(/^(\s*)- \[ \] (.+)$/gm, '$1<div class="task-checkbox">&#9744; $2</div>');
+
+    // Unordered lists
+    text = text.replace(/^- (.+)$/gm, '<li>$1</li>');
+    text = text.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
+
+    // Ordered lists
+    text = text.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+
+    // Blockquotes
+    text = text.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
+
+    // Links
+    text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+
+    // Paragraphs: wrap remaining text lines that aren't already wrapped
+    text = text.replace(/^(?!<[a-z])((?!<\/)[^\n]+)$/gm, '<p>$1</p>');
+
+    // Clean up empty paragraphs
+    text = text.replace(/<p>\s*<\/p>/g, '');
+
+    return text;
 }
 
 // ================================================================

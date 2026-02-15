@@ -32,6 +32,7 @@ describe('client source file existence', () => {
         'config.ts', 'state.ts', 'utils.ts', 'theme.ts',
         'core.ts', 'sidebar.ts', 'detail.ts', 'filters.ts',
         'queue.ts', 'websocket.ts', 'index.ts',
+        'tasks.ts', 'repos.ts',
     ];
 
     for (const file of expectedFiles) {
@@ -649,9 +650,10 @@ describe('old scripts files removed', () => {
 // ============================================================================
 
 describe('window global assignments', () => {
-    it('should have all 17 required window globals across client modules', () => {
+    it('should have all 21 required window globals across client modules', () => {
         const allContent = [
-            'state.ts', 'utils.ts', 'core.ts', 'detail.ts', 'queue.ts'
+            'state.ts', 'utils.ts', 'core.ts', 'detail.ts', 'queue.ts',
+            'tasks.ts', 'repos.ts',
         ].map(f => readClientFile(f)).join('\n');
 
         const expectedGlobals = [
@@ -672,11 +674,255 @@ describe('window global assignments', () => {
             'queueMoveUp',
             'queueMoveToTop',
             'toggleQueueHistory',
+            'fetchRepoTasks',
+            'createRepoTask',
+            'createRepoFolder',
+            'showRepoAIGenerateDialog',
         ];
 
         for (const name of expectedGlobals) {
             expect(allContent).toContain(`(window as any).${name} =`);
         }
+    });
+});
+
+// ============================================================================
+// Tasks module
+// ============================================================================
+
+describe('client/tasks.ts', () => {
+    let content: string;
+    beforeAll(() => { content = readClientFile('tasks.ts'); });
+
+    it('imports from state', () => {
+        expect(content).toContain("from './state'");
+    });
+
+    it('imports from config', () => {
+        expect(content).toContain("from './config'");
+    });
+
+    it('imports from core', () => {
+        expect(content).toContain("from './core'");
+    });
+
+    it('imports from utils', () => {
+        expect(content).toContain("from './utils'");
+    });
+
+    it('exports fetchRepoTasks', () => {
+        expect(content).toContain('export async function fetchRepoTasks');
+    });
+
+    it('exports createRepoTask', () => {
+        expect(content).toContain('export async function createRepoTask');
+    });
+
+    it('exports createRepoFolder', () => {
+        expect(content).toContain('export async function createRepoFolder');
+    });
+
+    it('exports showRepoAIGenerateDialog', () => {
+        expect(content).toContain('export function showRepoAIGenerateDialog');
+    });
+
+    it('assigns required window globals', () => {
+        expect(content).toContain('(window as any).fetchRepoTasks = fetchRepoTasks');
+        expect(content).toContain('(window as any).createRepoTask = createRepoTask');
+        expect(content).toContain('(window as any).createRepoFolder = createRepoFolder');
+        expect(content).toContain('(window as any).showRepoAIGenerateDialog = showRepoAIGenerateDialog');
+    });
+
+    it('prevents duplicate event listener attachment', () => {
+        expect(content).toContain('treeListenerAttached');
+        expect(content).toContain('treeListenerContainer');
+    });
+
+    it('has renderMarkdown function for file preview', () => {
+        expect(content).toContain('function renderMarkdown');
+    });
+
+    it('has openTaskFile function for click-to-open', () => {
+        expect(content).toContain('async function openTaskFile');
+    });
+
+    it('has closeTaskPreview function', () => {
+        expect(content).toContain('function closeTaskPreview');
+    });
+
+    it('renders file rows with data-file-path attribute', () => {
+        expect(content).toContain('data-file-path');
+    });
+
+    it('handles folder row clicks for expand/collapse', () => {
+        expect(content).toContain("target.closest('.task-folder-row')");
+    });
+
+    it('handles file row clicks for opening preview', () => {
+        expect(content).toContain("target.closest('[data-file-path]')");
+    });
+
+    it('fetches file content via API for preview', () => {
+        expect(content).toContain('/tasks/content?path=');
+    });
+
+    it('renderMarkdown strips YAML frontmatter', () => {
+        expect(content).toContain('Strip YAML frontmatter');
+    });
+
+    it('renderMarkdown handles headings', () => {
+        expect(content).toContain('<h1>');
+        expect(content).toContain('<h2>');
+        expect(content).toContain('<h3>');
+        expect(content).toContain('<h4>');
+    });
+
+    it('renderMarkdown handles code blocks', () => {
+        expect(content).toContain('<pre><code');
+    });
+
+    it('renderMarkdown handles checkboxes', () => {
+        expect(content).toContain('task-checkbox');
+    });
+
+    it('renderMarkdown handles bold and italic', () => {
+        expect(content).toContain('<strong>');
+        expect(content).toContain('<em>');
+    });
+});
+
+// ============================================================================
+// Repos module
+// ============================================================================
+
+describe('client/repos.ts', () => {
+    let content: string;
+    beforeAll(() => { content = readClientFile('repos.ts'); });
+
+    it('imports from state', () => {
+        expect(content).toContain("from './state'");
+    });
+
+    it('imports from config', () => {
+        expect(content).toContain("from './config'");
+    });
+
+    it('imports from core', () => {
+        expect(content).toContain("from './core'");
+    });
+
+    it('imports from utils', () => {
+        expect(content).toContain("from './utils'");
+    });
+
+    it('exports switchTab', () => {
+        expect(content).toContain('export function switchTab');
+    });
+
+    it('exports fetchReposData', () => {
+        expect(content).toContain('export async function fetchReposData');
+    });
+
+    it('exports showRepoDetail', () => {
+        expect(content).toContain('export function showRepoDetail');
+    });
+
+    it('exports showAddRepoDialog', () => {
+        expect(content).toContain('export function showAddRepoDialog');
+    });
+
+    it('assigns required window globals', () => {
+        expect(content).toContain('(window as any).switchTab = switchTab');
+        expect(content).toContain('(window as any).showAddRepoDialog = showAddRepoDialog');
+        expect(content).toContain('(window as any).showRepoDetail = showRepoDetail');
+    });
+
+    it('renders tasks sub-tab with toolbar', () => {
+        expect(content).toContain('repo-tasks-new-btn');
+        expect(content).toContain('repo-tasks-folder-btn');
+        expect(content).toContain('repo-tasks-ai-btn');
+    });
+});
+
+// ============================================================================
+// State module — TaskPanelState
+// ============================================================================
+
+describe('client/state.ts — TaskPanelState', () => {
+    let content: string;
+    beforeAll(() => { content = readClientFile('state.ts'); });
+
+    it('exports TaskPanelState interface', () => {
+        expect(content).toContain('export interface TaskPanelState');
+    });
+
+    it('exports taskPanelState with required fields', () => {
+        expect(content).toContain('export const taskPanelState');
+        expect(content).toContain('selectedWorkspaceId: null');
+        expect(content).toContain('expandedFolders: {}');
+    });
+});
+
+// ============================================================================
+// CSS — Task styles
+// ============================================================================
+
+describe('styles.css — Task styles', () => {
+    let cssContent: string;
+    beforeAll(() => {
+        cssContent = fs.readFileSync(path.join(CLIENT_DIR, 'styles.css'), 'utf8');
+    });
+
+    it('has task tree styles', () => {
+        expect(cssContent).toContain('.tasks-tree');
+        expect(cssContent).toContain('.task-tree-row');
+        expect(cssContent).toContain('.task-tree-toggle');
+        expect(cssContent).toContain('.task-tree-children');
+    });
+
+    it('has hidden class for collapsed children', () => {
+        expect(cssContent).toContain('.task-tree-children.hidden');
+    });
+
+    it('has task status badge styles', () => {
+        expect(cssContent).toContain('.task-status-badge');
+        expect(cssContent).toContain('.task-status-pending');
+        expect(cssContent).toContain('.task-status-in-progress');
+        expect(cssContent).toContain('.task-status-done');
+        expect(cssContent).toContain('.task-status-future');
+    });
+
+    it('has clickable folder row cursor', () => {
+        expect(cssContent).toContain('.task-folder-row');
+    });
+
+    it('has active file highlight style', () => {
+        expect(cssContent).toContain('.task-file-active');
+    });
+
+    it('has file preview panel styles', () => {
+        expect(cssContent).toContain('.task-file-preview');
+        expect(cssContent).toContain('.task-preview-header');
+        expect(cssContent).toContain('.task-preview-body');
+        expect(cssContent).toContain('.task-preview-close');
+        expect(cssContent).toContain('.task-preview-title');
+    });
+
+    it('has preview body markdown rendering styles', () => {
+        expect(cssContent).toContain('.task-preview-body h1');
+        expect(cssContent).toContain('.task-preview-body code');
+        expect(cssContent).toContain('.task-preview-body pre');
+        expect(cssContent).toContain('.task-preview-body blockquote');
+    });
+
+    it('has checkbox styling', () => {
+        expect(cssContent).toContain('.task-checkbox');
+        expect(cssContent).toContain('.task-checkbox.checked');
+    });
+
+    it('has loading and error states for preview', () => {
+        expect(cssContent).toContain('.task-preview-loading');
+        expect(cssContent).toContain('.task-preview-error');
     });
 });
 
