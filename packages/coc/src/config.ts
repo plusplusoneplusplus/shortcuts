@@ -2,7 +2,8 @@
  * CLI Configuration
  *
  * Resolves CLI configuration from config files and environment variables.
- * Configuration file: ~/.coc.yaml
+ * Configuration file: ~/.coc/config.yaml
+ * Legacy fallback: ~/.coc.yaml (auto-migrated on first load)
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
@@ -62,8 +63,14 @@ export interface ResolvedCLIConfig {
 // Constants
 // ============================================================================
 
-/** Default configuration file name */
-export const CONFIG_FILE_NAME = '.coc.yaml';
+/** CoC directory name under home */
+export const COC_DIR = '.coc';
+
+/** Default configuration file name (within COC_DIR) */
+export const CONFIG_FILE_NAME = 'config.yaml';
+
+/** Legacy configuration file name (in home root) */
+export const LEGACY_CONFIG_FILE_NAME = '.coc.yaml';
 
 /** Default configuration values */
 export const DEFAULT_CONFIG: ResolvedCLIConfig = {
@@ -83,24 +90,71 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
 // ============================================================================
 
 /**
- * Get the path to the config file
+ * Get the path to the config file (~/.coc/config.yaml)
  */
 export function getConfigFilePath(): string {
-    return path.join(os.homedir(), CONFIG_FILE_NAME);
+    return path.join(os.homedir(), COC_DIR, CONFIG_FILE_NAME);
+}
+
+/**
+ * Get the path to the legacy config file (~/.coc.yaml)
+ */
+export function getLegacyConfigFilePath(): string {
+    return path.join(os.homedir(), LEGACY_CONFIG_FILE_NAME);
+}
+
+/**
+ * Migrate config from legacy location (~/.coc.yaml) to new location (~/.coc/config.yaml)
+ * if the old file exists and the new one does not. Copies (not moves) the old file.
+ */
+export function migrateConfigIfNeeded(): void {
+    const newPath = getConfigFilePath();
+    const legacyPath = getLegacyConfigFilePath();
+    try {
+        if (fs.existsSync(legacyPath) && !fs.existsSync(newPath)) {
+            const dir = path.dirname(newPath);
+            fs.mkdirSync(dir, { recursive: true });
+            fs.copyFileSync(legacyPath, newPath);
+        }
+    } catch {
+        // Silently ignore migration errors — fallback will still work
+    }
 }
 
 /**
  * Load CLI configuration from the config file
- * Returns undefined if the file doesn't exist or can't be parsed
+ * Returns undefined if the file doesn't exist or can't be parsed.
+ * When no explicit configPath is provided, tries ~/.coc/config.yaml first,
+ * falls back to ~/.coc.yaml, and auto-migrates the legacy file.
  */
 export function loadConfigFile(configPath?: string): CLIConfig | undefined {
-    const filePath = configPath || getConfigFilePath();
+    if (configPath) {
+        return loadConfigFromPath(configPath);
+    }
+
+    // Auto-migrate legacy config if needed
+    migrateConfigIfNeeded();
+
+    // Try new location first
+    const newPath = getConfigFilePath();
+    const result = loadConfigFromPath(newPath);
+    if (result !== undefined) {
+        return result;
+    }
+
+    // Fall back to legacy location
+    return loadConfigFromPath(getLegacyConfigFilePath());
+}
+
+/**
+ * Load and parse a config file from a specific path
+ */
+function loadConfigFromPath(filePath: string): CLIConfig | undefined {
     try {
         if (!fs.existsSync(filePath)) {
             return undefined;
         }
         const content = fs.readFileSync(filePath, 'utf-8');
-        // Use js-yaml for parsing
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const yaml = require('js-yaml');
         const config = yaml.load(content) as CLIConfig;

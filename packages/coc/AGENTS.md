@@ -96,12 +96,12 @@ src/
 ├── ai-invoker.ts         # AI invoker factory - Creates CopilotSDKService instances with session pooling
 ├── logger.ts             # Console logger - Colored output, spinners, and progress bars
 ├── output-formatter.ts   # Result formatting - Formats results as table/json/csv/markdown
-└── config.ts             # Config resolution - Loads and merges ~/.coc.yaml with defaults
+└── config.ts             # Config resolution - Loads and merges ~/.coc/config.yaml with defaults (legacy fallback: ~/.coc.yaml)
 ```
 
 ## Configuration
 
-Configuration file: `~/.coc.yaml`
+Configuration file: `~/.coc/config.yaml` (legacy fallback: `~/.coc.yaml`)
 
 ```yaml
 # Default AI model
