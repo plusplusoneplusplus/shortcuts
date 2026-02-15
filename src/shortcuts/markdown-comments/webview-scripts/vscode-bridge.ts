@@ -7,9 +7,7 @@
 
 import {
     BaseMessageHandler,
-    CommonMessageTypes,
-    postMessageToExtension,
-    setupBaseMessageListener
+    CommonMessageTypes
 } from '../../shared/webview/base-vscode-bridge';
 import { state } from './state';
 import { ExtensionMessage, WebviewMessage } from './types';
@@ -18,7 +16,7 @@ import { ExtensionMessage, WebviewMessage } from './types';
  * Send a message to the extension
  */
 export function postMessage(message: WebviewMessage): void {
-    postMessageToExtension(state.vscode, message);
+    state.transport.postMessage(message);
 }
 
 /**
@@ -295,6 +293,6 @@ export type MessageHandler = BaseMessageHandler<ExtensionMessage>;
  * Setup message listener from extension
  */
 export function setupMessageListener(handler: MessageHandler): void {
-    setupBaseMessageListener<ExtensionMessage>(handler);
+    state.transport.onMessage(handler);
 }
 

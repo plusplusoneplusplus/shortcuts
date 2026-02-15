@@ -6,7 +6,7 @@
  * which is then sent to an interactive AI session with the full document context.
  */
 
-import { state } from './state';
+import { postMessage } from './vscode-bridge';
 
 /** Current dialog state */
 interface DialogState {
@@ -126,10 +126,10 @@ function closeDialog(): void {
 function submitInstruction(instruction: string): void {
     // Send message to extension
     try {
-        state.vscode.postMessage({
+        postMessage({
             type: 'updateDocument',
             instruction
-        });
+        } as any);
         console.log('[UpdateDocumentDialog] Sent instruction:', instruction.substring(0, 50) + '...');
     } catch (e) {
         console.error('[UpdateDocumentDialog] Failed to send message:', e);

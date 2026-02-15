@@ -5,7 +5,7 @@
  * (execution mode and AI model selection).
  */
 
-import { state } from './state';
+import { postMessage } from './vscode-bridge';
 import { AIModelOption, FollowPromptDialogOptions } from './types';
 
 /** Current dialog state */
@@ -165,12 +165,12 @@ function closeDialog(options: FollowPromptDialogOptions | null): void {
     if (options) {
         // Send result to extension
         try {
-            state.vscode.postMessage({
+            postMessage({
                 type: 'followPromptDialogResult',
                 promptFilePath: dialogState.promptFilePath,
                 skillName: dialogState.skillName,
                 options
-            });
+            } as any);
         } catch (e) {
             console.error('[FollowPromptDialog] Failed to send message:', e);
         }
@@ -214,12 +214,12 @@ function copyPromptToClipboard(): void {
     
     // Send message to extension to copy prompt
     try {
-        state.vscode.postMessage({
+        postMessage({
             type: 'copyFollowPrompt',
             promptFilePath: dialogState.promptFilePath,
             skillName: dialogState.skillName,
             additionalContext: contextInput?.value?.trim() || undefined
-        });
+        } as any);
         
         // Show visual feedback on the button
         if (copyBtn) {

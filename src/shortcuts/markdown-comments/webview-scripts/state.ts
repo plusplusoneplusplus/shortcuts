@@ -7,12 +7,12 @@
 import { MarkdownComment } from '../types';
 import { LineChange } from '../line-change-tracker';
 import {
-    VsCodeApi,
     WebviewSettings,
     PendingSelection,
     SavedSelection,
     ActiveCommentBubble
 } from './types';
+import { EditorTransport } from './transport';
 
 /**
  * View mode for the editor
@@ -25,8 +25,8 @@ export type ViewMode = 'review' | 'source';
  * Webview state singleton
  */
 class WebviewStateManager {
-    // VS Code API
-    private _vscode: VsCodeApi | null = null;
+    // Transport layer
+    private _transport: EditorTransport | null = null;
     
     // Content state
     private _currentContent: string = '';
@@ -63,11 +63,11 @@ class WebviewStateManager {
     private _lineChanges: Map<number, 'added' | 'modified'> = new Map();
     
     // Getters
-    get vscode(): VsCodeApi {
-        if (!this._vscode) {
-            throw new Error('VS Code API not initialized');
+    get transport(): EditorTransport {
+        if (!this._transport) {
+            throw new Error('Transport not initialized');
         }
-        return this._vscode;
+        return this._transport;
     }
     
     get currentContent(): string {
@@ -145,8 +145,8 @@ class WebviewStateManager {
     }
 
     // Setters
-    setVscode(api: VsCodeApi): void {
-        this._vscode = api;
+    setTransport(transport: EditorTransport): void {
+        this._transport = transport;
     }
     
     setCurrentContent(content: string): void {

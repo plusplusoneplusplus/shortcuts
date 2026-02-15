@@ -6,7 +6,7 @@
  * to help AI understand what has changed in the codebase.
  */
 
-import { state } from './state';
+import { postMessage } from './vscode-bridge';
 
 /** Current dialog state */
 interface DialogState {
@@ -124,10 +124,10 @@ function closeDialog(): void {
 function submitRefreshPlan(additionalContext: string): void {
     // Send message to extension
     try {
-        state.vscode.postMessage({
+        postMessage({
             type: 'refreshPlan',
             additionalContext: additionalContext || undefined
-        });
+        } as any);
         console.log('[RefreshPlanDialog] Sent refresh plan request', additionalContext ? `with context: ${additionalContext.substring(0, 50)}...` : 'without additional context');
     } catch (e) {
         console.error('[RefreshPlanDialog] Failed to send message:', e);

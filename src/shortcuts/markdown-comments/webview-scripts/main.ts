@@ -14,6 +14,7 @@ import { updateResolvedImage } from './image-handlers';
 import { initPanelManager, scrollToComment } from './panel-manager';
 import { render } from './render';
 import { state } from './state';
+import { VscodeTransport } from './transport';
 import { ExtensionMessage, VsCodeApi } from './types';
 import { notifyReady, setupMessageListener } from './vscode-bridge';
 
@@ -26,9 +27,9 @@ declare function acquireVsCodeApi(): VsCodeApi;
 function init(): void {
     console.log('[Webview] Initializing...');
 
-    // Acquire VS Code API
+    // Acquire VS Code API and set up transport
     const vscode = acquireVsCodeApi();
-    state.setVscode(vscode);
+    state.setTransport(new VscodeTransport(vscode));
     console.log('[Webview] VS Code API acquired');
 
     // Initialize DOM handlers

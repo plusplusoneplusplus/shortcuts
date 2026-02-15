@@ -16,6 +16,9 @@ export { state } from './state';
 // Re-export VS Code bridge
 export * from './vscode-bridge';
 
+// Re-export transport layer
+export * from './transport';
+
 // Re-export panel manager
 export * from './panel-manager';
 

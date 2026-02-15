@@ -8,6 +8,7 @@
 
 import { state } from './state';
 import { render } from './render';
+import { postMessage } from './vscode-bridge';
 import { buildSectionMap } from '../webview-logic/heading-parser';
 
 // Re-export pure logic functions from the shared module
@@ -77,10 +78,10 @@ function handleCollapseButtonClick(e: Event): void {
     render(false);
 
     // Notify VS Code to persist the state
-    state.vscode.postMessage({
+    postMessage({
         type: 'collapsedSectionsChanged',
         collapsedSections: state.getCollapsedSectionsArray()
-    });
+    } as any);
 }
 
 /**
@@ -93,10 +94,10 @@ export function collapseAllSections(): void {
     }
     render(false);
 
-    state.vscode.postMessage({
+    postMessage({
         type: 'collapsedSectionsChanged',
         collapsedSections: state.getCollapsedSectionsArray()
-    });
+    } as any);
 }
 
 /**
@@ -109,9 +110,9 @@ export function expandAllSections(): void {
     }
     render(false);
 
-    state.vscode.postMessage({
+    postMessage({
         type: 'collapsedSectionsChanged',
         collapsedSections: state.getCollapsedSectionsArray()
-    });
+    } as any);
 }
 
