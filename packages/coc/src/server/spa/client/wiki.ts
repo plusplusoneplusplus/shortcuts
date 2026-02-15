@@ -11,6 +11,7 @@ import { fetchApi, setHashSilent } from './core';
 import { escapeHtmlClient } from './utils';
 import { buildComponentTree } from './wiki-components';
 import { setWikiGraph, clearWikiState, showWikiHome, loadWikiComponent } from './wiki-content';
+import { showWikiGraph, hideWikiGraph, isGraphShowing } from './wiki-graph';
 import { setupWikiAskListeners } from './wiki-ask';
 import type { WikiData, ComponentGraph } from './wiki-types';
 
@@ -63,6 +64,8 @@ async function onWikiSelected(wikiId: string): Promise<void> {
         clearWikiState();
         clearWikiContent();
         clearComponentTree();
+        const graphBtnContainer = document.getElementById('wiki-graph-btn-container');
+        if (graphBtnContainer) graphBtnContainer.classList.add('hidden');
         return;
     }
 
@@ -72,12 +75,15 @@ async function onWikiSelected(wikiId: string): Promise<void> {
     // Fetch component graph
     const graph = await fetchApi(`/wikis/${encodeURIComponent(wikiId)}/graph`) as ComponentGraph | null;
     const treeContainer = document.getElementById('wiki-component-tree');
+    const graphBtnContainer = document.getElementById('wiki-graph-btn-container');
     if (graph && treeContainer) {
         setWikiGraph(wikiId, graph);
         buildComponentTree(graph, treeContainer);
+        if (graphBtnContainer) graphBtnContainer.classList.remove('hidden');
     } else if (treeContainer) {
         clearWikiState();
         treeContainer.innerHTML = '<div class="wiki-tree-empty">No component data available</div>';
+        if (graphBtnContainer) graphBtnContainer.classList.add('hidden');
     }
 
     // Show home view with project stats and component grid
@@ -368,6 +374,10 @@ if (wikiPathBrowserCancel) wikiPathBrowserCancel.addEventListener('click', close
 
 const wikiPathBrowserSelect = document.getElementById('wiki-path-browser-select');
 if (wikiPathBrowserSelect) wikiPathBrowserSelect.addEventListener('click', selectWikiBrowserPath);
+
+// Dependency graph button
+const wikiGraphBtn = document.getElementById('wiki-graph-btn');
+if (wikiGraphBtn) wikiGraphBtn.addEventListener('click', () => showWikiGraph());
 
 // Expose for global access
 (window as any).fetchWikisData = fetchWikisData;

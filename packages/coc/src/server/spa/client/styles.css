@@ -2852,6 +2852,86 @@ html[data-theme="dark"] .ai-action-dropdown {
 }
 .mermaid-viewport.mermaid-dragging .mermaid-svg-wrapper { transition: none; }
 
+/* ---- Wiki Dependency Graph ---- */
+.wiki-graph-btn-container {
+    padding: 8px 12px 4px;
+}
+.wiki-graph-btn {
+    display: block;
+    width: 100%;
+    padding: 7px 12px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 13px;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.15s;
+}
+.wiki-graph-btn:hover { background: var(--hover-bg); }
+.wiki-graph-btn.active { background: var(--active-bg); border-color: var(--accent); color: var(--accent); }
+
+.wiki-graph-container { width: 100%; height: 100%; position: relative; }
+.wiki-graph-container svg { width: 100%; height: 100%; }
+.wiki-graph-toolbar {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    display: flex;
+    gap: 6px;
+    z-index: 10;
+}
+.wiki-graph-toolbar button {
+    background: var(--card-bg);
+    border: 1px solid var(--content-border);
+    border-radius: 4px;
+    padding: 4px 10px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text-primary);
+}
+.wiki-graph-toolbar button:hover { background: var(--code-bg); }
+.wiki-graph-legend {
+    position: absolute;
+    bottom: 12px;
+    left: 12px;
+    background: var(--card-bg);
+    border: 1px solid var(--content-border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    z-index: 10;
+    font-size: 12px;
+}
+.wiki-graph-legend-title { font-weight: 600; margin-bottom: 6px; color: var(--text-primary); }
+.wiki-graph-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+    cursor: pointer;
+    user-select: none;
+}
+.wiki-graph-legend-item.disabled { opacity: 0.3; }
+.wiki-graph-legend-swatch { width: 12px; height: 12px; border-radius: 3px; }
+.wiki-graph-node text { font-size: 11px; fill: var(--text-primary); pointer-events: none; }
+.wiki-graph-link { stroke: var(--content-border); stroke-opacity: 0.6; }
+.wiki-graph-link-arrow { fill: var(--content-border); fill-opacity: 0.6; }
+.wiki-graph-tooltip {
+    position: absolute;
+    background: var(--card-bg);
+    border: 1px solid var(--content-border);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 12px;
+    pointer-events: none;
+    z-index: 20;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    max-width: 250px;
+}
+.wiki-graph-tooltip-name { font-weight: 600; margin-bottom: 4px; }
+.wiki-graph-tooltip-purpose { color: var(--content-muted); line-height: 1.4; }
+
 /* Responsive: hide ToC on small screens */
 @media (max-width: 900px) {
     .wiki-toc-sidebar { display: none; }

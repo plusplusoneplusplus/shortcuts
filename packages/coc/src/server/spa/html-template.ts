@@ -166,6 +166,9 @@ ${bundleCss}
                     </select>
                     <button class="enqueue-btn-primary" id="add-wiki-btn">+ Add Wiki</button>
                 </div>
+                <div class="wiki-graph-btn-container hidden" id="wiki-graph-btn-container">
+                    <button class="wiki-graph-btn" id="wiki-graph-btn">&#x1F4CA; Dependency Graph</button>
+                </div>
                 <div class="wiki-component-tree" id="wiki-component-tree"></div>
             </aside>
             <main class="wiki-content" id="wiki-content">

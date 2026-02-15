@@ -59,6 +59,9 @@ export function showWikiHome(): void {
     const graph = wikiState.graph;
     if (!graph) return;
 
+    // Restore article layout if graph was showing
+    if ((window as any).hideWikiGraph) (window as any).hideWikiGraph();
+
     wikiState.currentComponentId = null;
     clearToc();
 
@@ -153,6 +156,9 @@ function buildComponentCard(mod: ComponentInfo): string {
 export async function loadWikiComponent(wikiId: string, componentId: string): Promise<void> {
     const mod = wikiState.components.find(function (m) { return m.id === componentId; });
     if (!mod) return;
+
+    // Restore article layout if graph was showing
+    if ((window as any).hideWikiGraph) (window as any).hideWikiGraph();
 
     wikiState.currentComponentId = componentId;
 
