@@ -813,4 +813,74 @@ describe('API Handler', () => {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         });
     });
+
+    // ========================================================================
+    // Process output endpoint
+    // ========================================================================
+
+    describe('Process output endpoint', () => {
+        it('should return 200 with content when output file exists', async () => {
+            const srv = await startServer();
+            const tmpFile = path.join(dataDir, 'test-output.md');
+            fs.writeFileSync(tmpFile, '# Hello\n\nSome **markdown** content.');
+
+            const proc = makeProcess({ rawStdoutFilePath: tmpFile, status: 'completed' });
+            await postJSON(`${srv.url}/api/processes`, proc);
+
+            const res = await request(`${srv.url}/api/processes/${encodeURIComponent(proc.id)}/output`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.content).toBe('# Hello\n\nSome **markdown** content.');
+            expect(body.format).toBe('markdown');
+        });
+
+        it('should return 404 when process not found', async () => {
+            const srv = await startServer();
+            const res = await request(`${srv.url}/api/processes/nonexistent-id/output`);
+            expect(res.status).toBe(404);
+            const body = JSON.parse(res.body);
+            expect(body.error).toBe('Process not found');
+        });
+
+        it('should return 404 when no rawStdoutFilePath set', async () => {
+            const srv = await startServer();
+            const proc = makeProcess({ status: 'completed' });
+            await postJSON(`${srv.url}/api/processes`, proc);
+
+            const res = await request(`${srv.url}/api/processes/${encodeURIComponent(proc.id)}/output`);
+            expect(res.status).toBe(404);
+            const body = JSON.parse(res.body);
+            expect(body.error).toBe('No conversation output saved');
+        });
+
+        it('should return 404 when file path set but file missing', async () => {
+            const srv = await startServer();
+            const proc = makeProcess({
+                rawStdoutFilePath: path.join(dataDir, 'does-not-exist.md'),
+                status: 'completed',
+            });
+            await postJSON(`${srv.url}/api/processes`, proc);
+
+            const res = await request(`${srv.url}/api/processes/${encodeURIComponent(proc.id)}/output`);
+            expect(res.status).toBe(404);
+            const body = JSON.parse(res.body);
+            expect(body.error).toBe('No conversation output saved');
+        });
+
+        it('should handle large output files', async () => {
+            const srv = await startServer();
+            const largeContent = 'Line of markdown content.\n'.repeat(5000);
+            const tmpFile = path.join(dataDir, 'large-output.md');
+            fs.writeFileSync(tmpFile, largeContent);
+
+            const proc = makeProcess({ rawStdoutFilePath: tmpFile, status: 'completed' });
+            await postJSON(`${srv.url}/api/processes`, proc);
+
+            const res = await request(`${srv.url}/api/processes/${encodeURIComponent(proc.id)}/output`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.content).toBe(largeContent);
+            expect(body.format).toBe('markdown');
+        });
+    });
 });

@@ -377,6 +377,14 @@ describe('client/detail.ts', () => {
         expect(content).toContain('(window as any).showQueueTaskDetail = showQueueTaskDetail');
     });
 
+    it('exports copyConversationOutput', () => {
+        expect(content).toContain('export function copyConversationOutput');
+    });
+
+    it('assigns copyConversationOutput to window', () => {
+        expect(content).toContain('(window as any).copyConversationOutput = copyConversationOutput');
+    });
+
     it('uses getApiBase() instead of API_BASE', () => {
         expect(content).toContain('getApiBase()');
         expect(content).not.toContain("var API_BASE");
@@ -641,7 +649,7 @@ describe('old scripts files removed', () => {
 // ============================================================================
 
 describe('window global assignments', () => {
-    it('should have all 16 required window globals across client modules', () => {
+    it('should have all 17 required window globals across client modules', () => {
         const allContent = [
             'state.ts', 'utils.ts', 'core.ts', 'detail.ts', 'queue.ts'
         ].map(f => readClientFile(f)).join('\n');
@@ -652,6 +660,7 @@ describe('window global assignments', () => {
             'navigateToProcess',
             'clearDetail',
             'copyQueueTaskResult',
+            'copyConversationOutput',
             'showQueueTaskDetail',
             'showEnqueueDialog',
             'hideEnqueueDialog',

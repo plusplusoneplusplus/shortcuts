@@ -100,6 +100,12 @@ export function renderDetail(id: string): void {
             '<div class="prompt-body">' + escapeHtmlClient(process.fullPrompt) + '</div></details>';
     }
 
+    // Conversation section for terminal processes
+    const isTerminal = process.status === 'completed' || process.status === 'failed';
+    if (isTerminal) {
+        html += '<div id="process-conversation-section"></div>';
+    }
+
     // Action buttons
     html += '<div class="action-buttons">';
     if (process.result) {
@@ -113,6 +119,28 @@ export function renderDetail(id: string): void {
     html += '</div>';
 
     contentEl.innerHTML = html;
+
+    // Load conversation output asynchronously for terminal processes
+    if (isTerminal) {
+        const sectionEl = document.getElementById('process-conversation-section');
+        if (sectionEl) {
+            fetchApi('/processes/' + encodeURIComponent(id) + '/output')
+                .then(function(data: any) {
+                    if (data && data.content) {
+                        sectionEl.innerHTML = '<div class="conversation-section"><h2>Conversation</h2>' +
+                            '<div id="process-conversation" class="conversation-body">' +
+                            renderMarkdown(data.content) + '</div>' +
+                            '<button class="action-btn" onclick="copyConversationOutput(\'' +
+                            escapeHtmlClient(id) + '\')">\u{1F4CB} Copy Conversation</button></div>';
+                    } else {
+                        sectionEl.innerHTML = '<div class="conversation-waiting">No conversation output saved.</div>';
+                    }
+                })
+                .catch(function() {
+                    sectionEl.innerHTML = '<div class="conversation-waiting">No conversation output saved.</div>';
+                });
+        }
+    }
 }
 
 export function clearDetail(): void {
@@ -503,6 +531,16 @@ export function inlineFormat(text: string): string {
     return text;
 }
 
+export function copyConversationOutput(processId: string): void {
+    fetchApi('/processes/' + encodeURIComponent(processId) + '/output')
+        .then(function(data: any) {
+            if (data && data.content) {
+                copyToClipboard(data.content);
+            }
+        });
+}
+
 (window as any).clearDetail = clearDetail;
 (window as any).copyQueueTaskResult = copyQueueTaskResult;
+(window as any).copyConversationOutput = copyConversationOutput;
 (window as any).showQueueTaskDetail = showQueueTaskDetail;

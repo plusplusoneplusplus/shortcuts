@@ -938,6 +938,10 @@ describe('Queue task conversation view', () => {
             expect(script).toContain('copyQueueTaskResult');
         });
 
+        it('defines copyConversationOutput function', () => {
+            expect(script).toContain('copyConversationOutput');
+        });
+
         it('constructs process ID with queue- prefix', () => {
             expect(script).toContain('queue-');
         });

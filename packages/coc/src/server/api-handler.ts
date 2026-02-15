@@ -403,6 +403,33 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore): void {
         },
     });
 
+    // GET /api/processes/:id/output — Persisted conversation output
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/processes\/([^/]+)\/output$/,
+        handler: async (_req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const process = await store.getProcess(id);
+            if (!process) {
+                return sendError(res, 404, 'Process not found');
+            }
+            const filePath = process.rawStdoutFilePath;
+            if (!filePath) {
+                return sendError(res, 404, 'No conversation output saved');
+            }
+            try {
+                await fs.promises.access(filePath);
+                const content = await fs.promises.readFile(filePath, 'utf-8');
+                sendJSON(res, 200, { content, format: 'markdown' });
+            } catch (err: any) {
+                if (err.code === 'ENOENT') {
+                    return sendError(res, 404, 'No conversation output saved');
+                }
+                return sendError(res, 500, 'Failed to read conversation output');
+            }
+        },
+    });
+
     // GET /api/processes/:id — Single process detail
     routes.push({
         method: 'GET',
