@@ -392,3 +392,5 @@ export { TaskWatcher } from './task-watcher';
 export type { TasksChangedCallback } from './task-watcher';
 export { registerWikiRoutes } from './wiki';
 export type { WikiRouteOptions } from './wiki';
+export { generateReviewEditorHtml, createImageRoute } from './review-editor';
+export type { ReviewEditorOptions } from './review-editor';
