@@ -1333,3 +1333,173 @@ body {
     justify-content: center;
     height: 100%;
 }
+
+/* ================================================================
+   Tasks Panel
+   ================================================================ */
+
+.tasks-container {
+    padding: 20px 24px;
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+.tasks-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    gap: 12px;
+}
+
+.tasks-header h2 {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0;
+}
+
+.tasks-header-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.tasks-tree {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px;
+    min-height: 200px;
+    background: var(--bg-secondary);
+}
+
+/* Tree rows */
+.task-tree-row {
+    display: flex;
+    align-items: center;
+    padding: 4px 8px;
+    border-radius: 4px;
+    gap: 6px;
+    font-size: 13px;
+    cursor: default;
+}
+
+.task-tree-row:hover {
+    background: var(--bg-hover);
+}
+
+.task-tree-row:hover .task-tree-actions {
+    opacity: 1;
+}
+
+.task-tree-toggle {
+    cursor: pointer;
+    width: 16px;
+    text-align: center;
+    font-size: 10px;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+    user-select: none;
+}
+
+.task-tree-icon {
+    flex-shrink: 0;
+    font-size: 14px;
+}
+
+.task-tree-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.task-doc-name {
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.task-tree-children {
+    padding-left: 20px;
+}
+
+.task-tree-children.hidden {
+    display: none;
+}
+
+/* Action buttons (visible on hover) */
+.task-tree-actions {
+    display: flex;
+    gap: 2px;
+    opacity: 0;
+    transition: opacity 0.15s;
+    flex-shrink: 0;
+}
+
+.task-action-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-size: 12px;
+    line-height: 1;
+    opacity: 0.7;
+}
+
+.task-action-btn:hover {
+    background: var(--bg-hover);
+    opacity: 1;
+}
+
+/* Status badge */
+.task-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 500;
+    border: 1px solid transparent;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.task-status-badge:hover {
+    border-color: var(--border);
+}
+
+.task-status-pending {
+    background: rgba(200, 200, 200, 0.2);
+    color: var(--text-secondary);
+}
+
+.task-status-in-progress {
+    background: rgba(0, 120, 212, 0.15);
+    color: #0078d4;
+}
+
+.task-status-done {
+    background: rgba(22, 130, 93, 0.15);
+    color: #16825d;
+}
+
+.task-status-future {
+    background: rgba(177, 128, 215, 0.15);
+    color: #b180d7;
+}
+
+/* Archive folder dimming */
+.task-archive-folder {
+    opacity: 0.65;
+}
+
+.task-archive-folder:hover {
+    opacity: 1;
+}
+
+/* Document group indent */
+.task-tree-group .task-doc-row {
+    padding-left: 28px;
+}

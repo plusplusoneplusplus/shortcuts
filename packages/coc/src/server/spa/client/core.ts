@@ -109,6 +109,12 @@ export function handleHashChange(): void {
         return;
     }
 
+    // #tasks
+    if (hash === 'tasks') {
+        (window as any).switchTab?.('tasks');
+        return;
+    }
+
     // #repos
     if (hash === 'repos') {
         (window as any).switchTab?.('repos');

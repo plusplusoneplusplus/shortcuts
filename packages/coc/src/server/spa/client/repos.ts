@@ -20,7 +20,7 @@ export function switchTab(tab: DashboardTab): void {
     });
 
     // Show/hide views
-    const viewIds = ['view-processes', 'view-repos', 'view-reports'];
+    const viewIds = ['view-processes', 'view-repos', 'view-reports', 'view-tasks'];
     viewIds.forEach(id => {
         const el = document.getElementById(id);
         if (el) {
@@ -31,6 +31,12 @@ export function switchTab(tab: DashboardTab): void {
     // Refresh data when switching to repos
     if (tab === 'repos') {
         fetchReposData();
+    }
+
+    // Refresh data when switching to tasks
+    if (tab === 'tasks') {
+        (window as any).populateTasksWorkspaces?.(appState.workspaces || []);
+        (window as any).fetchTasksData?.();
     }
 }
 

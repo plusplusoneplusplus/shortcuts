@@ -3,7 +3,7 @@
  * to break circular dependency chains between modules.
  */
 
-export type DashboardTab = 'processes' | 'repos' | 'reports';
+export type DashboardTab = 'processes' | 'repos' | 'reports' | 'tasks';
 
 export interface AppState {
     processes: any[];
@@ -55,3 +55,17 @@ export const queueState: QueueState = {
 };
 
 (window as any).appState = appState;
+
+// ================================================================
+// Tasks panel state
+// ================================================================
+
+export interface TaskPanelState {
+    selectedWorkspaceId: string | null;
+    expandedFolders: Record<string, boolean>;
+}
+
+export const taskPanelState: TaskPanelState = {
+    selectedWorkspaceId: null,
+    expandedFolders: {},
+};

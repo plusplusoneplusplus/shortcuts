@@ -32,7 +32,10 @@ import './queue';
 // 8. Repos (tab switching, repos grid, add repo dialog, detail)
 import './repos';
 
-// 9. WebSocket (calls connectWebSocket())
+// 9. Tasks (workspace task CRUD, tree rendering)
+import './tasks';
+
+// 10. WebSocket (calls connectWebSocket())
 import './websocket';
 
 // Bootstrap the app
