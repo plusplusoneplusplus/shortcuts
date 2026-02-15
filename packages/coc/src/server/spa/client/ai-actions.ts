@@ -4,6 +4,9 @@
  */
 
 import { escapeHtmlClient } from './utils';
+import { getApiBase } from './config';
+import { fetchApi } from './core';
+import { appState, taskPanelState } from './state';
 
 let activeDropdown: HTMLElement | null = null;
 let outsideClickHandler: ((e: MouseEvent) => void) | null = null;
@@ -54,14 +57,23 @@ export function showAIActionDropdown(button: HTMLElement, wsId: string, taskPath
 
     activeDropdown = dropdown;
 
-    // Menu item clicks — stubs for now (006/007 wire real handlers)
+    // Menu item clicks
     dropdown.addEventListener('click', (e: Event) => {
         const item = (e.target as HTMLElement).closest('[data-ai-action]') as HTMLElement | null;
         if (!item) return;
         const action = item.getAttribute('data-ai-action');
-        // Stub: log to console. 006/007 will replace with real calls.
-        console.log('[ai-actions] stub action:', action, 'path:', taskPath, 'ws:', wsId);
         hideAIActionDropdown();
+
+        switch (action) {
+            case 'follow-prompt': {
+                const taskName = taskPath.split('/').pop()?.replace(/\.md$/, '') || taskPath;
+                showFollowPromptSubmenu(wsId, taskPath, taskName);
+                break;
+            }
+            default:
+                console.log('[ai-actions] unhandled action:', action, 'path:', taskPath, 'ws:', wsId);
+                break;
+        }
     });
 
     // Close on outside click (deferred to next tick so the opening click doesn't close it)
@@ -86,3 +98,224 @@ export function hideAIActionDropdown(): void {
         outsideClickHandler = null;
     }
 }
+
+// ================================================================
+// Discovery cache
+// ================================================================
+
+interface PromptItem {
+    name: string;
+    relativePath: string;
+}
+
+interface SkillItem {
+    name: string;
+    description?: string;
+}
+
+interface DiscoveryCache {
+    prompts: PromptItem[];
+    skills: SkillItem[];
+    fetchedAt: number;
+}
+
+const discoveryCache: Record<string, DiscoveryCache> = {};
+const CACHE_TTL_MS = 60_000; // 60 seconds
+
+export async function fetchPromptsAndSkills(wsId: string): Promise<{ prompts: PromptItem[]; skills: SkillItem[] }> {
+    const cached = discoveryCache[wsId];
+    if (cached && (Date.now() - cached.fetchedAt) < CACHE_TTL_MS) {
+        return { prompts: cached.prompts, skills: cached.skills };
+    }
+
+    const [promptData, skillData] = await Promise.all([
+        fetchApi(`/workspaces/${encodeURIComponent(wsId)}/prompts`),
+        fetchApi(`/workspaces/${encodeURIComponent(wsId)}/skills`),
+    ]);
+
+    const prompts: PromptItem[] = promptData?.prompts || [];
+    const skills: SkillItem[] = skillData?.skills || [];
+
+    discoveryCache[wsId] = { prompts, skills, fetchedAt: Date.now() };
+    return { prompts, skills };
+}
+
+export function invalidateDiscoveryCache(wsId?: string): void {
+    if (wsId) {
+        delete discoveryCache[wsId];
+    } else {
+        for (const key of Object.keys(discoveryCache)) {
+            delete discoveryCache[key];
+        }
+    }
+}
+
+// ================================================================
+// Follow Prompt submenu
+// ================================================================
+
+export function showFollowPromptSubmenu(wsId: string, taskPath: string, taskName: string): void {
+    document.getElementById('follow-prompt-submenu')?.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'follow-prompt-submenu';
+    overlay.className = 'enqueue-overlay';
+    overlay.innerHTML =
+        '<div class="enqueue-dialog">' +
+            '<div class="enqueue-dialog-header">' +
+                '<h2>Follow Prompt</h2>' +
+                '<button class="enqueue-close-btn" id="fp-close">&times;</button>' +
+            '</div>' +
+            '<div class="follow-prompt-body" style="padding:16px;color:var(--text-secondary)">Loading\u2026</div>' +
+        '</div>';
+    document.body.appendChild(overlay);
+
+    // Close handlers
+    const closeBtn = document.getElementById('fp-close');
+    if (closeBtn) closeBtn.addEventListener('click', () => overlay.remove());
+    overlay.addEventListener('click', (e: Event) => {
+        if (e.target === overlay) overlay.remove();
+    });
+
+    // Fetch and render
+    fetchPromptsAndSkills(wsId).then(({ prompts, skills }) => {
+        // User may have closed the overlay while we were fetching
+        if (!document.getElementById('follow-prompt-submenu')) return;
+
+        const body = overlay.querySelector('.follow-prompt-body');
+        if (!body) return;
+
+        if (prompts.length === 0 && skills.length === 0) {
+            body.innerHTML =
+                '<p style="color:var(--text-secondary)">No prompts or skills found in this workspace.</p>' +
+                '<p style="font-size:0.85em;color:var(--text-secondary);margin-top:8px">' +
+                    'Create .prompt.md files in .vscode/pipelines/ or skills in .github/skills/' +
+                '</p>';
+            return;
+        }
+
+        let html = '';
+        if (prompts.length > 0) {
+            html += '<div class="fp-section"><div class="fp-section-label">Prompts</div>';
+            for (const p of prompts) {
+                html +=
+                    '<div class="fp-item" data-type="prompt" data-name="' + escapeHtmlClient(p.name) +
+                    '" data-path="' + escapeHtmlClient(p.relativePath) + '">' +
+                        '<span class="fp-item-icon">\uD83D\uDCDD</span>' +
+                        '<span class="fp-item-name">' + escapeHtmlClient(p.name) + '</span>' +
+                    '</div>';
+            }
+            html += '</div>';
+        }
+        if (skills.length > 0) {
+            html += '<div class="fp-section"><div class="fp-section-label">Skills</div>';
+            for (const s of skills) {
+                html +=
+                    '<div class="fp-item" data-type="skill" data-name="' + escapeHtmlClient(s.name) + '">' +
+                        '<span class="fp-item-icon">\u26A1</span>' +
+                        '<span class="fp-item-name">' + escapeHtmlClient(s.name) + '</span>' +
+                        (s.description ? '<span class="fp-item-desc">' + escapeHtmlClient(s.description) + '</span>' : '') +
+                    '</div>';
+            }
+            html += '</div>';
+        }
+        body.innerHTML = html;
+
+        // Item click delegation
+        body.addEventListener('click', (e: Event) => {
+            const fpItem = (e.target as HTMLElement).closest('.fp-item') as HTMLElement | null;
+            if (!fpItem) return;
+            const type = fpItem.dataset.type || '';
+            const name = fpItem.dataset.name || '';
+            const path = fpItem.dataset.path;
+            overlay.remove();
+            enqueueFollowPrompt(wsId, taskPath, taskName, type, name, path);
+        });
+    });
+}
+
+async function enqueueFollowPrompt(
+    wsId: string,
+    taskPath: string,
+    taskName: string,
+    itemType: string,
+    itemName: string,
+    itemPath?: string,
+): Promise<void> {
+    // Fetch task content for additionalContext
+    const data = await fetchApi(
+        `/workspaces/${encodeURIComponent(wsId)}/tasks/content?path=${encodeURIComponent(taskPath)}`
+    );
+    const taskContent = data?.content || '';
+
+    // Resolve workspace rootPath for workingDirectory
+    const ws = appState.workspaces.find((w: any) => w.id === wsId);
+    const workingDirectory = ws?.rootPath || '';
+
+    // Build payload based on item type
+    let payload: Record<string, string>;
+    if (itemType === 'prompt') {
+        const promptFilePath = workingDirectory
+            ? workingDirectory + '/.vscode/pipelines/' + (itemPath || '')
+            : itemPath || '';
+        payload = { promptFilePath, additionalContext: taskContent, workingDirectory };
+    } else {
+        // Skill — use promptContent for type guard satisfaction
+        payload = {
+            skillName: itemName,
+            promptContent: `Use the ${itemName} skill.`,
+            additionalContext: taskContent,
+            workingDirectory,
+        };
+    }
+
+    const body = {
+        type: 'follow-prompt' as const,
+        priority: 'normal',
+        displayName: `Follow: ${itemName} on ${taskName}`,
+        payload,
+        config: {},
+    };
+
+    try {
+        const res = await fetch(getApiBase() + '/queue', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: 'Failed' }));
+            showToast('Failed to enqueue: ' + (err.error || 'Unknown error'), 'error');
+            return;
+        }
+        showToast('Enqueued: ' + itemName, 'success');
+        if ((window as any).fetchQueue) {
+            (window as any).fetchQueue();
+        }
+    } catch {
+        showToast('Network error enqueuing task', 'error');
+    }
+}
+
+// ================================================================
+// Toast notifications
+// ================================================================
+
+export function showToast(message: string, type: 'success' | 'error'): void {
+    const toast = document.createElement('div');
+    toast.className = 'toast toast-' + type;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    setTimeout(() => {
+        toast.classList.add('toast-fade');
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+}
+
+// ================================================================
+// Window globals
+// ================================================================
+
+(window as any).showFollowPromptSubmenu = showFollowPromptSubmenu;
+(window as any).invalidateDiscoveryCache = invalidateDiscoveryCache;
+(window as any).showToast = showToast;
