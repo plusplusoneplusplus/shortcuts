@@ -607,4 +607,98 @@ describe('Server Integration', () => {
             expect(res.status).toBe(404);
         });
     });
+
+    // ------------------------------------------------------------------
+    // FileProcessStore Persistence
+    // ------------------------------------------------------------------
+    describe('file process store persistence', () => {
+        it('should persist processes to disk via FileProcessStore', async () => {
+            const persistDir = fs.mkdtempSync(path.join(os.tmpdir(), 'integ-persist-'));
+            const persistStore = new FileProcessStore({ dataDir: persistDir });
+            const persistServer = await createExecutionServer({ store: persistStore, port: 0, host: '127.0.0.1', dataDir: persistDir });
+
+            try {
+                // Create a process via API
+                const createRes = await request(`${persistServer.url}/api/processes`, {
+                    method: 'POST',
+                    body: makeProcessBody('persist-1', { workspaceId: 'ws-persist' }),
+                });
+                expect(createRes.status).toBe(201);
+
+                // Verify processes.json exists on disk
+                const processesFile = path.join(persistDir, 'processes.json');
+                // FileProcessStore writes asynchronously — wait briefly
+                await new Promise(r => setTimeout(r, 200));
+                expect(fs.existsSync(processesFile)).toBe(true);
+
+                const raw = fs.readFileSync(processesFile, 'utf-8');
+                const data = JSON.parse(raw);
+                expect(data.some((e: any) => e.process.id === 'persist-1')).toBe(true);
+            } finally {
+                await persistServer.close();
+                fs.rmSync(persistDir, { recursive: true, force: true });
+            }
+        });
+
+        it('should survive server restart with FileProcessStore', async () => {
+            const restartDir = fs.mkdtempSync(path.join(os.tmpdir(), 'integ-restart-'));
+
+            // --- First server lifecycle ---
+            const store1 = new FileProcessStore({ dataDir: restartDir });
+            const server1 = await createExecutionServer({ store: store1, port: 0, host: '127.0.0.1', dataDir: restartDir });
+
+            await request(`${server1.url}/api/processes`, {
+                method: 'POST',
+                body: makeProcessBody('restart-1', { status: 'completed', result: 'done' }),
+            });
+            await request(`${server1.url}/api/processes`, {
+                method: 'POST',
+                body: makeProcessBody('restart-2', { status: 'running' }),
+            });
+
+            await server1.close();
+
+            // --- Second server lifecycle (same dataDir) ---
+            const store2 = new FileProcessStore({ dataDir: restartDir });
+            const server2 = await createExecutionServer({ store: store2, port: 0, host: '127.0.0.1', dataDir: restartDir });
+
+            try {
+                const listRes = await request(`${server2.url}/api/processes`);
+                expect(listRes.status).toBe(200);
+                const body = JSON.parse(listRes.body);
+                const ids = body.processes.map((p: any) => p.id);
+                expect(ids).toContain('restart-1');
+                expect(ids).toContain('restart-2');
+            } finally {
+                await server2.close();
+                fs.rmSync(restartDir, { recursive: true, force: true });
+            }
+        });
+
+        it('should persist workspaces.json on workspace registration', async () => {
+            const wsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'integ-ws-'));
+            const wsStore = new FileProcessStore({ dataDir: wsDir });
+            const wsServer = await createExecutionServer({ store: wsStore, port: 0, host: '127.0.0.1', dataDir: wsDir });
+
+            try {
+                const res = await request(`${wsServer.url}/api/workspaces`, {
+                    method: 'POST',
+                    body: makeWorkspaceBody('ws-file-1', 'my-workspace'),
+                });
+                expect(res.status).toBe(201);
+
+                // Wait for async file write
+                await new Promise(r => setTimeout(r, 200));
+                const wsFile = path.join(wsDir, 'workspaces.json');
+                expect(fs.existsSync(wsFile)).toBe(true);
+
+                const raw = fs.readFileSync(wsFile, 'utf-8');
+                const data = JSON.parse(raw);
+                expect(data.some((w: any) => w.id === 'ws-file-1')).toBe(true);
+            } finally {
+                await wsServer.close();
+                fs.rmSync(wsDir, { recursive: true, force: true });
+            }
+        });
+    });
 });

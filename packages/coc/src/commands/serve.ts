@@ -20,6 +20,7 @@ import {
     bold,
     cyan,
 } from '../logger';
+import { FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
 import type { ServeCommandOptions } from '../server/types';
 
 // ============================================================================
@@ -43,10 +44,13 @@ export async function executeServe(options: ServeCommandOptions): Promise<number
     try {
         const { createExecutionServer } = await import('../server/index');
 
+        const store = new FileProcessStore({ dataDir });
+
         const server = await createExecutionServer({
             port,
             host,
             dataDir,
+            store,
             theme: options.theme ?? 'auto',
         });
 

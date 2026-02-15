@@ -271,4 +271,37 @@ describe('Serve Command', () => {
             expect(fs.existsSync(nonExistentDir)).toBe(true);
         });
     });
+
+    // ========================================================================
+    // 11. FileProcessStore wired into createExecutionServer
+    // ========================================================================
+
+    describe('FileProcessStore wiring', () => {
+        it('should pass a store option to createExecutionServer', async () => {
+            await runServeWithSigint({ dataDir: tmpDir, open: false });
+
+            expect(mockCreateExecutionServer).toHaveBeenCalledTimes(1);
+            const opts = mockCreateExecutionServer.mock.calls[0][0];
+            expect(opts.store).toBeDefined();
+        });
+
+        it('should pass a FileProcessStore instance as store', async () => {
+            const { FileProcessStore } = await import('@plusplusoneplusplus/pipeline-core');
+
+            await runServeWithSigint({ dataDir: tmpDir, open: false });
+
+            const opts = mockCreateExecutionServer.mock.calls[0][0];
+            expect(opts.store).toBeInstanceOf(FileProcessStore);
+        });
+
+        it('should configure FileProcessStore with the resolved dataDir', async () => {
+            const customDir = path.join(tmpDir, 'custom-data');
+
+            await runServeWithSigint({ dataDir: customDir, open: false });
+
+            const opts = mockCreateExecutionServer.mock.calls[0][0];
+            expect(opts.store).toBeDefined();
+            expect(opts.dataDir).toBe(customDir);
+        });
+    });
 });
