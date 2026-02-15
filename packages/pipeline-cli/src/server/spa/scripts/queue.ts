@@ -272,23 +272,40 @@ export function getQueueScript(opts: ScriptOptions): string {
             var typeSelect = document.getElementById('enqueue-type');
             var prioritySelect = document.getElementById('enqueue-priority');
             var promptInput = document.getElementById('enqueue-prompt');
+            var modelInput = document.getElementById('enqueue-model');
+            var cwdInput = document.getElementById('enqueue-cwd');
 
             var displayName = nameInput ? nameInput.value.trim() : '';
             var type = typeSelect ? typeSelect.value : 'custom';
             var priority = prioritySelect ? prioritySelect.value : 'normal';
             var prompt = promptInput ? promptInput.value.trim() : '';
+            var model = modelInput ? modelInput.value.trim() : '';
+            var cwd = cwdInput ? cwdInput.value.trim() : '';
 
             var payload = type === 'ai-clarification'
                 ? { prompt: prompt || displayName || 'AI clarification task' }
                 : type === 'follow-prompt'
-                    ? { promptFilePath: prompt || '', workingDirectory: '' }
+                    ? { promptFilePath: prompt || '' }
                     : { data: { prompt: prompt || displayName || '' } };
+
+            // Add workingDirectory to payload if provided
+            if (cwd && (type === 'ai-clarification' || type === 'follow-prompt')) {
+                payload.workingDirectory = cwd;
+            } else if (cwd && type === 'custom') {
+                payload.data = payload.data || {};
+                payload.data.workingDirectory = cwd;
+            }
+
+            var config = {};
+            if (model) {
+                config.model = model;
+            }
 
             var body = {
                 type: type,
                 priority: priority,
                 payload: payload,
-                config: {}
+                config: config
             };
             // Only include displayName if user provided one; server auto-generates otherwise
             if (displayName) {
@@ -306,6 +323,8 @@ export function getQueueScript(opts: ScriptOptions): string {
                 // Clear form
                 if (nameInput) nameInput.value = '';
                 if (promptInput) promptInput.value = '';
+                if (modelInput) modelInput.value = '';
+                if (cwdInput) cwdInput.value = '';
                 fetchQueue();
                 // Start polling to track task progress
                 startQueuePolling();

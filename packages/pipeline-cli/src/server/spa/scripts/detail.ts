@@ -41,6 +41,12 @@ export function getDetailScript(): string {
             if (process.metadata && process.metadata.backend) {
                 html += '<div class="meta-item"><label>Backend</label><span>' + escapeHtmlClient(process.metadata.backend) + '</span></div>';
             }
+            if (process.metadata && process.metadata.model) {
+                html += '<div class="meta-item"><label>Model</label><span>' + escapeHtmlClient(process.metadata.model) + '</span></div>';
+            }
+            if (process.workingDirectory) {
+                html += '<div class="meta-item"><label>Working Directory</label><span class="meta-path">' + escapeHtmlClient(process.workingDirectory) + '</span></div>';
+            }
             if (process.startTime) {
                 html += '<div class="meta-item"><label>Started</label><span>' + new Date(process.startTime).toLocaleString() + '</span></div>';
             }
@@ -213,6 +219,12 @@ export function getDetailScript(): string {
             // Metadata
             html += '<div class="meta-grid">';
             html += '<div class="meta-item"><label>Process ID</label><span>' + escapeHtmlClient(processId) + '</span></div>';
+            if (proc && proc.metadata && proc.metadata.model) {
+                html += '<div class="meta-item"><label>Model</label><span>' + escapeHtmlClient(proc.metadata.model) + '</span></div>';
+            }
+            if (proc && proc.workingDirectory) {
+                html += '<div class="meta-item"><label>Working Directory</label><span class="meta-path">' + escapeHtmlClient(proc.workingDirectory) + '</span></div>';
+            }
             if (startTime) {
                 html += '<div class="meta-item"><label>Started</label><span>' + startTime + '</span></div>';
             }

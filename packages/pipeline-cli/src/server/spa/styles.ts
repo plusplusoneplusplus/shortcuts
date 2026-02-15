@@ -327,6 +327,11 @@ export function getDashboardStyles(): string {
             letter-spacing: 0.3px;
         }
         .meta-item span { font-size: 13px; }
+        .meta-item .meta-path {
+            font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+            font-size: 12px;
+            word-break: break-all;
+        }
 
         /* ---- Result Section ---- */
         .result-section { margin-bottom: 20px; }

@@ -84,6 +84,7 @@ export class CLITaskExecutor implements TaskExecutor {
         // Create a process in the store for tracking
         const processId = `queue-${task.id}`;
         const prompt = this.extractPrompt(task);
+        const workingDirectory = this.getWorkingDirectory(task);
         const process: AIProcess = {
             id: processId,
             type: `queue-${task.type}`,
@@ -91,10 +92,12 @@ export class CLITaskExecutor implements TaskExecutor {
             fullPrompt: prompt,
             status: 'running',
             startTime: new Date(),
+            workingDirectory,
             metadata: {
                 type: `queue-${task.type}`,
                 queueTaskId: task.id,
                 priority: task.priority,
+                model: task.config.model,
             },
         };
 

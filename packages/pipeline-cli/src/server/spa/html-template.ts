@@ -125,6 +125,16 @@ ${getDashboardStyles()}
                         </select>
                     </div>
                 </div>
+                <div class="enqueue-field-row">
+                    <div class="enqueue-field">
+                        <label for="enqueue-model">Model <span class="enqueue-optional">(optional)</span></label>
+                        <input type="text" id="enqueue-model" placeholder="e.g., claude-sonnet-4-5" />
+                    </div>
+                    <div class="enqueue-field">
+                        <label for="enqueue-cwd">Working Directory <span class="enqueue-optional">(optional)</span></label>
+                        <input type="text" id="enqueue-cwd" placeholder="e.g., /path/to/project" />
+                    </div>
+                </div>
                 <div class="enqueue-field">
                     <label for="enqueue-prompt">Prompt / Details</label>
                     <textarea id="enqueue-prompt" rows="4" placeholder="Optional prompt or additional details..."></textarea>

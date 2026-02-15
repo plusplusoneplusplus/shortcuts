@@ -239,6 +239,11 @@ describe('getDashboardStyles', () => {
         expect(styles).toContain('.result-body blockquote');
     });
 
+    it('defines meta-path style for working directory display', () => {
+        expect(styles).toContain('.meta-path');
+        expect(styles).toContain('word-break: break-all');
+    });
+
     it('defines collapsible prompt section', () => {
         expect(styles).toContain('.prompt-section');
         expect(styles).toContain('.prompt-section summary');
@@ -450,6 +455,17 @@ describe('getDetailScript', () => {
         expect(script).toContain('fullPrompt');
     });
 
+    it('renders model in metadata grid when available', () => {
+        expect(script).toContain('process.metadata.model');
+        expect(script).toContain('Model</label>');
+    });
+
+    it('renders working directory in metadata grid when available', () => {
+        expect(script).toContain('process.workingDirectory');
+        expect(script).toContain('Working Directory</label>');
+        expect(script).toContain('meta-path');
+    });
+
     it('renders action buttons', () => {
         expect(script).toContain('Copy Result');
         expect(script).toContain('Copy Link');
@@ -645,6 +661,24 @@ describe('Queue panel HTML', () => {
         expect(html).toContain('auto-generated if empty');
     });
 
+    it('contains enqueue dialog with model field', () => {
+        const html = generateDashboardHtml();
+        expect(html).toContain('id="enqueue-model"');
+        const modelInputMatch = html.match(/<input[^>]*id="enqueue-model"[^>]*>/);
+        expect(modelInputMatch).toBeTruthy();
+        expect(modelInputMatch![0]).not.toContain('required');
+        expect(html).toContain('claude-sonnet-4-5');
+    });
+
+    it('contains enqueue dialog with working directory field', () => {
+        const html = generateDashboardHtml();
+        expect(html).toContain('id="enqueue-cwd"');
+        const cwdInputMatch = html.match(/<input[^>]*id="enqueue-cwd"[^>]*>/);
+        expect(cwdInputMatch).toBeTruthy();
+        expect(cwdInputMatch![0]).not.toContain('required');
+        expect(html).toContain('/path/to/project');
+    });
+
     it('contains enqueue dialog with task type options', () => {
         const html = generateDashboardHtml();
         expect(html).toContain('Custom');
@@ -731,6 +765,24 @@ describe('getQueueScript', () => {
 
     it('auto-expands history on fetchQueue when tasks complete', () => {
         expect(script).toContain('queueState.showHistory = true');
+    });
+
+    it('reads model and cwd inputs in submitEnqueueForm', () => {
+        expect(script).toContain("getElementById('enqueue-model')");
+        expect(script).toContain("getElementById('enqueue-cwd')");
+    });
+
+    it('sends model in config when provided', () => {
+        expect(script).toContain('config.model = model');
+    });
+
+    it('sends workingDirectory in payload for ai-clarification and follow-prompt', () => {
+        expect(script).toContain('payload.workingDirectory = cwd');
+    });
+
+    it('clears model and cwd inputs after submit', () => {
+        expect(script).toContain("modelInput) modelInput.value = ''");
+        expect(script).toContain("cwdInput) cwdInput.value = ''");
     });
 
     it('sets up enqueue form event listeners', () => {
@@ -921,6 +973,14 @@ describe('Queue task conversation view', () => {
 
         it('renders error alert when process has error', () => {
             expect(detailScript).toContain('error-alert');
+        });
+
+        it('renders model in queue task conversation metadata', () => {
+            expect(detailScript).toContain('proc.metadata.model');
+        });
+
+        it('renders working directory in queue task conversation metadata', () => {
+            expect(detailScript).toContain('proc.workingDirectory');
         });
     });
 

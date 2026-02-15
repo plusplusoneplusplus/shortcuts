@@ -739,6 +739,86 @@ describe('Queue Handler', () => {
     });
 
     // ========================================================================
+    // CWD and Model support
+    // ========================================================================
+
+    describe('CWD and Model support', () => {
+        it('should preserve model in config', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(`${srv.url}/api/queue`, makeTask({
+                type: 'ai-clarification',
+                payload: { prompt: 'test' },
+                config: { model: 'claude-sonnet-4-5' },
+            }));
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.config.model).toBe('claude-sonnet-4-5');
+        });
+
+        it('should preserve workingDirectory in ai-clarification payload', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(`${srv.url}/api/queue`, makeTask({
+                type: 'ai-clarification',
+                payload: { prompt: 'test', workingDirectory: '/my/project' },
+            }));
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.payload.workingDirectory).toBe('/my/project');
+        });
+
+        it('should preserve workingDirectory in follow-prompt payload', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(`${srv.url}/api/queue`, makeTask({
+                type: 'follow-prompt',
+                payload: { promptFilePath: '/path/to/prompt.md', workingDirectory: '/workspace/root' },
+            }));
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.payload.workingDirectory).toBe('/workspace/root');
+        });
+
+        it('should preserve both model and workingDirectory together', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(`${srv.url}/api/queue`, makeTask({
+                type: 'ai-clarification',
+                payload: { prompt: 'analyze code', workingDirectory: '/my/repo' },
+                config: { model: 'gpt-4' },
+            }));
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.config.model).toBe('gpt-4');
+            expect(body.task.payload.workingDirectory).toBe('/my/repo');
+        });
+
+        it('should handle empty model (undefined in config)', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(`${srv.url}/api/queue`, makeTask({
+                config: {},
+            }));
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.config.model).toBeUndefined();
+        });
+
+        it('should handle missing workingDirectory in payload', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(`${srv.url}/api/queue`, makeTask({
+                type: 'ai-clarification',
+                payload: { prompt: 'test' },
+            }));
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.payload.workingDirectory).toBeUndefined();
+        });
+    });
+
+    // ========================================================================
     // Multiple operations lifecycle
     // ========================================================================
 

@@ -473,7 +473,104 @@ describe('CLITaskExecutor', () => {
                 type: 'queue-ai-clarification',
                 queueTaskId: 'task-meta-1',
                 priority: 'high',
+                model: undefined,
             });
+        });
+
+        it('should store model in process metadata when provided in config', async () => {
+            const executor = new CLITaskExecutor(store);
+
+            const task: QueuedTask = {
+                id: 'task-meta-model',
+                type: 'ai-clarification',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: { prompt: 'test' },
+                config: { model: 'claude-sonnet-4-5' },
+            };
+
+            await executor.execute(task);
+
+            const addedProcess = (store.addProcess as any).mock.calls[0][0] as AIProcess;
+            expect(addedProcess.metadata?.model).toBe('claude-sonnet-4-5');
+        });
+
+        it('should store workingDirectory on process from ai-clarification payload', async () => {
+            const executor = new CLITaskExecutor(store);
+
+            const task: QueuedTask = {
+                id: 'task-meta-cwd',
+                type: 'ai-clarification',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: { prompt: 'test', workingDirectory: '/my/project' },
+                config: {},
+            };
+
+            await executor.execute(task);
+
+            const addedProcess = (store.addProcess as any).mock.calls[0][0] as AIProcess;
+            expect(addedProcess.workingDirectory).toBe('/my/project');
+        });
+
+        it('should store workingDirectory on process from follow-prompt payload', async () => {
+            const executor = new CLITaskExecutor(store);
+
+            const task: QueuedTask = {
+                id: 'task-meta-cwd-fp',
+                type: 'follow-prompt',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: { promptFilePath: '/path/to/prompt.md', workingDirectory: '/workspace/root' },
+                config: {},
+            };
+
+            await executor.execute(task);
+
+            const addedProcess = (store.addProcess as any).mock.calls[0][0] as AIProcess;
+            expect(addedProcess.workingDirectory).toBe('/workspace/root');
+        });
+
+        it('should store default workingDirectory on process when no payload cwd', async () => {
+            const executor = new CLITaskExecutor(store, { workingDirectory: '/default/cwd' });
+
+            const task: QueuedTask = {
+                id: 'task-meta-cwd-default',
+                type: 'ai-clarification',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: { prompt: 'test' },
+                config: {},
+            };
+
+            await executor.execute(task);
+
+            const addedProcess = (store.addProcess as any).mock.calls[0][0] as AIProcess;
+            expect(addedProcess.workingDirectory).toBe('/default/cwd');
+        });
+
+        it('should store both model and workingDirectory on process', async () => {
+            const executor = new CLITaskExecutor(store);
+
+            const task: QueuedTask = {
+                id: 'task-meta-both',
+                type: 'ai-clarification',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: { prompt: 'test', workingDirectory: '/project' },
+                config: { model: 'gpt-4' },
+            };
+
+            await executor.execute(task);
+
+            const addedProcess = (store.addProcess as any).mock.calls[0][0] as AIProcess;
+            expect(addedProcess.workingDirectory).toBe('/project');
+            expect(addedProcess.metadata?.model).toBe('gpt-4');
         });
 
         it('should truncate long prompts in promptPreview', async () => {
