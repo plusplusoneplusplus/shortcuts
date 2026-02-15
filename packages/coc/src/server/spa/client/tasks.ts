@@ -329,7 +329,7 @@ function renderFolder(folder: TaskFolder, parentPath: string): string {
     if (folder.children) {
         for (const child of folder.children) {
             const folderPath = child.relativePath || child.name;
-            const isExpanded = taskPanelState.expandedFolders[folderPath] !== false;
+            const isExpanded = taskPanelState.expandedFolders[folderPath] === true;
             const isArchive = child.name === 'archive';
             html += '<div class="task-tree-folder' + (isArchive ? ' task-archive-folder' : '') + '">' +
                 '<div class="task-tree-row task-folder-row" data-path="' + escapeHtmlClient(folderPath) + '">' +
@@ -512,7 +512,7 @@ function attachTreeEventListeners(container: HTMLElement): void {
         if (folderRow) {
             const folderKey = folderRow.getAttribute('data-path');
             if (folderKey) {
-                taskPanelState.expandedFolders[folderKey] = !(taskPanelState.expandedFolders[folderKey] !== false);
+                taskPanelState.expandedFolders[folderKey] = !(taskPanelState.expandedFolders[folderKey] === true);
                 renderTasksInRepo();
             }
             return;
