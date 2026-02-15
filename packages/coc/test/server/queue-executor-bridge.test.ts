@@ -1069,6 +1069,141 @@ describe('CLITaskExecutor.executeFollowUp', () => {
 });
 
 // ============================================================================
+// Session Tracking and Conversation Turns Tests
+// ============================================================================
+
+describe('session tracking and conversation turns', () => {
+    let store: ReturnType<typeof createMockStore>;
+
+    beforeEach(() => {
+        store = createMockStore();
+        mockSendMessage.mockReset();
+        mockIsAvailable.mockReset();
+        mockSendFollowUp.mockReset();
+        mockIsAvailable.mockResolvedValue({ available: true });
+        mockSendMessage.mockResolvedValue({
+            success: true,
+            response: 'AI response',
+            sessionId: 'sdk-session-abc',
+        });
+    });
+
+    it('should store sdkSessionId on the process after successful execution', async () => {
+        const executor = new CLITaskExecutor(store);
+        const task: QueuedTask = {
+            id: 'task-session-1',
+            type: 'ai-clarification',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { prompt: 'test prompt' },
+            config: { timeoutMs: 30000 },
+        };
+        await executor.execute(task);
+
+        const processId = `queue-${task.id}`;
+        const process = store.processes.get(processId);
+        expect(process?.sdkSessionId).toBe('sdk-session-abc');
+    });
+
+    it('should populate initial conversationTurns with user + assistant pair', async () => {
+        const executor = new CLITaskExecutor(store);
+        const task: QueuedTask = {
+            id: 'task-session-2',
+            type: 'ai-clarification',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { prompt: 'What is X?' },
+            config: { timeoutMs: 30000 },
+        };
+        await executor.execute(task);
+
+        const processId = `queue-${task.id}`;
+        const process = store.processes.get(processId);
+        expect(process?.conversationTurns).toHaveLength(2);
+
+        const [userTurn, assistantTurn] = process!.conversationTurns!;
+        expect(userTurn.role).toBe('user');
+        expect(userTurn.content).toBe('What is X?');
+        expect(userTurn.turnIndex).toBe(0);
+
+        expect(assistantTurn.role).toBe('assistant');
+        expect(assistantTurn.content).toBe('AI response');
+        expect(assistantTurn.turnIndex).toBe(1);
+    });
+
+    it('should pass keepAlive: true to sendMessage', async () => {
+        const executor = new CLITaskExecutor(store);
+        const task: QueuedTask = {
+            id: 'task-session-3',
+            type: 'ai-clarification',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { prompt: 'test' },
+            config: { timeoutMs: 30000 },
+        };
+        await executor.execute(task);
+
+        expect(mockSendMessage).toHaveBeenCalledWith(
+            expect.objectContaining({ keepAlive: true })
+        );
+    });
+
+    it('should append turns at correct indices on follow-up', async () => {
+        // Setup: process with 2 existing turns
+        const processId = 'proc-followup-turns';
+        const process: AIProcess = {
+            id: processId,
+            type: 'clarification',
+            promptPreview: 'test',
+            fullPrompt: 'test',
+            status: 'completed',
+            startTime: new Date(),
+            sdkSessionId: 'sess-existing',
+            conversationTurns: [
+                { role: 'user', content: 'initial', timestamp: new Date(), turnIndex: 0 },
+                { role: 'assistant', content: 'reply', timestamp: new Date(), turnIndex: 1 },
+            ],
+        };
+        await store.addProcess(process);
+
+        mockSendFollowUp.mockResolvedValue({
+            success: true,
+            response: 'follow-up reply',
+            sessionId: 'sess-existing',
+        });
+
+        const executor = new CLITaskExecutor(store);
+        await executor.executeFollowUp(processId, 'What about Y?');
+
+        const updated = store.processes.get(processId);
+        // Existing 2 turns + 1 assistant turn appended (user turn is added by api-handler)
+        expect(updated?.conversationTurns).toHaveLength(3);
+        expect(updated?.conversationTurns![2].role).toBe('assistant');
+        expect(updated?.conversationTurns![2].content).toBe('follow-up reply');
+        expect(updated?.conversationTurns![2].turnIndex).toBe(2);
+    });
+
+    it('should throw if process has no sdkSessionId', async () => {
+        const process: AIProcess = {
+            id: 'proc-no-session',
+            type: 'clarification',
+            promptPreview: 'test',
+            fullPrompt: 'test',
+            status: 'completed',
+            startTime: new Date(),
+        };
+        await store.addProcess(process);
+
+        const executor = new CLITaskExecutor(store);
+        await expect(executor.executeFollowUp('proc-no-session', 'hi'))
+            .rejects.toThrow('no SDK session');
+    });
+});
+
+// ============================================================================
 // Queue Executor Bridge Integration Tests
 // ============================================================================
 

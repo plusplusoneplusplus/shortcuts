@@ -131,12 +131,34 @@ export class CLITaskExecutor implements TaskExecutor {
             const duration = Date.now() - startTime;
             logger.debug(LogCategory.AI, `[QueueExecutor] Task ${task.id} completed in ${duration}ms`);
 
-            // Update process as completed
+            // Extract session and response data for conversation tracking
+            const sessionId = (result as any)?.sessionId;
+            const responseText = (result as any)?.response ?? '';
+
+            // Build initial conversation turns
+            const conversationTurns: ConversationTurn[] = [
+                {
+                    role: 'user',
+                    content: prompt,
+                    timestamp: process.startTime,
+                    turnIndex: 0,
+                },
+                {
+                    role: 'assistant',
+                    content: responseText,
+                    timestamp: new Date(),
+                    turnIndex: 1,
+                },
+            ];
+
+            // Update process as completed — now includes session + conversation data
             try {
                 await this.store.updateProcess(processId, {
                     status: 'completed',
                     endTime: new Date(),
                     result: typeof result === 'string' ? result : JSON.stringify(result),
+                    sdkSessionId: sessionId,
+                    conversationTurns,
                 });
                 this.store.emitProcessComplete(processId, 'completed', `${duration}ms`);
             } catch {
@@ -367,6 +389,7 @@ export class CLITaskExecutor implements TaskExecutor {
             workingDirectory,
             timeoutMs,
             usePool: false,
+            keepAlive: true,
             onPermissionRequest: this.approvePermissions ? approveAllPermissions : undefined,
             // Stream response chunks to the process store for real-time UI updates
             onStreamingChunk: (chunk: string) => {

@@ -484,6 +484,8 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             if (body.endTime !== undefined) { updates.endTime = new Date(body.endTime); }
             if (body.structuredResult !== undefined) { updates.structuredResult = body.structuredResult; }
             if (body.metadata !== undefined) { updates.metadata = body.metadata; }
+            if (body.sdkSessionId !== undefined) { updates.sdkSessionId = body.sdkSessionId; }
+            if (body.conversationTurns !== undefined) { updates.conversationTurns = body.conversationTurns; }
 
             await store.updateProcess(id, updates);
             const updated = await store.getProcess(id);
