@@ -13,7 +13,7 @@
   "scripts": {
     "build:client": "node scripts/build-client.mjs",
     "build:copy-client": "node -e \"const fs=require('fs');const p=require('path');const s=p.join('src','server','spa','client','dist');const d=p.join('dist','server','spa','client','dist');fs.mkdirSync(d,{recursive:true});for(const f of fs.readdirSync(s))fs.copyFileSync(p.join(s,f),p.join(d,f))\"",
-    "build": "npm run build:client && tsc && npm run build:copy-client",
+    "build": "npm run build:client && tsc && npm run build:copy-client && chmod +x dist/index.js",
     "test": "vitest",
     "test:run": "vitest run",
     "lint": "eslint src"

@@ -125,7 +125,14 @@ describe('Client Build Infrastructure', () => {
 
         it('should run build:client before tsc and copy client in build script', () => {
             const scripts = pkg.scripts as Record<string, string>;
-            expect(scripts['build']).toBe('npm run build:client && tsc && npm run build:copy-client');
+            expect(scripts['build']).toContain('npm run build:client');
+            expect(scripts['build']).toContain('tsc');
+            expect(scripts['build']).toContain('npm run build:copy-client');
+        });
+
+        it('should chmod +x dist/index.js in build script', () => {
+            const scripts = pkg.scripts as Record<string, string>;
+            expect(scripts['build']).toContain('chmod +x dist/index.js');
         });
 
         it('should have esbuild as devDependency', () => {
@@ -187,6 +194,29 @@ describe('Client Build Infrastructure', () => {
             const content = fs.readFileSync(path.join(CLIENT_DIST, 'bundle.css'), 'utf8');
             // Placeholder CSS produces a comment-only or empty bundle
             expect(content).toBeDefined();
+        });
+    });
+
+    // ========================================================================
+    // dist/index.js execute permission
+    // ========================================================================
+
+    describe('dist/index.js execute permission', () => {
+        beforeAll(() => {
+            execSync('npm run build', {
+                cwd: PKG_ROOT,
+                stdio: 'pipe',
+                timeout: 60000,
+            });
+        });
+
+        it('should have the execute bit set after build', () => {
+            const distIndex = path.join(PKG_ROOT, 'dist', 'index.js');
+            expect(fs.existsSync(distIndex)).toBe(true);
+            const stat = fs.statSync(distIndex);
+            // eslint-disable-next-line no-bitwise
+            const isExecutable = (stat.mode & 0o111) !== 0;
+            expect(isExecutable).toBe(true);
         });
     });
 });

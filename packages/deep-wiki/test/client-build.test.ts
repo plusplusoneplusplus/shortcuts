@@ -125,6 +125,11 @@ describe('Client Build Infrastructure', () => {
             expect(clientIdx).toBeLessThan(tscIdx);
         });
 
+        it('should chmod +x dist/index.js in build script', () => {
+            const scripts = pkg.scripts as Record<string, string>;
+            expect(scripts['build']).toContain('chmod +x dist/index.js');
+        });
+
         it('should keep existing build:bundle script unchanged', () => {
             const scripts = pkg.scripts as Record<string, string>;
             expect(scripts['build:bundle']).toBe('node esbuild.config.mjs');
@@ -207,6 +212,29 @@ describe('Client Build Infrastructure', () => {
         it('bundle.css should be a valid CSS file', () => {
             const content = fs.readFileSync(path.join(CLIENT_DIST, 'bundle.css'), 'utf8');
             expect(content).toBeDefined();
+        });
+    });
+
+    // ========================================================================
+    // dist/index.js execute permission
+    // ========================================================================
+
+    describe('dist/index.js execute permission', () => {
+        beforeAll(() => {
+            execSync('npm run build', {
+                cwd: PKG_ROOT,
+                stdio: 'pipe',
+                timeout: 60000,
+            });
+        });
+
+        it('should have the execute bit set after build', () => {
+            const distIndex = path.join(PKG_ROOT, 'dist', 'index.js');
+            expect(fs.existsSync(distIndex)).toBe(true);
+            const stat = fs.statSync(distIndex);
+            // eslint-disable-next-line no-bitwise
+            const isExecutable = (stat.mode & 0o111) !== 0;
+            expect(isExecutable).toBe(true);
         });
     });
 });
