@@ -1,11 +1,15 @@
 /**
  * CommentsManagerBase - Base class for comments management
  * Provides shared functionality for both markdown and diff comments
+ *
+ * This module is free of VS Code dependencies — all platform-specific
+ * behaviour is injected via constructor parameters (FileWatcherFactory, Logger).
  */
 
+import { EventEmitter } from 'events';
 import * as path from 'path';
-import * as vscode from 'vscode';
-import { getExtensionLogger, LogCategory, ensureDirectoryExists, safeExists, safeReadFile, safeWriteFile } from '../shared';
+import { ensureDirectoryExists, safeExists, safeReadFile, safeWriteFile } from '@plusplusoneplusplus/pipeline-core';
+import { Logger, consoleLogger } from '@plusplusoneplusplus/pipeline-core';
 import {
     BaseAnchor,
     BaseComment,
@@ -15,6 +19,58 @@ import {
     BaseCommentsSettings,
     BaseSelection
 } from './base-types';
+
+// ---------------------------------------------------------------------------
+// Portable abstractions (no VS Code dependency)
+// ---------------------------------------------------------------------------
+
+/** Matches the `vscode.Disposable` interface structurally. */
+export interface Disposable {
+    dispose(): void;
+}
+
+/**
+ * Minimal typed event emitter that is a drop-in replacement for
+ * `vscode.EventEmitter<T>`.  Backed by Node.js `EventEmitter`.
+ */
+export class TypedEventEmitter<T> {
+    private readonly _emitter = new EventEmitter();
+    private static readonly EVENT = 'event';
+
+    /** Subscribe; returns a Disposable to unsubscribe. */
+    readonly event = (listener: (e: T) => void): Disposable => {
+        this._emitter.on(TypedEventEmitter.EVENT, listener);
+        return {
+            dispose: () => {
+                this._emitter.removeListener(TypedEventEmitter.EVENT, listener);
+            }
+        };
+    };
+
+    /** Emit an event to all subscribers. */
+    fire(data: T): void {
+        this._emitter.emit(TypedEventEmitter.EVENT, data);
+    }
+
+    /** Remove all listeners and clean up. */
+    dispose(): void {
+        this._emitter.removeAllListeners();
+    }
+}
+
+/** Subset of `vscode.FileSystemWatcher` used by setupFileWatcher(). */
+export interface FileWatcher extends Disposable {
+    onDidChange: (listener: () => void) => Disposable;
+    onDidCreate: (listener: () => void) => Disposable;
+    onDidDelete: (listener: () => void) => Disposable;
+}
+
+/**
+ * Factory that creates a FileWatcher for a given config file path.
+ * The factory is responsible for constructing any watch patterns
+ * (glob, RelativePattern, chokidar, etc.).
+ */
+export type FileWatcherFactory = (configPath: string) => FileWatcher;
 
 /**
  * Abstract base class for managing comments storage and operations
@@ -27,20 +83,22 @@ export abstract class CommentsManagerBase<
     TSettings extends BaseCommentsSettings,
     TConfig extends BaseCommentsConfig<TComment, TSettings>,
     TEvent extends BaseCommentEvent<TComment>
-> implements vscode.Disposable {
+> implements Disposable {
     protected readonly configPath: string;
     protected readonly workspaceRoot: string;
     protected config: TConfig;
-    protected fileWatcher?: vscode.FileSystemWatcher;
+    protected fileWatcher?: FileWatcher;
     protected debounceTimer?: NodeJS.Timeout;
 
-    protected readonly _onDidChangeComments = new vscode.EventEmitter<TEvent>();
-    readonly onDidChangeComments: vscode.Event<TEvent> = this._onDidChangeComments.event;
+    protected readonly _onDidChangeComments = new TypedEventEmitter<TEvent>();
+    readonly onDidChangeComments = this._onDidChangeComments.event;
 
     constructor(
         workspaceRoot: string,
         configFileName: string,
-        defaultConfig: TConfig
+        defaultConfig: TConfig,
+        protected readonly fileWatcherFactory?: FileWatcherFactory,
+        protected readonly logger: Logger = consoleLogger
     ) {
         this.workspaceRoot = workspaceRoot;
         this.configPath = path.join(workspaceRoot, '.vscode', configFileName);
@@ -80,7 +138,7 @@ export abstract class CommentsManagerBase<
 
             return this.config;
         } catch (error) {
-            getExtensionLogger().error(LogCategory.MARKDOWN, 'Error loading comments', error instanceof Error ? error : undefined);
+            this.logger.error('Comments', 'Error loading comments', error instanceof Error ? error : undefined);
             this.config = this.getDefaultConfig();
             return this.config;
         }
@@ -101,7 +159,7 @@ export abstract class CommentsManagerBase<
                 throw result.error || new Error('Failed to write comments file');
             }
         } catch (error) {
-            getExtensionLogger().error(LogCategory.MARKDOWN, 'Error saving comments', error instanceof Error ? error : undefined);
+            this.logger.error('Comments', 'Error saving comments', error instanceof Error ? error : undefined);
             throw error;
         }
     }
@@ -410,13 +468,11 @@ export abstract class CommentsManagerBase<
      * Setup file watcher for external changes
      */
     protected setupFileWatcher(): void {
-        const configFileName = path.basename(this.configPath);
-        const pattern = new vscode.RelativePattern(
-            path.dirname(this.configPath),
-            configFileName
-        );
+        if (!this.fileWatcherFactory) {
+            return; // No watcher in pure Node.js environments
+        }
 
-        this.fileWatcher = vscode.workspace.createFileSystemWatcher(pattern);
+        this.fileWatcher = this.fileWatcherFactory(this.configPath);
 
         const handleChange = () => {
             if (this.debounceTimer) {

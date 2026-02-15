@@ -11,6 +11,7 @@ export {
 } from './ai-clarification-handler';
 export * from './comment-anchor';
 export { MarkdownCommentsCommands } from './comments-commands';
+export { CommentsManagerBase, Disposable, FileWatcher, FileWatcherFactory, TypedEventEmitter } from './comments-manager-base';
 export { CommentsManager } from './comments-manager';
 export { CommentFileItem, CommentItem, MarkdownCommentsTreeDataProvider } from './comments-tree-provider';
 export * from './file-path-utils';

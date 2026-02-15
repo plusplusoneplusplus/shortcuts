@@ -12,7 +12,7 @@ import {
     relocateAnchor,
     updateAnchor
 } from './comment-anchor';
-import { CommentsManagerBase } from './comments-manager-base';
+import { CommentsManagerBase, FileWatcherFactory } from './comments-manager-base';
 import {
     AnchorRelocationResult,
     CommentAnchor,
@@ -40,8 +40,8 @@ export class CommentsManager extends CommentsManagerBase<
     CommentsConfig,
     CommentEvent
 > {
-    constructor(workspaceRoot: string) {
-        super(workspaceRoot, COMMENTS_CONFIG_FILE, { ...DEFAULT_COMMENTS_CONFIG });
+    constructor(workspaceRoot: string, fileWatcherFactory?: FileWatcherFactory) {
+        super(workspaceRoot, COMMENTS_CONFIG_FILE, { ...DEFAULT_COMMENTS_CONFIG }, fileWatcherFactory);
     }
 
     /**

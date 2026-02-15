@@ -6,7 +6,7 @@
 import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
-import { CommentsManagerBase } from '../markdown-comments/comments-manager-base';
+import { CommentsManagerBase, FileWatcherFactory } from '../markdown-comments/comments-manager-base';
 import {
     createDiffAnchor,
     needsDiffRelocation,
@@ -43,12 +43,12 @@ export class DiffCommentsManager extends CommentsManagerBase<
     DiffCommentsConfig,
     DiffCommentEvent
 > {
-    constructor(workspaceRoot: string) {
+    constructor(workspaceRoot: string, fileWatcherFactory?: FileWatcherFactory) {
         super(workspaceRoot, DIFF_COMMENTS_CONFIG_FILE, {
             ...DEFAULT_DIFF_COMMENTS_CONFIG,
             comments: [],
             settings: { ...DEFAULT_DIFF_COMMENTS_SETTINGS }
-        });
+        }, fileWatcherFactory);
     }
 
     /**

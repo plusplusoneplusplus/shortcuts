@@ -44,6 +44,7 @@ import {
     PromptGenerator,
     ReviewEditorViewProvider
 } from './shortcuts/markdown-comments';
+import { createVSCodeFileWatcherFactory } from './shortcuts/markdown-comments/vscode-file-watcher';
 import { NotificationManager } from './shortcuts/notification-manager';
 import { getExtensionLogger, getFirstWorkspaceFolder, LogCategory } from './shortcuts/shared';
 import { TaskManager, TasksCommands, TasksDragDropController, TasksTreeDataProvider, ReviewStatusManager, registerTasksDiscoveryCommands, registerTasksAICommands } from './shortcuts/tasks-viewer';
@@ -616,7 +617,7 @@ export async function activate(context: vscode.ExtensionContext) {
         // to allow tracking SDK test requests in the AI Processes panel
 
         // Initialize Git Diff Comments feature (must be before git tree provider)
-        const diffCommentsManager = new DiffCommentsManager(workspaceRoot);
+        const diffCommentsManager = new DiffCommentsManager(workspaceRoot, createVSCodeFileWatcherFactory());
         await diffCommentsManager.initialize();
 
         // Initialize Git tree data provider (unified Changes + Commits + Comments view)
@@ -2037,7 +2038,7 @@ export async function activate(context: vscode.ExtensionContext) {
         });
 
         // Initialize Markdown Comments feature
-        const commentsManager = new CommentsManager(workspaceRoot);
+        const commentsManager = new CommentsManager(workspaceRoot, createVSCodeFileWatcherFactory());
         await commentsManager.initialize();
 
         // Initialize AI Process Manager with persistence (must be before ReviewEditorViewProvider and DiffReviewEditorProvider)
