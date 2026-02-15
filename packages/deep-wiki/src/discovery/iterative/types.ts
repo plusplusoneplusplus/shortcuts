@@ -7,7 +7,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { ModuleGraph, TopicSeed } from '../../types';
+import type { ComponentGraph, TopicSeed } from '../../types';
 
 /**
  * Result of probing a single topic in the codebase.
@@ -15,8 +15,8 @@ import type { ModuleGraph, TopicSeed } from '../../types';
 export interface TopicProbeResult {
     /** The topic that was probed */
     topic: string;
-    /** Modules found related to this topic */
-    foundModules: ProbeFoundModule[];
+    /** Components found related to this topic */
+    foundComponents: ProbeFoundComponent[];
     /** New topics discovered during probing */
     discoveredTopics: DiscoveredTopic[];
     /** IDs of other topics this topic depends on */
@@ -26,10 +26,10 @@ export interface TopicProbeResult {
 }
 
 /**
- * A module found during topic probing.
+ * A component found during topic probing.
  */
-export interface ProbeFoundModule {
-    /** Suggested module ID (kebab-case) */
+export interface ProbeFoundComponent {
+    /** Suggested component ID (kebab-case) */
     id: string;
     /** Human-readable name */
     name: string;
@@ -37,7 +37,7 @@ export interface ProbeFoundModule {
     path: string;
     /** Purpose description */
     purpose: string;
-    /** Key files in this module */
+    /** Key files in this component */
     keyFiles: string[];
     /** Evidence of why this belongs to the topic */
     evidence: string;
@@ -93,8 +93,8 @@ export interface IterativeDiscoveryOptions {
  * Result of the merge + gap analysis step.
  */
 export interface MergeResult {
-    /** The merged module graph (growing) */
-    graph: ModuleGraph;
+    /** The merged component graph (growing) */
+    graph: ComponentGraph;
     /** New topics to probe in the next round */
     newTopics: TopicSeed[];
     /** Whether convergence was reached */

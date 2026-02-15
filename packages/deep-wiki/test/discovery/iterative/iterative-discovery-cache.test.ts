@@ -12,7 +12,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { runIterativeDiscovery } from '../../../src/discovery/iterative/iterative-discovery';
-import type { IterativeDiscoveryOptions, TopicSeed, ModuleGraph, TopicProbeResult } from '../../../src/types';
+import type { IterativeDiscoveryOptions, TopicSeed, ComponentGraph, TopicProbeResult } from '../../../src/types';
 import {
     saveProbeResult,
     getCachedProbeResult,
@@ -54,7 +54,7 @@ let outputDir: string;
 
 const gitHash = 'test_git_hash_123';
 
-function createMockGraph(moduleIds: string[] = []): ModuleGraph {
+function createMockGraph(moduleIds: string[] = []): ComponentGraph {
     return {
         project: {
             name: 'test-project',
@@ -63,11 +63,11 @@ function createMockGraph(moduleIds: string[] = []): ModuleGraph {
             buildSystem: 'npm',
             entryPoints: [],
         },
-        modules: moduleIds.map(id => ({
+        components: moduleIds.map(id => ({
             id,
             name: id,
             path: `src/${id}/`,
-            purpose: `${id} module`,
+            purpose: `${id} component`,
             keyFiles: [`src/${id}/index.ts`],
             dependencies: [],
             dependents: [],
@@ -82,7 +82,7 @@ function createMockGraph(moduleIds: string[] = []): ModuleGraph {
 function createProbeResult(topic: string): TopicProbeResult {
     return {
         topic,
-        foundModules: [
+        foundComponents: [
             {
                 id: `${topic}-service`,
                 name: `${topic} Service`,
@@ -154,7 +154,7 @@ describe('probe cache integration', () => {
         const probeResults = mergeCallArgs[1] as TopicProbeResult[];
         expect(probeResults).toHaveLength(3);
 
-        expect(result.modules).toHaveLength(3);
+        expect(result.components).toHaveLength(3);
     });
 
     it('should run all probes when no cache exists', async () => {
@@ -350,7 +350,7 @@ describe('no caching when outputDir not provided', () => {
         };
 
         const result = await runIterativeDiscovery(options);
-        expect(result.modules).toHaveLength(1);
+        expect(result.components).toHaveLength(1);
         expect(vi.mocked(runTopicProbe)).toHaveBeenCalledTimes(1);
 
         // No metadata should be saved
@@ -427,7 +427,7 @@ describe('partial cache (crash recovery)', () => {
 
         // Only 'api' needed a fresh probe
         expect(vi.mocked(runTopicProbe)).toHaveBeenCalledTimes(1);
-        expect(result.modules).toHaveLength(3);
+        expect(result.components).toHaveLength(3);
 
         // After completion, the api probe should also be cached
         const cachedApi = getCachedProbeResult('api', outputDir, gitHash);

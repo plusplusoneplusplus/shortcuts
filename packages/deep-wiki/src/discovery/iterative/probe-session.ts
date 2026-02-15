@@ -74,7 +74,7 @@ export async function runTopicProbe(
         // Return empty result on SDK unavailability
         return {
             topic: topic.topic,
-            foundModules: [],
+            foundComponents: [],
             discoveredTopics: [],
             dependencies: [],
             confidence: 0,
@@ -109,7 +109,7 @@ export async function runTopicProbe(
             printWarning(`    Probe failed for "${topic.topic}": ${result.error || 'empty response'}`);
             return {
                 topic: topic.topic,
-                foundModules: [],
+                foundComponents: [],
                 discoveredTopics: [],
                 dependencies: [],
                 confidence: 0,
@@ -118,14 +118,14 @@ export async function runTopicProbe(
 
         // Parse the response
         const parsed = parseProbeResponse(result.response, topic.topic);
-        printInfo(`    Probe "${topic.topic}" found ${parsed.foundModules.length} modules ${gray(`(confidence: ${parsed.confidence})`)}`);
+        printInfo(`    Probe "${topic.topic}" found ${parsed.foundComponents.length} components ${gray(`(confidence: ${parsed.confidence})`)}`);
         return parsed;
     } catch (error) {
         // Return empty result on error (don't crash the loop)
         printWarning(`    Probe error for "${topic.topic}": ${getErrorMessage(error)}`);
         return {
             topic: topic.topic,
-            foundModules: [],
+            foundComponents: [],
             discoveredTopics: [],
             dependencies: [],
             confidence: 0,

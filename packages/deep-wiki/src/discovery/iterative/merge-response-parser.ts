@@ -7,10 +7,10 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { ModuleGraph, TopicSeed } from '../../types';
+import type { ComponentGraph, TopicSeed } from '../../types';
 import type { MergeResult } from './types';
-import { parseModuleGraphResponse } from '../response-parser';
-import { normalizeModuleId } from '../../schemas';
+import { parseComponentGraphResponse } from '../response-parser';
+import { normalizeComponentId } from '../../schemas';
 import { parseAIJsonResponse } from '../../utils/parse-ai-response';
 import { getErrorMessage } from '../../utils/error-utils';
 
@@ -34,9 +34,9 @@ export function parseMergeResponse(response: string): MergeResult {
     }
 
     // Parse graph using existing parser
-    let graph: ModuleGraph;
+    let graph: ComponentGraph;
     try {
-        graph = parseModuleGraphResponse(JSON.stringify(obj.graph));
+        graph = parseComponentGraphResponse(JSON.stringify(obj.graph));
     } catch (parseError) {
         throw new Error(`Invalid graph in merge response: ${getErrorMessage(parseError)}`);
     }
@@ -51,7 +51,7 @@ export function parseMergeResponse(response: string): MergeResult {
             const topic = item as Record<string, unknown>;
             if (typeof topic.topic === 'string' && typeof topic.description === 'string') {
                 newTopics.push({
-                    topic: normalizeModuleId(String(topic.topic)),
+                    topic: normalizeComponentId(String(topic.topic)),
                     description: String(topic.description),
                     hints: parseStringArray(topic.hints),
                 });

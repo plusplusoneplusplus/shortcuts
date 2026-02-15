@@ -2,8 +2,8 @@
  * Discovery Phase — Public API
  *
  * Main entry point for the discovery phase (Phase 1).
- * Analyzes a local repository and produces a ModuleGraph JSON
- * describing the codebase structure, modules, and dependencies.
+ * Analyzes a local repository and produces a ComponentGraph JSON
+ * describing the codebase structure, components, and dependencies.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
@@ -17,23 +17,23 @@ import { printInfo } from '../logger';
 export { DiscoveryError } from './discovery-session';
 export type { DiscoverySessionResult } from './discovery-session';
 export { LARGE_REPO_THRESHOLD, mergeSubGraphs } from './large-repo-handler';
-export { parseModuleGraphResponse, parseStructuralScanResponse, normalizePath } from './response-parser';
+export { parseComponentGraphResponse, parseStructuralScanResponse, normalizePath } from './response-parser';
 export { buildDiscoveryPrompt, buildStructuralScanPrompt, buildFocusedDiscoveryPrompt } from './prompts';
 export { runIterativeDiscovery } from './iterative/iterative-discovery';
 
 /**
- * Discover the module graph for a repository.
+ * Discover the component graph for a repository.
  *
  * This is the main entry point for Phase 1 of the deep-wiki pipeline.
- * It analyzes the repository and returns a structured ModuleGraph.
+ * It analyzes the repository and returns a structured ComponentGraph.
  *
  * For large repositories (3000+ files), it automatically uses multi-round
  * discovery: first a structural scan, then per-domain drill-downs.
  *
  * @param options - Discovery options (repoPath is required)
- * @returns DiscoveryResult containing the ModuleGraph and timing info
+ * @returns DiscoveryResult containing the ComponentGraph and timing info
  */
-export async function discoverModuleGraph(options: DiscoveryOptions): Promise<DiscoveryResult> {
+export async function discoverComponentGraph(options: DiscoveryOptions): Promise<DiscoveryResult> {
     const startTime = Date.now();
 
     let graph;

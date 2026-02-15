@@ -2,12 +2,12 @@
  * Discovery Phase — Prompt Templates
  *
  * Prompt templates for the discovery phase. These guide the AI to explore
- * a repository and produce a structured ModuleGraph JSON.
+ * a repository and produce a structured ComponentGraph JSON.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import { MODULE_GRAPH_SCHEMA, STRUCTURAL_SCAN_SCHEMA } from '../schemas';
+import { COMPONENT_GRAPH_SCHEMA, STRUCTURAL_SCAN_SCHEMA } from '../schemas';
 
 // ============================================================================
 // Discovery Prompt
@@ -22,15 +22,15 @@ import { MODULE_GRAPH_SCHEMA, STRUCTURAL_SCAN_SCHEMA } from '../schemas';
  */
 export function buildDiscoveryPrompt(repoPath: string, focus?: string): string {
     const focusSection = focus
-        ? `\n## Focus Area\n\nFocus your analysis on the subtree: ${focus}\nOnly include modules within or directly related to this area.\nStill read top-level config files (package.json, README, etc.) for project context.\n`
+        ? `\n## Focus Area\n\nFocus your analysis on the subtree: ${focus}\nOnly include components within or directly related to this area.\nStill read top-level config files (package.json, README, etc.) for project context.\n`
         : '';
 
-    return `You are a senior software architect analyzing a codebase to produce a comprehensive, feature-oriented module graph.
+    return `You are a senior software architect analyzing a codebase to produce a comprehensive, feature-oriented component graph.
 You have access to grep, glob, and view tools to explore the repository at ${repoPath}.
 
 ## Your Task
 
-Analyze the repository and produce a JSON object describing its module structure, dependencies, and architecture. Modules should represent **features, capabilities, and architectural concerns** — not just files or directories.
+Analyze the repository and produce a JSON object describing its component structure, dependencies, and architecture. Components should represent **features, capabilities, and architectural concerns** — not just files or directories.
 
 ## Exploration Strategy
 
@@ -46,7 +46,7 @@ Follow these steps in order — understand PURPOSE before STRUCTURE:
    - General: Makefile, Dockerfile, .github/workflows/
 3. **Entry points**: Identify and read main entry point files (index.ts, main.go, main.rs, app.py, etc.) to understand what features are wired together.
 4. **File structure**: Run glob("**/*") or glob("*") to understand the overall directory layout and approximate file count.
-5. **Dependency mapping**: Use grep for import/require/use patterns to map dependencies between modules.
+5. **Dependency mapping**: Use grep for import/require/use patterns to map dependencies between components.
    - TypeScript/JavaScript: grep for "import .* from" or "require("
    - Go: grep for "import" blocks
    - Rust: grep for "use " and "mod "
@@ -54,19 +54,19 @@ Follow these steps in order — understand PURPOSE before STRUCTURE:
 6. **Monorepo detection**: For monorepos, identify sub-packages and their relationships.
    - Check for workspaces in package.json
    - Check for packages/ or libs/ directories
-   - Each sub-package with its own config file is likely a separate module.
+   - Each sub-package with its own config file is likely a separate component.
 ${focusSection}
-## Module Naming Guidance
+## Component Naming Guidance
 
-Module IDs and names should describe WHAT the code does, not WHERE it lives.
+Component IDs and names should describe WHAT the code does, not WHERE it lives.
 
-**Good module IDs** (feature-focused):
+**Good component IDs** (feature-focused):
 - "inline-code-review" — describes the feature
 - "ai-pipeline-engine" — describes the capability
 - "workspace-shortcuts" — describes user-facing functionality
 - "config-migration" — describes the architectural concern
 
-**Bad module IDs** (path mirrors — DO NOT USE):
+**Bad component IDs** (path mirrors — DO NOT USE):
 - "src-shortcuts-code-review" — just a directory path turned into kebab-case
 - "packages-deep-wiki-src-cache" — echoes the file path
 - "extension-entry-point" — just the file name
@@ -76,20 +76,20 @@ Module IDs and names should describe WHAT the code does, not WHERE it lives.
 
 Return a **single JSON object** matching this schema exactly. Do NOT wrap it in markdown code blocks. Return raw JSON only.
 
-${MODULE_GRAPH_SCHEMA}
+${COMPONENT_GRAPH_SCHEMA}
 
 ## Rules
 
-- Module IDs must be unique lowercase kebab-case identifiers describing the FEATURE (e.g., "auth-service", "pipeline-execution", "real-time-sync")
-- Do NOT derive module IDs from file paths or directory names — describe what the module DOES
+- Component IDs must be unique lowercase kebab-case identifiers describing the FEATURE (e.g., "auth-service", "pipeline-execution", "real-time-sync")
+- Do NOT derive component IDs from file paths or directory names — describe what the component DOES
 - All paths must be relative to the repo root (no absolute paths)
-- Dependencies and dependents must reference other module IDs that exist in the modules array
+- Dependencies and dependents must reference other component IDs that exist in the components array
 - Complexity: "low" = simple utility/config, "medium" = moderate logic, "high" = complex business logic
-- Every module's category must match one of the declared categories
+- Every component's category must match one of the declared categories
 - architectureNotes should be a 2-4 sentence summary of the overall architecture pattern
-- Include at least 1-3 key files per module (the most important files for understanding it)
+- Include at least 1-3 key files per component (the most important files for understanding it)
 - If you can't determine a field, use a reasonable default rather than leaving it empty
-- Group related files into feature-level modules — do NOT create one module per file`;
+- Group related files into feature-level components — do NOT create one component per file`;
 }
 
 // ============================================================================
@@ -177,12 +177,12 @@ Focus on identifying the **features, capabilities, and behavioral patterns** wit
 1. Read any README, docs, or config files within "${domainPath}" to understand the domain's purpose.
 2. Run glob("${domainPath}/**/*") to see all files in this domain.
 3. Read key entry points and config files within this domain.
-4. Identify feature-level sub-modules, their purposes, and dependencies.
+4. Identify feature-level sub-components, their purposes, and dependencies.
 5. Use grep to trace imports/exports to understand internal and cross-domain dependencies.
 
-## Module Naming Guidance
+## Component Naming Guidance
 
-Module IDs should describe WHAT the code does, not echo directory paths.
+Component IDs should describe WHAT the code does, not echo directory paths.
 
 **Good**: "core-auth-engine", "pipeline-executor", "cache-invalidation"
 **Bad**: "packages-core-src-auth", "src-pipeline", "cache-index" (path mirrors)
@@ -191,16 +191,16 @@ Module IDs should describe WHAT the code does, not echo directory paths.
 
 Return a **single JSON object** matching this schema exactly. Do NOT wrap it in markdown code blocks. Return raw JSON only.
 
-${MODULE_GRAPH_SCHEMA}
+${COMPONENT_GRAPH_SCHEMA}
 
 ## Rules
 
-- Module IDs should be prefixed with the domain name and describe the FEATURE (e.g., "core-auth-engine", "core-data-pipeline")
-- Do NOT derive module IDs from file paths — describe what the module DOES
+- Component IDs should be prefixed with the domain name and describe the FEATURE (e.g., "core-auth-engine", "core-data-pipeline")
+- Do NOT derive component IDs from file paths — describe what the component DOES
 - Paths must be relative to the repo root (include the domain path prefix)
-- Dependencies may reference modules outside this domain — use your best guess for their IDs
-- For cross-domain dependencies, use the convention: domain-name + "-" + module-name
+- Dependencies may reference components outside this domain — use your best guess for their IDs
+- For cross-domain dependencies, use the convention: domain-name + "-" + component-name
 - architectureNotes should describe the architecture of THIS domain specifically
 - Categories should be specific to this domain's contents
-- Group related files into feature-level modules — do NOT create one module per file`;
+- Group related files into feature-level components — do NOT create one component per file`;
 }

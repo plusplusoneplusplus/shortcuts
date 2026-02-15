@@ -29,7 +29,7 @@ describe('buildDiscoveryPrompt', () => {
     it('should include the JSON schema', () => {
         const prompt = buildDiscoveryPrompt('/repo');
         expect(prompt).toContain('"project"');
-        expect(prompt).toContain('"modules"');
+        expect(prompt).toContain('"components"');
         expect(prompt).toContain('"categories"');
     });
 
@@ -54,7 +54,7 @@ describe('buildDiscoveryPrompt', () => {
         it('should include focus section when focus is provided', () => {
             const prompt = buildDiscoveryPrompt('/repo', 'src/');
             expect(prompt).toContain('Focus your analysis on the subtree: src/');
-            expect(prompt).toContain('Only include modules within or directly related to this area');
+            expect(prompt).toContain('Only include components within or directly related to this area');
         });
 
         it('should NOT include focus section when focus is not provided', () => {
@@ -82,38 +82,38 @@ describe('buildDiscoveryPrompt', () => {
         expect(docIndex).toBeLessThan(fileStructIndex);
     });
 
-    it('should include module naming guidance with good and bad examples', () => {
+    it('should include component naming guidance with good and bad examples', () => {
         const prompt = buildDiscoveryPrompt('/repo');
-        expect(prompt).toContain('Module Naming Guidance');
-        expect(prompt).toContain('Good module IDs');
-        expect(prompt).toContain('Bad module IDs');
+        expect(prompt).toContain('Component Naming Guidance');
+        expect(prompt).toContain('Good component IDs');
+        expect(prompt).toContain('Bad component IDs');
     });
 
-    it('should include anti-pattern examples for path-mirror module IDs', () => {
+    it('should include anti-pattern examples for path-mirror component IDs', () => {
         const prompt = buildDiscoveryPrompt('/repo');
         expect(prompt).toContain('src-shortcuts-code-review');
         expect(prompt).toContain('packages-deep-wiki-src-cache');
     });
 
-    it('should include positive examples of feature-focused module IDs', () => {
+    it('should include positive examples of feature-focused component IDs', () => {
         const prompt = buildDiscoveryPrompt('/repo');
         expect(prompt).toContain('inline-code-review');
         expect(prompt).toContain('ai-pipeline-engine');
     });
 
-    it('should instruct not to derive module IDs from file paths', () => {
+    it('should instruct not to derive component IDs from file paths', () => {
         const prompt = buildDiscoveryPrompt('/repo');
-        expect(prompt).toContain('Do NOT derive module IDs from file paths');
+        expect(prompt).toContain('Do NOT derive component IDs from file paths');
     });
 
-    it('should instruct to group related files into feature-level modules', () => {
+    it('should instruct to group related files into feature-level components', () => {
         const prompt = buildDiscoveryPrompt('/repo');
-        expect(prompt).toContain('Group related files into feature-level modules');
+        expect(prompt).toContain('Group related files into feature-level components');
     });
 
-    it('should describe modules as features and capabilities in task description', () => {
+    it('should describe components as features and capabilities in task description', () => {
         const prompt = buildDiscoveryPrompt('/repo');
-        expect(prompt).toContain('feature-oriented module graph');
+        expect(prompt).toContain('feature-oriented component graph');
         expect(prompt).toContain('features, capabilities, and architectural concerns');
     });
 });
@@ -198,7 +198,7 @@ describe('buildFocusedDiscoveryPrompt', () => {
         expect(prompt).toContain('glob("packages/core/**/*")');
     });
 
-    it('should include module ID prefix convention', () => {
+    it('should include component ID prefix convention', () => {
         const prompt = buildFocusedDiscoveryPrompt('/repo', 'src/', 'Source', 'proj');
         expect(prompt).toContain('prefixed with the domain name');
     });
@@ -206,25 +206,25 @@ describe('buildFocusedDiscoveryPrompt', () => {
     it('should include the JSON schema', () => {
         const prompt = buildFocusedDiscoveryPrompt('/repo', 'src/', 'Source', 'proj');
         expect(prompt).toContain('"project"');
-        expect(prompt).toContain('"modules"');
+        expect(prompt).toContain('"components"');
     });
 
     // Feature-focus prompt quality tests
-    it('should include module naming guidance with good and bad examples', () => {
+    it('should include component naming guidance with good and bad examples', () => {
         const prompt = buildFocusedDiscoveryPrompt('/repo', 'src/', 'Source', 'proj');
-        expect(prompt).toContain('Module Naming Guidance');
+        expect(prompt).toContain('Component Naming Guidance');
         expect(prompt).toContain('Good');
         expect(prompt).toContain('Bad');
     });
 
-    it('should instruct not to derive module IDs from file paths', () => {
+    it('should instruct not to derive component IDs from file paths', () => {
         const prompt = buildFocusedDiscoveryPrompt('/repo', 'src/', 'Source', 'proj');
-        expect(prompt).toContain('Do NOT derive module IDs from file paths');
+        expect(prompt).toContain('Do NOT derive component IDs from file paths');
     });
 
-    it('should instruct to group related files into feature-level modules', () => {
+    it('should instruct to group related files into feature-level components', () => {
         const prompt = buildFocusedDiscoveryPrompt('/repo', 'src/', 'Source', 'proj');
-        expect(prompt).toContain('Group related files into feature-level modules');
+        expect(prompt).toContain('Group related files into feature-level components');
     });
 
     it('should focus on features, capabilities, and behavioral patterns', () => {

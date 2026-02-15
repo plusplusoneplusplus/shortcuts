@@ -1,21 +1,21 @@
 /**
- * Rule-Based Module Consolidator
+ * Rule-Based Component Consolidator
  *
- * Merges fine-grained modules by directory proximity.
+ * Merges fine-grained components by directory proximity.
  * This is the fast, deterministic first pass of the hybrid consolidation.
  *
  * Algorithm:
- * 1. Group modules by their parent directory path
- * 2. Merge modules sharing the same directory into a single module
+ * 1. Group components by their parent directory path
+ * 2. Merge components sharing the same directory into a single component
  * 3. Fix up dependency references (old IDs → new merged IDs)
- * 4. Re-derive categories from merged modules
+ * 4. Re-derive categories from merged components
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as path from 'path';
-import type { ModuleInfo, ModuleGraph, CategoryInfo } from '../types';
-import { normalizeModuleId } from '../schemas';
+import type { ComponentInfo, ComponentGraph, CategoryInfo } from '../types';
+import { normalizeComponentId } from '../schemas';
 import { resolveMaxComplexity } from './constants';
 
 // ============================================================================
@@ -23,13 +23,13 @@ import { resolveMaxComplexity } from './constants';
 // ============================================================================
 
 /**
- * Intermediate grouping of modules by directory.
+ * Intermediate grouping of components by directory.
  */
 interface DirectoryGroup {
     /** Normalized directory path (e.g., "src/shortcuts/tasks-viewer") */
     dirPath: string;
-    /** Modules in this directory */
-    modules: ModuleInfo[];
+    /** Components in this directory */
+    components: ComponentInfo[];
 }
 
 // ============================================================================
@@ -37,54 +37,54 @@ interface DirectoryGroup {
 // ============================================================================
 
 /**
- * Consolidate modules by directory proximity.
+ * Consolidate components by directory proximity.
  *
- * Modules sharing the same parent directory are merged into a single module.
- * The merged module inherits the union of keyFiles, dependencies, dependents,
+ * Components sharing the same parent directory are merged into a single component.
+ * The merged component inherits the union of keyFiles, dependencies, dependents,
  * and picks the highest complexity level.
  *
- * @param graph - The original module graph from discovery
- * @returns A new module graph with consolidated modules
+ * @param graph - The original component graph from discovery
+ * @returns A new component graph with consolidated components
  */
-export function consolidateByDirectory(graph: ModuleGraph): ModuleGraph {
-    const modules = graph.modules;
+export function consolidateByDirectory(graph: ComponentGraph): ComponentGraph {
+    const components = graph.components;
 
-    if (modules.length === 0) {
+    if (components.length === 0) {
         return graph;
     }
 
     // Step 1: Group modules by parent directory
-    const groups = groupModulesByDirectory(modules);
+    const groups = groupComponentsByDirectory(components);
 
-    // Step 2: Merge each group into a single module
-    const mergedModules: ModuleInfo[] = [];
+    // Step 2: Merge each group into a single component
+    const mergedComponents: ComponentInfo[] = [];
     const idMapping = new Map<string, string>(); // old ID → new ID
 
     for (const group of groups) {
-        if (group.modules.length === 1) {
-            // Single module in directory — keep as-is
-            const mod = group.modules[0];
-            idMapping.set(mod.id, mod.id);
-            mergedModules.push(mod);
+        if (group.components.length === 1) {
+            // Single component in directory — keep as-is
+            const comp = group.components[0];
+            idMapping.set(comp.id, comp.id);
+            mergedComponents.push(comp);
         } else {
-            // Multiple modules — merge
-            const merged = mergeModuleGroup(group);
-            for (const mod of group.modules) {
-                idMapping.set(mod.id, merged.id);
+            // Multiple components — merge
+            const merged = mergeComponentGroup(group);
+            for (const comp of group.components) {
+                idMapping.set(comp.id, merged.id);
             }
-            mergedModules.push(merged);
+            mergedComponents.push(merged);
         }
     }
 
     // Step 3: Fix up dependency references
-    const fixedModules = fixDependencyReferences(mergedModules, idMapping);
+    const fixedComponents = fixDependencyReferences(mergedComponents, idMapping);
 
     // Step 4: Re-derive categories
-    const categories = deriveCategories(fixedModules);
+    const categories = deriveCategories(fixedComponents);
 
     return {
         ...graph,
-        modules: fixedModules,
+        components: fixedComponents,
         categories,
     };
 }
@@ -94,10 +94,10 @@ export function consolidateByDirectory(graph: ModuleGraph): ModuleGraph {
 // ============================================================================
 
 /**
- * Get the parent directory of a module's path.
+ * Get the parent directory of a component's path.
  * Handles both file paths and directory paths.
  */
-export function getModuleDirectory(modulePath: string): string {
+export function getComponentDirectory(modulePath: string): string {
     // Normalize path separators
     const normalized = modulePath.replace(/\\/g, '/');
 
@@ -115,34 +115,34 @@ export function getModuleDirectory(modulePath: string): string {
 }
 
 /**
- * Group modules by their parent directory path.
+ * Group components by their parent directory path.
  */
-function groupModulesByDirectory(modules: ModuleInfo[]): DirectoryGroup[] {
-    const dirMap = new Map<string, ModuleInfo[]>();
+function groupComponentsByDirectory(components: ComponentInfo[]): DirectoryGroup[] {
+    const dirMap = new Map<string, ComponentInfo[]>();
 
-    for (const mod of modules) {
-        const dir = getModuleDirectory(mod.path);
+    for (const comp of components) {
+        const dir = getComponentDirectory(comp.path);
         if (!dirMap.has(dir)) {
             dirMap.set(dir, []);
         }
-        dirMap.get(dir)!.push(mod);
+        dirMap.get(dir)!.push(comp);
     }
 
-    return Array.from(dirMap.entries()).map(([dirPath, mods]) => ({
+    return Array.from(dirMap.entries()).map(([dirPath, comps]) => ({
         dirPath,
-        modules: mods,
+        components: comps,
     }));
 }
 
 /**
- * Merge multiple modules in the same directory into a single module.
+ * Merge multiple components in the same directory into a single component.
  */
-function mergeModuleGroup(group: DirectoryGroup): ModuleInfo {
-    const { dirPath, modules } = group;
+function mergeComponentGroup(group: DirectoryGroup): ComponentInfo {
+    const { dirPath, components: comps } = group;
 
     // Derive a name from the directory path
     const dirName = dirPath.split('/').pop() || dirPath;
-    const id = normalizeModuleId(dirPath);
+    const id = normalizeComponentId(dirPath);
     const name = dirName
         .split('-')
         .map(w => w.charAt(0).toUpperCase() + w.slice(1))
@@ -150,37 +150,37 @@ function mergeModuleGroup(group: DirectoryGroup): ModuleInfo {
 
     // Union of all key files
     const keyFiles = deduplicateStrings(
-        modules.flatMap(m => m.keyFiles)
+        comps.flatMap(m => m.keyFiles)
     );
 
     // Union of all dependency IDs (will be fixed up later)
     const allDeps = deduplicateStrings(
-        modules.flatMap(m => m.dependencies)
+        comps.flatMap(m => m.dependencies)
     );
     // Remove self-references (modules within this group)
-    const selfIds = new Set(modules.map(m => m.id));
+    const selfIds = new Set(comps.map(m => m.id));
     const dependencies = allDeps.filter(d => !selfIds.has(d));
 
     // Union of all dependent IDs
     const allDependents = deduplicateStrings(
-        modules.flatMap(m => m.dependents)
+        comps.flatMap(m => m.dependents)
     );
     const dependents = allDependents.filter(d => !selfIds.has(d));
 
     // Pick highest complexity
-    const complexity = pickHighestComplexity(modules);
+    const complexity = pickHighestComplexity(comps);
 
     // Pick most common category
-    const category = pickMostCommonCategory(modules);
+    const category = pickMostCommonCategory(comps);
 
     // Combine purposes
-    const purpose = combinePurposes(modules);
+    const purpose = combinePurposes(comps);
 
     // Track provenance
-    const mergedFrom = modules.map(m => m.id);
+    const mergedFrom = comps.map(m => m.id);
 
     // Preserve domain if all modules share the same domain
-    const domains = new Set(modules.map(m => m.domain).filter(Boolean));
+    const domains = new Set(comps.map(m => m.domain).filter(Boolean));
     const domain = domains.size === 1 ? [...domains][0] : undefined;
 
     return {
@@ -203,42 +203,42 @@ function mergeModuleGroup(group: DirectoryGroup): ModuleInfo {
  * Also remove self-references created by merging.
  */
 function fixDependencyReferences(
-    modules: ModuleInfo[],
+    components: ComponentInfo[],
     idMapping: Map<string, string>
-): ModuleInfo[] {
-    const moduleIds = new Set(modules.map(m => m.id));
+): ComponentInfo[] {
+    const componentIds = new Set(components.map(m => m.id));
 
-    return modules.map(mod => ({
-        ...mod,
+    return components.map(comp => ({
+        ...comp,
         dependencies: deduplicateStrings(
-            mod.dependencies
+            comp.dependencies
                 .map(d => idMapping.get(d) || d)
-                .filter(d => d !== mod.id && moduleIds.has(d))
+                .filter(d => d !== comp.id && componentIds.has(d))
         ),
         dependents: deduplicateStrings(
-            mod.dependents
+            comp.dependents
                 .map(d => idMapping.get(d) || d)
-                .filter(d => d !== mod.id && moduleIds.has(d))
+                .filter(d => d !== comp.id && componentIds.has(d))
         ),
     }));
 }
 
 /**
- * Derive fresh categories from the merged modules.
+ * Derive fresh categories from the merged components.
  */
-function deriveCategories(modules: ModuleInfo[]): CategoryInfo[] {
+function deriveCategories(components: ComponentInfo[]): CategoryInfo[] {
     const categoryMap = new Map<string, Set<string>>();
 
-    for (const mod of modules) {
-        if (!categoryMap.has(mod.category)) {
-            categoryMap.set(mod.category, new Set());
+    for (const comp of components) {
+        if (!categoryMap.has(comp.category)) {
+            categoryMap.set(comp.category, new Set());
         }
-        categoryMap.get(mod.category)!.add(mod.id);
+        categoryMap.get(comp.category)!.add(comp.id);
     }
 
-    return Array.from(categoryMap.entries()).map(([name, moduleIds]) => ({
+    return Array.from(categoryMap.entries()).map(([name, componentIds]) => ({
         name,
-        description: `Contains ${moduleIds.size} module(s)`,
+        description: `Contains ${componentIds.size} component(s)`,
     }));
 }
 
@@ -250,16 +250,16 @@ function deduplicateStrings(arr: string[]): string[] {
     return [...new Set(arr)];
 }
 
-function pickHighestComplexity(modules: ModuleInfo[]): 'low' | 'medium' | 'high' {
-    return resolveMaxComplexity(modules);
+function pickHighestComplexity(components: ComponentInfo[]): 'low' | 'medium' | 'high' {
+    return resolveMaxComplexity(components);
 }
 
-function pickMostCommonCategory(modules: ModuleInfo[]): string {
+function pickMostCommonCategory(components: ComponentInfo[]): string {
     const counts = new Map<string, number>();
-    for (const m of modules) {
+    for (const m of components) {
         counts.set(m.category, (counts.get(m.category) || 0) + 1);
     }
-    let best = modules[0].category;
+    let best = components[0].category;
     let bestCount = 0;
     for (const [cat, count] of counts) {
         if (count > bestCount) {
@@ -270,12 +270,12 @@ function pickMostCommonCategory(modules: ModuleInfo[]): string {
     return best;
 }
 
-function combinePurposes(modules: ModuleInfo[]): string {
-    if (modules.length === 1) {
-        return modules[0].purpose;
+function combinePurposes(components: ComponentInfo[]): string {
+    if (components.length === 1) {
+        return components[0].purpose;
     }
-    // Use first module's purpose as base, mention others are included
-    const unique = deduplicateStrings(modules.map(m => m.purpose));
+    // Use first component's purpose as base, mention others are included
+    const unique = deduplicateStrings(components.map(m => m.purpose));
     if (unique.length === 1) {
         return unique[0];
     }

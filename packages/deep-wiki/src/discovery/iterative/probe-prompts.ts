@@ -18,12 +18,12 @@ import type { TopicSeed } from '../../types';
  */
 const TOPIC_PROBE_RESULT_SCHEMA = `{
   "topic": "string — the topic that was probed",
-  "foundModules": [
+  "foundComponents": [
     {
-      "id": "string — suggested module ID (kebab-case) describing the FEATURE, not the file path",
-      "name": "string — human-readable name describing what this module DOES",
+      "id": "string — suggested component ID (kebab-case) describing the FEATURE, not the file path",
+      "name": "string — human-readable name describing what this component DOES",
       "path": "string — path relative to repo root",
-      "purpose": "string — what this module does for users or the system",
+      "purpose": "string — what this component does for users or the system",
       "keyFiles": ["string — key file paths relative to repo root"],
       "evidence": "string — behavioral evidence: what functions/APIs/data flows prove this belongs to the topic",
       "lineRanges": [[number, number]] — optional line ranges for monolithic files
@@ -55,7 +55,7 @@ export function buildProbePrompt(
     focus?: string
 ): string {
     const focusSection = focus
-        ? `\n## Focus Area\n\nFocus your analysis on the subtree: ${focus}\nOnly include modules within or directly related to this area.\n`
+        ? `\n## Focus Area\n\nFocus your analysis on the subtree: ${focus}\nOnly include components within or directly related to this area.\n`
         : '';
 
     const hintsList = topic.hints.length > 0
@@ -79,7 +79,7 @@ ${focusSection}
 1. Use \`grep\` to search for hint keywords across the codebase
 2. Use \`view\` to read files that match your searches
 3. For large files, sample sections rather than reading the entire file
-4. Identify feature-level modules belonging to this topic (group related files together)
+4. Identify feature-level components belonging to this topic (group related files together)
 5. Note any ADJACENT topics you discover (related but distinct concerns)
 6. Return JSON matching the TopicProbeResult schema
 
@@ -92,9 +92,9 @@ ${focusSection}
 - Look for patterns: imports, exports, function names, class names, API surfaces, event handlers
 - If you find related but distinct topics, add them to discoveredTopics
 
-## Module Naming Guidance
+## Component Naming Guidance
 
-Module IDs should describe WHAT the code does, not echo file/directory names.
+Component IDs should describe WHAT the code does, not echo file/directory names.
 
 **Good**: "session-pool-manager", "yaml-pipeline-executor", "comment-anchoring"
 **Bad**: "src-ai-service", "pipeline-core-index", "comment-anchor" (just the file name)
@@ -107,12 +107,12 @@ ${TOPIC_PROBE_RESULT_SCHEMA}
 
 ## Rules
 
-- Module IDs must be unique lowercase kebab-case identifiers describing the FEATURE
-- Do NOT derive module IDs from file paths — describe what the module DOES
+- Component IDs must be unique lowercase kebab-case identifiers describing the FEATURE
+- Do NOT derive component IDs from file paths — describe what the component DOES
 - All paths must be relative to the repo root (no absolute paths)
 - Confidence should reflect how certain you are that you found all relevant code (0.0 = uncertain, 1.0 = very confident)
 - discoveredTopics should only include NEW topics not already in the seed list
-- dependencies should reference other topic IDs, not module IDs
+- dependencies should reference other topic IDs, not component IDs
 - For large monolithic files, use lineRanges to specify which sections belong to this topic
 - evidence should cite behavioral proof: function calls, API surfaces, data flows — not just "found in file X"`;
 }

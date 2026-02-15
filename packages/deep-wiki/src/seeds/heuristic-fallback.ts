@@ -10,7 +10,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { TopicSeed } from '../types';
-import { normalizeModuleId } from '../schemas';
+import { normalizeComponentId } from '../schemas';
 
 // ============================================================================
 // Constants
@@ -98,7 +98,7 @@ export function generateHeuristicSeeds(repoPath: string): TopicSeed[] {
             }
 
             // Normalize directory name to topic ID
-            const topicId = normalizeModuleId(dirName);
+            const topicId = normalizeComponentId(dirName);
 
             // Skip if normalization resulted in empty or invalid ID
             if (!topicId || topicId === 'unknown') {

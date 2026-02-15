@@ -1,28 +1,28 @@
 /**
- * AI-Assisted Module Consolidator
+ * AI-Assisted Component Consolidator
  *
- * Uses a single AI session to semantically cluster pre-consolidated modules
+ * Uses a single AI session to semantically cluster pre-consolidated components
  * into a target number of high-level groups. This is the second pass of the
  * hybrid consolidation, running after the rule-based pass.
  *
- * The AI receives a compact module list and returns cluster assignments.
- * Modules within each cluster are then programmatically merged.
+ * The AI receives a compact component list and returns cluster assignments.
+ * Components within each cluster are then programmatically merged.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { AIInvoker } from '@plusplusoneplusplus/pipeline-core';
 import { extractJSON } from '@plusplusoneplusplus/pipeline-core';
-import type { ModuleInfo, ModuleGraph, CategoryInfo } from '../types';
+import type { ComponentInfo, ComponentGraph, CategoryInfo } from '../types';
 import type { ClusterGroup } from './types';
-import { normalizeModuleId } from '../schemas';
+import { normalizeComponentId } from '../schemas';
 import { resolveMaxComplexity } from './constants';
 
 // ============================================================================
 // Constants
 // ============================================================================
 
-/** Default target module count */
+/** Default target component count */
 const DEFAULT_TARGET_COUNT = 50;
 
 /** Default timeout for AI clustering session: 30 minutes */
@@ -38,7 +38,7 @@ const DEFAULT_CLUSTERING_TIMEOUT_MS = 1_800_000;
 export interface AIClusteringOptions {
     /** AI invoker for the clustering session */
     aiInvoker: AIInvoker;
-    /** Target number of modules after clustering (default: 50) */
+    /** Target number of components after clustering (default: 50) */
     targetCount?: number;
     /** AI model to use */
     model?: string;
@@ -47,32 +47,32 @@ export interface AIClusteringOptions {
 }
 
 /**
- * Cluster modules using AI semantic analysis.
+ * Cluster components using AI semantic analysis.
  *
- * Sends the module list to AI, which groups semantically related modules.
- * Then programmatically merges each cluster into a single module.
+ * Sends the component list to AI, which groups semantically related components.
+ * Then programmatically merges each cluster into a single component.
  *
- * @param graph - Module graph (typically after rule-based consolidation)
+ * @param graph - Component graph (typically after rule-based consolidation)
  * @param options - AI clustering options
- * @returns Consolidated module graph
+ * @returns Consolidated component graph
  */
 export async function clusterWithAI(
-    graph: ModuleGraph,
+    graph: ComponentGraph,
     options: AIClusteringOptions
-): Promise<ModuleGraph> {
+): Promise<ComponentGraph> {
     const { aiInvoker, model } = options;
     const targetCount = options.targetCount || DEFAULT_TARGET_COUNT;
     const timeoutMs = options.timeoutMs || DEFAULT_CLUSTERING_TIMEOUT_MS;
 
-    const modules = graph.modules;
+    const components = graph.components;
 
     // Skip if already at or below target
-    if (modules.length <= targetCount) {
+    if (components.length <= targetCount) {
         return graph;
     }
 
     // Build the clustering prompt
-    const prompt = buildClusteringPrompt(modules, graph.project.name, targetCount);
+    const prompt = buildClusteringPrompt(components, graph.project.name, targetCount);
 
     // Call AI
     const result = await aiInvoker(prompt, { model, timeoutMs });
@@ -83,7 +83,7 @@ export async function clusterWithAI(
     }
 
     // Parse the cluster assignments
-    const clusters = parseClusterResponse(result.response, modules);
+    const clusters = parseClusterResponse(result.response, components);
 
     if (clusters.length === 0) {
         // Parse failed — return unchanged
@@ -100,37 +100,37 @@ export async function clusterWithAI(
 
 /**
  * Build the clustering prompt for AI.
- * Sends a compact module list and asks for semantic groupings.
+ * Sends a compact component list and asks for semantic groupings.
  */
 export function buildClusteringPrompt(
-    modules: ModuleInfo[],
+    components: ComponentInfo[],
     projectName: string,
     targetCount: number
 ): string {
-    // Build compact module list
-    const moduleList = modules
+    // Build compact component list
+    const componentList = components
         .map(m => `- ${m.id}: ${m.path} — ${m.purpose}`)
         .join('\n');
 
-    return `You are analyzing the codebase of "${projectName}" which has ${modules.length} modules.
-Your task is to cluster semantically related modules into ${targetCount} (or fewer) high-level groups for documentation purposes.
+    return `You are analyzing the codebase of "${projectName}" which has ${components.length} components.
+Your task is to cluster semantically related components into ${targetCount} (or fewer) high-level groups for documentation purposes.
 
-## Current Modules
+## Current Components
 
-${moduleList}
+${componentList}
 
 ## Instructions
 
-Group these modules into approximately ${targetCount} clusters based on:
-1. **Functional cohesion** — modules that serve the same feature or subsystem
-2. **Directory proximity** — modules in related paths
-3. **Dependency relationships** — tightly coupled modules
+Group these components into approximately ${targetCount} clusters based on:
+1. **Functional cohesion** — components that serve the same feature or subsystem
+2. **Directory proximity** — components in related paths
+3. **Dependency relationships** — tightly coupled components
 
 Rules:
-- Every module ID must appear in exactly one cluster
+- Every component ID must appear in exactly one cluster
 - Each cluster should have a descriptive name and purpose
 - Prefer fewer, broader clusters over many small ones
-- A cluster can have a single module if it's truly standalone
+- A cluster can have a single component if it's truly standalone
 
 ## Output Format
 
@@ -142,7 +142,7 @@ Return a JSON object with this exact structure:
     {
       "id": "string — kebab-case cluster ID",
       "name": "string — human-readable cluster name",
-      "memberIds": ["module-id-1", "module-id-2"],
+      "memberIds": ["component-id-1", "component-id-2"],
       "purpose": "string — one-sentence purpose of this cluster"
     }
   ]
@@ -158,11 +158,11 @@ Return ONLY the JSON, no other text.`;
 
 /**
  * Parse the AI response into ClusterGroup objects.
- * Validates that all module IDs are accounted for.
+ * Validates that all component IDs are accounted for.
  */
 export function parseClusterResponse(
     response: string,
-    modules: ModuleInfo[]
+    components: ComponentInfo[]
 ): ClusterGroup[] {
     const json = extractJSON(response);
     if (!json) {
@@ -182,7 +182,7 @@ export function parseClusterResponse(
         return [];
     }
 
-    const validModuleIds = new Set(modules.map(m => m.id));
+    const validComponentIds = new Set(components.map(m => m.id));
     const assignedIds = new Set<string>();
     const clusters: ClusterGroup[] = [];
 
@@ -190,12 +190,12 @@ export function parseClusterResponse(
         if (!raw || typeof raw !== 'object') { continue; }
         const r = raw as Record<string, unknown>;
 
-        const id = typeof r.id === 'string' ? normalizeModuleId(r.id) : '';
+        const id = typeof r.id === 'string' ? normalizeComponentId(r.id) : '';
         const name = typeof r.name === 'string' ? r.name : '';
         const purpose = typeof r.purpose === 'string' ? r.purpose : '';
         const memberIds = Array.isArray(r.memberIds)
             ? (r.memberIds as unknown[])
-                .filter((mid): mid is string => typeof mid === 'string' && validModuleIds.has(mid))
+                .filter((mid): mid is string => typeof mid === 'string' && validComponentIds.has(mid))
                 .filter(mid => !assignedIds.has(mid))
             : [];
 
@@ -207,14 +207,14 @@ export function parseClusterResponse(
         }
     }
 
-    // Assign any unassigned modules to their own singleton cluster
-    for (const mod of modules) {
-        if (!assignedIds.has(mod.id)) {
+    // Assign any unassigned components to their own singleton cluster
+    for (const comp of components) {
+        if (!assignedIds.has(comp.id)) {
             clusters.push({
-                id: mod.id,
-                name: mod.name,
-                memberIds: [mod.id],
-                purpose: mod.purpose,
+                id: comp.id,
+                name: comp.name,
+                memberIds: [comp.id],
+                purpose: comp.purpose,
             });
         }
     }
@@ -227,60 +227,60 @@ export function parseClusterResponse(
 // ============================================================================
 
 /**
- * Apply cluster assignments by merging modules within each cluster.
+ * Apply cluster assignments by merging components within each cluster.
  */
 export function applyClusterMerge(
-    graph: ModuleGraph,
+    graph: ComponentGraph,
     clusters: ClusterGroup[]
-): ModuleGraph {
-    const moduleMap = new Map(graph.modules.map(m => [m.id, m]));
+): ComponentGraph {
+    const componentMap = new Map(graph.components.map(m => [m.id, m]));
     const idMapping = new Map<string, string>(); // old ID → cluster ID
-    const mergedModules: ModuleInfo[] = [];
+    const mergedComponents: ComponentInfo[] = [];
 
     for (const cluster of clusters) {
         const members = cluster.memberIds
-            .map(id => moduleMap.get(id))
-            .filter((m): m is ModuleInfo => m !== undefined);
+            .map(id => componentMap.get(id))
+            .filter((m): m is ComponentInfo => m !== undefined);
 
         if (members.length === 0) { continue; }
 
         if (members.length === 1) {
             // Singleton — keep as-is
-            const mod = members[0];
-            idMapping.set(mod.id, mod.id);
-            mergedModules.push(mod);
+            const comp = members[0];
+            idMapping.set(comp.id, comp.id);
+            mergedComponents.push(comp);
         } else {
-            // Merge members into cluster module
+            // Merge members into cluster component
             const merged = mergeClusterMembers(cluster, members);
-            for (const mod of members) {
-                idMapping.set(mod.id, cluster.id);
+            for (const comp of members) {
+                idMapping.set(comp.id, cluster.id);
             }
-            mergedModules.push(merged);
+            mergedComponents.push(merged);
         }
     }
 
     // Fix up dependency references
-    const moduleIds = new Set(mergedModules.map(m => m.id));
-    const fixedModules = mergedModules.map(mod => ({
-        ...mod,
+    const componentIds = new Set(mergedComponents.map(m => m.id));
+    const fixedComponents = mergedComponents.map(comp => ({
+        ...comp,
         dependencies: dedup(
-            mod.dependencies
+            comp.dependencies
                 .map(d => idMapping.get(d) || d)
-                .filter(d => d !== mod.id && moduleIds.has(d))
+                .filter(d => d !== comp.id && componentIds.has(d))
         ),
         dependents: dedup(
-            mod.dependents
+            comp.dependents
                 .map(d => idMapping.get(d) || d)
-                .filter(d => d !== mod.id && moduleIds.has(d))
+                .filter(d => d !== comp.id && componentIds.has(d))
         ),
     }));
 
     // Re-derive categories
-    const categories = deriveFreshCategories(fixedModules);
+    const categories = deriveFreshCategories(fixedComponents);
 
     return {
         ...graph,
-        modules: fixedModules,
+        components: fixedComponents,
         categories,
     };
 }
@@ -289,7 +289,7 @@ export function applyClusterMerge(
 // Helpers
 // ============================================================================
 
-function mergeClusterMembers(cluster: ClusterGroup, members: ModuleInfo[]): ModuleInfo {
+function mergeClusterMembers(cluster: ClusterGroup, members: ComponentInfo[]): ComponentInfo {
     const selfIds = new Set(members.map(m => m.id));
 
     const keyFiles = dedup(members.flatMap(m => m.keyFiles));
@@ -347,13 +347,13 @@ function dedup(arr: string[]): string[] {
     return [...new Set(arr)];
 }
 
-function deriveFreshCategories(modules: ModuleInfo[]): CategoryInfo[] {
+function deriveFreshCategories(components: ComponentInfo[]): CategoryInfo[] {
     const categoryMap = new Map<string, number>();
-    for (const mod of modules) {
-        categoryMap.set(mod.category, (categoryMap.get(mod.category) || 0) + 1);
+    for (const comp of components) {
+        categoryMap.set(comp.category, (categoryMap.get(comp.category) || 0) + 1);
     }
     return Array.from(categoryMap.entries()).map(([name, count]) => ({
         name,
-        description: `Contains ${count} module(s)`,
+        description: `Contains ${count} component(s)`,
     }));
 }

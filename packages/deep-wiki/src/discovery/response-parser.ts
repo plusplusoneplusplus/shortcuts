@@ -1,7 +1,7 @@
 /**
  * Discovery Phase — Response Parser
  *
- * Parses and validates AI JSON responses into ModuleGraph structures.
+ * Parses and validates AI JSON responses into ComponentGraph structures.
  * Handles JSON extraction from markdown, validation, normalization,
  * and error recovery.
  *
@@ -9,23 +9,23 @@
  */
 
 import { extractJSON } from '@plusplusoneplusplus/pipeline-core';
-import type { ModuleGraph, ModuleInfo, ProjectInfo, CategoryInfo, TopLevelDomain, StructuralScanResult } from '../types';
+import type { ComponentGraph, ComponentInfo, ProjectInfo, CategoryInfo, TopLevelDomain, StructuralScanResult } from '../types';
 import {
-    MODULE_GRAPH_REQUIRED_FIELDS,
+    COMPONENT_GRAPH_REQUIRED_FIELDS,
     PROJECT_INFO_REQUIRED_FIELDS,
-    MODULE_INFO_REQUIRED_FIELDS,
+    COMPONENT_INFO_REQUIRED_FIELDS,
     VALID_COMPLEXITY_VALUES,
-    isValidModuleId,
-    normalizeModuleId,
+    isValidComponentId,
+    normalizeComponentId,
 } from '../schemas';
 import { parseAIJsonResponse, attemptJsonRepair } from '../utils/parse-ai-response';
 
 // ============================================================================
-// Module Graph Parsing
+// Component Graph Parsing
 // ============================================================================
 
 /**
- * Parse an AI response into a ModuleGraph.
+ * Parse an AI response into a ComponentGraph.
  *
  * Handles:
  * 1. Raw JSON → parse directly
@@ -36,10 +36,10 @@ import { parseAIJsonResponse, attemptJsonRepair } from '../utils/parse-ai-respon
  * 6. Missing required fields → fill defaults, warn
  *
  * @param response - Raw AI response string
- * @returns Parsed and validated ModuleGraph
+ * @returns Parsed and validated ComponentGraph
  * @throws Error if response cannot be parsed into a valid graph
  */
-export function parseModuleGraphResponse(response: string): ModuleGraph {
+export function parseComponentGraphResponse(response: string): ComponentGraph {
     const parsed = parseAIJsonResponse(response, { context: 'discovery', repair: true });
 
     // Step 3: Validate and normalize
@@ -97,19 +97,24 @@ export function parseStructuralScanResponse(response: string): StructuralScanRes
 // ============================================================================
 
 /**
- * Validate and normalize a raw parsed object into a ModuleGraph.
+ * Validate and normalize a raw parsed object into a ComponentGraph.
  */
-function validateAndNormalizeGraph(raw: Record<string, unknown>): ModuleGraph {
+function validateAndNormalizeGraph(raw: Record<string, unknown>): ComponentGraph {
     const warnings: string[] = [];
 
+    // Backward compat: accept 'modules' as alias for 'components'
+    if (!('components' in raw) && 'modules' in raw) {
+        raw.components = raw.modules;
+    }
+
     // Check required top-level fields
-    for (const field of MODULE_GRAPH_REQUIRED_FIELDS) {
+    for (const field of COMPONENT_GRAPH_REQUIRED_FIELDS) {
         if (!(field in raw)) {
             if (field === 'categories') {
                 raw.categories = [];
                 warnings.push(`Missing '${field}' field, using empty default`);
             } else {
-                throw new Error(`Missing required field '${field}' in module graph`);
+                throw new Error(`Missing required field '${field}' in component graph`);
             }
         }
     }
@@ -117,8 +122,8 @@ function validateAndNormalizeGraph(raw: Record<string, unknown>): ModuleGraph {
     // Parse project info
     const project = parseProjectInfo(raw.project);
 
-    // Parse modules
-    const modules = parseModules(raw.modules, warnings);
+    // Parse components
+    const components = parseComponents(raw.components, warnings);
 
     // Parse categories
     const categories = parseCategories(raw.categories, warnings);
@@ -128,46 +133,46 @@ function validateAndNormalizeGraph(raw: Record<string, unknown>): ModuleGraph {
         ? raw.architectureNotes
         : '';
 
-    // Post-processing: ensure module categories match declared categories
+    // Post-processing: ensure component categories match declared categories
     const categoryNames = new Set(categories.map(c => c.name));
-    for (const mod of modules) {
-        if (mod.category && !categoryNames.has(mod.category)) {
+    for (const comp of components) {
+        if (comp.category && !categoryNames.has(comp.category)) {
             // Auto-add missing category
-            categories.push({ name: mod.category, description: `Auto-generated category for ${mod.category}` });
-            categoryNames.add(mod.category);
-            warnings.push(`Auto-added missing category '${mod.category}'`);
+            categories.push({ name: comp.category, description: `Auto-generated category for ${comp.category}` });
+            categoryNames.add(comp.category);
+            warnings.push(`Auto-added missing category '${comp.category}'`);
         }
     }
 
     // Post-processing: validate dependency references
-    const moduleIds = new Set(modules.map(m => m.id));
-    for (const mod of modules) {
-        mod.dependencies = mod.dependencies.filter(dep => {
-            if (!moduleIds.has(dep)) {
-                warnings.push(`Module '${mod.id}' references unknown dependency '${dep}', removing`);
+    const componentIds = new Set(components.map(m => m.id));
+    for (const comp of components) {
+        comp.dependencies = comp.dependencies.filter(dep => {
+            if (!componentIds.has(dep)) {
+                warnings.push(`Component '${comp.id}' references unknown dependency '${dep}', removing`);
                 return false;
             }
             return true;
         });
-        mod.dependents = mod.dependents.filter(dep => {
-            if (!moduleIds.has(dep)) {
-                warnings.push(`Module '${mod.id}' references unknown dependent '${dep}', removing`);
+        comp.dependents = comp.dependents.filter(dep => {
+            if (!componentIds.has(dep)) {
+                warnings.push(`Component '${comp.id}' references unknown dependent '${dep}', removing`);
                 return false;
             }
             return true;
         });
     }
 
-    // Deduplicate modules by ID
+    // Deduplicate components by ID
     const seenIds = new Set<string>();
-    const deduplicatedModules: ModuleInfo[] = [];
-    for (const mod of modules) {
-        if (seenIds.has(mod.id)) {
-            warnings.push(`Duplicate module ID '${mod.id}', keeping first occurrence`);
+    const deduplicatedComponents: ComponentInfo[] = [];
+    for (const comp of components) {
+        if (seenIds.has(comp.id)) {
+            warnings.push(`Duplicate component ID '${comp.id}', keeping first occurrence`);
             continue;
         }
-        seenIds.add(mod.id);
-        deduplicatedModules.push(mod);
+        seenIds.add(comp.id);
+        deduplicatedComponents.push(comp);
     }
 
     if (warnings.length > 0) {
@@ -179,7 +184,7 @@ function validateAndNormalizeGraph(raw: Record<string, unknown>): ModuleGraph {
 
     return {
         project,
-        modules: deduplicatedModules,
+        components: deduplicatedComponents,
         categories,
         architectureNotes,
     };
@@ -190,7 +195,7 @@ function validateAndNormalizeGraph(raw: Record<string, unknown>): ModuleGraph {
  */
 function parseProjectInfo(raw: unknown): ProjectInfo {
     if (typeof raw !== 'object' || raw === null) {
-        throw new Error("Missing or invalid 'project' field in module graph");
+        throw new Error("Missing or invalid 'project' field in component graph");
     }
 
     const obj = raw as Record<string, unknown>;
@@ -212,19 +217,19 @@ function parseProjectInfo(raw: unknown): ProjectInfo {
 }
 
 /**
- * Parse and validate an array of ModuleInfo.
+ * Parse and validate an array of ComponentInfo.
  */
-function parseModules(raw: unknown, warnings: string[]): ModuleInfo[] {
+function parseComponents(raw: unknown, warnings: string[]): ComponentInfo[] {
     if (!Array.isArray(raw)) {
-        throw new Error("'modules' field must be an array");
+        throw new Error("'components' field must be an array");
     }
 
-    const modules: ModuleInfo[] = [];
+    const components: ComponentInfo[] = [];
 
     for (let i = 0; i < raw.length; i++) {
         const item = raw[i];
         if (typeof item !== 'object' || item === null) {
-            warnings.push(`Skipping invalid module at index ${i}`);
+            warnings.push(`Skipping invalid component at index ${i}`);
             continue;
         }
 
@@ -232,48 +237,48 @@ function parseModules(raw: unknown, warnings: string[]): ModuleInfo[] {
 
         // Check required fields
         let hasRequired = true;
-        for (const field of MODULE_INFO_REQUIRED_FIELDS) {
+        for (const field of COMPONENT_INFO_REQUIRED_FIELDS) {
             if (!(field in obj) || typeof obj[field] !== 'string') {
-                warnings.push(`Module at index ${i} missing required field '${field}', skipping`);
+                warnings.push(`Component at index ${i} missing required field '${field}', skipping`);
                 hasRequired = false;
                 break;
             }
         }
         if (!hasRequired) { continue; }
 
-        // Normalize module ID
+        // Normalize component ID
         let id = String(obj.id);
-        if (!isValidModuleId(id)) {
-            const normalized = normalizeModuleId(id);
-            warnings.push(`Normalized module ID '${id}' → '${normalized}'`);
+        if (!isValidComponentId(id)) {
+            const normalized = normalizeComponentId(id);
+            warnings.push(`Normalized component ID '${id}' → '${normalized}'`);
             id = normalized;
         }
 
         // Normalize path (remove leading ./ and trailing /)
-        let modulePath = String(obj.path || '');
-        modulePath = normalizePath(modulePath);
+        let componentPath = String(obj.path || '');
+        componentPath = normalizePath(componentPath);
 
         // Validate complexity
         let complexity = String(obj.complexity || 'medium').toLowerCase();
         if (!VALID_COMPLEXITY_VALUES.includes(complexity as typeof VALID_COMPLEXITY_VALUES[number])) {
-            warnings.push(`Module '${id}' has invalid complexity '${complexity}', defaulting to 'medium'`);
+            warnings.push(`Component '${id}' has invalid complexity '${complexity}', defaulting to 'medium'`);
             complexity = 'medium';
         }
 
-        modules.push({
+        components.push({
             id,
             name: String(obj.name),
-            path: modulePath,
+            path: componentPath,
             purpose: String(obj.purpose || ''),
             keyFiles: parseStringArray(obj.keyFiles).map(normalizePath),
             dependencies: parseStringArray(obj.dependencies),
             dependents: parseStringArray(obj.dependents),
-            complexity: complexity as ModuleInfo['complexity'],
+            complexity: complexity as ComponentInfo['complexity'],
             category: String(obj.category || 'general'),
         });
     }
 
-    return modules;
+    return components;
 }
 
 /**

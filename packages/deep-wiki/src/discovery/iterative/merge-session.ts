@@ -13,9 +13,9 @@ import {
     type PermissionRequest,
     type PermissionRequestResult,
 } from '@plusplusoneplusplus/pipeline-core';
-import type { ModuleGraph, ModuleInfo, CategoryInfo } from '../../types';
+import type { ComponentGraph, ComponentInfo, CategoryInfo } from '../../types';
 import type { TopicProbeResult, MergeResult } from './types';
-import { normalizeModuleId, isValidModuleId } from '../../schemas';
+import { normalizeComponentId, isValidComponentId } from '../../schemas';
 import { buildMergePrompt } from './merge-prompts';
 import { parseMergeResponse } from './merge-response-parser';
 import { printInfo, printWarning, gray } from '../../logger';
@@ -62,7 +62,7 @@ function readOnlyPermissions(request: PermissionRequest): PermissionRequestResul
 export async function mergeProbeResults(
     repoPath: string,
     probeResults: TopicProbeResult[],
-    existingGraph: ModuleGraph | null,
+    existingGraph: ComponentGraph | null,
     options: {
         model?: string;
         timeout?: number;
@@ -97,8 +97,8 @@ export async function mergeProbeResults(
 
     try {
         // Send the message
-        const validProbes = probeResults.filter(r => r && r.foundModules.length > 0).length;
-        printInfo(`  Sending merge prompt ${gray(`(${validProbes} valid probes, ${existingGraph ? existingGraph.modules.length + ' existing modules' : 'no prior graph'})`)}`);
+        const validProbes = probeResults.filter(r => r && r.foundComponents.length > 0).length;
+        printInfo(`  Sending merge prompt ${gray(`(${validProbes} valid probes, ${existingGraph ? existingGraph.components.length + ' existing components' : 'no prior graph'})`)}`);
         const result = await service.sendMessage(sendOptions);
 
         if (!result.success || !result.response) {
@@ -109,10 +109,10 @@ export async function mergeProbeResults(
         // Parse the response
         const mergeResult = parseMergeResponse(result.response);
 
-        // Guard: if AI merge returned fewer modules than probes found, use local merge
-        const probeModuleCount = probeResults.reduce((sum, r) => sum + (r?.foundModules?.length || 0), 0);
-        if (mergeResult.graph.modules.length === 0 && probeModuleCount > 0) {
-            printWarning(`AI merge returned 0 modules but probes found ${probeModuleCount} — using local merge fallback`);
+        // Guard: if AI merge returned fewer components than probes found, use local merge
+        const probeComponentCount = probeResults.reduce((sum, r) => sum + (r?.foundComponents?.length || 0), 0);
+        if (mergeResult.graph.components.length === 0 && probeComponentCount > 0) {
+            printWarning(`AI merge returned 0 components but probes found ${probeComponentCount} — using local merge fallback`);
             return buildLocalMergeResult(probeResults, existingGraph, 'AI merge returned empty graph');
         }
 
@@ -129,42 +129,42 @@ export async function mergeProbeResults(
 
 /**
  * Build a MergeResult locally from probe data when the AI merge fails.
- * Deduplicates modules by ID, infers categories, and collects new topics.
+ * Deduplicates components by ID, infers categories, and collects new topics.
  */
 function buildLocalMergeResult(
     probeResults: TopicProbeResult[],
-    existingGraph: ModuleGraph | null,
+    existingGraph: ComponentGraph | null,
     reason: string,
 ): MergeResult {
-    const moduleMap = new Map<string, ModuleInfo>();
+    const componentMap = new Map<string, ComponentInfo>();
     const categorySet = new Set<string>();
 
-    // Incorporate existing graph modules first
+    // Incorporate existing graph components first
     if (existingGraph) {
-        for (const mod of existingGraph.modules) {
-            moduleMap.set(mod.id, mod);
-            if (mod.category) {
-                categorySet.add(mod.category);
+        for (const comp of existingGraph.components) {
+            componentMap.set(comp.id, comp);
+            if (comp.category) {
+                categorySet.add(comp.category);
             }
         }
     }
 
-    // Merge probe results into modules
+    // Merge probe results into components
     for (const probe of probeResults) {
-        if (!probe || !probe.foundModules) { continue; }
+        if (!probe || !probe.foundComponents) { continue; }
 
-        for (const found of probe.foundModules) {
+        for (const found of probe.foundComponents) {
             let id = found.id;
-            if (!isValidModuleId(id)) {
-                id = normalizeModuleId(id);
+            if (!isValidComponentId(id)) {
+                id = normalizeComponentId(id);
             }
 
-            if (moduleMap.has(id)) { continue; } // Keep first occurrence
+            if (componentMap.has(id)) { continue; } // Keep first occurrence
 
             const category = probe.topic || 'general';
             categorySet.add(category);
 
-            moduleMap.set(id, {
+            componentMap.set(id, {
                 id,
                 name: found.name,
                 path: found.path,
@@ -178,7 +178,7 @@ function buildLocalMergeResult(
         }
     }
 
-    const modules = Array.from(moduleMap.values());
+    const components = Array.from(componentMap.values());
     const categories: CategoryInfo[] = Array.from(categorySet).map(name => ({
         name,
         description: '',
@@ -193,7 +193,7 @@ function buildLocalMergeResult(
             if (!seenTopics.has(dt.topic)) {
                 seenTopics.add(dt.topic);
                 newTopics.push({
-                    topic: normalizeModuleId(dt.topic),
+                    topic: normalizeComponentId(dt.topic),
                     description: dt.description,
                     hints: dt.hints || [],
                 });
@@ -209,12 +209,12 @@ function buildLocalMergeResult(
         entryPoints: [],
     };
 
-    printInfo(`  Local merge: ${modules.length} modules, ${categories.length} categories`);
+    printInfo(`  Local merge: ${components.length} components, ${categories.length} categories`);
 
     return {
         graph: {
             project,
-            modules,
+            components,
             categories,
             architectureNotes: existingGraph?.architectureNotes || '',
         },

@@ -13,7 +13,7 @@ describe('parseProbeResponse', () => {
         it('should parse a valid probe response with modules', () => {
             const json = JSON.stringify({
                 topic: 'authentication',
-                foundModules: [
+                foundComponents: [
                     {
                         id: 'auth-service',
                         name: 'Auth Service',
@@ -30,16 +30,16 @@ describe('parseProbeResponse', () => {
 
             const result = parseProbeResponse(json, 'authentication');
             expect(result.topic).toBe('authentication');
-            expect(result.foundModules).toHaveLength(1);
-            expect(result.foundModules[0].id).toBe('auth-service');
-            expect(result.foundModules[0].name).toBe('Auth Service');
+            expect(result.foundComponents).toHaveLength(1);
+            expect(result.foundComponents[0].id).toBe('auth-service');
+            expect(result.foundComponents[0].name).toBe('Auth Service');
             expect(result.confidence).toBe(0.9);
         });
 
         it('should parse response with discovered topics', () => {
             const json = JSON.stringify({
                 topic: 'authentication',
-                foundModules: [],
+                foundComponents: [],
                 discoveredTopics: [
                     {
                         topic: 'authorization',
@@ -60,7 +60,7 @@ describe('parseProbeResponse', () => {
         it('should parse response with line ranges', () => {
             const json = JSON.stringify({
                 topic: 'authentication',
-                foundModules: [
+                foundComponents: [
                     {
                         id: 'auth-service',
                         name: 'Auth Service',
@@ -77,13 +77,13 @@ describe('parseProbeResponse', () => {
             });
 
             const result = parseProbeResponse(json, 'authentication');
-            expect(result.foundModules[0].lineRanges).toEqual([[10, 50], [100, 150]]);
+            expect(result.foundComponents[0].lineRanges).toEqual([[10, 50], [100, 150]]);
         });
 
         it('should default confidence to 0.5 if not provided', () => {
             const json = JSON.stringify({
                 topic: 'authentication',
-                foundModules: [],
+                foundComponents: [],
                 discoveredTopics: [],
                 dependencies: [],
             });
@@ -92,10 +92,10 @@ describe('parseProbeResponse', () => {
             expect(result.confidence).toBe(0.5);
         });
 
-        it('should normalize module IDs', () => {
+        it('should normalize component IDs', () => {
             const json = JSON.stringify({
                 topic: 'authentication',
-                foundModules: [
+                foundComponents: [
                     {
                         id: 'AuthService',
                         name: 'Auth Service',
@@ -111,20 +111,20 @@ describe('parseProbeResponse', () => {
             });
 
             const result = parseProbeResponse(json, 'authentication');
-            expect(result.foundModules[0].id).toBe('authservice');
+            expect(result.foundComponents[0].id).toBe('authservice');
         });
 
-        it('should handle empty foundModules', () => {
+        it('should handle empty foundComponents', () => {
             const json = JSON.stringify({
                 topic: 'authentication',
-                foundModules: [],
+                foundComponents: [],
                 discoveredTopics: [],
                 dependencies: [],
                 confidence: 0.3,
             });
 
             const result = parseProbeResponse(json, 'authentication');
-            expect(result.foundModules).toHaveLength(0);
+            expect(result.foundComponents).toHaveLength(0);
             expect(result.confidence).toBe(0.3);
         });
     });
@@ -136,7 +136,7 @@ describe('parseProbeResponse', () => {
 \`\`\`json
 {
   "topic": "authentication",
-  "foundModules": [{
+  "foundComponents": [{
     "id": "auth-service",
     "name": "Auth Service",
     "path": "src/auth/",
@@ -154,7 +154,7 @@ That's the analysis.`;
 
             const result = parseProbeResponse(response, 'authentication');
             expect(result.topic).toBe('authentication');
-            expect(result.foundModules).toHaveLength(1);
+            expect(result.foundComponents).toHaveLength(1);
         });
     });
 
@@ -169,7 +169,7 @@ That's the analysis.`;
 
         it('should throw on missing topic field', () => {
             const json = JSON.stringify({
-                foundModules: [],
+                foundComponents: [],
                 discoveredTopics: [],
                 dependencies: [],
             });
@@ -177,21 +177,21 @@ That's the analysis.`;
             expect(() => parseProbeResponse(json, 'authentication')).toThrow('topic');
         });
 
-        it('should throw on missing foundModules field', () => {
+        it('should throw on missing foundComponents field', () => {
             const json = JSON.stringify({
                 topic: 'authentication',
                 discoveredTopics: [],
                 dependencies: [],
             });
 
-            expect(() => parseProbeResponse(json, 'authentication')).toThrow('foundModules');
+            expect(() => parseProbeResponse(json, 'authentication')).toThrow('foundComponents');
         });
 
         it('should skip invalid modules', () => {
             const json = JSON.stringify({
                 topic: 'authentication',
-                foundModules: [
-                    { id: 'valid-module', name: 'Valid', path: 'src/', purpose: 'Purpose', keyFiles: [], evidence: 'Evidence' },
+                foundComponents: [
+                    { id: 'valid-component', name: 'Valid', path: 'src/', purpose: 'Purpose', keyFiles: [], evidence: 'Evidence' },
                     { invalid: 'module' }, // Missing required fields
                     { id: 'another-valid', name: 'Another', path: 'src/', purpose: 'Purpose', keyFiles: [], evidence: 'Evidence' },
                 ],
@@ -201,7 +201,7 @@ That's the analysis.`;
             });
 
             const result = parseProbeResponse(json, 'authentication');
-            expect(result.foundModules).toHaveLength(2);
+            expect(result.foundComponents).toHaveLength(2);
         });
     });
 });

@@ -7,8 +7,8 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { TopicProbeResult, ProbeFoundModule, DiscoveredTopic } from './types';
-import { normalizeModuleId } from '../../schemas';
+import type { TopicProbeResult, ProbeFoundComponent, DiscoveredTopic } from './types';
+import { normalizeComponentId } from '../../schemas';
 import { parseAIJsonResponse } from '../../utils/parse-ai-response';
 
 // ============================================================================
@@ -31,14 +31,14 @@ export function parseProbeResponse(response: string, topic: string): TopicProbeR
         throw new Error('Missing or invalid "topic" field in probe response');
     }
 
-    if (!Array.isArray(obj.foundModules)) {
-        throw new Error('Missing or invalid "foundModules" field in probe response');
+    if (!Array.isArray(obj.foundComponents)) {
+        throw new Error('Missing or invalid "foundComponents" field in probe response');
     }
 
-    // Parse foundModules
-    const foundModules: ProbeFoundModule[] = [];
-    for (let i = 0; i < obj.foundModules.length; i++) {
-        const item = obj.foundModules[i];
+    // Parse foundComponents
+    const foundComponents: ProbeFoundComponent[] = [];
+    for (let i = 0; i < obj.foundComponents.length; i++) {
+        const item = obj.foundComponents[i];
         if (typeof item !== 'object' || item === null) {
             continue; // Skip invalid items
         }
@@ -47,11 +47,11 @@ export function parseProbeResponse(response: string, topic: string): TopicProbeR
 
         // Required fields
         if (typeof mod.id !== 'string' || typeof mod.name !== 'string' || typeof mod.path !== 'string') {
-            continue; // Skip modules missing required fields
+            continue; // Skip components missing required fields
         }
 
-        // Normalize module ID
-        const id = normalizeModuleId(String(mod.id));
+        // Normalize component ID
+        const id = normalizeComponentId(String(mod.id));
 
         // Parse lineRanges if present
         let lineRanges: [number, number][] | undefined;
@@ -68,7 +68,7 @@ export function parseProbeResponse(response: string, topic: string): TopicProbeR
             }
         }
 
-        foundModules.push({
+        foundComponents.push({
             id,
             name: String(mod.name),
             path: String(mod.path),
@@ -89,7 +89,7 @@ export function parseProbeResponse(response: string, topic: string): TopicProbeR
             const dt = item as Record<string, unknown>;
             if (typeof dt.topic === 'string' && typeof dt.description === 'string') {
                 discoveredTopics.push({
-                    topic: normalizeModuleId(String(dt.topic)),
+                    topic: normalizeComponentId(String(dt.topic)),
                     description: String(dt.description),
                     hints: parseStringArray(dt.hints),
                     source: String(dt.source || ''),
@@ -109,7 +109,7 @@ export function parseProbeResponse(response: string, topic: string): TopicProbeR
 
     return {
         topic: String(obj.topic),
-        foundModules,
+        foundComponents,
         discoveredTopics,
         dependencies,
         confidence,

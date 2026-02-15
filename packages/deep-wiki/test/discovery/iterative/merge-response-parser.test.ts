@@ -20,7 +20,7 @@ describe('parseMergeResponse', () => {
                         buildSystem: 'npm',
                         entryPoints: [],
                     },
-                    modules: [
+                    components: [
                         {
                             id: 'auth-service',
                             name: 'Auth Service',
@@ -50,7 +50,7 @@ describe('parseMergeResponse', () => {
 
             const result = parseMergeResponse(json);
             expect(result.graph.project.name).toBe('test-project');
-            expect(result.graph.modules).toHaveLength(1);
+            expect(result.graph.components).toHaveLength(1);
             expect(result.newTopics).toHaveLength(1);
             expect(result.newTopics[0].topic).toBe('authorization');
             expect(result.converged).toBe(false);
@@ -68,7 +68,7 @@ describe('parseMergeResponse', () => {
                         buildSystem: 'npm',
                         entryPoints: [],
                     },
-                    modules: [],
+                    components: [],
                     categories: [],
                     architectureNotes: '',
                 },
@@ -94,7 +94,7 @@ describe('parseMergeResponse', () => {
                         buildSystem: 'npm',
                         entryPoints: [],
                     },
-                    modules: [],
+                    components: [],
                     categories: [],
                     architectureNotes: '',
                 },
@@ -107,7 +107,7 @@ describe('parseMergeResponse', () => {
             expect(result.coverage).toBe(0);
         });
 
-        it('should normalize module IDs in graph', () => {
+        it('should normalize component IDs in graph', () => {
             const json = JSON.stringify({
                 graph: {
                     project: {
@@ -117,7 +117,7 @@ describe('parseMergeResponse', () => {
                         buildSystem: 'npm',
                         entryPoints: [],
                     },
-                    modules: [
+                    components: [
                         {
                             id: 'AuthService',
                             name: 'Auth Service',
@@ -140,7 +140,7 @@ describe('parseMergeResponse', () => {
             });
 
             const result = parseMergeResponse(json);
-            expect(result.graph.modules[0].id).toBe('authservice');
+            expect(result.graph.components[0].id).toBe('authservice');
         });
 
         it('should normalize topic IDs in newTopics', () => {
@@ -153,7 +153,7 @@ describe('parseMergeResponse', () => {
                         buildSystem: 'npm',
                         entryPoints: [],
                     },
-                    modules: [],
+                    components: [],
                     categories: [],
                     architectureNotes: '',
                 },
@@ -247,7 +247,7 @@ That's the merge.`;
                         buildSystem: 'npm',
                         entryPoints: [],
                     },
-                    modules: [],
+                    components: [],
                     categories: [],
                     architectureNotes: '',
                 },

@@ -42,7 +42,7 @@ describe('buildProbePrompt', () => {
     it('should include the JSON schema', () => {
         const prompt = buildProbePrompt('/repo', topic);
         expect(prompt).toContain('"topic"');
-        expect(prompt).toContain('"foundModules"');
+        expect(prompt).toContain('"foundComponents"');
         expect(prompt).toContain('"discoveredTopics"');
         expect(prompt).toContain('"confidence"');
     });
@@ -97,16 +97,16 @@ describe('buildProbePrompt', () => {
     });
 
     // Feature-focus prompt quality tests
-    it('should include module naming guidance with good and bad examples', () => {
+    it('should include component naming guidance with good and bad examples', () => {
         const prompt = buildProbePrompt('/repo', topic);
-        expect(prompt).toContain('Module Naming Guidance');
+        expect(prompt).toContain('Component Naming Guidance');
         expect(prompt).toContain('Good');
         expect(prompt).toContain('Bad');
     });
 
-    it('should instruct not to derive module IDs from file paths', () => {
+    it('should instruct not to derive component IDs from file paths', () => {
         const prompt = buildProbePrompt('/repo', topic);
-        expect(prompt).toContain('Do NOT derive module IDs from file paths');
+        expect(prompt).toContain('Do NOT derive component IDs from file paths');
     });
 
     it('should emphasize behavioral evidence in exploration strategy', () => {
@@ -116,9 +116,9 @@ describe('buildProbePrompt', () => {
         expect(prompt).toContain('data flows');
     });
 
-    it('should instruct to identify feature-level modules', () => {
+    it('should instruct to identify feature-level components', () => {
         const prompt = buildProbePrompt('/repo', topic);
-        expect(prompt).toContain('feature-level modules');
+        expect(prompt).toContain('feature-level components');
     });
 
     it('should require behavioral proof in evidence field', () => {
@@ -126,9 +126,9 @@ describe('buildProbePrompt', () => {
         expect(prompt).toContain('behavioral proof');
     });
 
-    it('should include feature-focused schema descriptions for module fields', () => {
+    it('should include feature-focused schema descriptions for component fields', () => {
         const prompt = buildProbePrompt('/repo', topic);
         expect(prompt).toContain('describing the FEATURE');
-        expect(prompt).toContain('what this module DOES');
+        expect(prompt).toContain('what this component DOES');
     });
 });

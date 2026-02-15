@@ -7,7 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { runIterativeDiscovery } from '../../../src/discovery/iterative/iterative-discovery';
-import type { IterativeDiscoveryOptions, TopicSeed, ModuleGraph } from '../../../src/types';
+import type { IterativeDiscoveryOptions, TopicSeed, ComponentGraph } from '../../../src/types';
 
 // Mock probe and merge sessions
 vi.mock('../../../src/discovery/iterative/probe-session', () => ({
@@ -57,12 +57,12 @@ describe('runIterativeDiscovery', () => {
         };
 
         const result = await runIterativeDiscovery(options);
-        expect(result.modules).toHaveLength(0);
+        expect(result.components).toHaveLength(0);
         expect(result.architectureNotes).toContain('No seeds');
     });
 
     it('should converge on first round when merge returns converged=true', async () => {
-        const mockGraph: ModuleGraph = {
+        const mockGraph: ComponentGraph = {
             project: {
                 name: 'test-project',
                 description: 'Test',
@@ -70,7 +70,7 @@ describe('runIterativeDiscovery', () => {
                 buildSystem: 'npm',
                 entryPoints: [],
             },
-            modules: [
+            components: [
                 {
                     id: 'auth-service',
                     name: 'Auth Service',
@@ -89,7 +89,7 @@ describe('runIterativeDiscovery', () => {
 
         vi.mocked(runTopicProbe).mockResolvedValue({
             topic: 'authentication',
-            foundModules: [],
+            foundComponents: [],
             discoveredTopics: [],
             dependencies: [],
             confidence: 0.9,
@@ -104,13 +104,13 @@ describe('runIterativeDiscovery', () => {
         });
 
         const result = await runIterativeDiscovery(baseOptions);
-        expect(result.modules).toHaveLength(1);
+        expect(result.components).toHaveLength(1);
         expect(vi.mocked(runTopicProbe)).toHaveBeenCalledTimes(1);
         expect(vi.mocked(mergeProbeResults)).toHaveBeenCalledTimes(1);
     });
 
     it('should iterate multiple rounds when new topics are discovered', async () => {
-        const round1Graph: ModuleGraph = {
+        const round1Graph: ComponentGraph = {
             project: {
                 name: 'test-project',
                 description: 'Test',
@@ -118,14 +118,14 @@ describe('runIterativeDiscovery', () => {
                 buildSystem: 'npm',
                 entryPoints: [],
             },
-            modules: [],
+            components: [],
             categories: [],
             architectureNotes: '',
         };
 
-        const round2Graph: ModuleGraph = {
+        const round2Graph: ComponentGraph = {
             ...round1Graph,
-            modules: [
+            components: [
                 {
                     id: 'auth-service',
                     name: 'Auth Service',
@@ -142,7 +142,7 @@ describe('runIterativeDiscovery', () => {
 
         vi.mocked(runTopicProbe).mockResolvedValue({
             topic: 'authentication',
-            foundModules: [],
+            foundComponents: [],
             discoveredTopics: [],
             dependencies: [],
             confidence: 0.8,
@@ -173,7 +173,7 @@ describe('runIterativeDiscovery', () => {
             });
 
         const result = await runIterativeDiscovery(baseOptions);
-        expect(result.modules).toHaveLength(1);
+        expect(result.components).toHaveLength(1);
         expect(vi.mocked(runTopicProbe)).toHaveBeenCalledTimes(2); // Initial + new topic
         expect(vi.mocked(mergeProbeResults)).toHaveBeenCalledTimes(2);
     });
@@ -181,7 +181,7 @@ describe('runIterativeDiscovery', () => {
     it('should stop at max rounds even if not converged', async () => {
         vi.mocked(runTopicProbe).mockResolvedValue({
             topic: 'authentication',
-            foundModules: [],
+            foundComponents: [],
             discoveredTopics: [],
             dependencies: [],
             confidence: 0.7,
@@ -196,7 +196,7 @@ describe('runIterativeDiscovery', () => {
                     buildSystem: 'npm',
                     entryPoints: [],
                 },
-                modules: [],
+                components: [],
                 categories: [],
                 architectureNotes: '',
             },
@@ -236,7 +236,7 @@ describe('runIterativeDiscovery', () => {
 
         vi.mocked(runTopicProbe).mockResolvedValue({
             topic: 'test',
-            foundModules: [],
+            foundComponents: [],
             discoveredTopics: [],
             dependencies: [],
             confidence: 0.8,
@@ -251,7 +251,7 @@ describe('runIterativeDiscovery', () => {
                     buildSystem: 'npm',
                     entryPoints: [],
                 },
-                modules: [],
+                components: [],
                 categories: [],
                 architectureNotes: '',
             },
@@ -269,7 +269,7 @@ describe('runIterativeDiscovery', () => {
     it('should handle probe failures gracefully', async () => {
         vi.mocked(runTopicProbe).mockResolvedValue({
             topic: 'authentication',
-            foundModules: [],
+            foundComponents: [],
             discoveredTopics: [],
             dependencies: [],
             confidence: 0, // Failed probe
@@ -284,7 +284,7 @@ describe('runIterativeDiscovery', () => {
                     buildSystem: 'npm',
                     entryPoints: [],
                 },
-                modules: [],
+                components: [],
                 categories: [],
                 architectureNotes: '',
             },
@@ -302,7 +302,7 @@ describe('runIterativeDiscovery', () => {
     it('should converge when coverage threshold is met and no new topics', async () => {
         vi.mocked(runTopicProbe).mockResolvedValue({
             topic: 'authentication',
-            foundModules: [],
+            foundComponents: [],
             discoveredTopics: [],
             dependencies: [],
             confidence: 0.9,
@@ -317,7 +317,7 @@ describe('runIterativeDiscovery', () => {
                     buildSystem: 'npm',
                     entryPoints: [],
                 },
-                modules: [],
+                components: [],
                 categories: [],
                 architectureNotes: '',
             },

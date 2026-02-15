@@ -7,9 +7,9 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { ModuleGraph } from '../../types';
+import type { ComponentGraph } from '../../types';
 import type { TopicProbeResult } from './types';
-import { MODULE_GRAPH_SCHEMA } from '../../schemas';
+import { COMPONENT_GRAPH_SCHEMA } from '../../schemas';
 
 // ============================================================================
 // Merge Prompt
@@ -19,7 +19,7 @@ import { MODULE_GRAPH_SCHEMA } from '../../schemas';
  * JSON schema for MergeResult.
  */
 const MERGE_RESULT_SCHEMA = `{
-  "graph": ${MODULE_GRAPH_SCHEMA.replace(/\n/g, '\n  ')},
+  "graph": ${COMPONENT_GRAPH_SCHEMA.replace(/\n/g, '\n  ')},
   "newTopics": [
     {
       "topic": "string — topic name (kebab-case)",
@@ -43,7 +43,7 @@ const MERGE_RESULT_SCHEMA = `{
 export function buildMergePrompt(
     repoPath: string,
     probeResults: TopicProbeResult[],
-    existingGraph: ModuleGraph | null
+    existingGraph: ComponentGraph | null
 ): string {
     const probeResultsJson = JSON.stringify(probeResults, null, 2);
     const existingGraphJson = existingGraph ? JSON.stringify(existingGraph, null, 2) : null;
@@ -61,12 +61,12 @@ ${probeResultsJson}
 ${existingGraphSection}
 ## Your Task
 
-1. **Merge all probe results** into a coherent ModuleGraph:
-   - Combine modules found across different probes
-   - Resolve overlapping module claims (same files claimed by multiple topics)
-   - Deduplicate modules with the same ID or path
+1. **Merge all probe results** into a coherent ComponentGraph:
+   - Combine components found across different probes
+   - Resolve overlapping component claims (same files claimed by multiple topics)
+   - Deduplicate components with the same ID or path
    - Merge dependencies and dependents
-   - Ensure module IDs are unique and normalized
+   - Ensure component IDs are unique and normalized
 
 2. **Identify coverage gaps**:
    - Use glob("**/*") to see all directories/files
@@ -91,7 +91,7 @@ ${MERGE_RESULT_SCHEMA}
 
 ## Rules
 
-- Module IDs must be unique lowercase kebab-case identifiers
+- Component IDs must be unique lowercase kebab-case identifiers
 - All paths must be relative to the repo root
 - When resolving overlaps, prefer the probe with higher confidence
 - coverage should be a realistic estimate (0.0 = nothing covered, 1.0 = fully covered)

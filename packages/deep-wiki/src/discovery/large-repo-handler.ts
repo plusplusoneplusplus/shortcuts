@@ -15,17 +15,17 @@ import {
 } from '@plusplusoneplusplus/pipeline-core';
 import type {
     DiscoveryOptions,
-    ModuleGraph,
-    ModuleInfo,
+    ComponentGraph,
+    ComponentInfo,
     CategoryInfo,
     DomainInfo,
     StructuralScanResult,
     TopLevelDomain,
 } from '../types';
-import { normalizeModuleId } from '../schemas';
+import { normalizeComponentId } from '../schemas';
 import { getErrorMessage } from '../utils/error-utils';
 import { buildStructuralScanPrompt, buildFocusedDiscoveryPrompt } from './prompts';
-import { parseStructuralScanResponse, parseModuleGraphResponse } from './response-parser';
+import { parseStructuralScanResponse, parseComponentGraphResponse } from './response-parser';
 import { printInfo, printWarning, gray, cyan } from '../logger';
 import {
     getCachedStructuralScan,
@@ -124,12 +124,12 @@ export async function isLargeRepo(repoPath: string, threshold?: number): Promise
  *
  * Round 1: Structural scan — identify top-level domains
  * Round 2: Per-domain drill-down — focused discovery for each domain (sequential)
- * Final:   Merge all sub-graphs into a unified ModuleGraph
+ * Final:   Merge all sub-graphs into a unified ComponentGraph
  *
  * @param options - Discovery options
- * @returns Merged ModuleGraph
+ * @returns Merged ComponentGraph
  */
-export async function discoverLargeRepo(options: DiscoveryOptions): Promise<ModuleGraph> {
+export async function discoverLargeRepo(options: DiscoveryOptions): Promise<ComponentGraph> {
     const cacheEnabled = !!options.outputDir;
     const gitHash = options.gitHash;
     const useCache = options.useCache ?? false;
@@ -171,21 +171,21 @@ export async function discoverLargeRepo(options: DiscoveryOptions): Promise<Modu
 
     // Round 2: Per-domain drill-down (sequential to avoid overloading the SDK)
     printInfo('Round 2: Per-domain drill-down...');
-    const subGraphs: ModuleGraph[] = [];
+    const subGraphs: ComponentGraph[] = [];
     const projectName = scanResult.projectInfo.name || 'project';
 
     for (let i = 0; i < scanResult.domains.length; i++) {
         const domain = scanResult.domains[i];
-        const domainSlug = normalizeModuleId(domain.path);
+        const domainSlug = normalizeComponentId(domain.path);
 
         // Check domain cache
-        let cachedDomain: ModuleGraph | null = null;
+        let cachedDomain: ComponentGraph | null = null;
         if (cacheEnabled && gitHash) {
             cachedDomain = getCachedDomainSubGraph(domainSlug, options.outputDir!, gitHash);
         }
 
         if (cachedDomain) {
-            printInfo(`  Domain "${domain.name}" loaded from cache (${cachedDomain.modules.length} modules)`);
+            printInfo(`  Domain "${domain.name}" loaded from cache (${cachedDomain.components.length} components)`);
             subGraphs.push(cachedDomain);
             continue;
         }
@@ -193,7 +193,7 @@ export async function discoverLargeRepo(options: DiscoveryOptions): Promise<Modu
         printInfo(`  Discovering domain ${i + 1}/${scanResult.domains.length}: ${cyan(domain.name)} ${gray(`(${domain.path})`)}`);
         try {
             const subGraph = await discoverDomain(options, domain, projectName);
-            printInfo(`    Found ${subGraph.modules.length} modules`);
+            printInfo(`    Found ${subGraph.components.length} components`);
             subGraphs.push(subGraph);
 
             // Save domain sub-graph to cache
@@ -211,13 +211,13 @@ export async function discoverLargeRepo(options: DiscoveryOptions): Promise<Modu
     }
 
     if (subGraphs.length === 0) {
-        throw new Error('All domain discoveries failed. Cannot produce a module graph.');
+        throw new Error('All domain discoveries failed. Cannot produce a component graph.');
     }
 
     // Merge sub-graphs
     printInfo(`Merging ${subGraphs.length} domain sub-graphs...`);
     const merged = mergeSubGraphs(subGraphs, scanResult);
-    printInfo(`Merged result: ${merged.modules.length} modules, ${merged.categories.length} categories`);
+    printInfo(`Merged result: ${merged.components.length} components, ${merged.categories.length} categories`);
     return merged;
 }
 
@@ -265,7 +265,7 @@ async function discoverDomain(
     options: DiscoveryOptions,
     domain: TopLevelDomain,
     projectName: string
-): Promise<ModuleGraph> {
+): Promise<ComponentGraph> {
     const service = getCopilotSDKService();
     const prompt = buildFocusedDiscoveryPrompt(
         options.repoPath,
@@ -293,7 +293,7 @@ async function discoverDomain(
         throw new Error(`Domain discovery failed for '${domain.name}': ${result.error || 'empty response'}`);
     }
 
-    return parseModuleGraphResponse(result.response);
+    return parseComponentGraphResponse(result.response);
 }
 
 // ============================================================================
@@ -301,19 +301,19 @@ async function discoverDomain(
 // ============================================================================
 
 /**
- * Merge multiple sub-graphs from domain discoveries into a unified ModuleGraph.
+ * Merge multiple sub-graphs from domain discoveries into a unified ComponentGraph.
  *
- * - Deduplicates modules by ID
- * - Tags each module with its domain slug
+ * - Deduplicates components by ID
+ * - Tags each component with its domain slug
  * - Populates graph.domains from TopLevelDomain[]
  * - Merges categories (deduplicating by name)
  * - Resolves cross-domain dependencies
  * - Combines architecture notes
  */
 export function mergeSubGraphs(
-    subGraphs: ModuleGraph[],
+    subGraphs: ComponentGraph[],
     scanResult: StructuralScanResult
-): ModuleGraph {
+): ComponentGraph {
     // Merge project info (take from first sub-graph, supplement with scan result)
     const firstProject = subGraphs[0].project;
     const project = {
@@ -324,34 +324,34 @@ export function mergeSubGraphs(
         entryPoints: firstProject.entryPoints,
     };
 
-    // Build domain-to-graph mapping for tagging modules with their domain
+    // Build domain-to-graph mapping for tagging components with their domain
     // Each sub-graph corresponds to one domain (same order as scanResult.domains)
-    const domainModuleMap = new Map<string, string[]>();
+    const domainComponentMap = new Map<string, string[]>();
 
-    // Merge modules (deduplicate by ID) and tag with domain slug
-    const moduleMap = new Map<string, ModuleInfo>();
+    // Merge components (deduplicate by ID) and tag with domain slug
+    const componentMap = new Map<string, ComponentInfo>();
     for (let i = 0; i < subGraphs.length; i++) {
         const graph = subGraphs[i];
         const domain = scanResult.domains[i];
-        const domainSlug = domain ? normalizeModuleId(domain.path) : undefined;
+        const domainSlug = domain ? normalizeComponentId(domain.path) : undefined;
 
-        for (const mod of graph.modules) {
-            if (!moduleMap.has(mod.id)) {
-                // Tag module with its domain
-                const taggedMod = domainSlug ? { ...mod, domain: domainSlug } : mod;
-                moduleMap.set(mod.id, taggedMod);
+        for (const comp of graph.components) {
+            if (!componentMap.has(comp.id)) {
+                // Tag component with its domain
+                const taggedComp = domainSlug ? { ...comp, domain: domainSlug } : comp;
+                componentMap.set(comp.id, taggedComp);
 
-                // Track which modules belong to each domain
+                // Track which components belong to each domain
                 if (domainSlug) {
-                    if (!domainModuleMap.has(domainSlug)) {
-                        domainModuleMap.set(domainSlug, []);
+                    if (!domainComponentMap.has(domainSlug)) {
+                        domainComponentMap.set(domainSlug, []);
                     }
-                    domainModuleMap.get(domainSlug)!.push(mod.id);
+                    domainComponentMap.get(domainSlug)!.push(comp.id);
                 }
             }
         }
     }
-    const modules = Array.from(moduleMap.values());
+    const components = Array.from(componentMap.values());
 
     // Merge categories (deduplicate by name)
     const categoryMap = new Map<string, CategoryInfo>();
@@ -365,10 +365,10 @@ export function mergeSubGraphs(
     const categories = Array.from(categoryMap.values());
 
     // Validate cross-domain dependencies
-    const moduleIds = new Set(modules.map(m => m.id));
-    for (const mod of modules) {
-        mod.dependencies = mod.dependencies.filter(dep => moduleIds.has(dep));
-        mod.dependents = mod.dependents.filter(dep => moduleIds.has(dep));
+    const componentIds = new Set(components.map(m => m.id));
+    for (const comp of components) {
+        comp.dependencies = comp.dependencies.filter(dep => componentIds.has(dep));
+        comp.dependents = comp.dependents.filter(dep => componentIds.has(dep));
     }
 
     // Combine architecture notes
@@ -377,23 +377,23 @@ export function mergeSubGraphs(
         .filter(Boolean)
         .join('\n\n');
 
-    // Build DomainInfo[] from TopLevelDomain[] + module assignments
+    // Build DomainInfo[] from TopLevelDomain[] + component assignments
     const domains: DomainInfo[] | undefined = scanResult.domains.length > 0
         ? scanResult.domains.map(topLevelDomain => {
-            const domainSlug = normalizeModuleId(topLevelDomain.path);
+            const domainSlug = normalizeComponentId(topLevelDomain.path);
             return {
                 id: domainSlug,
                 name: topLevelDomain.name,
                 path: topLevelDomain.path,
                 description: topLevelDomain.description,
-                modules: domainModuleMap.get(domainSlug) || [],
+                components: domainComponentMap.get(domainSlug) || [],
             };
         })
         : undefined;
 
     return {
         project,
-        modules,
+        components,
         categories,
         architectureNotes,
         ...(domains ? { domains } : {}),

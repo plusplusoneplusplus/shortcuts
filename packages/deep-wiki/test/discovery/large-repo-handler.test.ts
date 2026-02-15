@@ -7,7 +7,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { LARGE_REPO_THRESHOLD, mergeSubGraphs } from '../../src/discovery/large-repo-handler';
-import type { ModuleGraph, StructuralScanResult } from '../../src/types';
+import type { ComponentGraph, StructuralScanResult } from '../../src/types';
 
 describe('Large Repo Handler', () => {
     // ========================================================================
@@ -36,9 +36,9 @@ describe('Large Repo Handler', () => {
         const createMinimalGraph = (
             modulesData: Array<{ id: string; name: string; path: string; deps?: string[]; dependents?: string[]; category?: string }>,
             categories: Array<{ name: string; description: string }> = [],
-            projectOverrides: Partial<ModuleGraph['project']> = {},
+            projectOverrides: Partial<ComponentGraph['project']> = {},
             architectureNotes = ''
-        ): ModuleGraph => ({
+        ): ComponentGraph => ({
             project: {
                 name: 'test',
                 description: '',
@@ -47,7 +47,7 @@ describe('Large Repo Handler', () => {
                 entryPoints: [],
                 ...projectOverrides,
             },
-            modules: modulesData.map(m => ({
+            components: modulesData.map(m => ({
                 id: m.id,
                 name: m.name,
                 path: m.path,
@@ -77,9 +77,9 @@ describe('Large Repo Handler', () => {
             ]);
 
             const result = mergeSubGraphs([graph1, graph2], defaultScanResult);
-            expect(result.modules).toHaveLength(2);
-            expect(result.modules.map(m => m.id)).toContain('core-auth');
-            expect(result.modules.map(m => m.id)).toContain('api-routes');
+            expect(result.components).toHaveLength(2);
+            expect(result.components.map(m => m.id)).toContain('core-auth');
+            expect(result.components.map(m => m.id)).toContain('api-routes');
         });
 
         it('should deduplicate modules by ID', () => {
@@ -91,8 +91,8 @@ describe('Large Repo Handler', () => {
             ]);
 
             const result = mergeSubGraphs([graph1, graph2], defaultScanResult);
-            expect(result.modules).toHaveLength(1);
-            expect(result.modules[0].name).toBe('Shared V1'); // First occurrence wins
+            expect(result.components).toHaveLength(1);
+            expect(result.components[0].name).toBe('Shared V1'); // First occurrence wins
         });
 
         it('should deduplicate categories by name', () => {
@@ -119,7 +119,7 @@ describe('Large Repo Handler', () => {
             // database-main doesn't exist in any sub-graph
 
             const result = mergeSubGraphs([graph1], defaultScanResult);
-            expect(result.modules[0].dependencies).toEqual([]);
+            expect(result.components[0].dependencies).toEqual([]);
         });
 
         it('should keep valid cross-area dependencies', () => {
@@ -131,8 +131,8 @@ describe('Large Repo Handler', () => {
             ]);
 
             const result = mergeSubGraphs([graph1, graph2], defaultScanResult);
-            expect(result.modules.find(m => m.id === 'core-auth')!.dependencies).toEqual(['infra-db']);
-            expect(result.modules.find(m => m.id === 'infra-db')!.dependents).toEqual(['core-auth']);
+            expect(result.components.find(m => m.id === 'core-auth')!.dependencies).toEqual(['infra-db']);
+            expect(result.components.find(m => m.id === 'infra-db')!.dependents).toEqual(['core-auth']);
         });
 
         it('should use scan result project info when available', () => {
@@ -188,23 +188,23 @@ describe('Large Repo Handler', () => {
 
         it('should handle single sub-graph', () => {
             const graph1 = createMinimalGraph([
-                { id: 'only-module', name: 'Only', path: 'src/' },
+                { id: 'only-component', name: 'Only', path: 'src/' },
             ]);
 
             const result = mergeSubGraphs([graph1], defaultScanResult);
-            expect(result.modules).toHaveLength(1);
+            expect(result.components).toHaveLength(1);
         });
 
         it('should handle many sub-graphs', () => {
-            const graphs: ModuleGraph[] = [];
+            const graphs: ComponentGraph[] = [];
             for (let i = 0; i < 10; i++) {
                 graphs.push(createMinimalGraph([
-                    { id: `mod-${i}`, name: `Module ${i}`, path: `area-${i}/` },
+                    { id: `mod-${i}`, name: `Component ${i}`, path: `area-${i}/` },
                 ]));
             }
 
             const result = mergeSubGraphs(graphs, defaultScanResult);
-            expect(result.modules).toHaveLength(10);
+            expect(result.components).toHaveLength(10);
         });
     });
 });

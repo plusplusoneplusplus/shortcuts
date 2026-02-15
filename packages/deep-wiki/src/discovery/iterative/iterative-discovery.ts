@@ -7,7 +7,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { ModuleGraph, TopicSeed } from '../../types';
+import type { ComponentGraph, TopicSeed } from '../../types';
 import type { IterativeDiscoveryOptions, TopicProbeResult } from './types';
 import { runTopicProbe } from './probe-session';
 import { mergeProbeResults } from './merge-session';
@@ -83,20 +83,20 @@ async function runParallel<T, R>(
  * 2. Run N parallel probe sessions (one per topic)
  * 3. Merge probe results + identify gaps + discover new topics
  * 4. Iterate until convergence (no new topics, good coverage, or max rounds)
- * 5. Return final ModuleGraph
+ * 5. Return final ComponentGraph
  *
  * @param options - Iterative discovery options
- * @returns Final ModuleGraph
+ * @returns Final ComponentGraph
  */
 export async function runIterativeDiscovery(
     options: IterativeDiscoveryOptions
-): Promise<ModuleGraph> {
+): Promise<ComponentGraph> {
     const maxRounds = options.maxRounds ?? 3;
     const concurrency = options.concurrency ?? 5;
     const coverageThreshold = options.coverageThreshold ?? 0.8;
 
     let currentTopics: TopicSeed[] = [...options.seeds];
-    let currentGraph: ModuleGraph | null = null;
+    let currentGraph: ComponentGraph | null = null;
     let round = 0;
 
     // Handle empty seeds
@@ -109,7 +109,7 @@ export async function runIterativeDiscovery(
                 buildSystem: 'unknown',
                 entryPoints: [],
             },
-            modules: [],
+            components: [],
             categories: [],
             architectureNotes: 'No seeds provided for iterative discovery.',
         };
@@ -189,7 +189,7 @@ export async function runIterativeDiscovery(
             const fresh = freshProbeResults.find(r => r?.topic === t.topic);
             return fresh ?? {
                 topic: t.topic,
-                foundModules: [],
+                foundComponents: [],
                 discoveredTopics: [],
                 dependencies: [],
                 confidence: 0,
@@ -197,9 +197,9 @@ export async function runIterativeDiscovery(
         });
 
         // Count successful probes
-        const successfulProbes = allProbeResults.filter(r => r && r.foundModules.length > 0).length;
-        const totalModulesFound = allProbeResults.reduce((sum, r) => sum + (r?.foundModules?.length || 0), 0);
-        printInfo(`  Probes completed: ${successfulProbes}/${currentTopics.length} successful, ${totalModulesFound} modules found`);
+        const successfulProbes = allProbeResults.filter(r => r && r.foundComponents.length > 0).length;
+        const totalComponentsFound = allProbeResults.reduce((sum, r) => sum + (r?.foundComponents?.length || 0), 0);
+        printInfo(`  Probes completed: ${successfulProbes}/${currentTopics.length} successful, ${totalComponentsFound} components found`);
 
         // Merge results
         printInfo('  Merging probe results...');
@@ -214,7 +214,7 @@ export async function runIterativeDiscovery(
         );
 
         currentGraph = mergeResult.graph;
-        printInfo(`  Merged graph: ${currentGraph.modules.length} modules, coverage: ${(mergeResult.coverage * 100).toFixed(0)}%`);
+        printInfo(`  Merged graph: ${currentGraph.components.length} components, coverage: ${(mergeResult.coverage * 100).toFixed(0)}%`);
 
         // Save round progress to metadata
         if (cacheEnabled && gitHash) {

@@ -9,7 +9,7 @@
  */
 
 import type { TopicSeed } from '../types';
-import { normalizeModuleId } from '../schemas';
+import { normalizeComponentId } from '../schemas';
 import { parseAIJsonResponse } from '../utils/parse-ai-response';
 
 // ============================================================================
@@ -76,7 +76,7 @@ function parseTopicsArray(raw: unknown): TopicSeed[] {
         }
 
         // Normalize topic ID to kebab-case
-        const topicId = normalizeModuleId(String(obj.topic));
+        const topicId = normalizeComponentId(String(obj.topic));
 
         // Parse hints (can be array or comma-separated string)
         let hints: string[] = [];

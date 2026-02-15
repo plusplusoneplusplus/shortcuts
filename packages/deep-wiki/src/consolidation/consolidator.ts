@@ -1,8 +1,8 @@
 /**
- * Module Consolidation Orchestrator
+ * Component Consolidation Orchestrator
  *
  * Public API for Phase 2 — combines rule-based directory consolidation
- * with AI-assisted semantic clustering to reduce module count.
+ * with AI-assisted semantic clustering to reduce component count.
  *
  * Pipeline: Rule-based → AI clustering (optional)
  *
@@ -10,7 +10,7 @@
  */
 
 import type { AIInvoker } from '@plusplusoneplusplus/pipeline-core';
-import type { ModuleGraph } from '../types';
+import type { ComponentGraph } from '../types';
 import type { ConsolidationOptions, ConsolidationResult } from './types';
 import { consolidateByDirectory } from './rule-based-consolidator';
 import { clusterWithAI } from './ai-consolidator';
@@ -19,8 +19,8 @@ import { clusterWithAI } from './ai-consolidator';
 // Constants
 // ============================================================================
 
-/** Default target module count for AI clustering */
-const DEFAULT_TARGET_MODULE_COUNT = 50;
+/** Default target component count for AI clustering */
+const DEFAULT_TARGET_COMPONENT_COUNT = 50;
 
 // ============================================================================
 // Public API
@@ -29,26 +29,26 @@ const DEFAULT_TARGET_MODULE_COUNT = 50;
 /**
  * Run the full hybrid consolidation pipeline.
  *
- * 1. Rule-based pass: merge modules by directory proximity
+ * 1. Rule-based pass: merge components by directory proximity
  * 2. AI-assisted pass: semantic clustering to target count (optional)
  *
- * @param graph - The original module graph from Phase 1 (Discovery)
+ * @param graph - The original component graph from Phase 1 (Discovery)
  * @param aiInvoker - AI invoker for semantic clustering (null to skip AI)
  * @param options - Consolidation options
  * @returns Consolidation result with new graph and stats
  */
-export async function consolidateModules(
-    graph: ModuleGraph,
+export async function consolidateComponents(
+    graph: ComponentGraph,
     aiInvoker: AIInvoker | null,
     options: ConsolidationOptions = {}
 ): Promise<ConsolidationResult> {
     const startTime = Date.now();
-    const originalCount = graph.modules.length;
-    const targetCount = options.targetModuleCount || DEFAULT_TARGET_MODULE_COUNT;
+    const originalCount = graph.components.length;
+    const targetCount = options.targetComponentCount || DEFAULT_TARGET_COMPONENT_COUNT;
 
     // Step 1: Rule-based consolidation
     const ruleBasedGraph = consolidateByDirectory(graph);
-    const afterRuleBasedCount = ruleBasedGraph.modules.length;
+    const afterRuleBasedCount = ruleBasedGraph.components.length;
 
     // Step 2: AI-assisted clustering (if enabled and needed)
     let finalGraph = ruleBasedGraph;
@@ -71,7 +71,7 @@ export async function consolidateModules(
         graph: finalGraph,
         originalCount,
         afterRuleBasedCount,
-        finalCount: finalGraph.modules.length,
+        finalCount: finalGraph.components.length,
         duration: Date.now() - startTime,
     };
 }

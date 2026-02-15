@@ -19,7 +19,7 @@ vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
                 success: true,
                 response: JSON.stringify({
                     project: { name: 'test', description: '', language: 'TS', buildSystem: 'npm', entryPoints: [] },
-                    modules: [
+                    components: [
                         { id: 'mod-a', name: 'ModA', path: 'src/a', purpose: 'A', keyFiles: ['a.ts'], dependencies: [], dependents: [], complexity: 'low', category: 'core' },
                     ],
                     categories: [{ name: 'core', description: 'Core modules' }],
@@ -105,7 +105,7 @@ describe('Discovery Phase Logging', () => {
                 expect.stringContaining('Parsing AI response')
             );
             expect(printInfo).toHaveBeenCalledWith(
-                expect.stringContaining('1 modules')
+                expect.stringContaining('1 components')
             );
         });
 
@@ -119,7 +119,7 @@ describe('Discovery Phase Logging', () => {
                     success: true,
                     response: JSON.stringify({
                         project: { name: 'test', description: '', language: 'TS', buildSystem: 'npm', entryPoints: [] },
-                        modules: [],
+                        components: [],
                         categories: [],
                         architectureNotes: '',
                     }),
@@ -139,7 +139,7 @@ describe('Discovery Phase Logging', () => {
         });
     });
 
-    describe('discoverModuleGraph', () => {
+    describe('discoverComponentGraph', () => {
         it('should log standard-size repo detection', async () => {
             // estimateFileCount uses the SDK mock, returns a small number
             const { getCopilotSDKService } = await import('@plusplusoneplusplus/pipeline-core');
@@ -151,14 +151,14 @@ describe('Discovery Phase Logging', () => {
                     success: true,
                     response: JSON.stringify({
                         project: { name: 'test', description: '', language: 'TS', buildSystem: 'npm', entryPoints: [] },
-                        modules: [],
+                        components: [],
                         categories: [],
                         architectureNotes: '',
                     }),
                 });
 
-            const { discoverModuleGraph } = await import('../../src/discovery/index');
-            await discoverModuleGraph({ repoPath: '/test/repo' });
+            const { discoverComponentGraph } = await import('../../src/discovery/index');
+            await discoverComponentGraph({ repoPath: '/test/repo' });
 
             expect(printInfo).toHaveBeenCalledWith(
                 expect.stringContaining('Standard-size repo')
@@ -168,13 +168,13 @@ describe('Discovery Phase Logging', () => {
 
     describe('iterative discovery logging', () => {
         it('should log round progress with topic count', async () => {
-            // Mock probe and merge at the module level
+            // Mock probe and merge at the component level
             const probeModule = await import('../../src/discovery/iterative/probe-session');
             const mergeModule = await import('../../src/discovery/iterative/merge-session');
 
             vi.spyOn(probeModule, 'runTopicProbe').mockResolvedValue({
                 topic: 'auth',
-                foundModules: [{ id: 'auth-mod', name: 'Auth', path: 'src/auth', purpose: 'Auth', keyFiles: [], dependencies: [], dependents: [], complexity: 'low' as const, category: 'core' }],
+                foundComponents: [{ id: 'auth-mod', name: 'Auth', path: 'src/auth', purpose: 'Auth', keyFiles: [], dependencies: [], dependents: [], complexity: 'low' as const, category: 'core' }],
                 discoveredTopics: [],
                 dependencies: [],
                 confidence: 0.9,
@@ -183,7 +183,7 @@ describe('Discovery Phase Logging', () => {
             vi.spyOn(mergeModule, 'mergeProbeResults').mockResolvedValue({
                 graph: {
                     project: { name: 'test', description: '', language: 'TS', buildSystem: 'npm', entryPoints: [] },
-                    modules: [{ id: 'auth-mod', name: 'Auth', path: 'src/auth', purpose: 'Auth', keyFiles: [], dependencies: [], dependents: [], complexity: 'low', category: 'core' }],
+                    components: [{ id: 'auth-mod', name: 'Auth', path: 'src/auth', purpose: 'Auth', keyFiles: [], dependencies: [], dependents: [], complexity: 'low', category: 'core' }],
                     categories: [],
                     architectureNotes: '',
                 },
@@ -228,7 +228,7 @@ describe('Discovery Phase Logging', () => {
 
             vi.spyOn(probeModule, 'runTopicProbe').mockResolvedValue({
                 topic: 'auth',
-                foundModules: [],
+                foundComponents: [],
                 discoveredTopics: [],
                 dependencies: [],
                 confidence: 0.8,
@@ -237,7 +237,7 @@ describe('Discovery Phase Logging', () => {
             vi.spyOn(mergeModule, 'mergeProbeResults').mockResolvedValue({
                 graph: {
                     project: { name: 'test', description: '', language: 'TS', buildSystem: 'npm', entryPoints: [] },
-                    modules: [],
+                    components: [],
                     categories: [],
                     architectureNotes: '',
                 },
@@ -265,7 +265,7 @@ describe('Discovery Phase Logging', () => {
 
             vi.spyOn(probeModule, 'runTopicProbe').mockResolvedValue({
                 topic: 'auth',
-                foundModules: [],
+                foundComponents: [],
                 discoveredTopics: [],
                 dependencies: [],
                 confidence: 0.7,
@@ -275,7 +275,7 @@ describe('Discovery Phase Logging', () => {
                 .mockResolvedValueOnce({
                     graph: {
                         project: { name: 'test', description: '', language: 'TS', buildSystem: 'npm', entryPoints: [] },
-                        modules: [],
+                        components: [],
                         categories: [],
                         architectureNotes: '',
                     },
@@ -287,7 +287,7 @@ describe('Discovery Phase Logging', () => {
                 .mockResolvedValueOnce({
                     graph: {
                         project: { name: 'test', description: '', language: 'TS', buildSystem: 'npm', entryPoints: [] },
-                        modules: [],
+                        components: [],
                         categories: [],
                         architectureNotes: '',
                     },

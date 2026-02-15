@@ -15,9 +15,9 @@ import {
     type PermissionRequestResult,
     type TokenUsage,
 } from '@plusplusoneplusplus/pipeline-core';
-import type { DiscoveryOptions, ModuleGraph } from '../types';
+import type { DiscoveryOptions, ComponentGraph } from '../types';
 import { buildDiscoveryPrompt } from './prompts';
-import { parseModuleGraphResponse } from './response-parser';
+import { parseComponentGraphResponse } from './response-parser';
 import { printInfo, printWarning, gray } from '../logger';
 import { getErrorMessage } from '../utils/error-utils';
 
@@ -54,8 +54,8 @@ function readOnlyPermissions(request: PermissionRequest): PermissionRequestResul
  * Result from a discovery session, including token usage.
  */
 export interface DiscoverySessionResult {
-    /** The parsed module graph */
-    graph: ModuleGraph;
+    /** The parsed component graph */
+    graph: ComponentGraph;
     /** Aggregated token usage across all SDK calls (initial + retry) */
     tokenUsage?: TokenUsage;
 }
@@ -68,10 +68,10 @@ export interface DiscoverySessionResult {
  * Run a discovery session against a repository.
  *
  * Creates a direct SDK session with read-only MCP tools, sends the
- * discovery prompt, and parses the AI response into a ModuleGraph.
+ * discovery prompt, and parses the AI response into a ComponentGraph.
  *
  * @param options - Discovery options (repoPath, model, timeout, focus)
- * @returns The parsed ModuleGraph
+ * @returns The parsed ComponentGraph
  * @throws Error if SDK is unavailable, AI times out, or response is malformed
  */
 export async function runDiscoverySession(options: DiscoveryOptions): Promise<DiscoverySessionResult> {
@@ -127,11 +127,11 @@ export async function runDiscoverySession(options: DiscoveryOptions): Promise<Di
         throw new DiscoveryError('AI returned empty response', 'empty-response');
     }
 
-    // Parse the response into a ModuleGraph
-    printInfo('Parsing AI response into module graph...');
+    // Parse the response into a ComponentGraph
+    printInfo('Parsing AI response into component graph...');
     try {
-        const graph = parseModuleGraphResponse(result.response);
-        printInfo(`Parsed ${graph.modules.length} modules across ${graph.categories.length} categories`);
+        const graph = parseComponentGraphResponse(result.response);
+        printInfo(`Parsed ${graph.components.length} components across ${graph.categories.length} categories`);
         return { graph, tokenUsage: result.tokenUsage };
     } catch (parseError) {
         // On parse failure, retry once with a stricter prompt
@@ -152,8 +152,8 @@ export async function runDiscoverySession(options: DiscoveryOptions): Promise<Di
             );
         }
 
-        const graph = parseModuleGraphResponse(retryResult.response);
-        printInfo(`Retry succeeded — parsed ${graph.modules.length} modules`);
+        const graph = parseComponentGraphResponse(retryResult.response);
+        printInfo(`Retry succeeded — parsed ${graph.components.length} components`);
         // Merge tokenUsage from both attempts
         const mergedUsage = mergeTokenUsage(result.tokenUsage, retryResult.tokenUsage);
         return { graph, tokenUsage: mergedUsage };

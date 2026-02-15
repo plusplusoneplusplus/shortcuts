@@ -7,13 +7,13 @@
 
 import { describe, it, expect } from 'vitest';
 import { buildMergePrompt } from '../../../src/discovery/iterative/merge-prompts';
-import type { TopicProbeResult, ModuleGraph } from '../../../src/types';
+import type { TopicProbeResult, ComponentGraph } from '../../../src/types';
 
 describe('buildMergePrompt', () => {
     const probeResults: TopicProbeResult[] = [
         {
             topic: 'authentication',
-            foundModules: [
+            foundComponents: [
                 {
                     id: 'auth-service',
                     name: 'Auth Service',
@@ -29,7 +29,7 @@ describe('buildMergePrompt', () => {
         },
     ];
 
-    const existingGraph: ModuleGraph = {
+    const existingGraph: ComponentGraph = {
         project: {
             name: 'test-project',
             description: 'Test',
@@ -37,7 +37,7 @@ describe('buildMergePrompt', () => {
             buildSystem: 'npm',
             entryPoints: [],
         },
-        modules: [],
+        components: [],
         categories: [],
         architectureNotes: '',
     };
@@ -93,7 +93,7 @@ describe('buildMergePrompt', () => {
             ...probeResults,
             {
                 topic: 'database',
-                foundModules: [],
+                foundComponents: [],
                 discoveredTopics: [],
                 dependencies: [],
                 confidence: 0.7,

@@ -3,15 +3,15 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { consolidateModules } from '../../src/consolidation/consolidator';
-import type { ModuleInfo, ModuleGraph } from '../../src/types';
+import { consolidateComponents } from '../../src/consolidation/consolidator';
+import type { ComponentInfo, ComponentGraph } from '../../src/types';
 import type { AIInvoker } from '@plusplusoneplusplus/pipeline-core';
 
 // ============================================================================
 // Helpers
 // ============================================================================
 
-function makeModule(overrides: Partial<ModuleInfo> & { id: string; path: string }): ModuleInfo {
+function makeComponent(overrides: Partial<ComponentInfo> & { id: string; path: string }): ComponentInfo {
     return {
         name: overrides.id.replace(/-/g, ' '),
         purpose: `Purpose of ${overrides.id}`,
@@ -24,7 +24,7 @@ function makeModule(overrides: Partial<ModuleInfo> & { id: string; path: string 
     };
 }
 
-function makeGraph(modules: ModuleInfo[]): ModuleGraph {
+function makeGraph(components: ComponentInfo[]): ComponentGraph {
     return {
         project: {
             name: 'test-project',
@@ -33,7 +33,7 @@ function makeGraph(modules: ModuleInfo[]): ModuleGraph {
             buildSystem: 'npm',
             entryPoints: ['src/index.ts'],
         },
-        modules,
+        components: components,
         categories: [{ name: 'default', description: 'Default category' }],
         architectureNotes: 'Test architecture',
     };
@@ -56,19 +56,19 @@ function createFailingAIInvoker(): AIInvoker {
 }
 
 // ============================================================================
-// consolidateModules
+// consolidateComponents
 // ============================================================================
 
-describe('consolidateModules', () => {
+describe('consolidateComponents', () => {
     it('returns correct stats', async () => {
-        const modules = [
-            makeModule({ id: 'a', path: 'src/x/a.ts' }),
-            makeModule({ id: 'b', path: 'src/x/b.ts' }),
-            makeModule({ id: 'c', path: 'src/y/' }),
+        const components = [
+            makeComponent({ id: 'a', path: 'src/x/a.ts' }),
+            makeComponent({ id: 'b', path: 'src/x/b.ts' }),
+            makeComponent({ id: 'c', path: 'src/y/' }),
         ];
-        const graph = makeGraph(modules);
+        const graph = makeGraph(components);
 
-        const result = await consolidateModules(graph, null, { skipAI: true });
+        const result = await consolidateComponents(graph, null, { skipAI: true });
 
         expect(result.originalCount).toBe(3);
         expect(result.afterRuleBasedCount).toBe(2);
@@ -77,18 +77,18 @@ describe('consolidateModules', () => {
     });
 
     it('applies rule-based consolidation first', async () => {
-        const modules: ModuleInfo[] = [];
+        const components: ComponentInfo[] = [];
         for (let dir = 0; dir < 5; dir++) {
             for (let file = 0; file < 4; file++) {
-                modules.push(makeModule({
+                components.push(makeComponent({
                     id: `mod-d${dir}-f${file}`,
                     path: `src/dir${dir}/file${file}.ts`,
                 }));
             }
         }
-        const graph = makeGraph(modules);
+        const graph = makeGraph(components);
 
-        const result = await consolidateModules(graph, null, { skipAI: true });
+        const result = await consolidateComponents(graph, null, { skipAI: true });
 
         expect(result.originalCount).toBe(20);
         expect(result.afterRuleBasedCount).toBe(5);
@@ -97,25 +97,25 @@ describe('consolidateModules', () => {
 
     it('skips AI when skipAI is true', async () => {
         const mockInvoker = createMockAIInvoker('{}');
-        const modules = Array.from({ length: 100 }, (_, i) =>
-            makeModule({ id: `mod-${i}`, path: `src/mod-${i}/` })
+        const components = Array.from({ length: 100 }, (_, i) =>
+            makeComponent({ id: `mod-${i}`, path: `src/mod-${i}/` })
         );
-        const graph = makeGraph(modules);
+        const graph = makeGraph(components);
 
-        await consolidateModules(graph, mockInvoker, { skipAI: true });
+        await consolidateComponents(graph, mockInvoker, { skipAI: true });
 
         expect(mockInvoker).not.toHaveBeenCalled();
     });
 
     it('skips AI when aiInvoker is null', async () => {
-        const modules = Array.from({ length: 100 }, (_, i) =>
-            makeModule({ id: `mod-${i}`, path: `src/mod-${i}/` })
+        const components = Array.from({ length: 100 }, (_, i) =>
+            makeComponent({ id: `mod-${i}`, path: `src/mod-${i}/` })
         );
-        const graph = makeGraph(modules);
+        const graph = makeGraph(components);
 
-        const result = await consolidateModules(graph, null);
+        const result = await consolidateComponents(graph, null);
 
-        // Rule-based only — each module is in its own directory, so no merging
+        // Rule-based only — each component is in its own directory, so no merging
         expect(result.finalCount).toBe(100);
     });
 
@@ -128,12 +128,12 @@ describe('consolidateModules', () => {
         });
         const mockInvoker = createMockAIInvoker(clusterResponse);
 
-        const modules = Array.from({ length: 5 }, (_, i) =>
-            makeModule({ id: `mod-${i}`, path: `src/mod-${i}/` })
+        const components = Array.from({ length: 5 }, (_, i) =>
+            makeComponent({ id: `mod-${i}`, path: `src/mod-${i}/` })
         );
-        const graph = makeGraph(modules);
+        const graph = makeGraph(components);
 
-        const result = await consolidateModules(graph, mockInvoker, { targetModuleCount: 3 });
+        const result = await consolidateComponents(graph, mockInvoker, { targetComponentCount: 3 });
 
         expect(mockInvoker).toHaveBeenCalled();
         expect(result.finalCount).toBe(2);
@@ -142,13 +142,13 @@ describe('consolidateModules', () => {
     it('skips AI when count is already at target', async () => {
         const mockInvoker = createMockAIInvoker('{}');
 
-        const modules = [
-            makeModule({ id: 'a', path: 'src/a/' }),
-            makeModule({ id: 'b', path: 'src/b/' }),
+        const components = [
+            makeComponent({ id: 'a', path: 'src/a/' }),
+            makeComponent({ id: 'b', path: 'src/b/' }),
         ];
-        const graph = makeGraph(modules);
+        const graph = makeGraph(components);
 
-        await consolidateModules(graph, mockInvoker, { targetModuleCount: 5 });
+        await consolidateComponents(graph, mockInvoker, { targetComponentCount: 5 });
 
         expect(mockInvoker).not.toHaveBeenCalled();
     });
@@ -156,12 +156,12 @@ describe('consolidateModules', () => {
     it('falls back to rule-based result when AI fails', async () => {
         const failingInvoker = createFailingAIInvoker();
 
-        const modules = Array.from({ length: 100 }, (_, i) =>
-            makeModule({ id: `mod-${i}`, path: `src/mod-${i}/` })
+        const components = Array.from({ length: 100 }, (_, i) =>
+            makeComponent({ id: `mod-${i}`, path: `src/mod-${i}/` })
         );
-        const graph = makeGraph(modules);
+        const graph = makeGraph(components);
 
-        const result = await consolidateModules(graph, failingInvoker, { targetModuleCount: 10 });
+        const result = await consolidateComponents(graph, failingInvoker, { targetComponentCount: 10 });
 
         // Should still return a valid result (rule-based only)
         expect(result.finalCount).toBe(result.afterRuleBasedCount);
@@ -170,19 +170,19 @@ describe('consolidateModules', () => {
     it('falls back gracefully when AI throws', async () => {
         const throwingInvoker: AIInvoker = vi.fn().mockRejectedValue(new Error('Network error'));
 
-        const modules = Array.from({ length: 100 }, (_, i) =>
-            makeModule({ id: `mod-${i}`, path: `src/mod-${i}/` })
+        const components = Array.from({ length: 100 }, (_, i) =>
+            makeComponent({ id: `mod-${i}`, path: `src/mod-${i}/` })
         );
-        const graph = makeGraph(modules);
+        const graph = makeGraph(components);
 
-        const result = await consolidateModules(graph, throwingInvoker, { targetModuleCount: 10 });
+        const result = await consolidateComponents(graph, throwingInvoker, { targetComponentCount: 10 });
 
         expect(result.finalCount).toBe(result.afterRuleBasedCount);
     });
 
-    it('handles empty module graph', async () => {
+    it('handles empty component graph', async () => {
         const graph = makeGraph([]);
-        const result = await consolidateModules(graph, null);
+        const result = await consolidateComponents(graph, null);
 
         expect(result.originalCount).toBe(0);
         expect(result.finalCount).toBe(0);
@@ -191,16 +191,16 @@ describe('consolidateModules', () => {
     it('full pipeline: rule-based + AI clustering', async () => {
         // 20 modules in 4 directories (5 each) → rule-based reduces to 4
         // AI then clusters 4 into 2
-        const modules: ModuleInfo[] = [];
+        const components: ComponentInfo[] = [];
         for (let dir = 0; dir < 4; dir++) {
             for (let file = 0; file < 5; file++) {
-                modules.push(makeModule({
+                components.push(makeComponent({
                     id: `mod-d${dir}-f${file}`,
                     path: `src/dir${dir}/file${file}.ts`,
                 }));
             }
         }
-        const graph = makeGraph(modules);
+        const graph = makeGraph(components);
 
         // After rule-based: src-dir0, src-dir1, src-dir2, src-dir3
         // AI clusters: group-a (dir0, dir1), group-b (dir2, dir3)
@@ -212,7 +212,7 @@ describe('consolidateModules', () => {
         });
         const mockInvoker = createMockAIInvoker(clusterResponse);
 
-        const result = await consolidateModules(graph, mockInvoker, { targetModuleCount: 2 });
+        const result = await consolidateComponents(graph, mockInvoker, { targetComponentCount: 2 });
 
         expect(result.originalCount).toBe(20);
         expect(result.afterRuleBasedCount).toBe(4);

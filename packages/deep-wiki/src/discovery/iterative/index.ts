@@ -2,7 +2,7 @@
  * Iterative Discovery — Public API
  *
  * Exports for the iterative breadth-first discovery mode.
- * This module implements Phase 1 discovery using topic seeds.
+ * This package implements Phase 1 discovery using topic seeds.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */

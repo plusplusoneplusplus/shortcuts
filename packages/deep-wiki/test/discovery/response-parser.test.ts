@@ -2,11 +2,11 @@
  * Response Parser Tests
  *
  * Tests for JSON parsing, validation, normalization, and error recovery
- * of AI responses into ModuleGraph and StructuralScanResult structures.
+ * of AI responses into ComponentGraph and StructuralScanResult structures.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { parseModuleGraphResponse, parseStructuralScanResponse, normalizePath } from '../../src/discovery/response-parser';
+import { parseComponentGraphResponse, parseStructuralScanResponse, normalizePath } from '../../src/discovery/response-parser';
 
 // Capture stderr warnings during tests
 let stderrOutput: string;
@@ -24,13 +24,13 @@ afterEach(() => {
     process.stderr.write = originalStderrWrite;
 });
 
-describe('parseModuleGraphResponse', () => {
+describe('parseComponentGraphResponse', () => {
     // ========================================================================
-    // Valid Module Graph Parsing
+    // Valid Component Graph Parsing
     // ========================================================================
 
-    describe('valid module graph', () => {
-        it('should parse a valid JSON module graph', () => {
+    describe('valid component graph', () => {
+        it('should parse a valid JSON component graph', () => {
             const json = JSON.stringify({
                 project: {
                     name: 'test-project',
@@ -39,10 +39,10 @@ describe('parseModuleGraphResponse', () => {
                     buildSystem: 'npm + webpack',
                     entryPoints: ['src/index.ts'],
                 },
-                modules: [
+                components: [
                     {
                         id: 'core',
-                        name: 'Core Module',
+                        name: 'Core Component',
                         path: 'src/core/',
                         purpose: 'Core logic',
                         keyFiles: ['src/core/index.ts'],
@@ -58,25 +58,25 @@ describe('parseModuleGraphResponse', () => {
                 architectureNotes: 'Layered architecture',
             });
 
-            const result = parseModuleGraphResponse(json);
+            const result = parseComponentGraphResponse(json);
             expect(result.project.name).toBe('test-project');
             expect(result.project.language).toBe('TypeScript');
-            expect(result.modules).toHaveLength(1);
-            expect(result.modules[0].id).toBe('core');
+            expect(result.components).toHaveLength(1);
+            expect(result.components[0].id).toBe('core');
             expect(result.categories).toHaveLength(1);
             expect(result.architectureNotes).toBe('Layered architecture');
         });
 
-        it('should parse a module graph with multiple modules and dependencies', () => {
+        it('should parse a component graph with multiple components and dependencies', () => {
             const json = JSON.stringify({
                 project: {
-                    name: 'multi-module',
-                    description: 'Multi-module project',
+                    name: 'multi-component',
+                    description: 'Multi-component project',
                     language: 'Go',
                     buildSystem: 'go modules',
                     entryPoints: ['cmd/main.go'],
                 },
-                modules: [
+                components: [
                     {
                         id: 'auth',
                         name: 'Auth',
@@ -118,10 +118,10 @@ describe('parseModuleGraphResponse', () => {
                 architectureNotes: 'Clean architecture with DI',
             });
 
-            const result = parseModuleGraphResponse(json);
-            expect(result.modules).toHaveLength(3);
-            expect(result.modules[0].dependencies).toEqual(['database']);
-            expect(result.modules[0].dependents).toEqual(['api']);
+            const result = parseComponentGraphResponse(json);
+            expect(result.components).toHaveLength(3);
+            expect(result.components[0].dependencies).toEqual(['database']);
+            expect(result.components[0].dependents).toEqual(['api']);
         });
     });
 
@@ -131,7 +131,7 @@ describe('parseModuleGraphResponse', () => {
 
     describe('JSON in markdown code blocks', () => {
         it('should extract JSON from ```json code block', () => {
-            const response = `Here is the module graph:
+            const response = `Here is the component graph:
 
 \`\`\`json
 {
@@ -144,7 +144,7 @@ describe('parseModuleGraphResponse', () => {
 
 That's the result.`;
 
-            const result = parseModuleGraphResponse(response);
+            const result = parseComponentGraphResponse(response);
             expect(result.project.name).toBe('test');
         });
 
@@ -158,7 +158,7 @@ That's the result.`;
 }
 \`\`\``;
 
-            const result = parseModuleGraphResponse(response);
+            const result = parseComponentGraphResponse(response);
             expect(result.project.name).toBe('test2');
         });
     });
@@ -169,23 +169,23 @@ That's the result.`;
 
     describe('malformed JSON handling', () => {
         it('should throw on completely invalid input', () => {
-            expect(() => parseModuleGraphResponse('not json at all')).toThrow();
+            expect(() => parseComponentGraphResponse('not json at all')).toThrow();
         });
 
         it('should throw on empty input', () => {
-            expect(() => parseModuleGraphResponse('')).toThrow('Empty or invalid response');
+            expect(() => parseComponentGraphResponse('')).toThrow('Empty or invalid response');
         });
 
         it('should throw on null input', () => {
-            expect(() => parseModuleGraphResponse(null as unknown as string)).toThrow('Empty or invalid response');
+            expect(() => parseComponentGraphResponse(null as unknown as string)).toThrow('Empty or invalid response');
         });
 
         it('should throw when JSON is an array', () => {
-            expect(() => parseModuleGraphResponse('[1, 2, 3]')).toThrow('not a JSON object');
+            expect(() => parseComponentGraphResponse('[1, 2, 3]')).toThrow('not a JSON object');
         });
 
         it('should throw when JSON is a primitive', () => {
-            expect(() => parseModuleGraphResponse('"hello"')).toThrow();
+            expect(() => parseComponentGraphResponse('"hello"')).toThrow();
         });
     });
 
@@ -196,29 +196,29 @@ That's the result.`;
     describe('missing required fields', () => {
         it('should throw when project is missing', () => {
             const json = JSON.stringify({
-                modules: [],
+                components: [],
                 categories: [],
                 architectureNotes: '',
             });
-            expect(() => parseModuleGraphResponse(json)).toThrow("Missing required field 'project'");
+            expect(() => parseComponentGraphResponse(json)).toThrow("Missing required field 'project'");
         });
 
-        it('should throw when modules is missing', () => {
+        it('should throw when components is missing', () => {
             const json = JSON.stringify({
                 project: { name: 'test', language: 'TS' },
                 categories: [],
                 architectureNotes: '',
             });
-            expect(() => parseModuleGraphResponse(json)).toThrow("Missing required field 'modules'");
+            expect(() => parseComponentGraphResponse(json)).toThrow("Missing required field 'components'");
         });
 
         it('should default categories to empty array when missing', () => {
             const json = JSON.stringify({
                 project: { name: 'test', language: 'TS' },
-                modules: [],
+                components: [],
                 architectureNotes: '',
             });
-            const result = parseModuleGraphResponse(json);
+            const result = parseComponentGraphResponse(json);
             expect(result.categories).toEqual([]);
             expect(stderrOutput).toContain('Missing');
         });
@@ -226,20 +226,20 @@ That's the result.`;
         it('should default project.name to unknown when missing', () => {
             const json = JSON.stringify({
                 project: { description: 'test', language: 'TS', buildSystem: 'npm', entryPoints: [] },
-                modules: [],
+                components: [],
                 categories: [],
             });
-            const result = parseModuleGraphResponse(json);
+            const result = parseComponentGraphResponse(json);
             expect(result.project.name).toBe('unknown');
         });
 
         it('should default architectureNotes to empty string', () => {
             const json = JSON.stringify({
                 project: { name: 'test', language: 'TS' },
-                modules: [],
+                components: [],
                 categories: [],
             });
-            const result = parseModuleGraphResponse(json);
+            const result = parseComponentGraphResponse(json);
             expect(result.architectureNotes).toBe('');
         });
     });
@@ -249,10 +249,10 @@ That's the result.`;
     // ========================================================================
 
     describe('path normalization', () => {
-        it('should normalize module paths', () => {
+        it('should normalize component paths', () => {
             const json = JSON.stringify({
                 project: { name: 'test', language: 'TS' },
-                modules: [
+                components: [
                     {
                         id: 'core',
                         name: 'Core',
@@ -268,15 +268,15 @@ That's the result.`;
                 categories: [{ name: 'core', description: '' }],
             });
 
-            const result = parseModuleGraphResponse(json);
-            expect(result.modules[0].path).toBe('src/core/');
-            expect(result.modules[0].keyFiles[0]).toBe('src/core/index.ts');
+            const result = parseComponentGraphResponse(json);
+            expect(result.components[0].path).toBe('src/core/');
+            expect(result.components[0].keyFiles[0]).toBe('src/core/index.ts');
         });
 
         it('should convert backslashes to forward slashes', () => {
             const json = JSON.stringify({
                 project: { name: 'test', language: 'TS' },
-                modules: [
+                components: [
                     {
                         id: 'core',
                         name: 'Core',
@@ -292,25 +292,25 @@ That's the result.`;
                 categories: [{ name: 'core', description: '' }],
             });
 
-            const result = parseModuleGraphResponse(json);
-            expect(result.modules[0].path).toBe('src/core/');
-            expect(result.modules[0].keyFiles[0]).toBe('src/core/index.ts');
+            const result = parseComponentGraphResponse(json);
+            expect(result.components[0].path).toBe('src/core/');
+            expect(result.components[0].keyFiles[0]).toBe('src/core/index.ts');
         });
     });
 
     // ========================================================================
-    // Module ID Normalization
+    // Component ID Normalization
     // ========================================================================
 
-    describe('module ID normalization', () => {
-        it('should normalize invalid module IDs', () => {
+    describe('component ID normalization', () => {
+        it('should normalize invalid component IDs', () => {
             const json = JSON.stringify({
                 project: { name: 'test', language: 'TS' },
-                modules: [
+                components: [
                     {
                         id: 'MyModule',
-                        name: 'My Module',
-                        path: 'src/my-module/',
+                        name: 'My Component',
+                        path: 'src/my-component/',
                         purpose: 'Test',
                         keyFiles: [],
                         dependencies: [],
@@ -322,9 +322,9 @@ That's the result.`;
                 categories: [{ name: 'core', description: '' }],
             });
 
-            const result = parseModuleGraphResponse(json);
-            expect(result.modules[0].id).toBe('mymodule');
-            expect(stderrOutput).toContain('Normalized module ID');
+            const result = parseComponentGraphResponse(json);
+            expect(result.components[0].id).toBe('mymodule');
+            expect(stderrOutput).toContain('Normalized component ID');
         });
     });
 
@@ -336,7 +336,7 @@ That's the result.`;
         it('should default invalid complexity to medium', () => {
             const json = JSON.stringify({
                 project: { name: 'test', language: 'TS' },
-                modules: [
+                components: [
                     {
                         id: 'core',
                         name: 'Core',
@@ -352,8 +352,8 @@ That's the result.`;
                 categories: [{ name: 'core', description: '' }],
             });
 
-            const result = parseModuleGraphResponse(json);
-            expect(result.modules[0].complexity).toBe('medium');
+            const result = parseComponentGraphResponse(json);
+            expect(result.components[0].complexity).toBe('medium');
         });
     });
 
@@ -365,7 +365,7 @@ That's the result.`;
         it('should remove references to non-existent modules', () => {
             const json = JSON.stringify({
                 project: { name: 'test', language: 'TS' },
-                modules: [
+                components: [
                     {
                         id: 'core',
                         name: 'Core',
@@ -381,9 +381,9 @@ That's the result.`;
                 categories: [{ name: 'core', description: '' }],
             });
 
-            const result = parseModuleGraphResponse(json);
-            expect(result.modules[0].dependencies).toEqual([]);
-            expect(result.modules[0].dependents).toEqual([]);
+            const result = parseComponentGraphResponse(json);
+            expect(result.components[0].dependencies).toEqual([]);
+            expect(result.components[0].dependents).toEqual([]);
             expect(stderrOutput).toContain('unknown dependency');
             expect(stderrOutput).toContain('unknown dependent');
         });
@@ -393,21 +393,21 @@ That's the result.`;
     // Deduplication
     // ========================================================================
 
-    describe('module deduplication', () => {
-        it('should deduplicate modules by ID', () => {
+    describe('component deduplication', () => {
+        it('should deduplicate components by ID', () => {
             const json = JSON.stringify({
                 project: { name: 'test', language: 'TS' },
-                modules: [
+                components: [
                     { id: 'core', name: 'Core', path: 'src/core/', purpose: 'First', keyFiles: [], dependencies: [], dependents: [], complexity: 'low', category: 'core' },
                     { id: 'core', name: 'Core Duplicate', path: 'src/core2/', purpose: 'Second', keyFiles: [], dependencies: [], dependents: [], complexity: 'high', category: 'core' },
                 ],
                 categories: [{ name: 'core', description: '' }],
             });
 
-            const result = parseModuleGraphResponse(json);
-            expect(result.modules).toHaveLength(1);
-            expect(result.modules[0].purpose).toBe('First');
-            expect(stderrOutput).toContain('Duplicate module ID');
+            const result = parseComponentGraphResponse(json);
+            expect(result.components).toHaveLength(1);
+            expect(result.components[0].purpose).toBe('First');
+            expect(stderrOutput).toContain('Duplicate component ID');
         });
     });
 
@@ -419,13 +419,13 @@ That's the result.`;
         it('should auto-add missing categories from modules', () => {
             const json = JSON.stringify({
                 project: { name: 'test', language: 'TS' },
-                modules: [
+                components: [
                     { id: 'core', name: 'Core', path: 'src/', purpose: 'Core', keyFiles: [], dependencies: [], dependents: [], complexity: 'low', category: 'my-custom-category' },
                 ],
                 categories: [],
             });
 
-            const result = parseModuleGraphResponse(json);
+            const result = parseComponentGraphResponse(json);
             expect(result.categories).toHaveLength(1);
             expect(result.categories[0].name).toBe('my-custom-category');
             expect(stderrOutput).toContain("Auto-added missing category 'my-custom-category'");

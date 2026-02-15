@@ -10,7 +10,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { TopicSeed, SeedsOutput } from '../types';
-import { normalizeModuleId } from '../schemas';
+import { normalizeComponentId } from '../schemas';
 import { getErrorMessage } from '../utils/error-utils';
 
 // ============================================================================
@@ -129,15 +129,15 @@ function parseTopicsArray(raw: unknown[], filePath: string): TopicSeed[] {
                 .map(h => h.trim())
                 .filter(h => h.length > 0);
         } else {
-            hints = [normalizeModuleId(String(obj.topic))];
+            hints = [normalizeComponentId(String(obj.topic))];
         }
 
         if (hints.length === 0) {
-            hints = [normalizeModuleId(String(obj.topic))];
+            hints = [normalizeComponentId(String(obj.topic))];
         }
 
         seeds.push({
-            topic: normalizeModuleId(String(obj.topic)),
+            topic: normalizeComponentId(String(obj.topic)),
             description: String(obj.description).trim(),
             hints,
         });
@@ -185,7 +185,7 @@ function parseCsvSeedFile(content: string, filePath: string): TopicSeed[] {
             throw new Error(`CSV seed file ${filePath} row ${i + 1} has insufficient columns`);
         }
 
-        const topic = normalizeModuleId(row[topicIdx].trim());
+        const topic = normalizeComponentId(row[topicIdx].trim());
         const description = row[descIdx].trim();
 
         if (!topic || !description) {

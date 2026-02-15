@@ -68,7 +68,7 @@ describe('Heuristic Fallback', () => {
             const topicIds = seeds.map(s => s.topic);
 
             expect(topicIds).toContain('api-gateway');
-            // normalizeModuleId converts UserAuth to userauth (no camelCase splitting)
+            // normalizeComponentId converts UserAuth to userauth (no camelCase splitting)
             expect(topicIds).toContain('userauth');
             expect(topicIds).toContain('database-layer');
         });

@@ -5,13 +5,13 @@
  * - Modules tagged with domain slug
  * - DomainInfo[] populated from TopLevelDomain[]
  * - Backward compat: no domains for empty scan result
- * - Module-to-domain assignment tracking
+ * - Component-to-domain assignment tracking
  */
 
 import { describe, it, expect } from 'vitest';
 import { mergeSubGraphs } from '../../src/discovery/large-repo-handler';
-import type { ModuleGraph, StructuralScanResult, DomainInfo } from '../../src/types';
-import { normalizeModuleId } from '../../src/schemas';
+import type { ComponentGraph, StructuralScanResult, DomainInfo } from '../../src/types';
+import { normalizeComponentId } from '../../src/schemas';
 
 // ============================================================================
 // Test Helpers
@@ -27,9 +27,9 @@ const createMinimalGraph = (
         category?: string;
     }>,
     categories: Array<{ name: string; description: string }> = [],
-    projectOverrides: Partial<ModuleGraph['project']> = {},
+    projectOverrides: Partial<ComponentGraph['project']> = {},
     architectureNotes = ''
-): ModuleGraph => ({
+): ComponentGraph => ({
     project: {
         name: 'test',
         description: '',
@@ -38,7 +38,7 @@ const createMinimalGraph = (
         entryPoints: [],
         ...projectOverrides,
     },
-    modules: modulesData.map(m => ({
+    components: modulesData.map(m => ({
         id: m.id,
         name: m.name,
         path: m.path,
@@ -79,13 +79,13 @@ describe('mergeSubGraphs — domain tagging', () => {
         const result = mergeSubGraphs([graph1, graph2], scanResult);
 
         // Check modules are tagged
-        const authModule = result.modules.find(m => m.id === 'core-auth')!;
-        const dbModule = result.modules.find(m => m.id === 'core-db')!;
-        const routesModule = result.modules.find(m => m.id === 'api-routes')!;
+        const authModule = result.components.find(m => m.id === 'core-auth')!;
+        const dbModule = result.components.find(m => m.id === 'core-db')!;
+        const routesModule = result.components.find(m => m.id === 'api-routes')!;
 
-        expect(authModule.domain).toBe(normalizeModuleId('packages/core'));
-        expect(dbModule.domain).toBe(normalizeModuleId('packages/core'));
-        expect(routesModule.domain).toBe(normalizeModuleId('packages/api'));
+        expect(authModule.domain).toBe(normalizeComponentId('packages/core'));
+        expect(dbModule.domain).toBe(normalizeComponentId('packages/core'));
+        expect(routesModule.domain).toBe(normalizeComponentId('packages/api'));
     });
 
     it('should populate graph.domains from TopLevelDomain[]', () => {
@@ -114,10 +114,10 @@ describe('mergeSubGraphs — domain tagging', () => {
         expect(coreArea.id).toBe('core');
         expect(coreArea.path).toBe('core');
         expect(coreArea.description).toBe('Core library');
-        expect(coreArea.modules).toContain('core-auth');
+        expect(coreArea.components).toContain('core-auth');
 
         const apiArea = result.domains!.find(a => a.name === 'API')!;
-        expect(apiArea.modules).toContain('api-routes');
+        expect(apiArea.components).toContain('api-routes');
     });
 
     it('should correctly assign modules to their respective domains', () => {
@@ -141,10 +141,10 @@ describe('mergeSubGraphs — domain tagging', () => {
         const result = mergeSubGraphs([graph1, graph2], scanResult);
 
         const area1 = result.domains!.find(a => a.id === 'area1')!;
-        expect(area1.modules).toEqual(['mod-a', 'mod-b']);
+        expect(area1.components).toEqual(['mod-a', 'mod-b']);
 
         const area2 = result.domains!.find(a => a.id === 'area2')!;
-        expect(area2.modules).toEqual(['mod-c']);
+        expect(area2.components).toEqual(['mod-c']);
     });
 
     it('should not produce domains when scan result has empty domains array', () => {
@@ -161,8 +161,8 @@ describe('mergeSubGraphs — domain tagging', () => {
         const result = mergeSubGraphs([graph1], scanResult);
 
         expect(result.domains).toBeUndefined();
-        // Module should NOT have area tag
-        expect(result.modules[0].domain).toBeUndefined();
+        // Component should NOT have area tag
+        expect(result.components[0].domain).toBeUndefined();
     });
 
     it('should handle domain with no modules (empty sub-graph)', () => {
@@ -184,7 +184,7 @@ describe('mergeSubGraphs — domain tagging', () => {
 
         expect(result.domains).toHaveLength(2);
         const emptyArea = result.domains!.find(a => a.id === 'empty')!;
-        expect(emptyArea.modules).toEqual([]);
+        expect(emptyArea.components).toEqual([]);
     });
 
     it('should normalize domain paths with special characters into kebab-case slugs', () => {
@@ -203,9 +203,9 @@ describe('mergeSubGraphs — domain tagging', () => {
         const result = mergeSubGraphs([graph1], scanResult);
 
         const domain = result.domains![0];
-        // normalizeModuleId converts to lowercase kebab-case
+        // normalizeComponentId converts to lowercase kebab-case
         expect(domain.id).toBe('my-packages-core-v2');
-        expect(result.modules[0].domain).toBe('my-packages-core-v2');
+        expect(result.components[0].domain).toBe('my-packages-core-v2');
     });
 
     it('should deduplicate modules across domains (first wins)', () => {
@@ -227,14 +227,14 @@ describe('mergeSubGraphs — domain tagging', () => {
 
         const result = mergeSubGraphs([graph1, graph2], scanResult);
 
-        expect(result.modules).toHaveLength(1);
-        expect(result.modules[0].name).toBe('Shared V1');
+        expect(result.components).toHaveLength(1);
+        expect(result.components[0].name).toBe('Shared V1');
         // Should be tagged with first domain
-        expect(result.modules[0].domain).toBe('area1');
+        expect(result.components[0].domain).toBe('area1');
 
-        // Should appear in first domain's module list
+        // Should appear in first domain's component list
         const area1 = result.domains!.find(a => a.id === 'area1')!;
-        expect(area1.modules).toContain('shared');
+        expect(area1.components).toContain('shared');
     });
 
     it('should preserve existing merge behavior (project info, categories, deps)', () => {
@@ -269,7 +269,7 @@ describe('mergeSubGraphs — domain tagging', () => {
         expect(result.categories).toHaveLength(2);
 
         // Cross-domain deps preserved
-        expect(result.modules.find(m => m.id === 'core-auth')!.dependencies).toEqual(['api-routes']);
+        expect(result.components.find(m => m.id === 'core-auth')!.dependencies).toEqual(['api-routes']);
 
         // Architecture notes combined
         expect(result.architectureNotes).toContain('Core uses DI.');
