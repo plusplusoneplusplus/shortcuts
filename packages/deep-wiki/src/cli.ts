@@ -285,58 +285,6 @@ export function createProgram(): Command {
             process.exit(exitCode);
         });
 
-    // ========================================================================
-    // deep-wiki serve <wiki-dir>
-    // ========================================================================
-
-    program
-        .command('serve')
-        .description('Start an interactive server to explore the wiki')
-        .argument('<wiki-dir>', 'Path to the wiki output directory')
-        .option('-p, --port <number>', 'Port to listen on', (v: string) => parseInt(v, 10), 3000)
-        .option('-H, --host <address>', 'Bind address', 'localhost')
-        .option('-g, --generate [repo-path]', 'Generate wiki before serving (uses config repoPath if omitted)')
-        .option('-w, --watch', 'Watch repo for changes (requires --generate)', false)
-        .option('--no-ai', 'Disable AI Q&A and deep-dive features')
-        .option('-m, --model <model>', 'AI model for Q&A sessions')
-        .option('--open', 'Open browser automatically', false)
-        .option('--theme <theme>', 'Website theme: light, dark, auto', 'auto')
-        .option('--title <title>', 'Override project name in website title')
-        .option('-v, --verbose', 'Verbose logging', false)
-        .option('--no-color', 'Disable colored output')
-        .action(async (wikiDir: string, opts: Record<string, unknown>) => {
-            applyGlobalOptions(opts);
-
-            // Resolve --generate: if boolean true (no value), fall back to config repoPath
-            let generateRepoPath: string | undefined;
-            if (opts.generate === true) {
-                // --generate was passed without a value; try config fallback
-                generateRepoPath = resolveRepoPath(undefined, undefined);
-                if (!generateRepoPath) {
-                    process.stderr.write('Error: --generate requires a repo path or repoPath in deep-wiki.config.yaml\n');
-                    process.exit(EXIT_CODES.CONFIG_ERROR);
-                }
-                getVerbosity() === 'verbose' && printInfo(`Using repoPath from config for --generate: ${generateRepoPath}`);
-            } else if (typeof opts.generate === 'string') {
-                generateRepoPath = opts.generate;
-            }
-
-            const { executeServe } = await import('./commands/serve');
-            const exitCode = await executeServe(wikiDir, {
-                port: opts.port as number | undefined,
-                host: opts.host as string | undefined,
-                generate: generateRepoPath,
-                watch: Boolean(opts.watch),
-                ai: Boolean(opts.ai),
-                model: opts.model as string | undefined,
-                open: Boolean(opts.open),
-                theme: opts.theme as string | undefined,
-                title: opts.title as string | undefined,
-                verbose: Boolean(opts.verbose),
-            });
-            process.exit(exitCode);
-        });
-
     return program;
 }
 

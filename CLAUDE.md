@@ -34,16 +34,14 @@ NEVER create document file unless user's explicit ask.
   - `analysis` - Per-component analysis executor, prompts, and response parsing
   - `writing` - Article executor, file writer, website generator, reduce prompts
   - `cache` - Git-hash-based cache invalidation for discovery, analysis, and articles
-  - `commands` - CLI commands (`discover`, `generate`, and `serve`)
-  - `server` - Interactive HTTP server with AI Q&A, SSE streaming, and TF-IDF context retrieval
+  - `commands` - CLI commands (`discover`, `generate`)
 - **CLI Commands:**
   - `deep-wiki discover <repo-path>` - Discover component graph only
   - `deep-wiki generate <repo-path>` - Full pipeline: Discovery → Analysis → Articles → Website
-  - `deep-wiki serve <wiki-dir>` - Interactive server with AI Q&A and component exploration
   - Options: --output, --model, --concurrency, --timeout, --focus, --force, --use-cache, --phase, --depth, --skip-website, --theme, --title, --verbose, --no-color
+  - **Note:** Wiki serving is now handled by CoC (`coc wiki serve`)
 - **Large Repo Support:** Multi-round discovery for repos with 3000+ files (structural scan → per-domain drill-down → merge)
-- **Debugging Serve Mode:** Build with `cd packages/deep-wiki && npm run build && npm link && cd ../..`, then `deep-wiki serve ./.wiki` to start the server. Test the Ask AI endpoint with `curl -s -N -X POST http://localhost:3000/api/ask -H 'Content-Type: application/json' -d '{"question":"test"}'`. See `packages/deep-wiki/AGENTS.md` for full debugging instructions.
-- **Testing:** Vitest tests across 23 test files
+- **Testing:** Vitest tests across 59 test files
 
 **CoC (Copilot of Copilot) CLI** - A standalone Node.js CLI for executing YAML-based AI pipelines outside VS Code:
 
@@ -811,10 +809,9 @@ interface ShortcutsConfig {
 - Analysis: executor, prompts, response parsing
 - Writing: article executor, file writer, prompts, website generator, hierarchical structure
 - Cache: discovery cache, analysis cache, article cache, reduce-article cache, git utilities
-- Commands: discover, generate, and serve integration tests
-- Server: ask-handler, explore-handler, api-handlers, context-builder, SPA template, websocket
+- Commands: discover, generate integration tests
 - CLI argument parsing, AI invoker, types
-- 23 test files; run with `npm run test:run` in `packages/deep-wiki/` directory
+- 59 test files; run with `npm run test:run` in `packages/deep-wiki/` directory
 
 ## Configuration Migration System
 

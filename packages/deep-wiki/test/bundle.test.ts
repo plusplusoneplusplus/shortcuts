@@ -111,7 +111,7 @@ describe('Bundle Configuration', () => {
         });
 
         it('should have files array limited to bundle output only', () => {
-            expect(pkg.files).toEqual(['dist/index.js', 'dist/index.js.map', 'dist/server/spa/client/dist']);
+            expect(pkg.files).toEqual(['dist/index.js', 'dist/index.js.map']);
         });
 
         it('should have publishConfig with public access', () => {
@@ -260,7 +260,6 @@ describe('Bundle Configuration', () => {
             expect(result).toContain('deep-wiki');
             expect(result).toContain('discover');
             expect(result).toContain('generate');
-            expect(result).toContain('serve');
         });
 
         it('should show version when run with --version', () => {
@@ -295,16 +294,6 @@ describe('Bundle Configuration', () => {
             expect(result).toContain('--phase');
         });
 
-        it('should show serve subcommand help', () => {
-            const result = execSync(`node "${BUNDLE_PATH}" serve --help`, {
-                cwd: PKG_ROOT,
-                timeout: 10000,
-                encoding: 'utf8',
-            });
-            expect(result).toContain('wiki-dir');
-            expect(result).toContain('--port');
-            expect(result).toContain('--no-ai');
-        });
     });
 
     // ========================================================================

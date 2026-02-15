@@ -770,13 +770,6 @@ export interface ThemeCommandOptions {
 export type { ThemeProbeResult, ProbeFoundComponent, DiscoveredTheme, IterativeDiscoveryOptions, MergeResult } from './discovery/iterative/types';
 
 // ============================================================================
-// Serve Command Options (colocated in server/types.ts)
-// ============================================================================
-
-// Re-export serve command types for backward compatibility
-export type { ServeCommandOptions } from './server/types';
-
-// ============================================================================
 // Cache Types (colocated in cache/types.ts)
 // ============================================================================
 

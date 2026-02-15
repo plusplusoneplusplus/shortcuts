@@ -234,86 +234,6 @@ describe('CLI', () => {
     });
 
     // ========================================================================
-    // Serve Command Options
-    // ========================================================================
-
-    describe('serve command', () => {
-        it('should have serve command', () => {
-            const program = createProgram();
-            const cmd = program.commands.find(c => c.name() === 'serve');
-            expect(cmd).toBeDefined();
-        });
-
-        it('should accept a wiki-dir argument', () => {
-            const program = createProgram();
-            const cmd = program.commands.find(c => c.name() === 'serve')!;
-            const args = (cmd as any).registeredArguments || (cmd as any)._args;
-            expect(args?.length).toBeGreaterThan(0);
-        });
-
-        it('should have expected options', () => {
-            const program = createProgram();
-            const cmd = program.commands.find(c => c.name() === 'serve')!;
-            const optionNames = cmd.options.map(o => o.long || o.short);
-
-            expect(optionNames).toContain('--port');
-            expect(optionNames).toContain('--host');
-            expect(optionNames).toContain('--generate');
-            expect(optionNames).toContain('--watch');
-            expect(optionNames).toContain('--model');
-            expect(optionNames).toContain('--open');
-            expect(optionNames).toContain('--theme');
-            expect(optionNames).toContain('--title');
-            expect(optionNames).toContain('--verbose');
-        });
-
-        it('should have default value for --port as 3000', () => {
-            const program = createProgram();
-            const cmd = program.commands.find(c => c.name() === 'serve')!;
-            const portOpt = cmd.options.find(o => o.long === '--port');
-            expect(portOpt).toBeDefined();
-            expect(portOpt!.defaultValue).toBe(3000);
-        });
-
-        it('should have default value for --host as localhost', () => {
-            const program = createProgram();
-            const cmd = program.commands.find(c => c.name() === 'serve')!;
-            const hostOpt = cmd.options.find(o => o.long === '--host');
-            expect(hostOpt).toBeDefined();
-            expect(hostOpt!.defaultValue).toBe('localhost');
-        });
-
-        it('should parse --port as a valid integer (not NaN)', () => {
-            const program = createProgram();
-            const cmd = program.commands.find(c => c.name() === 'serve')!;
-
-            // Override action to capture parsed opts instead of executing
-            let capturedOpts: Record<string, unknown> = {};
-            cmd.action((_wikiDir: string, opts: Record<string, unknown>) => {
-                capturedOpts = opts;
-            });
-
-            program.parse(['node', 'deep-wiki', 'serve', './wiki', '--port', '4567']);
-            expect(capturedOpts.port).toBe(4567);
-            expect(typeof capturedOpts.port).toBe('number');
-            expect(Number.isNaN(capturedOpts.port)).toBe(false);
-        });
-
-        it('should use default port 3000 when --port is not specified', () => {
-            const program = createProgram();
-            const cmd = program.commands.find(c => c.name() === 'serve')!;
-
-            let capturedOpts: Record<string, unknown> = {};
-            cmd.action((_wikiDir: string, opts: Record<string, unknown>) => {
-                capturedOpts = opts;
-            });
-
-            program.parse(['node', 'deep-wiki', 'serve', './wiki']);
-            expect(capturedOpts.port).toBe(3000);
-        });
-    });
-
-    // ========================================================================
     // parseInt Parsing Safety (Regression Tests)
     // ========================================================================
 
@@ -515,14 +435,6 @@ describe('CLI', () => {
             expect(capturedRepoPath).toBeUndefined();
         });
 
-        it('serve --generate should accept optional value', () => {
-            const program = createProgram();
-            const cmd = program.commands.find(c => c.name() === 'serve')!;
-            const genOpt = cmd.options.find(o => o.long === '--generate');
-            expect(genOpt).toBeDefined();
-            // Optional value options have flags like '-g, --generate [repo-path]'
-            expect(genOpt!.flags).toContain('[');
-        });
     });
 });
 

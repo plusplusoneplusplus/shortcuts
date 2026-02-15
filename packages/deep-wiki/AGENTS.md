@@ -17,8 +17,7 @@ packages/deep-wiki/
 │   ├── commands/
 │   │   ├── seeds.ts          # `seeds` command: Generate theme seeds for breadth-first discovery
 │   │   ├── discover.ts       # `discover` command: Phase 1 only, outputs ComponentGraph JSON
-│   │   ├── generate.ts       # `generate` command: Full pipeline (Seeds → Discovery → Consolidation → Analysis → Writing → Website)
-│   │   └── serve.ts          # `serve` command: Interactive server with AI Q&A
+│   │   └── generate.ts       # `generate` command: Full pipeline (Seeds → Discovery → Consolidation → Analysis → Writing → Website)
 │   ├── seeds/
 │   │   ├── index.ts          # Exports: generateThemeSeeds(), parseSeedFile()
 │   │   ├── seeds-session.ts  # SDK session orchestration for theme seed generation
@@ -60,24 +59,12 @@ packages/deep-wiki/
 │   │   └── website-generator.ts  # Static HTML website generation with themes
 │   ├── rendering/
 │   │   └── mermaid-zoom.ts   # Shared Mermaid diagram zoom/pan CSS, HTML, JS for SPA and static website
-│   ├── server/
-│   │   ├── index.ts          # Server creation, wiki data loading, context builder
-│   │   ├── router.ts         # HTTP request routing (API, static files, SPA fallback)
-│   │   ├── api-handlers.ts   # REST API dispatch (/api/graph, /api/components, /api/ask, /api/explore)
-│   │   ├── ask-handler.ts    # AI Q&A with SSE streaming (POST /api/ask)
-│   │   ├── explore-handler.ts # Component deep-dive with SSE streaming (POST /api/explore/:id)
-│   │   ├── context-builder.ts # TF-IDF context retrieval for AI question-answering
-│   │   ├── conversation-session-manager.ts # Multi-turn conversation session management with auto-cleanup
-│   │   ├── spa-template.ts   # Single-page application HTML/CSS/JS generation
-│   │   ├── wiki-data.ts      # Wiki data loading and querying
-│   │   ├── websocket.ts      # WebSocket server for watch mode live reload
-│   │   └── file-watcher.ts   # File system watcher for watch mode
 │   └── cache/
 │       ├── index.ts          # All cache operations: save/load/invalidate for each phase
 │       ├── cache-utils.ts    # Low-level atomic read/write/scan primitives shared by all cache modules
 │       ├── discovery-cache.ts # Intermediate discovery artifact caching (seeds, probes, structural scans)
 │       └── git-utils.ts      # Git HEAD hash for cache invalidation
-├── test/                     # 78 Vitest test files (mirrors src/ structure)
+├── test/                     # 59 Vitest test files (mirrors src/ structure)
 ├── package.json
 ├── tsconfig.json
 └── vitest.config.ts
@@ -165,92 +152,7 @@ deep-wiki generate ./my-project --output ./wiki --concurrency 3 --depth normal
 
 Options: `--output`, `--model`, `--concurrency`, `--timeout`, `--focus`, `--seeds`, `--depth` (shallow/normal/deep), `--force`, `--use-cache`, `--phase` (start from phase N: 1, 2, 3, or 4), `--skip-website`, `--no-cluster`, `--no-strict`, `--theme` (light/dark/auto), `--title`, `--verbose`, `--no-color`
 
-### `deep-wiki serve <wiki-dir>`
-
-Interactive server mode — serves the generated wiki with AI Q&A and component exploration.
-
-```bash
-deep-wiki serve ./wiki --port 3000 --open
-```
-
-Options: `--port` (default: 3000), `--host` (default: localhost), `--generate <repo-path>`, `--watch`, `--no-ai`, `--model`, `--open`, `--theme`, `--title`, `--verbose`, `--no-color`
-
-## Debugging Serve Mode
-
-### Build and Start the Server
-
-```bash
-# Build pipeline-core and deep-wiki, then link the CLI globally
-cd packages/deep-wiki && npm run build && npm link && cd ../..
-
-# Start the server (assumes wiki was previously generated at ./.wiki)
-deep-wiki serve ./.wiki
-
-# Start on a custom port
-deep-wiki serve ./.wiki --port 4000
-
-# Start without AI features (faster startup, no Copilot SDK needed)
-deep-wiki serve ./.wiki --no-ai
-
-# Generate wiki and serve in one step
-deep-wiki serve ./.wiki --generate ./path/to/repo
-```
-
-### Testing the Ask AI Endpoint
-
-```bash
-# Test the /api/ask endpoint directly with curl
-curl -s -N -X POST http://localhost:3000/api/ask \
-  -H 'Content-Type: application/json' \
-  -d '{"question":"What is this project?"}' 
-
-# Expected SSE output:
-# data: {"type":"context","moduleIds":["mod1","mod2",...]}
-# data: {"type":"chunk","content":"...streaming content..."}
-# data: {"type":"done","fullResponse":"...full answer..."}
-```
-
-### Testing the Explore Endpoint
-
-```bash
-# Test deep-dive exploration for a specific component
-curl -s -N -X POST http://localhost:3000/api/explore/component-id \
-  -H 'Content-Type: application/json' \
-  -d '{"question":"How does this component handle errors?","depth":"deep"}'
-```
-
-### Server Architecture
-
-The serve mode uses a custom HTTP server (no Express dependency):
-
-- **`src/commands/serve.ts`** — CLI command handler, AI service initialization
-- **`src/server/index.ts`** — Server creation, wiki data loading, context builder setup
-- **`src/server/router.ts`** — HTTP request routing (API routes, static files, SPA fallback)
-- **`src/server/api-handlers.ts`** — REST API route dispatch (`/api/graph`, `/api/components`, `/api/ask`, `/api/explore`)
-- **`src/server/ask-handler.ts`** — AI Q&A with SSE streaming (`POST /api/ask`)
-- **`src/server/explore-handler.ts`** — Component deep-dive with SSE streaming (`POST /api/explore/:id`)
-- **`src/server/context-builder.ts`** — TF-IDF based context retrieval for question-answering
-- **`src/server/conversation-session-manager.ts`** — Multi-turn conversation session management with auto-cleanup and concurrency control
-- **`src/server/spa-template.ts`** — Single-page application HTML/CSS/JS generation
-- **`src/server/wiki-data.ts`** — Wiki data loading and querying
-- **`src/server/websocket.ts`** — WebSocket server for watch mode live reload
-- **`src/server/file-watcher.ts`** — File system watcher for watch mode
-
-### SSE Streaming Flow
-
-1. Browser sends `POST /api/ask` with `{question, conversationHistory}`
-2. Server retrieves relevant component context via TF-IDF (`ContextBuilder.retrieve()`)
-3. Server builds AI prompt with context + conversation history
-4. Server calls Copilot SDK with `onStreamingChunk` callback
-5. Each chunk is emitted as an SSE event: `data: {"type":"chunk","content":"..."}`
-6. When complete: `data: {"type":"done","fullResponse":"..."}`
-7. Browser parses SSE events and renders markdown in real-time
-
-### Common Issues
-
-- **Port already in use**: Use `--port <number>` to specify a different port
-- **AI features unavailable**: Ensure `@github/copilot-sdk` is installed and Copilot is authenticated; use `--no-ai` to start without AI
-- **No streaming chunks**: The SDK may send `assistant.message` instead of `assistant.message_delta` events; pipeline-core handles this by emitting the final message as a single chunk
+> **Note:** Wiki serving has been moved to CoC. Use `coc wiki serve` instead.
 
 ## Core Concepts: Domain, Component, and Theme
 
@@ -383,7 +285,7 @@ interface GeneratedArticle {
 
 ## Testing
 
-78 Vitest test files covering:
+59 Vitest test files covering:
 - Seeds: prompt templates, response parsing, seed file parsing, heuristic fallback
 - Discovery: prompt templates, response parsing, large repo handler, domain tagging, logging, iterative discovery (probes, merges, caching)
 - Consolidation: consolidator orchestration, rule-based consolidator, AI consolidator
@@ -391,8 +293,7 @@ interface GeneratedArticle {
 - Writing: article executor, file writer, prompts, website generator, hierarchical structure
 - Rendering: mermaid zoom/pan module
 - Cache: discovery, analysis, article, reduce-article, consolidation, domain-article caches, cache utilities, git utilities, index
-- Commands: seeds, discover, generate, and serve integration tests
-- Server: ask-handler, ask-panel, ask-api-integration, explore-handler, deep-dive-ui, api-handlers, context-builder, conversation-session-manager, dependency-graph, spa-template, websocket, file-watcher, wiki-data, index
+- Commands: seeds, discover, generate integration tests
 - CLI argument parsing, AI invoker, type validation, usage tracker
 
 Run with `npm run test:run` in `packages/deep-wiki/` directory.
