@@ -36,9 +36,9 @@ describe('Client Build Infrastructure', () => {
             expect(fs.existsSync(path.join(CLIENT_DIR, 'styles.css'))).toBe(true);
         });
 
-        it('client/index.ts should be a valid placeholder', () => {
+        it('client/index.ts should be a valid entry point', () => {
             const content = fs.readFileSync(path.join(CLIENT_DIR, 'index.ts'), 'utf8');
-            expect(content).toContain('export {}');
+            expect(content).toContain("import { init");
         });
 
         it('client/styles.css should contain real CSS', () => {
@@ -152,9 +152,9 @@ describe('Client Build Infrastructure', () => {
             tsconfig = JSON.parse(fs.readFileSync(path.join(PKG_ROOT, 'tsconfig.json'), 'utf8'));
         });
 
-        it('should exclude client/dist from compilation', () => {
+        it('should exclude client from compilation', () => {
             const exclude = tsconfig.exclude as string[];
-            expect(exclude).toContain('src/**/client/dist');
+            expect(exclude).toContain('src/**/client');
         });
     });
 
