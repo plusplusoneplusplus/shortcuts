@@ -53,3 +53,11 @@ export { FileWatcher } from './file-watcher';
 export type {
     FileWatcherOptions,
 } from './file-watcher';
+
+// WikiManager
+export { WikiManager } from './wiki-manager';
+export type {
+    WikiRegistration,
+    WikiRuntime,
+    WikiManagerOptions,
+} from './wiki-manager';
