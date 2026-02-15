@@ -1,6 +1,5 @@
-import * as fs from 'fs';
-import * as path from 'path';
 import * as vscode from 'vscode';
+import { findPromptFiles as coreFindPromptFiles } from '@plusplusoneplusplus/pipeline-core';
 import { getWorkspaceRoot } from './workspace-utils';
 
 /**
@@ -62,62 +61,17 @@ export async function getPromptFiles(workspaceRoot?: string, configOverride?: Re
     }
 
     const locations = getPromptFileLocations(configOverride);
-    const promptFiles: PromptFile[] = [];
 
-    for (const location of locations) {
-        // Resolve the folder path (could be relative or absolute)
-        const folderPath = path.isAbsolute(location)
-            ? location
-            : path.join(root, location);
+    // Delegate filesystem scanning to pipeline-core
+    const coreResults = await coreFindPromptFiles(root, locations);
 
-        // Check if folder exists
-        if (!fs.existsSync(folderPath)) {
-            continue;
-        }
-
-        // Find all .prompt.md files in this folder (recursively)
-        const files = await findPromptFilesInFolder(folderPath, root, location);
-        promptFiles.push(...files);
-    }
-
-    return promptFiles;
-}
-
-/**
- * Recursively finds all .prompt.md files in a folder
- */
-async function findPromptFilesInFolder(
-    folderPath: string,
-    workspaceRoot: string,
-    sourceFolder: string
-): Promise<PromptFile[]> {
-    const promptFiles: PromptFile[] = [];
-
-    try {
-        const entries = fs.readdirSync(folderPath, { withFileTypes: true });
-
-        for (const entry of entries) {
-            const fullPath = path.join(folderPath, entry.name);
-
-            if (entry.isDirectory()) {
-                // Recursively search subdirectories
-                const subFiles = await findPromptFilesInFolder(fullPath, workspaceRoot, sourceFolder);
-                promptFiles.push(...subFiles);
-            } else if (entry.isFile() && entry.name.endsWith('.prompt.md')) {
-                promptFiles.push({
-                    absolutePath: fullPath,
-                    relativePath: path.relative(workspaceRoot, fullPath),
-                    name: entry.name.replace('.prompt.md', ''),
-                    sourceFolder
-                });
-            }
-        }
-    } catch (error) {
-        // Folder might not be accessible, skip it
-        console.error(`Error reading folder ${folderPath}:`, error);
-    }
-
-    return promptFiles;
+    // Map pipeline-core PromptFileInfo → extension PromptFile (1:1 fields)
+    return coreResults.map(info => ({
+        absolutePath: info.absolutePath,
+        relativePath: info.relativePath,
+        name: info.name,
+        sourceFolder: info.sourceFolder,
+    }));
 }
 
 /**

@@ -36,6 +36,7 @@ suite('Skill Files Utils Tests', () => {
         const skillsDir = path.join(tempDir, '.github', 'skills');
         const skillDir = path.join(skillsDir, 'test-skill');
         fs.mkdirSync(skillDir, { recursive: true });
+        fs.writeFileSync(path.join(skillDir, 'SKILL.md'), '# Skill');
 
         const skills = await getSkills(tempDir);
         assert.strictEqual(skills.length, 1);
@@ -50,10 +51,12 @@ suite('Skill Files Utils Tests', () => {
         // Create skill 1
         const skill1Dir = path.join(skillsDir, 'skill-one');
         fs.mkdirSync(skill1Dir, { recursive: true });
+        fs.writeFileSync(path.join(skill1Dir, 'SKILL.md'), '# Skill One');
 
         // Create skill 2
         const skill2Dir = path.join(skillsDir, 'skill-two');
         fs.mkdirSync(skill2Dir, { recursive: true });
+        fs.writeFileSync(path.join(skill2Dir, 'SKILL.md'), '# Skill Two');
 
         const skills = await getSkills(tempDir);
         assert.strictEqual(skills.length, 2);
@@ -72,20 +75,20 @@ suite('Skill Files Utils Tests', () => {
         // Create valid skill directory
         const skillDir = path.join(skillsDir, 'valid-skill');
         fs.mkdirSync(skillDir, { recursive: true });
+        fs.writeFileSync(path.join(skillDir, 'SKILL.md'), '# Valid Skill');
 
         const skills = await getSkills(tempDir);
         assert.strictEqual(skills.length, 1);
         assert.strictEqual(skills[0].name, 'valid-skill');
     });
 
-    test('getSkills finds empty skill directories', async () => {
+    test('getSkills excludes directories without SKILL.md', async () => {
         const skillsDir = path.join(tempDir, '.github', 'skills');
         const skillDir = path.join(skillsDir, 'empty-skill');
         fs.mkdirSync(skillDir, { recursive: true });
 
         const skills = await getSkills(tempDir);
-        assert.strictEqual(skills.length, 1);
-        assert.strictEqual(skills[0].name, 'empty-skill');
+        assert.strictEqual(skills.length, 0);
     });
 
     test('getSkills finds skill directories with any content', async () => {
@@ -108,9 +111,11 @@ suite('Skill Files Utils Tests', () => {
         
         const skill1Dir = path.join(skillsDir, 'skill-one');
         fs.mkdirSync(skill1Dir, { recursive: true });
+        fs.writeFileSync(path.join(skill1Dir, 'SKILL.md'), '# Skill One');
 
         const skill2Dir = path.join(skillsDir, 'skill-two');
         fs.mkdirSync(skill2Dir, { recursive: true });
+        fs.writeFileSync(path.join(skill2Dir, 'SKILL.md'), '# Skill Two');
 
         const paths = await getSkillPaths(tempDir);
         assert.strictEqual(paths.length, 2);
@@ -125,9 +130,11 @@ suite('Skill Files Utils Tests', () => {
         
         const skill1Dir = path.join(skillsDir, 'skill-alpha');
         fs.mkdirSync(skill1Dir, { recursive: true });
+        fs.writeFileSync(path.join(skill1Dir, 'SKILL.md'), '# Skill Alpha');
 
         const skill2Dir = path.join(skillsDir, 'skill-beta');
         fs.mkdirSync(skill2Dir, { recursive: true });
+        fs.writeFileSync(path.join(skill2Dir, 'SKILL.md'), '# Skill Beta');
 
         const names = await getSkillNames(tempDir);
         assert.strictEqual(names.length, 2);
@@ -139,6 +146,7 @@ suite('Skill Files Utils Tests', () => {
         const skillsDir = path.join(tempDir, '.github', 'skills');
         const skillDir = path.join(skillsDir, 'test-skill');
         fs.mkdirSync(skillDir, { recursive: true });
+        fs.writeFileSync(path.join(skillDir, 'SKILL.md'), '# Test Skill');
 
         const skills = await getSkills(tempDir);
         assert.strictEqual(skills.length, 1);
@@ -152,6 +160,7 @@ suite('Skill Files Utils Tests', () => {
         const skillsDir = path.join(tempDir, '.github', 'skills');
         const skillDir = path.join(skillsDir, 'cross-platform-skill');
         fs.mkdirSync(skillDir, { recursive: true });
+        fs.writeFileSync(path.join(skillDir, 'SKILL.md'), '# Cross Platform Skill');
 
         const skills = await getSkills(tempDir);
         assert.strictEqual(skills.length, 1);

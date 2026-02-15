@@ -1,5 +1,4 @@
-import * as fs from 'fs';
-import * as path from 'path';
+import { findSkills as coreFindSkills } from '@plusplusoneplusplus/pipeline-core';
 import { getWorkspaceRoot } from './workspace-utils';
 
 /**
@@ -17,13 +16,8 @@ export interface Skill {
 }
 
 /**
- * Default location for skills
- */
-const DEFAULT_SKILLS_LOCATION = '.github/skills';
-
-/**
  * Finds all skills in the .github/skills directory.
- * Each skill is a subdirectory in .github/skills/.
+ * Each skill is a subdirectory in .github/skills/ that contains a SKILL.md file.
  *
  * @param workspaceRoot Optional workspace root path. If not provided, uses the first workspace folder.
  * @returns Array of Skill objects representing found skills
@@ -34,34 +28,16 @@ export async function getSkills(workspaceRoot?: string): Promise<Skill[]> {
         return [];
     }
 
-    const skillsPath = path.join(root, DEFAULT_SKILLS_LOCATION);
+    // Delegate filesystem scanning to pipeline-core
+    const coreResults = await coreFindSkills(root);
 
-    // Check if skills folder exists
-    if (!fs.existsSync(skillsPath)) {
-        return [];
-    }
-
-    const skills: Skill[] = [];
-
-    try {
-        const entries = fs.readdirSync(skillsPath, { withFileTypes: true });
-
-        for (const entry of entries) {
-            if (entry.isDirectory()) {
-                const skillDir = path.join(skillsPath, entry.name);
-                skills.push({
-                    absolutePath: skillDir,
-                    relativePath: path.relative(root, skillDir),
-                    name: entry.name,
-                    sourceFolder: DEFAULT_SKILLS_LOCATION
-                });
-            }
-        }
-    } catch (error) {
-        console.error(`Error reading skills folder ${skillsPath}:`, error);
-    }
-
-    return skills;
+    // Map pipeline-core SkillInfo → extension Skill (drop description field)
+    return coreResults.map(info => ({
+        absolutePath: info.absolutePath,
+        relativePath: info.relativePath,
+        name: info.name,
+        sourceFolder: info.sourceFolder,
+    }));
 }
 
 /**
