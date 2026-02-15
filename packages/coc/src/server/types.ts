@@ -26,6 +26,16 @@ export interface ServeCommandOptions {
     noColor?: boolean;
 }
 
+/** Options for the wiki module within the execution server. */
+export interface WikiServerOptions {
+    /** Enable wiki API endpoints. */
+    enabled?: boolean;
+    /** Initial wiki registrations (wikiId → { wikiDir, repoPath? }). */
+    wikis?: Record<string, { wikiDir: string; repoPath?: string }>;
+    /** Enable AI features (ask, explore, generate) for wikis. */
+    aiEnabled?: boolean;
+}
+
 /** Options accepted by `createExecutionServer()`. */
 export interface ExecutionServerOptions {
     /** Injected process store (FileProcessStore from pipeline-core). */
@@ -40,6 +50,8 @@ export interface ExecutionServerOptions {
     openBrowser?: boolean;
     /** SPA colour theme. */
     theme?: 'auto' | 'light' | 'dark';
+    /** Options for the wiki module. */
+    wiki?: WikiServerOptions;
 }
 
 /** A running execution server instance. */

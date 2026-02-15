@@ -1,7 +1,8 @@
 /**
  * Wiki Module — Barrel Export
  *
- * Re-exports all public types, classes, and functions from the wiki data layer.
+ * Re-exports all public types, classes, and functions from the wiki data layer
+ * and wiki HTTP route handlers.
  */
 
 // Types
@@ -61,3 +62,15 @@ export type {
     WikiRuntime,
     WikiManagerOptions,
 } from './wiki-manager';
+
+// Wiki Routes
+export { registerWikiRoutes } from './wiki-routes';
+export type { WikiRouteOptions } from './wiki-routes';
+
+// Wiki Handlers (SSE utility shared across handlers)
+export { sendSSE, readBody, buildAskPrompt } from './ask-handler';
+export type { AskRequest, ConversationMessage, WikiAskHandlerOptions } from './ask-handler';
+export { buildExplorePrompt } from './explore-handler';
+export type { ExploreRequest, WikiExploreHandlerOptions } from './explore-handler';
+export { getGenerationState, resetGenerationState, resetAllGenerationStates } from './generate-handler';
+export type { GenerateRequest } from './generate-handler';

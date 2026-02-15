@@ -19,6 +19,7 @@ import { registerQueueRoutes } from './queue-handler';
 import { registerTaskRoutes, registerTaskWriteRoutes } from './tasks-handler';
 import { registerTaskGenerationRoutes } from './task-generation-handler';
 import { registerPromptRoutes } from './prompt-handler';
+import { registerWikiRoutes } from './wiki';
 import { ProcessWebSocketServer, toProcessSummary } from './websocket';
 import { generateDashboardHtml } from './spa';
 import type { ExecutionServerOptions, ExecutionServer } from './types';
@@ -168,6 +169,15 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     registerTaskGenerationRoutes(routes, store);
     registerPromptRoutes(routes, store);
 
+    // Register wiki routes if enabled
+    let wikiManager: import('./wiki').WikiManager | undefined;
+    if (options.wiki?.enabled) {
+        wikiManager = registerWikiRoutes(routes, {
+            wikis: options.wiki.wikis,
+            aiEnabled: options.wiki.aiEnabled,
+        });
+    }
+
     // Build request handler (health route is prepended automatically)
     const handler = createRequestHandler({ routes, spaHtml, store });
     const server = http.createServer(handler);
@@ -316,6 +326,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             outputPruner.stopListening();
             // Close task file watchers
             taskWatcher.closeAll();
+            // Dispose wiki manager (stop file watchers, destroy sessions)
+            wikiManager?.disposeAll();
             // Flush persisted queue state before stopping executor
             queuePersistence.dispose();
             // Stop the queue executor first
@@ -337,7 +349,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 }
 
 // Re-exports
-export type { ExecutionServerOptions, ExecutionServer, Route } from './types';
+export type { ExecutionServerOptions, ExecutionServer, Route, WikiServerOptions } from './types';
 export type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
 export { sendJson, send404, send400, send500, readJsonBody, createRequestHandler } from './router';
 export { registerApiRoutes, sendJSON, sendError, parseBody, parseQueryParams } from './api-handler';
@@ -356,3 +368,5 @@ export { QueuePersistence } from './queue-persistence';
 export { OutputPruner } from './output-pruner';
 export { TaskWatcher } from './task-watcher';
 export type { TasksChangedCallback } from './task-watcher';
+export { registerWikiRoutes } from './wiki';
+export type { WikiRouteOptions } from './wiki';
