@@ -13,7 +13,19 @@
  * Uses mock CopilotSDKService to avoid real AI calls.
  */
 
+import * as fs from 'fs';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+
+// Partial mock of fs — allows overriding existsSync/readFileSync per test
+vi.mock('fs', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('fs')>();
+    return {
+        ...actual,
+        existsSync: vi.fn(actual.existsSync),
+        readFileSync: vi.fn(actual.readFileSync),
+    };
+});
+
 import {
     TaskQueueManager,
     QueueExecutor,
@@ -344,7 +356,7 @@ describe('CLITaskExecutor', () => {
             }));
         });
 
-        it('should append planFilePath and additionalContext to promptContent', async () => {
+        it('should prepend planFilePath and additionalContext as structured context block', async () => {
             const executor = new CLITaskExecutor(store);
 
             const task: QueuedTask = {
@@ -365,9 +377,191 @@ describe('CLITaskExecutor', () => {
             const result = await executor.execute(task);
 
             expect(result.success).toBe(true);
+            // /workspace/plan.md doesn't exist so only additionalContext is included
             expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
-                prompt: 'Refactor the auth module. /workspace/plan.md\n\nAdditional context: Focus on tests.',
+                prompt: 'Context document:\n\nFocus on tests.\n\n---\n\nRefactor the auth module.',
             }));
+        });
+
+        // ====================================================================
+        // Follow-prompt context support
+        // ====================================================================
+
+        describe('follow-prompt context support', () => {
+            it('should prepend additionalContext as structured context block', async () => {
+                const executor = new CLITaskExecutor(store);
+
+                const task: QueuedTask = {
+                    id: 'task-ctx-1',
+                    type: 'follow-prompt',
+                    priority: 'normal',
+                    status: 'running',
+                    createdAt: Date.now(),
+                    payload: {
+                        promptContent: 'Implement the feature described above.',
+                        additionalContext: '# Task: Add login page\n\nCreate a login page with email and password fields.',
+                    },
+                    config: {},
+                };
+
+                const result = await executor.execute(task);
+
+                expect(result.success).toBe(true);
+                expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+                    prompt: 'Context document:\n\n# Task: Add login page\n\nCreate a login page with email and password fields.\n\n---\n\nImplement the feature described above.',
+                }));
+            });
+
+            it('should read planFilePath content and include in context block', async () => {
+                const existsSyncMock = vi.mocked(fs.existsSync);
+                const readFileSyncMock = vi.mocked(fs.readFileSync);
+
+                existsSyncMock.mockImplementation((p: fs.PathLike) => {
+                    if (String(p) === '/workspace/plan.md') return true;
+                    return false;
+                });
+                readFileSyncMock.mockImplementation((p: fs.PathOrFileDescriptor, _opts?: any) => {
+                    if (String(p) === '/workspace/plan.md') return '# Plan\n\nStep 1: Do X\nStep 2: Do Y';
+                    throw new Error('not found');
+                });
+
+                const executor = new CLITaskExecutor(store);
+
+                const task: QueuedTask = {
+                    id: 'task-ctx-2',
+                    type: 'follow-prompt',
+                    priority: 'normal',
+                    status: 'running',
+                    createdAt: Date.now(),
+                    payload: {
+                        promptContent: 'Execute this plan.',
+                        planFilePath: '/workspace/plan.md',
+                    },
+                    config: {},
+                };
+
+                const result = await executor.execute(task);
+
+                expect(result.success).toBe(true);
+                expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+                    prompt: 'Context document:\n\n# Plan\n\nStep 1: Do X\nStep 2: Do Y\n\n---\n\nExecute this plan.',
+                }));
+
+                existsSyncMock.mockReset();
+                readFileSyncMock.mockReset();
+            });
+
+            it('should combine planFilePath content and additionalContext in context block', async () => {
+                const existsSyncMock = vi.mocked(fs.existsSync);
+                const readFileSyncMock = vi.mocked(fs.readFileSync);
+
+                existsSyncMock.mockImplementation((p: fs.PathLike) => {
+                    if (String(p) === '/workspace/plan.md') return true;
+                    return false;
+                });
+                readFileSyncMock.mockImplementation((p: fs.PathOrFileDescriptor, _opts?: any) => {
+                    if (String(p) === '/workspace/plan.md') return '# Plan\n\nDo things.';
+                    throw new Error('not found');
+                });
+
+                const executor = new CLITaskExecutor(store);
+
+                const task: QueuedTask = {
+                    id: 'task-ctx-3',
+                    type: 'follow-prompt',
+                    priority: 'normal',
+                    status: 'running',
+                    createdAt: Date.now(),
+                    payload: {
+                        promptContent: 'Execute plan with focus.',
+                        planFilePath: '/workspace/plan.md',
+                        additionalContext: 'Focus on error handling.',
+                    },
+                    config: {},
+                };
+
+                const result = await executor.execute(task);
+
+                expect(result.success).toBe(true);
+                expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+                    prompt: 'Context document:\n\n# Plan\n\nDo things.\n\nFocus on error handling.\n\n---\n\nExecute plan with focus.',
+                }));
+
+                existsSyncMock.mockReset();
+                readFileSyncMock.mockReset();
+            });
+
+            it('should not alter prompt when no context fields are provided', async () => {
+                const executor = new CLITaskExecutor(store);
+
+                const task: QueuedTask = {
+                    id: 'task-ctx-4',
+                    type: 'follow-prompt',
+                    priority: 'normal',
+                    status: 'running',
+                    createdAt: Date.now(),
+                    payload: {
+                        promptContent: 'Analyze codebase for vulnerabilities.',
+                    },
+                    config: {},
+                };
+
+                const result = await executor.execute(task);
+
+                expect(result.success).toBe(true);
+                expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+                    prompt: 'Analyze codebase for vulnerabilities.',
+                }));
+            });
+
+            it('should ignore planFilePath when file does not exist', async () => {
+                const executor = new CLITaskExecutor(store);
+
+                const task: QueuedTask = {
+                    id: 'task-ctx-5',
+                    type: 'follow-prompt',
+                    priority: 'normal',
+                    status: 'running',
+                    createdAt: Date.now(),
+                    payload: {
+                        promptContent: 'Do something.',
+                        planFilePath: '/nonexistent/plan.md',
+                    },
+                    config: {},
+                };
+
+                const result = await executor.execute(task);
+
+                expect(result.success).toBe(true);
+                // No "Context document:" prefix since plan file doesn't exist and no additionalContext
+                expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+                    prompt: 'Do something.',
+                }));
+            });
+
+            it('should prepend context when using promptFilePath fallback', async () => {
+                const executor = new CLITaskExecutor(store);
+
+                const task: QueuedTask = {
+                    id: 'task-ctx-6',
+                    type: 'follow-prompt',
+                    priority: 'normal',
+                    status: 'running',
+                    createdAt: Date.now(),
+                    payload: {
+                        promptFilePath: '/nonexistent/prompt.md',
+                        additionalContext: 'Task context here.',
+                    },
+                    config: {},
+                };
+
+                const result = await executor.execute(task);
+
+                expect(result.success).toBe(true);
+                expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+                    prompt: 'Context document:\n\nTask context here.\n\n---\n\nFollow prompt: /nonexistent/prompt.md',
+                }));
+            });
         });
     });
 

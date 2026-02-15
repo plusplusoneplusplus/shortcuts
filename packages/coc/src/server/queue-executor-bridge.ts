@@ -184,33 +184,32 @@ export class CLITaskExecutor implements TaskExecutor {
         }
 
         if (isFollowPromptPayload(task.payload)) {
+            // Resolve structured context block from additionalContext + planFilePath content
+            const contextBlock = this.resolveContextBlock(task.payload);
+
             // Prefer direct prompt content when available (no file I/O needed)
+            let prompt: string;
             if (task.payload.promptContent) {
-                let prompt = task.payload.promptContent;
-                if (task.payload.planFilePath) {
-                    prompt += ` ${task.payload.planFilePath}`;
-                }
-                if (task.payload.additionalContext) {
-                    prompt += `\n\nAdditional context: ${task.payload.additionalContext}`;
-                }
-                return prompt;
-            }
-            // Fall back to file-based prompt for backward compatibility / skill jobs
-            try {
-                if (task.payload.promptFilePath && fs.existsSync(task.payload.promptFilePath)) {
-                    let prompt = `Follow the instruction ${task.payload.promptFilePath}.`;
-                    if (task.payload.planFilePath) {
-                        prompt += ` ${task.payload.planFilePath}`;
+                prompt = task.payload.promptContent;
+            } else {
+                // Fall back to file-based prompt for backward compatibility / skill jobs
+                try {
+                    if (task.payload.promptFilePath && fs.existsSync(task.payload.promptFilePath)) {
+                        prompt = `Follow the instruction ${task.payload.promptFilePath}.`;
+                    } else {
+                        prompt = `Follow prompt: ${task.payload.promptFilePath || 'unknown'}`;
                     }
-                    if (task.payload.additionalContext) {
-                        prompt += `\n\nAdditional context: ${task.payload.additionalContext}`;
-                    }
-                    return prompt;
+                } catch {
+                    prompt = `Follow prompt: ${task.payload.promptFilePath || 'unknown'}`;
                 }
-            } catch {
-                // Fall through to default
             }
-            return `Follow prompt: ${task.payload.promptFilePath || 'unknown'}`;
+
+            // Prepend context block if available
+            if (contextBlock) {
+                return `Context document:\n\n${contextBlock}\n\n---\n\n${prompt}`;
+            }
+
+            return prompt;
         }
 
         if (isCustomTaskPayload(task.payload)) {
@@ -294,6 +293,40 @@ export class CLITaskExecutor implements TaskExecutor {
             return task.payload.workingDirectory || this.defaultWorkingDirectory;
         }
         return this.defaultWorkingDirectory;
+    }
+
+    /**
+     * Build a structured context block from additionalContext and planFilePath.
+     * Returns the block string, or undefined if no context is available.
+     */
+    private resolveContextBlock(payload: {
+        additionalContext?: string;
+        planFilePath?: string;
+    }): string | undefined {
+        const parts: string[] = [];
+
+        if (payload.planFilePath) {
+            try {
+                if (fs.existsSync(payload.planFilePath)) {
+                    const planContent = fs.readFileSync(payload.planFilePath, 'utf-8');
+                    if (planContent.trim()) {
+                        parts.push(planContent);
+                    }
+                }
+            } catch {
+                // Non-fatal: skip plan file
+            }
+        }
+
+        if (payload.additionalContext) {
+            parts.push(payload.additionalContext);
+        }
+
+        if (parts.length === 0) {
+            return undefined;
+        }
+
+        return parts.join('\n\n');
     }
 
     /**
