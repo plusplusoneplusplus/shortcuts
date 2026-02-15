@@ -2,7 +2,7 @@
  * Discover Command
  *
  * Implements the `deep-wiki discover <repo-path>` command.
- * Runs Phase 1 (Discovery) to produce a ModuleGraph JSON.
+ * Runs Phase 1 (Discovery) to produce a ComponentGraph JSON.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
@@ -10,7 +10,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import type { DiscoverCommandOptions } from '../types';
-import { discoverModuleGraph, DiscoveryError, runIterativeDiscovery } from '../discovery';
+import { discoverComponentGraph, DiscoveryError, runIterativeDiscovery } from '../discovery';
 import {
     getCachedGraph,
     getCachedGraphAny,
@@ -21,7 +21,7 @@ import {
     getCachedSeedsAny,
     clearDiscoveryCache,
 } from '../cache';
-import { generateTopicSeeds, parseSeedFile } from '../seeds';
+import { generateThemeSeeds, parseSeedFile } from '../seeds';
 import {
     Spinner,
     printSuccess,
@@ -99,8 +99,8 @@ export async function executeDiscover(
                 ? getCachedGraphAny(options.output)
                 : await getCachedGraph(absoluteRepoPath, options.output);
             if (cached) {
-                printSuccess('Found cached module graph (git hash matches)');
-                printKeyValue('Modules', String(cached.graph.modules.length));
+                printSuccess('Found cached component graph (git hash matches)');
+                printKeyValue('Components', String(cached.graph.components.length));
                 printKeyValue('Categories', String(cached.graph.categories.length));
 
                 // Output JSON to stdout
@@ -116,7 +116,7 @@ export async function executeDiscover(
 
     // Run discovery
     const spinner = new Spinner();
-    spinner.start('Discovering module graph...');
+    spinner.start('Discovering component graph...');
 
     try {
         let result;
@@ -138,9 +138,9 @@ export async function executeDiscover(
                 }
 
                 if (!seeds) {
-                    spinner.update('Generating topic seeds...');
-                    seeds = await generateTopicSeeds(absoluteRepoPath, {
-                        maxTopics: 50,
+                    spinner.update('Generating theme seeds...');
+                    seeds = await generateThemeSeeds(absoluteRepoPath, {
+                        maxThemes: 50,
                         model: options.model,
                         verbose: options.verbose,
                     });
@@ -155,7 +155,7 @@ export async function executeDiscover(
                     }
                 }
 
-                spinner.succeed(`Generated ${seeds.length} topic seeds`);
+                spinner.succeed(`Generated ${seeds.length} theme seeds`);
                 spinner.start('Running iterative discovery...');
             } else {
                 // Parse seed file (file-based seeds don't need caching)
@@ -186,7 +186,7 @@ export async function executeDiscover(
             };
         } else {
             // Standard discovery (pass cache options for large-repo handler)
-            result = await discoverModuleGraph({
+            result = await discoverComponentGraph({
                 repoPath: absoluteRepoPath,
                 model: options.model,
                 timeout: options.timeout ? options.timeout * 1000 : undefined,
@@ -207,14 +207,14 @@ export async function executeDiscover(
         printKeyValue('Project', graph.project.name);
         printKeyValue('Language', graph.project.language);
         printKeyValue('Build System', graph.project.buildSystem);
-        printKeyValue('Modules', String(graph.modules.length));
+        printKeyValue('Components', String(graph.components.length));
         printKeyValue('Categories', String(graph.categories.length));
         printKeyValue('Duration', formatDuration(duration));
 
         if (options.verbose) {
             process.stderr.write('\n');
-            printInfo('Modules:');
-            for (const mod of graph.modules) {
+            printInfo('Components:');
+            for (const mod of graph.components) {
                 process.stderr.write(
                     `  ${cyan(mod.id)} ${gray('—')} ${mod.purpose} ${gray(`[${mod.complexity}]`)}\n`
                 );
@@ -225,24 +225,24 @@ export async function executeDiscover(
         try {
             await saveGraph(absoluteRepoPath, graph, options.output, options.focus);
             if (options.verbose) {
-                printInfo('Cached module graph for future use');
+                printInfo('Cached component graph for future use');
             }
         } catch {
             if (options.verbose) {
-                printWarning('Failed to cache module graph (non-fatal)');
+                printWarning('Failed to cache component graph (non-fatal)');
             }
         }
 
         // Write output file
         const jsonOutput = JSON.stringify(graph, null, 2);
         const outputDir = path.resolve(options.output);
-        const outputFile = path.join(outputDir, 'module-graph.json');
+        const outputFile = path.join(outputDir, 'component-graph.json');
 
         try {
             fs.mkdirSync(outputDir, { recursive: true });
             fs.writeFileSync(outputFile, jsonOutput, 'utf-8');
             process.stderr.write('\n');
-            printSuccess(`Module graph written to ${bold(outputFile)}`);
+            printSuccess(`Component graph written to ${bold(outputFile)}`);
 
             // Initialize wiki output directory as a Git repository
             initWikiGitRepo(outputDir, {

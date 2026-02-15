@@ -107,8 +107,8 @@ export async function createServer(options: WikiServerOptions): Promise<WikiServ
     let sessionManager: ConversationSessionManager | undefined;
     if (aiEnabled) {
         const markdownData = wikiData.getMarkdownData();
-        const topicMarkdownData = wikiData.getTopicMarkdownData();
-        contextBuilder = new ContextBuilder(wikiData.graph, markdownData, topicMarkdownData);
+        const themeMarkdownData = wikiData.getThemeMarkdownData();
+        contextBuilder = new ContextBuilder(wikiData.graph, markdownData, themeMarkdownData);
 
         if (options.aiSendMessage) {
             sessionManager = new ConversationSessionManager({
@@ -246,12 +246,12 @@ export { ContextBuilder } from './context-builder';
 export { WebSocketServer } from './websocket';
 export { FileWatcher } from './file-watcher';
 export type { SpaTemplateOptions } from './spa-template';
-export type { ComponentSummary, ComponentDetail, SpecialPage, TopicArticleContent, TopicArticleDetail } from './wiki-data';
+export type { ComponentSummary, ComponentDetail, SpecialPage, ThemeArticleContent, ThemeArticleDetail } from './wiki-data';
 export { ConversationSessionManager } from './conversation-session-manager';
 export type { ConversationSession, ConversationSessionManagerOptions, SessionSendResult } from './conversation-session-manager';
 export type { AskAIFunction, AskRequest, ConversationMessage } from './ask-handler';
 export type { ExploreRequest } from './explore-handler';
-export type { RetrievedContext, TopicContextEntry } from './context-builder';
+export type { RetrievedContext, ThemeContextEntry } from './context-builder';
 export type { WSClient, WSMessage } from './websocket';
 export type { FileWatcherOptions } from './file-watcher';
 export { handleAdminRequest } from './admin-handlers';

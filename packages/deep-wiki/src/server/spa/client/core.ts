@@ -4,23 +4,23 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-export let moduleGraph: any = null;
-export let currentModuleId: string | null = null;
+export let componentGraph: any = null;
+export let currentComponentId: string | null = null;
 export let currentTheme: string = (window as any).__WIKI_CONFIG__?.defaultTheme ?? 'auto';
 export const markdownCache: Record<string, string> = {};
 
 /**
- * Set the current module graph.
+ * Set the current component graph.
  */
-export function setModuleGraph(graph: any): void {
-    moduleGraph = graph;
+export function setComponentGraph(graph: any): void {
+    componentGraph = graph;
 }
 
 /**
- * Set the current module ID.
+ * Set the current component ID.
  */
-export function setCurrentModuleId(id: string | null): void {
-    currentModuleId = id;
+export function setCurrentComponentId(id: string | null): void {
+    currentComponentId = id;
 }
 
 /**
@@ -36,8 +36,8 @@ export function setCurrentTheme(theme: string): void {
 export async function init(): Promise<void> {
     try {
         const res = await fetch('/api/graph');
-        if (!res.ok) throw new Error('Failed to load module graph');
-        moduleGraph = await res.json();
+        if (!res.ok) throw new Error('Failed to load component graph');
+        componentGraph = await res.json();
 
         // These are called via window globals set by index.ts
         (window as any).initTheme();
@@ -60,9 +60,9 @@ export function setupPopstateHandler(): void {
         const state = e.state;
         if (!state) { (window as any).showHome(true); return; }
         if (state.type === 'home') (window as any).showHome(true);
-        else if (state.type === 'module' && state.id) (window as any).loadModule(state.id, true);
+        else if (state.type === 'component' && state.id) (window as any).loadComponent(state.id, true);
         else if (state.type === 'special' && state.key && state.title) (window as any).loadSpecialPage(state.key, state.title, true);
-        else if (state.type === 'topic' && state.topicId && state.slug) (window as any).loadTopicArticle(state.topicId, state.slug, true);
+        else if (state.type === 'theme' && state.themeId && state.slug) (window as any).loadThemeArticle(state.themeId, state.slug, true);
         else if (state.type === 'graph') { if (typeof (window as any).showGraph === 'function') (window as any).showGraph(true); else (window as any).showHome(true); }
         else if (state.type === 'admin') (window as any).showAdmin(true);
         else (window as any).showHome(true);

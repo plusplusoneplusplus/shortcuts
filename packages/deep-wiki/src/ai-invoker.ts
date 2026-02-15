@@ -31,7 +31,7 @@ export interface AnalysisInvokerOptions {
     repoPath: string;
     /** AI model to use */
     model?: string;
-    /** Timeout per module in milliseconds (default: 180000 = 3 min) */
+    /** Timeout per component in milliseconds (default: 180000 = 3 min) */
     timeoutMs?: number;
 }
 
@@ -60,7 +60,7 @@ export interface AIAvailabilityResult {
 // Constants
 // ============================================================================
 
-/** Default timeout for analysis per module (30 minutes) */
+/** Default timeout for analysis per component (30 minutes) */
 const DEFAULT_ANALYSIS_TIMEOUT_MS = 1_800_000;
 
 /** Default timeout for writing per article (30 minutes) */
@@ -208,10 +208,10 @@ export interface ConsolidationInvokerOptions {
 const DEFAULT_CONSOLIDATION_TIMEOUT_MS = 1_800_000;
 
 /**
- * Create an AIInvoker for Phase 2 (Module Consolidation).
+ * Create an AIInvoker for Phase 2 (Component Consolidation).
  *
  * Uses direct sessions (usePool: false) without tools.
- * The AI only needs to analyze the module list and return clusters.
+ * The AI only needs to analyze the component list and return clusters.
  */
 export function createConsolidationInvoker(options: ConsolidationInvokerOptions): AIInvoker {
     const service = getCopilotSDKService();

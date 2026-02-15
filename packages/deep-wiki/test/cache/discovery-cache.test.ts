@@ -11,8 +11,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import type {
-    TopicSeed,
-    TopicProbeResult,
+    ThemeSeed,
+    ThemeProbeResult,
     StructuralScanResult,
     ComponentGraph,
     DiscoveryProgressMetadata,
@@ -46,34 +46,34 @@ import {
 let tempDir: string;
 let outputDir: string;
 
-function createTestSeeds(count: number = 3): TopicSeed[] {
-    const topics = ['authentication', 'database', 'api-routes'];
-    return topics.slice(0, count).map(topic => ({
-        topic,
-        description: `Description of ${topic}`,
-        hints: [`${topic}-hint1`, `${topic}-hint2`],
+function createTestSeeds(count: number = 3): ThemeSeed[] {
+    const themes = ['authentication', 'database', 'api-routes'];
+    return themes.slice(0, count).map(theme => ({
+        theme,
+        description: `Description of ${theme}`,
+        hints: [`${theme}-hint1`, `${theme}-hint2`],
     }));
 }
 
-function createTestProbeResult(topic: string): TopicProbeResult {
+function createTestProbeResult(theme: string): ThemeProbeResult {
     return {
-        topic,
+        theme,
         foundComponents: [
             {
-                id: `${topic}-service`,
-                name: `${topic} Service`,
-                path: `src/${topic}/`,
-                purpose: `Handles ${topic}`,
-                keyFiles: [`src/${topic}/index.ts`],
-                evidence: `Found in src/${topic}/`,
+                id: `${theme}-service`,
+                name: `${theme} Service`,
+                path: `src/${theme}/`,
+                purpose: `Handles ${theme}`,
+                keyFiles: [`src/${theme}/index.ts`],
+                evidence: `Found in src/${theme}/`,
             },
         ],
-        discoveredTopics: [
+        discoveredThemes: [
             {
-                topic: `${topic}-ext`,
-                description: `Extension of ${topic}`,
+                theme: `${theme}-ext`,
+                description: `Extension of ${theme}`,
                 hints: ['ext'],
-                source: topic,
+                source: theme,
             },
         ],
         dependencies: [],
@@ -156,8 +156,8 @@ describe('seeds cache', () => {
         const loaded = getCachedSeeds(outputDir, gitHash);
         expect(loaded).not.toBeNull();
         expect(loaded).toHaveLength(3);
-        expect(loaded![0].topic).toBe('authentication');
-        expect(loaded![1].topic).toBe('database');
+        expect(loaded![0].theme).toBe('authentication');
+        expect(loaded![1].theme).toBe('database');
     });
 
     it('should return null for git hash mismatch', () => {
@@ -218,7 +218,7 @@ describe('probe results cache', () => {
 
         const loaded = getCachedProbeResult('authentication', outputDir, gitHash);
         expect(loaded).not.toBeNull();
-        expect(loaded!.topic).toBe('authentication');
+        expect(loaded!.theme).toBe('authentication');
         expect(loaded!.foundComponents).toHaveLength(1);
         expect(loaded!.confidence).toBe(0.85);
     });
@@ -230,7 +230,7 @@ describe('probe results cache', () => {
         expect(loaded).toBeNull();
     });
 
-    it('should return null for non-existent topic', () => {
+    it('should return null for non-existent theme', () => {
         const loaded = getCachedProbeResult('nonexistent', outputDir, gitHash);
         expect(loaded).toBeNull();
     });
@@ -244,13 +244,13 @@ describe('probe results cache', () => {
         expect(loaded).toBeNull();
     });
 
-    it('should normalize topic names for file paths', () => {
+    it('should normalize theme names for file paths', () => {
         const result = createTestProbeResult('API Routes');
         saveProbeResult('API Routes', result, outputDir, gitHash);
 
         const loaded = getCachedProbeResult('API Routes', outputDir, gitHash);
         expect(loaded).not.toBeNull();
-        expect(loaded!.topic).toBe('API Routes');
+        expect(loaded!.theme).toBe('API Routes');
     });
 });
 
@@ -303,7 +303,7 @@ describe('scanCachedProbes', () => {
         expect(missing).toEqual(['auth']);
     });
 
-    it('should handle empty topic list', () => {
+    it('should handle empty theme list', () => {
         const { found, missing } = scanCachedProbes([], outputDir, gitHash);
         expect(found.size).toBe(0);
         expect(missing).toEqual([]);
@@ -500,8 +500,8 @@ describe('discovery metadata', () => {
             mode: 'iterative',
             currentRound: 2,
             maxRounds: 3,
-            completedTopics: ['auth', 'database'],
-            pendingTopics: ['caching'],
+            completedThemes: ['auth', 'database'],
+            pendingThemes: ['caching'],
             converged: false,
             coverage: 0.65,
         };
@@ -512,7 +512,7 @@ describe('discovery metadata', () => {
         expect(loaded).not.toBeNull();
         expect(loaded!.mode).toBe('iterative');
         expect(loaded!.currentRound).toBe(2);
-        expect(loaded!.completedTopics).toEqual(['auth', 'database']);
+        expect(loaded!.completedThemes).toEqual(['auth', 'database']);
         expect(loaded!.coverage).toBe(0.65);
     });
 
@@ -541,8 +541,8 @@ describe('discovery metadata', () => {
             mode: 'iterative',
             currentRound: 1,
             maxRounds: 3,
-            completedTopics: ['auth'],
-            pendingTopics: ['db', 'api'],
+            completedThemes: ['auth'],
+            pendingThemes: ['db', 'api'],
             converged: false,
             coverage: 0.3,
         };
@@ -550,8 +550,8 @@ describe('discovery metadata', () => {
         const meta2: DiscoveryProgressMetadata = {
             ...meta1,
             currentRound: 2,
-            completedTopics: ['auth', 'db'],
-            pendingTopics: ['api'],
+            completedThemes: ['auth', 'db'],
+            pendingThemes: ['api'],
             coverage: 0.6,
         };
 
@@ -560,7 +560,7 @@ describe('discovery metadata', () => {
 
         const loaded = getDiscoveryMetadata(outputDir);
         expect(loaded!.currentRound).toBe(2);
-        expect(loaded!.completedTopics).toEqual(['auth', 'db']);
+        expect(loaded!.completedThemes).toEqual(['auth', 'db']);
     });
 });
 
@@ -583,8 +583,8 @@ describe('clearDiscoveryCache', () => {
             mode: 'iterative',
             currentRound: 1,
             maxRounds: 3,
-            completedTopics: [],
-            pendingTopics: [],
+            completedThemes: [],
+            pendingThemes: [],
             converged: false,
             coverage: 0,
         }, outputDir);
@@ -644,7 +644,7 @@ describe('edge cases', () => {
     it('should handle missing directory gracefully on reads', () => {
         // All reads should return null without error
         expect(getCachedSeeds('/nonexistent/path', 'hash')).toBeNull();
-        expect(getCachedProbeResult('topic', '/nonexistent/path', 'hash')).toBeNull();
+        expect(getCachedProbeResult('theme', '/nonexistent/path', 'hash')).toBeNull();
         expect(getCachedStructuralScan('/nonexistent/path', 'hash')).toBeNull();
         expect(getCachedDomainSubGraph('area', '/nonexistent/path', 'hash')).toBeNull();
         expect(getDiscoveryMetadata('/nonexistent/path')).toBeNull();

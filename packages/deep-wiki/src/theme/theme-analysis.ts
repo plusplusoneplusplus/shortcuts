@@ -1,7 +1,7 @@
 /**
- * Topic Analysis Executor
+ * Theme Analysis Executor
  *
- * Runs deep analysis for each sub-article in a topic outline,
+ * Runs deep analysis for each sub-article in a theme outline,
  * plus a cross-cutting analysis for the index page.
  * Per-article analyses run in parallel with concurrency control.
  *
@@ -13,14 +13,14 @@ import {
     type SendMessageOptions,
 } from '@plusplusoneplusplus/pipeline-core';
 import type {
-    TopicOutline,
-    TopicAnalysis,
-    TopicArticlePlan,
-    TopicArticleAnalysis,
-    TopicCrossCuttingAnalysis,
-    ModuleAnalysis,
+    ThemeOutline,
+    ThemeAnalysis,
+    ThemeArticlePlan,
+    ThemeArticleAnalysis,
+    ThemeCrossCuttingAnalysis,
+    ComponentAnalysis,
 } from '../types';
-import type { EnrichedProbeResult } from './topic-probe';
+import type { EnrichedProbeResult } from './theme-probe';
 import { buildArticleAnalysisPrompt, buildCrossCuttingPrompt } from './analysis-prompts';
 import { parseAIJsonResponse } from '../utils/parse-ai-response';
 import { printInfo, printWarning, gray } from '../logger';
@@ -43,12 +43,12 @@ const DEFAULT_CONCURRENCY = 5;
 // Types
 // ============================================================================
 
-export interface TopicAnalysisOptions {
+export interface ThemeAnalysisOptions {
     repoPath: string;
-    outline: TopicOutline;
+    outline: ThemeOutline;
     probeResult: EnrichedProbeResult;
     /** Reuse cached module analyses for context enrichment */
-    existingAnalyses?: ModuleAnalysis[];
+    existingAnalyses?: ComponentAnalysis[];
     model?: string;
     timeout?: number;
     concurrency?: number;
@@ -60,16 +60,16 @@ export interface TopicAnalysisOptions {
 // ============================================================================
 
 /**
- * Run analysis for the entire topic:
+ * Run analysis for the entire theme:
  * 1. For each non-index article → run per-article analysis in parallel
  * 2. Run cross-cutting analysis for the index page (synthesizes all results)
  *
- * Single-article topics (only an index) skip cross-cutting and return
+ * Single-article themes (only an index) skip cross-cutting and return
  * the index article's analysis directly.
  */
-export async function runTopicAnalysis(
-    options: TopicAnalysisOptions
-): Promise<TopicAnalysis> {
+export async function runThemeAnalysis(
+    options: ThemeAnalysisOptions
+): Promise<ThemeAnalysis> {
     const {
         outline,
         repoPath,
@@ -84,21 +84,21 @@ export async function runTopicAnalysis(
     const nonIndexArticles = outline.articles.filter(a => !a.isIndex);
     const moduleContext = buildModuleContext(outline, probeResult, existingAnalyses);
 
-    printInfo(`  Analyzing topic "${outline.title}": ${outline.articles.length} article(s) ${gray(`(depth: ${depth})`)}`);
+    printInfo(`  Analyzing theme "${outline.title}": ${outline.articles.length} article(s) ${gray(`(depth: ${depth})`)}`);
 
     // Phase 1: Per-article analyses (parallel with concurrency control)
     const articleAnalyses = await runArticleAnalysesParallel(
         repoPath, outline, nonIndexArticles, moduleContext, depth, model, timeout, concurrency
     );
 
-    // Single-article topic (only index) → simplified result
+    // Single-article theme (only index) → simplified result
     if (nonIndexArticles.length === 0) {
         const indexArticle = outline.articles.find(a => a.isIndex) ?? outline.articles[0];
 
         // Truly empty outline → return minimal result
         if (!indexArticle) {
             return {
-                topicId: outline.topicId,
+                themeId: outline.themeId,
                 overview: `Overview of ${outline.title}`,
                 perArticle: [],
                 crossCutting: makeDefaultCrossCutting(),
@@ -110,7 +110,7 @@ export async function runTopicAnalysis(
         );
 
         return {
-            topicId: outline.topicId,
+            themeId: outline.themeId,
             overview: indexAnalysis.internalDetails || `Overview of ${outline.title}`,
             perArticle: [indexAnalysis],
             crossCutting: {
@@ -118,7 +118,7 @@ export async function runTopicAnalysis(
                 dataFlow: indexAnalysis.dataFlow,
                 suggestedDiagram: '',
                 configuration: undefined,
-                relatedTopics: undefined,
+                relatedThemes: undefined,
             },
         };
     }
@@ -129,7 +129,7 @@ export async function runTopicAnalysis(
     );
 
     return {
-        topicId: outline.topicId,
+        themeId: outline.themeId,
         overview: crossCutting.architecture || `Overview of ${outline.title}`,
         perArticle: articleAnalyses,
         crossCutting,
@@ -146,15 +146,15 @@ export async function runTopicAnalysis(
  */
 async function runArticleAnalysesParallel(
     repoPath: string,
-    outline: TopicOutline,
-    articles: TopicArticlePlan[],
+    outline: ThemeOutline,
+    articles: ThemeArticlePlan[],
     moduleContext: string,
     depth: 'shallow' | 'normal' | 'deep',
     model: string | undefined,
     timeout: number | undefined,
     concurrency: number
-): Promise<TopicArticleAnalysis[]> {
-    const results: TopicArticleAnalysis[] = [];
+): Promise<ThemeArticleAnalysis[]> {
+    const results: ThemeArticleAnalysis[] = [];
     let activeCount = 0;
     const waiters: (() => void)[] = [];
 
@@ -199,15 +199,15 @@ async function runArticleAnalysesParallel(
  */
 export async function analyzeArticleScope(
     repoPath: string,
-    article: TopicArticlePlan,
-    topicTitle: string,
+    article: ThemeArticlePlan,
+    themeTitle: string,
     moduleContext: string,
     options: { model?: string; timeout?: number; depth: 'shallow' | 'normal' | 'deep' }
-): Promise<TopicArticleAnalysis> {
+): Promise<ThemeArticleAnalysis> {
     const service = getCopilotSDKService();
 
     const prompt = buildArticleAnalysisPrompt(
-        topicTitle,
+        themeTitle,
         article.title,
         article.description,
         article.slug,
@@ -247,10 +247,10 @@ export async function analyzeArticleScope(
  */
 export async function analyzeCrossCutting(
     repoPath: string,
-    outline: TopicOutline,
-    articleAnalyses: TopicArticleAnalysis[],
+    outline: ThemeOutline,
+    articleAnalyses: ThemeArticleAnalysis[],
     options: { model?: string; timeout?: number }
-): Promise<TopicCrossCuttingAnalysis> {
+): Promise<ThemeCrossCuttingAnalysis> {
     const service = getCopilotSDKService();
 
     const articleSummaries = articleAnalyses.map(a =>
@@ -260,10 +260,10 @@ export async function analyzeCrossCutting(
         `Details: ${a.internalDetails || 'none'}\n`
     ).join('\n');
 
-    const moduleIds = outline.involvedModules.map(m => m.moduleId);
+    const moduleIds = outline.involvedComponents.map(m => m.componentId);
 
     const prompt = buildCrossCuttingPrompt(
-        outline.title, outline.topicId, articleSummaries, moduleIds
+        outline.title, outline.themeId, articleSummaries, moduleIds
     );
 
     const sendOptions: SendMessageOptions = {
@@ -299,9 +299,9 @@ export async function analyzeCrossCutting(
 // ============================================================================
 
 /**
- * Parse AI response into a TopicArticleAnalysis.
+ * Parse AI response into a ThemeArticleAnalysis.
  */
-function parseArticleAnalysisResponse(response: string, expectedSlug: string): TopicArticleAnalysis {
+function parseArticleAnalysisResponse(response: string, expectedSlug: string): ThemeArticleAnalysis {
     const obj = parseAIJsonResponse(response, { context: 'article-analysis', repair: true });
 
     return {
@@ -314,9 +314,9 @@ function parseArticleAnalysisResponse(response: string, expectedSlug: string): T
 }
 
 /**
- * Parse AI response into a TopicCrossCuttingAnalysis.
+ * Parse AI response into a ThemeCrossCuttingAnalysis.
  */
-function parseCrossCuttingResponse(response: string): TopicCrossCuttingAnalysis {
+function parseCrossCuttingResponse(response: string): ThemeCrossCuttingAnalysis {
     const obj = parseAIJsonResponse(response, { context: 'cross-cutting-analysis', repair: true });
 
     return {
@@ -324,7 +324,7 @@ function parseCrossCuttingResponse(response: string): TopicCrossCuttingAnalysis 
         dataFlow: typeof obj.dataFlow === 'string' ? obj.dataFlow : '',
         suggestedDiagram: typeof obj.suggestedDiagram === 'string' ? obj.suggestedDiagram : '',
         configuration: typeof obj.configuration === 'string' ? obj.configuration : undefined,
-        relatedTopics: parseStringArray(obj.relatedTopics),
+        relatedThemes: parseStringArray(obj.relatedThemes),
     };
 }
 
@@ -337,19 +337,19 @@ function parseCrossCuttingResponse(response: string): TopicCrossCuttingAnalysis 
  * Used to enrich per-article prompts with cached module data.
  */
 function buildModuleContext(
-    outline: TopicOutline,
+    outline: ThemeOutline,
     probeResult: EnrichedProbeResult,
-    existingAnalyses?: ModuleAnalysis[]
+    existingAnalyses?: ComponentAnalysis[]
 ): string {
     if (!existingAnalyses || existingAnalyses.length === 0) {
         // Fall back to probe-level info
-        return outline.involvedModules.map(m =>
-            `- ${m.moduleId}: ${m.role} (files: ${m.keyFiles.join(', ')})`
+        return outline.involvedComponents.map(m =>
+            `- ${m.componentId}: ${m.role} (files: ${m.keyFiles.join(', ')})`
         ).join('\n');
     }
 
-    const analysisMap = new Map(existingAnalyses.map(a => [a.moduleId, a]));
-    const involvedIds = new Set(outline.involvedModules.map(m => m.moduleId));
+    const analysisMap = new Map(existingAnalyses.map(a => [a.componentId, a]));
+    const involvedIds = new Set(outline.involvedComponents.map(m => m.componentId));
 
     const lines: string[] = [];
     for (const moduleId of involvedIds) {
@@ -361,7 +361,7 @@ function buildModuleContext(
                 `  Data flow: ${cached.dataFlow}`
             );
         } else {
-            const probeModule = probeResult.probeResult.foundModules.find(m => m.id === moduleId);
+            const probeModule = probeResult.probeResult.foundComponents.find(m => m.id === moduleId);
             lines.push(`- ${moduleId}: ${probeModule?.purpose || 'unknown'}`);
         }
     }
@@ -369,7 +369,7 @@ function buildModuleContext(
     return lines.join('\n');
 }
 
-function parseKeyConcepts(raw: unknown): TopicArticleAnalysis['keyConcepts'] {
+function parseKeyConcepts(raw: unknown): ThemeArticleAnalysis['keyConcepts'] {
     if (!Array.isArray(raw)) return [];
     return raw
         .filter((item): item is Record<string, unknown> =>
@@ -382,7 +382,7 @@ function parseKeyConcepts(raw: unknown): TopicArticleAnalysis['keyConcepts'] {
         }));
 }
 
-function parseCodeExamples(raw: unknown): TopicArticleAnalysis['codeExamples'] {
+function parseCodeExamples(raw: unknown): ThemeArticleAnalysis['codeExamples'] {
     if (!Array.isArray(raw)) return [];
     return raw
         .filter((item): item is Record<string, unknown> =>
@@ -401,7 +401,7 @@ function parseStringArray(raw: unknown): string[] | undefined {
     return arr.length > 0 ? arr : undefined;
 }
 
-function makeFailedArticleAnalysis(slug: string): TopicArticleAnalysis {
+function makeFailedArticleAnalysis(slug: string): ThemeArticleAnalysis {
     return {
         slug,
         keyConcepts: [],
@@ -411,12 +411,12 @@ function makeFailedArticleAnalysis(slug: string): TopicArticleAnalysis {
     };
 }
 
-function makeDefaultCrossCutting(): TopicCrossCuttingAnalysis {
+function makeDefaultCrossCutting(): ThemeCrossCuttingAnalysis {
     return {
         architecture: '',
         dataFlow: '',
         suggestedDiagram: '',
         configuration: undefined,
-        relatedTopics: undefined,
+        relatedThemes: undefined,
     };
 }

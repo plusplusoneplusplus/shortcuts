@@ -14,7 +14,7 @@ import {
     type PermissionRequestResult,
 } from '@plusplusoneplusplus/pipeline-core';
 import type { ComponentGraph, ComponentInfo, CategoryInfo } from '../../types';
-import type { TopicProbeResult, MergeResult } from './types';
+import type { ThemeProbeResult, MergeResult } from './types';
 import { normalizeComponentId, isValidComponentId } from '../../schemas';
 import { buildMergePrompt } from './merge-prompts';
 import { parseMergeResponse } from './merge-response-parser';
@@ -61,7 +61,7 @@ function readOnlyPermissions(request: PermissionRequest): PermissionRequestResul
  */
 export async function mergeProbeResults(
     repoPath: string,
-    probeResults: TopicProbeResult[],
+    probeResults: ThemeProbeResult[],
     existingGraph: ComponentGraph | null,
     options: {
         model?: string;
@@ -129,10 +129,10 @@ export async function mergeProbeResults(
 
 /**
  * Build a MergeResult locally from probe data when the AI merge fails.
- * Deduplicates components by ID, infers categories, and collects new topics.
+ * Deduplicates components by ID, infers categories, and collects new themes.
  */
 function buildLocalMergeResult(
-    probeResults: TopicProbeResult[],
+    probeResults: ThemeProbeResult[],
     existingGraph: ComponentGraph | null,
     reason: string,
 ): MergeResult {
@@ -161,7 +161,7 @@ function buildLocalMergeResult(
 
             if (componentMap.has(id)) { continue; } // Keep first occurrence
 
-            const category = probe.topic || 'general';
+            const category = probe.theme || 'general';
             categorySet.add(category);
 
             componentMap.set(id, {
@@ -184,16 +184,16 @@ function buildLocalMergeResult(
         description: '',
     }));
 
-    // Collect new topics from probes
-    const seenTopics = new Set(probeResults.map(p => p?.topic).filter(Boolean));
-    const newTopics: { topic: string; description: string; hints: string[] }[] = [];
+    // Collect new themes from probes
+    const seenThemes = new Set(probeResults.map(p => p?.theme).filter(Boolean));
+    const newThemes: { theme: string; description: string; hints: string[] }[] = [];
     for (const probe of probeResults) {
-        if (!probe?.discoveredTopics) { continue; }
-        for (const dt of probe.discoveredTopics) {
-            if (!seenTopics.has(dt.topic)) {
-                seenTopics.add(dt.topic);
-                newTopics.push({
-                    topic: normalizeComponentId(dt.topic),
+        if (!probe?.discoveredThemes) { continue; }
+        for (const dt of probe.discoveredThemes) {
+            if (!seenThemes.has(dt.theme)) {
+                seenThemes.add(dt.theme);
+                newThemes.push({
+                    theme: normalizeComponentId(dt.theme),
                     description: dt.description,
                     hints: dt.hints || [],
                 });
@@ -218,8 +218,8 @@ function buildLocalMergeResult(
             categories,
             architectureNotes: existingGraph?.architectureNotes || '',
         },
-        newTopics,
-        converged: newTopics.length === 0,
+        newThemes,
+        converged: newThemes.length === 0,
         coverage: 0,
         reason: `Local merge fallback: ${reason}`,
     };

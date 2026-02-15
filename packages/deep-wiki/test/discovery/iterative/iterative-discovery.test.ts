@@ -7,11 +7,11 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { runIterativeDiscovery } from '../../../src/discovery/iterative/iterative-discovery';
-import type { IterativeDiscoveryOptions, TopicSeed, ComponentGraph } from '../../../src/types';
+import type { IterativeDiscoveryOptions, ThemeSeed, ComponentGraph } from '../../../src/types';
 
 // Mock probe and merge sessions
 vi.mock('../../../src/discovery/iterative/probe-session', () => ({
-    runTopicProbe: vi.fn(),
+    runThemeProbe: vi.fn(),
 }));
 
 vi.mock('../../../src/discovery/iterative/merge-session', () => ({
@@ -31,7 +31,7 @@ vi.mock('../../../src/logger', () => ({
     bold: (s: string) => s,
 }));
 
-import { runTopicProbe } from '../../../src/discovery/iterative/probe-session';
+import { runThemeProbe } from '../../../src/discovery/iterative/probe-session';
 import { mergeProbeResults } from '../../../src/discovery/iterative/merge-session';
 
 describe('runIterativeDiscovery', () => {
@@ -39,7 +39,7 @@ describe('runIterativeDiscovery', () => {
         repoPath: '/test/repo',
         seeds: [
             {
-                topic: 'authentication',
+                theme: 'authentication',
                 description: 'Auth logic',
                 hints: ['auth', 'login'],
             },
@@ -87,29 +87,29 @@ describe('runIterativeDiscovery', () => {
             architectureNotes: 'Test architecture',
         };
 
-        vi.mocked(runTopicProbe).mockResolvedValue({
-            topic: 'authentication',
+        vi.mocked(runThemeProbe).mockResolvedValue({
+            theme: 'authentication',
             foundComponents: [],
-            discoveredTopics: [],
+            discoveredThemes: [],
             dependencies: [],
             confidence: 0.9,
         });
 
         vi.mocked(mergeProbeResults).mockResolvedValue({
             graph: mockGraph,
-            newTopics: [],
+            newThemes: [],
             converged: true,
             coverage: 0.9,
-            reason: 'Coverage 0.9, no new topics',
+            reason: 'Coverage 0.9, no new themes',
         });
 
         const result = await runIterativeDiscovery(baseOptions);
         expect(result.components).toHaveLength(1);
-        expect(vi.mocked(runTopicProbe)).toHaveBeenCalledTimes(1);
+        expect(vi.mocked(runThemeProbe)).toHaveBeenCalledTimes(1);
         expect(vi.mocked(mergeProbeResults)).toHaveBeenCalledTimes(1);
     });
 
-    it('should iterate multiple rounds when new topics are discovered', async () => {
+    it('should iterate multiple rounds when new themes are discovered', async () => {
         const round1Graph: ComponentGraph = {
             project: {
                 name: 'test-project',
@@ -140,49 +140,49 @@ describe('runIterativeDiscovery', () => {
             ],
         };
 
-        vi.mocked(runTopicProbe).mockResolvedValue({
-            topic: 'authentication',
+        vi.mocked(runThemeProbe).mockResolvedValue({
+            theme: 'authentication',
             foundComponents: [],
-            discoveredTopics: [],
+            discoveredThemes: [],
             dependencies: [],
             confidence: 0.8,
         });
 
-        // Round 1: discovers new topic
+        // Round 1: discovers new theme
         vi.mocked(mergeProbeResults)
             .mockResolvedValueOnce({
                 graph: round1Graph,
-                newTopics: [
+                newThemes: [
                     {
-                        topic: 'authorization',
+                        theme: 'authorization',
                         description: 'Permission checking',
                         hints: ['permission'],
                     },
                 ],
                 converged: false,
                 coverage: 0.5,
-                reason: 'Coverage 0.5, 1 new topic',
+                reason: 'Coverage 0.5, 1 new theme',
             })
             // Round 2: converges
             .mockResolvedValueOnce({
                 graph: round2Graph,
-                newTopics: [],
+                newThemes: [],
                 converged: true,
                 coverage: 0.9,
-                reason: 'Coverage 0.9, no new topics',
+                reason: 'Coverage 0.9, no new themes',
             });
 
         const result = await runIterativeDiscovery(baseOptions);
         expect(result.components).toHaveLength(1);
-        expect(vi.mocked(runTopicProbe)).toHaveBeenCalledTimes(2); // Initial + new topic
+        expect(vi.mocked(runThemeProbe)).toHaveBeenCalledTimes(2); // Initial + new theme
         expect(vi.mocked(mergeProbeResults)).toHaveBeenCalledTimes(2);
     });
 
     it('should stop at max rounds even if not converged', async () => {
-        vi.mocked(runTopicProbe).mockResolvedValue({
-            topic: 'authentication',
+        vi.mocked(runThemeProbe).mockResolvedValue({
+            theme: 'authentication',
             foundComponents: [],
-            discoveredTopics: [],
+            discoveredThemes: [],
             dependencies: [],
             confidence: 0.7,
         });
@@ -200,10 +200,10 @@ describe('runIterativeDiscovery', () => {
                 categories: [],
                 architectureNotes: '',
             },
-            newTopics: [
+            newThemes: [
                 {
-                    topic: 'new-topic',
-                    description: 'New topic',
+                    theme: 'new-theme',
+                    description: 'New theme',
                     hints: ['new'],
                 },
             ],
@@ -225,19 +225,19 @@ describe('runIterativeDiscovery', () => {
         const options: IterativeDiscoveryOptions = {
             ...baseOptions,
             seeds: [
-                { topic: 'auth', description: 'Auth', hints: ['auth'] },
-                { topic: 'db', description: 'DB', hints: ['db'] },
-                { topic: 'api', description: 'API', hints: ['api'] },
-                { topic: 'cache', description: 'Cache', hints: ['cache'] },
-                { topic: 'queue', description: 'Queue', hints: ['queue'] },
+                { theme: 'auth', description: 'Auth', hints: ['auth'] },
+                { theme: 'db', description: 'DB', hints: ['db'] },
+                { theme: 'api', description: 'API', hints: ['api'] },
+                { theme: 'cache', description: 'Cache', hints: ['cache'] },
+                { theme: 'queue', description: 'Queue', hints: ['queue'] },
             ],
             concurrency: 2,
         };
 
-        vi.mocked(runTopicProbe).mockResolvedValue({
-            topic: 'test',
+        vi.mocked(runThemeProbe).mockResolvedValue({
+            theme: 'test',
             foundComponents: [],
-            discoveredTopics: [],
+            discoveredThemes: [],
             dependencies: [],
             confidence: 0.8,
         });
@@ -255,7 +255,7 @@ describe('runIterativeDiscovery', () => {
                 categories: [],
                 architectureNotes: '',
             },
-            newTopics: [],
+            newThemes: [],
             converged: true,
             coverage: 1.0,
             reason: 'Complete',
@@ -263,14 +263,14 @@ describe('runIterativeDiscovery', () => {
 
         await runIterativeDiscovery(options);
         // Should have called probe for all 5 seeds
-        expect(vi.mocked(runTopicProbe)).toHaveBeenCalledTimes(5);
+        expect(vi.mocked(runThemeProbe)).toHaveBeenCalledTimes(5);
     });
 
     it('should handle probe failures gracefully', async () => {
-        vi.mocked(runTopicProbe).mockResolvedValue({
-            topic: 'authentication',
+        vi.mocked(runThemeProbe).mockResolvedValue({
+            theme: 'authentication',
             foundComponents: [],
-            discoveredTopics: [],
+            discoveredThemes: [],
             dependencies: [],
             confidence: 0, // Failed probe
         });
@@ -288,7 +288,7 @@ describe('runIterativeDiscovery', () => {
                 categories: [],
                 architectureNotes: '',
             },
-            newTopics: [],
+            newThemes: [],
             converged: true,
             coverage: 0,
             reason: 'All probes failed',
@@ -299,11 +299,11 @@ describe('runIterativeDiscovery', () => {
         // Should not throw, should return graph even if probes failed
     });
 
-    it('should converge when coverage threshold is met and no new topics', async () => {
-        vi.mocked(runTopicProbe).mockResolvedValue({
-            topic: 'authentication',
+    it('should converge when coverage threshold is met and no new themes', async () => {
+        vi.mocked(runThemeProbe).mockResolvedValue({
+            theme: 'authentication',
             foundComponents: [],
-            discoveredTopics: [],
+            discoveredThemes: [],
             dependencies: [],
             confidence: 0.9,
         });
@@ -321,7 +321,7 @@ describe('runIterativeDiscovery', () => {
                 categories: [],
                 architectureNotes: '',
             },
-            newTopics: [],
+            newThemes: [],
             converged: false, // Not explicitly converged
             coverage: 0.85, // Above threshold
             reason: 'High coverage',

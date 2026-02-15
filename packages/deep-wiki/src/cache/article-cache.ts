@@ -35,11 +35,11 @@ export function getArticlesCacheDir(outputDir: string): string {
  * When domainId is provided, articles are cached under `articles/{domain-id}/{module-id}.json`.
  * Without domainId, articles are cached as `articles/{module-id}.json` (backward compat).
  */
-export function getArticleCachePath(outputDir: string, moduleId: string, domainId?: string): string {
+export function getArticleCachePath(outputDir: string, componentId: string, domainId?: string): string {
     if (domainId) {
-        return path.join(getArticlesCacheDir(outputDir), domainId, `${moduleId}.json`);
+        return path.join(getArticlesCacheDir(outputDir), domainId, `${componentId}.json`);
     }
-    return path.join(getArticlesCacheDir(outputDir), `${moduleId}.json`);
+    return path.join(getArticlesCacheDir(outputDir), `${componentId}.json`);
 }
 
 /**
@@ -94,16 +94,16 @@ export function getReduceArticleCachePath(
  * Get a single cached module article.
  * Checks domain-scoped path first (if domainId provided), then flat path.
  *
- * @param moduleId - Module ID to look up
+ * @param componentId - Module ID to look up
  * @param outputDir - Output directory
  * @param domainId - Optional domain ID for hierarchical lookup
  * @returns The cached article, or null if not found
  */
-export function getCachedArticle(moduleId: string, outputDir: string, domainId?: string): GeneratedArticle | null {
+export function getCachedArticle(componentId: string, outputDir: string, domainId?: string): GeneratedArticle | null {
     // Try domain-scoped path first, then flat path
     const pathsToTry = domainId
-        ? [getArticleCachePath(outputDir, moduleId, domainId), getArticleCachePath(outputDir, moduleId)]
-        : [getArticleCachePath(outputDir, moduleId)];
+        ? [getArticleCachePath(outputDir, componentId, domainId), getArticleCachePath(outputDir, componentId)]
+        : [getArticleCachePath(outputDir, componentId)];
 
     for (const cachePath of pathsToTry) {
         const cached = readCacheFileIf<CachedArticle>(
@@ -128,7 +128,7 @@ export function getCachedArticle(moduleId: string, outputDir: string, domainId?:
 export function getCachedArticles(outputDir: string): GeneratedArticle[] | null {
     const metadata = readCacheFileIf<AnalysisCacheMetadata>(
         getArticlesMetadataPath(outputDir),
-        (d) => !!d.gitHash && !!d.moduleCount
+        (d) => !!d.gitHash && !!d.componentCount
     );
     if (!metadata) {
         return null;
@@ -263,18 +263,18 @@ export function getCachedReduceArticles(
  * Save a single module article to the cache.
  * Domain-scoped articles are cached under `articles/{domain-id}/{module-id}.json`.
  *
- * @param moduleId - Module ID
+ * @param componentId - Module ID
  * @param article - The article to cache
  * @param outputDir - Output directory
  * @param gitHash - Git hash when the article was generated
  */
 export function saveArticle(
-    moduleId: string,
+    componentId: string,
     article: GeneratedArticle,
     outputDir: string,
     gitHash: string
 ): void {
-    writeCacheFile<CachedArticle>(getArticleCachePath(outputDir, moduleId, article.domainId), {
+    writeCacheFile<CachedArticle>(getArticleCachePath(outputDir, componentId, article.domainId), {
         article,
         gitHash,
         timestamp: Date.now(),
@@ -284,7 +284,7 @@ export function saveArticle(
 /**
  * Save all articles to the cache (bulk save with metadata).
  *
- * @param articles - All module articles (only 'module' type articles are cached)
+ * @param articles - All component articles (only 'component' type articles are cached)
  * @param outputDir - Output directory
  * @param repoPath - Path to the git repository
  */
@@ -299,11 +299,11 @@ export async function saveAllArticles(
     }
 
     // Only cache module-type articles (not index/architecture/getting-started/domain-*)
-    const moduleArticles = articles.filter(a => a.type === 'module' && a.moduleId);
+    const moduleArticles = articles.filter(a => a.type === 'component' && a.componentId);
 
     // Write individual article files (saveArticle handles domain subdirectories)
     for (const article of moduleArticles) {
-        saveArticle(article.moduleId!, article, outputDir, currentHash);
+        saveArticle(article.componentId!, article, outputDir, currentHash);
     }
 
     // Write metadata
@@ -311,7 +311,7 @@ export async function saveAllArticles(
         gitHash: currentHash,
         timestamp: Date.now(),
         version: CACHE_VERSION,
-        moduleCount: moduleArticles.length,
+        componentCount: moduleArticles.length,
     });
 }
 
@@ -322,7 +322,7 @@ export async function saveAllArticles(
 /**
  * Save reduce-phase articles to the cache.
  *
- * Filters the provided articles to only reduce-type articles (NOT 'module'),
+ * Filters the provided articles to only reduce-type articles (NOT 'component'),
  * writes each to a `_reduce-{type}.json` file, and writes reduce metadata
  * with the git hash and count.
  *
@@ -336,7 +336,7 @@ export function saveReduceArticles(
     gitHash: string
 ): void {
     // Only cache reduce-type articles (not 'module')
-    const reduceArticles = articles.filter(a => a.type !== 'module');
+    const reduceArticles = articles.filter(a => a.type !== 'component');
     if (reduceArticles.length === 0) {
         return;
     }
@@ -355,7 +355,7 @@ export function saveReduceArticles(
         gitHash,
         timestamp: Date.now(),
         version: CACHE_VERSION,
-        moduleCount: reduceArticles.length,
+        componentCount: reduceArticles.length,
     });
 }
 
@@ -367,9 +367,9 @@ export function saveReduceArticles(
  * Find all possible cache paths for a module article (checks domain subdirectories + flat).
  * Returns the first existing path, or null if none found.
  */
-function findArticleCachePath(outputDir: string, moduleId: string): string | null {
+function findArticleCachePath(outputDir: string, componentId: string): string | null {
     // Check flat path first
-    const flatPath = getArticleCachePath(outputDir, moduleId);
+    const flatPath = getArticleCachePath(outputDir, componentId);
     if (fs.existsSync(flatPath)) {
         return flatPath;
     }
@@ -381,7 +381,7 @@ function findArticleCachePath(outputDir: string, moduleId: string): string | nul
             const entries = fs.readdirSync(articlesDir, { withFileTypes: true });
             for (const entry of entries) {
                 if (entry.isDirectory() && entry.name !== '_metadata.json') {
-                    const domainPath = path.join(articlesDir, entry.name, `${moduleId}.json`);
+                    const domainPath = path.join(articlesDir, entry.name, `${componentId}.json`);
                     if (fs.existsSync(domainPath)) {
                         return domainPath;
                     }
@@ -405,19 +405,19 @@ function findArticleCachePath(outputDir: string, moduleId: string): string | nul
  * Supports both flat (`articles/{module-id}.json`) and domain-scoped
  * (`articles/{domain-id}/{module-id}.json`) cache layouts.
  *
- * @param moduleIds - Module IDs to look for in the cache
+ * @param componentIds - Module IDs to look for in the cache
  * @param outputDir - Output directory
  * @param currentGitHash - Current git hash for validation (modules cached with
  *                         a different hash are considered stale and excluded)
  * @returns Object with `found` (valid cached articles) and `missing` (module IDs not found or stale)
  */
 export function scanIndividualArticlesCache(
-    moduleIds: string[],
+    componentIds: string[],
     outputDir: string,
     currentGitHash: string
 ): { found: GeneratedArticle[]; missing: string[] } {
     return scanCacheItems<CachedArticle, GeneratedArticle>(
-        moduleIds,
+        componentIds,
         (id) => findArticleCachePath(outputDir, id),
         (cached) => !!cached.article && !!cached.article.slug && cached.gitHash === currentGitHash,
         (cached) => cached.article
@@ -429,16 +429,16 @@ export function scanIndividualArticlesCache(
  *
  * Supports both flat and domain-scoped cache layouts.
  *
- * @param moduleIds - Module IDs to look for in the cache
+ * @param componentIds - Module IDs to look for in the cache
  * @param outputDir - Output directory
  * @returns Object with `found` (valid cached articles) and `missing` (module IDs not found)
  */
 export function scanIndividualArticlesCacheAny(
-    moduleIds: string[],
+    componentIds: string[],
     outputDir: string
 ): { found: GeneratedArticle[]; missing: string[] } {
     return scanCacheItems<CachedArticle, GeneratedArticle>(
-        moduleIds,
+        componentIds,
         (id) => findArticleCachePath(outputDir, id),
         (cached) => !!cached.article && !!cached.article.slug,
         (cached) => cached.article
@@ -457,20 +457,20 @@ export function scanIndividualArticlesCacheAny(
  * are re-stamped (their gitHash updated) so they pass validation on the
  * current run. Only I/O — no AI calls needed.
  *
- * @param moduleIds - Module IDs whose articles should be re-stamped
+ * @param componentIds - Module IDs whose articles should be re-stamped
  * @param outputDir - Output directory (cache lives here)
  * @param newGitHash - The current git hash to stamp onto the articles
  * @returns Number of articles successfully re-stamped
  */
 export function restampArticles(
-    moduleIds: string[],
+    componentIds: string[],
     outputDir: string,
     newGitHash: string
 ): number {
     let restamped = 0;
 
-    for (const moduleId of moduleIds) {
-        const cachePath = findArticleCachePath(outputDir, moduleId);
+    for (const componentId of componentIds) {
+        const cachePath = findArticleCachePath(outputDir, componentId);
         if (!cachePath) {
             continue; // No cached article for this module — it will be regenerated
         }

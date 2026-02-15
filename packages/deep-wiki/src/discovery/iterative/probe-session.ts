@@ -1,7 +1,7 @@
 /**
  * Iterative Discovery — Probe Session
  *
- * Runs a single topic probe session using the Copilot SDK.
+ * Runs a single theme probe session using the Copilot SDK.
  * Creates a direct session with MCP tools and parses the response.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
@@ -13,8 +13,8 @@ import {
     type PermissionRequest,
     type PermissionRequestResult,
 } from '@plusplusoneplusplus/pipeline-core';
-import type { TopicSeed } from '../../types';
-import type { TopicProbeResult } from './types';
+import type { ThemeSeed } from '../../types';
+import type { ThemeProbeResult } from './types';
 import { buildProbePrompt } from './probe-prompts';
 import { parseProbeResponse } from './probe-response-parser';
 import { printInfo, printWarning, gray } from '../../logger';
@@ -50,22 +50,22 @@ function readOnlyPermissions(request: PermissionRequest): PermissionRequestResul
 // ============================================================================
 
 /**
- * Run a single topic probe session.
+ * Run a single theme probe session.
  *
  * @param repoPath - Absolute path to the repository
- * @param topic - The topic seed to probe
+ * @param theme - The theme seed to probe
  * @param options - Probe options (model, timeout, focus)
- * @returns TopicProbeResult (empty result on failure, doesn't throw)
+ * @returns ThemeProbeResult (empty result on failure, doesn't throw)
  */
-export async function runTopicProbe(
+export async function runThemeProbe(
     repoPath: string,
-    topic: TopicSeed,
+    theme: ThemeSeed,
     options: {
         model?: string;
         timeout?: number;
         focus?: string;
     } = {}
-): Promise<TopicProbeResult> {
+): Promise<ThemeProbeResult> {
     const service = getCopilotSDKService();
 
     // Check SDK availability
@@ -73,16 +73,16 @@ export async function runTopicProbe(
     if (!availability) {
         // Return empty result on SDK unavailability
         return {
-            topic: topic.topic,
+            theme: theme.theme,
             foundComponents: [],
-            discoveredTopics: [],
+            discoveredThemes: [],
             dependencies: [],
             confidence: 0,
         };
     }
 
     // Build the prompt
-    const prompt = buildProbePrompt(repoPath, topic, options.focus);
+    const prompt = buildProbePrompt(repoPath, theme, options.focus);
 
     // Configure the SDK session
     const sendOptions: SendMessageOptions = {
@@ -101,32 +101,32 @@ export async function runTopicProbe(
 
     try {
         // Send the message
-        printInfo(`    Probing topic: ${topic.topic} ${gray(`(timeout: ${(options.timeout || DEFAULT_PROBE_TIMEOUT_MS) / 1000}s)`)}`);
+        printInfo(`    Probing theme: ${theme.theme} ${gray(`(timeout: ${(options.timeout || DEFAULT_PROBE_TIMEOUT_MS) / 1000}s)`)}`);
         const result = await service.sendMessage(sendOptions);
 
         if (!result.success || !result.response) {
             // Return empty result on failure
-            printWarning(`    Probe failed for "${topic.topic}": ${result.error || 'empty response'}`);
+            printWarning(`    Probe failed for "${theme.theme}": ${result.error || 'empty response'}`);
             return {
-                topic: topic.topic,
+                theme: theme.theme,
                 foundComponents: [],
-                discoveredTopics: [],
+                discoveredThemes: [],
                 dependencies: [],
                 confidence: 0,
             };
         }
 
         // Parse the response
-        const parsed = parseProbeResponse(result.response, topic.topic);
-        printInfo(`    Probe "${topic.topic}" found ${parsed.foundComponents.length} components ${gray(`(confidence: ${parsed.confidence})`)}`);
+        const parsed = parseProbeResponse(result.response, theme.theme);
+        printInfo(`    Probe "${theme.theme}" found ${parsed.foundComponents.length} components ${gray(`(confidence: ${parsed.confidence})`)}`);
         return parsed;
     } catch (error) {
         // Return empty result on error (don't crash the loop)
-        printWarning(`    Probe error for "${topic.topic}": ${getErrorMessage(error)}`);
+        printWarning(`    Probe error for "${theme.theme}": ${getErrorMessage(error)}`);
         return {
-            topic: topic.topic,
+            theme: theme.theme,
             foundComponents: [],
-            discoveredTopics: [],
+            discoveredThemes: [],
             dependencies: [],
             confidence: 0,
         };

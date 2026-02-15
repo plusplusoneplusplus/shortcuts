@@ -1,35 +1,35 @@
 /**
- * Topic Outline — Prompt Templates
+ * Theme Outline — Prompt Templates
  *
- * Builds AI prompts for decomposing a topic into a structured article outline.
+ * Builds AI prompts for decomposing a theme into a structured article outline.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { TopicRequest } from '../types';
-import type { EnrichedProbeResult } from './topic-probe';
+import type { ThemeRequest } from '../types';
+import type { EnrichedProbeResult } from './theme-probe';
 
 // ============================================================================
 // Prompt Builder
 // ============================================================================
 
 /**
- * Build the prompt for topic outline generation.
+ * Build the prompt for theme outline generation.
  *
- * The prompt includes topic context, discovered modules, and depth instructions.
+ * The prompt includes theme context, discovered modules, and depth instructions.
  * The AI is asked to return a JSON object describing the article layout.
  *
- * @param topic - The topic request
+ * @param theme - The theme request
  * @param probeResult - Enriched probe results with module info
- * @param depth - How deeply to decompose the topic
+ * @param depth - How deeply to decompose the theme
  * @returns Prompt string for the AI
  */
 export function buildOutlinePrompt(
-    topic: TopicRequest,
+    theme: ThemeRequest,
     probeResult: EnrichedProbeResult,
     depth: 'shallow' | 'normal' | 'deep'
 ): string {
-    const moduleSummaries = probeResult.probeResult.foundModules.map((mod, i) => {
+    const moduleSummaries = probeResult.probeResult.foundComponents.map((mod, i) => {
         const keyFilesStr = mod.keyFiles.length > 0
             ? `\n    Key files: ${mod.keyFiles.join(', ')}`
             : '';
@@ -39,26 +39,26 @@ export function buildOutlinePrompt(
     }).join('\n');
 
     const depthInstruction = getDepthInstruction(depth);
-    const moduleCount = probeResult.probeResult.foundModules.length;
+    const moduleCount = probeResult.probeResult.foundComponents.length;
 
     const layoutHint = moduleCount <= 2
         ? 'Given the small number of modules, prefer a single-article layout unless the content is clearly separable.'
         : moduleCount <= 6
             ? 'Consider an area layout with an index article and per-aspect sub-articles.'
-            : 'This is a large topic. Use an area layout with an index overview and multiple focused sub-articles.';
+            : 'This is a large theme. Use an area layout with an index overview and multiple focused sub-articles.';
 
-    const topicDescription = topic.description
-        ? `\nDescription: ${topic.description}`
+    const themeDescription = theme.description
+        ? `\nDescription: ${theme.description}`
         : '';
 
-    const topicHints = topic.hints && topic.hints.length > 0
-        ? `\nSearch hints: ${topic.hints.join(', ')}`
+    const themeHints = theme.hints && theme.hints.length > 0
+        ? `\nSearch hints: ${theme.hints.join(', ')}`
         : '';
 
-    return `You are a technical documentation planner. Your task is to decompose a codebase topic into a structured article outline.
+    return `You are a technical documentation planner. Your task is to decompose a codebase theme into a structured article outline.
 
-## Topic
-Name: ${topic.topic}${topicDescription}${topicHints}
+## Theme
+Name: ${theme.theme}${themeDescription}${themeHints}
 
 ## Discovered Modules (${moduleCount} found)
 ${moduleSummaries || '  (no modules discovered)'}
@@ -68,7 +68,7 @@ ${layoutHint}
 
 ${depthInstruction}
 
-Decide whether this topic warrants:
+Decide whether this theme warrants:
 - **"single"** layout: One comprehensive article covering everything
 - **"area"** layout: An index article plus multiple focused sub-articles
 
@@ -79,7 +79,7 @@ Group related modules into coherent articles. Every discovered module should be 
 ## Output Format
 Return a single JSON object (no markdown fences, no extra text):
 {
-  "title": "Human-readable topic title",
+  "title": "Human-readable theme title",
   "layout": "single" or "area",
   "articles": [
     {

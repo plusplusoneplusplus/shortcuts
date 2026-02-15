@@ -1,11 +1,11 @@
 /**
  * Markdown rendering: renderMarkdownContent, processMarkdownContent,
- * findModuleIdBySlugClient, addCopyButton, initMermaid.
+ * findComponentIdBySlugClient, addCopyButton, initMermaid.
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { currentTheme, moduleGraph } from './core';
+import { currentTheme, componentGraph } from './core';
 import { initMermaidZoom } from './mermaid-zoom';
 
 export function renderMarkdownContent(markdown: string): void {
@@ -100,9 +100,9 @@ export function processMarkdownContent(): void {
             return;
         }
 
-        const matchedId = findModuleIdBySlugClient(slug);
+        const matchedId = findComponentIdBySlugClient(slug);
         if (matchedId) {
-            (window as any).loadModule(matchedId);
+            (window as any).loadComponent(matchedId);
             if (hashPart) {
                 setTimeout(function () {
                     const el = document.getElementById(hashPart);
@@ -113,10 +113,10 @@ export function processMarkdownContent(): void {
     });
 }
 
-export function findModuleIdBySlugClient(slug: string): string | null {
+export function findComponentIdBySlugClient(slug: string): string | null {
     const normalized = slug.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-    for (let i = 0; i < moduleGraph.modules.length; i++) {
-        const mod = moduleGraph.modules[i];
+    for (let i = 0; i < componentGraph.components.length; i++) {
+        const mod = componentGraph.components[i];
         const modSlug = mod.id.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
         if (modSlug === normalized) return mod.id;
     }

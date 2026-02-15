@@ -54,13 +54,13 @@ import { getRepoHeadHash, getFolderHeadHash } from '../../src/cache/git-utils';
 let tempDir: string;
 let outputDir: string;
 
-function createModuleArticle(moduleId: string, domainId?: string): GeneratedArticle {
+function createModuleArticle(componentId: string, domainId?: string): GeneratedArticle {
     return {
-        type: 'module',
-        slug: moduleId,
-        title: `${moduleId} Module`,
-        content: `# ${moduleId}\n\nArticle content for ${moduleId}.`,
-        moduleId,
+        type: 'component',
+        slug: componentId,
+        title: `${componentId} Module`,
+        content: `# ${componentId}\n\nArticle content for ${componentId}.`,
+        componentId,
         domainId,
     };
 }
@@ -161,7 +161,7 @@ describe('saveReduceArticles / getCachedReduceArticles', () => {
         const loaded = getCachedReduceArticles(outputDir);
         expect(loaded).not.toBeNull();
         expect(loaded).toHaveLength(2);
-        expect(loaded!.every(a => a.type !== 'module')).toBe(true);
+        expect(loaded!.every(a => a.type !== 'component')).toBe(true);
     });
 
     it('should not write anything when only module articles provided', () => {
@@ -348,7 +348,7 @@ describe('getReduceCacheMetadata', () => {
         const metadata = getReduceCacheMetadata(outputDir);
         expect(metadata).not.toBeNull();
         expect(metadata!.gitHash).toBe('hash123');
-        expect(metadata!.moduleCount).toBe(1);
+        expect(metadata!.componentCount).toBe(1);
         expect(metadata!.version).toBe('1.0.0');
         expect(metadata!.timestamp).toBeGreaterThan(0);
     });
@@ -380,7 +380,7 @@ describe('getReduceCacheMetadata', () => {
         saveReduceArticles(articles, outputDir, 'hash123');
 
         const metadata = getReduceCacheMetadata(outputDir);
-        expect(metadata!.moduleCount).toBe(3);
+        expect(metadata!.componentCount).toBe(3);
     });
 });
 
@@ -404,11 +404,11 @@ describe('isolation from module article cache', () => {
         // Module articles should still load correctly
         const auth = getCachedArticle('auth', outputDir);
         expect(auth).not.toBeNull();
-        expect(auth!.moduleId).toBe('auth');
+        expect(auth!.componentId).toBe('auth');
 
         const db = getCachedArticle('db', outputDir);
         expect(db).not.toBeNull();
-        expect(db!.moduleId).toBe('db');
+        expect(db!.componentId).toBe('db');
     });
 
     it('getCachedArticles should NOT include reduce articles', async () => {
@@ -430,7 +430,7 @@ describe('isolation from module article cache', () => {
         const loaded = getCachedArticles(outputDir);
         expect(loaded).not.toBeNull();
         expect(loaded).toHaveLength(2);
-        expect(loaded!.every(a => a.type === 'module')).toBe(true);
+        expect(loaded!.every(a => a.type === 'component')).toBe(true);
     });
 
     it('scanIndividualArticlesCache should not find reduce articles', () => {
@@ -476,8 +476,8 @@ describe('isolation from module article cache', () => {
             fs.readFileSync(path.join(articlesDir, '_reduce-metadata.json'), 'utf-8')
         ) as AnalysisCacheMetadata;
 
-        expect(moduleMetadata.moduleCount).toBe(1);
-        expect(reduceMetadata.moduleCount).toBe(1);
+        expect(moduleMetadata.componentCount).toBe(1);
+        expect(reduceMetadata.componentCount).toBe(1);
     });
 });
 
@@ -645,7 +645,7 @@ describe('edge cases', () => {
             gitHash: 'hash123',
             timestamp: Date.now(),
             version: '1.0.0',
-            moduleCount: 3,
+            componentCount: 3,
         };
         fs.writeFileSync(
             path.join(articlesDir, '_reduce-metadata.json'),

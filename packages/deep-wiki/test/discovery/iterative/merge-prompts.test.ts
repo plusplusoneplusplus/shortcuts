@@ -7,12 +7,12 @@
 
 import { describe, it, expect } from 'vitest';
 import { buildMergePrompt } from '../../../src/discovery/iterative/merge-prompts';
-import type { TopicProbeResult, ComponentGraph } from '../../../src/types';
+import type { ThemeProbeResult, ComponentGraph } from '../../../src/types';
 
 describe('buildMergePrompt', () => {
-    const probeResults: TopicProbeResult[] = [
+    const probeResults: ThemeProbeResult[] = [
         {
-            topic: 'authentication',
+            theme: 'authentication',
             foundComponents: [
                 {
                     id: 'auth-service',
@@ -23,7 +23,7 @@ describe('buildMergePrompt', () => {
                     evidence: 'Evidence',
                 },
             ],
-            discoveredTopics: [],
+            discoveredThemes: [],
             dependencies: [],
             confidence: 0.9,
         },
@@ -83,18 +83,18 @@ describe('buildMergePrompt', () => {
     it('should include the JSON schema', () => {
         const prompt = buildMergePrompt('/repo', probeResults, null);
         expect(prompt).toContain('"graph"');
-        expect(prompt).toContain('"newTopics"');
+        expect(prompt).toContain('"newThemes"');
         expect(prompt).toContain('"converged"');
         expect(prompt).toContain('"coverage"');
     });
 
     it('should handle multiple probe results', () => {
-        const multipleResults: TopicProbeResult[] = [
+        const multipleResults: ThemeProbeResult[] = [
             ...probeResults,
             {
-                topic: 'database',
+                theme: 'database',
                 foundComponents: [],
-                discoveredTopics: [],
+                discoveredThemes: [],
                 dependencies: [],
                 confidence: 0.7,
             },

@@ -1,17 +1,17 @@
 /**
- * Content loading: showHome, loadModule, renderModulePage,
- * toggleSourceFiles, loadSpecialPage, loadTopicArticle, regenerateModule.
+ * Content loading: showHome, loadComponent, renderComponentPage,
+ * toggleSourceFiles, loadSpecialPage, loadThemeArticle, regenerateComponent.
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { moduleGraph, currentModuleId, setCurrentModuleId, markdownCache, escapeHtml } from './core';
+import { componentGraph, currentComponentId, setCurrentComponentId, markdownCache, escapeHtml } from './core';
 import { setActive, showWikiContent } from './sidebar';
 
 const config = (window as any).__WIKI_CONFIG__ as WikiConfig;
 
 export function showHome(skipHistory?: boolean): void {
-    setCurrentModuleId(null);
+    setCurrentComponentId(null);
     setActive('__home');
     showWikiContent();
     const tocNav = document.getElementById('toc-nav');
@@ -20,44 +20,44 @@ export function showHome(skipHistory?: boolean): void {
         history.pushState({ type: 'home' }, '', location.pathname);
     }
     if (config.enableAI) {
-        (window as any).updateAskSubject(moduleGraph.project.name);
+        (window as any).updateAskSubject(componentGraph.project.name);
     }
 
     const stats = {
-        modules: moduleGraph.modules.length,
-        categories: (moduleGraph.categories || []).length,
-        language: moduleGraph.project.language,
-        buildSystem: moduleGraph.project.buildSystem,
+        components: componentGraph.components.length,
+        categories: (componentGraph.categories || []).length,
+        language: componentGraph.project.language,
+        buildSystem: componentGraph.project.buildSystem,
     };
 
     let html = '<div class="home-view">' +
-        '<h1>' + escapeHtml(moduleGraph.project.name) + '</h1>' +
+        '<h1>' + escapeHtml(componentGraph.project.name) + '</h1>' +
         '<p style="font-size: 15px; color: var(--content-muted); margin-bottom: 24px;">' +
-        escapeHtml(moduleGraph.project.description) + '</p>' +
+        escapeHtml(componentGraph.project.description) + '</p>' +
         '<div class="project-stats">' +
-        '<div class="stat-card"><h3>Modules</h3><div class="value">' + stats.modules + '</div></div>' +
+        '<div class="stat-card"><h3>Components</h3><div class="value">' + stats.components + '</div></div>' +
         '<div class="stat-card"><h3>Categories</h3><div class="value">' + stats.categories + '</div></div>' +
         '<div class="stat-card"><h3>Language</h3><div class="value small">' + escapeHtml(stats.language) + '</div></div>' +
         '<div class="stat-card"><h3>Build System</h3><div class="value small">' + escapeHtml(stats.buildSystem) + '</div></div>' +
         '</div>';
 
-    const hasDomains = moduleGraph.domains && moduleGraph.domains.length > 0;
+    const hasDomains = componentGraph.domains && componentGraph.domains.length > 0;
     if (hasDomains) {
-        moduleGraph.domains.forEach(function (domain: any) {
-            const domainModules = moduleGraph.modules.filter(function (mod: any) {
+        componentGraph.domains.forEach(function (domain: any) {
+            const domainComponents = componentGraph.components.filter(function (mod: any) {
                 if (mod.domain === area.id) return true;
-                return area.modules && area.modules.indexOf(mod.id) !== -1;
+                return area.components && area.components.indexOf(mod.id) !== -1;
             });
-            if (domainModules.length === 0) return;
+            if (domainComponents.length === 0) return;
 
             html += '<h3 style="margin-top: 24px; margin-bottom: 12px;">' + escapeHtml(area.name) + '</h3>';
             if (area.description) {
                 html += '<p style="color: var(--content-muted); margin-bottom: 12px; font-size: 14px;">' +
                     escapeHtml(area.description) + '</p>';
             }
-            html += '<div class="module-grid">';
-            domainModules.forEach(function (mod: any) {
-                html += '<div class="module-card" onclick="loadModule(\'' +
+            html += '<div class="component-grid">';
+            domainComponents.forEach(function (mod: any) {
+                html += '<div class="component-card" onclick="loadComponent(\'' +
                     mod.id.replace(/'/g, "\\'") + '\')">' +
                     '<h4>' + escapeHtml(mod.name) +
                     ' <span class="complexity-badge complexity-' + mod.complexity + '">' +
@@ -68,18 +68,18 @@ export function showHome(skipHistory?: boolean): void {
         });
 
         const assignedIds = new Set<string>();
-        moduleGraph.domains.forEach(function (domain: any) {
-            moduleGraph.modules.forEach(function (mod: any) {
-                if (mod.domain === area.id || (area.modules && area.modules.indexOf(mod.id) !== -1)) {
+        componentGraph.domains.forEach(function (domain: any) {
+            componentGraph.components.forEach(function (mod: any) {
+                if (mod.domain === area.id || (area.components && area.components.indexOf(mod.id) !== -1)) {
                     assignedIds.add(mod.id);
                 }
             });
         });
-        const unassigned = moduleGraph.modules.filter(function (mod: any) { return !assignedIds.has(mod.id); });
+        const unassigned = componentGraph.components.filter(function (mod: any) { return !assignedIds.has(mod.id); });
         if (unassigned.length > 0) {
-            html += '<h3 style="margin-top: 24px; margin-bottom: 12px;">Other</h3><div class="module-grid">';
+            html += '<h3 style="margin-top: 24px; margin-bottom: 12px;">Other</h3><div class="component-grid">';
             unassigned.forEach(function (mod: any) {
-                html += '<div class="module-card" onclick="loadModule(\'' +
+                html += '<div class="component-card" onclick="loadComponent(\'' +
                     mod.id.replace(/'/g, "\\'") + '\')">' +
                     '<h4>' + escapeHtml(mod.name) +
                     ' <span class="complexity-badge complexity-' + mod.complexity + '">' +
@@ -89,9 +89,9 @@ export function showHome(skipHistory?: boolean): void {
             html += '</div>';
         }
     } else {
-        html += '<h3 style="margin-top: 24px; margin-bottom: 12px;">All Modules</h3><div class="module-grid">';
-        moduleGraph.modules.forEach(function (mod: any) {
-            html += '<div class="module-card" onclick="loadModule(\'' +
+        html += '<h3 style="margin-top: 24px; margin-bottom: 12px;">All Components</h3><div class="component-grid">';
+        componentGraph.components.forEach(function (mod: any) {
+            html += '<div class="component-card" onclick="loadComponent(\'' +
                 mod.id.replace(/'/g, "\\'") + '\')">' +
                 '<h4>' + escapeHtml(mod.name) +
                 ' <span class="complexity-badge complexity-' + mod.complexity + '">' +
@@ -109,36 +109,36 @@ export function showHome(skipHistory?: boolean): void {
     if (contentScroll) contentScroll.scrollTop = 0;
 }
 
-export async function loadModule(moduleId: string, skipHistory?: boolean): Promise<void> {
-    const mod = moduleGraph.modules.find(function (m: any) { return m.id === moduleId; });
+export async function loadComponent(componentId: string, skipHistory?: boolean): Promise<void> {
+    const mod = componentGraph.components.find(function (m: any) { return m.id === componentId; });
     if (!mod) return;
 
-    setCurrentModuleId(moduleId);
-    setActive(moduleId);
+    setCurrentComponentId(componentId);
+    setActive(componentId);
     showWikiContent();
     if (!skipHistory) {
-        history.pushState({ type: 'module', id: moduleId }, '', location.pathname + '#module-' + encodeURIComponent(moduleId));
+        history.pushState({ type: 'component', id: componentId }, '', location.pathname + '#component-' + encodeURIComponent(componentId));
     }
     if (config.enableAI) {
         (window as any).updateAskSubject(mod.name);
     }
 
-    if (markdownCache[moduleId]) {
-        renderModulePage(mod, markdownCache[moduleId]);
+    if (markdownCache[componentId]) {
+        renderComponentPage(mod, markdownCache[componentId]);
         const contentScroll = document.getElementById('content-scroll');
         if (contentScroll) contentScroll.scrollTop = 0;
         return;
     }
 
     const contentEl = document.getElementById('content');
-    if (contentEl) contentEl.innerHTML = '<div class="loading">Loading module...</div>';
+    if (contentEl) contentEl.innerHTML = '<div class="loading">Loading component...</div>';
     try {
-        const res = await fetch('/api/modules/' + encodeURIComponent(moduleId));
-        if (!res.ok) throw new Error('Failed to load module');
+        const res = await fetch('/api/components/' + encodeURIComponent(componentId));
+        if (!res.ok) throw new Error('Failed to load component');
         const data = await res.json();
         if (data.markdown) {
-            markdownCache[moduleId] = data.markdown;
-            renderModulePage(mod, data.markdown);
+            markdownCache[componentId] = data.markdown;
+            renderComponentPage(mod, data.markdown);
         } else {
             if (contentEl) {
                 contentEl.innerHTML =
@@ -149,21 +149,21 @@ export async function loadModule(moduleId: string, skipHistory?: boolean): Promi
     } catch (err: any) {
         if (contentEl) {
             contentEl.innerHTML =
-                '<p style="color: red;">Error loading module: ' + err.message + '</p>';
+                '<p style="color: red;">Error loading component: ' + err.message + '</p>';
         }
     }
     const contentScroll = document.getElementById('content-scroll');
     if (contentScroll) contentScroll.scrollTop = 0;
 }
 
-export function renderModulePage(mod: any, markdown: string): void {
+export function renderComponentPage(mod: any, markdown: string): void {
     let html = '';
 
     // Regenerate button
-    html += '<div class="module-page-header" style="overflow: hidden; margin-bottom: 8px;">' +
-        '<button class="module-regen-btn" id="module-regen-btn" ' +
-        'onclick="regenerateModule(\'' + mod.id.replace(/'/g, "\\'") + '\')" ' +
-        'style="display: none;" title="Regenerate this module\u2019s article using the latest analysis">' +
+    html += '<div class="component-page-header" style="overflow: hidden; margin-bottom: 8px;">' +
+        '<button class="component-regen-btn" id="component-regen-btn" ' +
+        'onclick="regenerateComponent(\'' + mod.id.replace(/'/g, "\\'") + '\')" ' +
+        'style="display: none;" title="Regenerate this component\u2019s article using the latest analysis">' +
         '&#x1F504; Regenerate</button></div>';
 
     // Source files section
@@ -181,7 +181,7 @@ export function renderModulePage(mod: any, markdown: string): void {
     }
 
     // Markdown content
-    html += '<div class="markdown-body" id="module-article-body">' + marked.parse(markdown) + '</div>';
+    html += '<div class="markdown-body" id="component-article-body">' + marked.parse(markdown) + '</div>';
     const contentEl = document.getElementById('content');
     if (contentEl) contentEl.innerHTML = html;
 
@@ -204,7 +204,7 @@ async function checkRegenAvailability(): Promise<void> {
             const data = await res.json();
             regenAvailable = data.available || false;
         }
-        const btn = document.getElementById('module-regen-btn');
+        const btn = document.getElementById('component-regen-btn');
         if (btn && regenAvailable) {
             btn.style.display = '';
         }
@@ -213,17 +213,17 @@ async function checkRegenAvailability(): Promise<void> {
     }
 }
 
-export async function regenerateModule(moduleId: string): Promise<void> {
-    const btn = document.getElementById('module-regen-btn') as HTMLButtonElement | null;
+export async function regenerateComponent(componentId: string): Promise<void> {
+    const btn = document.getElementById('component-regen-btn') as HTMLButtonElement | null;
     if (!btn || btn.disabled) return;
 
-    if (!confirm('Regenerate the article for this module?\nThis will replace the current article with a freshly generated one.')) return;
+    if (!confirm('Regenerate the article for this component?\nThis will replace the current article with a freshly generated one.')) return;
 
     btn.disabled = true;
     btn.innerHTML = '&#x23F3; Regenerating\u2026';
     btn.classList.add('regen-running');
 
-    const articleBody = document.getElementById('module-article-body');
+    const articleBody = document.getElementById('component-article-body');
     if (articleBody) {
         articleBody.classList.add('regen-overlay');
         const overlayText = document.createElement('div');
@@ -233,7 +233,7 @@ export async function regenerateModule(moduleId: string): Promise<void> {
     }
 
     try {
-        const response = await fetch('/api/admin/generate/module/' + encodeURIComponent(moduleId), {
+        const response = await fetch('/api/admin/generate/component/' + encodeURIComponent(componentId), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ force: false })
@@ -279,9 +279,9 @@ export async function regenerateModule(moduleId: string): Promise<void> {
             btn.innerHTML = '&#x2705; Regenerated';
             btn.classList.remove('regen-running');
             btn.classList.add('regen-success');
-            delete markdownCache[moduleId];
+            delete markdownCache[componentId];
             setTimeout(function () {
-                loadModule(moduleId, true);
+                loadComponent(componentId, true);
             }, 800);
         } else {
             throw new Error('Generation completed without success');
@@ -305,7 +305,7 @@ export function toggleSourceFiles(): void {
 }
 
 export async function loadSpecialPage(key: string, title: string, skipHistory?: boolean): Promise<void> {
-    setCurrentModuleId(null);
+    setCurrentComponentId(null);
     setActive(key);
     showWikiContent();
     if (!skipHistory) {
@@ -337,19 +337,19 @@ export async function loadSpecialPage(key: string, title: string, skipHistory?: 
     if (contentScroll) contentScroll.scrollTop = 0;
 }
 
-export async function loadTopicArticle(topicId: string, slug: string, skipHistory?: boolean): Promise<void> {
-    setCurrentModuleId(null);
-    const navId = 'topic:' + topicId + ':' + slug;
+export async function loadThemeArticle(themeId: string, slug: string, skipHistory?: boolean): Promise<void> {
+    setCurrentComponentId(null);
+    const navId = 'theme:' + themeId + ':' + slug;
     setActive(navId);
     showWikiContent();
     if (!skipHistory) {
-        history.pushState({ type: 'topic', topicId: topicId, slug: slug }, '', location.pathname + '#topic-' + encodeURIComponent(topicId) + '-' + encodeURIComponent(slug));
+        history.pushState({ type: 'theme', themeId: themeId, slug: slug }, '', location.pathname + '#theme-' + encodeURIComponent(themeId) + '-' + encodeURIComponent(slug));
     }
     if (config.enableAI) {
-        (window as any).updateAskSubject(topicId + '/' + slug);
+        (window as any).updateAskSubject(themeId + '/' + slug);
     }
 
-    const cacheKey = '__topic_' + topicId + '_' + slug;
+    const cacheKey = '__theme_' + themeId + '_' + slug;
     if (markdownCache[cacheKey]) {
         (window as any).renderMarkdownContent(markdownCache[cacheKey]);
         (window as any).buildToc();
@@ -359,10 +359,10 @@ export async function loadTopicArticle(topicId: string, slug: string, skipHistor
     }
 
     const contentEl = document.getElementById('content');
-    if (contentEl) contentEl.innerHTML = '<div class="loading">Loading topic article...</div>';
+    if (contentEl) contentEl.innerHTML = '<div class="loading">Loading theme article...</div>';
     try {
-        const res = await fetch('/api/topics/' + encodeURIComponent(topicId) + '/' + encodeURIComponent(slug));
-        if (!res.ok) throw new Error('Topic article not found');
+        const res = await fetch('/api/themes/' + encodeURIComponent(themeId) + '/' + encodeURIComponent(slug));
+        if (!res.ok) throw new Error('Theme article not found');
         const data = await res.json();
         markdownCache[cacheKey] = data.content;
         (window as any).renderMarkdownContent(data.content);
@@ -370,7 +370,7 @@ export async function loadTopicArticle(topicId: string, slug: string, skipHistor
     } catch (err: any) {
         if (contentEl) {
             contentEl.innerHTML =
-                '<p style="color: red;">Error loading topic article: ' + err.message + '</p>';
+                '<p style="color: red;">Error loading theme article: ' + err.message + '</p>';
         }
     }
     const contentScroll = document.getElementById('content-scroll');

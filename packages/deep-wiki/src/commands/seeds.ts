@@ -2,7 +2,7 @@
  * Seeds Command
  *
  * Implements the `deep-wiki seeds <repo-path>` command.
- * Generates topic seeds for breadth-first discovery (Phase 0).
+ * Generates theme seeds for breadth-first discovery (Phase 0).
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
@@ -10,7 +10,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import type { SeedsCommandOptions, SeedsOutput } from '../types';
-import { generateTopicSeeds, SeedsError } from '../seeds';
+import { generateThemeSeeds, SeedsError } from '../seeds';
 import {
     Spinner,
     printSuccess,
@@ -66,7 +66,7 @@ export async function executeSeeds(
     printHeader('Deep Wiki — Seeds Generation (Phase 0)');
     printKeyValue('Repository', absoluteRepoPath);
     printKeyValue('Output File', options.output);
-    printKeyValue('Max Topics', String(options.maxTopics));
+    printKeyValue('Max Themes', String(options.maxThemes));
     if (options.model) {
         printKeyValue('Model', options.model);
     }
@@ -77,11 +77,11 @@ export async function executeSeeds(
 
     // Run seed generation
     const spinner = new Spinner();
-    spinner.start('Generating topic seeds...');
+    spinner.start('Generating theme seeds...');
 
     try {
-        const seeds = await generateTopicSeeds(absoluteRepoPath, {
-            maxTopics: options.maxTopics,
+        const seeds = await generateThemeSeeds(absoluteRepoPath, {
+            maxThemes: options.maxThemes,
             model: options.model,
             timeout: options.timeout,
             verbose: options.verbose,
@@ -92,22 +92,22 @@ export async function executeSeeds(
         // Print summary to stderr
         process.stderr.write('\n');
         printHeader('Seeds Summary');
-        printKeyValue('Topics Found', String(seeds.length));
+        printKeyValue('Themes Found', String(seeds.length));
 
         if (options.verbose) {
             process.stderr.write('\n');
-            printInfo('Topics:');
+            printInfo('Themes:');
             for (const seed of seeds) {
                 process.stderr.write(
-                    `  ${cyan(seed.topic)} ${gray('—')} ${seed.description}\n`
+                    `  ${cyan(seed.theme)} ${gray('—')} ${seed.description}\n`
                 );
             }
         } else {
-            // Print topic list to stderr (non-verbose)
+            // Print theme list to stderr (non-verbose)
             process.stderr.write('\n');
-            printInfo('Topics:');
+            printInfo('Themes:');
             for (const seed of seeds) {
-                process.stderr.write(`  ${cyan(seed.topic)}\n`);
+                process.stderr.write(`  ${cyan(seed.theme)}\n`);
             }
         }
 
@@ -116,7 +116,7 @@ export async function executeSeeds(
             version: DEEP_WIKI_VERSION,
             timestamp: Date.now(),
             repoPath: absoluteRepoPath,
-            topics: seeds,
+            themes: seeds,
         };
 
         // Write output file

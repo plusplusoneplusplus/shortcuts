@@ -1,7 +1,7 @@
 /**
  * Probe Response Parser Tests
  *
- * Tests for parsing AI responses into TopicProbeResult.
+ * Tests for parsing AI responses into ThemeProbeResult.
  * Verifies JSON extraction, validation, normalization, and error handling.
  */
 
@@ -12,7 +12,7 @@ describe('parseProbeResponse', () => {
     describe('valid JSON response', () => {
         it('should parse a valid probe response with modules', () => {
             const json = JSON.stringify({
-                topic: 'authentication',
+                theme: 'authentication',
                 foundComponents: [
                     {
                         id: 'auth-service',
@@ -23,26 +23,26 @@ describe('parseProbeResponse', () => {
                         evidence: 'Contains login and token validation logic',
                     },
                 ],
-                discoveredTopics: [],
+                discoveredThemes: [],
                 dependencies: [],
                 confidence: 0.9,
             });
 
             const result = parseProbeResponse(json, 'authentication');
-            expect(result.topic).toBe('authentication');
+            expect(result.theme).toBe('authentication');
             expect(result.foundComponents).toHaveLength(1);
             expect(result.foundComponents[0].id).toBe('auth-service');
             expect(result.foundComponents[0].name).toBe('Auth Service');
             expect(result.confidence).toBe(0.9);
         });
 
-        it('should parse response with discovered topics', () => {
+        it('should parse response with discovered themes', () => {
             const json = JSON.stringify({
-                topic: 'authentication',
+                theme: 'authentication',
                 foundComponents: [],
-                discoveredTopics: [
+                discoveredThemes: [
                     {
-                        topic: 'authorization',
+                        theme: 'authorization',
                         description: 'Permission checking',
                         hints: ['permission', 'role'],
                         source: 'src/auth/permissions.ts',
@@ -53,13 +53,13 @@ describe('parseProbeResponse', () => {
             });
 
             const result = parseProbeResponse(json, 'authentication');
-            expect(result.discoveredTopics).toHaveLength(1);
-            expect(result.discoveredTopics[0].topic).toBe('authorization');
+            expect(result.discoveredThemes).toHaveLength(1);
+            expect(result.discoveredThemes[0].theme).toBe('authorization');
         });
 
         it('should parse response with line ranges', () => {
             const json = JSON.stringify({
-                topic: 'authentication',
+                theme: 'authentication',
                 foundComponents: [
                     {
                         id: 'auth-service',
@@ -71,7 +71,7 @@ describe('parseProbeResponse', () => {
                         lineRanges: [[10, 50], [100, 150]],
                     },
                 ],
-                discoveredTopics: [],
+                discoveredThemes: [],
                 dependencies: [],
                 confidence: 0.8,
             });
@@ -82,9 +82,9 @@ describe('parseProbeResponse', () => {
 
         it('should default confidence to 0.5 if not provided', () => {
             const json = JSON.stringify({
-                topic: 'authentication',
+                theme: 'authentication',
                 foundComponents: [],
-                discoveredTopics: [],
+                discoveredThemes: [],
                 dependencies: [],
             });
 
@@ -94,7 +94,7 @@ describe('parseProbeResponse', () => {
 
         it('should normalize component IDs', () => {
             const json = JSON.stringify({
-                topic: 'authentication',
+                theme: 'authentication',
                 foundComponents: [
                     {
                         id: 'AuthService',
@@ -105,7 +105,7 @@ describe('parseProbeResponse', () => {
                         evidence: 'Evidence',
                     },
                 ],
-                discoveredTopics: [],
+                discoveredThemes: [],
                 dependencies: [],
                 confidence: 0.8,
             });
@@ -116,9 +116,9 @@ describe('parseProbeResponse', () => {
 
         it('should handle empty foundComponents', () => {
             const json = JSON.stringify({
-                topic: 'authentication',
+                theme: 'authentication',
                 foundComponents: [],
-                discoveredTopics: [],
+                discoveredThemes: [],
                 dependencies: [],
                 confidence: 0.3,
             });
@@ -135,7 +135,7 @@ describe('parseProbeResponse', () => {
 
 \`\`\`json
 {
-  "topic": "authentication",
+  "theme": "authentication",
   "foundComponents": [{
     "id": "auth-service",
     "name": "Auth Service",
@@ -144,7 +144,7 @@ describe('parseProbeResponse', () => {
     "keyFiles": [],
     "evidence": "Evidence"
   }],
-  "discoveredTopics": [],
+  "discoveredThemes": [],
   "dependencies": [],
   "confidence": 0.8
 }
@@ -153,7 +153,7 @@ describe('parseProbeResponse', () => {
 That's the analysis.`;
 
             const result = parseProbeResponse(response, 'authentication');
-            expect(result.topic).toBe('authentication');
+            expect(result.theme).toBe('authentication');
             expect(result.foundComponents).toHaveLength(1);
         });
     });
@@ -167,20 +167,20 @@ That's the analysis.`;
             expect(() => parseProbeResponse('not json', 'authentication')).toThrow();
         });
 
-        it('should throw on missing topic field', () => {
+        it('should throw on missing theme field', () => {
             const json = JSON.stringify({
                 foundComponents: [],
-                discoveredTopics: [],
+                discoveredThemes: [],
                 dependencies: [],
             });
 
-            expect(() => parseProbeResponse(json, 'authentication')).toThrow('topic');
+            expect(() => parseProbeResponse(json, 'authentication')).toThrow('theme');
         });
 
         it('should throw on missing foundComponents field', () => {
             const json = JSON.stringify({
-                topic: 'authentication',
-                discoveredTopics: [],
+                theme: 'authentication',
+                discoveredThemes: [],
                 dependencies: [],
             });
 
@@ -189,13 +189,13 @@ That's the analysis.`;
 
         it('should skip invalid modules', () => {
             const json = JSON.stringify({
-                topic: 'authentication',
+                theme: 'authentication',
                 foundComponents: [
                     { id: 'valid-component', name: 'Valid', path: 'src/', purpose: 'Purpose', keyFiles: [], evidence: 'Evidence' },
                     { invalid: 'module' }, // Missing required fields
                     { id: 'another-valid', name: 'Another', path: 'src/', purpose: 'Purpose', keyFiles: [], evidence: 'Evidence' },
                 ],
-                discoveredTopics: [],
+                discoveredThemes: [],
                 dependencies: [],
                 confidence: 0.8,
             });

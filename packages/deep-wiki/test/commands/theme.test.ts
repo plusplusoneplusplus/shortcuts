@@ -1,7 +1,7 @@
 /**
- * Topic Command Tests
+ * Theme Command Tests
  *
- * Tests for the `deep-wiki topic` command orchestration:
+ * Tests for the `deep-wiki theme` command orchestration:
  * --list, --check, --force, full pipeline (mocked), cache, error handling.
  *
  * Uses extensive mocking since the actual AI calls are integration-tested separately.
@@ -27,28 +27,28 @@ vi.mock('../../src/cache', () => ({
     getFolderHeadHash: vi.fn().mockResolvedValue('abc123def456abc123def456abc123def456abc1'),
 }));
 
-// Mock topic cache module
-vi.mock('../../src/cache/topic-cache', () => ({
-    getCachedTopicProbe: vi.fn().mockReturnValue(null),
-    saveTopicProbe: vi.fn(),
-    getCachedTopicOutline: vi.fn().mockReturnValue(null),
-    saveTopicOutline: vi.fn(),
-    getCachedTopicAnalysis: vi.fn().mockReturnValue(null),
-    saveTopicAnalysis: vi.fn(),
-    getCachedTopicArticles: vi.fn().mockReturnValue(null),
-    saveTopicArticle: vi.fn(),
-    isTopicCacheValid: vi.fn().mockReturnValue(false),
-    clearTopicCache: vi.fn().mockReturnValue(false),
+// Mock theme cache module
+vi.mock('../../src/cache/theme-cache', () => ({
+    getCachedThemeProbe: vi.fn().mockReturnValue(null),
+    saveThemeProbe: vi.fn(),
+    getCachedThemeOutline: vi.fn().mockReturnValue(null),
+    saveThemeOutline: vi.fn(),
+    getCachedThemeAnalysis: vi.fn().mockReturnValue(null),
+    saveThemeAnalysis: vi.fn(),
+    getCachedThemeArticles: vi.fn().mockReturnValue(null),
+    saveThemeArticle: vi.fn(),
+    isThemeCacheValid: vi.fn().mockReturnValue(false),
+    clearThemeCache: vi.fn().mockReturnValue(false),
 }));
 
-// Mock topic modules
-vi.mock('../../src/topic', () => ({
+// Mock theme modules
+vi.mock('../../src/theme', () => ({
     loadWikiGraph: vi.fn().mockReturnValue(null),
-    listTopicAreas: vi.fn().mockReturnValue([]),
-    checkTopicCoverage: vi.fn().mockReturnValue({ status: 'new', relatedModules: [] }),
-    runSingleTopicProbe: vi.fn().mockResolvedValue({
+    listThemeAreas: vi.fn().mockReturnValue([]),
+    checkThemeCoverage: vi.fn().mockReturnValue({ status: 'new', relatedComponents: [] }),
+    runSingleThemeProbe: vi.fn().mockResolvedValue({
         probeResult: {
-            foundModules: [
+            foundComponents: [
                 { id: 'mod-a', name: 'Module A', path: 'src/a/', purpose: 'Test', keyFiles: ['src/a/index.ts'], evidence: 'found' },
                 { id: 'mod-b', name: 'Module B', path: 'src/b/', purpose: 'Test', keyFiles: ['src/b/index.ts'], evidence: 'found' },
                 { id: 'mod-c', name: 'Module C', path: 'src/c/', purpose: 'Test', keyFiles: ['src/c/index.ts'], evidence: 'found' },
@@ -58,23 +58,23 @@ vi.mock('../../src/topic', () => ({
         newModuleIds: ['mod-a', 'mod-b', 'mod-c'],
         allKeyFiles: ['src/a/index.ts', 'src/b/index.ts', 'src/c/index.ts'],
     }),
-    generateTopicOutline: vi.fn().mockResolvedValue({
-        topicId: 'compaction',
+    generateThemeOutline: vi.fn().mockResolvedValue({
+        themeId: 'compaction',
         title: 'Compaction',
         layout: 'area',
         articles: [
-            { slug: 'index', title: 'Compaction Overview', description: 'Overview', isIndex: true, coveredModuleIds: ['mod-a', 'mod-b', 'mod-c'], coveredFiles: [] },
-            { slug: 'mod-a', title: 'Module A', description: 'Details A', isIndex: false, coveredModuleIds: ['mod-a'], coveredFiles: ['src/a/index.ts'] },
-            { slug: 'mod-b', title: 'Module B', description: 'Details B', isIndex: false, coveredModuleIds: ['mod-b'], coveredFiles: ['src/b/index.ts'] },
+            { slug: 'index', title: 'Compaction Overview', description: 'Overview', isIndex: true, coveredComponentIds: ['mod-a', 'mod-b', 'mod-c'], coveredFiles: [] },
+            { slug: 'mod-a', title: 'Module A', description: 'Details A', isIndex: false, coveredComponentIds: ['mod-a'], coveredFiles: ['src/a/index.ts'] },
+            { slug: 'mod-b', title: 'Module B', description: 'Details B', isIndex: false, coveredComponentIds: ['mod-b'], coveredFiles: ['src/b/index.ts'] },
         ],
-        involvedModules: [
-            { moduleId: 'mod-a', role: 'Test', keyFiles: ['src/a/index.ts'] },
-            { moduleId: 'mod-b', role: 'Test', keyFiles: ['src/b/index.ts'] },
-            { moduleId: 'mod-c', role: 'Test', keyFiles: ['src/c/index.ts'] },
+        involvedComponents: [
+            { componentId: 'mod-a', role: 'Test', keyFiles: ['src/a/index.ts'] },
+            { componentId: 'mod-b', role: 'Test', keyFiles: ['src/b/index.ts'] },
+            { componentId: 'mod-c', role: 'Test', keyFiles: ['src/c/index.ts'] },
         ],
     }),
-    runTopicAnalysis: vi.fn().mockResolvedValue({
-        topicId: 'compaction',
+    runThemeAnalysis: vi.fn().mockResolvedValue({
+        themeId: 'compaction',
         overview: 'Overview of compaction',
         perArticle: [
             { slug: 'mod-a', keyConcepts: [], dataFlow: '', codeExamples: [], internalDetails: '' },
@@ -82,16 +82,16 @@ vi.mock('../../src/topic', () => ({
         ],
         crossCutting: { architecture: '', dataFlow: '', suggestedDiagram: '' },
     }),
-    generateTopicArticles: vi.fn().mockResolvedValue({
+    generateThemeArticles: vi.fn().mockResolvedValue({
         articles: [
-            { type: 'topic-index', slug: 'index', title: 'Compaction Overview', content: '# Compaction\n\nOverview', topicId: 'compaction', coveredModuleIds: ['mod-a', 'mod-b', 'mod-c'] },
-            { type: 'topic-article', slug: 'mod-a', title: 'Module A', content: '# Module A\n\nDetails', topicId: 'compaction', coveredModuleIds: ['mod-a'] },
-            { type: 'topic-article', slug: 'mod-b', title: 'Module B', content: '# Module B\n\nDetails', topicId: 'compaction', coveredModuleIds: ['mod-b'] },
+            { type: 'theme-index', slug: 'index', title: 'Compaction Overview', content: '# Compaction\n\nOverview', themeId: 'compaction', coveredComponentIds: ['mod-a', 'mod-b', 'mod-c'] },
+            { type: 'theme-article', slug: 'mod-a', title: 'Module A', content: '# Module A\n\nDetails', themeId: 'compaction', coveredComponentIds: ['mod-a'] },
+            { type: 'theme-article', slug: 'mod-b', title: 'Module B', content: '# Module B\n\nDetails', themeId: 'compaction', coveredComponentIds: ['mod-b'] },
         ],
         duration: 1000,
     }),
-    writeTopicArticles: vi.fn().mockReturnValue({ writtenFiles: ['index.md', 'mod-a.md', 'mod-b.md'], topicDir: 'topics/compaction' }),
-    integrateTopicIntoWiki: vi.fn().mockReturnValue({ writtenFiles: ['index.md', 'mod-a.md', 'mod-b.md'], updatedFiles: [] }),
+    writeThemeArticles: vi.fn().mockReturnValue({ writtenFiles: ['index.md', 'mod-a.md', 'mod-b.md'], themeDir: 'themes/compaction' }),
+    integrateThemeIntoWiki: vi.fn().mockReturnValue({ writtenFiles: ['index.md', 'mod-a.md', 'mod-b.md'], updatedFiles: [] }),
 }));
 
 // Mock writing module
@@ -108,7 +108,7 @@ let stderrOutput: string;
 const originalStderrWrite = process.stderr.write;
 
 beforeEach(async () => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'deep-wiki-topic-test-'));
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'deep-wiki-theme-test-'));
     stderrOutput = '';
     process.stderr.write = ((chunk: string | Uint8Array) => {
         stderrOutput += typeof chunk === 'string' ? chunk : chunk.toString();
@@ -122,20 +122,20 @@ beforeEach(async () => {
     const cache = await import('../../src/cache');
     vi.mocked(cache.getFolderHeadHash).mockResolvedValue('abc123def456abc123def456abc123def456abc1');
 
-    const topicCache = await import('../../src/cache/topic-cache');
-    vi.mocked(topicCache.getCachedTopicProbe).mockReturnValue(null);
-    vi.mocked(topicCache.getCachedTopicOutline).mockReturnValue(null);
-    vi.mocked(topicCache.getCachedTopicAnalysis).mockReturnValue(null);
-    vi.mocked(topicCache.getCachedTopicArticles).mockReturnValue(null);
-    vi.mocked(topicCache.isTopicCacheValid).mockReturnValue(false);
+    const themeCache = await import('../../src/cache/theme-cache');
+    vi.mocked(themeCache.getCachedThemeProbe).mockReturnValue(null);
+    vi.mocked(themeCache.getCachedThemeOutline).mockReturnValue(null);
+    vi.mocked(themeCache.getCachedThemeAnalysis).mockReturnValue(null);
+    vi.mocked(themeCache.getCachedThemeArticles).mockReturnValue(null);
+    vi.mocked(themeCache.isThemeCacheValid).mockReturnValue(false);
 
-    const topic = await import('../../src/topic');
-    vi.mocked(topic.loadWikiGraph).mockReturnValue(null);
-    vi.mocked(topic.listTopicAreas).mockReturnValue([]);
-    vi.mocked(topic.checkTopicCoverage).mockReturnValue({ status: 'new', relatedModules: [] });
-    vi.mocked(topic.runSingleTopicProbe).mockResolvedValue({
+    const theme = await import('../../src/theme');
+    vi.mocked(theme.loadWikiGraph).mockReturnValue(null);
+    vi.mocked(theme.listThemeAreas).mockReturnValue([]);
+    vi.mocked(theme.checkThemeCoverage).mockReturnValue({ status: 'new', relatedComponents: [] });
+    vi.mocked(theme.runSingleThemeProbe).mockResolvedValue({
         probeResult: {
-            foundModules: [
+            foundComponents: [
                 { id: 'mod-a', name: 'Module A', path: 'src/a/', purpose: 'Test', keyFiles: ['src/a/index.ts'], evidence: 'found' },
                 { id: 'mod-b', name: 'Module B', path: 'src/b/', purpose: 'Test', keyFiles: ['src/b/index.ts'], evidence: 'found' },
                 { id: 'mod-c', name: 'Module C', path: 'src/c/', purpose: 'Test', keyFiles: ['src/c/index.ts'], evidence: 'found' },
@@ -145,23 +145,23 @@ beforeEach(async () => {
         newModuleIds: ['mod-a', 'mod-b', 'mod-c'],
         allKeyFiles: ['src/a/index.ts', 'src/b/index.ts', 'src/c/index.ts'],
     } as any);
-    vi.mocked(topic.generateTopicOutline).mockResolvedValue({
-        topicId: 'compaction',
+    vi.mocked(theme.generateThemeOutline).mockResolvedValue({
+        themeId: 'compaction',
         title: 'Compaction',
         layout: 'area',
         articles: [
-            { slug: 'index', title: 'Compaction Overview', description: 'Overview', isIndex: true, coveredModuleIds: ['mod-a', 'mod-b', 'mod-c'], coveredFiles: [] },
-            { slug: 'mod-a', title: 'Module A', description: 'Details A', isIndex: false, coveredModuleIds: ['mod-a'], coveredFiles: ['src/a/index.ts'] },
-            { slug: 'mod-b', title: 'Module B', description: 'Details B', isIndex: false, coveredModuleIds: ['mod-b'], coveredFiles: ['src/b/index.ts'] },
+            { slug: 'index', title: 'Compaction Overview', description: 'Overview', isIndex: true, coveredComponentIds: ['mod-a', 'mod-b', 'mod-c'], coveredFiles: [] },
+            { slug: 'mod-a', title: 'Module A', description: 'Details A', isIndex: false, coveredComponentIds: ['mod-a'], coveredFiles: ['src/a/index.ts'] },
+            { slug: 'mod-b', title: 'Module B', description: 'Details B', isIndex: false, coveredComponentIds: ['mod-b'], coveredFiles: ['src/b/index.ts'] },
         ],
-        involvedModules: [
-            { moduleId: 'mod-a', role: 'Test', keyFiles: ['src/a/index.ts'] },
-            { moduleId: 'mod-b', role: 'Test', keyFiles: ['src/b/index.ts'] },
-            { moduleId: 'mod-c', role: 'Test', keyFiles: ['src/c/index.ts'] },
+        involvedComponents: [
+            { componentId: 'mod-a', role: 'Test', keyFiles: ['src/a/index.ts'] },
+            { componentId: 'mod-b', role: 'Test', keyFiles: ['src/b/index.ts'] },
+            { componentId: 'mod-c', role: 'Test', keyFiles: ['src/c/index.ts'] },
         ],
     });
-    vi.mocked(topic.runTopicAnalysis).mockResolvedValue({
-        topicId: 'compaction',
+    vi.mocked(theme.runThemeAnalysis).mockResolvedValue({
+        themeId: 'compaction',
         overview: 'Overview of compaction',
         perArticle: [
             { slug: 'mod-a', keyConcepts: [], dataFlow: '', codeExamples: [], internalDetails: '' },
@@ -169,15 +169,15 @@ beforeEach(async () => {
         ],
         crossCutting: { architecture: '', dataFlow: '', suggestedDiagram: '' },
     });
-    vi.mocked(topic.generateTopicArticles).mockResolvedValue({
+    vi.mocked(theme.generateThemeArticles).mockResolvedValue({
         articles: [
-            { type: 'topic-index', slug: 'index', title: 'Compaction Overview', content: '# Compaction\n\nOverview', topicId: 'compaction', coveredModuleIds: ['mod-a', 'mod-b', 'mod-c'] },
-            { type: 'topic-article', slug: 'mod-a', title: 'Module A', content: '# Module A\n\nDetails', topicId: 'compaction', coveredModuleIds: ['mod-a'] },
-            { type: 'topic-article', slug: 'mod-b', title: 'Module B', content: '# Module B\n\nDetails', topicId: 'compaction', coveredModuleIds: ['mod-b'] },
+            { type: 'theme-index', slug: 'index', title: 'Compaction Overview', content: '# Compaction\n\nOverview', themeId: 'compaction', coveredComponentIds: ['mod-a', 'mod-b', 'mod-c'] },
+            { type: 'theme-article', slug: 'mod-a', title: 'Module A', content: '# Module A\n\nDetails', themeId: 'compaction', coveredComponentIds: ['mod-a'] },
+            { type: 'theme-article', slug: 'mod-b', title: 'Module B', content: '# Module B\n\nDetails', themeId: 'compaction', coveredComponentIds: ['mod-b'] },
         ],
         duration: 1000,
     });
-    vi.mocked(topic.integrateTopicIntoWiki).mockReturnValue({ writtenFiles: ['index.md', 'mod-a.md', 'mod-b.md'], updatedFiles: [] });
+    vi.mocked(theme.integrateThemeIntoWiki).mockReturnValue({ writtenFiles: ['index.md', 'mod-a.md', 'mod-b.md'], updatedFiles: [] });
 });
 
 afterEach(() => {
@@ -190,16 +190,16 @@ afterEach(() => {
 // Tests
 // ============================================================================
 
-describe('executeTopic', () => {
-    // Helper to import executeTopic fresh for each test
-    async function getExecuteTopic() {
-        const { executeTopic } = await import('../../src/commands/topic');
-        return executeTopic;
+describe('executeTheme', () => {
+    // Helper to import executeTheme fresh for each test
+    async function getExecuteTheme() {
+        const { executeTheme } = await import('../../src/commands/theme');
+        return executeTheme;
     }
 
-    function makeOptions(overrides: Partial<import('../../src/types').TopicCommandOptions> = {}): import('../../src/types').TopicCommandOptions {
+    function makeOptions(overrides: Partial<import('../../src/types').ThemeCommandOptions> = {}): import('../../src/types').ThemeCommandOptions {
         return {
-            topic: 'compaction',
+            theme: 'compaction',
             wiki: path.join(tmpDir, 'wiki'),
             force: false,
             check: false,
@@ -221,8 +221,8 @@ describe('executeTopic', () => {
 
     describe('validation', () => {
         it('should return CONFIG_ERROR for non-existent repo path', async () => {
-            const executeTopic = await getExecuteTopic();
-            const exitCode = await executeTopic('/nonexistent/path', 'compaction', makeOptions());
+            const executeTheme = await getExecuteTheme();
+            const exitCode = await executeTheme('/nonexistent/path', 'compaction', makeOptions());
             expect(exitCode).toBe(EXIT_CODES.CONFIG_ERROR);
             expect(stderrOutput).toContain('does not exist');
         });
@@ -231,17 +231,17 @@ describe('executeTopic', () => {
             const filePath = path.join(tmpDir, 'not-a-dir.txt');
             fs.writeFileSync(filePath, 'content');
 
-            const executeTopic = await getExecuteTopic();
-            const exitCode = await executeTopic(filePath, 'compaction', makeOptions());
+            const executeTheme = await getExecuteTheme();
+            const exitCode = await executeTheme(filePath, 'compaction', makeOptions());
             expect(exitCode).toBe(EXIT_CODES.CONFIG_ERROR);
             expect(stderrOutput).toContain('not a directory');
         });
 
-        it('should return CONFIG_ERROR when topic name is missing (non-list)', async () => {
-            const executeTopic = await getExecuteTopic();
-            const exitCode = await executeTopic(tmpDir, undefined, makeOptions());
+        it('should return CONFIG_ERROR when theme name is missing (non-list)', async () => {
+            const executeTheme = await getExecuteTheme();
+            const exitCode = await executeTheme(tmpDir, undefined, makeOptions());
             expect(exitCode).toBe(EXIT_CODES.CONFIG_ERROR);
-            expect(stderrOutput).toContain('Topic name is required');
+            expect(stderrOutput).toContain('Theme name is required');
         });
     });
 
@@ -250,35 +250,35 @@ describe('executeTopic', () => {
     // ------------------------------------------------------------------
 
     describe('--list flow', () => {
-        it('should list topics from wiki and return SUCCESS', async () => {
-            const { listTopicAreas } = await import('../../src/topic');
-            vi.mocked(listTopicAreas).mockReturnValue([
+        it('should list themes from wiki and return SUCCESS', async () => {
+            const { listThemeAreas } = await import('../../src/theme');
+            vi.mocked(listThemeAreas).mockReturnValue([
                 {
                     id: 'compaction',
                     title: 'Compaction',
                     description: 'LSM-tree compaction',
                     layout: 'area',
-                    articles: [{ slug: 'index', title: 'Overview', path: 'topics/compaction/index.md' }],
-                    involvedModuleIds: ['mod-a'],
-                    directoryPath: 'topics/compaction',
+                    articles: [{ slug: 'index', title: 'Overview', path: 'themes/compaction/index.md' }],
+                    involvedComponentIds: ['mod-a'],
+                    directoryPath: 'themes/compaction',
                     generatedAt: Date.now(),
                 },
             ]);
 
-            const executeTopic = await getExecuteTopic();
-            const exitCode = await executeTopic(tmpDir, undefined, makeOptions({ list: true }));
+            const executeTheme = await getExecuteTheme();
+            const exitCode = await executeTheme(tmpDir, undefined, makeOptions({ list: true }));
             expect(exitCode).toBe(EXIT_CODES.SUCCESS);
             expect(stderrOutput).toContain('Compaction');
         });
 
-        it('should print info when no topics exist', async () => {
-            const { listTopicAreas } = await import('../../src/topic');
-            vi.mocked(listTopicAreas).mockReturnValue([]);
+        it('should print info when no themes exist', async () => {
+            const { listThemeAreas } = await import('../../src/theme');
+            vi.mocked(listThemeAreas).mockReturnValue([]);
 
-            const executeTopic = await getExecuteTopic();
-            const exitCode = await executeTopic(tmpDir, undefined, makeOptions({ list: true }));
+            const executeTheme = await getExecuteTheme();
+            const exitCode = await executeTheme(tmpDir, undefined, makeOptions({ list: true }));
             expect(exitCode).toBe(EXIT_CODES.SUCCESS);
-            expect(stderrOutput).toContain('No topic areas found');
+            expect(stderrOutput).toContain('No theme areas found');
         });
     });
 
@@ -288,57 +288,57 @@ describe('executeTopic', () => {
 
     describe('--check flow', () => {
         it('should print coverage result and return SUCCESS', async () => {
-            const { loadWikiGraph, checkTopicCoverage } = await import('../../src/topic');
+            const { loadWikiGraph, checkThemeCoverage } = await import('../../src/theme');
             vi.mocked(loadWikiGraph).mockReturnValue({
                 project: { name: 'Test', description: '', language: '', buildSystem: '', entryPoints: [] },
-                modules: [],
+                components: [],
                 categories: [],
                 architectureNotes: '',
             });
-            vi.mocked(checkTopicCoverage).mockReturnValue({
+            vi.mocked(checkThemeCoverage).mockReturnValue({
                 status: 'exists',
-                existingArticlePath: 'topics/compaction/index.md',
-                relatedModules: [],
+                existingArticlePath: 'themes/compaction/index.md',
+                relatedComponents: [],
             });
 
-            const executeTopic = await getExecuteTopic();
-            const exitCode = await executeTopic(tmpDir, 'compaction', makeOptions({ check: true }));
+            const executeTheme = await getExecuteTheme();
+            const exitCode = await executeTheme(tmpDir, 'compaction', makeOptions({ check: true }));
             expect(exitCode).toBe(EXIT_CODES.SUCCESS);
             expect(stderrOutput).toContain('fully covered');
         });
 
-        it('should report new topic when no wiki exists', async () => {
-            const { loadWikiGraph } = await import('../../src/topic');
+        it('should report new theme when no wiki exists', async () => {
+            const { loadWikiGraph } = await import('../../src/theme');
             vi.mocked(loadWikiGraph).mockReturnValue(null);
 
-            const executeTopic = await getExecuteTopic();
-            const exitCode = await executeTopic(tmpDir, 'compaction', makeOptions({ check: true }));
+            const executeTheme = await getExecuteTheme();
+            const exitCode = await executeTheme(tmpDir, 'compaction', makeOptions({ check: true }));
             expect(exitCode).toBe(EXIT_CODES.SUCCESS);
             expect(stderrOutput).toContain('new');
         });
     });
 
     // ------------------------------------------------------------------
-    // Topic exists (no --force)
+    // Theme exists (no --force)
     // ------------------------------------------------------------------
 
-    describe('topic exists without --force', () => {
+    describe('theme exists without --force', () => {
         it('should return SUCCESS with info message', async () => {
-            const { loadWikiGraph, checkTopicCoverage } = await import('../../src/topic');
+            const { loadWikiGraph, checkThemeCoverage } = await import('../../src/theme');
             vi.mocked(loadWikiGraph).mockReturnValue({
                 project: { name: 'Test', description: '', language: '', buildSystem: '', entryPoints: [] },
-                modules: [],
+                components: [],
                 categories: [],
                 architectureNotes: '',
             });
-            vi.mocked(checkTopicCoverage).mockReturnValue({
+            vi.mocked(checkThemeCoverage).mockReturnValue({
                 status: 'exists',
-                existingArticlePath: 'topics/compaction/index.md',
-                relatedModules: [],
+                existingArticlePath: 'themes/compaction/index.md',
+                relatedComponents: [],
             });
 
-            const executeTopic = await getExecuteTopic();
-            const exitCode = await executeTopic(tmpDir, 'compaction', makeOptions());
+            const executeTheme = await getExecuteTheme();
+            const exitCode = await executeTheme(tmpDir, 'compaction', makeOptions());
             expect(exitCode).toBe(EXIT_CODES.SUCCESS);
             expect(stderrOutput).toContain('already covered');
             expect(stderrOutput).toContain('--force');
@@ -346,29 +346,29 @@ describe('executeTopic', () => {
     });
 
     // ------------------------------------------------------------------
-    // Topic exists (with --force)
+    // Theme exists (with --force)
     // ------------------------------------------------------------------
 
-    describe('topic exists with --force', () => {
+    describe('theme exists with --force', () => {
         it('should proceed with generation', async () => {
-            const { loadWikiGraph, checkTopicCoverage, runSingleTopicProbe } = await import('../../src/topic');
+            const { loadWikiGraph, checkThemeCoverage, runSingleThemeProbe } = await import('../../src/theme');
             vi.mocked(loadWikiGraph).mockReturnValue({
                 project: { name: 'Test', description: '', language: '', buildSystem: '', entryPoints: [] },
-                modules: [],
+                components: [],
                 categories: [],
                 architectureNotes: '',
             });
-            vi.mocked(checkTopicCoverage).mockReturnValue({
+            vi.mocked(checkThemeCoverage).mockReturnValue({
                 status: 'exists',
-                existingArticlePath: 'topics/compaction/index.md',
-                relatedModules: [],
+                existingArticlePath: 'themes/compaction/index.md',
+                relatedComponents: [],
             });
 
-            const executeTopic = await getExecuteTopic();
-            const exitCode = await executeTopic(tmpDir, 'compaction', makeOptions({ force: true }));
+            const executeTheme = await getExecuteTheme();
+            const exitCode = await executeTheme(tmpDir, 'compaction', makeOptions({ force: true }));
             expect(exitCode).toBe(EXIT_CODES.SUCCESS);
-            expect(runSingleTopicProbe).toHaveBeenCalled();
-            expect(stderrOutput).toContain('Topic area generated');
+            expect(runSingleThemeProbe).toHaveBeenCalled();
+            expect(stderrOutput).toContain('Theme area generated');
         });
     });
 
@@ -381,8 +381,8 @@ describe('executeTopic', () => {
             const { checkAIAvailability } = await import('../../src/ai-invoker');
             vi.mocked(checkAIAvailability).mockResolvedValue({ available: false, reason: 'No SDK' });
 
-            const executeTopic = await getExecuteTopic();
-            const exitCode = await executeTopic(tmpDir, 'compaction', makeOptions());
+            const executeTheme = await getExecuteTheme();
+            const exitCode = await executeTheme(tmpDir, 'compaction', makeOptions());
             expect(exitCode).toBe(EXIT_CODES.AI_UNAVAILABLE);
             expect(stderrOutput).toContain('not available');
         });
@@ -394,18 +394,18 @@ describe('executeTopic', () => {
 
     describe('empty probe result', () => {
         it('should return EXECUTION_ERROR with helpful message', async () => {
-            const { runSingleTopicProbe } = await import('../../src/topic');
-            vi.mocked(runSingleTopicProbe).mockResolvedValue({
-                probeResult: { foundModules: [] },
+            const { runSingleThemeProbe } = await import('../../src/theme');
+            vi.mocked(runSingleThemeProbe).mockResolvedValue({
+                probeResult: { foundComponents: [] },
                 existingModuleIds: [],
                 newModuleIds: [],
                 allKeyFiles: [],
             });
 
-            const executeTopic = await getExecuteTopic();
-            const exitCode = await executeTopic(tmpDir, 'nonexistent-topic', makeOptions());
+            const executeTheme = await getExecuteTheme();
+            const exitCode = await executeTheme(tmpDir, 'nonexistent-theme', makeOptions());
             expect(exitCode).toBe(EXIT_CODES.EXECUTION_ERROR);
-            expect(stderrOutput).toContain('no related modules');
+            expect(stderrOutput).toContain('no related components');
             expect(stderrOutput).toContain('Suggestions');
         });
     });
@@ -416,30 +416,30 @@ describe('executeTopic', () => {
 
     describe('full pipeline', () => {
         it('should run all phases and return SUCCESS', async () => {
-            const topic = await import('../../src/topic');
+            const theme = await import('../../src/theme');
 
-            const executeTopic = await getExecuteTopic();
-            const exitCode = await executeTopic(tmpDir, 'compaction', makeOptions());
+            const executeTheme = await getExecuteTheme();
+            const exitCode = await executeTheme(tmpDir, 'compaction', makeOptions());
             expect(exitCode).toBe(EXIT_CODES.SUCCESS);
 
             // Verify orchestration order
-            expect(topic.runSingleTopicProbe).toHaveBeenCalled();
-            expect(topic.generateTopicOutline).toHaveBeenCalled();
-            expect(topic.runTopicAnalysis).toHaveBeenCalled();
-            expect(topic.generateTopicArticles).toHaveBeenCalled();
-            expect(topic.integrateTopicIntoWiki).toHaveBeenCalled();
+            expect(theme.runSingleThemeProbe).toHaveBeenCalled();
+            expect(theme.generateThemeOutline).toHaveBeenCalled();
+            expect(theme.runThemeAnalysis).toHaveBeenCalled();
+            expect(theme.generateThemeArticles).toHaveBeenCalled();
+            expect(theme.integrateThemeIntoWiki).toHaveBeenCalled();
 
             // Verify summary output
-            expect(stderrOutput).toContain('Topic area generated');
+            expect(stderrOutput).toContain('Theme area generated');
             expect(stderrOutput).toContain('3 articles');
-            expect(stderrOutput).toContain('3 modules');
+            expect(stderrOutput).toContain('3 components');
         });
 
         it('should print header with correct info', async () => {
-            const executeTopic = await getExecuteTopic();
-            await executeTopic(tmpDir, 'compaction', makeOptions({ description: 'LSM-tree compaction' }));
+            const executeTheme = await getExecuteTheme();
+            await executeTheme(tmpDir, 'compaction', makeOptions({ description: 'LSM-tree compaction' }));
 
-            expect(stderrOutput).toContain('Topic Generation');
+            expect(stderrOutput).toContain('Theme Generation');
             expect(stderrOutput).toContain('compaction');
             expect(stderrOutput).toContain('LSM-tree compaction');
             expect(stderrOutput).toContain('normal');
@@ -452,13 +452,13 @@ describe('executeTopic', () => {
 
     describe('cache hit', () => {
         it('should use cached probe when cache is valid', async () => {
-            const { isTopicCacheValid, getCachedTopicProbe } = await import('../../src/cache/topic-cache');
-            const { runSingleTopicProbe } = await import('../../src/topic');
+            const { isThemeCacheValid, getCachedThemeProbe } = await import('../../src/cache/theme-cache');
+            const { runSingleThemeProbe } = await import('../../src/theme');
 
-            vi.mocked(isTopicCacheValid).mockReturnValue(true);
-            vi.mocked(getCachedTopicProbe).mockReturnValue({
+            vi.mocked(isThemeCacheValid).mockReturnValue(true);
+            vi.mocked(getCachedThemeProbe).mockReturnValue({
                 probeResult: {
-                    foundModules: [
+                    foundComponents: [
                         { id: 'cached-mod', name: 'Cached', path: 'src/cached/', purpose: 'Cached', keyFiles: ['src/cached/index.ts'], evidence: 'cached' },
                     ],
                 },
@@ -467,11 +467,11 @@ describe('executeTopic', () => {
                 allKeyFiles: ['src/cached/index.ts'],
             });
 
-            const executeTopic = await getExecuteTopic();
-            await executeTopic(tmpDir, 'compaction', makeOptions());
+            const executeTheme = await getExecuteTheme();
+            await executeTheme(tmpDir, 'compaction', makeOptions());
 
             // Should NOT call the real probe since cache was used
-            expect(runSingleTopicProbe).not.toHaveBeenCalled();
+            expect(runSingleThemeProbe).not.toHaveBeenCalled();
         });
     });
 
@@ -481,36 +481,36 @@ describe('executeTopic', () => {
 
     describe('partial article failure', () => {
         it('should complete with warnings', async () => {
-            const { generateTopicArticles } = await import('../../src/topic');
-            vi.mocked(generateTopicArticles).mockResolvedValue({
+            const { generateThemeArticles } = await import('../../src/theme');
+            vi.mocked(generateThemeArticles).mockResolvedValue({
                 articles: [
-                    { type: 'topic-index', slug: 'index', title: 'Overview', content: '# Overview', topicId: 'compaction', coveredModuleIds: [] },
+                    { type: 'theme-index', slug: 'index', title: 'Overview', content: '# Overview', themeId: 'compaction', coveredComponentIds: [] },
                 ],
                 duration: 1000,
                 failedSlugs: ['mod-a', 'mod-b'],
             });
 
-            const executeTopic = await getExecuteTopic();
-            const exitCode = await executeTopic(tmpDir, 'compaction', makeOptions());
+            const executeTheme = await getExecuteTheme();
+            const exitCode = await executeTheme(tmpDir, 'compaction', makeOptions());
             expect(exitCode).toBe(EXIT_CODES.SUCCESS);
             expect(stderrOutput).toContain('2 article(s) failed');
         });
     });
 
     // ------------------------------------------------------------------
-    // Topic name normalization
+    // Theme name normalization
     // ------------------------------------------------------------------
 
-    describe('topic name normalization', () => {
+    describe('theme name normalization', () => {
         it('should normalize spaces to hyphens and lowercase', async () => {
-            const { runSingleTopicProbe } = await import('../../src/topic');
+            const { runSingleThemeProbe } = await import('../../src/theme');
 
-            const executeTopic = await getExecuteTopic();
-            await executeTopic(tmpDir, 'My Topic Name', makeOptions());
+            const executeTheme = await getExecuteTheme();
+            await executeTheme(tmpDir, 'My Theme Name', makeOptions());
 
-            expect(runSingleTopicProbe).toHaveBeenCalledWith(
+            expect(runSingleThemeProbe).toHaveBeenCalledWith(
                 expect.objectContaining({
-                    topic: expect.objectContaining({ topic: 'my-topic-name' }),
+                    theme: expect.objectContaining({ theme: 'my-theme-name' }),
                 })
             );
         });

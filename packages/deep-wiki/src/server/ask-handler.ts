@@ -3,7 +3,7 @@
  *
  * POST /api/ask — AI Q&A endpoint with SSE streaming.
  * Takes a user question + optional conversation history, retrieves
- * relevant module context via TF-IDF, and streams an AI answer via
+ * relevant component context via TF-IDF, and streams an AI answer via
  * Server-Sent Events.
  *
  * Multi-turn conversation is supported in two modes:
@@ -67,7 +67,7 @@ export type AskAIFunction = (prompt: string, options?: {
  * Handle POST /api/ask — streamed as SSE.
  *
  * SSE protocol:
- *   data: {"type":"context","moduleIds":["mod1","mod2"]}
+ *   data: {"type":"context","componentIds":["mod1","mod2"]}
  *   data: {"type":"chunk","content":"Some partial answer..."}
  *   data: {"type":"done","fullResponse":"Full answer text"}
  *   data: {"type":"error","message":"Something went wrong"}
@@ -106,12 +106,12 @@ export async function handleAskRequest(
         // 1. Retrieve context
         const context = options.contextBuilder.retrieve(askReq.question);
 
-        // Send context event (include topic info alongside moduleIds)
+        // Send context event (include theme info alongside componentIds)
         sendSSE(res, {
             type: 'context',
-            moduleIds: context.moduleIds,
-            ...(context.topicContexts.length > 0 ? {
-                topicIds: context.topicContexts.map(t => `${t.topicId}/${t.slug}`),
+            componentIds: context.componentIds,
+            ...(context.themeContexts.length > 0 ? {
+                themeIds: context.themeContexts.map(t => `${t.themeId}/${t.slug}`),
             } : {}),
         });
 
@@ -212,9 +212,9 @@ export function buildAskPrompt(
     const parts: string[] = [];
 
     parts.push('You are a knowledgeable assistant for a software project wiki.');
-    parts.push('Answer the user\'s question based on the provided module documentation and architecture context.');
+    parts.push('Answer the user\'s question based on the provided component documentation and architecture context.');
     parts.push('If the documentation doesn\'t contain enough information to answer, say so clearly.');
-    parts.push('Use markdown formatting in your response. Reference specific modules by name when relevant.');
+    parts.push('Use markdown formatting in your response. Reference specific components by name when relevant.');
     parts.push('');
 
     // Architecture overview
@@ -223,9 +223,9 @@ export function buildAskPrompt(
     parts.push(graphSummary);
     parts.push('');
 
-    // Relevant module documentation
+    // Relevant component documentation
     if (contextText) {
-        parts.push('## Relevant Module Documentation');
+        parts.push('## Relevant Component Documentation');
         parts.push('');
         parts.push(contextText);
         parts.push('');

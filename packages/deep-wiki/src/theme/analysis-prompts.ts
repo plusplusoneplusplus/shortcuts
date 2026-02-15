@@ -1,7 +1,7 @@
 /**
- * Topic Analysis — Prompt Templates
+ * Theme Analysis — Prompt Templates
  *
- * Prompt templates for per-article and cross-cutting topic analysis.
+ * Prompt templates for per-article and cross-cutting theme analysis.
  * Per-article prompts scope the AI to the article's covered files.
  * Cross-cutting prompts synthesize all article analyses into a holistic view.
  *
@@ -16,7 +16,7 @@ const SHALLOW_ARTICLE_STEPS = `
 Use the grep, glob, and view tools to investigate the files listed above:
 
 1. Read the main entry files and understand the key abstractions
-2. Identify how this aspect relates to the overall topic
+2. Identify how this aspect relates to the overall theme
 
 Return a JSON object matching the schema below. For shallow analysis, keep
 keyConcepts to 2-3 entries and codeExamples to 1 example maximum.`;
@@ -26,7 +26,7 @@ Use the grep, glob, and view tools to deeply investigate the files listed above:
 
 1. Read all listed files and understand the public API and key abstractions
 2. Trace the main control flow and data flow within this aspect
-3. Identify how this aspect connects to other parts of the topic
+3. Identify how this aspect connects to other parts of the theme
 4. Extract 2-3 illustrative code examples
 5. Summarize internal implementation details
 
@@ -62,7 +62,7 @@ const ARTICLE_ANALYSIS_SCHEMA = `{
   "keyConcepts": [
     { "name": "string", "description": "string", "codeRef": "string (optional, file path)" }
   ],
-  "dataFlow": "string — how data moves within this aspect of the topic",
+  "dataFlow": "string — how data moves within this aspect of the theme",
   "codeExamples": [
     { "title": "string", "code": "string — actual code snippet", "file": "string — source file path" }
   ],
@@ -73,7 +73,7 @@ const ARTICLE_ANALYSIS_SCHEMA = `{
  * Build a prompt for analyzing a single article's scope.
  */
 export function buildArticleAnalysisPrompt(
-    topicTitle: string,
+    themeTitle: string,
     articleTitle: string,
     articleDescription: string,
     articleSlug: string,
@@ -86,7 +86,7 @@ export function buildArticleAnalysisPrompt(
         ? coveredFiles.join('\n')
         : '(no specific files listed — explore the repository)';
 
-    return `You are analyzing a specific aspect of the topic "${topicTitle}".
+    return `You are analyzing a specific aspect of the theme "${themeTitle}".
 
 Article: ${articleTitle}
 Article slug: ${articleSlug}
@@ -114,25 +114,25 @@ IMPORTANT:
 // ============================================================================
 
 const CROSS_CUTTING_SCHEMA = `{
-  "architecture": "string — how the modules collaborate to implement this topic",
+  "architecture": "string — how the modules collaborate to implement this theme",
   "dataFlow": "string — end-to-end data flow across all aspects",
   "suggestedDiagram": "string — Mermaid diagram showing component interactions",
   "configuration": "string (optional) — configuration knobs and tuning options",
-  "relatedTopics": ["string (optional) — IDs of related topics"]
+  "relatedThemes": ["string (optional) — IDs of related themes"]
 }`;
 
 /**
  * Build a prompt for cross-cutting analysis across all articles.
  */
 export function buildCrossCuttingPrompt(
-    topicTitle: string,
-    topicId: string,
+    themeTitle: string,
+    themeId: string,
     articleSummaries: string,
     moduleIds: string[]
 ): string {
-    return `You are synthesizing a cross-cutting analysis for the topic "${topicTitle}".
+    return `You are synthesizing a cross-cutting analysis for the theme "${themeTitle}".
 
-Topic ID: ${topicId}
+Theme ID: ${themeId}
 Involved modules: ${moduleIds.join(', ')}
 
 The following per-article analyses have been completed:
@@ -140,11 +140,11 @@ The following per-article analyses have been completed:
 ${articleSummaries}
 
 Based on these analyses, produce a cross-cutting synthesis that covers:
-1. **Architecture**: How do these modules collaborate to implement this feature/topic?
+1. **Architecture**: How do these modules collaborate to implement this feature/theme?
 2. **Data Flow**: What is the end-to-end data flow across all aspects?
 3. **Diagram**: Create a Mermaid diagram showing how the components interact
 4. **Configuration**: What configuration knobs or tuning options exist? (if applicable)
-5. **Related Topics**: What other topics are closely related?
+5. **Related Themes**: What other themes are closely related?
 
 Return a JSON object matching the schema below.
 

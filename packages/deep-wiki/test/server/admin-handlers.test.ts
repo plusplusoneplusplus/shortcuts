@@ -83,9 +83,9 @@ function setupWikiDir(options?: { withSeeds?: boolean; withConfig?: boolean }): 
             version: '1.0.0',
             timestamp: Date.now(),
             repoPath: '/test/repo',
-            topics: [
-                { topic: 'authentication', description: 'Auth system', hints: ['auth', 'login'] },
-                { topic: 'database', description: 'Database layer', hints: ['db', 'sql'] },
+            themes: [
+                { theme: 'authentication', description: 'Auth system', hints: ['auth', 'login'] },
+                { theme: 'database', description: 'Database layer', hints: ['db', 'sql'] },
             ],
         };
         fs.writeFileSync(path.join(wikiDir, 'seeds.json'), JSON.stringify(seeds, null, 2), 'utf-8');
@@ -168,10 +168,10 @@ describe('GET /api/admin/seeds', () => {
         const { status, body } = await fetchJson(`${s.url}/api/admin/seeds`);
         expect(status).toBe(200);
 
-        const result = body as { exists: boolean; content: { topics: unknown[] }; path: string };
+        const result = body as { exists: boolean; content: { themes: unknown[] }; path: string };
         expect(result.exists).toBe(true);
         expect(result.content).toBeDefined();
-        expect(result.content.topics).toHaveLength(2);
+        expect(result.content.themes).toHaveLength(2);
         expect(result.path).toContain('seeds.json');
     });
 
@@ -215,8 +215,8 @@ describe('PUT /api/admin/seeds', () => {
             version: '1.0.0',
             timestamp: Date.now(),
             repoPath: '/test',
-            topics: [
-                { topic: 'api', description: 'API layer', hints: ['api', 'rest'] },
+            themes: [
+                { theme: 'api', description: 'API layer', hints: ['api', 'rest'] },
             ],
         };
 
@@ -228,15 +228,15 @@ describe('PUT /api/admin/seeds', () => {
 
         // Verify file was written
         const written = JSON.parse(fs.readFileSync(path.join(wikiDir, 'seeds.json'), 'utf-8'));
-        expect(written.topics).toHaveLength(1);
-        expect(written.topics[0].topic).toBe('api');
+        expect(written.themes).toHaveLength(1);
+        expect(written.themes[0].theme).toBe('api');
     });
 
     it('should overwrite existing seeds file', async () => {
         const { wikiDir } = setupWikiDir({ withSeeds: true });
         const s = await startServer(wikiDir);
 
-        const newSeeds = { version: '2.0.0', timestamp: Date.now(), repoPath: '/new', topics: [] };
+        const newSeeds = { version: '2.0.0', timestamp: Date.now(), repoPath: '/new', themes: [] };
         const { status, body } = await putJson(`${s.url}/api/admin/seeds`, { content: newSeeds });
         expect(status).toBe(200);
         expect((body as { success: boolean }).success).toBe(true);
@@ -244,7 +244,7 @@ describe('PUT /api/admin/seeds', () => {
         // Verify updated content
         const written = JSON.parse(fs.readFileSync(path.join(wikiDir, 'seeds.json'), 'utf-8'));
         expect(written.version).toBe('2.0.0');
-        expect(written.topics).toHaveLength(0);
+        expect(written.themes).toHaveLength(0);
     });
 
     it('should reject invalid request body', async () => {
@@ -256,15 +256,15 @@ describe('PUT /api/admin/seeds', () => {
         expect((body as { error: string }).error).toContain('Missing "content"');
     });
 
-    it('should reject invalid topics field', async () => {
+    it('should reject invalid themes field', async () => {
         const { wikiDir } = setupWikiDir();
         const s = await startServer(wikiDir);
 
         const { status, body } = await putJson(`${s.url}/api/admin/seeds`, {
-            content: { topics: 'not-an-array' },
+            content: { themes: 'not-an-array' },
         });
         expect(status).toBe(400);
-        expect((body as { error: string }).error).toContain('topics');
+        expect((body as { error: string }).error).toContain('themes');
     });
 
     it('should reject non-JSON request body', async () => {

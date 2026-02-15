@@ -43,8 +43,8 @@ export const CONFIG_TEMPLATE = `# Deep Wiki Configuration
 # seeds: auto                   # Seeds file path, or "auto" to generate
 # force: false                  # Ignore all caches, regenerate everything
 # useCache: false               # Use cache regardless of git hash changes
-# noCluster: false              # Skip module consolidation (Phase 2)
-# strict: true                  # Fail pipeline if any module fails
+# noCluster: false              # Skip component consolidation (Phase 2)
+# strict: true                  # Fail pipeline if any component fails
 # skipWebsite: false            # Skip static website generation (Phase 5)
 # phase: 1                      # Start from phase N (1-4)
 # endPhase: 5                   # End at phase N (1-5), only runs phases from phase to endPhase
@@ -64,7 +64,7 @@ export const CONFIG_TEMPLATE = `# Deep Wiki Configuration
 #
 #   analysis:
 #     model: claude-sonnet
-#     depth: deep               # More detailed module analysis
+#     depth: deep               # More detailed component analysis
 #     timeout: 180
 #     concurrency: 8
 #

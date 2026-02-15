@@ -7,7 +7,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { moduleGraph, currentModuleId, setCurrentModuleId, escapeHtml } from './core';
+import { componentGraph, currentComponentId, setCurrentComponentId, escapeHtml } from './core';
 import { setActive } from './sidebar';
 
 let graphRendered = false;
@@ -26,7 +26,7 @@ function getCategoryColor(category: string, allCategories: string[]): string {
 }
 
 export function showGraph(skipHistory?: boolean): void {
-    setCurrentModuleId(null);
+    setCurrentComponentId(null);
     setActive('__graph');
     const tocNav = document.getElementById('toc-nav');
     if (tocNav) tocNav.innerHTML = '';
@@ -65,7 +65,7 @@ export function renderGraph(): void {
     const height = container.clientHeight || 600;
 
     const allCategories: string[] = [];
-    moduleGraph.modules.forEach(function (m: any) {
+    componentGraph.components.forEach(function (m: any) {
         if (allCategories.indexOf(m.category) === -1) allCategories.push(m.category);
     });
     allCategories.sort();
@@ -92,13 +92,13 @@ export function renderGraph(): void {
         legendEl.appendChild(item);
     });
 
-    const nodes = moduleGraph.modules.map(function (m: any) {
+    const nodes = componentGraph.components.map(function (m: any) {
         return { id: m.id, name: m.name, category: m.category, complexity: m.complexity, path: m.path, purpose: m.purpose };
     });
 
     const nodeIds = new Set(nodes.map(function (n: any) { return n.id; }));
     const links: any[] = [];
-    moduleGraph.modules.forEach(function (m: any) {
+    componentGraph.components.forEach(function (m: any) {
         (m.dependencies || []).forEach(function (dep: string) {
             if (nodeIds.has(dep)) {
                 links.push({ source: m.id, target: dep });
@@ -159,7 +159,7 @@ export function renderGraph(): void {
             articleEl.style.maxWidth = '';
             articleEl.style.padding = '';
         }
-        (window as any).loadModule(d.id);
+        (window as any).loadComponent(d.id);
     });
 
     const tooltip = document.getElementById('graph-tooltip')!;

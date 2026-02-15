@@ -11,7 +11,7 @@
  */
 
 import type { ComponentGraph } from '../types';
-import type { TopicAreaMeta } from '../types';
+import type { ThemeMeta } from '../types';
 
 // ============================================================================
 // Types
@@ -21,14 +21,14 @@ import type { TopicAreaMeta } from '../types';
  * A document in the TF-IDF index.
  */
 interface IndexedDocument {
-    /** Document ID (component ID or topic:{topicId}:{slug}) */
+    /** Document ID (component ID or theme:{themeId}:{slug}) */
     componentId: string;
     /** Display name */
     name: string;
     /** Category */
     category: string;
     /** Source type */
-    source: 'component' | 'topic';
+    source: 'component' | 'theme';
     /** Tokenized terms with their TF values */
     termFrequencies: Map<string, number>;
     /** Total number of terms in the document */
@@ -45,16 +45,16 @@ export interface RetrievedContext {
     contextText: string;
     /** Component graph summary for architectural context */
     graphSummary: string;
-    /** Topic articles included in context */
-    topicContexts: TopicContextEntry[];
+    /** Theme articles included in context */
+    themeContexts: ThemeContextEntry[];
 }
 
 /**
- * A topic article included in context retrieval results.
+ * A theme article included in context retrieval results.
  */
-export interface TopicContextEntry {
-    /** Topic area ID */
-    topicId: string;
+export interface ThemeContextEntry {
+    /** Theme area ID */
+    themeId: string;
     /** Article slug */
     slug: string;
     /** Article title (from metadata) */
@@ -95,12 +95,12 @@ export class ContextBuilder {
     private inverseDocFreq: Map<string, number> = new Map();
     private graph: ComponentGraph;
     private markdownData: Record<string, string>;
-    private topicMarkdownData: Record<string, string>;
+    private themeMarkdownData: Record<string, string>;
 
-    constructor(graph: ComponentGraph, markdownData: Record<string, string>, topicMarkdownData?: Record<string, string>) {
+    constructor(graph: ComponentGraph, markdownData: Record<string, string>, themeMarkdownData?: Record<string, string>) {
         this.graph = graph;
         this.markdownData = markdownData;
-        this.topicMarkdownData = topicMarkdownData || {};
+        this.themeMarkdownData = themeMarkdownData || {};
         this.buildIndex();
     }
 
@@ -108,16 +108,16 @@ export class ContextBuilder {
      * Retrieve the most relevant components for a question.
      *
      * @param question - The user's question
-     * @param maxModules - Maximum number of components to return (default: 5)
-     * @param maxTopics - Maximum number of topic articles to return (default: 3)
+     * @param maxComponents - Maximum number of components to return (default: 5)
+     * @param maxThemes - Maximum number of theme articles to return (default: 3)
      * @returns Retrieved context with component IDs, markdown, and graph summary
      */
-    retrieve(question: string, maxModules = 5, maxTopics = 3): RetrievedContext {
+    retrieve(question: string, maxComponents = 5, maxThemes = 3): RetrievedContext {
         const queryTerms = tokenize(question);
 
         // Score each document
         const componentScores: Array<{ componentId: string; score: number }> = [];
-        const topicScores: Array<{ docId: string; score: number }> = [];
+        const themeScores: Array<{ docId: string; score: number }> = [];
 
         for (const doc of this.documents) {
             let score = 0;
@@ -136,8 +136,8 @@ export class ContextBuilder {
             }
 
             if (score > 0) {
-                if (doc.source === 'topic') {
-                    topicScores.push({ docId: doc.componentId, score });
+                if (doc.source === 'theme') {
+                    themeScores.push({ docId: doc.componentId, score });
                 } else {
                     componentScores.push({ componentId: doc.componentId, score });
                 }
@@ -146,24 +146,24 @@ export class ContextBuilder {
 
         // Sort by score descending
         componentScores.sort((a, b) => b.score - a.score);
-        topicScores.sort((a, b) => b.score - a.score);
+        themeScores.sort((a, b) => b.score - a.score);
 
         // Select top-K components
-        const topComponents = componentScores.slice(0, maxModules);
+        const topComponents = componentScores.slice(0, maxComponents);
         const selectedIds = topComponents.map(s => s.componentId);
 
         // Expand with 1-hop dependency neighbors if we have room
         const expandedIds = new Set(selectedIds);
-        if (selectedIds.length < maxModules) {
+        if (selectedIds.length < maxComponents) {
             for (const componentId of selectedIds) {
                 const mod = this.graph.components.find(m => m.id === componentId);
                 if (mod) {
                     for (const dep of mod.dependencies) {
-                        if (expandedIds.size >= maxModules) break;
+                        if (expandedIds.size >= maxComponents) break;
                         expandedIds.add(dep);
                     }
                     for (const dep of mod.dependents) {
-                        if (expandedIds.size >= maxModules) break;
+                        if (expandedIds.size >= maxComponents) break;
                         expandedIds.add(dep);
                     }
                 }
@@ -181,33 +181,33 @@ export class ContextBuilder {
             }
         }
 
-        // Select top-K topic articles
-        const selectedTopics = topicScores.slice(0, maxTopics);
-        const topicContexts: TopicContextEntry[] = [];
-        const topics = this.graph.topics || [];
+        // Select top-K theme articles
+        const selectedThemes = themeScores.slice(0, maxThemes);
+        const themeContexts: ThemeContextEntry[] = [];
+        const themes = this.graph.themes || [];
 
-        for (const { docId } of selectedTopics) {
-            // docId format: topic:{topicId}:{slug}
+        for (const { docId } of selectedThemes) {
+            // docId format: theme:{themeId}:{slug}
             const parts = docId.split(':');
             if (parts.length < 3) continue;
-            const topicId = parts[1];
+            const themeId = parts[1];
             const slug = parts.slice(2).join(':');
 
-            const meta = topics.find(t => t.id === topicId);
+            const meta = themes.find(t => t.id === themeId);
             if (!meta) continue;
 
             const articleMeta = meta.articles.find(a => a.slug === slug);
-            const content = this.topicMarkdownData[docId] || '';
+            const content = this.themeMarkdownData[docId] || '';
             if (!content) continue;
 
-            topicContexts.push({
-                topicId,
+            themeContexts.push({
+                themeId,
                 slug,
                 title: articleMeta?.title || slug,
                 content,
             });
 
-            contextParts.push(`## Topic Article: ${articleMeta?.title || slug}\n\nSource: topics/${topicId}/${slug}.md\n\n${content}`);
+            contextParts.push(`## Theme Article: ${articleMeta?.title || slug}\n\nSource: themes/${themeId}/${slug}.md\n\n${content}`);
         }
 
         // Build graph summary
@@ -217,7 +217,7 @@ export class ContextBuilder {
             componentIds: finalIds,
             contextText: contextParts.join('\n\n---\n\n'),
             graphSummary,
-            topicContexts,
+            themeContexts,
         };
     }
 
@@ -278,20 +278,20 @@ export class ContextBuilder {
             });
         }
 
-        // Index topic articles
-        const topics = this.graph.topics || [];
-        for (const topic of topics) {
-            for (const article of topic.articles) {
-                const docId = `topic:${topic.id}:${article.slug}`;
-                const markdown = this.topicMarkdownData[docId] || '';
+        // Index theme articles
+        const themes = this.graph.themes || [];
+        for (const theme of themes) {
+            for (const article of theme.articles) {
+                const docId = `theme:${theme.id}:${article.slug}`;
+                const markdown = this.themeMarkdownData[docId] || '';
 
-                const involvedComponentNames = topic.involvedComponentIds
+                const involvedComponentNames = theme.involvedComponentIds
                     .map(id => this.graph.components.find(m => m.id === id)?.name || '')
                     .filter(Boolean);
 
                 const text = [
-                    topic.title,
-                    topic.description,
+                    theme.title,
+                    theme.description,
                     article.title,
                     involvedComponentNames.join(' '),
                     markdown,
@@ -313,9 +313,9 @@ export class ContextBuilder {
 
                 this.documents.push({
                     componentId: docId,
-                    name: article.title || topic.title,
-                    category: 'topic',
-                    source: 'topic',
+                    name: article.title || theme.title,
+                    category: 'theme',
+                    source: 'theme',
                     termFrequencies,
                     termCount,
                 });

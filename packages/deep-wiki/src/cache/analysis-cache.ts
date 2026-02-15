@@ -9,7 +9,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type {
-    ModuleAnalysis,
+    ComponentAnalysis,
 } from '../types';
 import type {
     CachedAnalysis,
@@ -33,8 +33,8 @@ export function getAnalysesCacheDir(outputDir: string): string {
 /**
  * Get the path to a single cached analysis file.
  */
-export function getAnalysisCachePath(outputDir: string, moduleId: string): string {
-    return path.join(getAnalysesCacheDir(outputDir), `${moduleId}.json`);
+export function getAnalysisCachePath(outputDir: string, componentId: string): string {
+    return path.join(getAnalysesCacheDir(outputDir), `${componentId}.json`);
 }
 
 /**
@@ -51,14 +51,14 @@ export function getAnalysesMetadataPath(outputDir: string): string {
 /**
  * Get a single cached module analysis.
  *
- * @param moduleId - Module ID to look up
+ * @param componentId - Module ID to look up
  * @param outputDir - Output directory
  * @returns The cached analysis, or null if not found
  */
-export function getCachedAnalysis(moduleId: string, outputDir: string): ModuleAnalysis | null {
+export function getCachedAnalysis(componentId: string, outputDir: string): ComponentAnalysis | null {
     const cached = readCacheFileIf<CachedAnalysis>(
-        getAnalysisCachePath(outputDir, moduleId),
-        (d) => !!d.analysis && !!d.analysis.moduleId
+        getAnalysisCachePath(outputDir, componentId),
+        (d) => !!d.analysis && !!d.analysis.componentId
     );
     return cached?.analysis ?? null;
 }
@@ -69,10 +69,10 @@ export function getCachedAnalysis(moduleId: string, outputDir: string): ModuleAn
  * @param outputDir - Output directory
  * @returns Array of cached analyses, or null if cache is invalid/missing
  */
-export function getCachedAnalyses(outputDir: string): ModuleAnalysis[] | null {
+export function getCachedAnalyses(outputDir: string): ComponentAnalysis[] | null {
     const metadata = readCacheFileIf<AnalysisCacheMetadata>(
         getAnalysesMetadataPath(outputDir),
-        (d) => !!d.gitHash && !!d.moduleCount
+        (d) => !!d.gitHash && !!d.componentCount
     );
     if (!metadata) {
         return null;
@@ -80,7 +80,7 @@ export function getCachedAnalyses(outputDir: string): ModuleAnalysis[] | null {
 
     // Read all analysis files
     const analysesDir = getAnalysesCacheDir(outputDir);
-    const analyses: ModuleAnalysis[] = [];
+    const analyses: ComponentAnalysis[] = [];
 
     try {
         const files = fs.readdirSync(analysesDir);
@@ -91,7 +91,7 @@ export function getCachedAnalyses(outputDir: string): ModuleAnalysis[] | null {
 
             const cached = readCacheFileIf<CachedAnalysis>(
                 path.join(analysesDir, file),
-                (d) => !!d.analysis && !!d.analysis.moduleId
+                (d) => !!d.analysis && !!d.analysis.componentId
             );
             if (cached) {
                 analyses.push(cached.analysis);
@@ -118,18 +118,18 @@ export function getAnalysesCacheMetadata(outputDir: string): AnalysisCacheMetada
 /**
  * Save a single module analysis to the cache.
  *
- * @param moduleId - Module ID
+ * @param componentId - Module ID
  * @param analysis - The analysis to cache
  * @param outputDir - Output directory
  * @param gitHash - Git hash when the analysis was produced
  */
 export function saveAnalysis(
-    moduleId: string,
-    analysis: ModuleAnalysis,
+    componentId: string,
+    analysis: ComponentAnalysis,
     outputDir: string,
     gitHash: string
 ): void {
-    writeCacheFile<CachedAnalysis>(getAnalysisCachePath(outputDir, moduleId), {
+    writeCacheFile<CachedAnalysis>(getAnalysisCachePath(outputDir, componentId), {
         analysis,
         gitHash,
         timestamp: Date.now(),
@@ -144,7 +144,7 @@ export function saveAnalysis(
  * @param repoPath - Path to the git repository
  */
 export async function saveAllAnalyses(
-    analyses: ModuleAnalysis[],
+    analyses: ComponentAnalysis[],
     outputDir: string,
     repoPath: string
 ): Promise<void> {
@@ -155,7 +155,7 @@ export async function saveAllAnalyses(
 
     // Write individual analysis files
     for (const analysis of analyses) {
-        saveAnalysis(analysis.moduleId, analysis, outputDir, currentHash);
+        saveAnalysis(analysis.componentId, analysis, outputDir, currentHash);
     }
 
     // Write metadata
@@ -163,7 +163,7 @@ export async function saveAllAnalyses(
         gitHash: currentHash,
         timestamp: Date.now(),
         version: CACHE_VERSION,
-        moduleCount: analyses.length,
+        componentCount: analyses.length,
     });
 }
 
@@ -178,21 +178,21 @@ export async function saveAllAnalyses(
  * `saveAllAnalyses` wrote the metadata file, individual per-module files
  * may still exist from incremental saves via `onItemComplete`.
  *
- * @param moduleIds - Module IDs to look for in the cache
+ * @param componentIds - Module IDs to look for in the cache
  * @param outputDir - Output directory
  * @param currentGitHash - Current git hash for validation (modules cached with
  *                         a different hash are considered stale and excluded)
  * @returns Object with `found` (valid cached analyses) and `missing` (module IDs not found or stale)
  */
 export function scanIndividualAnalysesCache(
-    moduleIds: string[],
+    componentIds: string[],
     outputDir: string,
     currentGitHash: string
-): { found: ModuleAnalysis[]; missing: string[] } {
-    return scanCacheItems<CachedAnalysis, ModuleAnalysis>(
-        moduleIds,
+): { found: ComponentAnalysis[]; missing: string[] } {
+    return scanCacheItems<CachedAnalysis, ComponentAnalysis>(
+        componentIds,
         (id) => getAnalysisCachePath(outputDir, id),
-        (cached) => !!cached.analysis && !!cached.analysis.moduleId && cached.gitHash === currentGitHash,
+        (cached) => !!cached.analysis && !!cached.analysis.componentId && cached.gitHash === currentGitHash,
         (cached) => cached.analysis
     );
 }
@@ -200,18 +200,18 @@ export function scanIndividualAnalysesCache(
 /**
  * Scan for individually cached analyses, ignoring git hash validation.
  *
- * @param moduleIds - Module IDs to look for in the cache
+ * @param componentIds - Module IDs to look for in the cache
  * @param outputDir - Output directory
  * @returns Object with `found` (valid cached analyses) and `missing` (module IDs not found)
  */
 export function scanIndividualAnalysesCacheAny(
-    moduleIds: string[],
+    componentIds: string[],
     outputDir: string
-): { found: ModuleAnalysis[]; missing: string[] } {
-    return scanCacheItems<CachedAnalysis, ModuleAnalysis>(
-        moduleIds,
+): { found: ComponentAnalysis[]; missing: string[] } {
+    return scanCacheItems<CachedAnalysis, ComponentAnalysis>(
+        componentIds,
         (id) => getAnalysisCachePath(outputDir, id),
-        (cached) => !!cached.analysis && !!cached.analysis.moduleId,
+        (cached) => !!cached.analysis && !!cached.analysis.componentId,
         (cached) => cached.analysis
     );
 }

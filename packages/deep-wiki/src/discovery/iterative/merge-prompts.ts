@@ -8,7 +8,7 @@
  */
 
 import type { ComponentGraph } from '../../types';
-import type { TopicProbeResult } from './types';
+import type { ThemeProbeResult } from './types';
 import { COMPONENT_GRAPH_SCHEMA } from '../../schemas';
 
 // ============================================================================
@@ -20,9 +20,9 @@ import { COMPONENT_GRAPH_SCHEMA } from '../../schemas';
  */
 const MERGE_RESULT_SCHEMA = `{
   "graph": ${COMPONENT_GRAPH_SCHEMA.replace(/\n/g, '\n  ')},
-  "newTopics": [
+  "newThemes": [
     {
-      "topic": "string — topic name (kebab-case)",
+      "theme": "string — theme name (kebab-case)",
       "description": "string — description",
       "hints": ["string — search hints"]
     }
@@ -42,7 +42,7 @@ const MERGE_RESULT_SCHEMA = `{
  */
 export function buildMergePrompt(
     repoPath: string,
-    probeResults: TopicProbeResult[],
+    probeResults: ThemeProbeResult[],
     existingGraph: ComponentGraph | null
 ): string {
     const probeResultsJson = JSON.stringify(probeResults, null, 2);
@@ -52,7 +52,7 @@ export function buildMergePrompt(
         ? `\n## Existing Graph (from prior rounds)\n\n${existingGraphJson}\n\nMerge new findings into this existing graph.`
         : '\n## First Round\n\nThis is the first round. Build the initial graph from the probe results.';
 
-    return `You are merging topic probe results and analyzing coverage gaps in the codebase at ${repoPath}.
+    return `You are merging theme probe results and analyzing coverage gaps in the codebase at ${repoPath}.
 You have access to grep, glob, and view tools to explore the repository.
 
 ## Probe Results (Current Round)
@@ -63,7 +63,7 @@ ${existingGraphSection}
 
 1. **Merge all probe results** into a coherent ComponentGraph:
    - Combine components found across different probes
-   - Resolve overlapping component claims (same files claimed by multiple topics)
+   - Resolve overlapping component claims (same files claimed by multiple themes)
    - Deduplicate components with the same ID or path
    - Merge dependencies and dependents
    - Ensure component IDs are unique and normalized
@@ -73,15 +73,15 @@ ${existingGraphSection}
    - Identify directories/files that NO probe touched
    - Estimate what percentage of the codebase is covered (coverage: 0-1)
 
-3. **Collect discovered topics**:
-   - Gather all discoveredTopics from all probes
-   - Deduplicate topics (same topic from multiple sources)
-   - Filter out topics that are too vague or already covered
+3. **Collect discovered themes**:
+   - Gather all discoveredThemes from all probes
+   - Deduplicate themes (same theme from multiple sources)
+   - Filter out themes that are too vague or already covered
 
 4. **Determine convergence**:
-   - converged=true if: coverage >= 0.8 AND no new topics discovered
+   - converged=true if: coverage >= 0.8 AND no new themes discovered
    - converged=true if: all major domains have been probed and no gaps remain
-   - converged=false if: significant gaps exist or new topics were discovered
+   - converged=false if: significant gaps exist or new themes were discovered
 
 ## Output Format
 
@@ -95,7 +95,7 @@ ${MERGE_RESULT_SCHEMA}
 - All paths must be relative to the repo root
 - When resolving overlaps, prefer the probe with higher confidence
 - coverage should be a realistic estimate (0.0 = nothing covered, 1.0 = fully covered)
-- newTopics should only include topics worth probing in the next round
-- reason should explain why convergence was reached or not (e.g., "coverage 0.85, no new topics" or "coverage 0.6, 3 new topics discovered")
+- newThemes should only include themes worth probing in the next round
+- reason should explain why convergence was reached or not (e.g., "coverage 0.85, no new themes" or "coverage 0.6, 3 new themes discovered")
 - If this is the first round, build a complete graph structure even if coverage is low`;
 }

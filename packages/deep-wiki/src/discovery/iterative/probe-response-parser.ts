@@ -1,13 +1,13 @@
 /**
  * Iterative Discovery — Probe Response Parser
  *
- * Parses AI responses from topic probe sessions into TopicProbeResult.
+ * Parses AI responses from theme probe sessions into ThemeProbeResult.
  * Handles JSON extraction, validation, and normalization.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { TopicProbeResult, ProbeFoundComponent, DiscoveredTopic } from './types';
+import type { ThemeProbeResult, ProbeFoundComponent, DiscoveredTheme } from './types';
 import { normalizeComponentId } from '../../schemas';
 import { parseAIJsonResponse } from '../../utils/parse-ai-response';
 
@@ -16,19 +16,19 @@ import { parseAIJsonResponse } from '../../utils/parse-ai-response';
 // ============================================================================
 
 /**
- * Parse an AI response into a TopicProbeResult.
+ * Parse an AI response into a ThemeProbeResult.
  *
  * @param response - Raw AI response string
- * @param topic - The topic that was probed (for validation)
- * @returns Parsed TopicProbeResult
+ * @param theme - The theme that was probed (for validation)
+ * @returns Parsed ThemeProbeResult
  * @throws Error if response cannot be parsed
  */
-export function parseProbeResponse(response: string, topic: string): TopicProbeResult {
+export function parseProbeResponse(response: string, theme: string): ThemeProbeResult {
     const obj = parseAIJsonResponse(response, { context: 'probe' });
 
     // Validate required fields
-    if (typeof obj.topic !== 'string') {
-        throw new Error('Missing or invalid "topic" field in probe response');
+    if (typeof obj.theme !== 'string') {
+        throw new Error('Missing or invalid "theme" field in probe response');
     }
 
     if (!Array.isArray(obj.foundComponents)) {
@@ -79,17 +79,17 @@ export function parseProbeResponse(response: string, topic: string): TopicProbeR
         });
     }
 
-    // Parse discoveredTopics (optional)
-    const discoveredTopics: DiscoveredTopic[] = [];
-    if (Array.isArray(obj.discoveredTopics)) {
-        for (const item of obj.discoveredTopics) {
+    // Parse discoveredThemes (optional)
+    const discoveredThemes: DiscoveredTheme[] = [];
+    if (Array.isArray(obj.discoveredThemes)) {
+        for (const item of obj.discoveredThemes) {
             if (typeof item !== 'object' || item === null) {
                 continue;
             }
             const dt = item as Record<string, unknown>;
-            if (typeof dt.topic === 'string' && typeof dt.description === 'string') {
-                discoveredTopics.push({
-                    topic: normalizeComponentId(String(dt.topic)),
+            if (typeof dt.theme === 'string' && typeof dt.description === 'string') {
+                discoveredThemes.push({
+                    theme: normalizeComponentId(String(dt.theme)),
                     description: String(dt.description),
                     hints: parseStringArray(dt.hints),
                     source: String(dt.source || ''),
@@ -108,9 +108,9 @@ export function parseProbeResponse(response: string, topic: string): TopicProbeR
     }
 
     return {
-        topic: String(obj.topic),
+        theme: String(obj.theme),
         foundComponents,
-        discoveredTopics,
+        discoveredThemes,
         dependencies,
         confidence,
     };

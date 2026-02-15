@@ -28,14 +28,14 @@ describe('Seed File Parser', () => {
                 version: '1.0.0',
                 timestamp: 1234567890,
                 repoPath: '/path/to/repo',
-                topics: [
+                themes: [
                     {
-                        topic: 'authentication',
+                        theme: 'authentication',
                         description: 'User authentication',
                         hints: ['auth', 'login'],
                     },
                     {
-                        topic: 'database',
+                        theme: 'database',
                         description: 'Database layer',
                         hints: ['db', 'sql'],
                     },
@@ -46,15 +46,15 @@ describe('Seed File Parser', () => {
 
             const seeds = parseSeedFile(filePath);
             expect(seeds).toHaveLength(2);
-            expect(seeds[0].topic).toBe('authentication');
-            expect(seeds[1].topic).toBe('database');
+            expect(seeds[0].theme).toBe('authentication');
+            expect(seeds[1].theme).toBe('database');
         });
 
-        it('should parse JSON file with direct topics array', () => {
+        it('should parse JSON file with direct themes array', () => {
             const filePath = path.join(tmpDir, 'seeds.json');
             const content = JSON.stringify([
                 {
-                    topic: 'auth',
+                    theme: 'auth',
                     description: 'Auth',
                     hints: ['hint'],
                 },
@@ -64,12 +64,12 @@ describe('Seed File Parser', () => {
 
             const seeds = parseSeedFile(filePath);
             expect(seeds).toHaveLength(1);
-            expect(seeds[0].topic).toBe('auth');
+            expect(seeds[0].theme).toBe('auth');
         });
 
         it('should parse valid CSV seeds file', () => {
             const filePath = path.join(tmpDir, 'seeds.csv');
-            const content = `topic,description,hints
+            const content = `theme,description,hints
 authentication,User authentication,"auth,login"
 database,Database layer,"db,sql"`;
 
@@ -77,14 +77,14 @@ database,Database layer,"db,sql"`;
 
             const seeds = parseSeedFile(filePath);
             expect(seeds).toHaveLength(2);
-            expect(seeds[0].topic).toBe('authentication');
+            expect(seeds[0].theme).toBe('authentication');
             expect(seeds[0].description).toBe('User authentication');
             expect(seeds[0].hints).toEqual(['auth', 'login']);
         });
 
         it('should handle CSV with quoted hints containing commas', () => {
             const filePath = path.join(tmpDir, 'seeds.csv');
-            const content = `topic,description,hints
+            const content = `theme,description,hints
 auth,Authentication,"login,password,token"`;
 
             fs.writeFileSync(filePath, content, 'utf-8');
@@ -93,12 +93,12 @@ auth,Authentication,"login,password,token"`;
             expect(seeds[0].hints).toEqual(['login', 'password', 'token']);
         });
 
-        it('should normalize topic IDs to kebab-case', () => {
+        it('should normalize theme IDs to kebab-case', () => {
             const filePath = path.join(tmpDir, 'seeds.json');
             const content = JSON.stringify({
-                topics: [
+                themes: [
                     {
-                        topic: 'API Gateway',
+                        theme: 'API Gateway',
                         description: 'API gateway',
                         hints: ['api'],
                     },
@@ -108,7 +108,7 @@ auth,Authentication,"login,password,token"`;
             fs.writeFileSync(filePath, content, 'utf-8');
 
             const seeds = parseSeedFile(filePath);
-            expect(seeds[0].topic).toBe('api-gateway');
+            expect(seeds[0].theme).toBe('api-gateway');
         });
 
         it('should throw error on non-existent file', () => {
@@ -129,12 +129,12 @@ auth,Authentication,"login,password,token"`;
             expect(() => parseSeedFile(filePath)).toThrow('empty');
         });
 
-        it('should throw error on missing topic field in JSON', () => {
+        it('should throw error on missing theme field in JSON', () => {
             const filePath = path.join(tmpDir, 'seeds.json');
             const content = JSON.stringify({
-                topics: [
+                themes: [
                     {
-                        description: 'Missing topic field',
+                        description: 'Missing theme field',
                         hints: ['hint'],
                     },
                 ],
@@ -142,15 +142,15 @@ auth,Authentication,"login,password,token"`;
 
             fs.writeFileSync(filePath, content, 'utf-8');
 
-            expect(() => parseSeedFile(filePath)).toThrow("missing or invalid 'topic' field");
+            expect(() => parseSeedFile(filePath)).toThrow("missing or invalid 'theme' field");
         });
 
         it('should throw error on missing description field in JSON', () => {
             const filePath = path.join(tmpDir, 'seeds.json');
             const content = JSON.stringify({
-                topics: [
+                themes: [
                     {
-                        topic: 'auth',
+                        theme: 'auth',
                         hints: ['hint'],
                     },
                 ],
@@ -164,9 +164,9 @@ auth,Authentication,"login,password,token"`;
         it('should handle hints as comma-separated string in JSON', () => {
             const filePath = path.join(tmpDir, 'seeds.json');
             const content = JSON.stringify({
-                topics: [
+                themes: [
                     {
-                        topic: 'auth',
+                        theme: 'auth',
                         description: 'Auth',
                         hints: 'login,password,token',
                     },
@@ -179,12 +179,12 @@ auth,Authentication,"login,password,token"`;
             expect(seeds[0].hints).toEqual(['login', 'password', 'token']);
         });
 
-        it('should default hints to topic name if missing in JSON', () => {
+        it('should default hints to theme name if missing in JSON', () => {
             const filePath = path.join(tmpDir, 'seeds.json');
             const content = JSON.stringify({
-                topics: [
+                themes: [
                     {
-                        topic: 'auth',
+                        theme: 'auth',
                         description: 'Auth',
                     },
                 ],
@@ -196,19 +196,19 @@ auth,Authentication,"login,password,token"`;
             expect(seeds[0].hints).toEqual(['auth']);
         });
 
-        it('should throw error on CSV missing topic column', () => {
+        it('should throw error on CSV missing theme column', () => {
             const filePath = path.join(tmpDir, 'seeds.csv');
             const content = `description,hints
 Auth,"auth,login"`;
 
             fs.writeFileSync(filePath, content, 'utf-8');
 
-            expect(() => parseSeedFile(filePath)).toThrow("missing 'topic' column");
+            expect(() => parseSeedFile(filePath)).toThrow("missing 'theme' column");
         });
 
         it('should throw error on CSV missing description column', () => {
             const filePath = path.join(tmpDir, 'seeds.csv');
-            const content = `topic,hints
+            const content = `theme,hints
 auth,"auth,login"`;
 
             fs.writeFileSync(filePath, content, 'utf-8');
@@ -218,7 +218,7 @@ auth,"auth,login"`;
 
         it('should handle CSV with desc column instead of description', () => {
             const filePath = path.join(tmpDir, 'seeds.csv');
-            const content = `topic,desc,hints
+            const content = `theme,desc,hints
 auth,Authentication,"login,password"`;
 
             fs.writeFileSync(filePath, content, 'utf-8');
@@ -229,7 +229,7 @@ auth,Authentication,"login,password"`;
 
         it('should handle CSV with hint column instead of hints', () => {
             const filePath = path.join(tmpDir, 'seeds.csv');
-            const content = `topic,description,hint
+            const content = `theme,description,hint
 auth,Authentication,"login,password"`;
 
             fs.writeFileSync(filePath, content, 'utf-8');

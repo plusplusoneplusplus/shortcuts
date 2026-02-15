@@ -1,15 +1,15 @@
 /**
  * Wiki Integrator
  *
- * Updates existing wiki files to integrate a new topic area:
- * - module-graph.json — adds/updates TopicAreaMeta entry
- * - index.md — adds/updates "Topics" navigation section
- * - module articles — adds "Related Topics" cross-links
+ * Updates existing wiki files to integrate a new theme area:
+ * - module-graph.json — adds/updates ThemeMeta entry
+ * - index.md — adds/updates "Themes" navigation section
+ * - module articles — adds "Related Themes" cross-links
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
-import type { ModuleGraph, TopicAreaMeta, TopicOutline, TopicArticle } from '../types';
+import type { ComponentGraph, ThemeMeta, ThemeOutline, ThemeArticle } from '../types';
 
 // ============================================================================
 // Types
@@ -17,9 +17,9 @@ import type { ModuleGraph, TopicAreaMeta, TopicOutline, TopicArticle } from '../
 
 export interface WikiIntegrationOptions {
     wikiDir: string;
-    topicId: string;
-    outline: TopicOutline;
-    articles: TopicArticle[];
+    themeId: string;
+    outline: ThemeOutline;
+    articles: ThemeArticle[];
     noCrossLink: boolean;
 }
 
@@ -28,39 +28,39 @@ export interface WikiIntegrationOptions {
 // ============================================================================
 
 /**
- * Update module-graph.json to include the new topic area metadata.
+ * Update module-graph.json to include the new theme area metadata.
  * - Reads existing module-graph.json
- * - Adds/updates entry in topics[] array (matched by id)
+ * - Adds/updates entry in themes[] array (matched by id)
  * - Writes back with proper formatting
  */
-export function updateModuleGraph(wikiDir: string, topicMeta: TopicAreaMeta): void {
+export function updateModuleGraph(wikiDir: string, themeMeta: ThemeMeta): void {
     const graphPath = path.join(path.resolve(wikiDir), 'module-graph.json');
 
-    let graph: ModuleGraph;
+    let graph: ComponentGraph;
     try {
         const raw = fs.readFileSync(graphPath, 'utf-8');
-        graph = JSON.parse(raw) as ModuleGraph;
+        graph = JSON.parse(raw) as ComponentGraph;
     } catch {
         // If file doesn't exist or is invalid, create minimal graph
         graph = {
-            project: { name: '', description: '', language: '', buildSystem: '', entryPoints: [] } as ModuleGraph['project'],
-            modules: [],
+            project: { name: '', description: '', language: '', buildSystem: '', entryPoints: [] } as ComponentGraph['project'],
+            components: [],
             categories: [],
             architectureNotes: '',
         };
     }
 
-    // Ensure topics array exists
-    if (!graph.topics) {
-        graph.topics = [];
+    // Ensure themes array exists
+    if (!graph.themes) {
+        graph.themes = [];
     }
 
     // Replace existing entry or append
-    const existingIdx = graph.topics.findIndex(t => t.id === topicMeta.id);
+    const existingIdx = graph.themes.findIndex(t => t.id === themeMeta.id);
     if (existingIdx >= 0) {
-        graph.topics[existingIdx] = topicMeta;
+        graph.themes[existingIdx] = themeMeta;
     } else {
-        graph.topics.push(topicMeta);
+        graph.themes.push(themeMeta);
     }
 
     fs.writeFileSync(graphPath, JSON.stringify(graph, null, 2) + '\n', 'utf-8');
@@ -71,14 +71,14 @@ export function updateModuleGraph(wikiDir: string, topicMeta: TopicAreaMeta): vo
 // ============================================================================
 
 /**
- * Update wiki index.md to include a "Topics" section.
- * - If "## Topics" section exists, append new topic link (if not already present)
- * - If not, add "## Topics" section before the last line (footer) or at end
+ * Update wiki index.md to include a "Themes" section.
+ * - If "## Themes" section exists, append new theme link (if not already present)
+ * - If not, add "## Themes" section before the last line (footer) or at end
  */
 export function updateWikiIndex(
     wikiDir: string,
-    topicId: string,
-    topicTitle: string,
+    themeId: string,
+    themeTitle: string,
     layout: 'single' | 'area',
 ): void {
     const indexPath = path.join(path.resolve(wikiDir), 'index.md');
@@ -91,22 +91,22 @@ export function updateWikiIndex(
     }
 
     const linkPath = layout === 'single'
-        ? `./topics/${topicId}.md`
-        : `./topics/${topicId}/index.md`;
-    const linkLine = `- [${topicTitle}](${linkPath})`;
+        ? `./themes/${themeId}.md`
+        : `./themes/${themeId}/index.md`;
+    const linkLine = `- [${themeTitle}](${linkPath})`;
 
     // Check if link already exists (idempotent)
     if (content.includes(linkPath)) {
         return;
     }
 
-    const topicsSectionRegex = /^## Topics$/m;
-    if (topicsSectionRegex.test(content)) {
-        // Append link after the "## Topics" heading
-        content = content.replace(topicsSectionRegex, `## Topics\n${linkLine}`);
+    const themesSectionRegex = /^## Themes$/m;
+    if (themesSectionRegex.test(content)) {
+        // Append link after the "## Themes" heading
+        content = content.replace(themesSectionRegex, `## Themes\n${linkLine}`);
     } else {
-        // Add new "## Topics" section at the end
-        const section = `\n## Topics\n\n${linkLine}\n`;
+        // Add new "## Themes" section at the end
+        const section = `\n## Themes\n\n${linkLine}\n`;
         content = content.trimEnd() + '\n' + section;
     }
 
@@ -118,15 +118,15 @@ export function updateWikiIndex(
 // ============================================================================
 
 /**
- * Add "Related Topics" cross-links to existing module articles.
+ * Add "Related Themes" cross-links to existing module articles.
  * For each involved module, finds its article and appends a link.
  * Idempotent: won't add duplicate links.
  */
 export function addCrossLinks(
     wikiDir: string,
-    topicId: string,
-    topicTitle: string,
-    involvedModuleIds: string[],
+    themeId: string,
+    themeTitle: string,
+    involvedComponentIds: string[],
     layout: 'single' | 'area',
 ): { updatedFiles: string[] } {
     const resolvedWiki = path.resolve(wikiDir);
@@ -134,13 +134,13 @@ export function addCrossLinks(
     const updatedFiles: string[] = [];
 
     const linkPath = layout === 'single'
-        ? `../topics/${topicId}.md`
-        : `../topics/${topicId}/index.md`;
-    const linkLine = `- [${topicTitle}](${linkPath})`;
+        ? `../themes/${themeId}.md`
+        : `../themes/${themeId}/index.md`;
+    const linkLine = `- [${themeTitle}](${linkPath})`;
 
-    for (const moduleId of involvedModuleIds) {
+    for (const componentId of involvedComponentIds) {
         // Try to find the module article file
-        const articlePath = findModuleArticle(modulesDir, moduleId);
+        const articlePath = findModuleArticle(modulesDir, componentId);
         if (!articlePath) {
             continue;
         }
@@ -157,13 +157,13 @@ export function addCrossLinks(
             continue;
         }
 
-        const relatedSection = /^## Related Topics$/m;
+        const relatedSection = /^## Related Themes$/m;
         if (relatedSection.test(content)) {
-            // Append link after existing "## Related Topics" heading
-            content = content.replace(relatedSection, `## Related Topics\n${linkLine}`);
+            // Append link after existing "## Related Themes" heading
+            content = content.replace(relatedSection, `## Related Themes\n${linkLine}`);
         } else {
-            // Add new "## Related Topics" section at the end
-            content = content.trimEnd() + '\n\n## Related Topics\n\n' + linkLine + '\n';
+            // Add new "## Related Themes" section at the end
+            content = content.trimEnd() + '\n\n## Related Themes\n\n' + linkLine + '\n';
         }
 
         fs.writeFileSync(articlePath, content, 'utf-8');
@@ -177,13 +177,13 @@ export function addCrossLinks(
  * Find a module article by module ID in the modules/ directory.
  * Tries exact match first, then slug-based match.
  */
-function findModuleArticle(modulesDir: string, moduleId: string): string | null {
+function findModuleArticle(modulesDir: string, componentId: string): string | null {
     if (!fs.existsSync(modulesDir)) {
         return null;
     }
 
-    // Try direct match: modules/{moduleId}.md
-    const directPath = path.join(modulesDir, `${moduleId}.md`);
+    // Try direct match: modules/{componentId}.md
+    const directPath = path.join(modulesDir, `${componentId}.md`);
     if (fs.existsSync(directPath)) {
         return directPath;
     }
@@ -193,7 +193,7 @@ function findModuleArticle(modulesDir: string, moduleId: string): string | null 
         const files = fs.readdirSync(modulesDir);
         const match = files.find(f => {
             const name = path.basename(f, '.md');
-            return name === moduleId || name.toLowerCase() === moduleId.toLowerCase();
+            return name === componentId || name.toLowerCase() === componentId.toLowerCase();
         });
         if (match) {
             return path.join(modulesDir, match);
@@ -212,18 +212,18 @@ function findModuleArticle(modulesDir: string, moduleId: string): string | null 
 /**
  * Full integration: write files + update graph + update index + cross-links.
  */
-export function integrateTopicIntoWiki(
+export function integrateThemeIntoWiki(
     options: WikiIntegrationOptions,
 ): { writtenFiles: string[]; updatedFiles: string[] } {
-    const { wikiDir, topicId, outline, articles, noCrossLink } = options;
+    const { wikiDir, themeId, outline, articles, noCrossLink } = options;
 
     // Import and call file writer
-    const { writeTopicArticles } = require('./file-writer');
-    const writeResult = writeTopicArticles({ wikiDir, topicId, outline, articles });
+    const { writeThemeArticles } = require('./file-writer');
+    const writeResult = writeThemeArticles({ wikiDir, themeId, outline, articles });
 
-    // Build TopicAreaMeta
-    const topicMeta: TopicAreaMeta = {
-        id: topicId,
+    // Build ThemeMeta
+    const themeMeta: ThemeMeta = {
+        id: themeId,
         title: outline.title,
         description: outline.articles.find(a => a.isIndex)?.description || outline.title,
         layout: outline.layout,
@@ -231,27 +231,27 @@ export function integrateTopicIntoWiki(
             slug: a.slug,
             title: a.title,
             path: outline.layout === 'single'
-                ? `topics/${topicId}.md`
-                : `topics/${topicId}/${a.type === 'topic-index' ? 'index' : a.slug}.md`,
+                ? `themes/${themeId}.md`
+                : `themes/${themeId}/${a.type === 'theme-index' ? 'index' : a.slug}.md`,
         })),
-        involvedModuleIds: outline.involvedModules.map(m => m.moduleId),
+        involvedComponentIds: outline.involvedComponents.map(m => m.componentId),
         directoryPath: outline.layout === 'single'
-            ? `topics/${topicId}.md`
-            : `topics/${topicId}`,
+            ? `themes/${themeId}.md`
+            : `themes/${themeId}`,
         generatedAt: Date.now(),
     };
 
     // Update module-graph.json
-    updateModuleGraph(wikiDir, topicMeta);
+    updateModuleGraph(wikiDir, themeMeta);
 
     // Update wiki index.md
-    updateWikiIndex(wikiDir, topicId, outline.title, outline.layout);
+    updateWikiIndex(wikiDir, themeId, outline.title, outline.layout);
 
     // Add cross-links to module articles
     let updatedFiles: string[] = [];
     if (!noCrossLink) {
-        const involvedModuleIds = outline.involvedModules.map(m => m.moduleId);
-        const crossResult = addCrossLinks(wikiDir, topicId, outline.title, involvedModuleIds, outline.layout);
+        const involvedComponentIds = outline.involvedComponents.map(m => m.componentId);
+        const crossResult = addCrossLinks(wikiDir, themeId, outline.title, involvedComponentIds, outline.layout);
         updatedFiles = crossResult.updatedFiles;
     }
 

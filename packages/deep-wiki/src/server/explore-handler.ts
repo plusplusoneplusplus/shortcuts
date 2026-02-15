@@ -1,12 +1,12 @@
 /**
  * Explore Handler
  *
- * POST /api/explore/:moduleId — On-demand deep-dive into a module.
- * Creates a focused AI session that analyzes the module in depth,
+ * POST /api/explore/:componentId — On-demand deep-dive into a component.
+ * Creates a focused AI session that analyzes the component in depth,
  * optionally answering a specific user question.
  *
  * Streams the result as SSE events:
- *   data: {"type":"status","message":"Analyzing module..."}
+ *   data: {"type":"status","message":"Analyzing component..."}
  *   data: {"type":"chunk","text":"## Deep Analysis\n\n..."}
  *   data: {"type":"done","fullResponse":"..."}
  *   data: {"type":"error","message":"Something went wrong"}
@@ -21,7 +21,7 @@ import type { AskAIFunction } from './ask-handler';
 // Types
 // ============================================================================
 
-/** Request body for POST /api/explore/:moduleId. */
+/** Request body for POST /api/explore/:componentId. */
 export interface ExploreRequest {
     question?: string;
     depth?: 'normal' | 'deep';
@@ -40,12 +40,12 @@ export interface ExploreHandlerOptions {
 // ============================================================================
 
 /**
- * Handle POST /api/explore/:moduleId — streamed as SSE.
+ * Handle POST /api/explore/:componentId — streamed as SSE.
  */
 export async function handleExploreRequest(
     req: IncomingMessage,
     res: ServerResponse,
-    moduleId: string,
+    componentId: string,
     options: ExploreHandlerOptions,
 ): Promise<void> {
     // Parse body
@@ -61,12 +61,12 @@ export async function handleExploreRequest(
         }
     }
 
-    // Validate module exists
+    // Validate component exists
     const graph = options.wikiData.graph;
-    const mod = graph.modules.find(m => m.id === moduleId);
+    const mod = graph.components.find(m => m.id === componentId);
     if (!mod) {
         res.writeHead(404, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: `Module not found: ${moduleId}` }));
+        res.end(JSON.stringify({ error: `Component not found: ${componentId}` }));
         return;
     }
 
@@ -80,10 +80,10 @@ export async function handleExploreRequest(
 
     try {
         // 1. Send status
-        sendSSE(res, { type: 'status', message: `Analyzing ${mod.name} module...` });
+        sendSSE(res, { type: 'status', message: `Analyzing ${mod.name} component...` });
 
         // 2. Load existing analysis
-        const detail = options.wikiData.getModuleDetail(moduleId);
+        const detail = options.wikiData.getComponentDetail(componentId);
         const existingMarkdown = detail?.markdown || '';
 
         // 3. Build explore prompt
@@ -119,7 +119,7 @@ export async function handleExploreRequest(
 export function buildExplorePrompt(
     mod: { id: string; name: string; category: string; path: string; purpose: string; keyFiles: string[]; dependencies: string[]; dependents: string[] },
     existingMarkdown: string,
-    graph: { project: { name: string; description: string; language: string }; modules: Array<{ id: string; name: string; purpose: string; dependencies: string[] }> },
+    graph: { project: { name: string; description: string; language: string }; components: Array<{ id: string; name: string; purpose: string; dependencies: string[] }> },
     request: ExploreRequest,
 ): string {
     const parts: string[] = [];
@@ -127,13 +127,13 @@ export function buildExplorePrompt(
     const depth = request.depth || 'normal';
     const isDeep = depth === 'deep';
 
-    parts.push(`You are conducting a ${isDeep ? 'deep' : 'focused'} analysis of the "${mod.name}" module.`);
+    parts.push(`You are conducting a ${isDeep ? 'deep' : 'focused'} analysis of the "${mod.name}" component.`);
     parts.push('Provide detailed technical insights with code-level specifics.');
     parts.push('Use markdown formatting with headers, code blocks, and lists.');
     parts.push('');
 
-    // Module context
-    parts.push('## Module Information');
+    // Component context
+    parts.push('## Component Information');
     parts.push('');
     parts.push(`- **Name:** ${mod.name}`);
     parts.push(`- **ID:** ${mod.id}`);
@@ -157,7 +157,7 @@ export function buildExplorePrompt(
     parts.push('## Project Architecture');
     parts.push('');
     parts.push(`Project: ${graph.project.name} (${graph.project.language})`);
-    for (const m of graph.modules) {
+    for (const m of graph.components) {
         const deps = m.dependencies.length > 0 ? ` → ${m.dependencies.join(', ')}` : '';
         parts.push(`  - ${m.name}: ${m.purpose}${deps}`);
     }
@@ -176,13 +176,14 @@ export function buildExplorePrompt(
         parts.push('2. Key algorithms and data structures');
         parts.push('3. Error handling strategies');
         parts.push('4. Performance characteristics and potential bottlenecks');
-        parts.push('5. Integration points with other modules');
+        parts.push('5. Integration points with other components');
         parts.push('6. Potential improvements and technical debt');
     } else {
         parts.push('## Analysis Task');
         parts.push('');
-        parts.push('Provide a focused analysis covering the most important aspects of this module,');
+        parts.push('Provide a focused analysis covering the most important aspects of this component,');
         parts.push('including architecture, key patterns, and how it integrates with the rest of the system.');
+
     }
 
     return parts.join('\n');

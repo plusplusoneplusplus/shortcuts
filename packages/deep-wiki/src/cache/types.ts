@@ -8,9 +8,9 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { ModuleGraph, ModuleAnalysis, GeneratedArticle, TopicSeed, StructuralScanResult, TopicOutline, TopicAnalysis, TopicArticle } from '../types';
-import type { TopicProbeResult } from '../discovery/iterative/types';
-import type { EnrichedProbeResult } from '../topic/topic-probe';
+import type { ComponentGraph, ComponentAnalysis, GeneratedArticle, ThemeSeed, StructuralScanResult, ThemeOutline, ThemeAnalysis, ThemeArticle } from '../types';
+import type { ThemeProbeResult } from '../discovery/iterative/types';
+import type { EnrichedProbeResult } from '../theme/theme-probe';
 
 // ============================================================================
 // Graph Cache Types
@@ -36,8 +36,8 @@ export interface CacheMetadata {
 export interface CachedGraph {
     /** Cache metadata */
     metadata: CacheMetadata;
-    /** The cached module graph */
-    graph: ModuleGraph;
+    /** The cached component graph */
+    graph: ComponentGraph;
 }
 
 // ============================================================================
@@ -54,8 +54,8 @@ export interface AnalysisCacheMetadata {
     timestamp: number;
     /** Deep-wiki version */
     version: string;
-    /** Number of cached modules */
-    moduleCount: number;
+    /** Number of cached components */
+    componentCount: number;
 }
 
 /**
@@ -63,7 +63,7 @@ export interface AnalysisCacheMetadata {
  */
 export interface CachedAnalysis {
     /** The analysis result */
-    analysis: ModuleAnalysis;
+    analysis: ComponentAnalysis;
     /** Git hash when this analysis was created */
     gitHash: string;
     /** Timestamp */
@@ -93,17 +93,17 @@ export interface CachedArticle {
 /**
  * A cached consolidation result (Phase 2).
  *
- * Keyed by git hash and the number of input modules (pre-consolidation count),
+ * Keyed by git hash and the number of input components (pre-consolidation count),
  * so the cache is invalidated when either the repo changes or the discovery
- * graph produces a different module set.
+ * graph produces a different component set.
  */
 export interface CachedConsolidation {
-    /** The consolidated module graph */
-    graph: ModuleGraph;
+    /** The consolidated component graph */
+    graph: ComponentGraph;
     /** Git hash when the consolidation was performed */
     gitHash: string;
-    /** Number of input modules before consolidation */
-    inputModuleCount: number;
+    /** Number of input components before consolidation */
+    inputComponentCount: number;
     /** Timestamp */
     timestamp: number;
 }
@@ -117,7 +117,7 @@ export interface CachedConsolidation {
  */
 export interface CachedProbeResult {
     /** The probe result */
-    probeResult: TopicProbeResult;
+    probeResult: ThemeProbeResult;
     /** Git hash when this probe was executed */
     gitHash: string;
     /** Timestamp */
@@ -129,7 +129,7 @@ export interface CachedProbeResult {
  */
 export interface CachedSeeds {
     /** The generated seeds */
-    seeds: TopicSeed[];
+    seeds: ThemeSeed[];
     /** Git hash when seeds were generated */
     gitHash: string;
     /** Timestamp */
@@ -153,7 +153,7 @@ export interface CachedStructuralScan {
  */
 export interface CachedDomainGraph {
     /** The domain sub-graph */
-    graph: ModuleGraph;
+    graph: ComponentGraph;
     /** Git hash when this domain was discovered */
     gitHash: string;
     /** Timestamp */
@@ -174,10 +174,10 @@ export interface DiscoveryProgressMetadata {
     currentRound: number;
     /** Maximum rounds configured */
     maxRounds: number;
-    /** Topics that have been completed */
-    completedTopics: string[];
-    /** Topics pending execution */
-    pendingTopics: string[];
+    /** Themes that have been completed */
+    completedThemes: string[];
+    /** Themes pending execution */
+    pendingThemes: string[];
     /** Whether convergence was reached */
     converged: boolean;
     /** Coverage estimate (0-1) */
@@ -185,13 +185,13 @@ export interface DiscoveryProgressMetadata {
 }
 
 // ============================================================================
-// Topic Cache Types
+// Theme Cache Types
 // ============================================================================
 
 /**
- * A cached topic probe result (enriched).
+ * A cached theme probe result (enriched).
  */
-export interface CachedTopicProbe {
+export interface CachedThemeProbe {
     /** The enriched probe result */
     result: EnrichedProbeResult;
     /** Git hash when this probe was executed */
@@ -201,11 +201,11 @@ export interface CachedTopicProbe {
 }
 
 /**
- * A cached topic outline.
+ * A cached theme outline.
  */
-export interface CachedTopicOutline {
-    /** The topic outline */
-    outline: TopicOutline;
+export interface CachedThemeOutline {
+    /** The theme outline */
+    outline: ThemeOutline;
     /** Git hash when this outline was created */
     gitHash: string;
     /** Timestamp */
@@ -213,11 +213,11 @@ export interface CachedTopicOutline {
 }
 
 /**
- * A cached topic analysis.
+ * A cached theme analysis.
  */
-export interface CachedTopicAnalysis {
-    /** The topic analysis */
-    analysis: TopicAnalysis;
+export interface CachedThemeAnalysis {
+    /** The theme analysis */
+    analysis: ThemeAnalysis;
     /** Git hash when this analysis was created */
     gitHash: string;
     /** Timestamp */
@@ -225,11 +225,11 @@ export interface CachedTopicAnalysis {
 }
 
 /**
- * A cached topic article (per-article incremental).
+ * A cached theme article (per-article incremental).
  */
-export interface CachedTopicArticle {
-    /** The topic article */
-    article: TopicArticle;
+export interface CachedThemeArticle {
+    /** The theme article */
+    article: ThemeArticle;
     /** Git hash when this article was generated */
     gitHash: string;
     /** Timestamp */

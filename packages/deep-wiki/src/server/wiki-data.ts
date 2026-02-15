@@ -1,7 +1,7 @@
 /**
  * Wiki Data Layer
  *
- * Reads and caches wiki data (module graph, markdown articles, analyses)
+ * Reads and caches wiki data (component graph, markdown articles, analyses)
  * from the wiki output directory on disk.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
@@ -9,16 +9,16 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import type { ModuleGraph, ModuleInfo, ModuleAnalysis, TopicAreaMeta } from '../types';
+import type { ComponentGraph, ComponentInfo, ComponentAnalysis, ThemeMeta } from '../types';
 
 // ============================================================================
 // Types
 // ============================================================================
 
 /**
- * Module summary returned by the /api/modules endpoint.
+ * Component summary returned by the /api/components endpoint.
  */
-export interface ModuleSummary {
+export interface ComponentSummary {
     id: string;
     name: string;
     category: string;
@@ -28,12 +28,12 @@ export interface ModuleSummary {
 }
 
 /**
- * Module detail returned by the /api/modules/:id endpoint.
+ * Component detail returned by the /api/components/:id endpoint.
  */
-export interface ModuleDetail {
-    module: ModuleInfo;
+export interface ComponentDetail {
+    component: ComponentInfo;
     markdown: string;
-    analysis?: ModuleAnalysis;
+    analysis?: ComponentAnalysis;
 }
 
 /**
@@ -46,20 +46,20 @@ export interface SpecialPage {
 }
 
 /**
- * Single topic article content.
+ * Single theme article content.
  */
-export interface TopicArticleContent {
+export interface ThemeArticleContent {
     slug: string;
     title: string;
     content: string;
 }
 
 /**
- * Topic article detail returned by the /api/topics/:id/:slug endpoint.
+ * Theme article detail returned by the /api/themes/:id/:slug endpoint.
  */
-export interface TopicArticleDetail {
+export interface ThemeArticleDetail {
     content: string;
-    meta: TopicAreaMeta;
+    meta: ThemeMeta;
 }
 
 // ============================================================================
@@ -73,10 +73,10 @@ export interface TopicArticleDetail {
  */
 export class WikiData {
     private wikiDir: string;
-    private _graph: ModuleGraph | null = null;
+    private _graph: ComponentGraph | null = null;
     private _markdown: Record<string, string> = {};
-    private _analyses: Map<string, ModuleAnalysis> = new Map();
-    private _topicMarkdown: Record<string, string> = {};
+    private _analyses: Map<string, ComponentAnalysis> = new Map();
+    private _themeMarkdown: Record<string, string> = {};
 
     constructor(wikiDir: string) {
         this.wikiDir = path.resolve(wikiDir);
@@ -86,10 +86,10 @@ export class WikiData {
      * Load all wiki data from disk. Call on startup and after rebuilds.
      */
     load(): void {
-        this._graph = this.readModuleGraph();
+        this._graph = this.readComponentGraph();
         this._markdown = this.readMarkdownFiles();
         this._analyses = this.readAnalyses();
-        this._topicMarkdown = this.readTopicFiles();
+        this._themeMarkdown = this.readThemeFiles();
     }
 
     /**
@@ -100,9 +100,9 @@ export class WikiData {
     }
 
     /**
-     * Get the full module graph.
+     * Get the full component graph.
      */
-    get graph(): ModuleGraph {
+    get graph(): ComponentGraph {
         if (!this._graph) {
             throw new Error('Wiki data not loaded. Call load() first.');
         }
@@ -117,10 +117,10 @@ export class WikiData {
     }
 
     /**
-     * Get summaries for all modules.
+     * Get summaries for all components.
      */
-    getModuleSummaries(): ModuleSummary[] {
-        return this.graph.modules.map(mod => ({
+    getComponentSummaries(): ComponentSummary[] {
+        return this.graph.components.map(mod => ({
             id: mod.id,
             name: mod.name,
             category: mod.category,
@@ -131,18 +131,18 @@ export class WikiData {
     }
 
     /**
-     * Get detailed info for a single module.
+     * Get detailed info for a single component.
      */
-    getModuleDetail(moduleId: string): ModuleDetail | null {
-        const mod = this.graph.modules.find(m => m.id === moduleId);
+    getComponentDetail(componentId: string): ComponentDetail | null {
+        const mod = this.graph.components.find(m => m.id === componentId);
         if (!mod) {
             return null;
         }
 
         return {
-            module: mod,
-            markdown: this._markdown[moduleId] || '',
-            analysis: this._analyses.get(moduleId),
+            component: mod,
+            markdown: this._markdown[componentId] || '',
+            analysis: this._analyses.get(componentId),
         };
     }
 
@@ -177,26 +177,26 @@ export class WikiData {
     }
 
     /**
-     * Get all topic markdown data (used by context builder for indexing).
+     * Get all theme markdown data (used by context builder for indexing).
      */
-    getTopicMarkdownData(): Record<string, string> {
-        return { ...this._topicMarkdown };
+    getThemeMarkdownData(): Record<string, string> {
+        return { ...this._themeMarkdown };
     }
 
     /**
-     * Get the list of all topic areas with metadata.
+     * Get the list of all theme areas with metadata.
      */
-    getTopicList(): TopicAreaMeta[] {
-        return this.graph.topics || [];
+    getThemeList(): ThemeMeta[] {
+        return this.graph.themes || [];
     }
 
     /**
-     * Get a single topic article by topicId and optional slug.
-     * If slug is omitted, returns the first article (or index) for the topic.
+     * Get a single theme article by themeId and optional slug.
+     * If slug is omitted, returns the first article (or index) for the theme.
      */
-    getTopicArticle(topicId: string, slug?: string): TopicArticleDetail | null {
-        const topics = this.graph.topics || [];
-        const meta = topics.find(t => t.id === topicId);
+    getThemeArticle(themeId: string, slug?: string): ThemeArticleDetail | null {
+        const themes = this.graph.themes || [];
+        const meta = themes.find(t => t.id === themeId);
         if (!meta) {
             return null;
         }
@@ -206,8 +206,8 @@ export class WikiData {
             return null;
         }
 
-        const key = `topic:${topicId}:${targetSlug}`;
-        const content = this._topicMarkdown[key];
+        const key = `theme:${themeId}:${targetSlug}`;
+        const content = this._themeMarkdown[key];
         if (!content) {
             return null;
         }
@@ -216,19 +216,19 @@ export class WikiData {
     }
 
     /**
-     * Get all articles for a topic area.
+     * Get all articles for a theme area.
      */
-    getTopicArticles(topicId: string): TopicArticleContent[] {
-        const topics = this.graph.topics || [];
-        const meta = topics.find(t => t.id === topicId);
+    getThemeArticles(themeId: string): ThemeArticleContent[] {
+        const themes = this.graph.themes || [];
+        const meta = themes.find(t => t.id === themeId);
         if (!meta) {
             return [];
         }
 
-        const articles: TopicArticleContent[] = [];
+        const articles: ThemeArticleContent[] = [];
         for (const article of meta.articles) {
-            const key = `topic:${topicId}:${article.slug}`;
-            const content = this._topicMarkdown[key] || '';
+            const key = `theme:${themeId}:${article.slug}`;
+            const content = this._themeMarkdown[key] || '';
             articles.push({
                 slug: article.slug,
                 title: article.title,
@@ -249,13 +249,13 @@ export class WikiData {
     // Private: Disk Readers
     // ========================================================================
 
-    private readModuleGraph(): ModuleGraph {
-        const graphPath = path.join(this.wikiDir, 'module-graph.json');
+    private readComponentGraph(): ComponentGraph {
+        const graphPath = path.join(this.wikiDir, 'component-graph.json');
         if (!fs.existsSync(graphPath)) {
-            throw new Error(`module-graph.json not found in ${this.wikiDir}`);
+            throw new Error(`component-graph.json not found in ${this.wikiDir}`);
         }
         const content = fs.readFileSync(graphPath, 'utf-8');
-        return JSON.parse(content) as ModuleGraph;
+        return JSON.parse(content) as ComponentGraph;
     }
 
     private readMarkdownFiles(): Record<string, string> {
@@ -271,14 +271,14 @@ export class WikiData {
             }
         }
 
-        // Read flat-layout module files
-        const modulesDir = path.join(this.wikiDir, 'modules');
-        if (fs.existsSync(modulesDir) && fs.statSync(modulesDir).isDirectory()) {
-            const files = fs.readdirSync(modulesDir).filter(f => f.endsWith('.md'));
+        // Read flat-layout component files
+        const componentsDir = path.join(this.wikiDir, 'components');
+        if (fs.existsSync(componentsDir) && fs.statSync(componentsDir).isDirectory()) {
+            const files = fs.readdirSync(componentsDir).filter(f => f.endsWith('.md'));
             for (const file of files) {
                 const slug = path.basename(file, '.md');
-                const moduleId = this.findModuleIdBySlug(slug);
-                data[moduleId || slug] = fs.readFileSync(path.join(modulesDir, file), 'utf-8');
+                const componentId = this.findComponentIdBySlug(slug);
+                data[componentId || slug] = fs.readFileSync(path.join(componentsDir, file), 'utf-8');
             }
         }
 
@@ -301,14 +301,14 @@ export class WikiData {
                     }
                 }
 
-                // Area module files
-                const domainModulesDir = path.join(domainDir, 'modules');
-                if (fs.existsSync(domainModulesDir) && fs.statSync(domainModulesDir).isDirectory()) {
-                    const files = fs.readdirSync(domainModulesDir).filter(f => f.endsWith('.md'));
+                // Area component files
+                const domainComponentsDir = path.join(domainDir, 'components');
+                if (fs.existsSync(domainComponentsDir) && fs.statSync(domainComponentsDir).isDirectory()) {
+                    const files = fs.readdirSync(domainComponentsDir).filter(f => f.endsWith('.md'));
                     for (const file of files) {
                         const slug = path.basename(file, '.md');
-                        const moduleId = this.findModuleIdBySlug(slug);
-                        data[moduleId || slug] = fs.readFileSync(path.join(domainModulesDir, file), 'utf-8');
+                        const componentId = this.findComponentIdBySlug(slug);
+                        data[componentId || slug] = fs.readFileSync(path.join(domainComponentsDir, file), 'utf-8');
                     }
                 }
             }
@@ -317,8 +317,8 @@ export class WikiData {
         return data;
     }
 
-    private readAnalyses(): Map<string, ModuleAnalysis> {
-        const analyses = new Map<string, ModuleAnalysis>();
+    private readAnalyses(): Map<string, ComponentAnalysis> {
+        const analyses = new Map<string, ComponentAnalysis>();
 
         // Try to read from cache directory
         const cacheDir = path.join(this.wikiDir, '.wiki-cache', 'analyses');
@@ -332,9 +332,9 @@ export class WikiData {
                 const content = fs.readFileSync(path.join(cacheDir, file), 'utf-8');
                 const parsed = JSON.parse(content);
                 // Handle both direct analysis and cached analysis formats
-                const analysis: ModuleAnalysis = parsed.analysis || parsed;
-                if (analysis.moduleId) {
-                    analyses.set(analysis.moduleId, analysis);
+                const analysis: ComponentAnalysis = parsed.analysis || parsed;
+                if (analysis.componentId) {
+                    analyses.set(analysis.componentId, analysis);
                 }
             } catch {
                 // Skip invalid files
@@ -345,40 +345,40 @@ export class WikiData {
     }
 
     /**
-     * Read topic article files from the topics/ directory.
-     * Keys are in format `topic:{topicId}:{slug}`.
+     * Read theme article files from the themes/ directory.
+     * Keys are in format `theme:{themeId}:{slug}`.
      */
-    private readTopicFiles(): Record<string, string> {
+    private readThemeFiles(): Record<string, string> {
         const data: Record<string, string> = {};
-        const topicsDir = path.join(this.wikiDir, 'topics');
+        const themesDir = path.join(this.wikiDir, 'themes');
 
-        if (!fs.existsSync(topicsDir) || !fs.statSync(topicsDir).isDirectory()) {
+        if (!fs.existsSync(themesDir) || !fs.statSync(themesDir).isDirectory()) {
             return data;
         }
 
-        const topics = this._graph?.topics || [];
+        const themes = this._graph?.themes || [];
 
-        for (const topic of topics) {
-            if (topic.layout === 'single') {
-                // Single-file topics: topics/{topicId}.md
-                const filePath = path.join(topicsDir, `${topic.id}.md`);
+        for (const theme of themes) {
+            if (theme.layout === 'single') {
+                // Single-file themes: themes/{themeId}.md
+                const filePath = path.join(themesDir, `${theme.id}.md`);
                 if (fs.existsSync(filePath)) {
-                    const slug = topic.articles.length > 0 ? topic.articles[0].slug : topic.id;
-                    data[`topic:${topic.id}:${slug}`] = fs.readFileSync(filePath, 'utf-8');
+                    const slug = theme.articles.length > 0 ? theme.articles[0].slug : theme.id;
+                    data[`theme:${theme.id}:${slug}`] = fs.readFileSync(filePath, 'utf-8');
                 }
             } else {
-                // Area-layout topics: topics/{topicId}/*.md
-                const topicDir = path.join(topicsDir, topic.id);
-                if (fs.existsSync(topicDir) && fs.statSync(topicDir).isDirectory()) {
-                    for (const article of topic.articles) {
+                // Area-layout themes: themes/{themeId}/*.md
+                const themeDir = path.join(themesDir, theme.id);
+                if (fs.existsSync(themeDir) && fs.statSync(themeDir).isDirectory()) {
+                    for (const article of theme.articles) {
                         const slug = article.slug;
                         // Try the slug directly, then fallback to index.md for index articles
-                        let filePath = path.join(topicDir, `${slug}.md`);
-                        if (!fs.existsSync(filePath) && slug === topic.id) {
-                            filePath = path.join(topicDir, 'index.md');
+                        let filePath = path.join(themeDir, `${slug}.md`);
+                        if (!fs.existsSync(filePath) && slug === theme.id) {
+                            filePath = path.join(themeDir, 'index.md');
                         }
                         if (fs.existsSync(filePath)) {
-                            data[`topic:${topic.id}:${slug}`] = fs.readFileSync(filePath, 'utf-8');
+                            data[`theme:${theme.id}:${slug}`] = fs.readFileSync(filePath, 'utf-8');
                         }
                     }
                 }
@@ -388,10 +388,10 @@ export class WikiData {
         return data;
     }
 
-    private findModuleIdBySlug(slug: string): string | null {
+    private findComponentIdBySlug(slug: string): string | null {
         if (!this._graph) { return null; }
         const normalized = slug.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-        for (const mod of this._graph.modules) {
+        for (const mod of this._graph.components) {
             const modSlug = mod.id.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
             if (modSlug === normalized) {
                 return mod.id;

@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { loadWikiGraph, listTopicAreas, checkTopicCoverage, tokenize } from '../../src/topic/coverage-checker';
-import { ModuleGraph, TopicRequest } from '../../src/types';
+import { loadWikiGraph, listThemeAreas, checkThemeCoverage, tokenize } from '../../src/theme/coverage-checker';
+import { ComponentGraph, ThemeRequest } from '../../src/types';
 
 // ─── Test Helpers ────────────────────────────────────────────────────────────
 
@@ -15,7 +15,7 @@ function rmDir(dir: string): void {
     fs.rmSync(dir, { recursive: true, force: true });
 }
 
-function makeGraph(overrides: Partial<ModuleGraph> = {}): ModuleGraph {
+function makeGraph(overrides: Partial<ComponentGraph> = {}): ComponentGraph {
     return {
         project: {
             name: 'test-project',
@@ -24,14 +24,14 @@ function makeGraph(overrides: Partial<ModuleGraph> = {}): ModuleGraph {
             buildSystem: 'npm',
             entryPoints: ['src/index.ts']
         },
-        modules: [],
+        components: [],
         categories: [{ name: 'core', description: 'Core modules' }],
         architectureNotes: 'Test architecture',
         ...overrides
     };
 }
 
-function writeGraph(wikiDir: string, graph: ModuleGraph): void {
+function writeGraph(wikiDir: string, graph: ComponentGraph): void {
     fs.mkdirSync(wikiDir, { recursive: true });
     fs.writeFileSync(
         path.join(wikiDir, 'module-graph.json'),
@@ -83,56 +83,56 @@ describe('coverage-checker', () => {
             const result = loadWikiGraph(wikiDir);
             expect(result).not.toBeNull();
             expect(result!.architectureNotes).toBe('loaded');
-            expect(result!.modules).toEqual([]);
+            expect(result!.components).toEqual([]);
         });
     });
 
-    // ─── listTopicAreas ──────────────────────────────────────────────────
+    // ─── listThemeAreas ──────────────────────────────────────────────────
 
-    describe('listTopicAreas', () => {
+    describe('listThemeAreas', () => {
         it('returns empty array when wiki does not exist', () => {
-            const result = listTopicAreas(path.join(tmpDir, 'nonexistent'));
+            const result = listThemeAreas(path.join(tmpDir, 'nonexistent'));
             expect(result).toEqual([]);
         });
 
-        it('reads topics from module-graph.json', () => {
+        it('reads themes from module-graph.json', () => {
             const wikiDir = path.join(tmpDir, 'wiki');
             const graph = makeGraph({
-                topics: [{
+                themes: [{
                     id: 'compaction',
                     title: 'Compaction',
                     description: 'LSM compaction',
                     layout: 'area',
-                    articles: [{ slug: 'index', title: 'compaction', path: 'topics/compaction/index.md' }],
-                    involvedModuleIds: ['compaction-picker'],
-                    directoryPath: 'topics/compaction',
+                    articles: [{ slug: 'index', title: 'compaction', path: 'themes/compaction/index.md' }],
+                    involvedComponentIds: ['compaction-picker'],
+                    directoryPath: 'themes/compaction',
                     generatedAt: 1000
                 }]
             });
             writeGraph(wikiDir, graph);
 
-            const result = listTopicAreas(wikiDir);
+            const result = listThemeAreas(wikiDir);
             expect(result).toHaveLength(1);
             expect(result[0].id).toBe('compaction');
             expect(result[0].generatedAt).toBe(1000);
         });
 
-        it('reads topics from filesystem topics/ directory', () => {
+        it('reads themes from filesystem themes/ directory', () => {
             const wikiDir = path.join(tmpDir, 'wiki');
             writeGraph(wikiDir, makeGraph());
 
-            // Single-article topic
-            const topicsDir = path.join(wikiDir, 'topics');
-            fs.mkdirSync(topicsDir, { recursive: true });
-            fs.writeFileSync(path.join(topicsDir, 'auth.md'), '# Auth topic', 'utf-8');
+            // Single-article theme
+            const themesDir = path.join(wikiDir, 'themes');
+            fs.mkdirSync(themesDir, { recursive: true });
+            fs.writeFileSync(path.join(themesDir, 'auth.md'), '# Auth theme', 'utf-8');
 
-            // Multi-article topic area
-            const compactionDir = path.join(topicsDir, 'compaction');
+            // Multi-article theme area
+            const compactionDir = path.join(themesDir, 'compaction');
             fs.mkdirSync(compactionDir, { recursive: true });
             fs.writeFileSync(path.join(compactionDir, 'index.md'), '# Compaction', 'utf-8');
             fs.writeFileSync(path.join(compactionDir, 'leveled.md'), '# Leveled', 'utf-8');
 
-            const result = listTopicAreas(wikiDir);
+            const result = listThemeAreas(wikiDir);
             expect(result).toHaveLength(2);
 
             const auth = result.find(t => t.id === 'auth');
@@ -149,28 +149,28 @@ describe('coverage-checker', () => {
         it('merges graph and filesystem, graph takes precedence', () => {
             const wikiDir = path.join(tmpDir, 'wiki');
             const graph = makeGraph({
-                topics: [{
+                themes: [{
                     id: 'compaction',
                     title: 'Compaction (from graph)',
                     description: 'From graph',
                     layout: 'area',
                     articles: [],
-                    involvedModuleIds: [],
-                    directoryPath: 'topics/compaction',
+                    involvedComponentIds: [],
+                    directoryPath: 'themes/compaction',
                     generatedAt: 2000
                 }]
             });
             writeGraph(wikiDir, graph);
 
             // Also exists on filesystem
-            const compactionDir = path.join(wikiDir, 'topics', 'compaction');
+            const compactionDir = path.join(wikiDir, 'themes', 'compaction');
             fs.mkdirSync(compactionDir, { recursive: true });
             fs.writeFileSync(path.join(compactionDir, 'index.md'), '# Compaction', 'utf-8');
 
-            // And a filesystem-only topic
-            fs.writeFileSync(path.join(wikiDir, 'topics', 'bloom.md'), '# Bloom', 'utf-8');
+            // And a filesystem-only theme
+            fs.writeFileSync(path.join(wikiDir, 'themes', 'bloom.md'), '# Bloom', 'utf-8');
 
-            const result = listTopicAreas(wikiDir);
+            const result = listThemeAreas(wikiDir);
             expect(result).toHaveLength(2);
 
             const compaction = result.find(t => t.id === 'compaction');
@@ -182,79 +182,79 @@ describe('coverage-checker', () => {
         });
     });
 
-    // ─── checkTopicCoverage ──────────────────────────────────────────────
+    // ─── checkThemeCoverage ──────────────────────────────────────────────
 
-    describe('checkTopicCoverage', () => {
-        it('returns "exists" when topic ID exactly matches', () => {
+    describe('checkThemeCoverage', () => {
+        it('returns "exists" when theme ID exactly matches', () => {
             const graph = makeGraph({
-                topics: [{
+                themes: [{
                     id: 'compaction',
                     title: 'Compaction',
                     description: 'LSM compaction',
                     layout: 'area',
-                    articles: [{ slug: 'index', title: 'Compaction', path: 'topics/compaction/index.md' }],
-                    involvedModuleIds: ['compaction-picker', 'compaction-job'],
-                    directoryPath: 'topics/compaction',
+                    articles: [{ slug: 'index', title: 'Compaction', path: 'themes/compaction/index.md' }],
+                    involvedComponentIds: ['compaction-picker', 'compaction-job'],
+                    directoryPath: 'themes/compaction',
                     generatedAt: 1000
                 }],
-                modules: [
+                components: [
                     { id: 'compaction-picker', name: 'Compaction Picker', path: 'src/compaction/', purpose: 'Picks compaction candidates', keyFiles: [], dependencies: [], dependents: [], complexity: 'medium', category: 'core' },
                     { id: 'compaction-job', name: 'Compaction Job', path: 'src/compaction/', purpose: 'Runs compaction jobs', keyFiles: [], dependencies: [], dependents: [], complexity: 'medium', category: 'core' }
                 ]
             });
-            const topic: TopicRequest = { topic: 'compaction' };
+            const theme: ThemeRequest = { theme: 'compaction' };
 
-            const result = checkTopicCoverage(topic, graph, tmpDir);
+            const result = checkThemeCoverage(theme, graph, tmpDir);
             expect(result.status).toBe('exists');
-            expect(result.existingArticlePath).toBe('topics/compaction/index.md');
-            expect(result.relatedModules).toHaveLength(2);
-            expect(result.relatedModules.every(m => m.relevance === 'high')).toBe(true);
+            expect(result.existingArticlePath).toBe('themes/compaction/index.md');
+            expect(result.relatedComponents).toHaveLength(2);
+            expect(result.relatedComponents.every(m => m.relevance === 'high')).toBe(true);
         });
 
         it('returns "partial" when multiple modules match by name', () => {
             const graph = makeGraph({
-                modules: [
+                components: [
                     { id: 'compaction-picker', name: 'Compaction Picker', path: 'src/compaction/', purpose: 'Picks compaction candidates', keyFiles: [], dependencies: [], dependents: [], complexity: 'medium', category: 'core' },
                     { id: 'compaction-job', name: 'Compaction Job', path: 'src/compaction/', purpose: 'Runs compaction jobs', keyFiles: [], dependencies: [], dependents: [], complexity: 'medium', category: 'core' },
                     { id: 'storage-engine', name: 'Storage Engine', path: 'src/storage/', purpose: 'Core storage engine', keyFiles: [], dependencies: [], dependents: [], complexity: 'high', category: 'core' }
                 ]
             });
-            const topic: TopicRequest = { topic: 'compaction' };
+            const theme: ThemeRequest = { theme: 'compaction' };
 
-            const result = checkTopicCoverage(topic, graph, tmpDir);
+            const result = checkThemeCoverage(theme, graph, tmpDir);
             expect(result.status).toBe('partial');
-            expect(result.relatedModules.length).toBeGreaterThanOrEqual(2);
-            const compactionModules = result.relatedModules.filter(m => m.moduleId.includes('compaction'));
+            expect(result.relatedComponents.length).toBeGreaterThanOrEqual(2);
+            const compactionModules = result.relatedComponents.filter(m => m.componentId.includes('compaction'));
             expect(compactionModules.length).toBe(2);
         });
 
         it('returns "new" when no modules match', () => {
             const graph = makeGraph({
-                modules: [
+                components: [
                     { id: 'auth', name: 'Authentication', path: 'src/auth/', purpose: 'User authentication', keyFiles: [], dependencies: [], dependents: [], complexity: 'medium', category: 'core' },
                     { id: 'database', name: 'Database', path: 'src/db/', purpose: 'Database layer', keyFiles: [], dependencies: [], dependents: [], complexity: 'high', category: 'core' }
                 ]
             });
-            const topic: TopicRequest = { topic: 'bloom-filters' };
+            const theme: ThemeRequest = { theme: 'bloom-filters' };
 
-            const result = checkTopicCoverage(topic, graph, tmpDir);
+            const result = checkThemeCoverage(theme, graph, tmpDir);
             expect(result.status).toBe('new');
-            expect(result.relatedModules).toHaveLength(0);
+            expect(result.relatedComponents).toHaveLength(0);
         });
 
         it('returns "new" when wiki directory does not exist', () => {
             const graph = makeGraph();
-            const topic: TopicRequest = { topic: 'anything' };
+            const theme: ThemeRequest = { theme: 'anything' };
 
-            const result = checkTopicCoverage(topic, graph, path.join(tmpDir, 'nonexistent'));
+            const result = checkThemeCoverage(theme, graph, path.join(tmpDir, 'nonexistent'));
             expect(result.status).toBe('new');
-            expect(result.relatedModules).toEqual([]);
+            expect(result.relatedComponents).toEqual([]);
         });
 
         it('considers article content for low-relevance matching', () => {
             const wikiDir = path.join(tmpDir, 'wiki');
             const graph = makeGraph({
-                modules: [
+                components: [
                     { id: 'storage', name: 'Storage', path: 'src/storage/', purpose: 'Core storage engine', keyFiles: [], dependencies: [], dependents: [], complexity: 'high', category: 'core' }
                 ]
             });
@@ -269,57 +269,57 @@ describe('coverage-checker', () => {
                 'utf-8'
             );
 
-            const topic: TopicRequest = { topic: 'bloom-filters' };
-            const result = checkTopicCoverage(topic, graph, wikiDir);
+            const theme: ThemeRequest = { theme: 'bloom-filters' };
+            const result = checkThemeCoverage(theme, graph, wikiDir);
 
             // Should find the storage module as related (low relevance from article content)
-            const storageMatch = result.relatedModules.find(m => m.moduleId === 'storage');
+            const storageMatch = result.relatedComponents.find(m => m.componentId === 'storage');
             expect(storageMatch).toBeDefined();
         });
 
         it('uses description and hints for broader matching', () => {
             const graph = makeGraph({
-                modules: [
+                components: [
                     { id: 'wal', name: 'Write Ahead Log', path: 'src/wal/', purpose: 'Write-ahead logging for crash recovery', keyFiles: [], dependencies: [], dependents: [], complexity: 'high', category: 'core' },
                     { id: 'recovery', name: 'Recovery Manager', path: 'src/recovery/', purpose: 'Handles crash recovery using WAL', keyFiles: [], dependencies: [], dependents: [], complexity: 'high', category: 'core' }
                 ]
             });
-            const topic: TopicRequest = {
-                topic: 'crash-safety',
+            const theme: ThemeRequest = {
+                theme: 'crash-safety',
                 description: 'How the system recovers from crashes using write-ahead logging',
                 hints: ['wal', 'recovery']
             };
 
-            const result = checkTopicCoverage(topic, graph, tmpDir);
-            expect(result.relatedModules.length).toBeGreaterThanOrEqual(2);
+            const result = checkThemeCoverage(theme, graph, tmpDir);
+            expect(result.relatedComponents.length).toBeGreaterThanOrEqual(2);
 
-            const walMatch = result.relatedModules.find(m => m.moduleId === 'wal');
-            const recoveryMatch = result.relatedModules.find(m => m.moduleId === 'recovery');
+            const walMatch = result.relatedComponents.find(m => m.componentId === 'wal');
+            const recoveryMatch = result.relatedComponents.find(m => m.componentId === 'recovery');
             expect(walMatch).toBeDefined();
             expect(recoveryMatch).toBeDefined();
         });
 
-        it('handles graph with no topics field', () => {
+        it('handles graph with no themes field', () => {
             const graph = makeGraph({
-                modules: [
+                components: [
                     { id: 'auth', name: 'Auth', path: 'src/auth/', purpose: 'Authentication', keyFiles: [], dependencies: [], dependents: [], complexity: 'low', category: 'core' }
                 ]
             });
-            // Explicitly no topics
-            delete (graph as any).topics;
+            // Explicitly no themes
+            delete (graph as any).themes;
 
-            const topic: TopicRequest = { topic: 'auth' };
-            const result = checkTopicCoverage(topic, graph, tmpDir);
-            // Should match module by name, not find existing topic
+            const theme: ThemeRequest = { theme: 'auth' };
+            const result = checkThemeCoverage(theme, graph, tmpDir);
+            // Should match module by name, not find existing theme
             expect(result.status).not.toBe('exists');
-            expect(result.relatedModules.length).toBeGreaterThanOrEqual(1);
+            expect(result.relatedComponents.length).toBeGreaterThanOrEqual(1);
         });
     });
 
     // ─── tokenize ────────────────────────────────────────────────────────
 
     describe('tokenize', () => {
-        it('splits kebab-case topic names', () => {
+        it('splits kebab-case theme names', () => {
             const tokens = tokenize('bloom-filters', undefined, undefined);
             expect(tokens).toContain('bloom');
             expect(tokens).toContain('filters');

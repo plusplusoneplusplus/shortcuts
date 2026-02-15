@@ -167,15 +167,15 @@ describe('Discovery Phase Logging', () => {
     });
 
     describe('iterative discovery logging', () => {
-        it('should log round progress with topic count', async () => {
+        it('should log round progress with theme count', async () => {
             // Mock probe and merge at the component level
             const probeModule = await import('../../src/discovery/iterative/probe-session');
             const mergeModule = await import('../../src/discovery/iterative/merge-session');
 
-            vi.spyOn(probeModule, 'runTopicProbe').mockResolvedValue({
-                topic: 'auth',
+            vi.spyOn(probeModule, 'runThemeProbe').mockResolvedValue({
+                theme: 'auth',
                 foundComponents: [{ id: 'auth-mod', name: 'Auth', path: 'src/auth', purpose: 'Auth', keyFiles: [], dependencies: [], dependents: [], complexity: 'low' as const, category: 'core' }],
-                discoveredTopics: [],
+                discoveredThemes: [],
                 dependencies: [],
                 confidence: 0.9,
             });
@@ -187,7 +187,7 @@ describe('Discovery Phase Logging', () => {
                     categories: [],
                     architectureNotes: '',
                 },
-                newTopics: [],
+                newThemes: [],
                 converged: true,
                 coverage: 0.9,
                 reason: 'High coverage',
@@ -196,7 +196,7 @@ describe('Discovery Phase Logging', () => {
             const { runIterativeDiscovery } = await import('../../src/discovery/iterative/iterative-discovery');
             await runIterativeDiscovery({
                 repoPath: '/test/repo',
-                seeds: [{ topic: 'auth', description: 'Auth', hints: ['auth'] }],
+                seeds: [{ theme: 'auth', description: 'Auth', hints: ['auth'] }],
                 maxRounds: 3,
                 concurrency: 5,
             });
@@ -226,10 +226,10 @@ describe('Discovery Phase Logging', () => {
             const probeModule = await import('../../src/discovery/iterative/probe-session');
             const mergeModule = await import('../../src/discovery/iterative/merge-session');
 
-            vi.spyOn(probeModule, 'runTopicProbe').mockResolvedValue({
-                topic: 'auth',
+            vi.spyOn(probeModule, 'runThemeProbe').mockResolvedValue({
+                theme: 'auth',
                 foundComponents: [],
-                discoveredTopics: [],
+                discoveredThemes: [],
                 dependencies: [],
                 confidence: 0.8,
             });
@@ -241,7 +241,7 @@ describe('Discovery Phase Logging', () => {
                     categories: [],
                     architectureNotes: '',
                 },
-                newTopics: [],
+                newThemes: [],
                 converged: false,
                 coverage: 0.85,
                 reason: '',
@@ -250,7 +250,7 @@ describe('Discovery Phase Logging', () => {
             const { runIterativeDiscovery } = await import('../../src/discovery/iterative/iterative-discovery');
             await runIterativeDiscovery({
                 repoPath: '/test/repo',
-                seeds: [{ topic: 'auth', description: 'Auth', hints: [] }],
+                seeds: [{ theme: 'auth', description: 'Auth', hints: [] }],
                 coverageThreshold: 0.8,
             });
 
@@ -259,14 +259,14 @@ describe('Discovery Phase Logging', () => {
             );
         });
 
-        it('should log new topics discovered between rounds', async () => {
+        it('should log new themes discovered between rounds', async () => {
             const probeModule = await import('../../src/discovery/iterative/probe-session');
             const mergeModule = await import('../../src/discovery/iterative/merge-session');
 
-            vi.spyOn(probeModule, 'runTopicProbe').mockResolvedValue({
-                topic: 'auth',
+            vi.spyOn(probeModule, 'runThemeProbe').mockResolvedValue({
+                theme: 'auth',
                 foundComponents: [],
-                discoveredTopics: [],
+                discoveredThemes: [],
                 dependencies: [],
                 confidence: 0.7,
             });
@@ -279,7 +279,7 @@ describe('Discovery Phase Logging', () => {
                         categories: [],
                         architectureNotes: '',
                     },
-                    newTopics: [{ topic: 'database', description: 'DB layer', hints: ['db'] }],
+                    newThemes: [{ theme: 'database', description: 'DB layer', hints: ['db'] }],
                     converged: false,
                     coverage: 0.4,
                     reason: '',
@@ -291,7 +291,7 @@ describe('Discovery Phase Logging', () => {
                         categories: [],
                         architectureNotes: '',
                     },
-                    newTopics: [],
+                    newThemes: [],
                     converged: true,
                     coverage: 0.9,
                     reason: 'Done',
@@ -300,12 +300,12 @@ describe('Discovery Phase Logging', () => {
             const { runIterativeDiscovery } = await import('../../src/discovery/iterative/iterative-discovery');
             await runIterativeDiscovery({
                 repoPath: '/test/repo',
-                seeds: [{ topic: 'auth', description: 'Auth', hints: [] }],
+                seeds: [{ theme: 'auth', description: 'Auth', hints: [] }],
                 maxRounds: 3,
             });
 
             expect(printInfo).toHaveBeenCalledWith(
-                expect.stringContaining('Discovered 1 new topics')
+                expect.stringContaining('Discovered 1 new themes')
             );
         });
     });

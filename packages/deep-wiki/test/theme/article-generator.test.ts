@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type {
-    TopicOutline,
-    TopicAnalysis,
-    TopicArticle,
-    TopicArticlePlan,
-    TopicArticleAnalysis,
-    TopicCrossCuttingAnalysis,
+    ThemeOutline,
+    ThemeAnalysis,
+    ThemeArticle,
+    ThemeArticlePlan,
+    ThemeArticleAnalysis,
+    ThemeCrossCuttingAnalysis,
 } from '../../src/types';
 
 // ─── Mock SDK ──────────────────────────────────────────────────────────
@@ -29,48 +29,48 @@ vi.mock('../../src/logger', () => ({
 }));
 
 import {
-    generateTopicArticles,
+    generateThemeArticles,
     extractSummary,
-    type TopicArticleGenOptions,
-    type TopicArticleGenResult,
-} from '../../src/topic/article-generator';
+    type ThemeArticleGenOptions,
+    type ThemeArticleGenResult,
+} from '../../src/theme/article-generator';
 import {
     buildSubArticlePrompt,
     buildIndexPagePrompt,
-} from '../../src/topic/article-prompts';
+} from '../../src/theme/article-prompts';
 
 // ─── Helpers ───────────────────────────────────────────────────────────
 
-function makeArticlePlan(overrides: Partial<TopicArticlePlan> = {}): TopicArticlePlan {
+function makeArticlePlan(overrides: Partial<ThemeArticlePlan> = {}): ThemeArticlePlan {
     return {
         slug: 'article-a',
         title: 'Article A',
         description: 'Description of article A',
         isIndex: false,
-        coveredModuleIds: ['mod-a'],
+        coveredComponentIds: ['mod-a'],
         coveredFiles: ['src/mod-a/index.ts', 'src/mod-a/utils.ts'],
         ...overrides,
     };
 }
 
-function makeOutline(articles?: TopicArticlePlan[], layout?: 'single' | 'area'): TopicOutline {
+function makeOutline(articles?: ThemeArticlePlan[], layout?: 'single' | 'area'): ThemeOutline {
     return {
-        topicId: 'test-topic',
-        title: 'Test Topic',
+        themeId: 'test-theme',
+        title: 'Test Theme',
         layout: layout ?? 'area',
         articles: articles ?? [
-            makeArticlePlan({ slug: 'index', title: 'Overview', isIndex: true, coveredModuleIds: ['mod-a', 'mod-b'], coveredFiles: [] }),
-            makeArticlePlan({ slug: 'article-a', title: 'Article A', coveredModuleIds: ['mod-a'] }),
-            makeArticlePlan({ slug: 'article-b', title: 'Article B', coveredModuleIds: ['mod-b'], coveredFiles: ['src/mod-b/main.ts'] }),
+            makeArticlePlan({ slug: 'index', title: 'Overview', isIndex: true, coveredComponentIds: ['mod-a', 'mod-b'], coveredFiles: [] }),
+            makeArticlePlan({ slug: 'article-a', title: 'Article A', coveredComponentIds: ['mod-a'] }),
+            makeArticlePlan({ slug: 'article-b', title: 'Article B', coveredComponentIds: ['mod-b'], coveredFiles: ['src/mod-b/main.ts'] }),
         ],
-        involvedModules: [
-            { moduleId: 'mod-a', role: 'Module A handles data', keyFiles: ['src/mod-a/index.ts'] },
-            { moduleId: 'mod-b', role: 'Module B handles UI', keyFiles: ['src/mod-b/main.ts'] },
+        involvedComponents: [
+            { componentId: 'mod-a', role: 'Module A handles data', keyFiles: ['src/mod-a/index.ts'] },
+            { componentId: 'mod-b', role: 'Module B handles UI', keyFiles: ['src/mod-b/main.ts'] },
         ],
     };
 }
 
-function makeArticleAnalysis(slug: string): TopicArticleAnalysis {
+function makeArticleAnalysis(slug: string): ThemeArticleAnalysis {
     return {
         slug,
         keyConcepts: [{ name: 'Concept1', description: 'Desc1', codeRef: 'src/file.ts' }],
@@ -80,30 +80,30 @@ function makeArticleAnalysis(slug: string): TopicArticleAnalysis {
     };
 }
 
-function makeCrossCutting(): TopicCrossCuttingAnalysis {
+function makeCrossCutting(): ThemeCrossCuttingAnalysis {
     return {
         architecture: 'Modules A and B collaborate via events',
         dataFlow: 'Input → Module A → Module B → Output',
         suggestedDiagram: 'graph LR\n  A --> B',
         configuration: 'Set env.MODE to control behavior',
-        relatedTopics: ['caching', 'logging'],
+        relatedThemes: ['caching', 'logging'],
     };
 }
 
-function makeAnalysis(outline: TopicOutline): TopicAnalysis {
+function makeAnalysis(outline: ThemeOutline): ThemeAnalysis {
     const nonIndex = outline.articles.filter(a => !a.isIndex);
     return {
-        topicId: outline.topicId,
-        overview: 'Overview of test topic',
+        themeId: outline.themeId,
+        overview: 'Overview of test theme',
         perArticle: nonIndex.map(a => makeArticleAnalysis(a.slug)),
         crossCutting: makeCrossCutting(),
     };
 }
 
-function makeSingleAnalysis(): TopicAnalysis {
+function makeSingleAnalysis(): ThemeAnalysis {
     return {
-        topicId: 'test-topic',
-        overview: 'Overview of test topic',
+        themeId: 'test-theme',
+        overview: 'Overview of test theme',
         perArticle: [makeArticleAnalysis('index')],
         crossCutting: makeCrossCutting(),
     };
@@ -113,16 +113,16 @@ function makeSubArticleResponse(title: string, slug: string, siblings: string[] 
     const seeAlso = siblings.length > 0
         ? `\n\n## See also\n${siblings.map(s => `- [${s}](./${s}.md)`).join('\n')}`
         : '';
-    return `# ${title}\n\n> Part of the [Test Topic](./index.md) topic area.\n\nThis article covers ${title}.${seeAlso}`;
+    return `# ${title}\n\n> Part of the [Test Theme](./index.md) theme area.\n\nThis article covers ${title}.${seeAlso}`;
 }
 
-function makeIndexResponse(topicTitle: string): string {
-    return `# ${topicTitle}\n\nOverview of the topic.\n\n## Architecture\n\n\`\`\`mermaid\ngraph LR\n  A --> B\n\`\`\`\n\n## Articles\n\n- [Article A](./article-a.md)\n- [Article B](./article-b.md)`;
+function makeIndexResponse(themeTitle: string): string {
+    return `# ${themeTitle}\n\nOverview of the theme.\n\n## Architecture\n\n\`\`\`mermaid\ngraph LR\n  A --> B\n\`\`\`\n\n## Articles\n\n- [Article A](./article-a.md)\n- [Article B](./article-b.md)`;
 }
 
 // ─── Tests ─────────────────────────────────────────────────────────────
 
-describe('Topic Article Generator', () => {
+describe('Theme Article Generator', () => {
     beforeEach(() => {
         vi.clearAllMocks();
     });
@@ -130,14 +130,14 @@ describe('Topic Article Generator', () => {
     // ── Prompt Construction ────────────────────────────────────────────
 
     describe('buildSubArticlePrompt', () => {
-        it('should include topic title, article details, and analysis data', () => {
+        it('should include theme title, article details, and analysis data', () => {
             const plan = makeArticlePlan({ slug: 'my-article', title: 'My Article' });
             const analysis = makeArticleAnalysis('my-article');
             const siblings = [{ slug: 'sibling-a', title: 'Sibling A' }];
 
-            const prompt = buildSubArticlePrompt('My Topic', plan, analysis, siblings, 'normal');
+            const prompt = buildSubArticlePrompt('My Theme', plan, analysis, siblings, 'normal');
 
-            expect(prompt).toContain('My Topic');
+            expect(prompt).toContain('My Theme');
             expect(prompt).toContain('My Article');
             expect(prompt).toContain('my-article');
             expect(prompt).toContain('Concept1');
@@ -149,7 +149,7 @@ describe('Topic Article Generator', () => {
         it('should include code examples from analysis', () => {
             const plan = makeArticlePlan();
             const analysis = makeArticleAnalysis('article-a');
-            const prompt = buildSubArticlePrompt('Topic', plan, analysis, [], 'normal');
+            const prompt = buildSubArticlePrompt('Theme', plan, analysis, [], 'normal');
 
             expect(prompt).toContain('Example 1');
             expect(prompt).toContain('const x = 1;');
@@ -159,7 +159,7 @@ describe('Topic Article Generator', () => {
         it('should use shallow style for shallow depth', () => {
             const plan = makeArticlePlan();
             const analysis = makeArticleAnalysis('article-a');
-            const prompt = buildSubArticlePrompt('Topic', plan, analysis, [], 'shallow');
+            const prompt = buildSubArticlePrompt('Theme', plan, analysis, [], 'shallow');
 
             expect(prompt).toContain('500-800 words');
         });
@@ -167,17 +167,17 @@ describe('Topic Article Generator', () => {
         it('should use deep style for deep depth', () => {
             const plan = makeArticlePlan();
             const analysis = makeArticleAnalysis('article-a');
-            const prompt = buildSubArticlePrompt('Topic', plan, analysis, [], 'deep');
+            const prompt = buildSubArticlePrompt('Theme', plan, analysis, [], 'deep');
 
             expect(prompt).toContain('1500-3000 words');
         });
 
         it('should handle empty analysis gracefully', () => {
             const plan = makeArticlePlan({ coveredFiles: [] });
-            const analysis: TopicArticleAnalysis = {
+            const analysis: ThemeArticleAnalysis = {
                 slug: 'empty', keyConcepts: [], dataFlow: '', codeExamples: [], internalDetails: '',
             };
-            const prompt = buildSubArticlePrompt('Topic', plan, analysis, [], 'normal');
+            const prompt = buildSubArticlePrompt('Theme', plan, analysis, [], 'normal');
 
             expect(prompt).toContain('no key concepts available');
             expect(prompt).toContain('not described');
@@ -186,7 +186,7 @@ describe('Topic Article Generator', () => {
         it('should include covered files list', () => {
             const plan = makeArticlePlan({ coveredFiles: ['src/a.ts', 'src/b.ts'] });
             const analysis = makeArticleAnalysis('article-a');
-            const prompt = buildSubArticlePrompt('Topic', plan, analysis, [], 'normal');
+            const prompt = buildSubArticlePrompt('Theme', plan, analysis, [], 'normal');
 
             expect(prompt).toContain('src/a.ts');
             expect(prompt).toContain('src/b.ts');
@@ -194,7 +194,7 @@ describe('Topic Article Generator', () => {
     });
 
     describe('buildIndexPagePrompt', () => {
-        it('should include topic title, summaries, and cross-cutting analysis', () => {
+        it('should include theme title, summaries, and cross-cutting analysis', () => {
             const outline = makeOutline();
             const crossCutting = makeCrossCutting();
             const summaries = [
@@ -202,9 +202,9 @@ describe('Topic Article Generator', () => {
                 { slug: 'article-b', title: 'Article B', summary: 'Summary B' },
             ];
 
-            const prompt = buildIndexPagePrompt('Test Topic', outline, crossCutting, summaries);
+            const prompt = buildIndexPagePrompt('Test Theme', outline, crossCutting, summaries);
 
-            expect(prompt).toContain('Test Topic');
+            expect(prompt).toContain('Test Theme');
             expect(prompt).toContain('Summary A');
             expect(prompt).toContain('Summary B');
             expect(prompt).toContain('./article-a.md');
@@ -215,24 +215,24 @@ describe('Topic Article Generator', () => {
 
         it('should include involved modules', () => {
             const outline = makeOutline();
-            const prompt = buildIndexPagePrompt('Topic', outline, makeCrossCutting(), []);
+            const prompt = buildIndexPagePrompt('Theme', outline, makeCrossCutting(), []);
 
             expect(prompt).toContain('mod-a');
             expect(prompt).toContain('Module A handles data');
         });
 
-        it('should include related topics when available', () => {
-            const prompt = buildIndexPagePrompt('Topic', makeOutline(), makeCrossCutting(), []);
+        it('should include related themes when available', () => {
+            const prompt = buildIndexPagePrompt('Theme', makeOutline(), makeCrossCutting(), []);
 
             expect(prompt).toContain('caching');
             expect(prompt).toContain('logging');
         });
 
         it('should handle empty cross-cutting analysis', () => {
-            const emptyCross: TopicCrossCuttingAnalysis = {
+            const emptyCross: ThemeCrossCuttingAnalysis = {
                 architecture: '', dataFlow: '', suggestedDiagram: '',
             };
-            const prompt = buildIndexPagePrompt('Topic', makeOutline(), emptyCross, []);
+            const prompt = buildIndexPagePrompt('Theme', makeOutline(), emptyCross, []);
 
             expect(prompt).toContain('not described');
             expect(prompt).toContain('no diagram available');
@@ -243,7 +243,7 @@ describe('Topic Article Generator', () => {
 
     describe('extractSummary', () => {
         it('should extract first N words skipping heading', () => {
-            const content = '# Title\n\n> Topic breadcrumb.\n\nThis is the body with multiple words here and there.';
+            const content = '# Title\n\n> Theme breadcrumb.\n\nThis is the body with multiple words here and there.';
             const summary = extractSummary(content, 5);
             expect(summary).toBe('This is the body with…');
         });
@@ -275,15 +275,15 @@ describe('Topic Article Generator', () => {
                 response: makeSubArticleResponse('Complete Guide', 'index'),
             });
 
-            const result = await generateTopicArticles({
-                topicId: 'test-topic',
+            const result = await generateThemeArticles({
+                themeId: 'test-theme',
                 outline: singleOutline,
                 analysis: makeSingleAnalysis(),
                 depth: 'normal',
             });
 
             expect(result.articles).toHaveLength(1);
-            expect(result.articles[0].type).toBe('topic-article');
+            expect(result.articles[0].type).toBe('theme-article');
             expect(result.articles[0].slug).toBe('index');
             expect(result.articles[0].content).toContain('Complete Guide');
             expect(result.failedSlugs).toBeUndefined();
@@ -303,10 +303,10 @@ describe('Topic Article Generator', () => {
             mockSendMessage
                 .mockResolvedValueOnce({ success: true, response: makeSubArticleResponse('Article A', 'article-a', ['article-b']) })
                 .mockResolvedValueOnce({ success: true, response: makeSubArticleResponse('Article B', 'article-b', ['article-a']) })
-                .mockResolvedValueOnce({ success: true, response: makeIndexResponse('Test Topic') });
+                .mockResolvedValueOnce({ success: true, response: makeIndexResponse('Test Theme') });
 
-            const result = await generateTopicArticles({
-                topicId: 'test-topic',
+            const result = await generateThemeArticles({
+                themeId: 'test-theme',
                 outline,
                 analysis,
                 depth: 'normal',
@@ -314,8 +314,8 @@ describe('Topic Article Generator', () => {
 
             expect(result.articles).toHaveLength(3);
 
-            const subArticles = result.articles.filter(a => a.type === 'topic-article');
-            const indexArticle = result.articles.find(a => a.type === 'topic-index');
+            const subArticles = result.articles.filter(a => a.type === 'theme-article');
+            const indexArticle = result.articles.find(a => a.type === 'theme-index');
 
             expect(subArticles).toHaveLength(2);
             expect(indexArticle).toBeDefined();
@@ -342,10 +342,10 @@ describe('Topic Article Generator', () => {
                     success: true,
                     response: '# Article B\n\n## See also\n- [Article A](./article-a.md)',
                 })
-                .mockResolvedValueOnce({ success: true, response: makeIndexResponse('Test Topic') });
+                .mockResolvedValueOnce({ success: true, response: makeIndexResponse('Test Theme') });
 
-            const result = await generateTopicArticles({
-                topicId: 'test-topic',
+            const result = await generateThemeArticles({
+                themeId: 'test-theme',
                 outline,
                 analysis,
                 depth: 'normal',
@@ -365,15 +365,15 @@ describe('Topic Article Generator', () => {
         it('should fire for each article including index', async () => {
             const outline = makeOutline();
             const analysis = makeAnalysis(outline);
-            const completedArticles: TopicArticle[] = [];
+            const completedArticles: ThemeArticle[] = [];
 
             mockSendMessage
                 .mockResolvedValueOnce({ success: true, response: makeSubArticleResponse('Article A', 'article-a') })
                 .mockResolvedValueOnce({ success: true, response: makeSubArticleResponse('Article B', 'article-b') })
-                .mockResolvedValueOnce({ success: true, response: makeIndexResponse('Test Topic') });
+                .mockResolvedValueOnce({ success: true, response: makeIndexResponse('Test Theme') });
 
-            await generateTopicArticles({
-                topicId: 'test-topic',
+            await generateThemeArticles({
+                themeId: 'test-theme',
                 outline,
                 analysis,
                 depth: 'normal',
@@ -384,20 +384,20 @@ describe('Topic Article Generator', () => {
             expect(completedArticles.map(a => a.slug).sort()).toEqual(['article-a', 'article-b', 'index']);
         });
 
-        it('should fire for single-article topics', async () => {
+        it('should fire for single-article themes', async () => {
             const singleOutline = makeOutline(
                 [makeArticlePlan({ slug: 'index', title: 'Only', isIndex: true })],
                 'single'
             );
-            const completedArticles: TopicArticle[] = [];
+            const completedArticles: ThemeArticle[] = [];
 
             mockSendMessage.mockResolvedValueOnce({
                 success: true,
                 response: makeSubArticleResponse('Only', 'index'),
             });
 
-            await generateTopicArticles({
-                topicId: 'test-topic',
+            await generateThemeArticles({
+                themeId: 'test-theme',
                 outline: singleOutline,
                 analysis: makeSingleAnalysis(),
                 depth: 'normal',
@@ -419,18 +419,18 @@ describe('Topic Article Generator', () => {
             mockSendMessage
                 .mockRejectedValueOnce(new Error('AI timeout'))
                 .mockResolvedValueOnce({ success: true, response: makeSubArticleResponse('Article B', 'article-b') })
-                .mockResolvedValueOnce({ success: true, response: makeIndexResponse('Test Topic') });
+                .mockResolvedValueOnce({ success: true, response: makeIndexResponse('Test Theme') });
 
-            const result = await generateTopicArticles({
-                topicId: 'test-topic',
+            const result = await generateThemeArticles({
+                themeId: 'test-theme',
                 outline,
                 analysis,
                 depth: 'normal',
             });
 
             // 1 successful sub-article + 1 index
-            const subArticles = result.articles.filter(a => a.type === 'topic-article');
-            const indexArticle = result.articles.find(a => a.type === 'topic-index');
+            const subArticles = result.articles.filter(a => a.type === 'theme-article');
+            const indexArticle = result.articles.find(a => a.type === 'theme-index');
 
             expect(subArticles).toHaveLength(1);
             expect(subArticles[0].slug).toBe('article-b');
@@ -447,16 +447,16 @@ describe('Topic Article Generator', () => {
                 .mockResolvedValueOnce({ success: true, response: makeSubArticleResponse('Article B', 'article-b') })
                 .mockRejectedValueOnce(new Error('Index generation failed'));
 
-            const result = await generateTopicArticles({
-                topicId: 'test-topic',
+            const result = await generateThemeArticles({
+                themeId: 'test-theme',
                 outline,
                 analysis,
                 depth: 'normal',
             });
 
-            const indexArticle = result.articles.find(a => a.type === 'topic-index');
+            const indexArticle = result.articles.find(a => a.type === 'theme-index');
             expect(indexArticle).toBeDefined();
-            expect(indexArticle!.content).toContain('Test Topic');
+            expect(indexArticle!.content).toContain('Test Theme');
             expect(indexArticle!.content).toContain('Article A');
             expect(indexArticle!.content).toContain('Article B');
         });
@@ -468,10 +468,10 @@ describe('Topic Article Generator', () => {
             mockSendMessage
                 .mockResolvedValueOnce({ success: false, error: 'rate limited' })
                 .mockResolvedValueOnce({ success: true, response: makeSubArticleResponse('Article B', 'article-b') })
-                .mockResolvedValueOnce({ success: true, response: makeIndexResponse('Test Topic') });
+                .mockResolvedValueOnce({ success: true, response: makeIndexResponse('Test Theme') });
 
-            const result = await generateTopicArticles({
-                topicId: 'test-topic',
+            const result = await generateThemeArticles({
+                themeId: 'test-theme',
                 outline,
                 analysis,
                 depth: 'normal',
@@ -495,8 +495,8 @@ describe('Topic Article Generator', () => {
                 response: makeSubArticleResponse('Only', 'index'),
             });
 
-            await generateTopicArticles({
-                topicId: 'test-topic',
+            await generateThemeArticles({
+                themeId: 'test-theme',
                 outline: singleOutline,
                 analysis: makeSingleAnalysis(),
                 depth: 'deep',
@@ -525,8 +525,8 @@ describe('Topic Article Generator', () => {
             ]);
 
             const perArticle = articles.map(a => makeArticleAnalysis(a.slug));
-            const analysis: TopicAnalysis = {
-                topicId: 'test-topic',
+            const analysis: ThemeAnalysis = {
+                themeId: 'test-theme',
                 overview: 'Overview',
                 perArticle,
                 crossCutting: makeCrossCutting(),
@@ -540,8 +540,8 @@ describe('Topic Article Generator', () => {
                 return { success: true, response: '# Art\n\nBody content here.' };
             });
 
-            await generateTopicArticles({
-                topicId: 'test-topic',
+            await generateThemeArticles({
+                themeId: 'test-theme',
                 outline,
                 analysis,
                 depth: 'normal',
@@ -564,10 +564,10 @@ describe('Topic Article Generator', () => {
             mockSendMessage
                 .mockResolvedValueOnce({ success: true, response: makeSubArticleResponse('Article A', 'article-a') })
                 .mockResolvedValueOnce({ success: true, response: makeSubArticleResponse('Article B', 'article-b') })
-                .mockResolvedValueOnce({ success: true, response: makeIndexResponse('Test Topic') });
+                .mockResolvedValueOnce({ success: true, response: makeIndexResponse('Test Theme') });
 
-            await generateTopicArticles({
-                topicId: 'test-topic',
+            await generateThemeArticles({
+                themeId: 'test-theme',
                 outline,
                 analysis,
                 depth: 'normal',

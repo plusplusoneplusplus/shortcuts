@@ -7,7 +7,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { ComponentGraph, TopicSeed } from '../../types';
+import type { ComponentGraph, ThemeSeed } from '../../types';
 import type { MergeResult } from './types';
 import { parseComponentGraphResponse } from '../response-parser';
 import { normalizeComponentId } from '../../schemas';
@@ -41,19 +41,19 @@ export function parseMergeResponse(response: string): MergeResult {
         throw new Error(`Invalid graph in merge response: ${getErrorMessage(parseError)}`);
     }
 
-    // Parse newTopics (optional, defaults to empty array)
-    const newTopics: TopicSeed[] = [];
-    if (Array.isArray(obj.newTopics)) {
-        for (const item of obj.newTopics) {
+    // Parse newThemes (optional, defaults to empty array)
+    const newThemes: ThemeSeed[] = [];
+    if (Array.isArray(obj.newThemes)) {
+        for (const item of obj.newThemes) {
             if (typeof item !== 'object' || item === null) {
                 continue;
             }
-            const topic = item as Record<string, unknown>;
-            if (typeof topic.topic === 'string' && typeof topic.description === 'string') {
-                newTopics.push({
-                    topic: normalizeComponentId(String(topic.topic)),
-                    description: String(topic.description),
-                    hints: parseStringArray(topic.hints),
+            const theme = item as Record<string, unknown>;
+            if (typeof theme.theme === 'string' && typeof theme.description === 'string') {
+                newThemes.push({
+                    theme: normalizeComponentId(String(theme.theme)),
+                    description: String(theme.description),
+                    hints: parseStringArray(theme.hints),
                 });
             }
         }
@@ -73,7 +73,7 @@ export function parseMergeResponse(response: string): MergeResult {
 
     return {
         graph,
-        newTopics,
+        newThemes,
         converged,
         coverage,
         reason,

@@ -368,9 +368,9 @@ export function getStyles(): string {
         .component-card h4 { margin-bottom: 6px; font-size: 14px; }
         .component-card p { font-size: 12px; color: var(--content-muted); line-height: 1.4; }
 
-        /* Topic items in sidebar */
-        .nav-topic-group { padding: 2px 0; }
-        .nav-topic-header {
+        /* Theme items in sidebar */
+        .nav-theme-group { padding: 2px 0; }
+        .nav-theme-header {
             padding: 8px 20px;
             font-size: 11px;
             text-transform: uppercase;
@@ -378,7 +378,7 @@ export function getStyles(): string {
             color: var(--sidebar-muted);
             font-weight: 600;
         }
-        .nav-topic-item {
+        .nav-theme-item {
             padding: 8px 20px;
             cursor: pointer;
             font-size: 14px;
@@ -387,10 +387,10 @@ export function getStyles(): string {
             display: block;
             transition: background 0.15s;
         }
-        .nav-topic-item:hover { background: var(--sidebar-hover); }
-        .nav-topic-item.active { background: var(--sidebar-hover); border-left: 3px solid var(--sidebar-active-border); }
-        .nav-topic-children { padding-left: 8px; }
-        .nav-topic-article {
+        .nav-theme-item:hover { background: var(--sidebar-hover); }
+        .nav-theme-item.active { background: var(--sidebar-hover); border-left: 3px solid var(--sidebar-active-border); }
+        .nav-theme-children { padding-left: 8px; }
+        .nav-theme-article {
             padding: 6px 20px 6px 28px;
             cursor: pointer;
             font-size: 13px;
@@ -398,11 +398,11 @@ export function getStyles(): string {
             display: block;
             transition: background 0.15s, color 0.15s;
         }
-        .nav-topic-article:hover { background: var(--sidebar-hover); color: var(--sidebar-text); }
-        .nav-topic-article.active { background: var(--sidebar-hover); color: var(--sidebar-text); border-left: 3px solid var(--sidebar-active-border); }
+        .nav-theme-article:hover { background: var(--sidebar-hover); color: var(--sidebar-text); }
+        .nav-theme-article.active { background: var(--sidebar-hover); color: var(--sidebar-text); border-left: 3px solid var(--sidebar-active-border); }
 
-        /* Topic page layout */
-        .topic-wide .markdown-body { max-width: 1200px; }
+        /* Theme page layout */
+        .theme-wide .markdown-body { max-width: 1200px; }
 
 ${getMermaidZoomStyles()}
 

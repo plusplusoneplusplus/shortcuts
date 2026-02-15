@@ -1,15 +1,15 @@
 /**
  * Seeds Phase — Seed File Parser
  *
- * Parses seed files in JSON or CSV format into TopicSeed arrays.
- * Supports both SeedsOutput JSON format and CSV with topic,description,hints columns.
+ * Parses seed files in JSON or CSV format into ThemeSeed arrays.
+ * Supports both SeedsOutput JSON format and CSV with theme,description,hints columns.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
-import type { TopicSeed, SeedsOutput } from '../types';
+import type { ThemeSeed, SeedsOutput } from '../types';
 import { normalizeComponentId } from '../schemas';
 import { getErrorMessage } from '../utils/error-utils';
 
@@ -18,13 +18,13 @@ import { getErrorMessage } from '../utils/error-utils';
 // ============================================================================
 
 /**
- * Parse a seed file (JSON or CSV) into an array of TopicSeed objects.
+ * Parse a seed file (JSON or CSV) into an array of ThemeSeed objects.
  *
  * @param filePath - Path to the seed file
- * @returns Array of TopicSeed objects
+ * @returns Array of ThemeSeed objects
  * @throws Error if file doesn't exist, is empty, or has invalid format
  */
-export function parseSeedFile(filePath: string): TopicSeed[] {
+export function parseSeedFile(filePath: string): ThemeSeed[] {
     const absolutePath = path.resolve(filePath);
 
     // Check file exists
@@ -66,7 +66,7 @@ export function parseSeedFile(filePath: string): TopicSeed[] {
 /**
  * Parse a JSON seed file (SeedsOutput format).
  */
-function parseJsonSeedFile(content: string, filePath: string): TopicSeed[] {
+function parseJsonSeedFile(content: string, filePath: string): ThemeSeed[] {
     let parsed: unknown;
     try {
         parsed = JSON.parse(content);
@@ -80,40 +80,40 @@ function parseJsonSeedFile(content: string, filePath: string): TopicSeed[] {
 
     const obj = parsed as Record<string, unknown>;
 
-    // Check if it's a SeedsOutput format (has topics array)
-    if ('topics' in obj && Array.isArray(obj.topics)) {
-        return parseTopicsArray(obj.topics, filePath);
+    // Check if it's a SeedsOutput format (has themes array)
+    if ('themes' in obj && Array.isArray(obj.themes)) {
+        return parseThemesArray(obj.themes, filePath);
     }
 
-    // Otherwise, assume it's a direct array of topics
+    // Otherwise, assume it's a direct array of themes
     if (Array.isArray(parsed)) {
-        return parseTopicsArray(parsed, filePath);
+        return parseThemesArray(parsed, filePath);
     }
 
-    throw new Error(`Seed file ${filePath} must contain a 'topics' array or be an array of topics`);
+    throw new Error(`Seed file ${filePath} must contain a 'themes' array or be an array of themes`);
 }
 
 /**
- * Parse an array of topic objects into TopicSeed array.
+ * Parse an array of theme objects into ThemeSeed array.
  */
-function parseTopicsArray(raw: unknown[], filePath: string): TopicSeed[] {
-    const seeds: TopicSeed[] = [];
+function parseThemesArray(raw: unknown[], filePath: string): ThemeSeed[] {
+    const seeds: ThemeSeed[] = [];
 
     for (let i = 0; i < raw.length; i++) {
         const item = raw[i];
         if (typeof item !== 'object' || item === null) {
-            throw new Error(`Invalid topic at index ${i} in ${filePath}: not an object`);
+            throw new Error(`Invalid theme at index ${i} in ${filePath}: not an object`);
         }
 
         const obj = item as Record<string, unknown>;
 
         // Validate required fields
-        if (typeof obj.topic !== 'string' || !obj.topic) {
-            throw new Error(`Invalid topic at index ${i} in ${filePath}: missing or invalid 'topic' field`);
+        if (typeof obj.theme !== 'string' || !obj.theme) {
+            throw new Error(`Invalid theme at index ${i} in ${filePath}: missing or invalid 'theme' field`);
         }
 
         if (typeof obj.description !== 'string' || !obj.description) {
-            throw new Error(`Invalid topic at index ${i} in ${filePath}: missing or invalid 'description' field`);
+            throw new Error(`Invalid theme at index ${i} in ${filePath}: missing or invalid 'description' field`);
         }
 
         // Parse hints (can be array or comma-separated string)
@@ -129,15 +129,15 @@ function parseTopicsArray(raw: unknown[], filePath: string): TopicSeed[] {
                 .map(h => h.trim())
                 .filter(h => h.length > 0);
         } else {
-            hints = [normalizeComponentId(String(obj.topic))];
+            hints = [normalizeComponentId(String(obj.theme))];
         }
 
         if (hints.length === 0) {
-            hints = [normalizeComponentId(String(obj.topic))];
+            hints = [normalizeComponentId(String(obj.theme))];
         }
 
         seeds.push({
-            topic: normalizeComponentId(String(obj.topic)),
+            theme: normalizeComponentId(String(obj.theme)),
             description: String(obj.description).trim(),
             hints,
         });
@@ -151,9 +151,9 @@ function parseTopicsArray(raw: unknown[], filePath: string): TopicSeed[] {
 // ============================================================================
 
 /**
- * Parse a CSV seed file with columns: topic,description,hints
+ * Parse a CSV seed file with columns: theme,description,hints
  */
-function parseCsvSeedFile(content: string, filePath: string): TopicSeed[] {
+function parseCsvSeedFile(content: string, filePath: string): ThemeSeed[] {
     const lines = content.split('\n').map(line => line.trim()).filter(line => line.length > 0);
 
     if (lines.length === 0) {
@@ -165,31 +165,31 @@ function parseCsvSeedFile(content: string, filePath: string): TopicSeed[] {
     const headers = parseCsvLine(headerLine);
 
     // Find column indices
-    const topicIdx = headers.findIndex(h => h.toLowerCase() === 'topic');
+    const themeIdx = headers.findIndex(h => h.toLowerCase() === 'theme');
     const descIdx = headers.findIndex(h => h.toLowerCase() === 'description' || h.toLowerCase() === 'desc');
     const hintsIdx = headers.findIndex(h => h.toLowerCase() === 'hints' || h.toLowerCase() === 'hint');
 
-    if (topicIdx === -1) {
-        throw new Error(`CSV seed file ${filePath} missing 'topic' column`);
+    if (themeIdx === -1) {
+        throw new Error(`CSV seed file ${filePath} missing 'theme' column`);
     }
     if (descIdx === -1) {
         throw new Error(`CSV seed file ${filePath} missing 'description' column`);
     }
 
     // Parse data rows
-    const seeds: TopicSeed[] = [];
+    const seeds: ThemeSeed[] = [];
     for (let i = 1; i < lines.length; i++) {
         const row = parseCsvLine(lines[i]);
 
-        if (row.length <= Math.max(topicIdx, descIdx)) {
+        if (row.length <= Math.max(themeIdx, descIdx)) {
             throw new Error(`CSV seed file ${filePath} row ${i + 1} has insufficient columns`);
         }
 
-        const topic = normalizeComponentId(row[topicIdx].trim());
+        const theme = normalizeComponentId(row[themeIdx].trim());
         const description = row[descIdx].trim();
 
-        if (!topic || !description) {
-            throw new Error(`CSV seed file ${filePath} row ${i + 1} has empty topic or description`);
+        if (!theme || !description) {
+            throw new Error(`CSV seed file ${filePath} row ${i + 1} has empty theme or description`);
         }
 
         // Parse hints (comma-separated in CSV)
@@ -202,11 +202,11 @@ function parseCsvSeedFile(content: string, filePath: string): TopicSeed[] {
         }
 
         if (hints.length === 0) {
-            hints = [topic];
+            hints = [theme];
         }
 
         seeds.push({
-            topic,
+            theme,
             description,
             hints,
         });

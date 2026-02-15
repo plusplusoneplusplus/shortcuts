@@ -68,10 +68,10 @@ export function createProgram(): Command {
 
     program
         .command('seeds')
-        .description('Generate topic seeds for breadth-first discovery')
+        .description('Generate theme seeds for breadth-first discovery')
         .argument('[repo-path]', 'Path to the local git repository')
         .option('-o, --output <path>', 'Output file path', 'seeds.json')
-        .option('--max-topics <n>', 'Maximum number of topics to generate', (v: string) => parseInt(v, 10), 50)
+        .option('--max-themes <n>', 'Maximum number of themes to generate', (v: string) => parseInt(v, 10), 50)
         .option('-m, --model <model>', 'AI model to use')
         .option('-t, --timeout <seconds>', 'Timeout in seconds for seeds session', (v: string) => parseInt(v, 10))
         .option('-v, --verbose', 'Verbose logging', false)
@@ -89,7 +89,7 @@ export function createProgram(): Command {
             const { executeSeeds } = await import('./commands/seeds');
             const exitCode = await executeSeeds(resolvedRepoPath, {
                 output: opts.output as string,
-                maxTopics: (opts.maxTopics as number) || 50,
+                maxThemes: (opts.maxThemes as number) || 50,
                 model: opts.model as string | undefined,
                 timeout: opts.timeout as number | undefined,
                 verbose: Boolean(opts.verbose),
@@ -103,7 +103,7 @@ export function createProgram(): Command {
 
     program
         .command('discover')
-        .description('Discover module graph for a repository')
+        .description('Discover component graph for a repository')
         .argument('[repo-path]', 'Path to the local git repository')
         .option('-o, --output <path>', 'Output directory for results', './wiki')
         .option('-m, --model <model>', 'AI model to use')
@@ -163,7 +163,7 @@ export function createProgram(): Command {
         .option('--phase <number>', 'Start from phase N (uses cached prior phases)', (v: string) => parseInt(v, 10))
         .option('--end-phase <number>', 'End at phase N (only run phases from --phase to --end-phase)', (v: string) => parseInt(v, 10))
         .option('--skip-website', 'Skip website generation (Phase 5)', false)
-        .option('--no-cluster', 'Skip module consolidation (keep original granularity)')
+        .option('--no-cluster', 'Skip component consolidation (keep original granularity)')
         .option('--no-strict', 'Allow partial failures (default: strict, any failure aborts)')
         .option('--theme <theme>', 'Website theme: light, dark, auto', 'auto')
         .option('--title <title>', 'Override project name in website title')
@@ -241,33 +241,33 @@ export function createProgram(): Command {
         });
 
     // ========================================================================
-    // deep-wiki topic <repo-path> [topic-name]
+    // deep-wiki theme <repo-path> [theme-name]
     // ========================================================================
 
     program
-        .command('topic')
-        .description('Generate focused wiki articles about a specific topic/feature')
+        .command('theme')
+        .description('Generate focused wiki articles about a specific theme/feature')
         .argument('<repo-path>', 'Path to the repository to analyze')
-        .argument('[topic-name]', 'Topic to generate (e.g., "compaction", "authentication")')
-        .option('-d, --description <text>', 'Description to guide topic discovery')
+        .argument('[theme-name]', 'Theme to generate (e.g., "compaction", "authentication")')
+        .option('-d, --description <text>', 'Description to guide theme discovery')
         .option('-w, --wiki <path>', 'Path to existing wiki directory', './wiki')
-        .option('--force', 'Regenerate even if topic already exists', false)
-        .option('--check', 'Only check if topic exists, do not generate', false)
-        .option('--list', 'List existing topic articles', false)
+        .option('--force', 'Regenerate even if theme already exists', false)
+        .option('--check', 'Only check if theme exists, do not generate', false)
+        .option('--list', 'List existing theme articles', false)
         .option('-m, --model <model>', 'AI model to use')
         .option('--depth <level>', 'Article detail level: shallow, normal, deep', 'normal')
         .option('-t, --timeout <seconds>', 'Timeout per AI call in seconds', (v: string) => parseInt(v, 10), 120)
         .option('-c, --concurrency <number>', 'Parallel AI sessions', (v: string) => parseInt(v, 10), 3)
-        .option('--no-cross-link', 'Skip cross-linking module articles')
+        .option('--no-cross-link', 'Skip cross-linking component articles')
         .option('--no-website', 'Skip website regeneration')
         .option('--interactive', 'Review outline before generating', false)
         .option('-v, --verbose', 'Verbose output', false)
         .option('--no-color', 'Disable colored output')
-        .action(async (repoPath: string, topicName: string | undefined, opts: Record<string, unknown>) => {
+        .action(async (repoPath: string, themeName: string | undefined, opts: Record<string, unknown>) => {
             applyGlobalOptions(opts);
-            const { executeTopic } = await import('./commands/topic');
-            const exitCode = await executeTopic(repoPath, topicName, {
-                topic: topicName ?? '',
+            const { executeTheme } = await import('./commands/theme');
+            const exitCode = await executeTheme(repoPath, themeName, {
+                theme: themeName ?? '',
                 description: opts.description as string | undefined,
                 wiki: opts.wiki as string,
                 force: Boolean(opts.force),

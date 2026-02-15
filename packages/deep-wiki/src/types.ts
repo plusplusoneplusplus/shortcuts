@@ -3,9 +3,9 @@
  *
  * All shared interfaces for the deep-wiki CLI.
  * These types define the data model for the five-phase pipeline:
- *   Phase 1: Discovery      → ModuleGraph
- *   Phase 2: Consolidation  → Reduced ModuleGraph
- *   Phase 3: Analysis       → ModuleAnalysis[]
+ *   Phase 1: Discovery      → ComponentGraph
+ *   Phase 2: Consolidation  → Reduced ComponentGraph
+ *   Phase 3: Analysis       → ComponentAnalysis[]
  *   Phase 4: Writing        → Wiki articles on disk
  *   Phase 5: Website        → Static HTML site
  *
@@ -35,32 +35,32 @@ export interface ProjectInfo {
 }
 
 /**
- * A single module/package/directory in the codebase.
+ * A single component/package/directory in the codebase.
  */
-export interface ModuleInfo {
+export interface ComponentInfo {
     /** Unique lowercase kebab-case identifier */
     id: string;
-    /** Human-readable module name */
+    /** Human-readable component name */
     name: string;
     /** Path relative to repo root (e.g., "src/auth/") */
     path: string;
     /** One-sentence purpose description */
     purpose: string;
-    /** Key files in this module (relative to repo root) */
+    /** Key files in this component (relative to repo root) */
     keyFiles: string[];
-    /** IDs of modules this module depends on */
+    /** IDs of components this component depends on */
     dependencies: string[];
-    /** IDs of modules that depend on this module */
+    /** IDs of components that depend on this component */
     dependents: string[];
     /** Complexity level */
     complexity: 'low' | 'medium' | 'high';
-    /** Category this module belongs to */
+    /** Category this component belongs to */
     category: string;
     /** Domain slug from large-repo discovery (only set for large repos) */
     domain?: string;
     /** Optional line ranges for monolithic files — [[start, end], ...] */
     lineRanges?: [number, number][];
-    /** IDs of original modules merged into this one (set by consolidation phase) */
+    /** IDs of original components merged into this one (set by consolidation phase) */
     mergedFrom?: string[];
 }
 
@@ -87,26 +87,26 @@ export interface DomainInfo {
     path: string;
     /** Brief description of the area */
     description: string;
-    /** IDs of modules belonging to this area */
-    modules: string[];
+    /** IDs of components belonging to this domain */
+    components: string[];
 }
 
 /**
- * The complete module graph — output of Phase 1 (Discovery).
+ * The complete component graph — output of Phase 1 (Discovery).
  */
-export interface ModuleGraph {
+export interface ComponentGraph {
     /** High-level project information */
     project: ProjectInfo;
-    /** All discovered modules */
-    modules: ModuleInfo[];
-    /** Module categories */
+    /** All discovered components */
+    components: ComponentInfo[];
+    /** Component categories */
     categories: CategoryInfo[];
     /** Architecture notes (free-text summary) */
     architectureNotes: string;
     /** Top-level domains (only present for large repos with 3000+ files) */
     domains?: DomainInfo[];
-    /** Topic area metadata (populated by topic command) */
-    topics?: TopicAreaMeta[];
+    /** Theme area metadata (populated by theme command) */
+    themes?: ThemeMeta[];
 }
 
 /**
@@ -137,8 +137,8 @@ export interface DiscoveryOptions {
  * Result of the discovery phase.
  */
 export interface DiscoveryResult {
-    /** The discovered module graph */
-    graph: ModuleGraph;
+    /** The discovered component graph */
+    graph: ComponentGraph;
     /** Total duration in milliseconds */
     duration: number;
     /** Token usage information (if available from SDK) */
@@ -281,15 +281,15 @@ export interface StructuralScanResult {
 // Re-export analysis detail types for backward compatibility
 export type { KeyConcept, PublicAPIEntry, CodeExample, InternalDependency, ExternalDependency } from './analysis/types';
 
-// Import for use in ModuleAnalysis below
+// Import for use in ComponentAnalysis below
 import type { KeyConcept, PublicAPIEntry, CodeExample, InternalDependency, ExternalDependency } from './analysis/types';
 
 /**
- * Deep analysis result for a single module — output of Phase 3 per-module AI session.
+ * Deep analysis result for a single component — output of Phase 3 per-component AI session.
  */
-export interface ModuleAnalysis {
-    /** Module ID (matches ModuleInfo.id) */
-    moduleId: string;
+export interface ComponentAnalysis {
+    /** Component ID (matches ComponentInfo.id) */
+    componentId: string;
     /** High-level overview paragraph */
     overview: string;
     /** Key concepts and abstractions */
@@ -321,8 +321,8 @@ export interface ModuleAnalysis {
  * Options for the analysis phase (Phase 3).
  */
 export interface AnalysisOptions {
-    /** The discovered module graph */
-    graph: ModuleGraph;
+    /** The discovered component graph */
+    graph: ComponentGraph;
     /** AI model to use */
     model?: string;
     /** Timeout per module in milliseconds (default: 180000 = 3 min) */
@@ -339,8 +339,8 @@ export interface AnalysisOptions {
  * Result of the analysis phase (Phase 3).
  */
 export interface AnalysisResult {
-    /** Per-module analysis results */
-    analyses: ModuleAnalysis[];
+    /** Per-component analysis results */
+    analyses: ComponentAnalysis[];
     /** Total duration in milliseconds */
     duration: number;
     /** Token usage information (if available) */
@@ -354,7 +354,7 @@ export interface AnalysisResult {
 /**
  * Type of generated article.
  */
-export type ArticleType = 'module' | 'index' | 'architecture' | 'getting-started' | 'domain-index' | 'domain-architecture';
+export type ArticleType = 'component' | 'index' | 'architecture' | 'getting-started' | 'domain-index' | 'domain-architecture';
 
 /**
  * A single generated wiki article.
@@ -368,8 +368,8 @@ export interface GeneratedArticle {
     title: string;
     /** Markdown content */
     content: string;
-    /** Module ID (only for module articles) */
-    moduleId?: string;
+    /** Component ID (only for component articles) */
+    componentId?: string;
     /** Domain ID (for domain-level and module articles in hierarchical layout) */
     domainId?: string;
 }
@@ -378,10 +378,10 @@ export interface GeneratedArticle {
  * Options for the writing phase (Phase 4).
  */
 export interface WritingOptions {
-    /** The discovered module graph */
-    graph: ModuleGraph;
-    /** Per-module analysis results */
-    analyses: ModuleAnalysis[];
+    /** The discovered component graph */
+    graph: ComponentGraph;
+    /** Per-component analysis results */
+    analyses: ComponentAnalysis[];
     /** AI model to use */
     model?: string;
     /** Maximum parallel AI sessions (default: 5) */
@@ -400,8 +400,8 @@ export interface WikiOutput {
     articles: GeneratedArticle[];
     /** Total duration in milliseconds */
     duration: number;
-    /** Module IDs that failed article generation (empty when all succeed) */
-    failedModuleIds?: string[];
+    /** Component IDs that failed article generation (empty when all succeed) */
+    failedComponentIds?: string[];
 }
 
 // ============================================================================
@@ -511,12 +511,12 @@ export interface GenerateCommandOptions {
 }
 
 /**
- * A single topic seed — an architectural concern/module identified during Phase 0.
+ * A single theme seed — an architectural concern/module identified during Phase 0.
  */
-export interface TopicSeed {
+export interface ThemeSeed {
     /** Short kebab-case identifier (e.g., "authentication", "api-gateway") */
-    topic: string;
-    /** 1-2 sentence description of the topic */
+    theme: string;
+    /** 1-2 sentence description of the theme */
     description: string;
     /** Comma-separated or array of search terms to find related code */
     hints: string[];
@@ -532,8 +532,8 @@ export interface SeedsOutput {
     timestamp: number;
     /** Repository path used for generation */
     repoPath: string;
-    /** The discovered topic seeds */
-    topics: TopicSeed[];
+    /** The discovered theme seeds */
+    themes: ThemeSeed[];
 }
 
 /**
@@ -542,8 +542,8 @@ export interface SeedsOutput {
 export interface SeedsCommandOptions {
     /** Output file path (default: "seeds.json") */
     output: string;
-    /** Maximum number of topics to generate (default: 50) */
-    maxTopics: number;
+    /** Maximum number of themes to generate (default: 50) */
+    maxThemes: number;
     /** AI model override */
     model?: string;
     /** Timeout in seconds for seeds session */
@@ -553,15 +553,15 @@ export interface SeedsCommandOptions {
 }
 
 // ============================================================================
-// Topic Generation Types
+// Theme Generation Types
 // ============================================================================
 
 /**
- * User-provided topic request.
+ * User-provided theme request.
  */
-export interface TopicRequest {
+export interface ThemeRequest {
     /** kebab-case ID (e.g., "compaction") */
-    topic: string;
+    theme: string;
     /** User-provided description for better discovery */
     description?: string;
     /** Optional search hints (grep terms) */
@@ -569,23 +569,23 @@ export interface TopicRequest {
 }
 
 /**
- * Result of checking topic coverage in existing wiki.
+ * Result of checking theme coverage in existing wiki.
  */
-export interface TopicCoverageCheck {
-    /** Whether the topic is new, partially covered, or already exists */
+export interface ThemeCoverageCheck {
+    /** Whether the theme is new, partially covered, or already exists */
     status: 'new' | 'partial' | 'exists';
-    /** Path to existing article if topic already exists */
+    /** Path to existing article if theme already exists */
     existingArticlePath?: string;
-    /** Modules related to the topic */
-    relatedModules: TopicRelatedModule[];
+    /** Components related to the theme */
+    relatedComponents: ThemeRelatedComponent[];
 }
 
 /**
- * A module related to a topic with relevance scoring.
+ * A component related to a theme with relevance scoring.
  */
-export interface TopicRelatedModule {
-    /** ID of the related module */
-    moduleId: string;
+export interface ThemeRelatedComponent {
+    /** ID of the related component */
+    componentId: string;
     /** Path to the module's article */
     articlePath: string;
     /** Relevance level */
@@ -595,69 +595,69 @@ export interface TopicRelatedModule {
 }
 
 /**
- * AI-generated outline for how to decompose the topic into articles.
+ * AI-generated outline for how to decompose the theme into articles.
  */
-export interface TopicOutline {
-    /** Topic identifier */
-    topicId: string;
+export interface ThemeOutline {
+    /** Theme identifier */
+    themeId: string;
     /** Human-readable title */
     title: string;
     /** Layout strategy: single article or area with multiple articles */
     layout: 'single' | 'area';
     /** Planned articles */
-    articles: TopicArticlePlan[];
-    /** Modules involved in the topic */
-    involvedModules: TopicInvolvedModule[];
+    articles: ThemeArticlePlan[];
+    /** Components involved in the theme */
+    involvedComponents: ThemeInvolvedComponent[];
 }
 
 /**
- * Plan for a single article within a topic.
+ * Plan for a single article within a theme.
  */
-export interface TopicArticlePlan {
+export interface ThemeArticlePlan {
     /** URL-safe slug for the article */
     slug: string;
     /** Human-readable title */
     title: string;
     /** Brief description of what the article covers */
     description: string;
-    /** Whether this is the index article for the topic area */
+    /** Whether this is the index article for the theme area */
     isIndex: boolean;
-    /** IDs of modules covered by this article */
-    coveredModuleIds: string[];
+    /** IDs of components covered by this article */
+    coveredComponentIds: string[];
     /** Files covered by this article */
     coveredFiles: string[];
 }
 
 /**
- * A module involved in a topic with its role.
+ * A component involved in a theme with its role.
  */
-export interface TopicInvolvedModule {
+export interface ThemeInvolvedComponent {
     /** Module ID */
-    moduleId: string;
-    /** Role of the module in the topic */
+    componentId: string;
+    /** Role of the component in the theme */
     role: string;
-    /** Key files relevant to the topic */
+    /** Key files relevant to the theme */
     keyFiles: string[];
 }
 
 /**
- * Cross-cutting topic analysis result.
+ * Cross-cutting theme analysis result.
  */
-export interface TopicAnalysis {
-    /** Topic identifier */
-    topicId: string;
+export interface ThemeAnalysis {
+    /** Theme identifier */
+    themeId: string;
     /** High-level overview */
     overview: string;
     /** Per-article analysis results */
-    perArticle: TopicArticleAnalysis[];
+    perArticle: ThemeArticleAnalysis[];
     /** Cross-cutting analysis */
-    crossCutting: TopicCrossCuttingAnalysis;
+    crossCutting: ThemeCrossCuttingAnalysis;
 }
 
 /**
- * Analysis for a single article within a topic.
+ * Analysis for a single article within a theme.
  */
-export interface TopicArticleAnalysis {
+export interface ThemeArticleAnalysis {
     /** Article slug */
     slug: string;
     /** Key concepts discovered */
@@ -671,9 +671,9 @@ export interface TopicArticleAnalysis {
 }
 
 /**
- * Cross-cutting analysis across all articles in a topic.
+ * Cross-cutting analysis across all articles in a theme.
  */
-export interface TopicCrossCuttingAnalysis {
+export interface ThemeCrossCuttingAnalysis {
     /** Architecture overview */
     architecture: string;
     /** Data flow description */
@@ -682,58 +682,58 @@ export interface TopicCrossCuttingAnalysis {
     suggestedDiagram: string;
     /** Configuration notes */
     configuration?: string;
-    /** Related topic IDs */
-    relatedTopics?: string[];
+    /** Related theme IDs */
+    relatedThemes?: string[];
 }
 
 /**
- * Generated topic article (individual file within the area).
+ * Generated theme article (individual file within the area).
  */
-export interface TopicArticle {
+export interface ThemeArticle {
     /** Article type */
-    type: 'topic-index' | 'topic-article';
+    type: 'theme-index' | 'theme-article';
     /** URL-safe slug */
     slug: string;
     /** Human-readable title */
     title: string;
     /** Markdown content */
     content: string;
-    /** Parent topic identifier */
-    topicId: string;
-    /** IDs of modules covered by this article */
-    coveredModuleIds: string[];
+    /** Parent theme identifier */
+    themeId: string;
+    /** IDs of components covered by this article */
+    coveredComponentIds: string[];
 }
 
 /**
- * Topic area metadata stored in module-graph.json.
+ * Theme area metadata stored in module-graph.json.
  */
-export interface TopicAreaMeta {
-    /** Unique topic identifier */
+export interface ThemeMeta {
+    /** Unique theme identifier */
     id: string;
     /** Human-readable title */
     title: string;
-    /** Topic description */
+    /** Theme description */
     description: string;
     /** Layout strategy */
     layout: 'single' | 'area';
-    /** Articles within this topic area */
+    /** Articles within this theme area */
     articles: { slug: string; title: string; path: string }[];
-    /** IDs of modules involved in this topic */
-    involvedModuleIds: string[];
-    /** Directory path for the topic area output */
+    /** IDs of components involved in this theme */
+    involvedComponentIds: string[];
+    /** Directory path for the theme area output */
     directoryPath: string;
-    /** Timestamp when this topic was generated */
+    /** Timestamp when this theme was generated */
     generatedAt: number;
     /** Git hash at generation time */
     gitHash?: string;
 }
 
 /**
- * CLI options for the `deep-wiki topic` command.
+ * CLI options for the `deep-wiki theme` command.
  */
-export interface TopicCommandOptions {
-    /** Topic identifier */
-    topic: string;
+export interface ThemeCommandOptions {
+    /** Theme identifier */
+    theme: string;
     /** User-provided description */
     description?: string;
     /** Path to existing wiki directory */
@@ -742,7 +742,7 @@ export interface TopicCommandOptions {
     force: boolean;
     /** Check coverage only (no generation) */
     check: boolean;
-    /** List existing topics */
+    /** List existing themes */
     list: boolean;
     /** AI model override */
     model?: string;
@@ -767,7 +767,7 @@ export interface TopicCommandOptions {
 // ============================================================================
 
 // Re-export iterative discovery types for backward compatibility
-export type { TopicProbeResult, ProbeFoundModule, DiscoveredTopic, IterativeDiscoveryOptions, MergeResult } from './discovery/iterative/types';
+export type { ThemeProbeResult, ProbeFoundComponent, DiscoveredTheme, IterativeDiscoveryOptions, MergeResult } from './discovery/iterative/types';
 
 // ============================================================================
 // Serve Command Options (colocated in server/types.ts)
@@ -796,7 +796,7 @@ export type {
 } from './cache/types';
 
 // ============================================================================
-// Phase 2: Module Consolidation Types (colocated in consolidation/types.ts)
+// Phase 2: Component Consolidation Types (colocated in consolidation/types.ts)
 // ============================================================================
 
 // Re-export consolidation types for backward compatibility

@@ -6,7 +6,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-export { runSeedsSession as generateTopicSeeds } from './seeds-session';
+export { runSeedsSession as generateThemeSeeds } from './seeds-session';
 export { parseSeedFile } from './seed-file-parser';
-export type { TopicSeed, SeedsOutput, SeedsCommandOptions } from '../types';
+export type { ThemeSeed, SeedsOutput, SeedsCommandOptions } from '../types';
 export { SeedsError } from './seeds-session';

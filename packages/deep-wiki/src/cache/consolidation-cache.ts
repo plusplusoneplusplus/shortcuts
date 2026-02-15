@@ -7,7 +7,7 @@
 
 import * as path from 'path';
 import type {
-    ModuleGraph,
+    ComponentGraph,
 } from '../types';
 import type {
     CachedConsolidation,
@@ -43,17 +43,17 @@ export function getConsolidatedGraphCachePath(outputDir: string): string {
  *
  * @param repoPath - Path to the git repository
  * @param outputDir - Output directory containing the cache
- * @param inputModuleCount - Number of modules in the pre-consolidation graph
+ * @param inputComponentCount - Number of modules in the pre-consolidation graph
  * @returns The cached consolidated graph if valid, or null if cache miss
  */
 export async function getCachedConsolidation(
     repoPath: string,
     outputDir: string,
-    inputModuleCount: number
+    inputComponentCount: number
 ): Promise<CachedConsolidation | null> {
     const cached = readCacheFileIf<CachedConsolidation>(
         getConsolidatedGraphCachePath(outputDir),
-        (d) => !!d.graph && !!d.gitHash && !!d.inputModuleCount && d.inputModuleCount === inputModuleCount
+        (d) => !!d.graph && !!d.gitHash && !!d.inputComponentCount && d.inputComponentCount === inputComponentCount
     );
     if (!cached) {
         return null;
@@ -78,16 +78,16 @@ export async function getCachedConsolidation(
  * from a different discovery result.
  *
  * @param outputDir - Output directory containing the cache
- * @param inputModuleCount - Number of modules in the pre-consolidation graph
+ * @param inputComponentCount - Number of modules in the pre-consolidation graph
  * @returns The cached consolidated graph if structurally valid, or null
  */
 export function getCachedConsolidationAny(
     outputDir: string,
-    inputModuleCount: number
+    inputComponentCount: number
 ): CachedConsolidation | null {
     return readCacheFileIf<CachedConsolidation>(
         getConsolidatedGraphCachePath(outputDir),
-        (d) => !!d.graph && !!d.gitHash && !!d.inputModuleCount && d.inputModuleCount === inputModuleCount
+        (d) => !!d.graph && !!d.gitHash && !!d.inputComponentCount && d.inputComponentCount === inputComponentCount
     );
 }
 
@@ -101,13 +101,13 @@ export function getCachedConsolidationAny(
  * @param repoPath - Path to the git repository
  * @param graph - The consolidated module graph
  * @param outputDir - Output directory for the cache
- * @param inputModuleCount - Number of modules before consolidation
+ * @param inputComponentCount - Number of modules before consolidation
  */
 export async function saveConsolidation(
     repoPath: string,
-    graph: ModuleGraph,
+    graph: ComponentGraph,
     outputDir: string,
-    inputModuleCount: number
+    inputComponentCount: number
 ): Promise<void> {
     const currentHash = await getFolderHeadHash(repoPath);
     if (!currentHash) {
@@ -117,7 +117,7 @@ export async function saveConsolidation(
     writeCacheFile<CachedConsolidation>(getConsolidatedGraphCachePath(outputDir), {
         graph,
         gitHash: currentHash,
-        inputModuleCount,
+        inputComponentCount,
         timestamp: Date.now(),
     });
 }

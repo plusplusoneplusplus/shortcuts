@@ -93,9 +93,9 @@ export async function executeServe(
         return EXIT_CODES.CONFIG_ERROR;
     }
 
-    const graphPath = path.join(resolvedWikiDir, 'module-graph.json');
+    const graphPath = path.join(resolvedWikiDir, 'component-graph.json');
     if (!fs.existsSync(graphPath)) {
-        printError(`module-graph.json not found in ${resolvedWikiDir}`);
+        printError(`component-graph.json not found in ${resolvedWikiDir}`);
         printInfo('The wiki directory does not contain generated wiki data.');
         printInfo('Run `deep-wiki generate <repo-path>` first, or use `--generate <repo-path>`.');
         return EXIT_CODES.CONFIG_ERROR;

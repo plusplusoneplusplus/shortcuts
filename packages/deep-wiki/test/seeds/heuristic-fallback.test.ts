@@ -1,7 +1,7 @@
 /**
  * Seeds Heuristic Fallback Tests
  *
- * Tests for directory-name-based topic seed generation.
+ * Tests for directory-name-based theme seed generation.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -22,7 +22,7 @@ describe('Heuristic Fallback', () => {
     });
 
     describe('generateHeuristicSeeds', () => {
-        it('should create topics from directory names', () => {
+        it('should create themes from directory names', () => {
             // Create test directories
             fs.mkdirSync(path.join(tmpDir, 'src'));
             fs.mkdirSync(path.join(tmpDir, 'lib'));
@@ -31,13 +31,13 @@ describe('Heuristic Fallback', () => {
             const seeds = generateHeuristicSeeds(tmpDir);
             expect(seeds.length).toBeGreaterThanOrEqual(3);
 
-            const topicIds = seeds.map(s => s.topic);
-            expect(topicIds).toContain('src');
-            expect(topicIds).toContain('lib');
-            expect(topicIds).toContain('tests');
+            const themeIds = seeds.map(s => s.theme);
+            expect(themeIds).toContain('src');
+            expect(themeIds).toContain('lib');
+            expect(themeIds).toContain('tests');
         });
 
-        it('should filter out common non-topic directories', () => {
+        it('should filter out common non-theme directories', () => {
             // Create excluded directories
             fs.mkdirSync(path.join(tmpDir, 'node_modules'));
             fs.mkdirSync(path.join(tmpDir, '.git'));
@@ -49,14 +49,14 @@ describe('Heuristic Fallback', () => {
             fs.mkdirSync(path.join(tmpDir, 'lib'));
 
             const seeds = generateHeuristicSeeds(tmpDir);
-            const topicIds = seeds.map(s => s.topic);
+            const themeIds = seeds.map(s => s.theme);
 
-            expect(topicIds).not.toContain('node-modules');
-            expect(topicIds).not.toContain('git');
-            expect(topicIds).not.toContain('dist');
-            expect(topicIds).not.toContain('build');
-            expect(topicIds).toContain('src');
-            expect(topicIds).toContain('lib');
+            expect(themeIds).not.toContain('node-modules');
+            expect(themeIds).not.toContain('git');
+            expect(themeIds).not.toContain('dist');
+            expect(themeIds).not.toContain('build');
+            expect(themeIds).toContain('src');
+            expect(themeIds).toContain('lib');
         });
 
         it('should normalize directory names to kebab-case', () => {
@@ -65,19 +65,19 @@ describe('Heuristic Fallback', () => {
             fs.mkdirSync(path.join(tmpDir, 'database-layer'));
 
             const seeds = generateHeuristicSeeds(tmpDir);
-            const topicIds = seeds.map(s => s.topic);
+            const themeIds = seeds.map(s => s.theme);
 
-            expect(topicIds).toContain('api-gateway');
+            expect(themeIds).toContain('api-gateway');
             // normalizeComponentId converts UserAuth to userauth (no camelCase splitting)
-            expect(topicIds).toContain('userauth');
-            expect(topicIds).toContain('database-layer');
+            expect(themeIds).toContain('userauth');
+            expect(themeIds).toContain('database-layer');
         });
 
         it('should include directory name in hints', () => {
             fs.mkdirSync(path.join(tmpDir, 'authentication'));
 
             const seeds = generateHeuristicSeeds(tmpDir);
-            const authSeed = seeds.find(s => s.topic === 'authentication');
+            const authSeed = seeds.find(s => s.theme === 'authentication');
 
             expect(authSeed).toBeDefined();
             expect(authSeed!.hints).toContain('authentication');
@@ -93,10 +93,10 @@ describe('Heuristic Fallback', () => {
             fs.mkdirSync(path.join(tmpDir, 'src'));
 
             const seeds = generateHeuristicSeeds(tmpDir);
-            const topicIds = seeds.map(s => s.topic);
+            const themeIds = seeds.map(s => s.theme);
 
-            expect(topicIds).not.toContain('file-txt');
-            expect(topicIds).toContain('src');
+            expect(themeIds).not.toContain('file-txt');
+            expect(themeIds).toContain('src');
         });
 
         it('should handle directories with special characters', () => {
@@ -107,9 +107,9 @@ describe('Heuristic Fallback', () => {
             const seeds = generateHeuristicSeeds(tmpDir);
             expect(seeds.length).toBeGreaterThanOrEqual(3);
 
-            // All topics should be valid kebab-case
+            // All themes should be valid kebab-case
             for (const seed of seeds) {
-                expect(seed.topic).toMatch(/^[a-z][a-z0-9]*(-[a-z0-9]+)*$/);
+                expect(seed.theme).toMatch(/^[a-z][a-z0-9]*(-[a-z0-9]+)*$/);
             }
         });
 
@@ -123,17 +123,17 @@ describe('Heuristic Fallback', () => {
             fs.mkdirSync(path.join(tmpDir, 'visible'));
 
             const seeds = generateHeuristicSeeds(tmpDir);
-            const topicIds = seeds.map(s => s.topic);
+            const themeIds = seeds.map(s => s.theme);
 
-            expect(topicIds).not.toContain('hidden');
-            expect(topicIds).toContain('visible');
+            expect(themeIds).not.toContain('hidden');
+            expect(themeIds).toContain('visible');
         });
 
         it('should create description from directory name', () => {
             fs.mkdirSync(path.join(tmpDir, 'authentication'));
 
             const seeds = generateHeuristicSeeds(tmpDir);
-            const authSeed = seeds.find(s => s.topic === 'authentication');
+            const authSeed = seeds.find(s => s.theme === 'authentication');
 
             expect(authSeed).toBeDefined();
             expect(authSeed!.description).toContain('authentication');

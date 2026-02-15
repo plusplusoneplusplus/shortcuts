@@ -101,7 +101,7 @@ describe('CLI', () => {
             const optionNames = cmd.options.map(o => o.long || o.short);
 
             expect(optionNames).toContain('--output');
-            expect(optionNames).toContain('--max-topics');
+            expect(optionNames).toContain('--max-themes');
             expect(optionNames).toContain('--model');
             expect(optionNames).toContain('--timeout');
             expect(optionNames).toContain('--verbose');
@@ -115,10 +115,10 @@ describe('CLI', () => {
             expect(outputOpt!.defaultValue).toBe('seeds.json');
         });
 
-        it('should have default value for --max-topics', () => {
+        it('should have default value for --max-themes', () => {
             const program = createProgram();
             const cmd = program.commands.find(c => c.name() === 'seeds')!;
-            const maxOpt = cmd.options.find(o => o.long === '--max-topics');
+            const maxOpt = cmd.options.find(o => o.long === '--max-themes');
             expect(maxOpt).toBeDefined();
             expect(maxOpt!.defaultValue).toBe(50);
         });
@@ -318,7 +318,7 @@ describe('CLI', () => {
     // ========================================================================
 
     describe('parseInt option parsing safety', () => {
-        it('should parse --max-topics correctly in seeds command', () => {
+        it('should parse --max-themes correctly in seeds command', () => {
             const program = createProgram();
             const cmd = program.commands.find(c => c.name() === 'seeds')!;
 
@@ -327,9 +327,9 @@ describe('CLI', () => {
                 capturedOpts = opts;
             });
 
-            program.parse(['node', 'deep-wiki', 'seeds', '.', '--max-topics', '100']);
-            expect(capturedOpts.maxTopics).toBe(100);
-            expect(Number.isNaN(capturedOpts.maxTopics)).toBe(false);
+            program.parse(['node', 'deep-wiki', 'seeds', '.', '--max-themes', '100']);
+            expect(capturedOpts.maxThemes).toBe(100);
+            expect(Number.isNaN(capturedOpts.maxThemes)).toBe(false);
         });
 
         it('should parse --timeout correctly in seeds command', () => {

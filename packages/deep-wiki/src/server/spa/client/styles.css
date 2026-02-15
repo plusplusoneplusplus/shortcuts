@@ -293,7 +293,7 @@ body {
 .nav-domain-item .nav-item-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .nav-domain-children { padding-left: 8px; }
-.nav-domain-module {
+.nav-domain-component {
     padding: 5px 14px 5px 20px;
     cursor: pointer;
     font-size: 13px;
@@ -304,14 +304,14 @@ body {
     align-items: center;
     transition: background 0.1s, color 0.1s;
 }
-.nav-domain-module:hover { background: var(--sidebar-hover); color: var(--sidebar-text); }
-.nav-domain-module.active {
+.nav-domain-component:hover { background: var(--sidebar-hover); color: var(--sidebar-text); }
+.nav-domain-component.active {
     background: var(--sidebar-active-bg);
     color: var(--sidebar-active-text);
     font-weight: 500;
     border-left: 3px solid var(--sidebar-active-border);
 }
-.nav-domain-module .nav-item-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-domain-component .nav-item-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Category timestamp in sidebar (for non-domain repos) */
 .nav-last-indexed {
@@ -583,13 +583,13 @@ body {
 .stat-card .value { font-size: 24px; font-weight: 700; color: var(--content-text); }
 .stat-card .value.small { font-size: 15px; }
 
-.module-grid {
+.component-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
     gap: 10px;
     margin-top: 20px;
 }
-.module-card {
+.component-card {
     background: var(--card-bg);
     border: 1px solid var(--card-border);
     border-radius: 8px;
@@ -597,12 +597,12 @@ body {
     cursor: pointer;
     transition: border-color 0.15s, box-shadow 0.15s;
 }
-.module-card:hover {
+.component-card:hover {
     border-color: var(--card-hover-border);
     box-shadow: 0 2px 8px rgba(0,0,0,0.06);
 }
-.module-card h4 { margin-bottom: 4px; font-size: 14px; }
-.module-card p { font-size: 12px; color: var(--content-muted); line-height: 1.4; }
+.component-card h4 { margin-bottom: 4px; font-size: 14px; }
+.component-card p { font-size: 12px; color: var(--content-muted); line-height: 1.4; }
 
 .loading {
     text-align: center;
@@ -1068,8 +1068,8 @@ body {
     .generate-range-row { flex-direction: column; align-items: flex-start; }
 }
 
-/* Module Regenerate Button (on module page) */
-.module-regen-btn {
+/* Component Regenerate Button (on component page) */
+.component-regen-btn {
     display: inline-flex; align-items: center; gap: 6px;
     padding: 6px 14px; border: none; border-radius: 6px;
     background: var(--code-bg); color: var(--content-text);
@@ -1077,12 +1077,12 @@ body {
     transition: background 0.15s, opacity 0.15s;
     float: right; margin-top: -4px;
 }
-.module-regen-btn:hover { background: var(--sidebar-hover); }
-.module-regen-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.module-regen-btn.regen-running {
+.component-regen-btn:hover { background: var(--sidebar-hover); }
+.component-regen-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.component-regen-btn.regen-running {
     pointer-events: none; opacity: 0.8;
 }
-.module-regen-btn.regen-success {
+.component-regen-btn.regen-success {
     background: rgba(34, 197, 94, 0.15); color: #22c55e;
 }
 
@@ -1102,56 +1102,56 @@ body {
     z-index: 11; font-size: 14px; color: var(--content-muted); font-weight: 500;
 }
 
-/* Phase 4 Module List (admin generate tab) */
-.phase-module-list-toggle {
+/* Phase 4 Component List (admin generate tab) */
+.phase-component-list-toggle {
     display: flex; align-items: center; gap: 6px;
     padding: 8px 16px 8px 56px;
     background: none; border: none; cursor: pointer;
     font-size: 13px; color: var(--link-color); font-weight: 500;
     width: 100%;
 }
-.phase-module-list-toggle:hover { text-decoration: underline; }
-.phase-module-list-toggle .toggle-arrow {
+.phase-component-list-toggle:hover { text-decoration: underline; }
+.phase-component-list-toggle .toggle-arrow {
     display: inline-block; transition: transform 0.2s;
     font-size: 10px;
 }
-.phase-module-list-toggle.expanded .toggle-arrow {
+.phase-component-list-toggle.expanded .toggle-arrow {
     transform: rotate(90deg);
 }
-.phase-module-list {
+.phase-component-list {
     display: none; padding: 0 16px 12px 56px;
 }
-.phase-module-list.expanded { display: block; }
-.phase-module-row {
+.phase-component-list.expanded { display: block; }
+.phase-component-row {
     display: flex; align-items: center; gap: 10px;
     padding: 6px 10px; border-radius: 6px;
     font-size: 13px; border-bottom: 1px solid var(--content-border);
 }
-.phase-module-row:last-child { border-bottom: none; }
-.phase-module-badge {
+.phase-component-row:last-child { border-bottom: none; }
+.phase-component-badge {
     display: inline-block; width: 16px; text-align: center;
     font-size: 12px; flex-shrink: 0;
 }
-.phase-module-badge.cached { color: #22c55e; }
-.phase-module-badge.missing { color: #6b7280; }
-.phase-module-id {
+.phase-component-badge.cached { color: #22c55e; }
+.phase-component-badge.missing { color: #6b7280; }
+.phase-component-id {
     flex: 1; font-family: monospace; font-size: 12px; color: var(--content-muted);
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.phase-module-name {
+.phase-component-name {
     flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.phase-module-run-btn {
+.phase-component-run-btn {
     padding: 3px 10px; font-size: 12px; border: none; border-radius: 4px;
     background: var(--link-color); color: #fff; cursor: pointer; flex-shrink: 0;
 }
-.phase-module-run-btn:hover { opacity: 0.85; }
-.phase-module-run-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.phase-module-log {
+.phase-component-run-btn:hover { opacity: 0.85; }
+.phase-component-run-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.phase-component-log {
     display: none; padding: 4px 10px 4px 36px;
     font-family: monospace; font-size: 11px; line-height: 1.4;
     color: var(--content-muted); white-space: pre-wrap;
     max-height: 120px; overflow-y: auto;
     background: var(--code-bg); border-radius: 4px; margin: 4px 10px;
 }
-.phase-module-log.visible { display: block; }
+.phase-component-log.visible { display: block; }

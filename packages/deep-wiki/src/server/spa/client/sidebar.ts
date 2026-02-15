@@ -1,21 +1,21 @@
 /**
  * Sidebar navigation: initializeSidebar, buildDomainSidebar, buildCategorySidebar,
- * buildTopicsSidebar, setActive, showWikiContent, showAdminContent.
+ * buildThemesSidebar, setActive, showWikiContent, showAdminContent.
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { moduleGraph, escapeHtml } from './core';
+import { componentGraph, escapeHtml } from './core';
 
 const config = (window as any).__WIKI_CONFIG__ as WikiConfig;
 
 export function initializeSidebar(): void {
     const topBarProject = document.getElementById('top-bar-project');
-    if (topBarProject) topBarProject.textContent = moduleGraph.project.name;
+    if (topBarProject) topBarProject.textContent = componentGraph.project.name;
 
     const navContainer = document.getElementById('nav-container');
     if (!navContainer) return;
-    const hasDomains = moduleGraph.domains && moduleGraph.domains.length > 0;
+    const hasDomains = componentGraph.domains && componentGraph.domains.length > 0;
 
     // Home + special items
     const homeSection = document.createElement('div');
@@ -41,14 +41,14 @@ export function initializeSidebar(): void {
         if (searchEl) {
             searchEl.addEventListener('input', function (e: Event) {
                 const query = (e.target as HTMLInputElement).value.toLowerCase();
-                document.querySelectorAll('.nav-domain-module[data-id], .nav-item[data-id]').forEach(function (item) {
+                document.querySelectorAll('.nav-domain-component[data-id], .nav-item[data-id]').forEach(function (item) {
                     const id = item.getAttribute('data-id');
                     if (id === '__home' || id === '__graph') return;
                     const text = item.textContent?.toLowerCase() ?? '';
                     (item as HTMLElement).style.display = text.includes(query) ? '' : 'none';
                 });
                 document.querySelectorAll('.nav-domain-group').forEach(function (group) {
-                    const visibleChildren = group.querySelectorAll('.nav-domain-module:not([style*="display: none"])');
+                    const visibleChildren = group.querySelectorAll('.nav-domain-component:not([style*="display: none"])');
                     const domainItem = group.querySelector('.nav-domain-item') as HTMLElement | null;
                     if (domainItem) domainItem.style.display = visibleChildren.length === 0 ? 'none' : '';
                     const childrenEl = group.querySelector('.nav-domain-children') as HTMLElement | null;
@@ -67,37 +67,37 @@ export function initializeSidebar(): void {
 
 function buildDomainSidebar(navContainer: HTMLElement): void {
     const domainMap: Record<string, any> = {};
-    moduleGraph.domains.forEach(function (domain: any) {
+    componentGraph.domains.forEach(function (domain: any) {
         domainMap[area.id] = area;
     });
 
-    const domainModules: Record<string, any[]> = {};
-    moduleGraph.domains.forEach(function (domain: any) {
-        domainModules[area.id] = [];
+    const domainComponents: Record<string, any[]> = {};
+    componentGraph.domains.forEach(function (domain: any) {
+        domainComponents[area.id] = [];
     });
 
-    moduleGraph.modules.forEach(function (mod: any) {
+    componentGraph.components.forEach(function (mod: any) {
         const domainId = mod.domain;
-        if (domainId && domainModules[domainId]) {
-            domainModules[domainId].push(mod);
+        if (domainId && domainComponents[domainId]) {
+            domainComponents[domainId].push(mod);
         } else {
             let found = false;
-            moduleGraph.domains.forEach(function (domain: any) {
-                if (area.modules && area.modules.indexOf(mod.id) !== -1) {
-                    domainModules[area.id].push(mod);
+            componentGraph.domains.forEach(function (domain: any) {
+                if (area.components && area.components.indexOf(mod.id) !== -1) {
+                    domainComponents[area.id].push(mod);
                     found = true;
                 }
             });
             if (!found) {
-                if (!domainModules['__other']) domainModules['__other'] = [];
-                domainModules['__other'].push(mod);
+                if (!domainComponents['__other']) domainComponents['__other'] = [];
+                domainComponents['__other'].push(mod);
             }
         }
     });
 
-    moduleGraph.domains.forEach(function (domain: any) {
-        const modules = domainModules[area.id] || [];
-        if (modules.length === 0) return;
+    componentGraph.domains.forEach(function (domain: any) {
+        const components = domainComponents[area.id] || [];
+        if (components.length === 0) return;
 
         const group = document.createElement('div');
         group.className = 'nav-area-group';
@@ -111,12 +111,12 @@ function buildDomainSidebar(navContainer: HTMLElement): void {
         const childrenEl = document.createElement('div');
         childrenEl.className = 'nav-area-children';
 
-        modules.forEach(function (mod: any) {
+        components.forEach(function (mod: any) {
             const item = document.createElement('div');
-            item.className = 'nav-area-module';
+            item.className = 'nav-area-component';
             item.setAttribute('data-id', mod.id);
             item.innerHTML = '<span class="nav-item-name">' + escapeHtml(mod.name) + '</span>';
-            item.onclick = function () { (window as any).loadModule(mod.id); };
+            item.onclick = function () { (window as any).loadComponent(mod.id); };
             childrenEl.appendChild(item);
         });
 
@@ -124,8 +124,8 @@ function buildDomainSidebar(navContainer: HTMLElement): void {
         navContainer.appendChild(group);
     });
 
-    const otherModules = domainModules['__other'] || [];
-    if (otherModules.length > 0) {
+    const otherComponents = domainComponents['__other'] || [];
+    if (otherComponents.length > 0) {
         const group = document.createElement('div');
         group.className = 'nav-area-group';
         const domainItem = document.createElement('div');
@@ -135,24 +135,24 @@ function buildDomainSidebar(navContainer: HTMLElement): void {
 
         const childrenEl = document.createElement('div');
         childrenEl.className = 'nav-area-children';
-        otherModules.forEach(function (mod: any) {
+        otherComponents.forEach(function (mod: any) {
             const item = document.createElement('div');
-            item.className = 'nav-area-module';
+            item.className = 'nav-area-component';
             item.setAttribute('data-id', mod.id);
             item.innerHTML = '<span class="nav-item-name">' + escapeHtml(mod.name) + '</span>';
-            item.onclick = function () { (window as any).loadModule(mod.id); };
+            item.onclick = function () { (window as any).loadComponent(mod.id); };
             childrenEl.appendChild(item);
         });
         group.appendChild(childrenEl);
         navContainer.appendChild(group);
     }
 
-    buildTopicsSidebar(navContainer);
+    buildThemesSidebar(navContainer);
 }
 
 function buildCategorySidebar(navContainer: HTMLElement): void {
     const categories: Record<string, any[]> = {};
-    moduleGraph.modules.forEach(function (mod: any) {
+    componentGraph.components.forEach(function (mod: any) {
         const cat = mod.category || 'other';
         if (!categories[cat]) categories[cat] = [];
         categories[cat].push(mod);
@@ -172,10 +172,10 @@ function buildCategorySidebar(navContainer: HTMLElement): void {
 
         categories[category].forEach(function (mod: any) {
             const item = document.createElement('div');
-            item.className = 'nav-area-module';
+            item.className = 'nav-area-component';
             item.setAttribute('data-id', mod.id);
             item.innerHTML = '<span class="nav-item-name">' + escapeHtml(mod.name) + '</span>';
-            item.onclick = function () { (window as any).loadModule(mod.id); };
+            item.onclick = function () { (window as any).loadComponent(mod.id); };
             childrenEl.appendChild(item);
         });
 
@@ -183,62 +183,62 @@ function buildCategorySidebar(navContainer: HTMLElement): void {
         navContainer.appendChild(group);
     });
 
-    buildTopicsSidebar(navContainer);
+    buildThemesSidebar(navContainer);
 }
 
-export function buildTopicsSidebar(navContainer: HTMLElement): void {
-    const topics = moduleGraph.topics;
-    if (!topics || topics.length === 0) return;
+export function buildThemesSidebar(navContainer: HTMLElement): void {
+    const themes = componentGraph.themes;
+    if (!themes || themes.length === 0) return;
 
     const divider = document.createElement('div');
     divider.className = 'nav-section-title';
-    divider.textContent = 'Topics';
-    divider.setAttribute('data-section', 'topics');
+    divider.textContent = 'Themes';
+    divider.setAttribute('data-section', 'themes');
     navContainer.appendChild(divider);
 
-    topics.forEach(function (topic: any) {
-        if (topic.layout === 'area' && topic.articles.length > 1) {
+    themes.forEach(function (theme: any) {
+        if (theme.layout === 'area' && theme.articles.length > 1) {
             const group = document.createElement('div');
-            group.className = 'nav-area-group nav-topic-group';
+            group.className = 'nav-area-group nav-theme-group';
 
-            const topicItem = document.createElement('div');
-            topicItem.className = 'nav-area-item';
-            topicItem.setAttribute('data-topic-id', topic.id);
-            topicItem.innerHTML = '<span class="nav-item-name">\ud83d\udccb ' + escapeHtml(topic.title) + '</span>';
-            group.appendChild(topicItem);
+            const themeItem = document.createElement('div');
+            themeItem.className = 'nav-area-item';
+            themeItem.setAttribute('data-theme-id', theme.id);
+            themeItem.innerHTML = '<span class="nav-item-name">\ud83d\udccb ' + escapeHtml(theme.title) + '</span>';
+            group.appendChild(themeItem);
 
             const childrenEl = document.createElement('div');
             childrenEl.className = 'nav-area-children';
 
-            topic.articles.forEach(function (article: any) {
+            theme.articles.forEach(function (article: any) {
                 const item = document.createElement('div');
-                item.className = 'nav-area-module nav-topic-article';
-                item.setAttribute('data-id', 'topic:' + topic.id + ':' + article.slug);
+                item.className = 'nav-area-component nav-theme-article';
+                item.setAttribute('data-id', 'theme:' + theme.id + ':' + article.slug);
                 item.innerHTML = '<span class="nav-item-name">' + escapeHtml(article.title) + '</span>';
-                item.onclick = function () { (window as any).loadTopicArticle(topic.id, article.slug); };
+                item.onclick = function () { (window as any).loadThemeArticle(theme.id, article.slug); };
                 childrenEl.appendChild(item);
             });
 
             group.appendChild(childrenEl);
             navContainer.appendChild(group);
         } else {
-            const slug = topic.articles.length > 0 ? topic.articles[0].slug : topic.id;
+            const slug = theme.articles.length > 0 ? theme.articles[0].slug : theme.id;
             const item = document.createElement('div');
-            item.className = 'nav-item nav-topic-article';
-            item.setAttribute('data-id', 'topic:' + topic.id + ':' + slug);
-            item.innerHTML = '<span class="nav-item-name">\ud83d\udccb ' + escapeHtml(topic.title) + '</span>';
-            item.onclick = function () { (window as any).loadTopicArticle(topic.id, slug); };
+            item.className = 'nav-item nav-theme-article';
+            item.setAttribute('data-id', 'theme:' + theme.id + ':' + slug);
+            item.innerHTML = '<span class="nav-item-name">\ud83d\udccb ' + escapeHtml(theme.title) + '</span>';
+            item.onclick = function () { (window as any).loadThemeArticle(theme.id, slug); };
             navContainer.appendChild(item);
         }
     });
 }
 
 export function setActive(id: string): void {
-    document.querySelectorAll('.nav-item, .nav-domain-module, .nav-domain-item').forEach(function (el) {
+    document.querySelectorAll('.nav-item, .nav-area-component, .nav-domain-item').forEach(function (el) {
         el.classList.remove('active');
     });
     const target = document.querySelector('.nav-item[data-id="' + id + '"]') ||
-                   document.querySelector('.nav-domain-module[data-id="' + id + '"]');
+                   document.querySelector('.nav-area-component[data-id="' + id + '"]');
     if (target) target.classList.add('active');
 }
 

@@ -1,11 +1,11 @@
 /**
  * Admin Portal: tab switching, seeds/config editing, save/reset,
- * phase-based generation SSE, and Phase 4 module list.
+ * phase-based generation SSE, and Phase 4 component list.
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { moduleGraph, currentModuleId, setCurrentModuleId, escapeHtml } from './core';
+import { componentGraph, currentComponentId, setCurrentComponentId, escapeHtml } from './core';
 import { showAdminContent } from './sidebar';
 
 let adminSeedsOriginal = '';
@@ -14,7 +14,7 @@ let adminInitialized = false;
 let generateRunning = false;
 
 export function showAdmin(skipHistory?: boolean): void {
-    setCurrentModuleId(null);
+    setCurrentComponentId(null);
     showAdminContent();
     if (!skipHistory) {
         history.pushState({ type: 'admin' }, '', location.pathname + '#admin');
@@ -22,7 +22,7 @@ export function showAdmin(skipHistory?: boolean): void {
     if (!adminInitialized) {
         initAdminEvents();
         initGenerateEvents();
-        initPhase4ModuleList();
+        initPhase4ComponentList();
         adminInitialized = true;
     }
     loadAdminSeeds();
@@ -279,8 +279,8 @@ async function loadGenerateStatus(): Promise<void> {
         }
 
         const phase4Data = data.phases['4'];
-        if (phase4Data && phase4Data.modules) {
-            renderPhase4ModuleList(phase4Data.modules);
+        if (phase4Data && phase4Data.components) {
+            renderPhase4ComponentList(phase4Data.components);
         }
     } catch (_err) {
         // Silently fail on status load
@@ -526,14 +526,14 @@ async function cancelGeneration(): Promise<void> {
 }
 
 // ================================================================
-// Phase 4 Module List
+// Phase 4 Component List
 // ================================================================
 
-function initPhase4ModuleList(): void {
-    const toggle = document.getElementById('phase4-module-toggle');
+function initPhase4ComponentList(): void {
+    const toggle = document.getElementById('phase4-component-toggle');
     if (!toggle) return;
     toggle.addEventListener('click', function () {
-        const list = document.getElementById('phase4-module-list');
+        const list = document.getElementById('phase4-component-list');
         const expanded = toggle.classList.toggle('expanded');
         if (list) {
             list.classList.toggle('expanded', expanded);
@@ -541,13 +541,13 @@ function initPhase4ModuleList(): void {
     });
 }
 
-function renderPhase4ModuleList(modules: Record<string, any>): void {
-    const toggle = document.getElementById('phase4-module-toggle');
-    const list = document.getElementById('phase4-module-list');
-    const countEl = document.getElementById('phase4-module-count');
-    if (!toggle || !list || !modules) return;
+function renderPhase4ComponentList(components: Record<string, any>): void {
+    const toggle = document.getElementById('phase4-component-toggle');
+    const list = document.getElementById('phase4-component-list');
+    const countEl = document.getElementById('phase4-component-count');
+    if (!toggle || !list || !components) return;
 
-    const keys = Object.keys(modules);
+    const keys = Object.keys(components);
     if (keys.length === 0) {
         (toggle as HTMLElement).style.display = 'none';
         return;
@@ -557,34 +557,34 @@ function renderPhase4ModuleList(modules: Record<string, any>): void {
     if (countEl) countEl.textContent = String(keys.length);
 
     let html = '';
-    keys.forEach(function (moduleId) {
-        const info = modules[moduleId];
-        const mod = moduleGraph ? moduleGraph.modules.find(function (m: any) { return m.id === moduleId; }) : null;
-        const name = mod ? mod.name : moduleId;
+    keys.forEach(function (componentId) {
+        const info = components[componentId];
+        const mod = componentGraph ? componentGraph.components.find(function (m: any) { return m.id === componentId; }) : null;
+        const name = mod ? mod.name : componentId;
         const badgeClass = info.cached ? 'cached' : 'missing';
         const badgeText = info.cached ? '\u2713' : '\u2717';
 
-        html += '<div class="phase-module-row" id="phase4-mod-row-' + moduleId.replace(/[^a-z0-9-]/g, '_') + '">' +
-            '<span class="phase-module-badge ' + badgeClass + '">' + badgeText + '</span>' +
-            '<span class="phase-module-id">' + escapeHtml(moduleId) + '</span>' +
-            '<span class="phase-module-name">' + escapeHtml(name) + '</span>' +
-            '<button class="phase-module-run-btn" onclick="runModuleRegenFromAdmin(\'' +
-            moduleId.replace(/'/g, "\\'") + '\')" title="Regenerate article for ' + escapeHtml(name) + '">Run</button>' +
+        html += '<div class="phase-component-row" id="phase4-comp-row-' + componentId.replace(/[^a-z0-9-]/g, '_') + '">' +
+            '<span class="phase-component-badge ' + badgeClass + '">' + badgeText + '</span>' +
+            '<span class="phase-component-id">' + escapeHtml(componentId) + '</span>' +
+            '<span class="phase-component-name">' + escapeHtml(name) + '</span>' +
+            '<button class="phase-component-run-btn" onclick="runComponentRegenFromAdmin(\'' +
+            componentId.replace(/'/g, "\\'") + '\')" title="Regenerate article for ' + escapeHtml(name) + '">Run</button>' +
             '</div>' +
-            '<div class="phase-module-log" id="phase4-mod-log-' + moduleId.replace(/[^a-z0-9-]/g, '_') + '"></div>';
+            '<div class="phase-component-log" id="phase4-comp-log-' + componentId.replace(/[^a-z0-9-]/g, '_') + '"></div>';
     });
 
     list.innerHTML = html;
 }
 
-export async function runModuleRegenFromAdmin(moduleId: string): Promise<void> {
+export async function runComponentRegenFromAdmin(componentId: string): Promise<void> {
     if (generateRunning) return;
     generateRunning = true;
 
-    const safeId = moduleId.replace(/[^a-z0-9-]/g, '_');
-    const row = document.getElementById('phase4-mod-row-' + safeId);
-    const logEl = document.getElementById('phase4-mod-log-' + safeId);
-    const btn = row ? row.querySelector('.phase-module-run-btn') as HTMLButtonElement | null : null;
+    const safeId = componentId.replace(/[^a-z0-9-]/g, '_');
+    const row = document.getElementById('phase4-comp-row-' + safeId);
+    const logEl = document.getElementById('phase4-comp-log-' + safeId);
+    const btn = row ? row.querySelector('.phase-component-run-btn') as HTMLButtonElement | null : null;
 
     if (btn) { btn.disabled = true; btn.textContent = '...'; }
     if (logEl) { logEl.textContent = 'Regenerating...'; logEl.classList.add('visible'); }
@@ -594,7 +594,7 @@ export async function runModuleRegenFromAdmin(moduleId: string): Promise<void> {
     const forceEl = document.getElementById('generate-force') as HTMLInputElement | null;
 
     try {
-        const response = await fetch('/api/admin/generate/module/' + encodeURIComponent(moduleId), {
+        const response = await fetch('/api/admin/generate/component/' + encodeURIComponent(componentId), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ force: forceEl ? forceEl.checked : false })

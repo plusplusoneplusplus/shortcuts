@@ -13,7 +13,7 @@ import { EXIT_CODES } from '../../src/cli';
 
 // Mock the discovery module to avoid actual SDK calls
 vi.mock('../../src/discovery', () => ({
-    discoverModuleGraph: vi.fn().mockRejectedValue(new Error('SDK not available in test')),
+    discoverComponentGraph: vi.fn().mockRejectedValue(new Error('SDK not available in test')),
     runIterativeDiscovery: vi.fn(),
     DiscoveryError: class DiscoveryError extends Error {
         code: string;
@@ -27,7 +27,7 @@ vi.mock('../../src/discovery', () => ({
 
 // Mock the seeds module
 vi.mock('../../src/seeds', () => ({
-    generateTopicSeeds: vi.fn(),
+    generateThemeSeeds: vi.fn(),
     parseSeedFile: vi.fn(),
 }));
 
@@ -47,10 +47,10 @@ vi.mock('../../src/cache', () => ({
     saveProbeResult: vi.fn(),
     getCachedProbeResult: vi.fn().mockReturnValue(null),
     scanCachedProbes: vi.fn().mockImplementation(
-        (topics: string[]) => ({ found: new Map(), missing: [...topics] })
+        (themes: string[]) => ({ found: new Map(), missing: [...themes] })
     ),
     scanCachedProbesAny: vi.fn().mockImplementation(
-        (topics: string[]) => ({ found: new Map(), missing: [...topics] })
+        (themes: string[]) => ({ found: new Map(), missing: [...themes] })
     ),
     saveStructuralScan: vi.fn(),
     getCachedStructuralScan: vi.fn().mockReturnValue(null),
@@ -209,7 +209,7 @@ describe('Discover Command', () => {
             // Override the mock for this specific test
             const discovery = await import('../../src/discovery');
             const DiscoveryError = discovery.DiscoveryError;
-            vi.mocked(discovery.discoverModuleGraph).mockRejectedValueOnce(
+            vi.mocked(discovery.discoverComponentGraph).mockRejectedValueOnce(
                 new DiscoveryError('SDK not available', 'sdk-unavailable')
             );
 
@@ -230,7 +230,7 @@ describe('Discover Command', () => {
         it('should return EXECUTION_ERROR for timeout error', async () => {
             const discovery = await import('../../src/discovery');
             const DiscoveryError = discovery.DiscoveryError;
-            vi.mocked(discovery.discoverModuleGraph).mockRejectedValueOnce(
+            vi.mocked(discovery.discoverComponentGraph).mockRejectedValueOnce(
                 new DiscoveryError('Timed out', 'timeout')
             );
 
@@ -254,12 +254,12 @@ describe('Discover Command', () => {
     // ========================================================================
 
     describe('successful discovery', () => {
-        it('should write module-graph.json and return SUCCESS', async () => {
+        it('should write component-graph.json and return SUCCESS', async () => {
             const discovery = await import('../../src/discovery');
-            vi.mocked(discovery.discoverModuleGraph).mockResolvedValueOnce({
+            vi.mocked(discovery.discoverComponentGraph).mockResolvedValueOnce({
                 graph: {
                     project: { name: 'test', description: '', language: 'TS', buildSystem: 'npm', entryPoints: [] },
-                    modules: [
+                    components: [
                         { id: 'core', name: 'Core', path: 'src/', purpose: 'Core', keyFiles: [], dependencies: [], dependents: [], complexity: 'medium', category: 'core' },
                     ],
                     categories: [{ name: 'core', description: 'Core' }],
@@ -283,19 +283,19 @@ describe('Discover Command', () => {
             expect(exitCode).toBe(EXIT_CODES.SUCCESS);
 
             // Check output file
-            const graphFile = path.join(outputDir, 'module-graph.json');
+            const graphFile = path.join(outputDir, 'component-graph.json');
             expect(fs.existsSync(graphFile)).toBe(true);
             const content = JSON.parse(fs.readFileSync(graphFile, 'utf-8'));
             expect(content.project.name).toBe('test');
-            expect(content.modules).toHaveLength(1);
+            expect(content.components).toHaveLength(1);
         });
 
         it('should print summary to stderr', async () => {
             const discovery = await import('../../src/discovery');
-            vi.mocked(discovery.discoverModuleGraph).mockResolvedValueOnce({
+            vi.mocked(discovery.discoverComponentGraph).mockResolvedValueOnce({
                 graph: {
                     project: { name: 'my-project', description: '', language: 'TypeScript', buildSystem: 'npm', entryPoints: [] },
-                    modules: [
+                    components: [
                         { id: 'mod1', name: 'Mod1', path: 'a/', purpose: '', keyFiles: [], dependencies: [], dependents: [], complexity: 'low', category: 'core' },
                         { id: 'mod2', name: 'Mod2', path: 'b/', purpose: '', keyFiles: [], dependencies: [], dependents: [], complexity: 'high', category: 'core' },
                     ],
@@ -323,10 +323,10 @@ describe('Discover Command', () => {
 
         it('should output JSON to stdout', async () => {
             const discovery = await import('../../src/discovery');
-            vi.mocked(discovery.discoverModuleGraph).mockResolvedValueOnce({
+            vi.mocked(discovery.discoverComponentGraph).mockResolvedValueOnce({
                 graph: {
                     project: { name: 'stdout-test', description: '', language: 'JS', buildSystem: 'npm', entryPoints: [] },
-                    modules: [],
+                    components: [],
                     categories: [],
                     architectureNotes: '',
                 },
@@ -350,10 +350,10 @@ describe('Discover Command', () => {
 
         it('should print verbose module list when verbose is true', async () => {
             const discovery = await import('../../src/discovery');
-            vi.mocked(discovery.discoverModuleGraph).mockResolvedValueOnce({
+            vi.mocked(discovery.discoverComponentGraph).mockResolvedValueOnce({
                 graph: {
                     project: { name: 'verbose-test', description: '', language: 'Go', buildSystem: 'go mod', entryPoints: [] },
-                    modules: [
+                    components: [
                         { id: 'auth', name: 'Auth', path: 'pkg/auth/', purpose: 'Authentication', keyFiles: [], dependencies: [], dependents: [], complexity: 'high', category: 'core' },
                     ],
                     categories: [{ name: 'core', description: '' }],
@@ -389,7 +389,7 @@ describe('Discover Command', () => {
                 metadata: { gitHash: 'abc', timestamp: Date.now(), version: '1.0.0' },
                 graph: {
                     project: { name: 'cached-project', description: '', language: 'Rust', buildSystem: 'cargo', entryPoints: [] },
-                    modules: [
+                    components: [
                         { id: 'cached-mod', name: 'Cached', path: 'src/', purpose: 'cached', keyFiles: [], dependencies: [], dependents: [], complexity: 'low', category: 'core' },
                     ],
                     categories: [{ name: 'core', description: '' }],
@@ -422,7 +422,7 @@ describe('Discover Command', () => {
                 metadata: { gitHash: 'stale-hash', timestamp: Date.now(), version: '1.0.0' },
                 graph: {
                     project: { name: 'stale-cached', description: '', language: 'Go', buildSystem: 'go mod', entryPoints: [] },
-                    modules: [
+                    components: [
                         { id: 'stale-mod', name: 'Stale', path: 'src/', purpose: 'stale', keyFiles: [], dependencies: [], dependents: [], complexity: 'low', category: 'core' },
                     ],
                     categories: [{ name: 'core', description: '' }],
@@ -459,15 +459,15 @@ describe('Discover Command', () => {
             const seeds = await import('../../src/seeds');
 
             const mockSeeds = [
-                { topic: 'auth', description: 'Auth', hints: ['auth'] },
-                { topic: 'db', description: 'DB', hints: ['db'] },
+                { theme: 'auth', description: 'Auth', hints: ['auth'] },
+                { theme: 'db', description: 'DB', hints: ['db'] },
             ];
 
-            vi.mocked(seeds.generateTopicSeeds).mockResolvedValueOnce(mockSeeds);
+            vi.mocked(seeds.generateThemeSeeds).mockResolvedValueOnce(mockSeeds);
 
             const mockGraph = {
                 project: { name: 'test', description: '', language: 'TS', buildSystem: 'npm', entryPoints: [] },
-                modules: [
+                components: [
                     { id: 'auth-service', name: 'Auth Service', path: 'src/auth/', purpose: 'Auth', keyFiles: [], dependencies: [], dependents: [], complexity: 'medium', category: 'core' },
                 ],
                 categories: [{ name: 'core', description: 'Core' }],
@@ -490,9 +490,9 @@ describe('Discover Command', () => {
             });
 
             expect(exitCode).toBe(EXIT_CODES.SUCCESS);
-            expect(vi.mocked(seeds.generateTopicSeeds)).toHaveBeenCalledOnce();
+            expect(vi.mocked(seeds.generateThemeSeeds)).toHaveBeenCalledOnce();
             expect(vi.mocked(discovery.runIterativeDiscovery)).toHaveBeenCalledOnce();
-            expect(vi.mocked(discovery.discoverModuleGraph)).not.toHaveBeenCalled();
+            expect(vi.mocked(discovery.discoverComponentGraph)).not.toHaveBeenCalled();
         });
 
         it('should parse seed file and run iterative discovery when --seeds with file path', async () => {
@@ -501,20 +501,20 @@ describe('Discover Command', () => {
 
             const seedFile = path.join(tmpDir, 'seeds.json');
             fs.writeFileSync(seedFile, JSON.stringify({
-                topics: [
-                    { topic: 'auth', description: 'Auth', hints: ['auth'] },
+                themes: [
+                    { theme: 'auth', description: 'Auth', hints: ['auth'] },
                 ],
             }), 'utf-8');
 
             const mockSeeds = [
-                { topic: 'auth', description: 'Auth', hints: ['auth'] },
+                { theme: 'auth', description: 'Auth', hints: ['auth'] },
             ];
 
             vi.mocked(seeds.parseSeedFile).mockReturnValueOnce(mockSeeds);
 
             const mockGraph = {
                 project: { name: 'test', description: '', language: 'TS', buildSystem: 'npm', entryPoints: [] },
-                modules: [],
+                components: [],
                 categories: [],
                 architectureNotes: '',
             };
@@ -537,7 +537,7 @@ describe('Discover Command', () => {
             expect(exitCode).toBe(EXIT_CODES.SUCCESS);
             expect(vi.mocked(seeds.parseSeedFile)).toHaveBeenCalledWith(seedFile);
             expect(vi.mocked(discovery.runIterativeDiscovery)).toHaveBeenCalledOnce();
-            expect(vi.mocked(discovery.discoverModuleGraph)).not.toHaveBeenCalled();
+            expect(vi.mocked(discovery.discoverComponentGraph)).not.toHaveBeenCalled();
         });
     });
 });

@@ -175,13 +175,13 @@ describe('WebSocketServer', () => {
         const msg1Promise = ws1.waitForMessage();
         const msg2Promise = ws2.waitForMessage();
 
-        wsServer.broadcast({ type: 'reload', modules: ['auth'] });
+        wsServer.broadcast({ type: 'reload', components: ['auth'] });
 
         const msg1 = await msg1Promise;
         const msg2 = await msg2Promise;
 
-        expect(JSON.parse(msg1)).toEqual({ type: 'reload', modules: ['auth'] });
-        expect(JSON.parse(msg2)).toEqual({ type: 'reload', modules: ['auth'] });
+        expect(JSON.parse(msg1)).toEqual({ type: 'reload', components: ['auth'] });
+        expect(JSON.parse(msg2)).toEqual({ type: 'reload', components: ['auth'] });
 
         ws1.close();
         ws2.close();
@@ -235,12 +235,12 @@ describe('WebSocketServer', () => {
         const ws = await connectWebSocket(port);
         const msgPromise = ws.waitForMessage();
 
-        wsServer.broadcast({ type: 'rebuilding', modules: ['api', 'config'] });
+        wsServer.broadcast({ type: 'rebuilding', components: ['api', 'config'] });
 
         const msg = await msgPromise;
         const parsed = JSON.parse(msg);
         expect(parsed.type).toBe('rebuilding');
-        expect(parsed.modules).toEqual(['api', 'config']);
+        expect(parsed.components).toEqual(['api', 'config']);
 
         ws.close();
     });

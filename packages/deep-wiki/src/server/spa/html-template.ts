@@ -76,7 +76,7 @@ ${bundleCss}
         <aside class="sidebar" id="sidebar">
             <button class="sidebar-collapse-btn" id="sidebar-collapse" aria-label="Collapse sidebar" title="Collapse sidebar">&#x25C0;</button>
 ${enableSearch ? `            <div class="search-box">
-                <input type="text" id="search" placeholder="Search modules..." aria-label="Search modules">
+                <input type="text" id="search" placeholder="Search components..." aria-label="Search components">
             </div>` : ''}
             <nav id="nav-container" class="sidebar-nav"></nav>
         </aside>
@@ -160,7 +160,7 @@ ${enableSearch ? `            <div class="search-box">
                                             <span class="phase-number">1</span>
                                             <div class="phase-info">
                                                 <span class="phase-name">Discovery</span>
-                                                <span class="phase-desc">Scan repo and build module graph</span>
+                                                <span class="phase-desc">Scan repo and build component graph</span>
                                             </div>
                                             <span class="phase-cache-badge" id="phase-cache-1"></span>
                                             <button class="admin-btn admin-btn-save phase-run-btn" id="phase-run-1" data-phase="1">Run</button>
@@ -172,7 +172,7 @@ ${enableSearch ? `            <div class="search-box">
                                             <span class="phase-number">2</span>
                                             <div class="phase-info">
                                                 <span class="phase-name">Consolidation</span>
-                                                <span class="phase-desc">Merge related modules into clusters</span>
+                                                <span class="phase-desc">Merge related components into clusters</span>
                                             </div>
                                             <span class="phase-cache-badge" id="phase-cache-2"></span>
                                             <button class="admin-btn admin-btn-save phase-run-btn" id="phase-run-2" data-phase="2">Run</button>
@@ -184,7 +184,7 @@ ${enableSearch ? `            <div class="search-box">
                                             <span class="phase-number">3</span>
                                             <div class="phase-info">
                                                 <span class="phase-name">Analysis</span>
-                                                <span class="phase-desc">Deep analysis of each module</span>
+                                                <span class="phase-desc">Deep analysis of each component</span>
                                             </div>
                                             <span class="phase-cache-badge" id="phase-cache-3"></span>
                                             <button class="admin-btn admin-btn-save phase-run-btn" id="phase-run-3" data-phase="3">Run</button>
@@ -202,10 +202,10 @@ ${enableSearch ? `            <div class="search-box">
                                             <button class="admin-btn admin-btn-save phase-run-btn" id="phase-run-4" data-phase="4">Run</button>
                                         </div>
                                         <div class="phase-log hidden" id="phase-log-4"></div>
-                                        <button class="phase-module-list-toggle" id="phase4-module-toggle" style="display: none;">
-                                            <span class="toggle-arrow">&#x25B6;</span> Modules (<span id="phase4-module-count">0</span>)
+                                        <button class="phase-component-list-toggle" id="phase4-component-toggle" style="display: none;">
+                                            <span class="toggle-arrow">&#x25B6;</span> Components (<span id="phase4-component-count">0</span>)
                                         </button>
-                                        <div class="phase-module-list" id="phase4-module-list"></div>
+                                        <div class="phase-component-list" id="phase4-component-list"></div>
                                     </div>
                                     <div class="generate-phase-card" data-phase="5" id="phase-card-5">
                                         <div class="phase-card-header">

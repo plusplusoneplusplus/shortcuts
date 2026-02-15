@@ -1,14 +1,14 @@
 /**
  * Seeds Phase — Response Parser
  *
- * Parses and validates AI JSON responses into TopicSeed structures.
+ * Parses and validates AI JSON responses into ThemeSeed structures.
  * Handles JSON extraction from markdown, validation, normalization,
  * and error recovery.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { TopicSeed } from '../types';
+import type { ThemeSeed } from '../types';
 import { normalizeComponentId } from '../schemas';
 import { parseAIJsonResponse } from '../utils/parse-ai-response';
 
@@ -17,7 +17,7 @@ import { parseAIJsonResponse } from '../utils/parse-ai-response';
 // ============================================================================
 
 /**
- * Parse an AI response into an array of TopicSeed objects.
+ * Parse an AI response into an array of ThemeSeed objects.
  *
  * Handles:
  * 1. Raw JSON → parse directly
@@ -28,55 +28,55 @@ import { parseAIJsonResponse } from '../utils/parse-ai-response';
  * 6. Missing required fields → skip invalid entries with warnings
  *
  * @param response - Raw AI response string
- * @returns Parsed and validated TopicSeed array
+ * @returns Parsed and validated ThemeSeed array
  * @throws Error if response cannot be parsed into valid seeds
  */
-export function parseSeedsResponse(response: string): TopicSeed[] {
+export function parseSeedsResponse(response: string): ThemeSeed[] {
     const obj = parseAIJsonResponse(response, { context: 'seeds', repair: true });
-    if (!('topics' in obj)) {
-        throw new Error("Missing 'topics' field in AI response");
+    if (!('themes' in obj)) {
+        throw new Error("Missing 'themes' field in AI response");
     }
 
-    return parseTopicsArray(obj.topics);
+    return parseThemesArray(obj.themes);
 }
 
 // ============================================================================
-// Topics Array Parsing
+// Themes Array Parsing
 // ============================================================================
 
 /**
- * Parse and validate an array of TopicSeed objects.
+ * Parse and validate an array of ThemeSeed objects.
  */
-function parseTopicsArray(raw: unknown): TopicSeed[] {
+function parseThemesArray(raw: unknown): ThemeSeed[] {
     if (!Array.isArray(raw)) {
-        throw new Error("'topics' field must be an array");
+        throw new Error("'themes' field must be an array");
     }
 
-    const topics: TopicSeed[] = [];
+    const themes: ThemeSeed[] = [];
     const warnings: string[] = [];
 
     for (let i = 0; i < raw.length; i++) {
         const item = raw[i];
         if (typeof item !== 'object' || item === null) {
-            warnings.push(`Skipping invalid topic at index ${i}: not an object`);
+            warnings.push(`Skipping invalid theme at index ${i}: not an object`);
             continue;
         }
 
         const obj = item as Record<string, unknown>;
 
         // Check required fields
-        if (typeof obj.topic !== 'string' || !obj.topic) {
-            warnings.push(`Skipping topic at index ${i}: missing or invalid 'topic' field`);
+        if (typeof obj.theme !== 'string' || !obj.theme) {
+            warnings.push(`Skipping theme at index ${i}: missing or invalid 'theme' field`);
             continue;
         }
 
         if (typeof obj.description !== 'string' || !obj.description) {
-            warnings.push(`Skipping topic at index ${i}: missing or invalid 'description' field`);
+            warnings.push(`Skipping theme at index ${i}: missing or invalid 'description' field`);
             continue;
         }
 
-        // Normalize topic ID to kebab-case
-        const topicId = normalizeComponentId(String(obj.topic));
+        // Normalize theme ID to kebab-case
+        const themeId = normalizeComponentId(String(obj.theme));
 
         // Parse hints (can be array or comma-separated string)
         let hints: string[] = [];
@@ -92,17 +92,17 @@ function parseTopicsArray(raw: unknown): TopicSeed[] {
                 .map(h => h.trim())
                 .filter(h => h.length > 0);
         } else {
-            // Default: use topic name as hint
-            hints = [topicId];
+            // Default: use theme name as hint
+            hints = [themeId];
         }
 
         // Ensure at least one hint
         if (hints.length === 0) {
-            hints = [topicId];
+            hints = [themeId];
         }
 
-        topics.push({
-            topic: topicId,
+        themes.push({
+            theme: themeId,
             description: String(obj.description).trim(),
             hints,
         });
@@ -115,16 +115,16 @@ function parseTopicsArray(raw: unknown): TopicSeed[] {
         }
     }
 
-    // Deduplicate by topic ID
+    // Deduplicate by theme ID
     const seenIds = new Set<string>();
-    const deduplicated: TopicSeed[] = [];
-    for (const topic of topics) {
-        if (seenIds.has(topic.topic)) {
-            warnings.push(`Duplicate topic ID '${topic.topic}', keeping first occurrence`);
+    const deduplicated: ThemeSeed[] = [];
+    for (const theme of themes) {
+        if (seenIds.has(theme.theme)) {
+            warnings.push(`Duplicate theme ID '${theme.theme}', keeping first occurrence`);
             continue;
         }
-        seenIds.add(topic.topic);
-        deduplicated.push(topic);
+        seenIds.add(theme.theme);
+        deduplicated.push(theme);
     }
 
     return deduplicated;

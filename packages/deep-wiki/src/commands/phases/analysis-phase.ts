@@ -4,16 +4,16 @@
  * Performs AI-powered analysis of each module, with incremental caching support.
  */
 
-import type { GenerateCommandOptions, ModuleGraph, ModuleAnalysis } from '../../types';
+import type { GenerateCommandOptions, ComponentGraph, ComponentAnalysis } from '../../types';
 import type { AIInvoker } from '@plusplusoneplusplus/pipeline-core';
 import { resolvePhaseModel, resolvePhaseTimeout, resolvePhaseConcurrency, resolvePhaseDepth } from '../../config-loader';
-import { analyzeModules, parseAnalysisResponse } from '../../analysis';
+import { analyzeComponents, parseAnalysisResponse } from '../../analysis';
 import { createAnalysisInvoker } from '../../ai-invoker';
 import { UsageTracker } from '../../usage-tracker';
 import {
     getCachedAnalyses,
     saveAllAnalyses,
-    getModulesNeedingReanalysis,
+    getComponentsNeedingReanalysis,
     getCachedAnalysis,
     saveAnalysis,
     getFolderHeadHash,
@@ -36,7 +36,7 @@ import { EXIT_CODES } from '../../cli';
 // ============================================================================
 
 export interface Phase3AnalysisResult {
-    analyses?: ModuleAnalysis[];
+    analyses?: ComponentAnalysis[];
     duration: number;
     exitCode?: number;
     /** Module IDs that were re-analyzed (not loaded from cache) in this run.
@@ -50,7 +50,7 @@ export interface Phase3AnalysisResult {
 
 export async function runPhase3Analysis(
     repoPath: string,
-    graph: ModuleGraph,
+    graph: ComponentGraph,
     options: GenerateCommandOptions,
     isCancelled: () => boolean,
     usageTracker?: UsageTracker
@@ -68,20 +68,20 @@ export async function runPhase3Analysis(
     const concurrency = analysisConcurrency;
 
     // Determine which modules need analysis
-    let modulesToAnalyze = graph.modules;
-    let cachedAnalyses: ModuleAnalysis[] = [];
+    let modulesToAnalyze = graph.components;
+    let cachedAnalyses: ComponentAnalysis[] = [];
 
     if (!options.force) {
         if (options.useCache) {
             // --use-cache: load all cached analyses regardless of git hash
-            const allModuleIds = graph.modules.map(m => m.id);
+            const allModuleIds = graph.components.map(m => m.id);
             const { found, missing } = scanIndividualAnalysesCacheAny(
                 allModuleIds, options.output
             );
 
             if (found.length > 0) {
                 cachedAnalyses = found;
-                modulesToAnalyze = graph.modules.filter(
+                modulesToAnalyze = graph.components.filter(
                     m => missing.includes(m.id)
                 );
 
@@ -93,7 +93,7 @@ export async function runPhase3Analysis(
             }
         } else {
         // Try incremental rebuild
-        const needingReanalysis = await getModulesNeedingReanalysis(
+        const needingReanalysis = await getComponentsNeedingReanalysis(
             graph, options.output, repoPath
         );
 
@@ -108,10 +108,10 @@ export async function runPhase3Analysis(
                 }
             } else {
                 // Partial rebuild
-                printInfo(`${needingReanalysis.length} modules changed, ${graph.modules.length - needingReanalysis.length} cached`);
+                printInfo(`${needingReanalysis.length} modules changed, ${graph.components.length - needingReanalysis.length} cached`);
 
                 // Load cached analyses for unchanged modules
-                for (const module of graph.modules) {
+                for (const module of graph.components) {
                     if (!needingReanalysis.includes(module.id)) {
                         const cached = getCachedAnalysis(module.id, options.output);
                         if (cached) {
@@ -124,7 +124,7 @@ export async function runPhase3Analysis(
                 }
 
                 // Only analyze changed modules
-                modulesToAnalyze = graph.modules.filter(
+                modulesToAnalyze = graph.components.filter(
                     m => needingReanalysis.includes(m.id)
                 );
             }
@@ -133,7 +133,7 @@ export async function runPhase3Analysis(
             // from a previous interrupted run that saved modules incrementally.
             const currentHash = await getFolderHeadHash(repoPath);
             if (currentHash) {
-                const allModuleIds = graph.modules.map(m => m.id);
+                const allModuleIds = graph.components.map(m => m.id);
                 const { found, missing } = scanIndividualAnalysesCache(
                     allModuleIds, options.output, currentHash
                 );
@@ -141,7 +141,7 @@ export async function runPhase3Analysis(
                 if (found.length > 0) {
                     printInfo(`Recovered ${found.length} module analyses from partial cache, ${missing.length} remaining`);
                     cachedAnalyses = found;
-                    modulesToAnalyze = graph.modules.filter(
+                    modulesToAnalyze = graph.components.filter(
                         m => missing.includes(m.id)
                     );
                 }
@@ -188,7 +188,7 @@ export async function runPhase3Analysis(
             modules: modulesToAnalyze,
         };
 
-        const result = await analyzeModules(
+        const result = await analyzeComponents(
             {
                 graph: subGraph,
                 model: analysisModel,
@@ -243,12 +243,12 @@ export async function runPhase3Analysis(
             // Strict mode: fail the phase if any module failed after retries
             if (options.strict !== false) {
                 // Determine which modules failed
-                const succeededIds = new Set(result.analyses.map(a => a.moduleId));
-                const failedModuleIds = modulesToAnalyze
+                const succeededIds = new Set(result.analyses.map(a => a.componentId));
+                const failedComponentIds = modulesToAnalyze
                     .filter(m => !succeededIds.has(m.id))
                     .map(m => m.id);
                 printError(
-                    `Strict mode: ${failedCount} module(s) failed analysis: ${failedModuleIds.join(', ')}. ` +
+                    `Strict mode: ${failedCount} module(s) failed analysis: ${failedComponentIds.join(', ')}. ` +
                     `Use --no-strict to continue with partial results.`
                 );
                 return { duration: Date.now() - startTime, exitCode: EXIT_CODES.EXECUTION_ERROR };

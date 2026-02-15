@@ -7,7 +7,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { moduleGraph, escapeHtml } from './core';
+import { componentGraph, escapeHtml } from './core';
 
 let conversationHistory: Array<{ role: string; content: string }> = [];
 let askStreaming = false;
@@ -119,7 +119,7 @@ function askPanelSend(): void {
                     const data = JSON.parse(line.slice(6));
                     if (data.type === 'context' && !contextShown) {
                         contextShown = true;
-                        appendAskContext(data.moduleIds, data.topicIds);
+                        appendAskContext(data.componentIds, data.themeIds);
                     } else if (data.type === 'chunk') {
                         if (typingEl && typingEl.parentNode) {
                             typingEl.parentNode.removeChild(typingEl);
@@ -195,31 +195,31 @@ function updateAskAssistantStreaming(el: HTMLElement | null, content: string): v
     if (messages) messages.scrollTop = messages.scrollHeight;
 }
 
-function appendAskContext(moduleIds: string[] | undefined, topicIds: string[] | undefined): void {
-    if ((!moduleIds || moduleIds.length === 0) && (!topicIds || topicIds.length === 0)) return;
+function appendAskContext(componentIds: string[] | undefined, themeIds: string[] | undefined): void {
+    if ((!componentIds || componentIds.length === 0) && (!themeIds || themeIds.length === 0)) return;
     const messages = document.getElementById('ask-messages');
     if (!messages) return;
     const div = document.createElement('div');
     div.className = 'ask-message-context';
     let parts: string[] = [];
 
-    if (moduleIds && moduleIds.length > 0) {
-        const links = moduleIds.map(function (id: string) {
-            const mod = moduleGraph.modules.find(function (m: any) { return m.id === id; });
+    if (componentIds && componentIds.length > 0) {
+        const links = componentIds.map(function (id: string) {
+            const mod = componentGraph.components.find(function (m: any) { return m.id === id; });
             const name = mod ? mod.name : id;
-            return '<a onclick="loadModule(\'' + id.replace(/'/g, "\\'") + '\')">\ud83d\udce6 ' + escapeHtml(name) + '</a>';
+            return '<a onclick="loadComponent(\'' + id.replace(/'/g, "\\'") + '\')">\ud83d\udce6 ' + escapeHtml(name) + '</a>';
         });
         parts = parts.concat(links);
     }
 
-    if (topicIds && topicIds.length > 0) {
-        const topicLinks = topicIds.map(function (ref: string) {
+    if (themeIds && themeIds.length > 0) {
+        const themeLinks = themeIds.map(function (ref: string) {
             const refParts = ref.split('/');
-            const topicId = refParts[0] || ref;
-            const slug = refParts[1] || topicId;
-            return '<a onclick="loadTopicArticle(\'' + topicId.replace(/'/g, "\\'") + '\', \'' + slug.replace(/'/g, "\\'") + '\')">\ud83d\udccb ' + escapeHtml(ref) + '</a>';
+            const themeId = refParts[0] || ref;
+            const slug = refParts[1] || themeId;
+            return '<a onclick="loadThemeArticle(\'' + themeId.replace(/'/g, "\\'") + '\', \'' + slug.replace(/'/g, "\\'") + '\')">\ud83d\udccb ' + escapeHtml(ref) + '</a>';
         });
-        parts = parts.concat(topicLinks);
+        parts = parts.concat(themeLinks);
     }
 
     div.innerHTML = 'Context: ' + parts.join(', ');
@@ -253,7 +253,7 @@ function appendAskError(message: string): void {
 // Deep Dive (Explore Further)
 let deepDiveStreaming = false;
 
-export function addDeepDiveButton(moduleId: string): void {
+export function addDeepDiveButton(componentId: string): void {
     const content = document.getElementById('content');
     if (!content) return;
     const markdownBody = content.querySelector('.markdown-body');
@@ -262,11 +262,11 @@ export function addDeepDiveButton(moduleId: string): void {
     const btn = document.createElement('button');
     btn.className = 'deep-dive-btn';
     btn.innerHTML = '&#128269; Explore Further';
-    btn.onclick = function () { toggleDeepDiveSection(moduleId, btn); };
+    btn.onclick = function () { toggleDeepDiveSection(componentId, btn); };
     markdownBody.insertBefore(btn, markdownBody.firstChild);
 }
 
-function toggleDeepDiveSection(moduleId: string, btn: HTMLElement): void {
+function toggleDeepDiveSection(componentId: string, btn: HTMLElement): void {
     const existing = document.getElementById('deep-dive-section');
     if (existing) { existing.parentNode!.removeChild(existing); return; }
 
@@ -276,7 +276,7 @@ function toggleDeepDiveSection(moduleId: string, btn: HTMLElement): void {
     section.innerHTML =
         '<div class="deep-dive-input-area">' +
         '<input type="text" class="deep-dive-input" id="deep-dive-input" ' +
-        'placeholder="Ask a specific question about this module... (optional)">' +
+        'placeholder="Ask a specific question about this component... (optional)">' +
         '<button class="deep-dive-submit" id="deep-dive-submit">Explore</button>' +
         '</div>' +
         '<div class="deep-dive-result" id="deep-dive-result"></div>';
@@ -284,17 +284,17 @@ function toggleDeepDiveSection(moduleId: string, btn: HTMLElement): void {
     btn.insertAdjacentElement('afterend', section);
 
     const submitBtn = document.getElementById('deep-dive-submit');
-    if (submitBtn) submitBtn.onclick = function () { startDeepDive(moduleId); };
+    if (submitBtn) submitBtn.onclick = function () { startDeepDive(componentId); };
     const deepDiveInput = document.getElementById('deep-dive-input') as HTMLInputElement | null;
     if (deepDiveInput) {
         deepDiveInput.addEventListener('keydown', function (e: KeyboardEvent) {
-            if (e.key === 'Enter') { e.preventDefault(); startDeepDive(moduleId); }
+            if (e.key === 'Enter') { e.preventDefault(); startDeepDive(componentId); }
         });
         deepDiveInput.focus();
     }
 }
 
-function startDeepDive(moduleId: string): void {
+function startDeepDive(componentId: string): void {
     if (deepDiveStreaming) return;
     deepDiveStreaming = true;
 
@@ -304,13 +304,13 @@ function startDeepDive(moduleId: string): void {
     const question = input ? input.value.trim() : '';
 
     if (submitBtn) submitBtn.disabled = true;
-    if (resultDiv) resultDiv.innerHTML = '<div class="deep-dive-status">Analyzing module...</div>';
+    if (resultDiv) resultDiv.innerHTML = '<div class="deep-dive-status">Analyzing component...</div>';
 
     const body: any = {};
     if (question) body.question = question;
     body.depth = 'deep';
 
-    fetch('/api/explore/' + encodeURIComponent(moduleId), {
+    fetch('/api/explore/' + encodeURIComponent(componentId), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),

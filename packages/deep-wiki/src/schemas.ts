@@ -8,14 +8,14 @@
  */
 
 // ============================================================================
-// Module Graph Schema (Phase 1 output)
+// Component Graph Schema (Phase 1 output)
 // ============================================================================
 
 /**
- * JSON schema string for the ModuleGraph type.
+ * JSON schema string for the ComponentGraph type.
  * Used in the discovery prompt to specify expected output format.
  */
-export const MODULE_GRAPH_SCHEMA = `{
+export const COMPONENT_GRAPH_SCHEMA = `{
   "project": {
     "name": "string — project name from config files",
     "description": "string — brief description from README or config",
@@ -23,15 +23,15 @@ export const MODULE_GRAPH_SCHEMA = `{
     "buildSystem": "string — build system (e.g., npm + webpack, cargo, go modules)",
     "entryPoints": ["string — entry point file paths relative to repo root"]
   },
-  "modules": [
+  "components": [
     {
       "id": "string — unique kebab-case identifier describing the FEATURE (e.g., 'auth-engine', 'pipeline-executor'), NOT the file/directory path (avoid 'src-auth', 'packages-core-src')",
       "name": "string — human-readable name describing what this module DOES for users/system (e.g., 'Authentication Engine', 'Pipeline Executor'), NOT the file name",
       "path": "string — path relative to repo root (e.g., src/auth/)",
       "purpose": "string — what this module does for users or the system (feature-focused, not 'contains files in src/auth')",
       "keyFiles": ["string — key file paths relative to repo root"],
-      "dependencies": ["string — IDs of modules this depends on"],
-      "dependents": ["string — IDs of modules that depend on this"],
+      "dependencies": ["string — IDs of components this depends on"],
+      "dependents": ["string — IDs of components that depend on this"],
       "complexity": "low | medium | high",
       "category": "string — must match one of the declared categories"
     }
@@ -70,15 +70,15 @@ export const STRUCTURAL_SCAN_SCHEMA = `{
 }`;
 
 // ============================================================================
-// Module Analysis Schema (Phase 3 output)
+// Component Analysis Schema (Phase 3 output)
 // ============================================================================
 
 /**
- * JSON schema string for the ModuleAnalysis type.
+ * JSON schema string for the ComponentAnalysis type.
  * Used in analysis prompts to specify expected output format.
  */
-export const MODULE_ANALYSIS_SCHEMA = `{
-  "moduleId": "string — must match the module ID provided",
+export const COMPONENT_ANALYSIS_SCHEMA = `{
+  "componentId": "string — must match the component ID provided",
   "overview": "string — high-level overview paragraph",
   "keyConcepts": [
     {
@@ -109,14 +109,14 @@ export const MODULE_ANALYSIS_SCHEMA = `{
   "dependencies": {
     "internal": [
       {
-        "module": "string — module ID",
-        "usage": "string — how this module uses it"
+        "component": "string — component ID",
+        "usage": "string — how this component uses it"
       }
     ],
     "external": [
       {
         "package": "string — package name",
-        "usage": "string — how this module uses it"
+        "usage": "string — how this component uses it"
       }
     ]
   },
@@ -134,13 +134,13 @@ export const REDUCE_OUTPUT_SCHEMA = `{
 }`;
 
 // ============================================================================
-// Module Analysis Validation Helpers
+// Component Analysis Validation Helpers
 // ============================================================================
 
 /**
- * Required fields for a valid ModuleAnalysis
+ * Required fields for a valid ComponentAnalysis
  */
-export const MODULE_ANALYSIS_REQUIRED_FIELDS = ['moduleId', 'overview'] as const;
+export const COMPONENT_ANALYSIS_REQUIRED_FIELDS = ['componentId', 'overview'] as const;
 
 /**
  * Valid Mermaid diagram type keywords that a diagram should start with
@@ -169,9 +169,9 @@ export function isValidMermaidDiagram(diagram: string): boolean {
 // ============================================================================
 
 /**
- * Required fields for a valid ModuleGraph
+ * Required fields for a valid ComponentGraph
  */
-export const MODULE_GRAPH_REQUIRED_FIELDS = ['project', 'modules', 'categories'] as const;
+export const COMPONENT_GRAPH_REQUIRED_FIELDS = ['project', 'components', 'categories'] as const;
 
 /**
  * Required fields for a valid ProjectInfo
@@ -179,9 +179,9 @@ export const MODULE_GRAPH_REQUIRED_FIELDS = ['project', 'modules', 'categories']
 export const PROJECT_INFO_REQUIRED_FIELDS = ['name', 'language'] as const;
 
 /**
- * Required fields for a valid ModuleInfo
+ * Required fields for a valid ComponentInfo
  */
-export const MODULE_INFO_REQUIRED_FIELDS = ['id', 'name', 'path'] as const;
+export const COMPONENT_INFO_REQUIRED_FIELDS = ['id', 'name', 'path'] as const;
 
 /**
  * Valid complexity values
@@ -189,19 +189,20 @@ export const MODULE_INFO_REQUIRED_FIELDS = ['id', 'name', 'path'] as const;
 export const VALID_COMPLEXITY_VALUES = ['low', 'medium', 'high'] as const;
 
 /**
- * Validate that a module ID is in the correct format (lowercase kebab-case)
+ * Validate that a component ID is in the correct format (lowercase kebab-case)
  */
-export function isValidModuleId(id: string): boolean {
+export function isValidComponentId(id: string): boolean {
     return /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/.test(id);
 }
 
 /**
- * Normalize a string into a valid module ID (lowercase kebab-case)
+ * Normalize a string into a valid component ID (lowercase kebab-case)
  */
-export function normalizeModuleId(input: string): string {
+export function normalizeComponentId(input: string): string {
     return input
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '')
         .replace(/-{2,}/g, '-') || 'unknown';
 }
+

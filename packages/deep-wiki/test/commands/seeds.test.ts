@@ -14,19 +14,19 @@ import { EXIT_CODES } from '../../src/cli';
 // Mock the seeds module to avoid actual SDK calls
 const mockSeeds = [
     {
-        topic: 'authentication',
+        theme: 'authentication',
         description: 'User authentication and authorization',
         hints: ['auth', 'login'],
     },
     {
-        topic: 'database',
+        theme: 'database',
         description: 'Database layer',
         hints: ['db', 'sql'],
     },
 ];
 
 vi.mock('../../src/seeds', () => ({
-    generateTopicSeeds: vi.fn().mockResolvedValue(mockSeeds),
+    generateThemeSeeds: vi.fn().mockResolvedValue(mockSeeds),
     SeedsError: class SeedsError extends Error {
         code: string;
         constructor(message: string, code: string) {
@@ -60,7 +60,7 @@ beforeEach(async () => {
 
     // Reset mock to default return value
     const seeds = await import('../../src/seeds');
-    vi.mocked(seeds.generateTopicSeeds).mockResolvedValue(mockSeeds);
+    vi.mocked(seeds.generateThemeSeeds).mockResolvedValue(mockSeeds);
 });
 
 afterEach(() => {
@@ -80,7 +80,7 @@ describe('Seeds Command', () => {
             const { executeSeeds } = await import('../../src/commands/seeds');
             const exitCode = await executeSeeds('/nonexistent/path/that/doesnt/exist', {
                 output: path.join(tmpDir, 'seeds.json'),
-                maxTopics: 50,
+                maxThemes: 50,
                 verbose: false,
             });
             expect(exitCode).toBe(EXIT_CODES.CONFIG_ERROR);
@@ -94,7 +94,7 @@ describe('Seeds Command', () => {
             const { executeSeeds } = await import('../../src/commands/seeds');
             const exitCode = await executeSeeds(filePath, {
                 output: path.join(tmpDir, 'seeds.json'),
-                maxTopics: 50,
+                maxThemes: 50,
                 verbose: false,
             });
             expect(exitCode).toBe(EXIT_CODES.CONFIG_ERROR);
@@ -114,7 +114,7 @@ describe('Seeds Command', () => {
             const { executeSeeds } = await import('../../src/commands/seeds');
             await executeSeeds(repoDir, {
                 output: path.join(tmpDir, 'seeds.json'),
-                maxTopics: 50,
+                maxThemes: 50,
                 verbose: false,
             });
 
@@ -130,21 +130,21 @@ describe('Seeds Command', () => {
             const { executeSeeds } = await import('../../src/commands/seeds');
             await executeSeeds(repoDir, {
                 output: outputFile,
-                maxTopics: 50,
+                maxThemes: 50,
                 verbose: false,
             });
 
             expect(stderrOutput).toContain('custom-seeds.json');
         });
 
-        it('should print max topics in header', async () => {
+        it('should print max themes in header', async () => {
             const repoDir = path.join(tmpDir, 'repo');
             fs.mkdirSync(repoDir);
 
             const { executeSeeds } = await import('../../src/commands/seeds');
             await executeSeeds(repoDir, {
                 output: path.join(tmpDir, 'seeds.json'),
-                maxTopics: 30,
+                maxThemes: 30,
                 verbose: false,
             });
 
@@ -158,7 +158,7 @@ describe('Seeds Command', () => {
             const { executeSeeds } = await import('../../src/commands/seeds');
             await executeSeeds(repoDir, {
                 output: path.join(tmpDir, 'seeds.json'),
-                maxTopics: 50,
+                maxThemes: 50,
                 model: 'claude-sonnet',
                 verbose: false,
             });
@@ -175,7 +175,7 @@ describe('Seeds Command', () => {
         it('should return EXECUTION_ERROR when seeds generation fails', async () => {
             const seeds = await import('../../src/seeds');
             const SeedsError = seeds.SeedsError;
-            vi.mocked(seeds.generateTopicSeeds).mockRejectedValueOnce(
+            vi.mocked(seeds.generateThemeSeeds).mockRejectedValueOnce(
                 new SeedsError('Generation failed', 'ai-error')
             );
 
@@ -185,7 +185,7 @@ describe('Seeds Command', () => {
             const { executeSeeds } = await import('../../src/commands/seeds');
             const exitCode = await executeSeeds(repoDir, {
                 output: path.join(tmpDir, 'seeds.json'),
-                maxTopics: 50,
+                maxThemes: 50,
                 verbose: false,
             });
 
@@ -195,7 +195,7 @@ describe('Seeds Command', () => {
         it('should return AI_UNAVAILABLE for SeedsError with sdk-unavailable code', async () => {
             const seeds = await import('../../src/seeds');
             const SeedsError = seeds.SeedsError;
-            vi.mocked(seeds.generateTopicSeeds).mockRejectedValueOnce(
+            vi.mocked(seeds.generateThemeSeeds).mockRejectedValueOnce(
                 new SeedsError('SDK not available', 'sdk-unavailable')
             );
 
@@ -205,7 +205,7 @@ describe('Seeds Command', () => {
             const { executeSeeds } = await import('../../src/commands/seeds');
             const exitCode = await executeSeeds(repoDir, {
                 output: path.join(tmpDir, 'seeds.json'),
-                maxTopics: 50,
+                maxThemes: 50,
                 verbose: false,
             });
 
@@ -215,7 +215,7 @@ describe('Seeds Command', () => {
         it('should return EXECUTION_ERROR for timeout error', async () => {
             const seeds = await import('../../src/seeds');
             const SeedsError = seeds.SeedsError;
-            vi.mocked(seeds.generateTopicSeeds).mockRejectedValueOnce(
+            vi.mocked(seeds.generateThemeSeeds).mockRejectedValueOnce(
                 new SeedsError('Timed out', 'timeout')
             );
 
@@ -225,7 +225,7 @@ describe('Seeds Command', () => {
             const { executeSeeds } = await import('../../src/commands/seeds');
             const exitCode = await executeSeeds(repoDir, {
                 output: path.join(tmpDir, 'seeds.json'),
-                maxTopics: 50,
+                maxThemes: 50,
                 verbose: false,
             });
 
@@ -246,7 +246,7 @@ describe('Seeds Command', () => {
             const { executeSeeds } = await import('../../src/commands/seeds');
             const exitCode = await executeSeeds(repoDir, {
                 output: outputFile,
-                maxTopics: 50,
+                maxThemes: 50,
                 verbose: false,
             });
 
@@ -255,8 +255,8 @@ describe('Seeds Command', () => {
             // Check output file
             expect(fs.existsSync(outputFile)).toBe(true);
             const content = JSON.parse(fs.readFileSync(outputFile, 'utf-8'));
-            expect(content.topics).toHaveLength(2);
-            expect(content.topics[0].topic).toBe('authentication');
+            expect(content.themes).toHaveLength(2);
+            expect(content.themes[0].theme).toBe('authentication');
             expect(content.version).toBe('1.0.0');
             expect(content.repoPath).toBe(repoDir);
         });
@@ -268,22 +268,22 @@ describe('Seeds Command', () => {
             const { executeSeeds } = await import('../../src/commands/seeds');
             await executeSeeds(repoDir, {
                 output: path.join(tmpDir, 'seeds.json'),
-                maxTopics: 50,
+                maxThemes: 50,
                 verbose: false,
             });
 
-            expect(stderrOutput).toContain('Topics Found');
+            expect(stderrOutput).toContain('Themes Found');
             expect(stderrOutput).toContain('2');
         });
 
-        it('should print topic list to stderr', async () => {
+        it('should print theme list to stderr', async () => {
             const repoDir = path.join(tmpDir, 'repo');
             fs.mkdirSync(repoDir);
 
             const { executeSeeds } = await import('../../src/commands/seeds');
             await executeSeeds(repoDir, {
                 output: path.join(tmpDir, 'seeds.json'),
-                maxTopics: 50,
+                maxThemes: 50,
                 verbose: false,
             });
 
@@ -291,14 +291,14 @@ describe('Seeds Command', () => {
             expect(stderrOutput).toContain('database');
         });
 
-        it('should print verbose topic details when verbose is true', async () => {
+        it('should print verbose theme details when verbose is true', async () => {
             const repoDir = path.join(tmpDir, 'repo');
             fs.mkdirSync(repoDir);
 
             const { executeSeeds } = await import('../../src/commands/seeds');
             await executeSeeds(repoDir, {
                 output: path.join(tmpDir, 'seeds.json'),
-                maxTopics: 50,
+                maxThemes: 50,
                 verbose: true,
             });
 
@@ -315,7 +315,7 @@ describe('Seeds Command', () => {
             const { executeSeeds } = await import('../../src/commands/seeds');
             await executeSeeds(repoDir, {
                 output: outputFile,
-                maxTopics: 50,
+                maxThemes: 50,
                 verbose: false,
             });
 

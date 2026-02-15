@@ -369,21 +369,21 @@ describe('scanCacheItems', () => {
 
 describe('scanCacheItemsMap', () => {
     interface CachedProbe {
-        probeResult: { topic: string; modules: string[] };
+        probeResult: { theme: string; modules: string[] };
         gitHash: string;
     }
 
     it('should return found items as Map entries', () => {
         writePlainFile(
             path.join(tmpDir, 'auth.json'),
-            { probeResult: { topic: 'auth', modules: ['a'] }, gitHash: 'h1' }
+            { probeResult: { theme: 'auth', components: ['a'] }, gitHash: 'h1' }
         );
         writePlainFile(
             path.join(tmpDir, 'db.json'),
-            { probeResult: { topic: 'db', modules: ['b'] }, gitHash: 'h1' }
+            { probeResult: { theme: 'db', components: ['b'] }, gitHash: 'h1' }
         );
 
-        const result = scanCacheItemsMap<CachedProbe, { topic: string; modules: string[] }>(
+        const result = scanCacheItemsMap<CachedProbe, { theme: string; modules: string[] }>(
             ['auth', 'db'],
             (id) => path.join(tmpDir, `${id}.json`),
             (cached) => cached.gitHash === 'h1',
@@ -391,13 +391,13 @@ describe('scanCacheItemsMap', () => {
         );
 
         expect(result.found.size).toBe(2);
-        expect(result.found.get('auth')?.topic).toBe('auth');
-        expect(result.found.get('db')?.topic).toBe('db');
+        expect(result.found.get('auth')?.theme).toBe('auth');
+        expect(result.found.get('db')?.theme).toBe('db');
         expect(result.missing).toHaveLength(0);
     });
 
     it('should report missing items in Map scan', () => {
-        const result = scanCacheItemsMap<CachedProbe, { topic: string; modules: string[] }>(
+        const result = scanCacheItemsMap<CachedProbe, { theme: string; modules: string[] }>(
             ['missing'],
             (id) => path.join(tmpDir, `${id}.json`),
             () => true,
@@ -411,10 +411,10 @@ describe('scanCacheItemsMap', () => {
     it('should handle stale entries in Map scan', () => {
         writePlainFile(
             path.join(tmpDir, 'old.json'),
-            { probeResult: { topic: 'old', modules: [] }, gitHash: 'old-hash' }
+            { probeResult: { theme: 'old', components: [] }, gitHash: 'old-hash' }
         );
 
-        const result = scanCacheItemsMap<CachedProbe, { topic: string; modules: string[] }>(
+        const result = scanCacheItemsMap<CachedProbe, { theme: string; modules: string[] }>(
             ['old'],
             (id) => path.join(tmpDir, `${id}.json`),
             (cached) => cached.gitHash === 'new-hash',
@@ -426,7 +426,7 @@ describe('scanCacheItemsMap', () => {
     });
 
     it('should handle null pathResolver in Map scan', () => {
-        const result = scanCacheItemsMap<CachedProbe, { topic: string; modules: string[] }>(
+        const result = scanCacheItemsMap<CachedProbe, { theme: string; modules: string[] }>(
             ['x', 'y'],
             () => null,
             () => true,

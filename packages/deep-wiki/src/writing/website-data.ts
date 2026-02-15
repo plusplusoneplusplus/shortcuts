@@ -76,36 +76,36 @@ export function readMarkdownFiles(
         }
     }
 
-    // Read topic files (topics/{topicId}.md for single, topics/{topicId}/ for area)
-    const topicsDir = path.join(wikiDir, 'topics');
-    if (fs.existsSync(topicsDir) && fs.statSync(topicsDir).isDirectory()) {
-        const entries = fs.readdirSync(topicsDir);
+    // Read theme files (themes/{themeId}.md for single, themes/{themeId}/ for area)
+    const themesDir = path.join(wikiDir, 'themes');
+    if (fs.existsSync(themesDir) && fs.statSync(themesDir).isDirectory()) {
+        const entries = fs.readdirSync(themesDir);
         for (const entry of entries) {
-            const entryPath = path.join(topicsDir, entry);
+            const entryPath = path.join(themesDir, entry);
             const stat = fs.statSync(entryPath);
 
             if (stat.isFile() && entry.endsWith('.md')) {
-                // Single-layout topic: topics/{topicId}.md
-                const topicId = path.basename(entry, '.md');
-                data[`__topic_${topicId}`] = fs.readFileSync(entryPath, 'utf-8');
+                // Single-layout theme: themes/{themeId}.md
+                const themeId = path.basename(entry, '.md');
+                data[`__theme_${themeId}`] = fs.readFileSync(entryPath, 'utf-8');
             } else if (stat.isDirectory()) {
-                // Area-layout topic: topics/{topicId}/
-                const topicId = entry;
-                const topicDir = entryPath;
+                // Area-layout theme: themes/{themeId}/
+                const themeId = entry;
+                const themeDir = entryPath;
 
                 // Read index.md
-                const indexPath = path.join(topicDir, 'index.md');
+                const indexPath = path.join(themeDir, 'index.md');
                 if (fs.existsSync(indexPath)) {
-                    data[`__topic_${topicId}_index`] = fs.readFileSync(indexPath, 'utf-8');
+                    data[`__theme_${themeId}_index`] = fs.readFileSync(indexPath, 'utf-8');
                 }
 
                 // Read sub-article files
-                const subFiles = fs.readdirSync(topicDir).filter(f =>
+                const subFiles = fs.readdirSync(themeDir).filter(f =>
                     f.endsWith('.md') && f !== 'index.md'
                 );
                 for (const subFile of subFiles) {
                     const slug = path.basename(subFile, '.md');
-                    data[`__topic_${topicId}_${slug}`] = fs.readFileSync(path.join(topicDir, subFile), 'utf-8');
+                    data[`__theme_${themeId}_${slug}`] = fs.readFileSync(path.join(themeDir, subFile), 'utf-8');
                 }
             }
         }

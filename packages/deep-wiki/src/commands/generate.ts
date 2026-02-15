@@ -3,9 +3,9 @@
  *
  * Implements the `deep-wiki generate <repo-path>` command.
  * Full pipeline wiki generation:
- *   Phase 1: Discovery      → ModuleGraph
- *   Phase 2: Consolidation  → Reduced ModuleGraph
- *   Phase 3: Analysis       → ModuleAnalysis[] (incremental with cache)
+ *   Phase 1: Discovery      → ComponentGraph
+ *   Phase 2: Consolidation  → Reduced ComponentGraph
+ *   Phase 3: Analysis       → ComponentAnalysis[] (incremental with cache)
  *   Phase 4: Writing        → Wiki articles on disk
  *   Phase 5: Website        → Static HTML website
  *
@@ -15,7 +15,7 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
-import type { GenerateCommandOptions, ModuleGraph, ModuleAnalysis } from '../types';
+import type { GenerateCommandOptions, ComponentGraph, ComponentAnalysis } from '../types';
 import { checkAIAvailability } from '../ai-invoker';
 import { UsageTracker } from '../usage-tracker';
 import type { TrackedPhase } from '../usage-tracker';
@@ -163,7 +163,7 @@ export async function executeGenerate(
         // ================================================================
         // Phase 1: Discovery
         // ================================================================
-        let graph: ModuleGraph;
+        let graph: ComponentGraph;
         let phase1Duration = 0;
 
         if (startPhase <= 1) {
@@ -182,11 +182,11 @@ export async function executeGenerate(
                 ? getCachedGraphAny(options.output)
                 : await getCachedGraph(absoluteRepoPath, options.output);
             if (!cached) {
-                printError(`No cached module graph found. Run without --phase (or --phase 1) first.`);
+                printError(`No cached component graph found. Run without --phase (or --phase 1) first.`);
                 return EXIT_CODES.CONFIG_ERROR;
             }
             graph = cached.graph;
-            printSuccess(`Loaded cached module graph (${graph.modules.length} modules)`);
+            printSuccess(`Loaded cached component graph (${graph.components.length} components)`);
             usageTracker.markCached('discovery');
         }
 
@@ -205,7 +205,7 @@ export async function executeGenerate(
         // ================================================================
         let phase2Duration = 0;
 
-        if (!options.noCluster && graph.modules.length > 0 && startPhase <= 2) {
+        if (!options.noCluster && graph.components.length > 0 && startPhase <= 2) {
             const phase2Result = await runPhase2Consolidation(absoluteRepoPath, graph, options, usageTracker);
             graph = phase2Result.graph;
             phase2Duration = phase2Result.duration;
@@ -224,7 +224,7 @@ export async function executeGenerate(
         // ================================================================
         // Phase 3: Deep Analysis
         // ================================================================
-        let analyses: ModuleAnalysis[];
+        let analyses: ComponentAnalysis[];
         let phase3Duration = 0;
 
         let reanalyzedModuleIds: string[] | undefined;
@@ -247,7 +247,7 @@ export async function executeGenerate(
                 return EXIT_CODES.CONFIG_ERROR;
             }
             analyses = cached;
-            printSuccess(`Loaded ${analyses.length} cached module analyses`);
+            printSuccess(`Loaded ${analyses.length} cached component analyses`);
             usageTracker.markCached('analysis');
         }
 
@@ -278,14 +278,14 @@ export async function executeGenerate(
         let phase5Duration = 0;
 
         if (!options.skipWebsite && endPhase >= 5) {
-            // Ensure module-graph.json reflects the current in-memory graph before
+            // Ensure component-graph.json reflects the current in-memory graph before
             // Phase 5 reads it. This is critical when Phase 2 (Consolidation)
-            // changed module IDs — without this, the website would use the stale
-            // Phase 1 graph and fail to match MARKDOWN_DATA keys to module IDs,
-            // resulting in module pages showing only brief metadata instead of
+            // changed component IDs — without this, the website would use the stale
+            // Phase 1 graph and fail to match MARKDOWN_DATA keys to component IDs,
+            // resulting in component pages showing only brief metadata instead of
             // the full generated articles.
             const outputDir = path.resolve(options.output);
-            const graphOutputFile = path.join(outputDir, 'module-graph.json');
+            const graphOutputFile = path.join(outputDir, 'component-graph.json');
             try {
                 fs.mkdirSync(outputDir, { recursive: true });
                 fs.writeFileSync(graphOutputFile, JSON.stringify(graph, null, 2), 'utf-8');
@@ -304,12 +304,12 @@ export async function executeGenerate(
         const totalDuration = Date.now() - startTime;
         process.stderr.write('\n');
         printHeader('Generation Summary');
-        printKeyValue('Modules Discovered', String(graph.modules.length));
+        printKeyValue('Components Discovered', String(graph.components.length));
         if (graph.domains && graph.domains.length > 0) {
             printKeyValue('Areas', String(graph.domains.length));
             printKeyValue('Layout', 'Hierarchical (3-level)');
         }
-        printKeyValue('Modules Analyzed', String(analyses.length));
+        printKeyValue('Components Analyzed', String(analyses.length));
         printKeyValue('Articles Written', String(phase4Result.articlesWritten));
         if (websiteGenerated) {
             printKeyValue('Website', 'Generated');

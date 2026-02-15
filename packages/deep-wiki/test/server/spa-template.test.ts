@@ -718,7 +718,7 @@ describe('generateSpaHtml — domain-based sidebar', () => {
         });
         expect(html).toContain('.nav-domain-item');
         expect(html).toContain('.nav-domain-children');
-        expect(html).toContain('.nav-domain-module');
+        expect(html).toContain('.nav-domain-component');
         expect(html).toContain('.nav-domain-group');
     });
 
@@ -728,7 +728,7 @@ describe('generateSpaHtml — domain-based sidebar', () => {
             enableAI: false, enableGraph: false,
         });
         expect(html).toContain('.nav-domain-item.active');
-        expect(html).toContain('.nav-domain-module.active');
+        expect(html).toContain('.nav-domain-component.active');
     });
 
     it('should assign modules to domains by mod.domain field', () => {
@@ -739,12 +739,12 @@ describe('generateSpaHtml — domain-based sidebar', () => {
         expect(html).toContain('mod.domain');
     });
 
-    it('should fall back to area.modules list for assignment', () => {
+    it('should fall back to area.components list for assignment', () => {
         const html = generateSpaHtml({
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: false, enableGraph: false,
         });
-        expect(html).toContain('area.modules');
+        expect(html).toContain('area.components');
     });
 
     it('should handle unassigned modules in an Other group', () => {
@@ -769,7 +769,7 @@ describe('generateSpaHtml — domain-based sidebar', () => {
             enableAI: false, enableGraph: false,
         });
         // Should search area-module items as well as regular nav-items
-        expect(html).toContain('.nav-domain-module[data-id]');
+        expect(html).toContain('.nav-domain-component[data-id]');
     });
 
     it('should hide area headers when no children match search', () => {
@@ -794,9 +794,9 @@ describe('generateSpaHtml — domain-based sidebar', () => {
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: false, enableGraph: false,
         });
-        // setActive should also handle .nav-domain-module
-        expect(html).toContain('.nav-domain-module');
-        expect(html).toContain("'.nav-domain-module[data-id=");
+        // setActive should also handle .nav-domain-component
+        expect(html).toContain('.nav-domain-component');
+        expect(html).toContain("'.nav-domain-component[data-id=");
     });
 
     it('should include domain-based sidebar in all themes', () => {
@@ -809,7 +809,7 @@ describe('generateSpaHtml — domain-based sidebar', () => {
             expect(html).toContain('buildDomainSidebar');
             expect(html).toContain('buildCategorySidebar');
             expect(html).toContain('.nav-domain-item');
-            expect(html).toContain('.nav-domain-module');
+            expect(html).toContain('.nav-domain-component');
         }
     });
 
@@ -861,7 +861,7 @@ describe('generateSpaHtml — domain-based sidebar', () => {
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: false, enableGraph: false,
         });
-        expect(html).toContain('.nav-domain-module');
+        expect(html).toContain('.nav-domain-component');
         // Modules use muted color by default, highlight on active
         expect(html).toContain('color: var(--sidebar-muted)');
     });

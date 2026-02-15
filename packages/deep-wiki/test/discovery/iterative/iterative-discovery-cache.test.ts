@@ -12,7 +12,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { runIterativeDiscovery } from '../../../src/discovery/iterative/iterative-discovery';
-import type { IterativeDiscoveryOptions, TopicSeed, ComponentGraph, TopicProbeResult } from '../../../src/types';
+import type { IterativeDiscoveryOptions, ThemeSeed, ComponentGraph, ThemeProbeResult } from '../../../src/types';
 import {
     saveProbeResult,
     getCachedProbeResult,
@@ -22,7 +22,7 @@ import {
 
 // Mock probe and merge sessions
 vi.mock('../../../src/discovery/iterative/probe-session', () => ({
-    runTopicProbe: vi.fn(),
+    runThemeProbe: vi.fn(),
 }));
 
 vi.mock('../../../src/discovery/iterative/merge-session', () => ({
@@ -42,7 +42,7 @@ vi.mock('../../../src/logger', () => ({
     bold: (s: string) => s,
 }));
 
-import { runTopicProbe } from '../../../src/discovery/iterative/probe-session';
+import { runThemeProbe } from '../../../src/discovery/iterative/probe-session';
 import { mergeProbeResults } from '../../../src/discovery/iterative/merge-session';
 
 // ============================================================================
@@ -79,29 +79,29 @@ function createMockGraph(moduleIds: string[] = []): ComponentGraph {
     };
 }
 
-function createProbeResult(topic: string): TopicProbeResult {
+function createProbeResult(theme: string): ThemeProbeResult {
     return {
-        topic,
+        theme,
         foundComponents: [
             {
-                id: `${topic}-service`,
-                name: `${topic} Service`,
-                path: `src/${topic}/`,
-                purpose: `Handles ${topic}`,
-                keyFiles: [`src/${topic}/index.ts`],
+                id: `${theme}-service`,
+                name: `${theme} Service`,
+                path: `src/${theme}/`,
+                purpose: `Handles ${theme}`,
+                keyFiles: [`src/${theme}/index.ts`],
                 evidence: 'Found',
             },
         ],
-        discoveredTopics: [],
+        discoveredThemes: [],
         dependencies: [],
         confidence: 0.9,
     };
 }
 
-const baseSeeds: TopicSeed[] = [
-    { topic: 'auth', description: 'Authentication', hints: ['auth'] },
-    { topic: 'database', description: 'Database layer', hints: ['db'] },
-    { topic: 'api', description: 'API routes', hints: ['api'] },
+const baseSeeds: ThemeSeed[] = [
+    { theme: 'auth', description: 'Authentication', hints: ['auth'] },
+    { theme: 'database', description: 'Database layer', hints: ['db'] },
+    { theme: 'api', description: 'API routes', hints: ['api'] },
 ];
 
 beforeEach(() => {
@@ -125,11 +125,11 @@ describe('probe cache integration', () => {
         saveProbeResult('database', createProbeResult('database'), outputDir, gitHash);
 
         // Only 'api' should trigger a fresh probe
-        vi.mocked(runTopicProbe).mockResolvedValue(createProbeResult('api'));
+        vi.mocked(runThemeProbe).mockResolvedValue(createProbeResult('api'));
 
         vi.mocked(mergeProbeResults).mockResolvedValue({
             graph: createMockGraph(['auth-service', 'database-service', 'api-service']),
-            newTopics: [],
+            newThemes: [],
             converged: true,
             coverage: 0.95,
             reason: 'Converged',
@@ -146,23 +146,23 @@ describe('probe cache integration', () => {
         const result = await runIterativeDiscovery(options);
 
         // Only 1 fresh probe (api), not 3
-        expect(vi.mocked(runTopicProbe)).toHaveBeenCalledTimes(1);
+        expect(vi.mocked(runThemeProbe)).toHaveBeenCalledTimes(1);
 
         // Merge should still receive all 3 probe results
         expect(vi.mocked(mergeProbeResults)).toHaveBeenCalledTimes(1);
         const mergeCallArgs = vi.mocked(mergeProbeResults).mock.calls[0];
-        const probeResults = mergeCallArgs[1] as TopicProbeResult[];
+        const probeResults = mergeCallArgs[1] as ThemeProbeResult[];
         expect(probeResults).toHaveLength(3);
 
         expect(result.components).toHaveLength(3);
     });
 
     it('should run all probes when no cache exists', async () => {
-        vi.mocked(runTopicProbe).mockResolvedValue(createProbeResult('auth'));
+        vi.mocked(runThemeProbe).mockResolvedValue(createProbeResult('auth'));
 
         vi.mocked(mergeProbeResults).mockResolvedValue({
             graph: createMockGraph(['auth-service']),
-            newTopics: [],
+            newThemes: [],
             converged: true,
             coverage: 0.9,
             reason: 'Converged',
@@ -179,17 +179,17 @@ describe('probe cache integration', () => {
         await runIterativeDiscovery(options);
 
         // All 3 probes should run
-        expect(vi.mocked(runTopicProbe)).toHaveBeenCalledTimes(3);
+        expect(vi.mocked(runThemeProbe)).toHaveBeenCalledTimes(3);
     });
 
     it('should save probe results to cache as they complete', async () => {
-        vi.mocked(runTopicProbe).mockImplementation(async (_repoPath, topic) => {
-            return createProbeResult(topic.topic);
+        vi.mocked(runThemeProbe).mockImplementation(async (_repoPath, theme) => {
+            return createProbeResult(theme.theme);
         });
 
         vi.mocked(mergeProbeResults).mockResolvedValue({
             graph: createMockGraph(['auth-service', 'database-service']),
-            newTopics: [],
+            newThemes: [],
             converged: true,
             coverage: 0.9,
             reason: 'Converged',
@@ -198,8 +198,8 @@ describe('probe cache integration', () => {
         const options: IterativeDiscoveryOptions = {
             repoPath: '/test/repo',
             seeds: [
-                { topic: 'auth', description: 'Auth', hints: ['auth'] },
-                { topic: 'database', description: 'DB', hints: ['db'] },
+                { theme: 'auth', description: 'Auth', hints: ['auth'] },
+                { theme: 'database', description: 'DB', hints: ['db'] },
             ],
             outputDir,
             gitHash,
@@ -212,9 +212,9 @@ describe('probe cache integration', () => {
         const cachedAuth = getCachedProbeResult('auth', outputDir, gitHash);
         const cachedDb = getCachedProbeResult('database', outputDir, gitHash);
         expect(cachedAuth).not.toBeNull();
-        expect(cachedAuth!.topic).toBe('auth');
+        expect(cachedAuth!.theme).toBe('auth');
         expect(cachedDb).not.toBeNull();
-        expect(cachedDb!.topic).toBe('database');
+        expect(cachedDb!.theme).toBe('database');
     });
 });
 
@@ -228,11 +228,11 @@ describe('git hash invalidation', () => {
         saveProbeResult('auth', createProbeResult('auth'), outputDir, 'old_hash');
         saveProbeResult('database', createProbeResult('database'), outputDir, 'old_hash');
 
-        vi.mocked(runTopicProbe).mockResolvedValue(createProbeResult('auth'));
+        vi.mocked(runThemeProbe).mockResolvedValue(createProbeResult('auth'));
 
         vi.mocked(mergeProbeResults).mockResolvedValue({
             graph: createMockGraph([]),
-            newTopics: [],
+            newThemes: [],
             converged: true,
             coverage: 0.9,
             reason: 'Converged',
@@ -249,7 +249,7 @@ describe('git hash invalidation', () => {
         await runIterativeDiscovery(options);
 
         // All 3 probes should run (cache invalidated)
-        expect(vi.mocked(runTopicProbe)).toHaveBeenCalledTimes(3);
+        expect(vi.mocked(runThemeProbe)).toHaveBeenCalledTimes(3);
     });
 });
 
@@ -259,11 +259,11 @@ describe('git hash invalidation', () => {
 
 describe('discovery metadata', () => {
     it('should save metadata after each round', async () => {
-        vi.mocked(runTopicProbe).mockResolvedValue(createProbeResult('auth'));
+        vi.mocked(runThemeProbe).mockResolvedValue(createProbeResult('auth'));
 
         vi.mocked(mergeProbeResults).mockResolvedValue({
             graph: createMockGraph(['auth-service']),
-            newTopics: [],
+            newThemes: [],
             converged: true,
             coverage: 0.9,
             reason: 'Converged',
@@ -271,7 +271,7 @@ describe('discovery metadata', () => {
 
         const options: IterativeDiscoveryOptions = {
             repoPath: '/test/repo',
-            seeds: [{ topic: 'auth', description: 'Auth', hints: ['auth'] }],
+            seeds: [{ theme: 'auth', description: 'Auth', hints: ['auth'] }],
             outputDir,
             gitHash,
             maxRounds: 3,
@@ -289,13 +289,13 @@ describe('discovery metadata', () => {
     });
 
     it('should update metadata each round during multi-round discovery', async () => {
-        vi.mocked(runTopicProbe).mockResolvedValue(createProbeResult('auth'));
+        vi.mocked(runThemeProbe).mockResolvedValue(createProbeResult('auth'));
 
-        // Round 1: discover new topic
+        // Round 1: discover new theme
         vi.mocked(mergeProbeResults)
             .mockResolvedValueOnce({
                 graph: createMockGraph([]),
-                newTopics: [{ topic: 'db', description: 'DB', hints: ['db'] }],
+                newThemes: [{ theme: 'db', description: 'DB', hints: ['db'] }],
                 converged: false,
                 coverage: 0.4,
                 reason: 'Low coverage',
@@ -303,7 +303,7 @@ describe('discovery metadata', () => {
             // Round 2: converge
             .mockResolvedValueOnce({
                 graph: createMockGraph(['auth-service', 'db-service']),
-                newTopics: [],
+                newThemes: [],
                 converged: true,
                 coverage: 0.9,
                 reason: 'Converged',
@@ -311,7 +311,7 @@ describe('discovery metadata', () => {
 
         const options: IterativeDiscoveryOptions = {
             repoPath: '/test/repo',
-            seeds: [{ topic: 'auth', description: 'Auth', hints: ['auth'] }],
+            seeds: [{ theme: 'auth', description: 'Auth', hints: ['auth'] }],
             outputDir,
             gitHash,
             maxRounds: 3,
@@ -332,11 +332,11 @@ describe('discovery metadata', () => {
 
 describe('no caching when outputDir not provided', () => {
     it('should work normally without cache options', async () => {
-        vi.mocked(runTopicProbe).mockResolvedValue(createProbeResult('auth'));
+        vi.mocked(runThemeProbe).mockResolvedValue(createProbeResult('auth'));
 
         vi.mocked(mergeProbeResults).mockResolvedValue({
             graph: createMockGraph(['auth-service']),
-            newTopics: [],
+            newThemes: [],
             converged: true,
             coverage: 0.9,
             reason: 'Converged',
@@ -344,14 +344,14 @@ describe('no caching when outputDir not provided', () => {
 
         const options: IterativeDiscoveryOptions = {
             repoPath: '/test/repo',
-            seeds: [{ topic: 'auth', description: 'Auth', hints: ['auth'] }],
+            seeds: [{ theme: 'auth', description: 'Auth', hints: ['auth'] }],
             // No outputDir, no gitHash
             maxRounds: 1,
         };
 
         const result = await runIterativeDiscovery(options);
         expect(result.components).toHaveLength(1);
-        expect(vi.mocked(runTopicProbe)).toHaveBeenCalledTimes(1);
+        expect(vi.mocked(runThemeProbe)).toHaveBeenCalledTimes(1);
 
         // No metadata should be saved
         expect(getDiscoveryMetadata(outputDir)).toBeNull();
@@ -368,11 +368,11 @@ describe('--use-cache mode', () => {
         saveProbeResult('auth', createProbeResult('auth'), outputDir, 'completely_different_hash');
         saveProbeResult('database', createProbeResult('database'), outputDir, 'another_different_hash');
 
-        vi.mocked(runTopicProbe).mockResolvedValue(createProbeResult('api'));
+        vi.mocked(runThemeProbe).mockResolvedValue(createProbeResult('api'));
 
         vi.mocked(mergeProbeResults).mockResolvedValue({
             graph: createMockGraph([]),
-            newTopics: [],
+            newThemes: [],
             converged: true,
             coverage: 0.9,
             reason: 'Converged',
@@ -390,7 +390,7 @@ describe('--use-cache mode', () => {
         await runIterativeDiscovery(options);
 
         // Only 'api' should trigger a fresh probe (auth + database from cache)
-        expect(vi.mocked(runTopicProbe)).toHaveBeenCalledTimes(1);
+        expect(vi.mocked(runThemeProbe)).toHaveBeenCalledTimes(1);
     });
 });
 
@@ -405,11 +405,11 @@ describe('partial cache (crash recovery)', () => {
         saveProbeResult('database', createProbeResult('database'), outputDir, gitHash);
         // 'api' probe was not saved (process crashed)
 
-        vi.mocked(runTopicProbe).mockResolvedValue(createProbeResult('api'));
+        vi.mocked(runThemeProbe).mockResolvedValue(createProbeResult('api'));
 
         vi.mocked(mergeProbeResults).mockResolvedValue({
             graph: createMockGraph(['auth-service', 'database-service', 'api-service']),
-            newTopics: [],
+            newThemes: [],
             converged: true,
             coverage: 0.95,
             reason: 'Converged',
@@ -426,7 +426,7 @@ describe('partial cache (crash recovery)', () => {
         const result = await runIterativeDiscovery(options);
 
         // Only 'api' needed a fresh probe
-        expect(vi.mocked(runTopicProbe)).toHaveBeenCalledTimes(1);
+        expect(vi.mocked(runThemeProbe)).toHaveBeenCalledTimes(1);
         expect(result.components).toHaveLength(3);
 
         // After completion, the api probe should also be cached

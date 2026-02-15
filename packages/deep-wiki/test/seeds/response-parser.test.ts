@@ -1,7 +1,7 @@
 /**
  * Seeds Response Parser Tests
  *
- * Tests for parsing AI responses into TopicSeed arrays.
+ * Tests for parsing AI responses into ThemeSeed arrays.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -9,16 +9,16 @@ import { parseSeedsResponse } from '../../src/seeds/response-parser';
 
 describe('Seeds Response Parser', () => {
     describe('parseSeedsResponse', () => {
-        it('should parse valid JSON response with multiple topics', () => {
+        it('should parse valid JSON response with multiple themes', () => {
             const response = JSON.stringify({
-                topics: [
+                themes: [
                     {
-                        topic: 'authentication',
+                        theme: 'authentication',
                         description: 'User authentication and authorization',
                         hints: ['auth', 'login', 'password'],
                     },
                     {
-                        topic: 'api-gateway',
+                        theme: 'api-gateway',
                         description: 'API gateway and routing',
                         hints: ['gateway', 'routing', 'api'],
                     },
@@ -27,7 +27,7 @@ describe('Seeds Response Parser', () => {
 
             const seeds = parseSeedsResponse(response);
             expect(seeds).toHaveLength(2);
-            expect(seeds[0].topic).toBe('authentication');
+            expect(seeds[0].theme).toBe('authentication');
             expect(seeds[0].description).toBe('User authentication and authorization');
             expect(seeds[0].hints).toEqual(['auth', 'login', 'password']);
         });
@@ -36,9 +36,9 @@ describe('Seeds Response Parser', () => {
             const response = `Here's the JSON:
 \`\`\`json
 {
-  "topics": [
+  "themes": [
     {
-      "topic": "database",
+      "theme": "database",
       "description": "Database layer",
       "hints": ["db", "sql"]
     }
@@ -49,19 +49,19 @@ That's the result.`;
 
             const seeds = parseSeedsResponse(response);
             expect(seeds).toHaveLength(1);
-            expect(seeds[0].topic).toBe('database');
+            expect(seeds[0].theme).toBe('database');
         });
 
-        it('should normalize topic IDs to kebab-case', () => {
+        it('should normalize theme IDs to kebab-case', () => {
             const response = JSON.stringify({
-                topics: [
+                themes: [
                     {
-                        topic: 'API Gateway',
+                        theme: 'API Gateway',
                         description: 'API gateway',
                         hints: ['api'],
                     },
                     {
-                        topic: 'user_authentication',
+                        theme: 'user_authentication',
                         description: 'Auth',
                         hints: ['auth'],
                     },
@@ -69,15 +69,15 @@ That's the result.`;
             });
 
             const seeds = parseSeedsResponse(response);
-            expect(seeds[0].topic).toBe('api-gateway');
-            expect(seeds[1].topic).toBe('user-authentication');
+            expect(seeds[0].theme).toBe('api-gateway');
+            expect(seeds[1].theme).toBe('user-authentication');
         });
 
         it('should handle hints as comma-separated string', () => {
             const response = JSON.stringify({
-                topics: [
+                themes: [
                     {
-                        topic: 'auth',
+                        theme: 'auth',
                         description: 'Authentication',
                         hints: 'login,password,token',
                     },
@@ -88,11 +88,11 @@ That's the result.`;
             expect(seeds[0].hints).toEqual(['login', 'password', 'token']);
         });
 
-        it('should default hints to topic name if missing', () => {
+        it('should default hints to theme name if missing', () => {
             const response = JSON.stringify({
-                topics: [
+                themes: [
                     {
-                        topic: 'database',
+                        theme: 'database',
                         description: 'Database layer',
                     },
                 ],
@@ -102,20 +102,20 @@ That's the result.`;
             expect(seeds[0].hints).toEqual(['database']);
         });
 
-        it('should skip invalid topics and continue parsing', () => {
+        it('should skip invalid themes and continue parsing', () => {
             const response = JSON.stringify({
-                topics: [
+                themes: [
                     {
-                        topic: 'valid-topic',
-                        description: 'Valid topic',
+                        theme: 'valid-theme',
+                        description: 'Valid theme',
                         hints: ['hint'],
                     },
                     {
-                        // Missing topic field
-                        description: 'Invalid topic',
+                        // Missing theme field
+                        description: 'Invalid theme',
                     },
                     {
-                        topic: 'another-valid',
+                        theme: 'another-valid',
                         description: 'Another valid',
                         hints: ['hint2'],
                     },
@@ -124,20 +124,20 @@ That's the result.`;
 
             const seeds = parseSeedsResponse(response);
             expect(seeds).toHaveLength(2);
-            expect(seeds[0].topic).toBe('valid-topic');
-            expect(seeds[1].topic).toBe('another-valid');
+            expect(seeds[0].theme).toBe('valid-theme');
+            expect(seeds[1].theme).toBe('another-valid');
         });
 
-        it('should deduplicate topics by ID', () => {
+        it('should deduplicate themes by ID', () => {
             const response = JSON.stringify({
-                topics: [
+                themes: [
                     {
-                        topic: 'auth',
+                        theme: 'auth',
                         description: 'First auth',
                         hints: ['hint1'],
                     },
                     {
-                        topic: 'auth',
+                        theme: 'auth',
                         description: 'Second auth',
                         hints: ['hint2'],
                     },
@@ -157,25 +157,25 @@ That's the result.`;
             expect(() => parseSeedsResponse('This is not JSON')).toThrow();
         });
 
-        it('should throw error on missing topics field', () => {
+        it('should throw error on missing themes field', () => {
             const response = JSON.stringify({
                 something: 'else',
             });
-            expect(() => parseSeedsResponse(response)).toThrow("Missing 'topics' field");
+            expect(() => parseSeedsResponse(response)).toThrow("Missing 'themes' field");
         });
 
-        it('should throw error if topics is not an array', () => {
+        it('should throw error if themes is not an array', () => {
             const response = JSON.stringify({
-                topics: 'not an array',
+                themes: 'not an array',
             });
-            expect(() => parseSeedsResponse(response)).toThrow("'topics' field must be an array");
+            expect(() => parseSeedsResponse(response)).toThrow("'themes' field must be an array");
         });
 
         it('should filter empty hints', () => {
             const response = JSON.stringify({
-                topics: [
+                themes: [
                     {
-                        topic: 'auth',
+                        theme: 'auth',
                         description: 'Auth',
                         hints: ['valid', '', '  ', 'another'],
                     },

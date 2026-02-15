@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { TopicRequest, TopicOutline } from '../../src/types';
+import type { ThemeRequest, ThemeOutline } from '../../src/types';
 import type { ProbeFoundComponent } from '../../src/discovery/iterative/types';
-import type { EnrichedProbeResult } from '../../src/topic/topic-probe';
+import type { EnrichedProbeResult } from '../../src/theme/theme-probe';
 
 // ─── Mock SDK ──────────────────────────────────────────────────────────
 
@@ -26,12 +26,12 @@ vi.mock('../../src/logger', () => ({
 }));
 
 import {
-    generateTopicOutline,
+    generateThemeOutline,
     buildFallbackOutline,
     parseOutlineResponse,
     type OutlineGeneratorOptions,
-} from '../../src/topic/outline-generator';
-import { buildOutlinePrompt } from '../../src/topic/outline-prompts';
+} from '../../src/theme/outline-generator';
+import { buildOutlinePrompt } from '../../src/theme/outline-prompts';
 
 // ─── Helpers ───────────────────────────────────────────────────────────
 
@@ -50,9 +50,9 @@ function makeModule(overrides: Partial<ProbeFoundComponent> = {}): ProbeFoundCom
 function makeProbeResult(modules: ProbeFoundComponent[]): EnrichedProbeResult {
     return {
         probeResult: {
-            topic: 'test-topic',
+            theme: 'test-theme',
             foundComponents: modules,
-            discoveredTopics: [],
+            discoveredThemes: [],
             dependencies: [],
             confidence: 0.8,
         },
@@ -62,9 +62,9 @@ function makeProbeResult(modules: ProbeFoundComponent[]): EnrichedProbeResult {
     };
 }
 
-function makeTopic(overrides: Partial<TopicRequest> = {}): TopicRequest {
+function makeTheme(overrides: Partial<ThemeRequest> = {}): ThemeRequest {
     return {
-        topic: 'compaction',
+        theme: 'compaction',
         description: 'Log compaction and cleanup',
         hints: ['compact', 'merge'],
         ...overrides,
@@ -85,7 +85,7 @@ function makeOptions(
     );
     return {
         repoPath: '/repo',
-        topic: makeTopic(),
+        theme: makeTheme(),
         probeResult: makeProbeResult(modules),
         depth: 'normal',
         ...overrides,
@@ -96,19 +96,19 @@ function makeOptions(
 
 describe('outline-prompts', () => {
     describe('buildOutlinePrompt', () => {
-        it('should include topic name and description', () => {
-            const topic = makeTopic();
+        it('should include theme name and description', () => {
+            const theme = makeTheme();
             const probe = makeProbeResult([makeModule()]);
-            const prompt = buildOutlinePrompt(topic, probe, 'normal');
+            const prompt = buildOutlinePrompt(theme, probe, 'normal');
 
             expect(prompt).toContain('compaction');
             expect(prompt).toContain('Log compaction and cleanup');
         });
 
         it('should include search hints', () => {
-            const topic = makeTopic({ hints: ['compact', 'merge'] });
+            const theme = makeTheme({ hints: ['compact', 'merge'] });
             const probe = makeProbeResult([makeModule()]);
-            const prompt = buildOutlinePrompt(topic, probe, 'normal');
+            const prompt = buildOutlinePrompt(theme, probe, 'normal');
 
             expect(prompt).toContain('compact, merge');
         });
@@ -116,7 +116,7 @@ describe('outline-prompts', () => {
         it('should include module information', () => {
             const mod = makeModule({ name: 'Compactor', purpose: 'Handles compaction' });
             const probe = makeProbeResult([mod]);
-            const prompt = buildOutlinePrompt(makeTopic(), probe, 'normal');
+            const prompt = buildOutlinePrompt(makeTheme(), probe, 'normal');
 
             expect(prompt).toContain('Compactor');
             expect(prompt).toContain('Handles compaction');
@@ -130,14 +130,14 @@ describe('outline-prompts', () => {
                 makeModule({ id: 'mod-3', name: 'M3' }),
             ];
             const probe = makeProbeResult(modules);
-            const prompt = buildOutlinePrompt(makeTopic(), probe, 'normal');
+            const prompt = buildOutlinePrompt(makeTheme(), probe, 'normal');
 
             expect(prompt).toContain('3 found');
         });
 
         it('should use shallow depth instruction', () => {
             const probe = makeProbeResult([makeModule()]);
-            const prompt = buildOutlinePrompt(makeTopic(), probe, 'shallow');
+            const prompt = buildOutlinePrompt(makeTheme(), probe, 'shallow');
 
             expect(prompt).toContain('SHALLOW');
             expect(prompt).toContain('fewer articles');
@@ -145,7 +145,7 @@ describe('outline-prompts', () => {
 
         it('should use normal depth instruction', () => {
             const probe = makeProbeResult([makeModule()]);
-            const prompt = buildOutlinePrompt(makeTopic(), probe, 'normal');
+            const prompt = buildOutlinePrompt(makeTheme(), probe, 'normal');
 
             expect(prompt).toContain('NORMAL');
             expect(prompt).toContain('Balanced');
@@ -153,7 +153,7 @@ describe('outline-prompts', () => {
 
         it('should use deep depth instruction', () => {
             const probe = makeProbeResult([makeModule()]);
-            const prompt = buildOutlinePrompt(makeTopic(), probe, 'deep');
+            const prompt = buildOutlinePrompt(makeTheme(), probe, 'deep');
 
             expect(prompt).toContain('DEEP');
             expect(prompt).toContain('Fine-grained');
@@ -161,7 +161,7 @@ describe('outline-prompts', () => {
 
         it('should suggest single-article layout for few modules', () => {
             const probe = makeProbeResult([makeModule()]);
-            const prompt = buildOutlinePrompt(makeTopic(), probe, 'normal');
+            const prompt = buildOutlinePrompt(makeTheme(), probe, 'normal');
 
             expect(prompt).toContain('single-article layout');
         });
@@ -171,7 +171,7 @@ describe('outline-prompts', () => {
                 makeModule({ id: `mod-${i}`, name: `M${i}` })
             );
             const probe = makeProbeResult(modules);
-            const prompt = buildOutlinePrompt(makeTopic(), probe, 'normal');
+            const prompt = buildOutlinePrompt(makeTheme(), probe, 'normal');
 
             expect(prompt).toContain('area layout');
         });
@@ -181,15 +181,15 @@ describe('outline-prompts', () => {
                 makeModule({ id: `mod-${i}`, name: `M${i}` })
             );
             const probe = makeProbeResult(modules);
-            const prompt = buildOutlinePrompt(makeTopic(), probe, 'normal');
+            const prompt = buildOutlinePrompt(makeTheme(), probe, 'normal');
 
-            expect(prompt).toContain('large topic');
+            expect(prompt).toContain('large theme');
         });
 
-        it('should handle topic without description or hints', () => {
-            const topic: TopicRequest = { topic: 'auth' };
+        it('should handle theme without description or hints', () => {
+            const theme: ThemeRequest = { theme: 'auth' };
             const probe = makeProbeResult([makeModule()]);
-            const prompt = buildOutlinePrompt(topic, probe, 'normal');
+            const prompt = buildOutlinePrompt(theme, probe, 'normal');
 
             expect(prompt).toContain('auth');
             expect(prompt).not.toContain('Description:');
@@ -198,7 +198,7 @@ describe('outline-prompts', () => {
 
         it('should handle empty modules', () => {
             const probe = makeProbeResult([]);
-            const prompt = buildOutlinePrompt(makeTopic(), probe, 'normal');
+            const prompt = buildOutlinePrompt(makeTheme(), probe, 'normal');
 
             expect(prompt).toContain('0 found');
             expect(prompt).toContain('no modules discovered');
@@ -212,7 +212,7 @@ describe('outline-generator', () => {
     });
 
     describe('parseOutlineResponse', () => {
-        const topic = makeTopic();
+        const theme = makeTheme();
         const probe = makeProbeResult([makeModule()]);
 
         it('should parse a valid single-article response', () => {
@@ -229,9 +229,9 @@ describe('outline-generator', () => {
                 }],
             });
 
-            const outline = parseOutlineResponse(response, topic, probe);
+            const outline = parseOutlineResponse(response, theme, probe);
 
-            expect(outline.topicId).toBe('compaction');
+            expect(outline.themeId).toBe('compaction');
             expect(outline.title).toBe('Compaction');
             expect(outline.layout).toBe('single');
             expect(outline.articles).toHaveLength(1);
@@ -249,7 +249,7 @@ describe('outline-generator', () => {
                 ],
             });
 
-            const outline = parseOutlineResponse(response, topic, probe);
+            const outline = parseOutlineResponse(response, theme, probe);
 
             expect(outline.layout).toBe('area');
             expect(outline.articles).toHaveLength(2);
@@ -264,7 +264,7 @@ describe('outline-generator', () => {
                 articles: [{ slug: 'x', title: 'X', description: '', isIndex: false, coveredComponentIds: [], coveredFiles: [] }],
             });
 
-            const outline = parseOutlineResponse(response, topic, probe);
+            const outline = parseOutlineResponse(response, theme, probe);
             expect(outline.layout).toBe('single');
         });
 
@@ -275,7 +275,7 @@ describe('outline-generator', () => {
                 articles: [],
             });
 
-            const outline = parseOutlineResponse(response, topic, probe);
+            const outline = parseOutlineResponse(response, theme, probe);
 
             expect(outline.articles).toHaveLength(1);
             expect(outline.articles[0].slug).toBe('index');
@@ -296,18 +296,18 @@ describe('outline-generator', () => {
                 ],
             });
 
-            const outline = parseOutlineResponse(response, topic, probe);
+            const outline = parseOutlineResponse(response, theme, probe);
             expect(outline.articles).toHaveLength(1);
             expect(outline.articles[0].slug).toBe('valid');
         });
 
-        it('should use topic name as title when title is missing', () => {
+        it('should use theme name as title when title is missing', () => {
             const response = JSON.stringify({
                 layout: 'single',
                 articles: [{ slug: 'x', title: 'X', description: '', isIndex: false, coveredComponentIds: [], coveredFiles: [] }],
             });
 
-            const outline = parseOutlineResponse(response, topic, probe);
+            const outline = parseOutlineResponse(response, theme, probe);
             expect(outline.title).toBe('Compaction');
         });
 
@@ -318,17 +318,17 @@ describe('outline-generator', () => {
                 articles: [{ slug: 'x', title: 'X', description: 'desc', isIndex: true, coveredComponentIds: [], coveredFiles: [] }],
             }) + '\n```';
 
-            const outline = parseOutlineResponse(response, topic, probe);
+            const outline = parseOutlineResponse(response, theme, probe);
             expect(outline.title).toBe('Test');
             expect(outline.articles).toHaveLength(1);
         });
 
         it('should throw on completely invalid response', () => {
-            expect(() => parseOutlineResponse('not json at all', topic, probe)).toThrow();
+            expect(() => parseOutlineResponse('not json at all', theme, probe)).toThrow();
         });
 
         it('should throw on empty response', () => {
-            expect(() => parseOutlineResponse('', topic, probe)).toThrow();
+            expect(() => parseOutlineResponse('', theme, probe)).toThrow();
         });
 
         it('should populate involvedModules from probe results', () => {
@@ -338,7 +338,7 @@ describe('outline-generator', () => {
                 articles: [{ slug: 'x', title: 'X', description: '', isIndex: true, coveredComponentIds: [], coveredFiles: [] }],
             });
 
-            const outline = parseOutlineResponse(response, topic, probe);
+            const outline = parseOutlineResponse(response, theme, probe);
 
             expect(outline.involvedComponents).toHaveLength(1);
             expect(outline.involvedComponents[0].componentId).toBe('mod-a');
@@ -352,7 +352,7 @@ describe('outline-generator', () => {
                 articles: [{ slug: 'x', title: 'X', description: '' }],
             });
 
-            const outline = parseOutlineResponse(response, topic, probe);
+            const outline = parseOutlineResponse(response, theme, probe);
             expect(outline.articles[0].coveredComponentIds).toEqual([]);
             expect(outline.articles[0].coveredFiles).toEqual([]);
             expect(outline.articles[0].isIndex).toBe(false);
@@ -361,12 +361,12 @@ describe('outline-generator', () => {
 
     describe('buildFallbackOutline', () => {
         it('should produce single layout for 1-2 modules', () => {
-            const topic = makeTopic();
+            const theme = makeTheme();
             const probe = makeProbeResult([makeModule()]);
 
-            const outline = buildFallbackOutline(topic, probe);
+            const outline = buildFallbackOutline(theme, probe);
 
-            expect(outline.topicId).toBe('compaction');
+            expect(outline.themeId).toBe('compaction');
             expect(outline.layout).toBe('single');
             expect(outline.articles).toHaveLength(1);
             expect(outline.articles[0].isIndex).toBe(true);
@@ -378,7 +378,7 @@ describe('outline-generator', () => {
                 makeModule({ id: 'mod-1', name: 'M1', keyFiles: ['a.ts'] }),
                 makeModule({ id: 'mod-2', name: 'M2', keyFiles: ['b.ts'] }),
             ];
-            const outline = buildFallbackOutline(makeTopic(), makeProbeResult(modules));
+            const outline = buildFallbackOutline(makeTheme(), makeProbeResult(modules));
 
             expect(outline.layout).toBe('single');
             expect(outline.articles).toHaveLength(1);
@@ -390,7 +390,7 @@ describe('outline-generator', () => {
                 makeModule({ id: `mod-${i}`, name: `Module ${i}`, keyFiles: [`src/${i}.ts`] })
             );
 
-            const outline = buildFallbackOutline(makeTopic(), makeProbeResult(modules));
+            const outline = buildFallbackOutline(makeTheme(), makeProbeResult(modules));
 
             expect(outline.layout).toBe('area');
             // index + 4 per-module articles
@@ -406,30 +406,30 @@ describe('outline-generator', () => {
                 makeModule({ id: `mod-${i}`, name: `Module ${i}` })
             );
 
-            const outline = buildFallbackOutline(makeTopic(), makeProbeResult(modules));
+            const outline = buildFallbackOutline(makeTheme(), makeProbeResult(modules));
 
             expect(outline.layout).toBe('area');
             expect(outline.articles).toHaveLength(9); // index + 8
         });
 
         it('should handle zero modules', () => {
-            const outline = buildFallbackOutline(makeTopic(), makeProbeResult([]));
+            const outline = buildFallbackOutline(makeTheme(), makeProbeResult([]));
 
             expect(outline.layout).toBe('single');
             expect(outline.articles).toHaveLength(1);
             expect(outline.articles[0].coveredComponentIds).toEqual([]);
         });
 
-        it('should format topic title from kebab-case', () => {
-            const topic = makeTopic({ topic: 'log-compaction-engine' });
-            const outline = buildFallbackOutline(topic, makeProbeResult([]));
+        it('should format theme title from kebab-case', () => {
+            const theme = makeTheme({ theme: 'log-compaction-engine' });
+            const outline = buildFallbackOutline(theme, makeProbeResult([]));
 
             expect(outline.title).toBe('Log Compaction Engine');
         });
 
         it('should populate involvedModules', () => {
             const mod = makeModule({ id: 'mod-x', purpose: 'Core compactor' });
-            const outline = buildFallbackOutline(makeTopic(), makeProbeResult([mod]));
+            const outline = buildFallbackOutline(makeTheme(), makeProbeResult([mod]));
 
             expect(outline.involvedComponents).toHaveLength(1);
             expect(outline.involvedComponents[0].componentId).toBe('mod-x');
@@ -437,7 +437,7 @@ describe('outline-generator', () => {
         });
     });
 
-    describe('generateTopicOutline', () => {
+    describe('generateThemeOutline', () => {
         it('should return AI-generated outline on success', async () => {
             mockIsAvailable.mockResolvedValue(true);
             mockSendMessage.mockResolvedValue({
@@ -453,7 +453,7 @@ describe('outline-generator', () => {
             });
 
             const opts = makeOptions(1);
-            const outline = await generateTopicOutline(opts);
+            const outline = await generateThemeOutline(opts);
 
             expect(outline.layout).toBe('area');
             expect(outline.articles).toHaveLength(2);
@@ -464,7 +464,7 @@ describe('outline-generator', () => {
             mockIsAvailable.mockResolvedValue(false);
 
             const opts = makeOptions(4);
-            const outline = await generateTopicOutline(opts);
+            const outline = await generateThemeOutline(opts);
 
             // Fallback: 4 modules → area layout
             expect(outline.layout).toBe('area');
@@ -476,7 +476,7 @@ describe('outline-generator', () => {
             mockSendMessage.mockResolvedValue({ success: false, error: 'timeout' });
 
             const opts = makeOptions(1);
-            const outline = await generateTopicOutline(opts);
+            const outline = await generateThemeOutline(opts);
 
             expect(outline.layout).toBe('single');
             expect(outline.articles).toHaveLength(1);
@@ -486,7 +486,7 @@ describe('outline-generator', () => {
             mockIsAvailable.mockResolvedValue(true);
             mockSendMessage.mockResolvedValue({ success: true, response: '' });
 
-            const outline = await generateTopicOutline(makeOptions(1));
+            const outline = await generateThemeOutline(makeOptions(1));
             expect(outline.layout).toBe('single');
         });
 
@@ -494,7 +494,7 @@ describe('outline-generator', () => {
             mockIsAvailable.mockResolvedValue(true);
             mockSendMessage.mockRejectedValue(new Error('network error'));
 
-            const outline = await generateTopicOutline(makeOptions(3));
+            const outline = await generateThemeOutline(makeOptions(3));
 
             expect(outline.layout).toBe('area');
             expect(outline.articles.length).toBeGreaterThan(1);
@@ -510,7 +510,7 @@ describe('outline-generator', () => {
                 }),
             });
 
-            await generateTopicOutline(makeOptions(1, { model: 'gpt-4', timeout: 30000 }));
+            await generateThemeOutline(makeOptions(1, { model: 'gpt-4', timeout: 30000 }));
 
             const call = mockSendMessage.mock.calls[0][0];
             expect(call.model).toBe('gpt-4');
@@ -527,7 +527,7 @@ describe('outline-generator', () => {
                 }),
             });
 
-            await generateTopicOutline(makeOptions(1));
+            await generateThemeOutline(makeOptions(1));
 
             const call = mockSendMessage.mock.calls[0][0];
             expect(call.timeoutMs).toBe(60_000);
@@ -543,7 +543,7 @@ describe('outline-generator', () => {
                 }),
             });
 
-            await generateTopicOutline(makeOptions(1));
+            await generateThemeOutline(makeOptions(1));
 
             const call = mockSendMessage.mock.calls[0][0];
             expect(call.usePool).toBe(false);
@@ -564,7 +564,7 @@ describe('outline-generator', () => {
             });
 
             const opts = makeOptions(3, { depth: 'shallow' });
-            const outline = await generateTopicOutline(opts);
+            const outline = await generateThemeOutline(opts);
 
             expect(outline.articles).toHaveLength(1);
         });
@@ -587,7 +587,7 @@ describe('outline-generator', () => {
             });
 
             const opts = makeOptions(3, { depth: 'deep' });
-            const outline = await generateTopicOutline(opts);
+            const outline = await generateThemeOutline(opts);
 
             expect(outline.articles).toHaveLength(5);
         });

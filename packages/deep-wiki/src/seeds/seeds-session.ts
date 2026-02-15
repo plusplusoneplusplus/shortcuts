@@ -1,7 +1,7 @@
 /**
  * Seeds Phase — SDK Session Orchestration
  *
- * Orchestrates the Copilot SDK session for topic seed generation.
+ * Orchestrates the Copilot SDK session for theme seed generation.
  * Creates a direct session with MCP tools (grep, glob, view),
  * sends the seeds prompt, and parses the response.
  *
@@ -14,7 +14,7 @@ import {
     type PermissionRequest,
     type PermissionRequestResult,
 } from '@plusplusoneplusplus/pipeline-core';
-import type { SeedsCommandOptions, TopicSeed } from '../types';
+import type { SeedsCommandOptions, ThemeSeed } from '../types';
 import { buildSeedsPrompt } from './prompts';
 import { parseSeedsResponse } from './response-parser';
 import { generateHeuristicSeeds } from './heuristic-fallback';
@@ -54,18 +54,18 @@ function readOnlyPermissions(request: PermissionRequest): PermissionRequestResul
  * Run a seeds generation session against a repository.
  *
  * Creates a direct SDK session with read-only MCP tools, sends the
- * seeds prompt, and parses the AI response into TopicSeed array.
+ * seeds prompt, and parses the AI response into ThemeSeed array.
  * Falls back to heuristic directory-based generation if AI under-generates.
  *
  * @param repoPath - Absolute path to the repository
- * @param options - Seeds command options (maxTopics, model, verbose)
- * @returns Array of TopicSeed objects
+ * @param options - Seeds command options (maxThemes, model, verbose)
+ * @returns Array of ThemeSeed objects
  * @throws Error if SDK is unavailable, AI times out, or response is malformed
  */
 export async function runSeedsSession(
     repoPath: string,
-    options: Pick<SeedsCommandOptions, 'maxTopics' | 'model' | 'timeout' | 'verbose'>
-): Promise<TopicSeed[]> {
+    options: Pick<SeedsCommandOptions, 'maxThemes' | 'model' | 'timeout' | 'verbose'>
+): Promise<ThemeSeed[]> {
     const service = getCopilotSDKService();
 
     // Check SDK availability
@@ -79,8 +79,8 @@ export async function runSeedsSession(
     }
 
     // Build the prompt
-    printInfo(`Building seeds prompt ${gray(`(max topics: ${options.maxTopics})`)}`);
-    const prompt = buildSeedsPrompt(repoPath, options.maxTopics);
+    printInfo(`Building seeds prompt ${gray(`(max themes: ${options.maxThemes})`)}`);
+    const prompt = buildSeedsPrompt(repoPath, options.maxThemes);
 
     // Configure the SDK session
     const timeoutMs = options.timeout ? options.timeout * 1000 : DEFAULT_SEEDS_TIMEOUT_MS;
@@ -118,9 +118,9 @@ export async function runSeedsSession(
         throw new SeedsError('AI returned empty response', 'empty-response');
     }
 
-    // Parse the response into TopicSeed array
-    printInfo('Parsing AI response into topic seeds...');
-    let seeds: TopicSeed[];
+    // Parse the response into ThemeSeed array
+    printInfo('Parsing AI response into theme seeds...');
+    let seeds: ThemeSeed[];
     try {
         seeds = parseSeedsResponse(result.response);
     } catch (parseError) {
@@ -133,14 +133,14 @@ export async function runSeedsSession(
         return generateHeuristicSeeds(repoPath);
     }
 
-    // Limit to maxTopics if AI over-generated
-    if (seeds.length > options.maxTopics) {
+    // Limit to maxThemes if AI over-generated
+    if (seeds.length > options.maxThemes) {
         if (options.verbose) {
             process.stderr.write(
-                `[WARN] AI generated ${seeds.length} topics (maximum: ${options.maxTopics}). Truncating to ${options.maxTopics}.\n`
+                `[WARN] AI generated ${seeds.length} themes (maximum: ${options.maxThemes}). Truncating to ${options.maxThemes}.\n`
             );
         }
-        return seeds.slice(0, options.maxTopics);
+        return seeds.slice(0, options.maxThemes);
     }
 
     return seeds;

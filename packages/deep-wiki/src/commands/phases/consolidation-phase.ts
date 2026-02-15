@@ -6,10 +6,10 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
-import type { GenerateCommandOptions, ModuleGraph } from '../../types';
+import type { GenerateCommandOptions, ComponentGraph } from '../../types';
 import type { AIInvoker } from '@plusplusoneplusplus/pipeline-core';
 import { resolvePhaseModel, resolvePhaseTimeout } from '../../config-loader';
-import { consolidateModules } from '../../consolidation';
+import { consolidateComponents } from '../../consolidation';
 import { createConsolidationInvoker } from '../../ai-invoker';
 import { UsageTracker } from '../../usage-tracker';
 import {
@@ -31,7 +31,7 @@ import { getErrorMessage } from '../../utils/error-utils';
 // ============================================================================
 
 export interface Phase2ConsolidationResult {
-    graph: ModuleGraph;
+    graph: ComponentGraph;
     duration: number;
 }
 
@@ -41,7 +41,7 @@ export interface Phase2ConsolidationResult {
 
 export async function runPhase2Consolidation(
     repoPath: string,
-    graph: ModuleGraph,
+    graph: ComponentGraph,
     options: GenerateCommandOptions,
     usageTracker?: UsageTracker
 ): Promise<Phase2ConsolidationResult> {
@@ -49,20 +49,20 @@ export async function runPhase2Consolidation(
 
     process.stderr.write('\n');
     printHeader('Phase 2: Consolidation');
-    printInfo(`Input: ${graph.modules.length} modules`);
+    printInfo(`Input: ${graph.components.length} modules`);
 
     const outputDir = path.resolve(options.output);
-    const inputModuleCount = graph.modules.length;
+    const inputComponentCount = graph.components.length;
 
     // Check consolidation cache (skip when --force)
     if (!options.force) {
         const cached = options.useCache
-            ? getCachedConsolidationAny(outputDir, inputModuleCount)
-            : await getCachedConsolidation(repoPath, outputDir, inputModuleCount);
+            ? getCachedConsolidationAny(outputDir, inputComponentCount)
+            : await getCachedConsolidation(repoPath, outputDir, inputComponentCount);
 
         if (cached) {
             printSuccess(
-                `Using cached consolidation (${inputModuleCount} → ${cached.graph.modules.length} modules)`
+                `Using cached consolidation (${inputComponentCount} → ${cached.graph.components.length} modules)`
             );
             usageTracker?.markCached('consolidation');
 
@@ -104,7 +104,7 @@ export async function runPhase2Consolidation(
             return result;
         };
 
-        const result = await consolidateModules(graph, aiInvoker, {
+        const result = await consolidateComponents(graph, aiInvoker, {
             model: consolidationModel,
             timeoutMs: consolidationTimeout ? consolidationTimeout * 1000 : undefined,
             skipAI: consolidationSkipAI,
@@ -115,7 +115,7 @@ export async function runPhase2Consolidation(
         );
 
         // Save consolidation result to cache
-        await saveConsolidation(repoPath, result.graph, outputDir, inputModuleCount);
+        await saveConsolidation(repoPath, result.graph, outputDir, inputComponentCount);
 
         // Update module-graph.json with the consolidated graph.
         // Phase 5 (Website) reads this file to build the embedded data, so it must

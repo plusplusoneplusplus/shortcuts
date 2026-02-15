@@ -1,15 +1,15 @@
 /**
  * Iterative Discovery — Main Convergence Loop
  *
- * Implements breadth-first iterative discovery using topic seeds.
+ * Implements breadth-first iterative discovery using theme seeds.
  * Runs parallel probes, merges results, and iterates until convergence.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { ComponentGraph, TopicSeed } from '../../types';
-import type { IterativeDiscoveryOptions, TopicProbeResult } from './types';
-import { runTopicProbe } from './probe-session';
+import type { ComponentGraph, ThemeSeed } from '../../types';
+import type { IterativeDiscoveryOptions, ThemeProbeResult } from './types';
+import { runThemeProbe } from './probe-session';
 import { mergeProbeResults } from './merge-session';
 import { printInfo, printWarning, gray, cyan } from '../../logger';
 import {
@@ -80,9 +80,9 @@ async function runParallel<T, R>(
  *
  * Flow:
  * 1. Load seeds (already provided in options)
- * 2. Run N parallel probe sessions (one per topic)
- * 3. Merge probe results + identify gaps + discover new topics
- * 4. Iterate until convergence (no new topics, good coverage, or max rounds)
+ * 2. Run N parallel probe sessions (one per theme)
+ * 3. Merge probe results + identify gaps + discover new themes
+ * 4. Iterate until convergence (no new themes, good coverage, or max rounds)
  * 5. Return final ComponentGraph
  *
  * @param options - Iterative discovery options
@@ -95,12 +95,12 @@ export async function runIterativeDiscovery(
     const concurrency = options.concurrency ?? 5;
     const coverageThreshold = options.coverageThreshold ?? 0.8;
 
-    let currentTopics: TopicSeed[] = [...options.seeds];
+    let currentThemes: ThemeSeed[] = [...options.seeds];
     let currentGraph: ComponentGraph | null = null;
     let round = 0;
 
     // Handle empty seeds
-    if (currentTopics.length === 0) {
+    if (currentThemes.length === 0) {
         return {
             project: {
                 name: 'unknown',
@@ -125,44 +125,44 @@ export async function runIterativeDiscovery(
         const metadata = getDiscoveryMetadata(options.outputDir!);
         if (metadata && metadata.gitHash === gitHash && metadata.currentRound > 0) {
             round = metadata.currentRound - 1; // Will be incremented at loop start
-            printInfo(`Resuming from round ${metadata.currentRound} (${metadata.completedTopics.length} topics completed)`);
+            printInfo(`Resuming from round ${metadata.currentRound} (${metadata.completedThemes.length} themes completed)`);
         }
     }
 
-    while (round < maxRounds && currentTopics.length > 0) {
+    while (round < maxRounds && currentThemes.length > 0) {
         round++;
 
-        printInfo(`Round ${round}/${maxRounds}: Probing ${currentTopics.length} topics ${gray(`(concurrency: ${concurrency})`)}`);
-        if (currentTopics.length <= 10) {
-            printInfo(`  Topics: ${currentTopics.map(t => cyan(t.topic)).join(', ')}`);
+        printInfo(`Round ${round}/${maxRounds}: Probing ${currentThemes.length} themes ${gray(`(concurrency: ${concurrency})`)}`);
+        if (currentThemes.length <= 10) {
+            printInfo(`  Themes: ${currentThemes.map(t => cyan(t.theme)).join(', ')}`);
         }
 
         // Check probe cache — skip already-completed probes
-        let cachedProbes = new Map<string, TopicProbeResult>();
-        let topicsToProbe = currentTopics;
+        let cachedProbes = new Map<string, ThemeProbeResult>();
+        let themesToProbe = currentThemes;
 
         if (cacheEnabled) {
-            const topicNames = currentTopics.map(t => t.topic);
+            const themeNames = currentThemes.map(t => t.theme);
             const scanResult = (useCache || !gitHash)
-                ? scanCachedProbesAny(topicNames, options.outputDir!)
-                : scanCachedProbes(topicNames, options.outputDir!, gitHash!);
+                ? scanCachedProbesAny(themeNames, options.outputDir!)
+                : scanCachedProbes(themeNames, options.outputDir!, gitHash!);
 
             cachedProbes = scanResult.found;
-            topicsToProbe = currentTopics.filter(t => scanResult.missing.includes(t.topic));
+            themesToProbe = currentThemes.filter(t => scanResult.missing.includes(t.theme));
 
             if (cachedProbes.size > 0) {
-                printInfo(`  Loaded ${cachedProbes.size} probes from cache, ${topicsToProbe.length} remaining`);
+                printInfo(`  Loaded ${cachedProbes.size} probes from cache, ${themesToProbe.length} remaining`);
             }
         }
 
-        // Run parallel probes only for uncached topics
-        let freshProbeResults: TopicProbeResult[] = [];
-        if (topicsToProbe.length > 0) {
+        // Run parallel probes only for uncached themes
+        let freshProbeResults: ThemeProbeResult[] = [];
+        if (themesToProbe.length > 0) {
             freshProbeResults = await runParallel(
-                topicsToProbe,
+                themesToProbe,
                 concurrency,
-                async (topic) => {
-                    const result = await runTopicProbe(options.repoPath, topic, {
+                async (theme) => {
+                    const result = await runThemeProbe(options.repoPath, theme, {
                         model: options.model,
                         timeout: options.probeTimeout,
                         focus: options.focus,
@@ -170,7 +170,7 @@ export async function runIterativeDiscovery(
                     // Save probe result to cache immediately after completion
                     if (cacheEnabled && gitHash && result) {
                         try {
-                            saveProbeResult(topic.topic, result, options.outputDir!, gitHash);
+                            saveProbeResult(theme.theme, result, options.outputDir!, gitHash);
                         } catch {
                             // Non-fatal: cache write failed
                         }
@@ -180,17 +180,17 @@ export async function runIterativeDiscovery(
             );
         }
 
-        // Combine cached + fresh probe results (in original topic order)
-        const allProbeResults: TopicProbeResult[] = currentTopics.map(t => {
-            const cached = cachedProbes.get(t.topic);
+        // Combine cached + fresh probe results (in original theme order)
+        const allProbeResults: ThemeProbeResult[] = currentThemes.map(t => {
+            const cached = cachedProbes.get(t.theme);
             if (cached) {
                 return cached;
             }
-            const fresh = freshProbeResults.find(r => r?.topic === t.topic);
+            const fresh = freshProbeResults.find(r => r?.theme === t.theme);
             return fresh ?? {
-                topic: t.topic,
+                theme: t.theme,
                 foundComponents: [],
-                discoveredTopics: [],
+                discoveredThemes: [],
                 dependencies: [],
                 confidence: 0,
             };
@@ -199,7 +199,7 @@ export async function runIterativeDiscovery(
         // Count successful probes
         const successfulProbes = allProbeResults.filter(r => r && r.foundComponents.length > 0).length;
         const totalComponentsFound = allProbeResults.reduce((sum, r) => sum + (r?.foundComponents?.length || 0), 0);
-        printInfo(`  Probes completed: ${successfulProbes}/${currentTopics.length} successful, ${totalComponentsFound} components found`);
+        printInfo(`  Probes completed: ${successfulProbes}/${currentThemes.length} successful, ${totalComponentsFound} components found`);
 
         // Merge results
         printInfo('  Merging probe results...');
@@ -225,8 +225,8 @@ export async function runIterativeDiscovery(
                     mode: 'iterative',
                     currentRound: round,
                     maxRounds,
-                    completedTopics: currentTopics.map(t => t.topic),
-                    pendingTopics: mergeResult.newTopics.map(t => t.topic),
+                    completedThemes: currentThemes.map(t => t.theme),
+                    pendingThemes: mergeResult.newThemes.map(t => t.theme),
                     converged: mergeResult.converged,
                     coverage: mergeResult.coverage,
                 }, options.outputDir!);
@@ -242,17 +242,17 @@ export async function runIterativeDiscovery(
         }
 
         // Check coverage threshold
-        if (mergeResult.coverage >= coverageThreshold && mergeResult.newTopics.length === 0) {
+        if (mergeResult.coverage >= coverageThreshold && mergeResult.newThemes.length === 0) {
             printInfo(`  Coverage threshold reached (${(mergeResult.coverage * 100).toFixed(0)}% >= ${(coverageThreshold * 100).toFixed(0)}%)`);
             break;
         }
 
-        // Next round: probe newly discovered topics
-        if (mergeResult.newTopics.length > 0) {
-            printInfo(`  Discovered ${mergeResult.newTopics.length} new topics for next round`);
+        // Next round: probe newly discovered themes
+        if (mergeResult.newThemes.length > 0) {
+            printInfo(`  Discovered ${mergeResult.newThemes.length} new themes for next round`);
         }
-        currentTopics = mergeResult.newTopics.map(t => ({
-            topic: t.topic,
+        currentThemes = mergeResult.newThemes.map(t => ({
+            theme: t.theme,
             description: t.description,
             hints: t.hints,
         }));

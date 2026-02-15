@@ -2,31 +2,31 @@
  * Iterative Discovery Types — Phase 1 seed-based discovery interfaces.
  *
  * These types define the structures for the iterative breadth-first
- * discovery mode that uses topic seeds to probe the codebase.
+ * discovery mode that uses theme seeds to probe the codebase.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { ComponentGraph, TopicSeed } from '../../types';
+import type { ComponentGraph, ThemeSeed } from '../../types';
 
 /**
- * Result of probing a single topic in the codebase.
+ * Result of probing a single theme in the codebase.
  */
-export interface TopicProbeResult {
-    /** The topic that was probed */
-    topic: string;
-    /** Components found related to this topic */
+export interface ThemeProbeResult {
+    /** The theme that was probed */
+    theme: string;
+    /** Components found related to this theme */
     foundComponents: ProbeFoundComponent[];
-    /** New topics discovered during probing */
-    discoveredTopics: DiscoveredTopic[];
-    /** IDs of other topics this topic depends on */
+    /** New themes discovered during probing */
+    discoveredThemes: DiscoveredTheme[];
+    /** IDs of other themes this theme depends on */
     dependencies: string[];
     /** Confidence level (0-1) */
     confidence: number;
 }
 
 /**
- * A component found during topic probing.
+ * A component found during theme probing.
  */
 export interface ProbeFoundComponent {
     /** Suggested component ID (kebab-case) */
@@ -39,18 +39,18 @@ export interface ProbeFoundComponent {
     purpose: string;
     /** Key files in this component */
     keyFiles: string[];
-    /** Evidence of why this belongs to the topic */
+    /** Evidence of why this belongs to the theme */
     evidence: string;
     /** Optional line ranges for monolithic files [start, end][] */
     lineRanges?: [number, number][];
 }
 
 /**
- * A new topic discovered during probing (feeds next round).
+ * A new theme discovered during probing (feeds next round).
  */
-export interface DiscoveredTopic {
-    /** Topic name (kebab-case) */
-    topic: string;
+export interface DiscoveredTheme {
+    /** Theme name (kebab-case) */
+    theme: string;
     /** Description */
     description: string;
     /** Search hints */
@@ -65,8 +65,8 @@ export interface DiscoveredTopic {
 export interface IterativeDiscoveryOptions {
     /** Absolute path to the repository */
     repoPath: string;
-    /** Initial topic seeds */
-    seeds: TopicSeed[];
+    /** Initial theme seeds */
+    seeds: ThemeSeed[];
     /** AI model to use */
     model?: string;
     /** Timeout per probe session in milliseconds (default: 120000 = 2 min) */
@@ -95,8 +95,8 @@ export interface IterativeDiscoveryOptions {
 export interface MergeResult {
     /** The merged component graph (growing) */
     graph: ComponentGraph;
-    /** New topics to probe in the next round */
-    newTopics: TopicSeed[];
+    /** New themes to probe in the next round */
+    newThemes: ThemeSeed[];
     /** Whether convergence was reached */
     converged: boolean;
     /** Coverage estimate (0-1) */

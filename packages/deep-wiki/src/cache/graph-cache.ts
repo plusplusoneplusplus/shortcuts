@@ -7,7 +7,7 @@
 
 import * as path from 'path';
 import type {
-    ModuleGraph,
+    ComponentGraph,
 } from '../types';
 import type {
     CachedGraph,
@@ -90,7 +90,7 @@ export function getCachedGraphAny(outputDir: string): CachedGraph | null {
  */
 export async function saveGraph(
     repoPath: string,
-    graph: ModuleGraph,
+    graph: ComponentGraph,
     outputDir: string,
     focus?: string
 ): Promise<void> {

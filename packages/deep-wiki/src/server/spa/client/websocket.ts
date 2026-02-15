@@ -6,7 +6,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { markdownCache, currentModuleId } from './core';
+import { markdownCache, currentComponentId } from './core';
 
 let wsReconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let wsReconnectDelay = 1000;
@@ -48,13 +48,13 @@ function handleWsMessage(msg: any): void {
 
     if (msg.type === 'rebuilding') {
         bar.className = 'live-reload-bar visible rebuilding';
-        bar.textContent = 'Rebuilding: ' + (msg.modules || []).join(', ') + '...';
+        bar.textContent = 'Rebuilding: ' + (msg.components || []).join(', ') + '...';
     } else if (msg.type === 'reload') {
         bar.className = 'live-reload-bar visible reloaded';
-        bar.textContent = 'Updated: ' + (msg.modules || []).join(', ');
-        (msg.modules || []).forEach(function (id: string) { delete markdownCache[id]; });
-        if (currentModuleId && (msg.modules || []).indexOf(currentModuleId) !== -1) {
-            (window as any).loadModule(currentModuleId, true);
+        bar.textContent = 'Updated: ' + (msg.components || []).join(', ');
+        (msg.components || []).forEach(function (id: string) { delete markdownCache[id]; });
+        if (currentComponentId && (msg.components || []).indexOf(currentComponentId) !== -1) {
+            (window as any).loadComponent(currentComponentId, true);
         }
         setTimeout(function () { bar.className = 'live-reload-bar'; }, 3000);
     } else if (msg.type === 'error') {

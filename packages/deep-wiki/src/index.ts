@@ -7,7 +7,7 @@
  * Uses @plusplusoneplusplus/pipeline-core for AI interactions and SDK management.
  *
  * Usage:
- *   deep-wiki discover <repo-path>   Discover module graph for a repository
+ *   deep-wiki discover <repo-path>   Discover component graph for a repository
  *   deep-wiki generate <repo-path>   Generate full wiki (stub, future phases)
  *
  * Cross-platform compatible (Linux/Mac/Windows).

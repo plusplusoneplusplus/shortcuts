@@ -1,7 +1,7 @@
 /**
  * Seeds Phase — Heuristic Fallback
  *
- * Directory-name-based fallback for generating topic seeds when AI
+ * Directory-name-based fallback for generating theme seeds when AI
  * under-generates or fails. Creates seeds from top-level directory names.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
@@ -9,7 +9,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import type { TopicSeed } from '../types';
+import type { ThemeSeed } from '../types';
 import { normalizeComponentId } from '../schemas';
 
 // ============================================================================
@@ -17,7 +17,7 @@ import { normalizeComponentId } from '../schemas';
 // ============================================================================
 
 /**
- * Common directories to exclude from topic seed generation.
+ * Common directories to exclude from theme seed generation.
  * These are typically build artifacts, dependencies, or non-code directories.
  */
 const EXCLUDED_DIRS = new Set([
@@ -63,16 +63,16 @@ const EXCLUDED_DIRS = new Set([
 // ============================================================================
 
 /**
- * Generate topic seeds from directory names as a fallback.
+ * Generate theme seeds from directory names as a fallback.
  *
- * Scans top-level directories in the repository and creates a TopicSeed
+ * Scans top-level directories in the repository and creates a ThemeSeed
  * for each directory that isn't in the exclusion list.
  *
  * @param repoPath - Absolute path to the repository
- * @returns Array of TopicSeed objects generated from directory names
+ * @returns Array of ThemeSeed objects generated from directory names
  */
-export function generateHeuristicSeeds(repoPath: string): TopicSeed[] {
-    const seeds: TopicSeed[] = [];
+export function generateHeuristicSeeds(repoPath: string): ThemeSeed[] {
+    const seeds: ThemeSeed[] = [];
 
     try {
         const entries = fs.readdirSync(repoPath, { withFileTypes: true });
@@ -92,24 +92,24 @@ export function generateHeuristicSeeds(repoPath: string): TopicSeed[] {
 
             // Skip hidden directories (except those explicitly allowed)
             if (dirName.startsWith('.') && !EXCLUDED_DIRS.has(dirName)) {
-                // Allow some common hidden directories that might be topics
+                // Allow some common hidden directories that might be themes
                 // but skip most
                 continue;
             }
 
-            // Normalize directory name to topic ID
-            const topicId = normalizeComponentId(dirName);
+            // Normalize directory name to theme ID
+            const themeId = normalizeComponentId(dirName);
 
             // Skip if normalization resulted in empty or invalid ID
-            if (!topicId || topicId === 'unknown') {
+            if (!themeId || themeId === 'unknown') {
                 continue;
             }
 
             // Create a seed from the directory name
             seeds.push({
-                topic: topicId,
+                theme: themeId,
                 description: `Code related to ${dirName} directory`,
-                hints: [dirName, topicId],
+                hints: [dirName, themeId],
             });
         }
     } catch (error) {

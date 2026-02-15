@@ -525,7 +525,7 @@ describe('SPA generate tab', () => {
         expect(body).toContain('Analysis');
         expect(body).toContain('Writing');
         expect(body).toContain('Website');
-        expect(body).toContain('Scan repo and build module graph');
+        expect(body).toContain('Scan repo and build component graph');
         expect(body).toContain('Build static HTML site');
     });
 

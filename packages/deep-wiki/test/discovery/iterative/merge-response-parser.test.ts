@@ -2,7 +2,7 @@
  * Merge Response Parser Tests
  *
  * Tests for parsing AI responses into MergeResult.
- * Verifies graph parsing, newTopics extraction, and convergence detection.
+ * Verifies graph parsing, newThemes extraction, and convergence detection.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -10,7 +10,7 @@ import { parseMergeResponse } from '../../../src/discovery/iterative/merge-respo
 
 describe('parseMergeResponse', () => {
     describe('valid merge response', () => {
-        it('should parse a valid merge response with graph and newTopics', () => {
+        it('should parse a valid merge response with graph and newThemes', () => {
             const json = JSON.stringify({
                 graph: {
                     project: {
@@ -36,23 +36,23 @@ describe('parseMergeResponse', () => {
                     categories: [{ name: 'core', description: 'Core modules' }],
                     architectureNotes: 'Layered',
                 },
-                newTopics: [
+                newThemes: [
                     {
-                        topic: 'authorization',
+                        theme: 'authorization',
                         description: 'Permission checking',
                         hints: ['permission', 'role'],
                     },
                 ],
                 converged: false,
                 coverage: 0.6,
-                reason: 'Coverage 0.6, 1 new topic discovered',
+                reason: 'Coverage 0.6, 1 new theme discovered',
             });
 
             const result = parseMergeResponse(json);
             expect(result.graph.project.name).toBe('test-project');
             expect(result.graph.components).toHaveLength(1);
-            expect(result.newTopics).toHaveLength(1);
-            expect(result.newTopics[0].topic).toBe('authorization');
+            expect(result.newThemes).toHaveLength(1);
+            expect(result.newThemes[0].theme).toBe('authorization');
             expect(result.converged).toBe(false);
             expect(result.coverage).toBe(0.6);
             expect(result.reason).toContain('Coverage 0.6');
@@ -72,16 +72,16 @@ describe('parseMergeResponse', () => {
                     categories: [],
                     architectureNotes: '',
                 },
-                newTopics: [],
+                newThemes: [],
                 converged: true,
                 coverage: 0.85,
-                reason: 'Coverage 0.85, no new topics',
+                reason: 'Coverage 0.85, no new themes',
             });
 
             const result = parseMergeResponse(json);
             expect(result.converged).toBe(true);
             expect(result.coverage).toBe(0.85);
-            expect(result.newTopics).toHaveLength(0);
+            expect(result.newThemes).toHaveLength(0);
         });
 
         it('should default coverage to 0 if not provided', () => {
@@ -98,7 +98,7 @@ describe('parseMergeResponse', () => {
                     categories: [],
                     architectureNotes: '',
                 },
-                newTopics: [],
+                newThemes: [],
                 converged: false,
                 reason: 'Not converged',
             });
@@ -133,7 +133,7 @@ describe('parseMergeResponse', () => {
                     categories: [{ name: 'core', description: 'Core' }],
                     architectureNotes: '',
                 },
-                newTopics: [],
+                newThemes: [],
                 converged: true,
                 coverage: 1.0,
                 reason: 'Complete',
@@ -143,7 +143,7 @@ describe('parseMergeResponse', () => {
             expect(result.graph.components[0].id).toBe('authservice');
         });
 
-        it('should normalize topic IDs in newTopics', () => {
+        it('should normalize theme IDs in newThemes', () => {
             const json = JSON.stringify({
                 graph: {
                     project: {
@@ -157,20 +157,20 @@ describe('parseMergeResponse', () => {
                     categories: [],
                     architectureNotes: '',
                 },
-                newTopics: [
+                newThemes: [
                     {
-                        topic: 'API Gateway',
+                        theme: 'API Gateway',
                         description: 'Gateway',
                         hints: ['api', 'gateway'],
                     },
                 ],
                 converged: false,
                 coverage: 0.5,
-                reason: 'New topic',
+                reason: 'New theme',
             });
 
             const result = parseMergeResponse(json);
-            expect(result.newTopics[0].topic).toBe('api-gateway');
+            expect(result.newThemes[0].theme).toBe('api-gateway');
         });
     });
 
@@ -192,7 +192,7 @@ describe('parseMergeResponse', () => {
     "categories": [],
     "architectureNotes": ""
   },
-  "newTopics": [],
+  "newThemes": [],
   "converged": true,
   "coverage": 0.9,
   "reason": "Complete"
@@ -218,7 +218,7 @@ That's the merge.`;
 
         it('should throw on missing graph field', () => {
             const json = JSON.stringify({
-                newTopics: [],
+                newThemes: [],
                 converged: true,
                 coverage: 1.0,
             });
@@ -229,7 +229,7 @@ That's the merge.`;
         it('should throw on invalid graph', () => {
             const json = JSON.stringify({
                 graph: { invalid: 'graph' },
-                newTopics: [],
+                newThemes: [],
                 converged: true,
                 coverage: 1.0,
             });
@@ -237,7 +237,7 @@ That's the merge.`;
             expect(() => parseMergeResponse(json)).toThrow();
         });
 
-        it('should handle missing newTopics (defaults to empty array)', () => {
+        it('should handle missing newThemes (defaults to empty array)', () => {
             const json = JSON.stringify({
                 graph: {
                     project: {
@@ -257,7 +257,7 @@ That's the merge.`;
             });
 
             const result = parseMergeResponse(json);
-            expect(result.newTopics).toEqual([]);
+            expect(result.newThemes).toEqual([]);
         });
     });
 });

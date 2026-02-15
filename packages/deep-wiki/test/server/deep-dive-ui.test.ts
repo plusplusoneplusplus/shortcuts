@@ -52,7 +52,7 @@ describe('Deep Dive UI', () => {
 
         it('should call addDeepDiveButton in loadModule', () => {
             const html = generateSpaHtml(opts);
-            expect(html).toContain('addDeepDiveButton(moduleId)');
+            expect(html).toContain('addDeepDiveButton(componentId)');
         });
 
         it('should include deep-dive streaming flag', () => {
@@ -168,7 +168,7 @@ describe('Deep Dive UI', () => {
 
         it('should always include deep dive button call in bundle, controlled by config', () => {
             const html = generateSpaHtml(opts);
-            expect(html).toContain('addDeepDiveButton(moduleId)');
+            expect(html).toContain('addDeepDiveButton(componentId)');
             expect(html).toContain('enableAI: false');
         });
     });

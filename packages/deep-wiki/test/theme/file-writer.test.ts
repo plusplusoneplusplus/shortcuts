@@ -2,36 +2,36 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import type { TopicOutline, TopicArticle } from '../../src/types';
-import { writeTopicArticles, type TopicWriteOptions } from '../../src/topic/file-writer';
+import type { ThemeOutline, ThemeArticle } from '../../src/types';
+import { writeThemeArticles, type ThemeWriteOptions } from '../../src/theme/file-writer';
 
 // ─── Helpers ───────────────────────────────────────────────────────────
 
 let tmpDir: string;
 
 function makeTmpDir(): string {
-    return fs.mkdtempSync(path.join(os.tmpdir(), 'topic-fw-'));
+    return fs.mkdtempSync(path.join(os.tmpdir(), 'theme-fw-'));
 }
 
-function makeOutline(overrides: Partial<TopicOutline> = {}): TopicOutline {
+function makeOutline(overrides: Partial<ThemeOutline> = {}): ThemeOutline {
     return {
-        topicId: 'compaction',
+        themeId: 'compaction',
         title: 'Log Compaction',
         layout: 'area',
         articles: [],
-        involvedModules: [],
+        involvedComponents: [],
         ...overrides,
     };
 }
 
-function makeArticle(overrides: Partial<TopicArticle> = {}): TopicArticle {
+function makeArticle(overrides: Partial<ThemeArticle> = {}): ThemeArticle {
     return {
-        type: 'topic-article',
+        type: 'theme-article',
         slug: 'overview',
         title: 'Overview',
         content: '# Overview\n\nSome content.\n',
-        topicId: 'compaction',
-        coveredModuleIds: ['mod-a'],
+        themeId: 'compaction',
+        coveredComponentIds: ['mod-a'],
         ...overrides,
     };
 }
@@ -46,21 +46,21 @@ afterEach(() => {
 
 // ─── Tests ─────────────────────────────────────────────────────────────
 
-describe('writeTopicArticles', () => {
-    it('writes single article layout to topics/{topicId}.md', () => {
+describe('writeThemeArticles', () => {
+    it('writes single article layout to themes/{themeId}.md', () => {
         const outline = makeOutline({ layout: 'single' });
-        const articles = [makeArticle({ type: 'topic-article', slug: 'compaction' })];
+        const articles = [makeArticle({ type: 'theme-article', slug: 'compaction' })];
 
-        const result = writeTopicArticles({
+        const result = writeThemeArticles({
             wikiDir: tmpDir,
-            topicId: 'compaction',
+            themeId: 'compaction',
             outline,
             articles,
         });
 
         expect(result.writtenFiles).toHaveLength(1);
         const filePath = result.writtenFiles[0];
-        expect(filePath).toBe(path.join(path.resolve(tmpDir), 'topics', 'compaction.md'));
+        expect(filePath).toBe(path.join(path.resolve(tmpDir), 'themes', 'compaction.md'));
         expect(fs.existsSync(filePath)).toBe(true);
         expect(fs.readFileSync(filePath, 'utf-8')).toContain('# Overview');
     });
@@ -68,54 +68,54 @@ describe('writeTopicArticles', () => {
     it('writes area layout with index + sub-articles', () => {
         const outline = makeOutline({ layout: 'area' });
         const articles = [
-            makeArticle({ type: 'topic-index', slug: 'index', title: 'Overview' }),
-            makeArticle({ type: 'topic-article', slug: 'storage', title: 'Storage' }),
-            makeArticle({ type: 'topic-article', slug: 'cleanup', title: 'Cleanup' }),
+            makeArticle({ type: 'theme-index', slug: 'index', title: 'Overview' }),
+            makeArticle({ type: 'theme-article', slug: 'storage', title: 'Storage' }),
+            makeArticle({ type: 'theme-article', slug: 'cleanup', title: 'Cleanup' }),
         ];
 
-        const result = writeTopicArticles({
+        const result = writeThemeArticles({
             wikiDir: tmpDir,
-            topicId: 'compaction',
+            themeId: 'compaction',
             outline,
             articles,
         });
 
         expect(result.writtenFiles).toHaveLength(3);
-        const topicDir = path.join(path.resolve(tmpDir), 'topics', 'compaction');
-        expect(result.topicDir).toBe(topicDir);
+        const themeDir = path.join(path.resolve(tmpDir), 'themes', 'compaction');
+        expect(result.themeDir).toBe(themeDir);
 
         // Verify each file exists
-        expect(fs.existsSync(path.join(topicDir, 'index.md'))).toBe(true);
-        expect(fs.existsSync(path.join(topicDir, 'storage.md'))).toBe(true);
-        expect(fs.existsSync(path.join(topicDir, 'cleanup.md'))).toBe(true);
+        expect(fs.existsSync(path.join(themeDir, 'index.md'))).toBe(true);
+        expect(fs.existsSync(path.join(themeDir, 'storage.md'))).toBe(true);
+        expect(fs.existsSync(path.join(themeDir, 'cleanup.md'))).toBe(true);
     });
 
-    it('creates topics/ directory automatically', () => {
-        const topicsDir = path.join(tmpDir, 'topics');
-        expect(fs.existsSync(topicsDir)).toBe(false);
+    it('creates themes/ directory automatically', () => {
+        const themesDir = path.join(tmpDir, 'themes');
+        expect(fs.existsSync(themesDir)).toBe(false);
 
         const outline = makeOutline({ layout: 'single' });
         const articles = [makeArticle()];
 
-        writeTopicArticles({
+        writeThemeArticles({
             wikiDir: tmpDir,
-            topicId: 'compaction',
+            themeId: 'compaction',
             outline,
             articles,
         });
 
-        expect(fs.existsSync(topicsDir)).toBe(true);
+        expect(fs.existsSync(themesDir)).toBe(true);
     });
 
     it('overwrites existing files', () => {
         const outline = makeOutline({ layout: 'single' });
         const articles = [makeArticle({ content: '# First version\n' })];
 
-        writeTopicArticles({ wikiDir: tmpDir, topicId: 'compaction', outline, articles });
+        writeThemeArticles({ wikiDir: tmpDir, themeId: 'compaction', outline, articles });
 
         // Write again with different content
         const articles2 = [makeArticle({ content: '# Second version\n' })];
-        const result = writeTopicArticles({ wikiDir: tmpDir, topicId: 'compaction', outline, articles: articles2 });
+        const result = writeThemeArticles({ wikiDir: tmpDir, themeId: 'compaction', outline, articles: articles2 });
 
         const content = fs.readFileSync(result.writtenFiles[0], 'utf-8');
         expect(content).toContain('# Second version');
@@ -126,7 +126,7 @@ describe('writeTopicArticles', () => {
         const outline = makeOutline({ layout: 'single' });
         const articles = [makeArticle({ content: '# Title\r\n\r\nBody\r\n' })];
 
-        const result = writeTopicArticles({ wikiDir: tmpDir, topicId: 'compaction', outline, articles });
+        const result = writeThemeArticles({ wikiDir: tmpDir, themeId: 'compaction', outline, articles });
 
         const content = fs.readFileSync(result.writtenFiles[0], 'utf-8');
         expect(content).toBe('# Title\n\nBody\n');
@@ -136,9 +136,9 @@ describe('writeTopicArticles', () => {
     it('handles empty articles array gracefully for single layout', () => {
         const outline = makeOutline({ layout: 'single' });
 
-        const result = writeTopicArticles({
+        const result = writeThemeArticles({
             wikiDir: tmpDir,
-            topicId: 'compaction',
+            themeId: 'compaction',
             outline,
             articles: [],
         });
@@ -149,15 +149,15 @@ describe('writeTopicArticles', () => {
     it('handles empty articles array gracefully for area layout', () => {
         const outline = makeOutline({ layout: 'area' });
 
-        const result = writeTopicArticles({
+        const result = writeThemeArticles({
             wikiDir: tmpDir,
-            topicId: 'compaction',
+            themeId: 'compaction',
             outline,
             articles: [],
         });
 
         expect(result.writtenFiles).toHaveLength(0);
-        // Topic directory is still created
-        expect(fs.existsSync(path.join(path.resolve(tmpDir), 'topics', 'compaction'))).toBe(true);
+        // Theme directory is still created
+        expect(fs.existsSync(path.join(path.resolve(tmpDir), 'themes', 'compaction'))).toBe(true);
     });
 });

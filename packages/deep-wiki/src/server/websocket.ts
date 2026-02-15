@@ -8,8 +8,8 @@
  * Used for live-reload notifications when --watch is enabled.
  *
  * Messages (Server → Client):
- *   { type: "reload", modules: string[] }
- *   { type: "rebuilding", modules: string[] }
+ *   { type: "reload", components: string[] }
+ *   { type: "rebuilding", components: string[] }
  *   { type: "error", message: string }
  *
  * Messages (Client → Server):

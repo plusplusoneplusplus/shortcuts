@@ -46,13 +46,13 @@ import { getRepoHeadHash, getFolderHeadHash } from '../../src/cache/git-utils';
 let tempDir: string;
 let outputDir: string;
 
-function createTestArticle(moduleId: string, domainId?: string): GeneratedArticle {
+function createTestArticle(componentId: string, domainId?: string): GeneratedArticle {
     return {
-        type: 'module',
-        slug: moduleId,
-        title: `${moduleId} Module`,
-        content: `# ${moduleId}\n\nArticle content for ${moduleId}.`,
-        moduleId,
+        type: 'component',
+        slug: componentId,
+        title: `${componentId} Module`,
+        content: `# ${componentId}\n\nArticle content for ${componentId}.`,
+        componentId,
         domainId,
     };
 }
@@ -100,7 +100,7 @@ describe('domain-scoped article save/load', () => {
 
         const loaded = getCachedArticle('core-auth', outputDir, 'packages-core');
         expect(loaded).not.toBeNull();
-        expect(loaded!.moduleId).toBe('core-auth');
+        expect(loaded!.componentId).toBe('core-auth');
         expect(loaded!.domainId).toBe('packages-core');
     });
 
@@ -110,7 +110,7 @@ describe('domain-scoped article save/load', () => {
 
         const loaded = getCachedArticle('auth', outputDir);
         expect(loaded).not.toBeNull();
-        expect(loaded!.moduleId).toBe('auth');
+        expect(loaded!.componentId).toBe('auth');
     });
 
     it('should save multiple articles in different domain subdirectories', () => {
@@ -152,7 +152,7 @@ describe('scanIndividualArticlesCache — area support', () => {
         );
 
         expect(result.found).toHaveLength(2);
-        expect(result.found.map(a => a.moduleId).sort()).toEqual(['api-routes', 'core-auth']);
+        expect(result.found.map(a => a.componentId).sort()).toEqual(['api-routes', 'core-auth']);
         expect(result.missing).toEqual(['missing']);
     });
 
@@ -214,7 +214,7 @@ describe('scanIndividualArticlesCacheAny — area support', () => {
         );
 
         expect(result.found).toHaveLength(1);
-        expect(result.found[0].moduleId).toBe('mod');
+        expect(result.found[0].componentId).toBe('mod');
     });
 });
 
@@ -299,7 +299,7 @@ describe('backward compatibility — no domainId', () => {
 
         const loaded = getCachedArticle('auth', outputDir);
         expect(loaded).not.toBeNull();
-        expect(loaded!.moduleId).toBe('auth');
+        expect(loaded!.componentId).toBe('auth');
         expect(loaded!.domainId).toBeUndefined();
     });
 

@@ -1,46 +1,46 @@
 /**
- * Topic File Writer
+ * Theme File Writer
  *
- * Writes generated topic articles to the wiki directory.
+ * Writes generated theme articles to the wiki directory.
  *
  * Layout logic:
- * - layout: 'single' → wiki/topics/{topicId}.md
- * - layout: 'area'   → wiki/topics/{topicId}/
+ * - layout: 'single' → wiki/themes/{themeId}.md
+ * - layout: 'area'   → wiki/themes/{themeId}/
  *                         ├── index.md
  *                         ├── {slug1}.md
  *                         └── {slug2}.md
  *
- * Creates topics/ directory if it doesn't exist.
+ * Creates themes/ directory if it doesn't exist.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
-import type { TopicOutline, TopicArticle } from '../types';
+import type { ThemeOutline, ThemeArticle } from '../types';
 
 // ============================================================================
 // Constants
 // ============================================================================
 
-/** Subdirectory for topic articles within the wiki */
-const TOPICS_DIR = 'topics';
+/** Subdirectory for theme articles within the wiki */
+const THEMES_DIR = 'themes';
 
 // ============================================================================
 // Types
 // ============================================================================
 
-export interface TopicWriteOptions {
+export interface ThemeWriteOptions {
     wikiDir: string;
-    topicId: string;
-    outline: TopicOutline;
-    articles: TopicArticle[];
+    themeId: string;
+    outline: ThemeOutline;
+    articles: ThemeArticle[];
 }
 
-export interface TopicWriteResult {
+export interface ThemeWriteResult {
     /** Absolute paths of written files */
     writtenFiles: string[];
-    /** Path to topic directory (or single file) */
-    topicDir: string;
+    /** Path to theme directory (or single file) */
+    themeDir: string;
 }
 
 // ============================================================================
@@ -48,47 +48,47 @@ export interface TopicWriteResult {
 // ============================================================================
 
 /**
- * Write topic articles to the wiki directory.
+ * Write theme articles to the wiki directory.
  *
- * Creates topics/ directory if it doesn't exist.
+ * Creates themes/ directory if it doesn't exist.
  * Overwrites existing files.
  */
-export function writeTopicArticles(options: TopicWriteOptions): TopicWriteResult {
-    const { wikiDir, topicId, outline, articles } = options;
+export function writeThemeArticles(options: ThemeWriteOptions): ThemeWriteResult {
+    const { wikiDir, themeId, outline, articles } = options;
     const resolvedWiki = path.resolve(wikiDir);
-    const topicsDir = path.join(resolvedWiki, TOPICS_DIR);
+    const themesDir = path.join(resolvedWiki, THEMES_DIR);
     const writtenFiles: string[] = [];
 
-    // Ensure topics/ directory exists
-    fs.mkdirSync(topicsDir, { recursive: true });
+    // Ensure themes/ directory exists
+    fs.mkdirSync(themesDir, { recursive: true });
 
     if (outline.layout === 'single') {
-        // Single layout: write one file at topics/{topicId}.md
-        const filePath = path.join(topicsDir, `${topicId}.md`);
+        // Single layout: write one file at themes/{themeId}.md
+        const filePath = path.join(themesDir, `${themeId}.md`);
         const article = articles[0];
         if (article) {
             const content = normalizeLineEndings(article.content);
             fs.writeFileSync(filePath, content, 'utf-8');
             writtenFiles.push(filePath);
         }
-        return { writtenFiles, topicDir: filePath };
+        return { writtenFiles, themeDir: filePath };
     }
 
-    // Area layout: write directory at topics/{topicId}/
-    const topicDir = path.join(topicsDir, topicId);
-    fs.mkdirSync(topicDir, { recursive: true });
+    // Area layout: write directory at themes/{themeId}/
+    const themeDir = path.join(themesDir, themeId);
+    fs.mkdirSync(themeDir, { recursive: true });
 
     for (const article of articles) {
-        const fileName = article.type === 'topic-index'
+        const fileName = article.type === 'theme-index'
             ? 'index.md'
             : `${article.slug}.md`;
-        const filePath = path.join(topicDir, fileName);
+        const filePath = path.join(themeDir, fileName);
         const content = normalizeLineEndings(article.content);
         fs.writeFileSync(filePath, content, 'utf-8');
         writtenFiles.push(filePath);
     }
 
-    return { writtenFiles, topicDir };
+    return { writtenFiles, themeDir };
 }
 
 // ============================================================================

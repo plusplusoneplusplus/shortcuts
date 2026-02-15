@@ -165,8 +165,8 @@ async function handlePutSeeds(
         const seeds = payload.content;
         if (typeof seeds === 'object' && !Array.isArray(seeds)) {
             const obj = seeds as Record<string, unknown>;
-            if (obj.topics !== undefined && !Array.isArray(obj.topics)) {
-                send400(res, 'Seeds "topics" field must be an array');
+            if (obj.themes !== undefined && !Array.isArray(obj.themes)) {
+                send400(res, 'Seeds "themes" field must be an array');
                 return;
             }
         }

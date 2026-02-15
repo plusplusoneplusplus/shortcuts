@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type {
-    TopicOutline,
-    TopicArticlePlan,
-    TopicArticleAnalysis,
-    TopicCrossCuttingAnalysis,
-    ModuleAnalysis,
+    ThemeOutline,
+    ThemeArticlePlan,
+    ThemeArticleAnalysis,
+    ThemeCrossCuttingAnalysis,
+    ComponentAnalysis,
 } from '../../src/types';
-import type { EnrichedProbeResult } from '../../src/topic/topic-probe';
+import type { EnrichedProbeResult } from '../../src/theme/theme-probe';
 
 // ─── Mock SDK ──────────────────────────────────────────────────────────
 
@@ -29,43 +29,43 @@ vi.mock('../../src/logger', () => ({
 }));
 
 import {
-    runTopicAnalysis,
+    runThemeAnalysis,
     analyzeArticleScope,
     analyzeCrossCutting,
-    type TopicAnalysisOptions,
-} from '../../src/topic/topic-analysis';
+    type ThemeAnalysisOptions,
+} from '../../src/theme/theme-analysis';
 import {
     buildArticleAnalysisPrompt,
     buildCrossCuttingPrompt,
-} from '../../src/topic/analysis-prompts';
+} from '../../src/theme/analysis-prompts';
 
 // ─── Helpers ───────────────────────────────────────────────────────────
 
-function makeArticlePlan(overrides: Partial<TopicArticlePlan> = {}): TopicArticlePlan {
+function makeArticlePlan(overrides: Partial<ThemeArticlePlan> = {}): ThemeArticlePlan {
     return {
         slug: 'article-a',
         title: 'Article A',
         description: 'Description of article A',
         isIndex: false,
-        coveredModuleIds: ['mod-a'],
+        coveredComponentIds: ['mod-a'],
         coveredFiles: ['src/mod-a/index.ts', 'src/mod-a/utils.ts'],
         ...overrides,
     };
 }
 
-function makeOutline(articles?: TopicArticlePlan[]): TopicOutline {
+function makeOutline(articles?: ThemeArticlePlan[]): ThemeOutline {
     return {
-        topicId: 'test-topic',
-        title: 'Test Topic',
+        themeId: 'test-theme',
+        title: 'Test Theme',
         layout: 'area',
         articles: articles ?? [
-            makeArticlePlan({ slug: 'index', title: 'Overview', isIndex: true, coveredModuleIds: ['mod-a', 'mod-b'], coveredFiles: [] }),
-            makeArticlePlan({ slug: 'article-a', title: 'Article A', coveredModuleIds: ['mod-a'] }),
-            makeArticlePlan({ slug: 'article-b', title: 'Article B', coveredModuleIds: ['mod-b'], coveredFiles: ['src/mod-b/main.ts'] }),
+            makeArticlePlan({ slug: 'index', title: 'Overview', isIndex: true, coveredComponentIds: ['mod-a', 'mod-b'], coveredFiles: [] }),
+            makeArticlePlan({ slug: 'article-a', title: 'Article A', coveredComponentIds: ['mod-a'] }),
+            makeArticlePlan({ slug: 'article-b', title: 'Article B', coveredComponentIds: ['mod-b'], coveredFiles: ['src/mod-b/main.ts'] }),
         ],
-        involvedModules: [
-            { moduleId: 'mod-a', role: 'Module A handles data', keyFiles: ['src/mod-a/index.ts'] },
-            { moduleId: 'mod-b', role: 'Module B handles UI', keyFiles: ['src/mod-b/main.ts'] },
+        involvedComponents: [
+            { componentId: 'mod-a', role: 'Module A handles data', keyFiles: ['src/mod-a/index.ts'] },
+            { componentId: 'mod-b', role: 'Module B handles UI', keyFiles: ['src/mod-b/main.ts'] },
         ],
     };
 }
@@ -73,12 +73,12 @@ function makeOutline(articles?: TopicArticlePlan[]): TopicOutline {
 function makeProbeResult(): EnrichedProbeResult {
     return {
         probeResult: {
-            topic: 'test-topic',
-            foundModules: [
+            theme: 'test-theme',
+            foundComponents: [
                 { id: 'mod-a', name: 'Module A', path: 'src/mod-a', purpose: 'Data handling', keyFiles: ['src/mod-a/index.ts'], evidence: 'found' },
                 { id: 'mod-b', name: 'Module B', path: 'src/mod-b', purpose: 'UI rendering', keyFiles: ['src/mod-b/main.ts'], evidence: 'found' },
             ],
-            discoveredTopics: [],
+            discoveredThemes: [],
             dependencies: [],
             confidence: 0.9,
         },
@@ -104,14 +104,14 @@ function makeCrossCuttingJson(): string {
         dataFlow: 'Input → Module A → Module B → Output',
         suggestedDiagram: 'graph LR\n  A --> B',
         configuration: 'Set env.MODE to control behavior',
-        relatedTopics: ['caching', 'logging'],
+        relatedThemes: ['caching', 'logging'],
     });
 }
 
-function makeModuleAnalysis(moduleId: string): ModuleAnalysis {
+function makeModuleAnalysis(componentId: string): ComponentAnalysis {
     return {
-        moduleId,
-        overview: `Overview of ${moduleId}`,
+        componentId,
+        overview: `Overview of ${componentId}`,
         keyConcepts: [{ name: 'KConcept', description: 'KDesc' }],
         publicAPI: [],
         internalArchitecture: 'Internal arch',
@@ -126,7 +126,7 @@ function makeModuleAnalysis(moduleId: string): ModuleAnalysis {
 
 // ─── Tests ─────────────────────────────────────────────────────────────
 
-describe('Topic Analysis', () => {
+describe('Theme Analysis', () => {
     beforeEach(() => {
         vi.clearAllMocks();
     });
@@ -134,13 +134,13 @@ describe('Topic Analysis', () => {
     // ── Prompt Construction ────────────────────────────────────────────
 
     describe('buildArticleAnalysisPrompt', () => {
-        it('should include topic title and article details', () => {
+        it('should include theme title and article details', () => {
             const prompt = buildArticleAnalysisPrompt(
-                'My Topic', 'Article Title', 'Article description', 'my-article',
+                'My Theme', 'Article Title', 'Article description', 'my-article',
                 ['src/a.ts', 'src/b.ts'], '', 'normal'
             );
 
-            expect(prompt).toContain('My Topic');
+            expect(prompt).toContain('My Theme');
             expect(prompt).toContain('Article Title');
             expect(prompt).toContain('my-article');
             expect(prompt).toContain('Article description');
@@ -150,7 +150,7 @@ describe('Topic Analysis', () => {
 
         it('should include module context when provided', () => {
             const prompt = buildArticleAnalysisPrompt(
-                'Topic', 'Art', 'Desc', 'slug',
+                'Theme', 'Art', 'Desc', 'slug',
                 ['src/a.ts'], 'Module A handles caching', 'normal'
             );
             expect(prompt).toContain('Module A handles caching');
@@ -158,28 +158,28 @@ describe('Topic Analysis', () => {
 
         it('should use shallow investigation steps for shallow depth', () => {
             const prompt = buildArticleAnalysisPrompt(
-                'Topic', 'Art', 'Desc', 'slug', ['src/a.ts'], '', 'shallow'
+                'Theme', 'Art', 'Desc', 'slug', ['src/a.ts'], '', 'shallow'
             );
             expect(prompt).toContain('keyConcepts to 2-3 entries');
         });
 
         it('should use deep investigation steps for deep depth', () => {
             const prompt = buildArticleAnalysisPrompt(
-                'Topic', 'Art', 'Desc', 'slug', ['src/a.ts'], '', 'deep'
+                'Theme', 'Art', 'Desc', 'slug', ['src/a.ts'], '', 'deep'
             );
             expect(prompt).toContain('exhaustively investigate');
         });
 
         it('should handle empty covered files', () => {
             const prompt = buildArticleAnalysisPrompt(
-                'Topic', 'Art', 'Desc', 'slug', [], '', 'normal'
+                'Theme', 'Art', 'Desc', 'slug', [], '', 'normal'
             );
             expect(prompt).toContain('no specific files listed');
         });
 
         it('should include JSON schema', () => {
             const prompt = buildArticleAnalysisPrompt(
-                'Topic', 'Art', 'Desc', 'slug', [], '', 'normal'
+                'Theme', 'Art', 'Desc', 'slug', [], '', 'normal'
             );
             expect(prompt).toContain('"slug"');
             expect(prompt).toContain('"keyConcepts"');
@@ -190,15 +190,15 @@ describe('Topic Analysis', () => {
     });
 
     describe('buildCrossCuttingPrompt', () => {
-        it('should include topic info and article summaries', () => {
+        it('should include theme info and article summaries', () => {
             const prompt = buildCrossCuttingPrompt(
-                'My Topic', 'my-topic',
+                'My Theme', 'my-theme',
                 '### article-a\nKey concepts: X\nData flow: Y\nDetails: Z\n',
                 ['mod-a', 'mod-b']
             );
 
-            expect(prompt).toContain('My Topic');
-            expect(prompt).toContain('my-topic');
+            expect(prompt).toContain('My Theme');
+            expect(prompt).toContain('my-theme');
             expect(prompt).toContain('mod-a');
             expect(prompt).toContain('mod-b');
             expect(prompt).toContain('article-a');
@@ -208,7 +208,7 @@ describe('Topic Analysis', () => {
             const prompt = buildCrossCuttingPrompt('T', 'id', 'summaries', []);
             expect(prompt).toContain('"architecture"');
             expect(prompt).toContain('"suggestedDiagram"');
-            expect(prompt).toContain('"relatedTopics"');
+            expect(prompt).toContain('"relatedThemes"');
         });
     });
 
@@ -223,7 +223,7 @@ describe('Topic Analysis', () => {
 
             const article = makeArticlePlan({ slug: 'art-x', title: 'Art X' });
             const result = await analyzeArticleScope(
-                '/repo', article, 'Topic', '', { depth: 'normal' }
+                '/repo', article, 'Theme', '', { depth: 'normal' }
             );
 
             expect(result.slug).toBe('art-x');
@@ -243,7 +243,7 @@ describe('Topic Analysis', () => {
 
             const article = makeArticlePlan({ slug: 'art-fail' });
             await expect(
-                analyzeArticleScope('/repo', article, 'Topic', '', { depth: 'normal' })
+                analyzeArticleScope('/repo', article, 'Theme', '', { depth: 'normal' })
             ).rejects.toThrow('AI response failed');
         });
 
@@ -255,7 +255,7 @@ describe('Topic Analysis', () => {
 
             const article = makeArticlePlan({ slug: 'art-m' });
             await analyzeArticleScope(
-                '/repo', article, 'Topic', '',
+                '/repo', article, 'Theme', '',
                 { model: 'gpt-4', timeout: 60000, depth: 'shallow' }
             );
 
@@ -279,7 +279,7 @@ describe('Topic Analysis', () => {
 
             const article = makeArticlePlan({ slug: 'correct-slug' });
             const result = await analyzeArticleScope(
-                '/repo', article, 'Topic', '', { depth: 'normal' }
+                '/repo', article, 'Theme', '', { depth: 'normal' }
             );
 
             // Parser preserves the slug from AI response (not overridden)
@@ -301,7 +301,7 @@ describe('Topic Analysis', () => {
 
             const article = makeArticlePlan({ slug: 'minimal' });
             const result = await analyzeArticleScope(
-                '/repo', article, 'Topic', '', { depth: 'normal' }
+                '/repo', article, 'Theme', '', { depth: 'normal' }
             );
 
             expect(result.slug).toBe('minimal');
@@ -320,7 +320,7 @@ describe('Topic Analysis', () => {
             });
 
             const outline = makeOutline();
-            const analyses: TopicArticleAnalysis[] = [
+            const analyses: ThemeArticleAnalysis[] = [
                 { slug: 'art-a', keyConcepts: [{ name: 'C1', description: 'D1' }], dataFlow: 'flow', codeExamples: [], internalDetails: 'details' },
             ];
 
@@ -330,7 +330,7 @@ describe('Topic Analysis', () => {
             expect(result.dataFlow).toContain('Module A');
             expect(result.suggestedDiagram).toContain('graph LR');
             expect(result.configuration).toBe('Set env.MODE to control behavior');
-            expect(result.relatedTopics).toEqual(['caching', 'logging']);
+            expect(result.relatedThemes).toEqual(['caching', 'logging']);
         });
 
         it('should return default on AI failure', async () => {
@@ -372,30 +372,30 @@ describe('Topic Analysis', () => {
 
             expect(result.architecture).toBe('Simple arch');
             expect(result.configuration).toBeUndefined();
-            expect(result.relatedTopics).toBeUndefined();
+            expect(result.relatedThemes).toBeUndefined();
         });
     });
 
-    // ── runTopicAnalysis (full flow) ──────────────────────────────────
+    // ── runThemeAnalysis (full flow) ──────────────────────────────────
 
-    describe('runTopicAnalysis', () => {
-        it('should produce complete TopicAnalysis for multi-article topic', async () => {
+    describe('runThemeAnalysis', () => {
+        it('should produce complete ThemeAnalysis for multi-article theme', async () => {
             // Two non-index articles + cross-cutting = 3 AI calls
             mockSendMessage
                 .mockResolvedValueOnce({ success: true, response: makeArticleAnalysisJson('article-a') })
                 .mockResolvedValueOnce({ success: true, response: makeArticleAnalysisJson('article-b') })
                 .mockResolvedValueOnce({ success: true, response: makeCrossCuttingJson() });
 
-            const options: TopicAnalysisOptions = {
+            const options: ThemeAnalysisOptions = {
                 repoPath: '/repo',
                 outline: makeOutline(),
                 probeResult: makeProbeResult(),
                 depth: 'normal',
             };
 
-            const result = await runTopicAnalysis(options);
+            const result = await runThemeAnalysis(options);
 
-            expect(result.topicId).toBe('test-topic');
+            expect(result.themeId).toBe('test-theme');
             expect(result.perArticle).toHaveLength(2);
             expect(result.perArticle[0].slug).toBe('article-a');
             expect(result.perArticle[1].slug).toBe('article-b');
@@ -404,7 +404,7 @@ describe('Topic Analysis', () => {
             expect(mockSendMessage).toHaveBeenCalledTimes(3);
         });
 
-        it('should handle single-article topic (no cross-cutting)', async () => {
+        it('should handle single-article theme (no cross-cutting)', async () => {
             // Single index article → 1 AI call, no cross-cutting
             const singleOutline = makeOutline([
                 makeArticlePlan({ slug: 'index', title: 'Only Article', isIndex: true }),
@@ -415,14 +415,14 @@ describe('Topic Analysis', () => {
                 response: makeArticleAnalysisJson('index'),
             });
 
-            const result = await runTopicAnalysis({
+            const result = await runThemeAnalysis({
                 repoPath: '/repo',
                 outline: singleOutline,
                 probeResult: makeProbeResult(),
                 depth: 'normal',
             });
 
-            expect(result.topicId).toBe('test-topic');
+            expect(result.themeId).toBe('test-theme');
             expect(result.perArticle).toHaveLength(1);
             expect(result.perArticle[0].slug).toBe('index');
             // No cross-cutting AI call
@@ -439,7 +439,7 @@ describe('Topic Analysis', () => {
 
             const existingAnalyses = [makeModuleAnalysis('mod-a')];
 
-            const result = await runTopicAnalysis({
+            const result = await runThemeAnalysis({
                 repoPath: '/repo',
                 outline: makeOutline(),
                 probeResult: makeProbeResult(),
@@ -478,7 +478,7 @@ describe('Topic Analysis', () => {
                 return { success: true, response: makeArticleAnalysisJson('art') };
             });
 
-            await runTopicAnalysis({
+            await runThemeAnalysis({
                 repoPath: '/repo',
                 outline,
                 probeResult: makeProbeResult(),
@@ -498,7 +498,7 @@ describe('Topic Analysis', () => {
                 .mockResolvedValueOnce({ success: true, response: makeArticleAnalysisJson('article-b') })
                 .mockResolvedValueOnce({ success: true, response: makeCrossCuttingJson() });
 
-            const result = await runTopicAnalysis({
+            const result = await runThemeAnalysis({
                 repoPath: '/repo',
                 outline: makeOutline(),
                 probeResult: makeProbeResult(),
@@ -517,24 +517,24 @@ describe('Topic Analysis', () => {
         });
 
         it('should handle empty outline (no articles at all)', async () => {
-            const emptyOutline: TopicOutline = {
-                topicId: 'empty',
-                title: 'Empty Topic',
+            const emptyOutline: ThemeOutline = {
+                themeId: 'empty',
+                title: 'Empty Theme',
                 layout: 'single',
                 articles: [],
-                involvedModules: [],
+                involvedComponents: [],
             };
 
-            const result = await runTopicAnalysis({
+            const result = await runThemeAnalysis({
                 repoPath: '/repo',
                 outline: emptyOutline,
                 probeResult: makeProbeResult(),
                 depth: 'normal',
             });
 
-            expect(result.topicId).toBe('empty');
+            expect(result.themeId).toBe('empty');
             expect(result.perArticle).toHaveLength(0);
-            expect(result.overview).toContain('Empty Topic');
+            expect(result.overview).toContain('Empty Theme');
             // No AI calls needed
             expect(mockSendMessage).not.toHaveBeenCalled();
         });
@@ -545,7 +545,7 @@ describe('Topic Analysis', () => {
                 .mockResolvedValueOnce({ success: true, response: makeArticleAnalysisJson('article-b') })
                 .mockResolvedValueOnce({ success: true, response: makeCrossCuttingJson() });
 
-            await runTopicAnalysis({
+            await runThemeAnalysis({
                 repoPath: '/repo',
                 outline: makeOutline(),
                 probeResult: makeProbeResult(),
@@ -567,7 +567,7 @@ describe('Topic Analysis', () => {
                 .mockResolvedValueOnce({ success: true, response: makeArticleAnalysisJson('article-b') })
                 .mockResolvedValueOnce({ success: true, response: makeCrossCuttingJson() });
 
-            await runTopicAnalysis({
+            await runThemeAnalysis({
                 repoPath: '/repo',
                 outline: makeOutline(),
                 probeResult: makeProbeResult(),

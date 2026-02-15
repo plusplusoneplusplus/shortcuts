@@ -1,7 +1,7 @@
 /**
- * Topic Article — Prompt Templates
+ * Theme Article — Prompt Templates
  *
- * Prompt templates for generating topic sub-articles and index pages.
+ * Prompt templates for generating theme sub-articles and index pages.
  * Sub-article prompts return raw markdown (not JSON).
  * Index page prompts synthesize all sub-article summaries into an overview.
  *
@@ -9,10 +9,10 @@
  */
 
 import type {
-    TopicOutline,
-    TopicArticlePlan,
-    TopicArticleAnalysis,
-    TopicCrossCuttingAnalysis,
+    ThemeOutline,
+    ThemeArticlePlan,
+    ThemeArticleAnalysis,
+    ThemeCrossCuttingAnalysis,
 } from '../types';
 
 // ============================================================================
@@ -28,7 +28,7 @@ Write a concise article (500-800 words) covering:
 
 const NORMAL_STYLE = `
 Write a comprehensive article (800-1500 words) covering:
-1. Overview paragraph summarizing this aspect of the topic
+1. Overview paragraph summarizing this aspect of the theme
 2. Key concepts and abstractions with explanations
 3. Data flow and control flow relevant to this aspect
 4. 2-3 code examples with fenced code blocks and language tags
@@ -37,7 +37,7 @@ Write a comprehensive article (800-1500 words) covering:
 
 const DEEP_STYLE = `
 Write a thorough, detailed article (1500-3000 words) covering:
-1. Overview paragraph with context within the broader topic
+1. Overview paragraph with context within the broader theme
 2. All key concepts and abstractions, with detailed explanations
 3. Complete data flow and control flow analysis
 4. 3-5 code examples covering different usage patterns
@@ -62,7 +62,7 @@ function getSubArticleStyle(depth: 'shallow' | 'normal' | 'deep'): string {
  * Build prompt for a single sub-article.
  *
  * Context includes:
- * - Topic name and overall description
+ * - Theme name and overall description
  * - This article's title, description, and covered files
  * - Analysis results (keyConcepts, dataFlow, codeExamples)
  * - Sibling article titles (for "See also" cross-references)
@@ -71,9 +71,9 @@ function getSubArticleStyle(depth: 'shallow' | 'normal' | 'deep'): string {
  * Output: raw markdown (not JSON) — heading, prose, code blocks, diagrams
  */
 export function buildSubArticlePrompt(
-    topicTitle: string,
-    article: TopicArticlePlan,
-    analysis: TopicArticleAnalysis,
+    themeTitle: string,
+    article: ThemeArticlePlan,
+    analysis: ThemeArticleAnalysis,
     siblingTitles: { slug: string; title: string }[],
     depth: 'shallow' | 'normal' | 'deep'
 ): string {
@@ -99,7 +99,7 @@ export function buildSubArticlePrompt(
         ? siblingTitles.map(s => `- [${s.title}](./${s.slug}.md)`).join('\n')
         : '(none)';
 
-    return `You are writing a wiki article for the topic area "${topicTitle}".
+    return `You are writing a wiki article for the theme area "${themeTitle}".
 
 ## Article Details
 Title: ${article.title}
@@ -131,7 +131,7 @@ ${style}
 
 - Use GitHub-Flavored Markdown
 - Start with: # ${article.title}
-- Second line: > Part of the [${topicTitle}](./index.md) topic area.
+- Second line: > Part of the [${themeTitle}](./index.md) theme area.
 - Use proper heading hierarchy (## for sections, ### for subsections)
 - Use fenced code blocks with language tags
 - Cross-references to sibling articles use relative links: [Title](./<slug>.md)
@@ -148,7 +148,7 @@ Return ONLY the markdown content. Do NOT write, create, or save any files to dis
  * Build prompt for the index/overview page (reduce).
  *
  * Context includes:
- * - Topic name and description
+ * - Theme name and description
  * - Summaries of all sub-articles (first 200 words each)
  * - Cross-cutting analysis (architecture, data flow, diagram)
  * - Links to each sub-article
@@ -156,9 +156,9 @@ Return ONLY the markdown content. Do NOT write, create, or save any files to dis
  * Output: markdown with overview, architecture diagram, ToC, data flow, related modules.
  */
 export function buildIndexPagePrompt(
-    topicTitle: string,
-    outline: TopicOutline,
-    crossCutting: TopicCrossCuttingAnalysis,
+    themeTitle: string,
+    outline: ThemeOutline,
+    crossCutting: ThemeCrossCuttingAnalysis,
     articleSummaries: { slug: string; title: string; summary: string }[]
 ): string {
     const articlesSection = articleSummaries.length > 0
@@ -167,9 +167,9 @@ export function buildIndexPagePrompt(
         ).join('\n\n')
         : '(no sub-articles)';
 
-    const moduleList = outline.involvedModules.length > 0
-        ? outline.involvedModules.map(m =>
-            `- **${m.moduleId}**: ${m.role}`
+    const moduleList = outline.involvedComponents.length > 0
+        ? outline.involvedComponents.map(m =>
+            `- **${m.componentId}**: ${m.role}`
         ).join('\n')
         : '(none)';
 
@@ -177,14 +177,14 @@ export function buildIndexPagePrompt(
         ? `\`\`\`mermaid\n${crossCutting.suggestedDiagram}\n\`\`\``
         : '(no diagram available — please generate one)';
 
-    const relatedTopics = crossCutting.relatedTopics && crossCutting.relatedTopics.length > 0
-        ? crossCutting.relatedTopics.map(t => `- ${t}`).join('\n')
+    const relatedThemes = crossCutting.relatedThemes && crossCutting.relatedThemes.length > 0
+        ? crossCutting.relatedThemes.map(t => `- ${t}`).join('\n')
         : '';
 
-    return `You are writing the index page for the topic area "${topicTitle}".
+    return `You are writing the index page for the theme area "${themeTitle}".
 
-## Topic Overview
-${crossCutting.architecture || `Overview of ${topicTitle}`}
+## Theme Overview
+${crossCutting.architecture || `Overview of ${themeTitle}`}
 
 ## Architecture & Data Flow
 Architecture: ${crossCutting.architecture || '(not described)'}
@@ -199,23 +199,23 @@ ${articlesSection}
 
 ## Involved Modules
 ${moduleList}
-${relatedTopics ? `\n## Related Topics\n${relatedTopics}` : ''}
+${relatedThemes ? `\n## Related Themes\n${relatedThemes}` : ''}
 
 ## Instructions
 
-Write the index page for this topic area. Include:
+Write the index page for this theme area. Include:
 
-1. **Title & Overview** — Start with \`# ${topicTitle}\` and a paragraph summarizing the topic
+1. **Title & Overview** — Start with \`# ${themeTitle}\` and a paragraph summarizing the theme
 2. **Architecture** — Describe how the components fit together, include a Mermaid diagram
 3. **Articles** — Table of contents with links to each sub-article and a brief description
 4. **Data Flow** — Cross-module data flow summary
 5. **Involved Modules** — List of modules with their roles
-${relatedTopics ? '6. **Related Topics** — Links to related topic areas' : ''}
+${relatedThemes ? '6. **Related Themes** — Links to related theme areas' : ''}
 
 ## Format
 
 - Use GitHub-Flavored Markdown
-- Start with: # ${topicTitle}
+- Start with: # ${themeTitle}
 - Include a Mermaid architecture diagram in \`\`\`mermaid blocks
 - Link to sub-articles: [Article Title](./<slug>.md)
 - Use proper heading hierarchy

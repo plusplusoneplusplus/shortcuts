@@ -12,7 +12,7 @@
  *   │   ├── _metadata.json             # Round progress, convergence state
  *   │   ├── seeds.json                 # Cached auto-generated seeds
  *   │   ├── structural-scan.json       # Large-repo structural scan
- *   │   ├── probes/                    # Per-topic probe results
+ *   │   ├── probes/                    # Per-theme probe results
  *   │   │   ├── auth.json
  *   │   │   └── ...
  *   │   └── domains/                     # Per-domain sub-graphs (large repo)
@@ -27,12 +27,12 @@
 
 import * as path from 'path';
 import type {
-    TopicSeed,
+    ThemeSeed,
     StructuralScanResult,
-    ModuleGraph,
+    ComponentGraph,
 } from '../types';
 import type {
-    TopicProbeResult,
+    ThemeProbeResult,
 } from '../discovery/iterative/types';
 import type {
     CachedProbeResult,
@@ -41,7 +41,7 @@ import type {
     CachedDomainGraph,
     DiscoveryProgressMetadata,
 } from './types';
-import { normalizeModuleId } from '../schemas';
+import { normalizeComponentId } from '../schemas';
 import { readCacheFile, readCacheFileIf, writeCacheFile, clearCacheDir, scanCacheItemsMap } from './cache-utils';
 
 // ============================================================================
@@ -54,7 +54,7 @@ const CACHE_DIR_NAME = '.wiki-cache';
 /** Subdirectory for discovery cache */
 const DISCOVERY_DIR = 'discovery';
 
-/** Subdirectory for per-topic probe results */
+/** Subdirectory for per-theme probe results */
 const PROBES_DIR = 'probes';
 
 /** Subdirectory for per-domain sub-graphs */
@@ -100,8 +100,8 @@ function getDomainsCacheDir(outputDir: string): string {
 /**
  * Get the path to a single cached probe result.
  */
-function getProbeCachePath(outputDir: string, topic: string): string {
-    const slug = normalizeModuleId(topic);
+function getProbeCachePath(outputDir: string, theme: string): string {
+    const slug = normalizeComponentId(theme);
     return path.join(getProbesCacheDir(outputDir), `${slug}.json`);
 }
 
@@ -109,7 +109,7 @@ function getProbeCachePath(outputDir: string, topic: string): string {
  * Get the path to a single cached domain sub-graph.
  */
 function getDomainCachePath(outputDir: string, domainId: string): string {
-    const slug = normalizeModuleId(domainId);
+    const slug = normalizeComponentId(domainId);
     return path.join(getDomainsCacheDir(outputDir), `${slug}.json`);
 }
 
@@ -123,12 +123,12 @@ function getDomainCachePath(outputDir: string, domainId: string): string {
 /**
  * Save auto-generated seeds to the cache.
  *
- * @param seeds - The generated topic seeds
+ * @param seeds - The generated theme seeds
  * @param outputDir - Output directory
  * @param gitHash - Current git hash
  */
 export function saveSeedsCache(
-    seeds: TopicSeed[],
+    seeds: ThemeSeed[],
     outputDir: string,
     gitHash: string
 ): void {
@@ -149,7 +149,7 @@ export function saveSeedsCache(
 export function getCachedSeeds(
     outputDir: string,
     gitHash: string
-): TopicSeed[] | null {
+): ThemeSeed[] | null {
     const cached = readCacheFileIf<CachedSeeds>(
         path.join(getDiscoveryCacheDir(outputDir), SEEDS_FILE),
         (d) => !!d.seeds && d.gitHash === gitHash
@@ -165,7 +165,7 @@ export function getCachedSeeds(
  */
 export function getCachedSeedsAny(
     outputDir: string
-): TopicSeed[] | null {
+): ThemeSeed[] | null {
     const cached = readCacheFileIf<CachedSeeds>(
         path.join(getDiscoveryCacheDir(outputDir), SEEDS_FILE),
         (d) => !!d.seeds
@@ -180,18 +180,18 @@ export function getCachedSeedsAny(
 /**
  * Save a single probe result to the cache.
  *
- * @param topic - The topic that was probed
+ * @param theme - The theme that was probed
  * @param result - The probe result
  * @param outputDir - Output directory
  * @param gitHash - Current git hash
  */
 export function saveProbeResult(
-    topic: string,
-    result: TopicProbeResult,
+    theme: string,
+    result: ThemeProbeResult,
     outputDir: string,
     gitHash: string
 ): void {
-    writeCacheFile<CachedProbeResult>(getProbeCachePath(outputDir, topic), {
+    writeCacheFile<CachedProbeResult>(getProbeCachePath(outputDir, theme), {
         probeResult: result,
         gitHash,
         timestamp: Date.now(),
@@ -201,39 +201,39 @@ export function saveProbeResult(
 /**
  * Get a cached probe result if valid (git hash matches).
  *
- * @param topic - The topic to look up
+ * @param theme - The theme to look up
  * @param outputDir - Output directory
  * @param gitHash - Current git hash for validation
  * @returns Cached probe result, or null if cache miss
  */
 export function getCachedProbeResult(
-    topic: string,
+    theme: string,
     outputDir: string,
     gitHash: string
-): TopicProbeResult | null {
+): ThemeProbeResult | null {
     const cached = readCacheFileIf<CachedProbeResult>(
-        getProbeCachePath(outputDir, topic),
+        getProbeCachePath(outputDir, theme),
         (d) => !!d.probeResult && d.gitHash === gitHash
     );
     return cached?.probeResult ?? null;
 }
 
 /**
- * Scan for cached probe results across multiple topics.
+ * Scan for cached probe results across multiple themes.
  *
- * @param topics - Topic names to scan
+ * @param themes - Theme names to scan
  * @param outputDir - Output directory
  * @param gitHash - Current git hash for validation
- * @returns Object with `found` (valid cached probes) and `missing` (topics not found or stale)
+ * @returns Object with `found` (valid cached probes) and `missing` (themes not found or stale)
  */
 export function scanCachedProbes(
-    topics: string[],
+    themes: string[],
     outputDir: string,
     gitHash: string
-): { found: Map<string, TopicProbeResult>; missing: string[] } {
-    return scanCacheItemsMap<CachedProbeResult, TopicProbeResult>(
-        topics,
-        (topic) => getProbeCachePath(outputDir, topic),
+): { found: Map<string, ThemeProbeResult>; missing: string[] } {
+    return scanCacheItemsMap<CachedProbeResult, ThemeProbeResult>(
+        themes,
+        (theme) => getProbeCachePath(outputDir, theme),
         (cached) => !!cached.probeResult && cached.gitHash === gitHash,
         (cached) => cached.probeResult
     );
@@ -243,12 +243,12 @@ export function scanCachedProbes(
  * Scan for cached probe results regardless of git hash (--use-cache mode).
  */
 export function scanCachedProbesAny(
-    topics: string[],
+    themes: string[],
     outputDir: string
-): { found: Map<string, TopicProbeResult>; missing: string[] } {
-    return scanCacheItemsMap<CachedProbeResult, TopicProbeResult>(
-        topics,
-        (topic) => getProbeCachePath(outputDir, topic),
+): { found: Map<string, ThemeProbeResult>; missing: string[] } {
+    return scanCacheItemsMap<CachedProbeResult, ThemeProbeResult>(
+        themes,
+        (theme) => getProbeCachePath(outputDir, theme),
         (cached) => !!cached.probeResult,
         (cached) => cached.probeResult
     );
@@ -322,7 +322,7 @@ export function getCachedStructuralScanAny(
  */
 export function saveDomainSubGraph(
     domainId: string,
-    graph: ModuleGraph,
+    graph: ComponentGraph,
     outputDir: string,
     gitHash: string
 ): void {
@@ -345,7 +345,7 @@ export function getCachedDomainSubGraph(
     domainId: string,
     outputDir: string,
     gitHash: string
-): ModuleGraph | null {
+): ComponentGraph | null {
     const cached = readCacheFileIf<CachedDomainGraph>(
         getDomainCachePath(outputDir, domainId),
         (d) => !!d.graph && d.gitHash === gitHash
@@ -365,8 +365,8 @@ export function scanCachedDomains(
     domainIds: string[],
     outputDir: string,
     gitHash: string
-): { found: Map<string, ModuleGraph>; missing: string[] } {
-    return scanCacheItemsMap<CachedDomainGraph, ModuleGraph>(
+): { found: Map<string, ComponentGraph>; missing: string[] } {
+    return scanCacheItemsMap<CachedDomainGraph, ComponentGraph>(
         domainIds,
         (domainId) => getDomainCachePath(outputDir, domainId),
         (cached) => !!cached.graph && cached.gitHash === gitHash,
@@ -380,8 +380,8 @@ export function scanCachedDomains(
 export function scanCachedDomainsAny(
     domainIds: string[],
     outputDir: string
-): { found: Map<string, ModuleGraph>; missing: string[] } {
-    return scanCacheItemsMap<CachedDomainGraph, ModuleGraph>(
+): { found: Map<string, ComponentGraph>; missing: string[] } {
+    return scanCacheItemsMap<CachedDomainGraph, ComponentGraph>(
         domainIds,
         (domainId) => getDomainCachePath(outputDir, domainId),
         (cached) => !!cached.graph,

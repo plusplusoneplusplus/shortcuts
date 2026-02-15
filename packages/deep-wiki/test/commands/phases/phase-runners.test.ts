@@ -21,7 +21,7 @@ vi.mock('../../../src/ai-invoker', () => ({
     createAnalysisInvoker: vi.fn().mockReturnValue(vi.fn().mockResolvedValue({
         success: true,
         response: JSON.stringify({
-            moduleId: 'test-module',
+            componentId: 'test-module',
             overview: 'Test overview',
             keyConcepts: [],
             publicAPI: [],
@@ -45,7 +45,7 @@ vi.mock('../../../src/ai-invoker', () => ({
 }));
 
 vi.mock('../../../src/discovery', () => ({
-    discoverModuleGraph: vi.fn().mockResolvedValue({
+    discoverComponentGraph: vi.fn().mockResolvedValue({
         graph: {
             project: {
                 name: 'TestProject',
@@ -54,7 +54,7 @@ vi.mock('../../../src/discovery', () => ({
                 buildSystem: 'npm',
                 entryPoints: ['src/index.ts'],
             },
-            modules: [{
+            components: [{
                 id: 'test-module',
                 name: 'Test Module',
                 path: 'src/test/',
@@ -74,7 +74,7 @@ vi.mock('../../../src/discovery', () => ({
 }));
 
 vi.mock('../../../src/consolidation', () => ({
-    consolidateModules: vi.fn().mockResolvedValue({
+    consolidateComponents: vi.fn().mockResolvedValue({
         graph: {
             project: {
                 name: 'TestProject',
@@ -83,7 +83,7 @@ vi.mock('../../../src/consolidation', () => ({
                 buildSystem: 'npm',
                 entryPoints: ['src/index.ts'],
             },
-            modules: [{
+            components: [{
                 id: 'test-module',
                 name: 'Test Module',
                 path: 'src/test/',
@@ -104,9 +104,9 @@ vi.mock('../../../src/consolidation', () => ({
 }));
 
 vi.mock('../../../src/analysis', () => ({
-    analyzeModules: vi.fn().mockResolvedValue({
+    analyzeComponents: vi.fn().mockResolvedValue({
         analyses: [{
-            moduleId: 'test-module',
+            componentId: 'test-module',
             overview: 'Test overview',
             keyConcepts: [],
             publicAPI: [],
@@ -129,11 +129,11 @@ vi.mock('../../../src/writing', async (importOriginal) => {
         ...actual,
         generateArticles: vi.fn().mockResolvedValue({
             articles: [{
-                type: 'module',
+                type: 'component',
                 slug: 'test-module',
                 title: 'Test Module',
                 content: '# Test Module\n\nContent here.',
-                moduleId: 'test-module',
+                componentId: 'test-module',
             }],
             duration: 1000,
         }),
@@ -149,11 +149,11 @@ vi.mock('../../../src/writing/website-generator', async (importOriginal) => {
 });
 
 vi.mock('../../../src/seeds', () => ({
-    generateTopicSeeds: vi.fn().mockResolvedValue([
-        { topic: 'auth', description: 'Auth', hints: ['auth'] },
+    generateThemeSeeds: vi.fn().mockResolvedValue([
+        { theme: 'auth', description: 'Auth', hints: ['auth'] },
     ]),
     parseSeedFile: vi.fn().mockReturnValue([
-        { topic: 'auth', description: 'Auth', hints: ['auth'] },
+        { theme: 'auth', description: 'Auth', hints: ['auth'] },
     ]),
 }));
 
@@ -163,7 +163,7 @@ vi.mock('../../../src/cache', () => ({
     saveGraph: vi.fn().mockResolvedValue(undefined),
     getCachedAnalyses: vi.fn().mockReturnValue(null),
     saveAllAnalyses: vi.fn().mockResolvedValue(undefined),
-    getModulesNeedingReanalysis: vi.fn().mockResolvedValue(null),
+    getComponentsNeedingReanalysis: vi.fn().mockResolvedValue(null),
     getCachedAnalysis: vi.fn().mockReturnValue(null),
     getAnalysesCacheMetadata: vi.fn().mockReturnValue(null),
     saveAnalysis: vi.fn(),
@@ -194,10 +194,10 @@ vi.mock('../../../src/cache', () => ({
     saveProbeResult: vi.fn(),
     getCachedProbeResult: vi.fn().mockReturnValue(null),
     scanCachedProbes: vi.fn().mockImplementation(
-        (topics: string[]) => ({ found: new Map(), missing: [...topics] })
+        (themes: string[]) => ({ found: new Map(), missing: [...themes] })
     ),
     scanCachedProbesAny: vi.fn().mockImplementation(
-        (topics: string[]) => ({ found: new Map(), missing: [...topics] })
+        (themes: string[]) => ({ found: new Map(), missing: [...themes] })
     ),
     saveStructuralScan: vi.fn(),
     getCachedStructuralScan: vi.fn().mockReturnValue(null),
@@ -250,9 +250,9 @@ import {
 } from '../../../src/commands/phases';
 import { EXIT_CODES } from '../../../src/cli';
 import { UsageTracker } from '../../../src/usage-tracker';
-import { discoverModuleGraph } from '../../../src/discovery';
-import { consolidateModules } from '../../../src/consolidation';
-import { analyzeModules } from '../../../src/analysis';
+import { discoverComponentGraph } from '../../../src/discovery';
+import { consolidateComponents } from '../../../src/consolidation';
+import { analyzeComponents } from '../../../src/analysis';
 import { generateArticles, writeWikiOutput } from '../../../src/writing';
 import { generateWebsite } from '../../../src/writing/website-generator';
 import {
@@ -261,10 +261,10 @@ import {
     clearDiscoveryCache,
     getCachedConsolidation,
     getCachedConsolidationAny,
-    getModulesNeedingReanalysis,
+    getComponentsNeedingReanalysis,
     scanIndividualArticlesCache,
 } from '../../../src/cache';
-import type { ModuleGraph, ModuleAnalysis, GenerateCommandOptions } from '../../../src/types';
+import type { ComponentGraph, ComponentAnalysis, GenerateCommandOptions } from '../../../src/types';
 
 // ============================================================================
 // Test Helpers
@@ -273,7 +273,7 @@ import type { ModuleGraph, ModuleAnalysis, GenerateCommandOptions } from '../../
 let tempDir: string;
 let repoDir: string;
 
-const sampleGraph: ModuleGraph = {
+const sampleGraph: ComponentGraph = {
     project: {
         name: 'TestProject',
         description: 'Test',
@@ -281,7 +281,7 @@ const sampleGraph: ModuleGraph = {
         buildSystem: 'npm',
         entryPoints: ['src/index.ts'],
     },
-    modules: [{
+    components: [{
         id: 'test-module',
         name: 'Test Module',
         path: 'src/test/',
@@ -296,8 +296,8 @@ const sampleGraph: ModuleGraph = {
     architectureNotes: 'Test notes',
 };
 
-const sampleAnalyses: ModuleAnalysis[] = [{
-    moduleId: 'test-module',
+const sampleAnalyses: ComponentAnalysis[] = [{
+    componentId: 'test-module',
     overview: 'Test overview',
     keyConcepts: [],
     publicAPI: [],
@@ -329,20 +329,20 @@ beforeEach(() => {
 
     // Re-set default mock implementations
     vi.mocked(getCachedGraph).mockResolvedValue(null);
-    vi.mocked(getModulesNeedingReanalysis).mockResolvedValue(null);
+    vi.mocked(getComponentsNeedingReanalysis).mockResolvedValue(null);
 
-    vi.mocked(analyzeModules).mockResolvedValue({
+    vi.mocked(analyzeComponents).mockResolvedValue({
         analyses: sampleAnalyses,
         duration: 1000,
     });
 
     vi.mocked(generateArticles).mockResolvedValue({
         articles: [{
-            type: 'module',
+            type: 'component',
             slug: 'test-module',
             title: 'Test Module',
             content: '# Test Module\n\nContent here.',
-            moduleId: 'test-module',
+            componentId: 'test-module',
         }],
         duration: 1000,
     });
@@ -360,31 +360,31 @@ describe('runPhase1', () => {
     it('should discover modules and return graph', async () => {
         const result = await runPhase1(repoDir, defaultOptions(), () => false);
         expect(result.graph).toBeDefined();
-        expect(result.graph!.modules).toHaveLength(1);
+        expect(result.graph!.components).toHaveLength(1);
         expect(result.exitCode).toBeUndefined();
     });
 
-    it('should call discoverModuleGraph', async () => {
+    it('should call discoverComponentGraph', async () => {
         await runPhase1(repoDir, defaultOptions(), () => false);
-        expect(discoverModuleGraph).toHaveBeenCalled();
+        expect(discoverComponentGraph).toHaveBeenCalled();
     });
 
     it('should use cached graph when available', async () => {
         vi.mocked(getCachedGraph).mockResolvedValue({ graph: sampleGraph, hash: 'abc' });
         const result = await runPhase1(repoDir, defaultOptions(), () => false);
         expect(result.graph).toBeDefined();
-        expect(discoverModuleGraph).not.toHaveBeenCalled();
+        expect(discoverComponentGraph).not.toHaveBeenCalled();
     });
 
     it('should skip cache when --force', async () => {
         vi.mocked(getCachedGraph).mockResolvedValue({ graph: sampleGraph, hash: 'abc' });
         await runPhase1(repoDir, defaultOptions({ force: true }), () => false);
-        expect(discoverModuleGraph).toHaveBeenCalled();
+        expect(discoverComponentGraph).toHaveBeenCalled();
         expect(clearDiscoveryCache).toHaveBeenCalled();
     });
 
     it('should return exit code on discovery failure', async () => {
-        vi.mocked(discoverModuleGraph).mockRejectedValue(new Error('AI failed'));
+        vi.mocked(discoverComponentGraph).mockRejectedValue(new Error('AI failed'));
         const result = await runPhase1(repoDir, defaultOptions(), () => false);
         expect(result.exitCode).toBe(EXIT_CODES.EXECUTION_ERROR);
         expect(result.graph).toBeUndefined();
@@ -395,7 +395,7 @@ describe('runPhase1', () => {
         const result = await runPhase1(repoDir, defaultOptions({ useCache: true }), () => false);
         expect(result.graph).toBeDefined();
         expect(getCachedGraphAny).toHaveBeenCalled();
-        expect(discoverModuleGraph).not.toHaveBeenCalled();
+        expect(discoverComponentGraph).not.toHaveBeenCalled();
     });
 
     it('should report duration', async () => {
@@ -413,19 +413,19 @@ describe('runPhase2Consolidation', () => {
         const tracker = new UsageTracker();
         const result = await runPhase2Consolidation(repoDir, sampleGraph, defaultOptions(), tracker);
         expect(result.graph).toBeDefined();
-        expect(result.graph.modules).toHaveLength(1);
+        expect(result.graph.components).toHaveLength(1);
     });
 
-    it('should call consolidateModules', async () => {
+    it('should call consolidateComponents', async () => {
         await runPhase2Consolidation(repoDir, sampleGraph, defaultOptions());
-        expect(consolidateModules).toHaveBeenCalled();
+        expect(consolidateComponents).toHaveBeenCalled();
     });
 
     it('should use cached consolidation when available', async () => {
         vi.mocked(getCachedConsolidation).mockResolvedValue({ graph: sampleGraph, hash: 'abc' });
         const result = await runPhase2Consolidation(repoDir, sampleGraph, defaultOptions());
         expect(result.graph).toBeDefined();
-        expect(consolidateModules).not.toHaveBeenCalled();
+        expect(consolidateComponents).not.toHaveBeenCalled();
     });
 
     it('should use getCachedConsolidationAny when --use-cache', async () => {
@@ -436,7 +436,7 @@ describe('runPhase2Consolidation', () => {
     });
 
     it('should fall back to original graph on consolidation failure', async () => {
-        vi.mocked(consolidateModules).mockRejectedValue(new Error('Consolidation failed'));
+        vi.mocked(consolidateComponents).mockRejectedValue(new Error('Consolidation failed'));
         const result = await runPhase2Consolidation(repoDir, sampleGraph, defaultOptions());
         // Should return the original graph, not throw
         expect(result.graph).toEqual(sampleGraph);
@@ -460,9 +460,9 @@ describe('runPhase3Analysis', () => {
         expect(result.exitCode).toBeUndefined();
     });
 
-    it('should call analyzeModules', async () => {
+    it('should call analyzeComponents', async () => {
         await runPhase3Analysis(repoDir, sampleGraph, defaultOptions(), () => false);
-        expect(analyzeModules).toHaveBeenCalled();
+        expect(analyzeComponents).toHaveBeenCalled();
     });
 
     it('should return reanalyzedModuleIds', async () => {
@@ -471,17 +471,17 @@ describe('runPhase3Analysis', () => {
     });
 
     it('should return empty reanalyzedModuleIds when all cached', async () => {
-        vi.mocked(getModulesNeedingReanalysis).mockResolvedValue([]);
+        vi.mocked(getComponentsNeedingReanalysis).mockResolvedValue([]);
         const { getCachedAnalyses } = await import('../../../src/cache');
         vi.mocked(getCachedAnalyses).mockReturnValue(sampleAnalyses);
 
         const result = await runPhase3Analysis(repoDir, sampleGraph, defaultOptions(), () => false);
         expect(result.reanalyzedModuleIds).toEqual([]);
-        expect(analyzeModules).not.toHaveBeenCalled();
+        expect(analyzeComponents).not.toHaveBeenCalled();
     });
 
     it('should return exit code on total analysis failure', async () => {
-        vi.mocked(analyzeModules).mockResolvedValue({
+        vi.mocked(analyzeComponents).mockResolvedValue({
             analyses: [],
             duration: 100,
         });
@@ -491,7 +491,7 @@ describe('runPhase3Analysis', () => {
     });
 
     it('should return exit code on error', async () => {
-        vi.mocked(analyzeModules).mockRejectedValue(new Error('Analysis error'));
+        vi.mocked(analyzeComponents).mockRejectedValue(new Error('Analysis error'));
         const result = await runPhase3Analysis(repoDir, sampleGraph, defaultOptions(), () => false);
         expect(result.exitCode).toBe(EXIT_CODES.EXECUTION_ERROR);
     });
@@ -557,7 +557,7 @@ describe('runPhase4Writing', () => {
         vi.mocked(generateArticles).mockResolvedValue({
             articles: [],
             duration: 100,
-            failedModuleIds: ['test-module'],
+            failedComponentIds: ['test-module'],
         });
 
         const result = await runPhase4Writing(
@@ -570,7 +570,7 @@ describe('runPhase4Writing', () => {
         vi.mocked(generateArticles).mockResolvedValue({
             articles: [],
             duration: 100,
-            failedModuleIds: ['test-module'],
+            failedComponentIds: ['test-module'],
         });
 
         const result = await runPhase4Writing(

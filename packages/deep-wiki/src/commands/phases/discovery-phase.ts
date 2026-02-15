@@ -6,11 +6,11 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
-import type { GenerateCommandOptions, ModuleGraph } from '../../types';
+import type { GenerateCommandOptions, ComponentGraph } from '../../types';
 import type { TokenUsage } from '@plusplusoneplusplus/pipeline-core';
 import { resolvePhaseModel, resolvePhaseTimeout, resolvePhaseConcurrency } from '../../config-loader';
-import { discoverModuleGraph, runIterativeDiscovery } from '../../discovery';
-import { generateTopicSeeds, parseSeedFile } from '../../seeds';
+import { discoverComponentGraph, runIterativeDiscovery } from '../../discovery';
+import { generateThemeSeeds, parseSeedFile } from '../../seeds';
 import {
     getCachedGraph,
     getCachedGraphAny,
@@ -37,7 +37,7 @@ import { getErrorMessage } from '../../utils/error-utils';
 // ============================================================================
 
 export interface Phase1Result {
-    graph?: ModuleGraph;
+    graph?: ComponentGraph;
     duration: number;
     exitCode?: number;
     tokenUsage?: TokenUsage;
@@ -78,7 +78,7 @@ export async function runPhase1(
                 : await getCachedGraph(repoPath, options.output);
             if (cached) {
                 const duration = Date.now() - startTime;
-                printSuccess(`Using cached module graph (${cached.graph.modules.length} modules)`);
+                printSuccess(`Using cached module graph (${cached.graph.components.length} modules)`);
                 return { graph: cached.graph, duration };
             }
         } catch {
@@ -114,9 +114,9 @@ export async function runPhase1(
                 }
 
                 if (!seeds) {
-                    spinner.update('Generating topic seeds...');
-                    seeds = await generateTopicSeeds(repoPath, {
-                        maxTopics: 50,
+                    spinner.update('Generating theme seeds...');
+                    seeds = await generateThemeSeeds(repoPath, {
+                        maxThemes: 50,
                         model: discoveryModel,
                         verbose: options.verbose,
                     });
@@ -131,7 +131,7 @@ export async function runPhase1(
                     }
                 }
 
-                spinner.succeed(`Generated ${seeds.length} topic seeds`);
+                spinner.succeed(`Generated ${seeds.length} theme seeds`);
                 spinner.start('Running iterative discovery...');
             } else {
                 // Parse seed file (file-based seeds don't need caching)
@@ -162,7 +162,7 @@ export async function runPhase1(
             };
         } else {
             // Standard discovery (pass cache options for large-repo handler)
-            result = await discoverModuleGraph({
+            result = await discoverComponentGraph({
                 repoPath,
                 model: discoveryModel,
                 timeout: discoveryTimeout ? discoveryTimeout * 1000 : undefined,
@@ -174,7 +174,7 @@ export async function runPhase1(
             });
         }
 
-        spinner.succeed(`Discovery complete — ${result.graph.modules.length} modules found`);
+        spinner.succeed(`Discovery complete — ${result.graph.components.length} modules found`);
 
         // Save to cache
         try {

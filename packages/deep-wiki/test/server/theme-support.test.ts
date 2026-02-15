@@ -1,14 +1,14 @@
 /**
- * Topic Support Tests
+ * Theme Support Tests
  *
- * Tests for all topic-related server changes:
- * - WikiData topic loading
- * - TF-IDF indexing of topic articles
- * - Context retrieval with topics
- * - API endpoints for topics
- * - Ask handler with topic context
- * - Sidebar rendering with topics
- * - Backward compatibility (no topics)
+ * Tests for all theme-related server changes:
+ * - WikiData theme loading
+ * - TF-IDF indexing of theme articles
+ * - Context retrieval with themes
+ * - API endpoints for themes
+ * - Ask handler with theme context
+ * - Sidebar rendering with themes
+ * - Backward compatibility (no themes)
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
@@ -21,7 +21,7 @@ import * as http from 'http';
 import { WikiData } from '../../src/server/wiki-data';
 import { ContextBuilder } from '../../src/server/context-builder';
 import { createServer, type WikiServer } from '../../src/server';
-import type { ComponentGraph, TopicAreaMeta } from '../../src/types';
+import type { ComponentGraph, ThemeMeta } from '../../src/types';
 
 // ============================================================================
 // Test Helpers
@@ -31,7 +31,7 @@ let tempDir: string;
 let server: WikiServer | null = null;
 
 beforeEach(() => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'deep-wiki-topic-test-'));
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'deep-wiki-theme-test-'));
 });
 
 afterEach(async () => {
@@ -42,39 +42,39 @@ afterEach(async () => {
     fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
-function createTopicMeta(overrides?: Partial<TopicAreaMeta>): TopicAreaMeta {
+function createThemeMeta(overrides?: Partial<ThemeMeta>): ThemeMeta {
     return {
         id: 'compaction',
         title: 'Compaction Strategies',
         description: 'How the system compacts data for storage efficiency',
         layout: 'area',
         articles: [
-            { slug: 'compaction-overview', title: 'Compaction Overview', path: 'topics/compaction/compaction-overview.md' },
-            { slug: 'compaction-styles', title: 'Compaction Styles', path: 'topics/compaction/compaction-styles.md' },
+            { slug: 'compaction-overview', title: 'Compaction Overview', path: 'themes/compaction/compaction-overview.md' },
+            { slug: 'compaction-styles', title: 'Compaction Styles', path: 'themes/compaction/compaction-styles.md' },
         ],
         involvedComponentIds: ['auth'],
-        directoryPath: 'topics/compaction',
+        directoryPath: 'themes/compaction',
         generatedAt: Date.now(),
         ...overrides,
     };
 }
 
-function createSingleTopicMeta(): TopicAreaMeta {
+function createSingleThemeMeta(): ThemeMeta {
     return {
         id: 'caching',
         title: 'Caching Strategy',
         description: 'How caching works across the system',
         layout: 'single',
         articles: [
-            { slug: 'caching', title: 'Caching Strategy', path: 'topics/caching.md' },
+            { slug: 'caching', title: 'Caching Strategy', path: 'themes/caching.md' },
         ],
         involvedComponentIds: ['database'],
-        directoryPath: 'topics',
+        directoryPath: 'themes',
         generatedAt: Date.now(),
     };
 }
 
-function createTestModuleGraph(topics?: TopicAreaMeta[]): ComponentGraph {
+function createTestModuleGraph(themes?: ThemeMeta[]): ComponentGraph {
     return {
         project: {
             name: 'TestProject',
@@ -111,12 +111,12 @@ function createTestModuleGraph(topics?: TopicAreaMeta[]): ComponentGraph {
             { name: 'core', description: 'Core functionality' },
         ],
         architectureNotes: 'Layered architecture.',
-        topics: topics,
+        themes: themes,
     };
 }
 
 function setupWikiDir(graph?: ComponentGraph, options?: {
-    topicFiles?: Record<string, string>;
+    themeFiles?: Record<string, string>;
 }): string {
     const wikiDir = path.join(tempDir, 'wiki');
     const componentsDir = path.join(wikiDir, 'components');
@@ -133,9 +133,9 @@ function setupWikiDir(graph?: ComponentGraph, options?: {
     fs.writeFileSync(path.join(componentsDir, 'database.md'), '# Database Module\n\nDB content about queries.', 'utf-8');
     fs.writeFileSync(path.join(wikiDir, 'index.md'), '# Project Index', 'utf-8');
 
-    // Write topic files
-    if (options?.topicFiles) {
-        for (const [filePath, content] of Object.entries(options.topicFiles)) {
+    // Write theme files
+    if (options?.themeFiles) {
+        for (const [filePath, content] of Object.entries(options.themeFiles)) {
             const fullPath = path.join(wikiDir, filePath);
             fs.mkdirSync(path.dirname(fullPath), { recursive: true });
             fs.writeFileSync(fullPath, content, 'utf-8');
@@ -173,24 +173,24 @@ async function fetchJson(url: string): Promise<{ status: number; body: unknown }
 }
 
 // ============================================================================
-// WikiData — Topic Loading
+// WikiData — Theme Loading
 // ============================================================================
 
-describe('WikiData — topic loading', () => {
-    it('should load area-layout topic articles from topics/ directory', () => {
-        const topic = createTopicMeta();
-        const graph = createTestModuleGraph([topic]);
+describe('WikiData — theme loading', () => {
+    it('should load area-layout theme articles from themes/ directory', () => {
+        const theme = createThemeMeta();
+        const graph = createTestModuleGraph([theme]);
         const wikiDir = setupWikiDir(graph, {
-            topicFiles: {
-                'topics/compaction/compaction-overview.md': '# Compaction Overview\n\nOverview content.',
-                'topics/compaction/compaction-styles.md': '# Compaction Styles\n\nStyles content.',
+            themeFiles: {
+                'themes/compaction/compaction-overview.md': '# Compaction Overview\n\nOverview content.',
+                'themes/compaction/compaction-styles.md': '# Compaction Styles\n\nStyles content.',
             },
         });
 
         const wd = new WikiData(wikiDir);
         wd.load();
 
-        const articles = wd.getTopicArticles('compaction');
+        const articles = wd.getThemeArticles('compaction');
         expect(articles).toHaveLength(2);
         expect(articles[0].slug).toBe('compaction-overview');
         expect(articles[0].content).toContain('Overview content');
@@ -198,192 +198,192 @@ describe('WikiData — topic loading', () => {
         expect(articles[1].content).toContain('Styles content');
     });
 
-    it('should load single-layout topic article', () => {
-        const topic = createSingleTopicMeta();
-        const graph = createTestModuleGraph([topic]);
+    it('should load single-layout theme article', () => {
+        const theme = createSingleThemeMeta();
+        const graph = createTestModuleGraph([theme]);
         const wikiDir = setupWikiDir(graph, {
-            topicFiles: {
-                'topics/caching.md': '# Caching Strategy\n\nCaching content.',
+            themeFiles: {
+                'themes/caching.md': '# Caching Strategy\n\nCaching content.',
             },
         });
 
         const wd = new WikiData(wikiDir);
         wd.load();
 
-        const articles = wd.getTopicArticles('caching');
+        const articles = wd.getThemeArticles('caching');
         expect(articles).toHaveLength(1);
         expect(articles[0].slug).toBe('caching');
         expect(articles[0].content).toContain('Caching content');
     });
 
-    it('should return empty topic list when no topics in graph', () => {
+    it('should return empty theme list when no themes in graph', () => {
         const graph = createTestModuleGraph();
         const wikiDir = setupWikiDir(graph);
 
         const wd = new WikiData(wikiDir);
         wd.load();
 
-        expect(wd.getTopicList()).toEqual([]);
+        expect(wd.getThemeList()).toEqual([]);
     });
 
-    it('should return empty articles for non-existent topic', () => {
-        const graph = createTestModuleGraph([createTopicMeta()]);
+    it('should return empty articles for non-existent theme', () => {
+        const graph = createTestModuleGraph([createThemeMeta()]);
         const wikiDir = setupWikiDir(graph);
 
         const wd = new WikiData(wikiDir);
         wd.load();
 
-        expect(wd.getTopicArticles('nonexistent')).toEqual([]);
+        expect(wd.getThemeArticles('nonexistent')).toEqual([]);
     });
 
-    it('should handle missing topics/ directory gracefully', () => {
-        const graph = createTestModuleGraph([createTopicMeta()]);
+    it('should handle missing themes/ directory gracefully', () => {
+        const graph = createTestModuleGraph([createThemeMeta()]);
         const wikiDir = setupWikiDir(graph);
-        // Don't create topics/ directory
+        // Don't create themes/ directory
 
         const wd = new WikiData(wikiDir);
         wd.load();
 
-        // Should still load without error, just no topic content
-        const articles = wd.getTopicArticles('compaction');
+        // Should still load without error, just no theme content
+        const articles = wd.getThemeArticles('compaction');
         expect(articles).toHaveLength(2);
         expect(articles[0].content).toBe('');
         expect(articles[1].content).toBe('');
     });
 
-    it('should get single topic article by topicId and slug', () => {
-        const topic = createTopicMeta();
-        const graph = createTestModuleGraph([topic]);
+    it('should get single theme article by themeId and slug', () => {
+        const theme = createThemeMeta();
+        const graph = createTestModuleGraph([theme]);
         const wikiDir = setupWikiDir(graph, {
-            topicFiles: {
-                'topics/compaction/compaction-overview.md': '# Overview',
-                'topics/compaction/compaction-styles.md': '# Styles',
+            themeFiles: {
+                'themes/compaction/compaction-overview.md': '# Overview',
+                'themes/compaction/compaction-styles.md': '# Styles',
             },
         });
 
         const wd = new WikiData(wikiDir);
         wd.load();
 
-        const detail = wd.getTopicArticle('compaction', 'compaction-styles');
+        const detail = wd.getThemeArticle('compaction', 'compaction-styles');
         expect(detail).not.toBeNull();
         expect(detail!.content).toContain('# Styles');
         expect(detail!.meta.id).toBe('compaction');
     });
 
-    it('should return null for non-existent topic article', () => {
-        const graph = createTestModuleGraph([createTopicMeta()]);
+    it('should return null for non-existent theme article', () => {
+        const graph = createTestModuleGraph([createThemeMeta()]);
         const wikiDir = setupWikiDir(graph);
 
         const wd = new WikiData(wikiDir);
         wd.load();
 
-        expect(wd.getTopicArticle('compaction', 'nonexistent')).toBeNull();
+        expect(wd.getThemeArticle('compaction', 'nonexistent')).toBeNull();
     });
 
-    it('should return null for non-existent topic ID', () => {
+    it('should return null for non-existent theme ID', () => {
         const graph = createTestModuleGraph();
         const wikiDir = setupWikiDir(graph);
 
         const wd = new WikiData(wikiDir);
         wd.load();
 
-        expect(wd.getTopicArticle('nonexistent')).toBeNull();
+        expect(wd.getThemeArticle('nonexistent')).toBeNull();
     });
 
-    it('should return topic list from metadata', () => {
-        const topic1 = createTopicMeta();
-        const topic2 = createSingleTopicMeta();
-        const graph = createTestModuleGraph([topic1, topic2]);
+    it('should return theme list from metadata', () => {
+        const theme1 = createThemeMeta();
+        const theme2 = createSingleThemeMeta();
+        const graph = createTestModuleGraph([theme1, theme2]);
         const wikiDir = setupWikiDir(graph);
 
         const wd = new WikiData(wikiDir);
         wd.load();
 
-        const list = wd.getTopicList();
+        const list = wd.getThemeList();
         expect(list).toHaveLength(2);
         expect(list[0].id).toBe('compaction');
         expect(list[1].id).toBe('caching');
     });
 
-    it('should expose topic markdown data separately', () => {
-        const topic = createTopicMeta();
-        const graph = createTestModuleGraph([topic]);
+    it('should expose theme markdown data separately', () => {
+        const theme = createThemeMeta();
+        const graph = createTestModuleGraph([theme]);
         const wikiDir = setupWikiDir(graph, {
-            topicFiles: {
-                'topics/compaction/compaction-overview.md': '# Overview',
-                'topics/compaction/compaction-styles.md': '# Styles',
+            themeFiles: {
+                'themes/compaction/compaction-overview.md': '# Overview',
+                'themes/compaction/compaction-styles.md': '# Styles',
             },
         });
 
         const wd = new WikiData(wikiDir);
         wd.load();
 
-        const topicData = wd.getTopicMarkdownData();
-        expect(topicData['topic:compaction:compaction-overview']).toContain('# Overview');
-        expect(topicData['topic:compaction:compaction-styles']).toContain('# Styles');
+        const themeData = wd.getThemeMarkdownData();
+        expect(themeData['theme:compaction:compaction-overview']).toContain('# Overview');
+        expect(themeData['theme:compaction:compaction-styles']).toContain('# Styles');
     });
 });
 
 // ============================================================================
-// ContextBuilder — Topic Indexing
+// ContextBuilder — Theme Indexing
 // ============================================================================
 
-describe('ContextBuilder — topic indexing', () => {
-    it('should index topic articles alongside modules', () => {
-        const topic = createTopicMeta();
-        const graph = createTestModuleGraph([topic]);
+describe('ContextBuilder — theme indexing', () => {
+    it('should index theme articles alongside modules', () => {
+        const theme = createThemeMeta();
+        const graph = createTestModuleGraph([theme]);
         const markdownData = {
             'auth': '# Auth Module\nAuthentication.',
             'database': '# Database\nDB access.',
         };
-        const topicMarkdownData = {
-            'topic:compaction:compaction-overview': '# Compaction Overview\nHow data compaction works.',
-            'topic:compaction:compaction-styles': '# Compaction Styles\nDifferent compaction approaches.',
+        const themeMarkdownData = {
+            'theme:compaction:compaction-overview': '# Compaction Overview\nHow data compaction works.',
+            'theme:compaction:compaction-styles': '# Compaction Styles\nDifferent compaction approaches.',
         };
 
-        const builder = new ContextBuilder(graph, markdownData, topicMarkdownData);
-        // 2 modules + 2 topic articles = 4 documents
+        const builder = new ContextBuilder(graph, markdownData, themeMarkdownData);
+        // 2 modules + 2 theme articles = 4 documents
         expect(builder.documentCount).toBe(4);
     });
 
-    it('should retrieve topic articles for relevant queries', () => {
-        const topic = createTopicMeta();
-        const graph = createTestModuleGraph([topic]);
+    it('should retrieve theme articles for relevant queries', () => {
+        const theme = createThemeMeta();
+        const graph = createTestModuleGraph([theme]);
         const markdownData = {
             'auth': '# Auth Module\nAuthentication.',
             'database': '# Database\nDB access.',
         };
-        const topicMarkdownData = {
-            'topic:compaction:compaction-overview': '# Compaction Overview\nHow data compaction works in the storage layer.',
-            'topic:compaction:compaction-styles': '# Compaction Styles\nDifferent compaction approaches and strategies.',
+        const themeMarkdownData = {
+            'theme:compaction:compaction-overview': '# Compaction Overview\nHow data compaction works in the storage layer.',
+            'theme:compaction:compaction-styles': '# Compaction Styles\nDifferent compaction approaches and strategies.',
         };
 
-        const builder = new ContextBuilder(graph, markdownData, topicMarkdownData);
+        const builder = new ContextBuilder(graph, markdownData, themeMarkdownData);
         const result = builder.retrieve('compaction strategies');
 
-        expect(result.topicContexts.length).toBeGreaterThan(0);
-        expect(result.topicContexts[0].topicId).toBe('compaction');
+        expect(result.themeContexts.length).toBeGreaterThan(0);
+        expect(result.themeContexts[0].themeId).toBe('compaction');
     });
 
-    it('should include topic context in contextText', () => {
-        const topic = createTopicMeta();
-        const graph = createTestModuleGraph([topic]);
+    it('should include theme context in contextText', () => {
+        const theme = createThemeMeta();
+        const graph = createTestModuleGraph([theme]);
         const markdownData = {
             'auth': '# Auth\nAuth.',
             'database': '# DB\nDB.',
         };
-        const topicMarkdownData = {
-            'topic:compaction:compaction-overview': '# Compaction Overview\nCompaction details here.',
-            'topic:compaction:compaction-styles': '# Styles\nStyles info.',
+        const themeMarkdownData = {
+            'theme:compaction:compaction-overview': '# Compaction Overview\nCompaction details here.',
+            'theme:compaction:compaction-styles': '# Styles\nStyles info.',
         };
 
-        const builder = new ContextBuilder(graph, markdownData, topicMarkdownData);
+        const builder = new ContextBuilder(graph, markdownData, themeMarkdownData);
         const result = builder.retrieve('compaction details');
 
-        expect(result.contextText).toContain('Topic Article:');
+        expect(result.contextText).toContain('Theme Article:');
     });
 
-    it('should work with no topic data (backward compatible)', () => {
+    it('should work with no theme data (backward compatible)', () => {
         const graph = createTestModuleGraph();
         const markdownData = {
             'auth': '# Auth\nAuth.',
@@ -394,101 +394,101 @@ describe('ContextBuilder — topic indexing', () => {
         expect(builder.documentCount).toBe(2);
 
         const result = builder.retrieve('authentication');
-        expect(result.topicContexts).toEqual([]);
+        expect(result.themeContexts).toEqual([]);
         expect(result.componentIds).toContain('auth');
     });
 
-    it('should respect maxTopics limit', () => {
-        // Create many topic articles
-        const topics: TopicAreaMeta[] = [];
-        const topicMarkdownData: Record<string, string> = {};
+    it('should respect maxThemes limit', () => {
+        // Create many theme articles
+        const themes: ThemeMeta[] = [];
+        const themeMarkdownData: Record<string, string> = {};
         for (let i = 0; i < 10; i++) {
-            const id = `topic-${i}`;
-            topics.push({
+            const id = `theme-${i}`;
+            themes.push({
                 id,
-                title: `Topic ${i}`,
-                description: `Topic about compaction variant ${i}`,
+                title: `Theme ${i}`,
+                description: `Theme about compaction variant ${i}`,
                 layout: 'single',
-                articles: [{ slug: id, title: `Topic ${i}`, path: `topics/${id}.md` }],
+                articles: [{ slug: id, title: `Theme ${i}`, path: `themes/${id}.md` }],
                 involvedComponentIds: [],
-                directoryPath: 'topics',
+                directoryPath: 'themes',
                 generatedAt: Date.now(),
             });
-            topicMarkdownData[`topic:${id}:${id}`] = `# Topic ${i}\nCompaction variant ${i} details.`;
+            themeMarkdownData[`theme:${id}:${id}`] = `# Theme ${i}\nCompaction variant ${i} details.`;
         }
 
-        const graph = createTestModuleGraph(topics);
-        const builder = new ContextBuilder(graph, {}, topicMarkdownData);
+        const graph = createTestModuleGraph(themes);
+        const builder = new ContextBuilder(graph, {}, themeMarkdownData);
         const result = builder.retrieve('compaction variant', 5, 3);
 
-        expect(result.topicContexts.length).toBeLessThanOrEqual(3);
+        expect(result.themeContexts.length).toBeLessThanOrEqual(3);
     });
 
-    it('should return both module and topic results for cross-cutting queries', () => {
-        const topic = createTopicMeta();
-        const graph = createTestModuleGraph([topic]);
+    it('should return both module and theme results for cross-cutting queries', () => {
+        const theme = createThemeMeta();
+        const graph = createTestModuleGraph([theme]);
         const markdownData = {
             'auth': '# Auth Module\nAuthentication with compaction support.',
             'database': '# Database\nDB access.',
         };
-        const topicMarkdownData = {
-            'topic:compaction:compaction-overview': '# Compaction Overview\nCompaction in the auth layer.',
-            'topic:compaction:compaction-styles': '# Compaction Styles\nStyles info.',
+        const themeMarkdownData = {
+            'theme:compaction:compaction-overview': '# Compaction Overview\nCompaction in the auth layer.',
+            'theme:compaction:compaction-styles': '# Compaction Styles\nStyles info.',
         };
 
-        const builder = new ContextBuilder(graph, markdownData, topicMarkdownData);
+        const builder = new ContextBuilder(graph, markdownData, themeMarkdownData);
         const result = builder.retrieve('authentication compaction');
 
         expect(result.componentIds.length).toBeGreaterThan(0);
-        // topicContexts may or may not have results depending on scoring
-        expect(result.topicContexts).toBeDefined();
+        // themeContexts may or may not have results depending on scoring
+        expect(result.themeContexts).toBeDefined();
     });
 });
 
 // ============================================================================
-// API Endpoints — Topics
+// API Endpoints — Themes
 // ============================================================================
 
-describe('GET /api/topics', () => {
-    it('should return topic list', async () => {
-        const topic = createTopicMeta();
-        const graph = createTestModuleGraph([topic]);
+describe('GET /api/themes', () => {
+    it('should return theme list', async () => {
+        const theme = createThemeMeta();
+        const graph = createTestModuleGraph([theme]);
         const wikiDir = setupWikiDir(graph);
         const s = await startServer(wikiDir);
 
-        const { status, body } = await fetchJson(`${s.url}/api/topics`);
+        const { status, body } = await fetchJson(`${s.url}/api/themes`);
         expect(status).toBe(200);
 
-        const topics = body as TopicAreaMeta[];
-        expect(topics).toHaveLength(1);
-        expect(topics[0].id).toBe('compaction');
-        expect(topics[0].title).toBe('Compaction Strategies');
+        const themes = body as ThemeMeta[];
+        expect(themes).toHaveLength(1);
+        expect(themes[0].id).toBe('compaction');
+        expect(themes[0].title).toBe('Compaction Strategies');
     });
 
-    it('should return empty list when no topics', async () => {
+    it('should return empty list when no themes', async () => {
         const graph = createTestModuleGraph();
         const wikiDir = setupWikiDir(graph);
         const s = await startServer(wikiDir);
 
-        const { status, body } = await fetchJson(`${s.url}/api/topics`);
+        const { status, body } = await fetchJson(`${s.url}/api/themes`);
         expect(status).toBe(200);
         expect(body).toEqual([]);
     });
 });
 
-describe('GET /api/topics/:topicId', () => {
-    it('should return topic area with articles', async () => {
-        const topic = createTopicMeta();
-        const graph = createTestModuleGraph([topic]);
+describe('GET /api/themes/:themeId', () => {
+    it('should return theme area with articles', async () => {
+        const theme = createThemeMeta();
+        const graph = createTestModuleGraph([theme]);
         const wikiDir = setupWikiDir(graph, {
-            topicFiles: {
-                'topics/compaction/compaction-overview.md': '# Overview Content',
-                'topics/compaction/compaction-styles.md': '# Styles Content',
+            themeFiles: {
+                'themes/compaction/compaction-overview.md': '# Overview Content',
+                'themes/compaction/compaction-styles.md': '# Styles Content',
             },
         });
         const s = await startServer(wikiDir);
 
-        const { status, body } = await fetchJson(`${s.url}/api/topics/compaction`);
+        const { status, body } = await fetchJson(`${s.url}/api/themes/compaction`);
         expect(status).toBe(200);
 
         const data = body as any;
@@ -497,71 +497,71 @@ describe('GET /api/topics/:topicId', () => {
         expect(data.articles[0].content).toContain('Overview Content');
     });
 
-    it('should return 404 for non-existent topic', async () => {
+    it('should return 404 for non-existent theme', async () => {
         const graph = createTestModuleGraph();
         const wikiDir = setupWikiDir(graph);
         const s = await startServer(wikiDir);
 
-        const { status, body } = await fetchJson(`${s.url}/api/topics/nonexistent`);
+        const { status, body } = await fetchJson(`${s.url}/api/themes/nonexistent`);
         expect(status).toBe(404);
         expect((body as any).error).toContain('not found');
     });
 });
 
-describe('GET /api/topics/:topicId/:slug', () => {
-    it('should return single topic article', async () => {
-        const topic = createTopicMeta();
-        const graph = createTestModuleGraph([topic]);
+describe('GET /api/themes/:themeId/:slug', () => {
+    it('should return single theme article', async () => {
+        const theme = createThemeMeta();
+        const graph = createTestModuleGraph([theme]);
         const wikiDir = setupWikiDir(graph, {
-            topicFiles: {
-                'topics/compaction/compaction-overview.md': '# Overview',
-                'topics/compaction/compaction-styles.md': '# Styles Detail',
+            themeFiles: {
+                'themes/compaction/compaction-overview.md': '# Overview',
+                'themes/compaction/compaction-styles.md': '# Styles Detail',
             },
         });
         const s = await startServer(wikiDir);
 
-        const { status, body } = await fetchJson(`${s.url}/api/topics/compaction/compaction-styles`);
+        const { status, body } = await fetchJson(`${s.url}/api/themes/compaction/compaction-styles`);
         expect(status).toBe(200);
 
         const data = body as any;
-        expect(data.topicId).toBe('compaction');
+        expect(data.themeId).toBe('compaction');
         expect(data.slug).toBe('compaction-styles');
         expect(data.content).toContain('Styles Detail');
         expect(data.meta.id).toBe('compaction');
     });
 
     it('should return 404 for non-existent article', async () => {
-        const topic = createTopicMeta();
-        const graph = createTestModuleGraph([topic]);
+        const theme = createThemeMeta();
+        const graph = createTestModuleGraph([theme]);
         const wikiDir = setupWikiDir(graph);
         const s = await startServer(wikiDir);
 
-        const { status, body } = await fetchJson(`${s.url}/api/topics/compaction/nonexistent`);
+        const { status, body } = await fetchJson(`${s.url}/api/themes/compaction/nonexistent`);
         expect(status).toBe(404);
         expect((body as any).error).toContain('not found');
     });
 
-    it('should handle URL-encoded topic IDs and slugs', async () => {
-        const topic = createTopicMeta();
-        const graph = createTestModuleGraph([topic]);
+    it('should handle URL-encoded theme IDs and slugs', async () => {
+        const theme = createThemeMeta();
+        const graph = createTestModuleGraph([theme]);
         const wikiDir = setupWikiDir(graph, {
-            topicFiles: {
-                'topics/compaction/compaction-overview.md': '# Overview',
+            themeFiles: {
+                'themes/compaction/compaction-overview.md': '# Overview',
             },
         });
         const s = await startServer(wikiDir);
 
         const { status } = await fetchJson(
-            `${s.url}/api/topics/${encodeURIComponent('compaction')}/${encodeURIComponent('compaction-overview')}`
+            `${s.url}/api/themes/${encodeURIComponent('compaction')}/${encodeURIComponent('compaction-overview')}`
         );
         expect(status).toBe(200);
     });
 });
 
-describe('GET /api/graph — topic extension', () => {
-    it('should include topics in graph response', async () => {
-        const topic = createTopicMeta();
-        const graph = createTestModuleGraph([topic]);
+describe('GET /api/graph — theme extension', () => {
+    it('should include themes in graph response', async () => {
+        const theme = createThemeMeta();
+        const graph = createTestModuleGraph([theme]);
         const wikiDir = setupWikiDir(graph);
         const s = await startServer(wikiDir);
 
@@ -569,20 +569,20 @@ describe('GET /api/graph — topic extension', () => {
         expect(status).toBe(200);
 
         const data = body as ComponentGraph;
-        expect(data.topics).toBeDefined();
-        expect(data.topics).toHaveLength(1);
-        expect(data.topics![0].id).toBe('compaction');
+        expect(data.themes).toBeDefined();
+        expect(data.themes).toHaveLength(1);
+        expect(data.themes![0].id).toBe('compaction');
     });
 
-    it('should not include topics field when none exist', async () => {
+    it('should not include themes field when none exist', async () => {
         const graph = createTestModuleGraph();
         const wikiDir = setupWikiDir(graph);
         const s = await startServer(wikiDir);
 
         const { body } = await fetchJson(`${s.url}/api/graph`);
         const data = body as ComponentGraph;
-        // topics may be undefined or empty array
-        expect(data.topics === undefined || data.topics?.length === 0).toBe(true);
+        // themes may be undefined or empty array
+        expect(data.themes === undefined || data.themes?.length === 0).toBe(true);
     });
 });
 
@@ -591,7 +591,7 @@ describe('GET /api/graph — topic extension', () => {
 // ============================================================================
 
 describe('Backward compatibility', () => {
-    it('should work with wiki that has no topics', async () => {
+    it('should work with wiki that has no themes', async () => {
         const graph = createTestModuleGraph();
         const wikiDir = setupWikiDir(graph);
         const s = await startServer(wikiDir);
@@ -609,13 +609,13 @@ describe('Backward compatibility', () => {
         const pageRes = await fetchJson(`${s.url}/api/pages/index`);
         expect(pageRes.status).toBe(200);
 
-        // Topics endpoint returns empty
-        const topicsRes = await fetchJson(`${s.url}/api/topics`);
-        expect(topicsRes.status).toBe(200);
-        expect(topicsRes.body).toEqual([]);
+        // Themes endpoint returns empty
+        const themesRes = await fetchJson(`${s.url}/api/themes`);
+        expect(themesRes.status).toBe(200);
+        expect(themesRes.body).toEqual([]);
     });
 
-    it('should load wiki data without topics/ directory', () => {
+    it('should load wiki data without themes/ directory', () => {
         const graph = createTestModuleGraph();
         const wikiDir = setupWikiDir(graph);
 
@@ -623,34 +623,34 @@ describe('Backward compatibility', () => {
         wd.load();
 
         expect(wd.isLoaded).toBe(true);
-        expect(wd.getTopicList()).toEqual([]);
-        expect(wd.getTopicMarkdownData()).toEqual({});
+        expect(wd.getThemeList()).toEqual([]);
+        expect(wd.getThemeMarkdownData()).toEqual({});
     });
 
-    it('should context-build without topic data', () => {
+    it('should context-build without theme data', () => {
         const graph = createTestModuleGraph();
         const markdownData = {
             'auth': '# Auth\nAuth.',
             'database': '# DB\nDB.',
         };
 
-        // Old-style constructor (no topic data)
+        // Old-style constructor (no theme data)
         const builder = new ContextBuilder(graph, markdownData);
         const result = builder.retrieve('authentication');
 
         expect(result.componentIds).toContain('auth');
-        expect(result.topicContexts).toEqual([]);
+        expect(result.themeContexts).toEqual([]);
     });
 });
 
 // ============================================================================
-// SPA Rendering — Topics
+// SPA Rendering — Themes
 // ============================================================================
 
-describe('SPA — topics in sidebar', () => {
-    it('should include topic navigation code in SPA HTML', async () => {
-        const topic = createTopicMeta();
-        const graph = createTestModuleGraph([topic]);
+describe('SPA — themes in sidebar', () => {
+    it('should include theme navigation code in SPA HTML', async () => {
+        const theme = createThemeMeta();
+        const graph = createTestModuleGraph([theme]);
         const wikiDir = setupWikiDir(graph);
         const s = await startServer(wikiDir);
 
@@ -662,8 +662,8 @@ describe('SPA — topics in sidebar', () => {
             }).on('error', reject);
         });
 
-        // SPA should include topic sidebar functions
-        expect(html).toContain('buildTopicsSidebar');
-        expect(html).toContain('loadTopicArticle');
+        // SPA should include theme sidebar functions
+        expect(html).toContain('buildThemesSidebar');
+        expect(html).toContain('loadThemeArticle');
     });
 });

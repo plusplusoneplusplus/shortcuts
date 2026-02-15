@@ -55,8 +55,8 @@ export * from './analysis-cache';
 // Re-export article cache functions
 export * from './article-cache';
 
-// Re-export topic cache functions
-export * from './topic-cache';
+// Re-export theme cache functions
+export * from './theme-cache';
 
 // ============================================================================
 // Cross-Domain Functions

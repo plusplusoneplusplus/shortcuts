@@ -1,19 +1,19 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { ModuleGraph, TopicRequest, TopicCoverageCheck, TopicAreaMeta, TopicRelatedModule } from '../types';
+import { ComponentGraph, ThemeRequest, ThemeCoverageCheck, ThemeMeta, ThemeRelatedComponent } from '../types';
 
 /**
  * Load module-graph.json from the wiki directory.
  * Returns null if wiki doesn't exist or has no module-graph.json.
  */
-export function loadWikiGraph(wikiDir: string): ModuleGraph | null {
+export function loadWikiGraph(wikiDir: string): ComponentGraph | null {
     const graphPath = path.join(wikiDir, 'module-graph.json');
     try {
         if (!fs.existsSync(graphPath)) {
             return null;
         }
         const content = fs.readFileSync(graphPath, 'utf-8');
-        return JSON.parse(content) as ModuleGraph;
+        return JSON.parse(content) as ComponentGraph;
     } catch {
         // Malformed JSON or read error — treat as missing
         return null;
@@ -21,102 +21,102 @@ export function loadWikiGraph(wikiDir: string): ModuleGraph | null {
 }
 
 /**
- * List existing topic areas from the wiki directory.
- * Reads module-graph.json topics[] array + scans topics/ directory.
+ * List existing theme areas from the wiki directory.
+ * Reads module-graph.json themes[] array + scans themes/ directory.
  */
-export function listTopicAreas(wikiDir: string): TopicAreaMeta[] {
+export function listThemeAreas(wikiDir: string): ThemeMeta[] {
     const graph = loadWikiGraph(wikiDir);
-    const fromGraph = graph?.topics ?? [];
+    const fromGraph = graph?.themes ?? [];
 
-    // Scan topics/ directory for any topic areas not in graph
-    const topicsDir = path.join(wikiDir, 'topics');
-    const fromFs = scanTopicsDirectory(topicsDir);
+    // Scan themes/ directory for any theme areas not in graph
+    const themesDir = path.join(wikiDir, 'themes');
+    const fromFs = scanThemesDirectory(themesDir);
 
     // Merge: graph entries take precedence, add filesystem-only entries
     const seen = new Set(fromGraph.map(t => t.id));
     const merged = [...fromGraph];
-    for (const fsTopic of fromFs) {
-        if (!seen.has(fsTopic.id)) {
-            merged.push(fsTopic);
+    for (const fsTheme of fromFs) {
+        if (!seen.has(fsTheme.id)) {
+            merged.push(fsTheme);
         }
     }
     return merged;
 }
 
 /**
- * Check whether a topic is already covered in the wiki.
+ * Check whether a theme is already covered in the wiki.
  *
  * Detection strategy (no AI needed):
- * 1. Exact match: topic.topic matches existing TopicAreaMeta.id
+ * 1. Exact match: theme.theme matches existing ThemeMeta.id
  * 2. Partial overlap: keyword matching against module names, purposes,
  *    and article content (TF-IDF style scoring)
  * 3. New: no significant overlap found
  *
- * Returns TopicCoverageCheck with status and related modules.
+ * Returns ThemeCoverageCheck with status and related modules.
  */
-export function checkTopicCoverage(
-    topic: TopicRequest,
-    graph: ModuleGraph,
+export function checkThemeCoverage(
+    theme: ThemeRequest,
+    graph: ComponentGraph,
     wikiDir: string
-): TopicCoverageCheck {
-    // 1. Exact topic match
-    const existingTopics = graph.topics ?? [];
-    const exactTopic = existingTopics.find(t => t.id === topic.topic);
-    if (exactTopic) {
-        const articlePath = exactTopic.articles.length > 0
-            ? exactTopic.articles[0].path
+): ThemeCoverageCheck {
+    // 1. Exact theme match
+    const existingThemes = graph.themes ?? [];
+    const exactTheme = existingThemes.find(t => t.id === theme.theme);
+    if (exactTheme) {
+        const articlePath = exactTheme.articles.length > 0
+            ? exactTheme.articles[0].path
             : undefined;
         return {
             status: 'exists',
             existingArticlePath: articlePath,
-            relatedModules: exactTopic.involvedModuleIds.map(id => ({
-                moduleId: id,
+            relatedComponents: exactTheme.involvedComponentIds.map(id => ({
+                componentId: id,
                 articlePath: resolveModuleArticlePath(id, wikiDir, graph),
                 relevance: 'high' as const,
-                matchReason: `Module belongs to existing topic "${exactTopic.id}"`
+                matchReason: `Module belongs to existing theme "${exactTheme.id}"`
             }))
         };
     }
 
     // 2. Keyword matching against modules
-    const keywords = tokenize(topic.topic, topic.description, topic.hints);
-    const relatedModules = scoreModules(keywords, graph, wikiDir);
+    const keywords = tokenize(theme.theme, theme.description, theme.hints);
+    const relatedComponents = scoreModules(keywords, graph, wikiDir);
 
-    const highCount = relatedModules.filter(m => m.relevance === 'high').length;
+    const highCount = relatedComponents.filter(m => m.relevance === 'high').length;
     if (highCount >= 2) {
         return {
             status: 'partial',
-            relatedModules
+            relatedComponents
         };
     }
 
-    if (relatedModules.length > 0 && highCount >= 1) {
+    if (relatedComponents.length > 0 && highCount >= 1) {
         return {
             status: 'partial',
-            relatedModules
+            relatedComponents
         };
     }
 
     return {
         status: 'new',
-        relatedModules
+        relatedComponents
     };
 }
 
 // ─── Internal Helpers ────────────────────────────────────────────────────────
 
 /**
- * Tokenize topic name, description, and hints into normalized keywords.
+ * Tokenize theme name, description, and hints into normalized keywords.
  */
 export function tokenize(
-    topicName: string,
+    themeName: string,
     description?: string,
     hints?: string[]
 ): string[] {
     const parts: string[] = [];
 
     // Split kebab-case / camelCase / spaces
-    parts.push(...splitIntoWords(topicName));
+    parts.push(...splitIntoWords(themeName));
     if (description) {
         parts.push(...splitIntoWords(description));
     }
@@ -160,16 +160,16 @@ function splitIntoWords(text: string): string[] {
  */
 function scoreModules(
     keywords: string[],
-    graph: ModuleGraph,
+    graph: ComponentGraph,
     wikiDir: string
-): TopicRelatedModule[] {
+): ThemeRelatedComponent[] {
     if (keywords.length === 0) {
         return [];
     }
 
-    const results: TopicRelatedModule[] = [];
+    const results: ThemeRelatedComponent[] = [];
 
-    for (const mod of graph.modules) {
+    for (const mod of graph.components) {
         let score = 0;
         const reasons: string[] = [];
 
@@ -214,10 +214,10 @@ function scoreModules(
         }
 
         if (score > 0) {
-            const relevance: TopicRelatedModule['relevance'] =
+            const relevance: ThemeRelatedComponent['relevance'] =
                 score >= 5 ? 'high' : score >= 3 ? 'medium' : 'low';
             results.push({
-                moduleId: mod.id,
+                componentId: mod.id,
                 articlePath: articlePath || '',
                 relevance,
                 matchReason: reasons.join('; ')
@@ -236,61 +236,61 @@ function scoreModules(
  * Resolve the expected article path for a module.
  */
 function resolveModuleArticlePath(
-    moduleId: string,
+    componentId: string,
     wikiDir: string,
-    graph: ModuleGraph
+    graph: ComponentGraph
 ): string {
-    const mod = graph.modules.find(m => m.id === moduleId);
+    const mod = graph.components.find(m => m.id === componentId);
 
     // Hierarchical layout with domains
     if (mod?.domain && graph.domains) {
-        const area = graph.domains.find(a => a.modules.includes(moduleId));
+        const area = graph.domains.find(a => a.components.includes(componentId));
         if (area) {
-            return `domains/${area.id}/modules/${moduleId}.md`;
+            return `domains/${area.id}/modules/${componentId}.md`;
         }
     }
 
     // Flat layout
-    return `modules/${moduleId}.md`;
+    return `modules/${componentId}.md`;
 }
 
 /**
- * Scan the topics/ directory to discover topic areas from the filesystem.
+ * Scan the themes/ directory to discover theme areas from the filesystem.
  */
-function scanTopicsDirectory(topicsDir: string): TopicAreaMeta[] {
-    if (!fs.existsSync(topicsDir)) {
+function scanThemesDirectory(themesDir: string): ThemeMeta[] {
+    if (!fs.existsSync(themesDir)) {
         return [];
     }
 
-    const results: TopicAreaMeta[] = [];
+    const results: ThemeMeta[] = [];
     try {
-        const entries = fs.readdirSync(topicsDir, { withFileTypes: true });
+        const entries = fs.readdirSync(themesDir, { withFileTypes: true });
         for (const entry of entries) {
             if (entry.isDirectory()) {
-                // Topic area directory (e.g., topics/compaction/)
-                const dirPath = path.join(topicsDir, entry.name);
-                const articles = scanTopicArticles(dirPath, entry.name);
+                // Theme area directory (e.g., themes/compaction/)
+                const dirPath = path.join(themesDir, entry.name);
+                const articles = scanThemeArticles(dirPath, entry.name);
                 results.push({
                     id: entry.name,
                     title: entry.name.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
                     description: '',
                     layout: 'area',
                     articles,
-                    involvedModuleIds: [],
-                    directoryPath: `topics/${entry.name}`,
+                    involvedComponentIds: [],
+                    directoryPath: `themes/${entry.name}`,
                     generatedAt: 0
                 });
             } else if (entry.isFile() && entry.name.endsWith('.md')) {
-                // Single-article topic (e.g., topics/auth.md)
+                // Single-article theme (e.g., themes/auth.md)
                 const id = entry.name.replace(/\.md$/, '');
                 results.push({
                     id,
                     title: id.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
                     description: '',
                     layout: 'single',
-                    articles: [{ slug: id, title: id, path: `topics/${entry.name}` }],
-                    involvedModuleIds: [],
-                    directoryPath: `topics`,
+                    articles: [{ slug: id, title: id, path: `themes/${entry.name}` }],
+                    involvedComponentIds: [],
+                    directoryPath: `themes`,
                     generatedAt: 0
                 });
             }
@@ -301,9 +301,9 @@ function scanTopicsDirectory(topicsDir: string): TopicAreaMeta[] {
     return results;
 }
 
-function scanTopicArticles(
+function scanThemeArticles(
     dirPath: string,
-    topicId: string
+    themeId: string
 ): { slug: string; title: string; path: string }[] {
     const articles: { slug: string; title: string; path: string }[] = [];
     try {
@@ -312,8 +312,8 @@ function scanTopicArticles(
             const slug = file.replace(/\.md$/, '');
             articles.push({
                 slug,
-                title: slug === 'index' ? topicId : slug,
-                path: `topics/${topicId}/${file}`
+                title: slug === 'index' ? themeId : slug,
+                path: `themes/${themeId}/${file}`
             });
         }
     } catch {

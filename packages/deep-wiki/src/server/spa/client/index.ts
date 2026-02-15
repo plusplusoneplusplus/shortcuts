@@ -11,28 +11,28 @@
 import { init, escapeHtml, setupPopstateHandler } from './core';
 import { initTheme, toggleTheme, setupThemeListeners } from './theme';
 import { initializeSidebar, setActive, showWikiContent, showAdminContent } from './sidebar';
-import { showHome, loadModule, loadSpecialPage, loadTopicArticle, toggleSourceFiles, regenerateModule } from './content';
+import { showHome, loadComponent, loadSpecialPage, loadThemeArticle, toggleSourceFiles, regenerateComponent } from './content';
 import { renderMarkdownContent, processMarkdownContent } from './markdown';
 import { buildToc } from './toc';
 import { showGraph } from './graph';
 import { updateAskSubject, addDeepDiveButton, setupAskAiListeners } from './ask-ai';
 import { connectWebSocket } from './websocket';
-import { showAdmin, setupAdminListeners, runModuleRegenFromAdmin } from './admin';
+import { showAdmin, setupAdminListeners, runComponentRegenFromAdmin } from './admin';
 
 // Read config injected by server
 const config = (window as any).__WIKI_CONFIG__ as WikiConfig;
 
 // Expose functions used by inline onclick handlers in dynamically-built HTML
-(window as any).loadModule = loadModule;
+(window as any).loadComponent = loadComponent;
 (window as any).showHome = showHome;
 (window as any).showGraph = showGraph;
 (window as any).showAdmin = showAdmin;
 (window as any).loadSpecialPage = loadSpecialPage;
-(window as any).loadTopicArticle = loadTopicArticle;
+(window as any).loadThemeArticle = loadThemeArticle;
 (window as any).toggleSourceFiles = toggleSourceFiles;
 (window as any).escapeHtml = escapeHtml;
-(window as any).regenerateModule = regenerateModule;
-(window as any).runModuleRegenFromAdmin = runModuleRegenFromAdmin;
+(window as any).regenerateComponent = regenerateComponent;
+(window as any).runComponentRegenFromAdmin = runComponentRegenFromAdmin;
 
 // Expose init helpers called from core.ts via window
 (window as any).initTheme = initTheme;

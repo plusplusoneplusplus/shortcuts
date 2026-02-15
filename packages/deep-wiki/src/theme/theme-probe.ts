@@ -1,17 +1,17 @@
-import type { TopicRequest, ModuleGraph, TopicSeed } from '../types';
-import type { TopicProbeResult } from '../discovery/iterative/types';
-import { runTopicProbe } from '../discovery/iterative/probe-session';
+import type { ThemeRequest, ComponentGraph, ThemeSeed } from '../types';
+import type { ThemeProbeResult } from '../discovery/iterative/types';
+import { runThemeProbe } from '../discovery/iterative/probe-session';
 
-export interface TopicProbeOptions {
+export interface ThemeProbeOptions {
     repoPath: string;
-    topic: TopicRequest;
-    existingGraph?: ModuleGraph;
+    theme: ThemeRequest;
+    existingGraph?: ComponentGraph;
     model?: string;
     timeout?: number; // default: 120s
 }
 
 export interface EnrichedProbeResult {
-    probeResult: TopicProbeResult;
+    probeResult: ThemeProbeResult;
     /** Modules from probe that already have articles in the wiki */
     existingModuleIds: string[];
     /** Modules from probe that are new (no existing article) */
@@ -21,31 +21,31 @@ export interface EnrichedProbeResult {
 }
 
 /**
- * Convert TopicRequest to TopicSeed for the probe session.
- * If no description provided, generates a basic one from the topic name.
- * If no hints provided, derives hints from the topic name.
+ * Convert ThemeRequest to ThemeSeed for the probe session.
+ * If no description provided, generates a basic one from the theme name.
+ * If no hints provided, derives hints from the theme name.
  */
-export function buildTopicSeed(topic: TopicRequest): TopicSeed {
-    const description = topic.description
-        ?? `Discover code related to ${topic.topic.replace(/-/g, ' ')}`;
+export function buildThemeSeed(theme: ThemeRequest): ThemeSeed {
+    const description = theme.description
+        ?? `Discover code related to ${theme.theme.replace(/-/g, ' ')}`;
 
-    const hints = topic.hints && topic.hints.length > 0
-        ? topic.hints
-        : generateHints(topic.topic);
+    const hints = theme.hints && theme.hints.length > 0
+        ? theme.hints
+        : generateHints(theme.theme);
 
     return {
-        topic: topic.topic,
+        theme: theme.theme,
         description,
         hints,
     };
 }
 
 /**
- * Derive search hints from a kebab-case topic name.
+ * Derive search hints from a kebab-case theme name.
  * Splits on hyphens and adds common morphological variations.
  */
-function generateHints(topicName: string): string[] {
-    const parts = topicName.split('-');
+function generateHints(themeName: string): string[] {
+    const parts = themeName.split('-');
     const hints = new Set<string>();
 
     // Add each part as a hint
@@ -53,8 +53,8 @@ function generateHints(topicName: string): string[] {
         hints.add(part);
     }
 
-    // Add the full topic name (with hyphens)
-    hints.add(topicName);
+    // Add the full theme name (with hyphens)
+    hints.add(themeName);
 
     // Add common suffix variations for each part
     for (const part of parts) {
@@ -74,15 +74,15 @@ function generateHints(topicName: string): string[] {
 }
 
 /**
- * Run a single topic probe and enrich results with existing wiki context.
+ * Run a single theme probe and enrich results with existing wiki context.
  */
-export async function runSingleTopicProbe(
-    options: TopicProbeOptions
+export async function runSingleThemeProbe(
+    options: ThemeProbeOptions
 ): Promise<EnrichedProbeResult> {
-    const seed = buildTopicSeed(options.topic);
+    const seed = buildThemeSeed(options.theme);
     const timeout = options.timeout ?? 120;
 
-    const probeResult = await runTopicProbe(options.repoPath, seed, {
+    const probeResult = await runThemeProbe(options.repoPath, seed, {
         model: options.model,
         timeout,
     });
@@ -91,19 +91,19 @@ export async function runSingleTopicProbe(
 }
 
 /**
- * Cross-reference probe results with an existing ModuleGraph.
+ * Cross-reference probe results with an existing ComponentGraph.
  * Matches by exact ID and by directory path overlap.
  */
 function enrichProbeResult(
-    probeResult: TopicProbeResult,
-    existingGraph?: ModuleGraph
+    probeResult: ThemeProbeResult,
+    existingGraph?: ComponentGraph
 ): EnrichedProbeResult {
     const existingModuleIds: string[] = [];
     const newModuleIds: string[] = [];
     const allKeyFiles: string[] = [];
 
     // Collect all key files
-    for (const mod of probeResult.foundModules) {
+    for (const mod of probeResult.foundComponents) {
         for (const f of mod.keyFiles) {
             if (!allKeyFiles.includes(f)) {
                 allKeyFiles.push(f);
@@ -111,23 +111,23 @@ function enrichProbeResult(
         }
     }
 
-    if (!existingGraph || existingGraph.modules.length === 0) {
+    if (!existingGraph || existingGraph.components.length === 0) {
         // No existing graph — all modules are new
         return {
             probeResult,
             existingModuleIds: [],
-            newModuleIds: probeResult.foundModules.map(m => m.id),
+            newModuleIds: probeResult.foundComponents.map(m => m.id),
             allKeyFiles,
         };
     }
 
     // Build lookup structures for existing modules
-    const existingIds = new Set(existingGraph.modules.map(m => m.id));
+    const existingIds = new Set(existingGraph.components.map(m => m.id));
     const existingPaths = new Map(
-        existingGraph.modules.map(m => [normalizePath(m.path), m.id])
+        existingGraph.components.map(m => [normalizePath(m.path), m.id])
     );
 
-    for (const mod of probeResult.foundModules) {
+    for (const mod of probeResult.foundComponents) {
         if (existingIds.has(mod.id)) {
             existingModuleIds.push(mod.id);
         } else if (existingPaths.has(normalizePath(mod.path))) {

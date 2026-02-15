@@ -2,7 +2,7 @@
  * API Handlers
  *
  * Handles all /api/* routes for the deep-wiki server.
- * Provides REST endpoints for module graph, modules, and special pages.
+ * Provides REST endpoints for component graph, components, and special pages.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
@@ -63,40 +63,40 @@ export function handleApiRequest(
         return;
     }
 
-    // GET /api/topics (must come before /api/topics/:id to avoid catch-all)
-    if (method === 'GET' && pathname === '/api/topics') {
-        handleGetTopics(res, wikiData);
+    // GET /api/themes (must come before /api/themes/:id to avoid catch-all)
+    if (method === 'GET' && pathname === '/api/themes') {
+        handleGetThemes(res, wikiData);
         return;
     }
 
-    // GET /api/topics/:topicId/:slug
-    const topicArticleMatch = pathname.match(/^\/api\/topics\/([^/]+)\/([^/]+)$/);
-    if (method === 'GET' && topicArticleMatch) {
-        const topicId = decodeURIComponent(topicArticleMatch[1]);
-        const slug = decodeURIComponent(topicArticleMatch[2]);
-        handleGetTopicArticle(res, wikiData, topicId, slug);
+    // GET /api/themes/:themeId/:slug
+    const themeArticleMatch = pathname.match(/^\/api\/themes\/([^/]+)\/([^/]+)$/);
+    if (method === 'GET' && themeArticleMatch) {
+        const themeId = decodeURIComponent(themeArticleMatch[1]);
+        const slug = decodeURIComponent(themeArticleMatch[2]);
+        handleGetThemeArticle(res, wikiData, themeId, slug);
         return;
     }
 
-    // GET /api/topics/:topicId
-    const topicMatch = pathname.match(/^\/api\/topics\/([^/]+)$/);
-    if (method === 'GET' && topicMatch) {
-        const topicId = decodeURIComponent(topicMatch[1]);
-        handleGetTopicById(res, wikiData, topicId);
+    // GET /api/themes/:themeId
+    const themeMatch = pathname.match(/^\/api\/themes\/([^/]+)$/);
+    if (method === 'GET' && themeMatch) {
+        const themeId = decodeURIComponent(themeMatch[1]);
+        handleGetThemeById(res, wikiData, themeId);
         return;
     }
 
-    // GET /api/modules
-    if (method === 'GET' && pathname === '/api/modules') {
-        handleGetModules(res, wikiData);
+    // GET /api/components
+    if (method === 'GET' && pathname === '/api/components') {
+        handleGetComponents(res, wikiData);
         return;
     }
 
-    // GET /api/modules/:id
-    const moduleMatch = pathname.match(/^\/api\/modules\/(.+)$/);
-    if (method === 'GET' && moduleMatch) {
-        const moduleId = decodeURIComponent(moduleMatch[1]);
-        handleGetModuleById(res, wikiData, moduleId);
+    // GET /api/components/:id
+    const componentMatch = pathname.match(/^\/api\/components\/(.+)$/);
+    if (method === 'GET' && componentMatch) {
+        const componentId = decodeURIComponent(componentMatch[1]);
+        handleGetComponentById(res, wikiData, componentId);
         return;
     }
 
@@ -156,8 +156,8 @@ export function handleApiRequest(
             send400(res, 'AI service is not configured.');
             return;
         }
-        const exploreModuleId = decodeURIComponent(exploreMatch[1]);
-        handleExploreRequest(req, res, exploreModuleId, {
+        const exploreComponentId = decodeURIComponent(exploreMatch[1]);
+        handleExploreRequest(req, res, exploreComponentId, {
             wikiData: context.wikiData,
             sendMessage: context.aiSendMessage,
             model: context.aiModel,
@@ -192,7 +192,7 @@ export function handleApiRequest(
 // ============================================================================
 
 /**
- * GET /api/graph — Returns the full module graph JSON.
+ * GET /api/graph — Returns the full component graph JSON.
  */
 function handleGetGraph(res: http.ServerResponse, wikiData: WikiData): void {
     try {
@@ -203,11 +203,11 @@ function handleGetGraph(res: http.ServerResponse, wikiData: WikiData): void {
 }
 
 /**
- * GET /api/modules — Returns a list of module summaries.
+ * GET /api/components — Returns a list of component summaries.
  */
-function handleGetModules(res: http.ServerResponse, wikiData: WikiData): void {
+function handleGetComponents(res: http.ServerResponse, wikiData: WikiData): void {
     try {
-        const summaries = wikiData.getModuleSummaries();
+        const summaries = wikiData.getComponentSummaries();
         sendJson(res, summaries);
     } catch (error) {
         sendJson(res, { error: getErrorMessage(error) }, 500);
@@ -215,17 +215,17 @@ function handleGetModules(res: http.ServerResponse, wikiData: WikiData): void {
 }
 
 /**
- * GET /api/modules/:id — Returns detail for a single module.
+ * GET /api/components/:id — Returns detail for a single component.
  */
-function handleGetModuleById(
+function handleGetComponentById(
     res: http.ServerResponse,
     wikiData: WikiData,
-    moduleId: string
+    componentId: string
 ): void {
     try {
-        const detail = wikiData.getModuleDetail(moduleId);
+        const detail = wikiData.getComponentDetail(componentId);
         if (!detail) {
-            send404(res, `Module not found: ${moduleId}`);
+            send404(res, `Component not found: ${componentId}`);
             return;
         }
         sendJson(res, detail);
@@ -255,33 +255,33 @@ function handleGetPage(
 }
 
 /**
- * GET /api/topics — Returns list of all topic areas.
+ * GET /api/themes — Returns list of all theme areas.
  */
-function handleGetTopics(res: http.ServerResponse, wikiData: WikiData): void {
+function handleGetThemes(res: http.ServerResponse, wikiData: WikiData): void {
     try {
-        const topics = wikiData.getTopicList();
-        sendJson(res, topics);
+        const themes = wikiData.getThemeList();
+        sendJson(res, themes);
     } catch (error) {
         sendJson(res, { error: getErrorMessage(error) }, 500);
     }
 }
 
 /**
- * GET /api/topics/:topicId — Returns topic area with all articles.
+ * GET /api/themes/:themeId — Returns theme area with all articles.
  */
-function handleGetTopicById(
+function handleGetThemeById(
     res: http.ServerResponse,
     wikiData: WikiData,
-    topicId: string
+    themeId: string
 ): void {
     try {
-        const topics = wikiData.getTopicList();
-        const meta = topics.find(t => t.id === topicId);
+        const themes = wikiData.getThemeList();
+        const meta = themes.find(t => t.id === themeId);
         if (!meta) {
-            send404(res, `Topic not found: ${topicId}`);
+            send404(res, `Theme not found: ${themeId}`);
             return;
         }
-        const articles = wikiData.getTopicArticles(topicId);
+        const articles = wikiData.getThemeArticles(themeId);
         sendJson(res, { ...meta, articles: articles.map(a => ({ slug: a.slug, title: a.title, content: a.content })) });
     } catch (error) {
         sendJson(res, { error: getErrorMessage(error) }, 500);
@@ -289,21 +289,21 @@ function handleGetTopicById(
 }
 
 /**
- * GET /api/topics/:topicId/:slug — Returns a single topic article.
+ * GET /api/themes/:themeId/:slug — Returns a single theme article.
  */
-function handleGetTopicArticle(
+function handleGetThemeArticle(
     res: http.ServerResponse,
     wikiData: WikiData,
-    topicId: string,
+    themeId: string,
     slug: string
 ): void {
     try {
-        const detail = wikiData.getTopicArticle(topicId, slug);
+        const detail = wikiData.getThemeArticle(themeId, slug);
         if (!detail) {
-            send404(res, `Topic article not found: ${topicId}/${slug}`);
+            send404(res, `Theme article not found: ${themeId}/${slug}`);
             return;
         }
-        sendJson(res, { topicId, slug, content: detail.content, meta: detail.meta });
+        sendJson(res, { themeId, slug, content: detail.content, meta: detail.meta });
     } catch (error) {
         sendJson(res, { error: getErrorMessage(error) }, 500);
     }

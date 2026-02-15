@@ -14,7 +14,7 @@ describe('Seeds Prompts', () => {
             expect(prompt).toContain('/path/to/repo');
         });
 
-        it('should include max topics in prompt', () => {
+        it('should include max themes in prompt', () => {
             const prompt = buildSeedsPrompt('/path/to/repo', 50);
             expect(prompt).toContain('up to 50');
         });
@@ -36,18 +36,18 @@ describe('Seeds Prompts', () => {
         it('should mention expected JSON format', () => {
             const prompt = buildSeedsPrompt('/path/to/repo', 50);
             expect(prompt).toContain('JSON');
-            expect(prompt).toContain('topics');
-            expect(prompt).toContain('topic');
+            expect(prompt).toContain('themes');
+            expect(prompt).toContain('theme');
             expect(prompt).toContain('description');
             expect(prompt).toContain('hints');
         });
 
-        it('should include kebab-case requirement for topic IDs', () => {
+        it('should include kebab-case requirement for theme IDs', () => {
             const prompt = buildSeedsPrompt('/path/to/repo', 50);
             expect(prompt).toContain('kebab-case');
         });
 
-        it('should include max topics limit in rules', () => {
+        it('should include max themes limit in rules', () => {
             const prompt = buildSeedsPrompt('/path/to/repo', 30);
             expect(prompt).toContain('up to 30');
         });
@@ -60,17 +60,17 @@ describe('Seeds Prompts', () => {
             expect(docIndex).toBeLessThan(dirIndex);
         });
 
-        it('should include anti-pattern guidance against file-name-derived topics', () => {
+        it('should include anti-pattern guidance against file-name-derived themes', () => {
             const prompt = buildSeedsPrompt('/path/to/repo', 50);
             expect(prompt).toContain('Anti-Patterns');
-            expect(prompt).toContain('Do NOT name topics after individual files');
-            expect(prompt).toContain('Do NOT name topics after directory paths');
+            expect(prompt).toContain('Do NOT name themes after individual files');
+            expect(prompt).toContain('Do NOT name themes after directory paths');
         });
 
         it('should include good vs bad naming examples', () => {
             const prompt = buildSeedsPrompt('/path/to/repo', 50);
-            expect(prompt).toContain('Good topic names');
-            expect(prompt).toContain('Bad topic names');
+            expect(prompt).toContain('Good theme names');
+            expect(prompt).toContain('Bad theme names');
             // Good examples
             expect(prompt).toContain('inline-code-review');
             expect(prompt).toContain('ai-powered-analysis');
@@ -81,16 +81,16 @@ describe('Seeds Prompts', () => {
 
         it('should emphasize feature-level focus in task description', () => {
             const prompt = buildSeedsPrompt('/path/to/repo', 50);
-            expect(prompt).toContain('feature-level topics');
+            expect(prompt).toContain('feature-level themes');
             expect(prompt).toContain('user-facing capability');
         });
 
-        it('should instruct against generic code artifact topics', () => {
+        it('should instruct against generic code artifact themes', () => {
             const prompt = buildSeedsPrompt('/path/to/repo', 50);
-            expect(prompt).toContain('Do NOT create topics for generic code artifacts');
+            expect(prompt).toContain('Do NOT create themes for generic code artifacts');
         });
 
-        it('should include feature-focused schema description for topic field', () => {
+        it('should include feature-focused schema description for theme field', () => {
             const prompt = buildSeedsPrompt('/path/to/repo', 50);
             expect(prompt).toContain('describing the FEATURE');
         });

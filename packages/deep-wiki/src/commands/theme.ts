@@ -1,12 +1,12 @@
 /**
- * Topic Command
+ * Theme Command
  *
- * Implements the `deep-wiki topic <repo-path> [topic-name]` command.
- * Orchestrates the full topic generation pipeline:
- *   Phase A: Topic Probe       → EnrichedProbeResult
- *   Phase B: Topic Outline     → TopicOutline
- *   Phase C: Topic Analysis    → TopicAnalysis
- *   Phase D: Article Generation→ TopicArticle[]
+ * Implements the `deep-wiki theme <repo-path> [theme-name]` command.
+ * Orchestrates the full theme generation pipeline:
+ *   Phase A: Theme Probe       → EnrichedProbeResult
+ *   Phase B: Theme Outline     → ThemeOutline
+ *   Phase C: Theme Analysis    → ThemeAnalysis
+ *   Phase D: Article Generation→ ThemeArticle[]
  *   Phase E: File Writing & Wiki Integration
  *   Phase F: Website Regeneration (optional)
  *
@@ -18,39 +18,39 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import type {
-    TopicCommandOptions,
-    TopicRequest,
-    TopicOutline,
-    TopicAnalysis,
-    TopicArticle,
-    TopicAreaMeta,
+    ThemeCommandOptions,
+    ThemeRequest,
+    ThemeOutline,
+    ThemeAnalysis,
+    ThemeArticle,
+    ThemeMeta,
 } from '../types';
 import { checkAIAvailability } from '../ai-invoker';
 import {
     getFolderHeadHash,
 } from '../cache';
 import {
-    getCachedTopicProbe,
-    saveTopicProbe,
-    getCachedTopicOutline,
-    saveTopicOutline,
-    getCachedTopicAnalysis,
-    saveTopicAnalysis,
-    getCachedTopicArticles,
-    saveTopicArticle,
-    isTopicCacheValid,
-} from '../cache/topic-cache';
+    getCachedThemeProbe,
+    saveThemeProbe,
+    getCachedThemeOutline,
+    saveThemeOutline,
+    getCachedThemeAnalysis,
+    saveThemeAnalysis,
+    getCachedThemeArticles,
+    saveThemeArticle,
+    isThemeCacheValid,
+} from '../cache/theme-cache';
 import {
     loadWikiGraph,
-    listTopicAreas,
-    checkTopicCoverage,
-    runSingleTopicProbe,
-    generateTopicOutline,
-    runTopicAnalysis,
-    generateTopicArticles,
-    writeTopicArticles,
-    integrateTopicIntoWiki,
-} from '../topic';
+    listThemeAreas,
+    checkThemeCoverage,
+    runSingleThemeProbe,
+    generateThemeOutline,
+    runThemeAnalysis,
+    generateThemeArticles,
+    writeThemeArticles,
+    integrateThemeIntoWiki,
+} from '../theme';
 import { generateWebsite } from '../writing';
 import {
     Spinner,
@@ -66,21 +66,21 @@ import {
 import { EXIT_CODES } from '../cli';
 
 // ============================================================================
-// Execute Topic Command
+// Execute Theme Command
 // ============================================================================
 
 /**
- * Execute the topic command — full topic generation pipeline.
+ * Execute the theme command — full theme generation pipeline.
  *
  * @param repoPath - Path to the local git repository
- * @param topicName - Topic to generate (optional for --list)
+ * @param themeName - Theme to generate (optional for --list)
  * @param options - Command options
  * @returns Exit code
  */
-export async function executeTopic(
+export async function executeTheme(
     repoPath: string,
-    topicName: string | undefined,
-    options: TopicCommandOptions
+    themeName: string | undefined,
+    options: ThemeCommandOptions
 ): Promise<number> {
     const startTime = Date.now();
 
@@ -106,20 +106,20 @@ export async function executeTopic(
     // 2. Handle --list sub-flow
     // ====================================================================
     if (options.list) {
-        const topics = listTopicAreas(wikiDir);
-        printTopicList(topics);
+        const themes = listThemeAreas(wikiDir);
+        printThemeList(themes);
         return EXIT_CODES.SUCCESS;
     }
 
-    // Require topic name for all other flows
-    if (!topicName) {
-        printError('Topic name is required. Usage: deep-wiki topic <repo-path> <topic-name>');
+    // Require theme name for all other flows
+    if (!themeName) {
+        printError('Theme name is required. Usage: deep-wiki theme <repo-path> <theme-name>');
         return EXIT_CODES.CONFIG_ERROR;
     }
 
-    const topicId = topicName.toLowerCase().replace(/\s+/g, '-');
-    const topicRequest: TopicRequest = {
-        topic: topicId,
+    const themeId = themeName.toLowerCase().replace(/\s+/g, '-');
+    const themeRequest: ThemeRequest = {
+        theme: themeId,
         description: options.description,
     };
 
@@ -132,16 +132,16 @@ export async function executeTopic(
     // 4. Handle --check sub-flow
     // ====================================================================
     if (graph) {
-        const coverage = checkTopicCoverage(topicRequest, graph, wikiDir);
+        const coverage = checkThemeCoverage(themeRequest, graph, wikiDir);
 
         if (options.check) {
-            printCoverageResult(topicId, coverage);
+            printCoverageResult(themeId, coverage);
             return EXIT_CODES.SUCCESS;
         }
 
         // 5. Check coverage (with --force override)
         if (coverage.status === 'exists' && !options.force) {
-            printInfo(`Topic "${topicId}" already covered in wiki.`);
+            printInfo(`Theme "${themeId}" already covered in wiki.`);
             if (coverage.existingArticlePath) {
                 printInfo(`  Existing article: ${coverage.existingArticlePath}`);
             }
@@ -149,17 +149,17 @@ export async function executeTopic(
             return EXIT_CODES.SUCCESS;
         }
     } else if (options.check) {
-        printInfo(`No wiki found at ${wikiDir}. Topic "${topicId}" is new.`);
+        printInfo(`No wiki found at ${wikiDir}. Theme "${themeId}" is new.`);
         return EXIT_CODES.SUCCESS;
     }
 
     // ====================================================================
     // Print header
     // ====================================================================
-    printHeader('Deep Wiki — Topic Generation');
+    printHeader('Deep Wiki — Theme Generation');
     process.stderr.write(`${'─'.repeat(35)}\n`);
     printKeyValue('Repository', absoluteRepoPath);
-    printKeyValue('Topic', topicId);
+    printKeyValue('Theme', themeId);
     if (options.description) { printKeyValue('Description', options.description); }
     printKeyValue('Wiki', wikiDir);
     printKeyValue('Depth', options.depth);
@@ -187,69 +187,69 @@ export async function executeTopic(
 
     try {
         // ================================================================
-        // Phase A: Topic Probe
+        // Phase A: Theme Probe
         // ================================================================
-        spinner.start('Probing codebase for topic...');
+        spinner.start('Probing codebase for theme...');
 
         let probeResult;
-        const useCache = !options.force && isTopicCacheValid(topicId, wikiDir, gitHash);
+        const useCache = !options.force && isThemeCacheValid(themeId, wikiDir, gitHash);
 
         if (useCache) {
-            probeResult = getCachedTopicProbe(topicId, wikiDir);
+            probeResult = getCachedThemeProbe(themeId, wikiDir);
         }
 
         if (!probeResult) {
-            probeResult = await runSingleTopicProbe({
+            probeResult = await runSingleThemeProbe({
                 repoPath: absoluteRepoPath,
-                topic: topicRequest,
+                theme: themeRequest,
                 existingGraph: graph ?? undefined,
                 model: options.model,
                 timeout: options.timeout,
             });
-            saveTopicProbe(topicId, probeResult, wikiDir, gitHash);
+            saveThemeProbe(themeId, probeResult, wikiDir, gitHash);
         }
 
-        const moduleCount = probeResult.probeResult.foundModules.length;
+        const componentCount = probeResult.probeResult.foundComponents.length;
         const fileCount = probeResult.allKeyFiles.length;
 
-        if (moduleCount === 0) {
-            spinner.fail('Probe found no related modules');
-            printWarning(`No code related to "${topicId}" was found in the repository.`);
+        if (componentCount === 0) {
+            spinner.fail('Probe found no related components');
+            printWarning(`No code related to "${themeId}" was found in the repository.`);
             printInfo('Suggestions:');
-            printInfo('  • Try a different topic name or add --description');
+            printInfo('  • Try a different theme name or add --description');
             printInfo('  • Check that the repository path is correct');
             return EXIT_CODES.EXECUTION_ERROR;
         }
 
-        spinner.succeed(`Found ${moduleCount} modules, ${fileCount} files`);
+        spinner.succeed(`Found ${componentCount} components, ${fileCount} files`);
 
         // ================================================================
-        // Phase B: Topic Outline
+        // Phase B: Theme Outline
         // ================================================================
         spinner.start('Planning article structure...');
 
-        let outline: TopicOutline;
+        let outline: ThemeOutline;
         if (useCache) {
-            const cachedOutline = getCachedTopicOutline(topicId, wikiDir);
-            outline = cachedOutline ?? await generateTopicOutline({
+            const cachedOutline = getCachedThemeOutline(themeId, wikiDir);
+            outline = cachedOutline ?? await generateThemeOutline({
                 repoPath: absoluteRepoPath,
-                topic: topicRequest,
+                theme: themeRequest,
                 probeResult,
                 depth: options.depth,
                 model: options.model,
                 timeout: options.timeout ? options.timeout * 1000 : undefined,
             });
         } else {
-            outline = await generateTopicOutline({
+            outline = await generateThemeOutline({
                 repoPath: absoluteRepoPath,
-                topic: topicRequest,
+                theme: themeRequest,
                 probeResult,
                 depth: options.depth,
                 model: options.model,
                 timeout: options.timeout ? options.timeout * 1000 : undefined,
             });
         }
-        saveTopicOutline(topicId, outline, wikiDir, gitHash);
+        saveThemeOutline(themeId, outline, wikiDir, gitHash);
 
         const layoutDesc = outline.layout === 'single'
             ? '1 article'
@@ -257,14 +257,14 @@ export async function executeTopic(
         spinner.succeed(`${outline.layout} layout: ${layoutDesc}`);
 
         // ================================================================
-        // Phase C: Topic Analysis
+        // Phase C: Theme Analysis
         // ================================================================
-        spinner.start('Analyzing topic code...');
+        spinner.start('Analyzing theme code...');
 
-        let analysis: TopicAnalysis;
+        let analysis: ThemeAnalysis;
         if (useCache) {
-            const cachedAnalysis = getCachedTopicAnalysis(topicId, wikiDir);
-            analysis = cachedAnalysis ?? await runTopicAnalysis({
+            const cachedAnalysis = getCachedThemeAnalysis(themeId, wikiDir);
+            analysis = cachedAnalysis ?? await runThemeAnalysis({
                 repoPath: absoluteRepoPath,
                 outline,
                 probeResult,
@@ -274,7 +274,7 @@ export async function executeTopic(
                 depth: options.depth,
             });
         } else {
-            analysis = await runTopicAnalysis({
+            analysis = await runThemeAnalysis({
                 repoPath: absoluteRepoPath,
                 outline,
                 probeResult,
@@ -284,7 +284,7 @@ export async function executeTopic(
                 depth: options.depth,
             });
         }
-        saveTopicAnalysis(topicId, analysis, wikiDir, gitHash);
+        saveThemeAnalysis(themeId, analysis, wikiDir, gitHash);
 
         spinner.succeed(`${analysis.perArticle.length + 1}/${outline.articles.length} analyses complete`);
 
@@ -293,14 +293,14 @@ export async function executeTopic(
         // ================================================================
         spinner.start('Generating articles...');
 
-        let articles: TopicArticle[];
+        let articles: ThemeArticle[];
         if (useCache) {
-            const cachedArticles = getCachedTopicArticles(topicId, wikiDir);
+            const cachedArticles = getCachedThemeArticles(themeId, wikiDir);
             if (cachedArticles && cachedArticles.length === outline.articles.length) {
                 articles = cachedArticles;
             } else {
-                const genResult = await generateTopicArticles({
-                    topicId,
+                const genResult = await generateThemeArticles({
+                    themeId,
                     outline,
                     analysis,
                     depth: options.depth,
@@ -308,7 +308,7 @@ export async function executeTopic(
                     timeout: options.timeout ? options.timeout * 1000 : undefined,
                     concurrency: options.concurrency,
                     onArticleComplete: (article) => {
-                        saveTopicArticle(topicId, article, wikiDir, gitHash);
+                        saveThemeArticle(themeId, article, wikiDir, gitHash);
                     },
                 });
                 articles = genResult.articles;
@@ -317,8 +317,8 @@ export async function executeTopic(
                 }
             }
         } else {
-            const genResult = await generateTopicArticles({
-                topicId,
+            const genResult = await generateThemeArticles({
+                themeId,
                 outline,
                 analysis,
                 depth: options.depth,
@@ -326,7 +326,7 @@ export async function executeTopic(
                 timeout: options.timeout ? options.timeout * 1000 : undefined,
                 concurrency: options.concurrency,
                 onArticleComplete: (article) => {
-                    saveTopicArticle(topicId, article, wikiDir, gitHash);
+                    saveThemeArticle(themeId, article, wikiDir, gitHash);
                 },
             });
             articles = genResult.articles;
@@ -342,9 +342,9 @@ export async function executeTopic(
         // ================================================================
         spinner.start('Writing to wiki...');
 
-        const integrationResult = integrateTopicIntoWiki({
+        const integrationResult = integrateThemeIntoWiki({
             wikiDir,
-            topicId,
+            themeId,
             outline,
             articles,
             noCrossLink: options.noCrossLink,
@@ -353,7 +353,7 @@ export async function executeTopic(
         spinner.succeed(`${integrationResult.writtenFiles.length} files written`);
 
         if (integrationResult.updatedFiles.length > 0 && !options.noCrossLink) {
-            printSuccess(`Cross-linked ${integrationResult.updatedFiles.length} module article(s)`);
+            printSuccess(`Cross-linked ${integrationResult.updatedFiles.length} component article(s)`);
         }
 
         // ================================================================
@@ -374,18 +374,18 @@ export async function executeTopic(
         // ================================================================
         const totalDuration = Date.now() - startTime;
         process.stderr.write('\n');
-        const topicDir = outline.layout === 'single'
-            ? `${wikiDir}/topics/${topicId}.md`
-            : `${wikiDir}/topics/${topicId}/`;
-        printSuccess(`Topic area generated: ${bold(topicDir)}`);
+        const themeDir = outline.layout === 'single'
+            ? `${wikiDir}/themes/${themeId}.md`
+            : `${wikiDir}/themes/${themeId}/`;
+        printSuccess(`Theme area generated: ${bold(themeDir)}`);
         printInfo(`   📄 ${articles.length} articles (${layoutDesc})`);
-        printInfo(`   📊 ${moduleCount} modules, ${fileCount} key files`);
+        printInfo(`   📊 ${componentCount} components, ${fileCount} key files`);
         printInfo(`   ⏱  ${formatDuration(totalDuration)}`);
 
         return EXIT_CODES.SUCCESS;
 
     } catch (error) {
-        spinner.fail('Topic generation failed');
+        spinner.fail('Theme generation failed');
         printError(`${error instanceof Error ? error.message : String(error)}`);
         return EXIT_CODES.EXECUTION_ERROR;
     }
@@ -396,47 +396,47 @@ export async function executeTopic(
 // ============================================================================
 
 /**
- * Print the list of existing topic areas.
+ * Print the list of existing theme areas.
  */
-function printTopicList(topics: TopicAreaMeta[]): void {
-    if (topics.length === 0) {
-        printInfo('No topic areas found in wiki.');
+function printThemeList(themes: ThemeMeta[]): void {
+    if (themes.length === 0) {
+        printInfo('No theme areas found in wiki.');
         return;
     }
 
-    printHeader('Topic Areas');
-    for (const topic of topics) {
-        const articleCount = topic.articles.length;
-        const layout = topic.layout === 'single' ? 'single' : `${articleCount} articles`;
-        process.stderr.write(`  ${bold(topic.title)} ${gray(`(${topic.id})`)}  ${layout}\n`);
-        if (topic.description) {
-            process.stderr.write(`    ${gray(topic.description)}\n`);
+    printHeader('Theme Areas');
+    for (const theme of themes) {
+        const articleCount = theme.articles.length;
+        const layout = theme.layout === 'single' ? 'single' : `${articleCount} articles`;
+        process.stderr.write(`  ${bold(theme.title)} ${gray(`(${theme.id})`)}  ${layout}\n`);
+        if (theme.description) {
+            process.stderr.write(`    ${gray(theme.description)}\n`);
         }
     }
     process.stderr.write('\n');
-    printInfo(`${topics.length} topic area(s) found.`);
+    printInfo(`${themes.length} theme area(s) found.`);
 }
 
 /**
  * Print coverage check result.
  */
 function printCoverageResult(
-    topicId: string,
-    coverage: { status: string; existingArticlePath?: string; relatedModules: { moduleId: string; relevance: string }[] }
+    themeId: string,
+    coverage: { status: string; existingArticlePath?: string; relatedComponents: { componentId: string; relevance: string }[] }
 ): void {
     if (coverage.status === 'exists') {
-        printSuccess(`Topic "${topicId}" is fully covered.`);
+        printSuccess(`Theme "${themeId}" is fully covered.`);
         if (coverage.existingArticlePath) {
             printInfo(`  Article: ${coverage.existingArticlePath}`);
         }
     } else if (coverage.status === 'partial') {
-        printWarning(`Topic "${topicId}" is partially covered.`);
-        const relatedHigh = coverage.relatedModules.filter(m => m.relevance === 'high');
+        printWarning(`Theme "${themeId}" is partially covered.`);
+        const relatedHigh = coverage.relatedComponents.filter(m => m.relevance === 'high');
         if (relatedHigh.length > 0) {
-            printInfo(`  Related modules: ${relatedHigh.map(m => m.moduleId).join(', ')}`);
+            printInfo(`  Related modules: ${relatedHigh.map(m => m.componentId).join(', ')}`);
         }
     } else {
-        printInfo(`Topic "${topicId}" is new — not covered in wiki.`);
+        printInfo(`Theme "${themeId}" is new — not covered in wiki.`);
     }
 }
 

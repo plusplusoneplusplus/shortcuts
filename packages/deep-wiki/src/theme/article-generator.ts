@@ -1,7 +1,7 @@
 /**
- * Topic Article Generator
+ * Theme Article Generator
  *
- * Generates markdown articles for each item in a topic outline using
+ * Generates markdown articles for each item in a theme outline using
  * a map-reduce pattern: map generates per-sub-article content,
  * reduce synthesizes the index page.
  *
@@ -13,11 +13,11 @@ import {
     type SendMessageOptions,
 } from '@plusplusoneplusplus/pipeline-core';
 import type {
-    TopicOutline,
-    TopicAnalysis,
-    TopicArticle,
-    TopicArticlePlan,
-    TopicArticleAnalysis,
+    ThemeOutline,
+    ThemeAnalysis,
+    ThemeArticle,
+    ThemeArticlePlan,
+    ThemeArticleAnalysis,
 } from '../types';
 import { buildSubArticlePrompt, buildIndexPagePrompt } from './article-prompts';
 import { printInfo, printWarning, gray } from '../logger';
@@ -40,19 +40,19 @@ const DEFAULT_CONCURRENCY = 5;
 // Types
 // ============================================================================
 
-export interface TopicArticleGenOptions {
-    topicId: string;
-    outline: TopicOutline;
-    analysis: TopicAnalysis;
+export interface ThemeArticleGenOptions {
+    themeId: string;
+    outline: ThemeOutline;
+    analysis: ThemeAnalysis;
     depth: 'shallow' | 'normal' | 'deep';
     model?: string;
     timeout?: number;
     concurrency?: number;
-    onArticleComplete?: (article: TopicArticle) => void;
+    onArticleComplete?: (article: ThemeArticle) => void;
 }
 
-export interface TopicArticleGenResult {
-    articles: TopicArticle[];
+export interface ThemeArticleGenResult {
+    articles: ThemeArticle[];
     duration: number;
     failedSlugs?: string[];
 }
@@ -62,7 +62,7 @@ export interface TopicArticleGenResult {
 // ============================================================================
 
 /**
- * Generate all articles for a topic area:
+ * Generate all articles for a theme area:
  *
  * 1. MAP phase: Generate sub-articles in parallel
  *    - Each article gets its specific analysis context
@@ -74,11 +74,11 @@ export interface TopicArticleGenResult {
  *    - Produces overview, architecture diagram, navigation links
  *    - Cross-module data flow summary
  */
-export async function generateTopicArticles(
-    options: TopicArticleGenOptions
-): Promise<TopicArticleGenResult> {
+export async function generateThemeArticles(
+    options: ThemeArticleGenOptions
+): Promise<ThemeArticleGenResult> {
     const {
-        topicId,
+        themeId,
         outline,
         analysis,
         depth,
@@ -89,15 +89,15 @@ export async function generateTopicArticles(
     } = options;
 
     const startTime = Date.now();
-    const articles: TopicArticle[] = [];
+    const articles: ThemeArticle[] = [];
     const failedSlugs: string[] = [];
 
     const nonIndexArticles = outline.articles.filter(a => !a.isIndex);
     const analysisMap = new Map(analysis.perArticle.map(a => [a.slug, a]));
 
-    printInfo(`  Generating topic articles for "${outline.title}": ${outline.articles.length} article(s) ${gray(`(depth: ${depth})`)}`);
+    printInfo(`  Generating theme articles for "${outline.title}": ${outline.articles.length} article(s) ${gray(`(depth: ${depth})`)}`);
 
-    // Single-article topic (layout: 'single') → generate one article, no reduce
+    // Single-article theme (layout: 'single') → generate one article, no reduce
     if (outline.layout === 'single' || nonIndexArticles.length === 0) {
         const singlePlan = outline.articles[0];
         if (singlePlan) {
@@ -122,7 +122,7 @@ export async function generateTopicArticles(
 
     const mapResults = await runSubArticlesParallel(
         outline.title, nonIndexArticles, analysisMap, siblingTitles,
-        depth, model, timeout, concurrency, onArticleComplete, topicId
+        depth, model, timeout, concurrency, onArticleComplete, themeId
     );
 
     articles.push(...mapResults.articles);
@@ -137,7 +137,7 @@ export async function generateTopicArticles(
 
     try {
         const indexArticle = await generateIndexPage(
-            outline, analysis.crossCutting, articleSummaries, topicId, model, timeout
+            outline, analysis.crossCutting, articleSummaries, themeId, model, timeout
         );
         articles.push(indexArticle);
         onArticleComplete?.(indexArticle);
@@ -161,7 +161,7 @@ export async function generateTopicArticles(
 // ============================================================================
 
 interface MapPhaseResult {
-    articles: TopicArticle[];
+    articles: ThemeArticle[];
     failedSlugs: string[];
 }
 
@@ -169,18 +169,18 @@ interface MapPhaseResult {
  * Generate sub-articles in parallel with concurrency control.
  */
 async function runSubArticlesParallel(
-    topicTitle: string,
-    articles: TopicArticlePlan[],
-    analysisMap: Map<string, TopicArticleAnalysis>,
+    themeTitle: string,
+    articles: ThemeArticlePlan[],
+    analysisMap: Map<string, ThemeArticleAnalysis>,
     siblingTitles: { slug: string; title: string }[],
     depth: 'shallow' | 'normal' | 'deep',
     model: string | undefined,
     timeout: number | undefined,
     concurrency: number,
-    onArticleComplete: ((article: TopicArticle) => void) | undefined,
-    topicId: string
+    onArticleComplete: ((article: ThemeArticle) => void) | undefined,
+    themeId: string
 ): Promise<MapPhaseResult> {
-    const results: TopicArticle[] = [];
+    const results: ThemeArticle[] = [];
     const failedSlugs: string[] = [];
     let activeCount = 0;
     const waiters: (() => void)[] = [];
@@ -208,9 +208,9 @@ async function runSubArticlesParallel(
             const siblings = siblingTitles.filter(s => s.slug !== plan.slug);
 
             const article = await generateSubArticle(
-                topicTitle, plan, articleAnalysis, siblings, depth, model, timeout
+                themeTitle, plan, articleAnalysis, siblings, depth, model, timeout
             );
-            article.topicId = topicId;
+            article.themeId = themeId;
             results.push(article);
             onArticleComplete?.(article);
         } catch (error) {
@@ -230,17 +230,17 @@ async function runSubArticlesParallel(
  * Generate a single sub-article via AI.
  */
 async function generateSubArticle(
-    topicTitle: string,
-    plan: TopicArticlePlan,
-    analysis: TopicArticleAnalysis,
+    themeTitle: string,
+    plan: ThemeArticlePlan,
+    analysis: ThemeArticleAnalysis,
     siblingTitles: { slug: string; title: string }[],
     depth: 'shallow' | 'normal' | 'deep',
     model: string | undefined,
     timeout: number | undefined
-): Promise<TopicArticle> {
+): Promise<ThemeArticle> {
     const service = getCopilotSDKService();
 
-    const prompt = buildSubArticlePrompt(topicTitle, plan, analysis, siblingTitles, depth);
+    const prompt = buildSubArticlePrompt(themeTitle, plan, analysis, siblingTitles, depth);
 
     const sendOptions: SendMessageOptions = {
         prompt,
@@ -260,12 +260,12 @@ async function generateSubArticle(
     }
 
     return {
-        type: 'topic-article',
+        type: 'theme-article',
         slug: plan.slug,
         title: plan.title,
         content: result.response,
-        topicId: '',  // set by caller
-        coveredModuleIds: plan.coveredModuleIds,
+        themeId: '',  // set by caller
+        coveredComponentIds: plan.coveredComponentIds,
     };
 }
 
@@ -274,16 +274,16 @@ async function generateSubArticle(
 // ============================================================================
 
 /**
- * Generate the index page for a topic area via AI.
+ * Generate the index page for a theme area via AI.
  */
 async function generateIndexPage(
-    outline: TopicOutline,
-    crossCutting: TopicAnalysis['crossCutting'],
+    outline: ThemeOutline,
+    crossCutting: ThemeAnalysis['crossCutting'],
     articleSummaries: { slug: string; title: string; summary: string }[],
-    topicId: string,
+    themeId: string,
     model: string | undefined,
     timeout: number | undefined
-): Promise<TopicArticle> {
+): Promise<ThemeArticle> {
     const service = getCopilotSDKService();
 
     const prompt = buildIndexPagePrompt(
@@ -308,12 +308,12 @@ async function generateIndexPage(
     }
 
     return {
-        type: 'topic-index',
+        type: 'theme-index',
         slug: 'index',
         title: outline.title,
         content: result.response,
-        topicId,
-        coveredModuleIds: outline.involvedModules.map(m => m.moduleId),
+        themeId,
+        coveredComponentIds: outline.involvedComponents.map(m => m.componentId),
     };
 }
 
@@ -339,13 +339,13 @@ export function extractSummary(content: string, maxWords: number): string {
  * Build a static index page when AI reduce fails.
  */
 function buildStaticIndexPage(
-    outline: TopicOutline,
+    outline: ThemeOutline,
     articleSummaries: { slug: string; title: string; summary: string }[]
-): TopicArticle {
+): ThemeArticle {
     const lines: string[] = [
         `# ${outline.title}`,
         '',
-        `Overview of the ${outline.title} topic area.`,
+        `Overview of the ${outline.title} theme area.`,
         '',
         '## Articles',
         '',
@@ -359,24 +359,24 @@ function buildStaticIndexPage(
     lines.push('## Involved Modules');
     lines.push('');
 
-    for (const mod of outline.involvedModules) {
-        lines.push(`- **${mod.moduleId}**: ${mod.role}`);
+    for (const mod of outline.involvedComponents) {
+        lines.push(`- **${mod.componentId}**: ${mod.role}`);
     }
 
     return {
-        type: 'topic-index',
+        type: 'theme-index',
         slug: 'index',
         title: outline.title,
         content: lines.join('\n'),
-        topicId: outline.topicId,
-        coveredModuleIds: outline.involvedModules.map(m => m.moduleId),
+        themeId: outline.themeId,
+        coveredComponentIds: outline.involvedComponents.map(m => m.componentId),
     };
 }
 
 /**
  * Create an empty article analysis for articles without analysis data.
  */
-function makeEmptyArticleAnalysis(slug: string): TopicArticleAnalysis {
+function makeEmptyArticleAnalysis(slug: string): ThemeArticleAnalysis {
     return {
         slug,
         keyConcepts: [],
