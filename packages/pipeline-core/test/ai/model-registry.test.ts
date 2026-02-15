@@ -21,7 +21,7 @@ import {
     isValidModelId,
     getModelCount,
     getModelsByTier,
-} from '../../src/ai/model-registry';
+} from '../../src/copilot-sdk-wrapper/model-registry';
 
 describe('Model Registry', () => {
     // ========================================================================

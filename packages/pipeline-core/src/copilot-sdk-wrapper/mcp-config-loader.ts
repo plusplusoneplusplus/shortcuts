@@ -15,7 +15,7 @@
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
-import { MCPServerConfig } from './copilot-sdk-service';
+import { MCPServerConfig } from './types';
 import { getLogger, LogCategory } from '../logger';
 
 /**

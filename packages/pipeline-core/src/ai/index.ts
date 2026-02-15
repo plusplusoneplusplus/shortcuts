@@ -2,18 +2,23 @@
  * AI Module - Public API
  * 
  * Exports AI service components for interacting with the Copilot SDK.
+ * SDK integration is delegated to the copilot-sdk-wrapper module.
  */
 
 // Types
 export {
     AIBackendType,
-    AIModel,
-    VALID_MODELS,
     AIInvocationResult,
     DEFAULT_PROMPTS,
     InteractiveToolType,
+} from './types';
+
+// Re-export everything from copilot-sdk-wrapper for backward compatibility
+export {
+    // Model registry
+    AIModel,
+    VALID_MODELS,
     DEFAULT_MODEL_ID,
-    // Model registry exports
     ModelDefinition,
     MODEL_REGISTRY,
     getModelLabel,
@@ -23,8 +28,56 @@ export {
     getActiveModels,
     isValidModelId,
     getModelCount,
-    getModelsByTier
-} from './types';
+    getModelsByTier,
+    // MCP types
+    MCPServerConfigBase,
+    MCPLocalServerConfig,
+    MCPRemoteServerConfig,
+    MCPServerConfig,
+    MCPControlOptions,
+    // Message types
+    SendMessageOptions,
+    TokenUsage,
+    SDKInvocationResult,
+    SDKAvailabilityResult,
+    // Permission types
+    PermissionRequest,
+    PermissionRequestResult,
+    PermissionHandler,
+    // Session pool config
+    SessionPoolConfig,
+    DEFAULT_SESSION_POOL_CONFIG,
+    // Permission helpers
+    approveAllPermissions,
+    denyAllPermissions,
+    // Session Pool
+    SessionPool,
+    IPoolableSession,
+    SessionFactory,
+    SessionPoolOptions,
+    SessionPoolStats,
+    // Copilot SDK Service
+    CopilotSDKService,
+    getCopilotSDKService,
+    resetCopilotSDKService,
+    // MCP Config Loader
+    MCPConfigFile,
+    MCPConfigLoadResult,
+    getHomeDirectory,
+    getMcpConfigPath,
+    loadDefaultMcpConfig,
+    loadDefaultMcpConfigAsync,
+    mergeMcpConfigs,
+    clearMcpConfigCache,
+    mcpConfigExists,
+    getCachedMcpConfig,
+    setHomeDirectoryOverride,
+    // Trusted Folder Management
+    ensureFolderTrusted,
+    isFolderTrusted,
+    getCopilotConfigPath,
+    setTrustedFolderHomeOverride,
+} from '../copilot-sdk-wrapper';
 
 // AI Command Types
 export {
@@ -77,15 +130,6 @@ export {
     ProcessCounts
 } from './process-types';
 
-// Session Pool
-export {
-    SessionPool,
-    IPoolableSession,
-    SessionFactory,
-    SessionPoolOptions,
-    SessionPoolStats
-} from './session-pool';
-
 // CLI Utilities
 export {
     PROMPT_LENGTH_THRESHOLD,
@@ -99,51 +143,5 @@ export {
     BuildCliCommandOptions
 } from './cli-utils';
 
-// Copilot SDK Service
-export {
-    CopilotSDKService,
-    getCopilotSDKService,
-    resetCopilotSDKService,
-    TokenUsage,
-    MCPServerConfigBase,
-    MCPLocalServerConfig,
-    MCPRemoteServerConfig,
-    MCPServerConfig,
-    MCPControlOptions,
-    SendMessageOptions,
-    SDKInvocationResult,
-    SDKAvailabilityResult,
-    PermissionRequest,
-    PermissionRequestResult,
-    PermissionHandler,
-    SessionPoolConfig,
-    DEFAULT_SESSION_POOL_CONFIG,
-    approveAllPermissions,
-    denyAllPermissions
-} from './copilot-sdk-service';
-
 // Default timeouts
 export { DEFAULT_AI_TIMEOUT_MS } from './timeouts';
-
-// MCP Config Loader
-export {
-    MCPConfigFile,
-    MCPConfigLoadResult,
-    getHomeDirectory,
-    getMcpConfigPath,
-    loadDefaultMcpConfig,
-    loadDefaultMcpConfigAsync,
-    mergeMcpConfigs,
-    clearMcpConfigCache,
-    mcpConfigExists,
-    getCachedMcpConfig,
-    setHomeDirectoryOverride
-} from './mcp-config-loader';
-
-// Trusted Folder Management
-export {
-    ensureFolderTrusted,
-    isFolderTrusted,
-    getCopilotConfigPath,
-    setTrustedFolderHomeOverride
-} from './trusted-folder';

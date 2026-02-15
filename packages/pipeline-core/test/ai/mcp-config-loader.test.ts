@@ -20,8 +20,8 @@ import {
     getCachedMcpConfig,
     setHomeDirectoryOverride,
     MCPConfigFile
-} from '../../src/ai/mcp-config-loader';
-import { MCPServerConfig, MCPLocalServerConfig, MCPRemoteServerConfig } from '../../src/ai/copilot-sdk-service';
+} from '../../src/copilot-sdk-wrapper/mcp-config-loader';
+import { MCPServerConfig, MCPLocalServerConfig, MCPRemoteServerConfig } from '../../src/copilot-sdk-wrapper/types';
 
 describe('MCP Config Loader', () => {
     let tempDir: string;

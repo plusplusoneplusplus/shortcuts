@@ -17,7 +17,7 @@ export type AIBackendType = 'copilot-sdk' | 'copilot-cli' | 'clipboard';
  * Valid AI model options for Copilot CLI.
  * Derived from the central model registry (model-registry.ts).
  */
-export { VALID_MODELS, AIModel, DEFAULT_MODEL_ID } from './model-registry';
+export { VALID_MODELS, AIModel, DEFAULT_MODEL_ID } from '../copilot-sdk-wrapper/model-registry';
 
 // Re-export model registry helpers and types for convenience
 export {
@@ -31,7 +31,7 @@ export {
     isValidModelId,
     getModelCount,
     getModelsByTier
-} from './model-registry';
+} from '../copilot-sdk-wrapper/model-registry';
 
 /**
  * Result of an AI invocation

@@ -18,7 +18,7 @@ import {
     isFolderTrusted,
     getCopilotConfigPath,
     setTrustedFolderHomeOverride,
-} from '../../src/ai/trusted-folder';
+} from '../../src/copilot-sdk-wrapper/trusted-folder';
 
 /**
  * Normalize a Unix-style path to the platform's format.

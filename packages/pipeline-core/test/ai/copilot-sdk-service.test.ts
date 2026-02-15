@@ -6,16 +6,16 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { CopilotSDKService, resetCopilotSDKService, TokenUsage } from '../../src/ai/copilot-sdk-service';
+import { CopilotSDKService, resetCopilotSDKService, TokenUsage } from '../../src/copilot-sdk-wrapper/copilot-sdk-service';
 import { setLogger, nullLogger } from '../../src/logger';
-import * as trustedFolder from '../../src/ai/trusted-folder';
+import * as trustedFolder from '../../src/copilot-sdk-wrapper/trusted-folder';
 
 // Suppress logger output during tests
 setLogger(nullLogger);
 
 // Mock the trusted-folder module so we can verify calls without touching disk
-vi.mock('../../src/ai/trusted-folder', async () => {
-    const actual = await vi.importActual('../../src/ai/trusted-folder');
+vi.mock('../../src/copilot-sdk-wrapper/trusted-folder', async () => {
+    const actual = await vi.importActual('../../src/copilot-sdk-wrapper/trusted-folder');
     return {
         ...actual,
         ensureFolderTrusted: vi.fn(),
@@ -23,7 +23,7 @@ vi.mock('../../src/ai/trusted-folder', async () => {
 });
 
 // Mock the mcp-config-loader module to avoid file system access
-vi.mock('../../src/ai/mcp-config-loader', () => ({
+vi.mock('../../src/copilot-sdk-wrapper/mcp-config-loader', () => ({
     loadDefaultMcpConfig: vi.fn().mockReturnValue({
         success: false,
         fileExists: false,
