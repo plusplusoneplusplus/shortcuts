@@ -1815,6 +1815,23 @@ body {
     color: var(--accent);
 }
 
+/* Context menu icon (emoji) */
+.ctx-menu-icon {
+    width: 20px;
+    text-align: center;
+    flex-shrink: 0;
+    font-size: 13px;
+}
+
+/* Danger item (e.g. Delete) */
+.task-context-menu-item-danger {
+    color: var(--status-failed);
+}
+
+.task-context-menu-item-danger:hover {
+    background: rgba(241, 76, 76, 0.08);
+}
+
 /* Loading / error states */
 .task-preview-loading {
     padding: 24px;

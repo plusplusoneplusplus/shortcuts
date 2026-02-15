@@ -481,10 +481,22 @@ function attachMillerEventListeners(container: HTMLElement): void {
         }
     });
 
-    // Right-click context menu on file rows
+    // Right-click context menu on file rows and folder rows
     container.addEventListener('contextmenu', (e: Event) => {
         const me = e as MouseEvent;
         const target = me.target as HTMLElement;
+
+        // Check for folder row first
+        const folderRow = target.closest('[data-nav-folder]') as HTMLElement | null;
+        if (folderRow) {
+            me.preventDefault();
+            const folderPath = folderRow.getAttribute('data-nav-folder');
+            if (!folderPath) return;
+            showFolderContextMenu(me.clientX, me.clientY, folderPath);
+            return;
+        }
+
+        // Check for file row
         const fileRow = target.closest('[data-file-path]') as HTMLElement | null;
         if (!fileRow) return;
 
@@ -625,6 +637,232 @@ function showTaskContextMenu(x: number, y: number, filePath: string, currentStat
         document.addEventListener('click', onClickOutside, true);
         document.addEventListener('keydown', onKeyDown, true);
     }, 0);
+}
+
+// ================================================================
+// Folder context menu (right-click on Miller folder rows)
+// ================================================================
+
+/** Show a context menu at (x, y) for a folder with the given path. */
+function showFolderContextMenu(x: number, y: number, folderPath: string): void {
+    dismissContextMenu();
+
+    const wsId = taskPanelState.selectedWorkspaceId;
+    if (!wsId) return;
+
+    const folderName = folderPath.split('/').pop() || folderPath;
+    const isArchived = folderPath.startsWith('archive/') || folderPath.startsWith('archive\\') || folderPath === 'archive';
+
+    const menu = document.createElement('div');
+    menu.id = 'task-context-menu';
+    menu.className = 'task-context-menu';
+
+    let itemsHtml = '';
+
+    // Rename Folder
+    itemsHtml +=
+        '<div class="task-context-menu-item" data-ctx-action="rename-folder" data-ctx-path="' + escapeHtmlClient(folderPath) + '" data-ctx-name="' + escapeHtmlClient(folderName) + '">' +
+            '<span class="ctx-menu-icon">✏️</span><span>Rename Folder</span>' +
+        '</div>';
+
+    // Create Subfolder
+    itemsHtml +=
+        '<div class="task-context-menu-item" data-ctx-action="create-subfolder" data-ctx-path="' + escapeHtmlClient(folderPath) + '">' +
+            '<span class="ctx-menu-icon">📁</span><span>Create Subfolder</span>' +
+        '</div>';
+
+    // Create Task
+    itemsHtml +=
+        '<div class="task-context-menu-item" data-ctx-action="create-task-in-folder" data-ctx-path="' + escapeHtmlClient(folderPath) + '">' +
+            '<span class="ctx-menu-icon">📄</span><span>Create Task</span>' +
+        '</div>';
+
+    // Separator
+    itemsHtml += '<div class="task-context-menu-separator"></div>';
+
+    // Archive / Unarchive
+    if (isArchived) {
+        itemsHtml +=
+            '<div class="task-context-menu-item" data-ctx-action="unarchive-folder" data-ctx-path="' + escapeHtmlClient(folderPath) + '">' +
+                '<span class="ctx-menu-icon">📤</span><span>Unarchive Folder</span>' +
+            '</div>';
+    } else {
+        itemsHtml +=
+            '<div class="task-context-menu-item" data-ctx-action="archive-folder" data-ctx-path="' + escapeHtmlClient(folderPath) + '">' +
+                '<span class="ctx-menu-icon">📦</span><span>Archive Folder</span>' +
+            '</div>';
+    }
+
+    // Separator
+    itemsHtml += '<div class="task-context-menu-separator"></div>';
+
+    // Delete Folder
+    itemsHtml +=
+        '<div class="task-context-menu-item task-context-menu-item-danger" data-ctx-action="delete-folder" data-ctx-path="' + escapeHtmlClient(folderPath) + '" data-ctx-name="' + escapeHtmlClient(folderName) + '">' +
+            '<span class="ctx-menu-icon">🗑️</span><span>Delete Folder</span>' +
+        '</div>';
+
+    menu.innerHTML = itemsHtml;
+
+    document.body.appendChild(menu);
+
+    // Position: keep within viewport
+    const rect = menu.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    let left = x;
+    let top = y;
+
+    if (left + rect.width > vw) left = vw - rect.width - 4;
+    if (top + rect.height > vh) top = vh - rect.height - 4;
+    if (left < 0) left = 4;
+    if (top < 0) top = 4;
+
+    menu.style.left = left + 'px';
+    menu.style.top = top + 'px';
+
+    // Click handler for menu items
+    menu.addEventListener('click', (e: Event) => {
+        const target = e.target as HTMLElement;
+        const item = target.closest('[data-ctx-action]') as HTMLElement | null;
+        if (!item) return;
+
+        const action = item.getAttribute('data-ctx-action');
+        const path = item.getAttribute('data-ctx-path') || '';
+        const name = item.getAttribute('data-ctx-name') || '';
+
+        switch (action) {
+            case 'rename-folder':
+                renameFolderFromMenu(wsId, path, name);
+                break;
+            case 'create-subfolder':
+                createSubfolderInFolder(wsId, path);
+                break;
+            case 'create-task-in-folder':
+                createTaskInFolder(wsId, path);
+                break;
+            case 'archive-folder':
+                archiveItem(wsId, path, 'archive');
+                break;
+            case 'unarchive-folder':
+                archiveItem(wsId, path, 'unarchive');
+                break;
+            case 'delete-folder':
+                deleteFolderFromMenu(wsId, path, name);
+                break;
+        }
+        dismissContextMenu();
+    });
+
+    // Dismiss on click outside or Escape
+    const onClickOutside = (e: MouseEvent) => {
+        if (!menu.contains(e.target as Node)) {
+            dismissContextMenu();
+            document.removeEventListener('click', onClickOutside, true);
+        }
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+            dismissContextMenu();
+            document.removeEventListener('keydown', onKeyDown, true);
+        }
+    };
+    // Use setTimeout so the current right-click event doesn't immediately dismiss
+    setTimeout(() => {
+        document.addEventListener('click', onClickOutside, true);
+        document.addEventListener('keydown', onKeyDown, true);
+    }, 0);
+}
+
+// ================================================================
+// Folder operation handlers (called from folder context menu)
+// ================================================================
+
+/** Rename a folder via the PATCH API. */
+function renameFolderFromMenu(wsId: string, folderPath: string, currentName: string): void {
+    renameItem(wsId, folderPath, currentName);
+}
+
+/** Create a subfolder inside the given parent folder via the POST API. */
+function createSubfolderInFolder(wsId: string, parentPath: string): void {
+    showInputDialog('New Subfolder', 'Subfolder name', async (name) => {
+        if (name.includes('/') || name.includes('\\')) {
+            alert('Folder name cannot contain path separators');
+            return;
+        }
+
+        const body: any = { name, type: 'folder', parent: parentPath };
+
+        try {
+            const res = await fetch(getApiBase() + `/workspaces/${encodeURIComponent(wsId)}/tasks`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({ error: 'Failed' }));
+                alert(data.error || 'Failed to create subfolder');
+                return;
+            }
+            await fetchRepoTasks(wsId);
+        } catch {
+            alert('Network error creating subfolder');
+        }
+    });
+}
+
+/** Create a task file inside the given folder via the POST API. */
+function createTaskInFolder(wsId: string, parentPath: string): void {
+    showInputDialog('New Task in Folder', 'Task name', async (name) => {
+        if (name.includes('/') || name.includes('\\')) {
+            alert('Task name cannot contain path separators');
+            return;
+        }
+
+        const docTypeSelect = document.getElementById('task-dialog-doctype') as HTMLSelectElement | null;
+        const docType = docTypeSelect?.value || '';
+
+        const body: any = { name, folder: parentPath };
+        if (docType) body.docType = docType;
+
+        try {
+            const res = await fetch(getApiBase() + `/workspaces/${encodeURIComponent(wsId)}/tasks`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({ error: 'Failed' }));
+                alert(data.error || 'Failed to create task');
+                return;
+            }
+            await fetchRepoTasks(wsId);
+        } catch {
+            alert('Network error creating task');
+        }
+    }, '', [
+        {
+            label: 'Doc Type (optional)',
+            type: 'select',
+            id: 'task-dialog-doctype',
+            options: [
+                { value: '', label: 'None' },
+                { value: 'plan', label: 'Plan' },
+                { value: 'spec', label: 'Spec' },
+                { value: 'test', label: 'Test' },
+                { value: 'notes', label: 'Notes' },
+                { value: 'design', label: 'Design' },
+                { value: 'impl', label: 'Implementation' },
+            ],
+        },
+    ]);
+}
+
+/** Delete a folder after confirmation via the DELETE API. */
+function deleteFolderFromMenu(wsId: string, folderPath: string, folderName: string): void {
+    if (!confirm(`Delete folder "${folderName}" and all its contents? This cannot be undone.`)) return;
+    deleteItem(wsId, folderPath, folderName);
 }
 
 /** Resolve the current status of a file from the task tree data. */
