@@ -1234,6 +1234,53 @@ body {
     color: var(--text-primary);
 }
 
+/* ---- Session Expiry Error Bubble ---- */
+.chat-error-bubble {
+    background: rgba(241, 76, 76, 0.08);
+    border: 1px solid rgba(241, 76, 76, 0.2);
+    border-radius: 8px;
+    color: var(--status-failed);
+    padding: 8px 12px;
+    font-size: 12px;
+    margin: 8px 0;
+    text-align: center;
+}
+
+/* ---- First-Time Chat Hint ---- */
+.chat-hint {
+    background: rgba(78, 154, 241, 0.08);
+    border: 1px solid rgba(78, 154, 241, 0.15);
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.chat-hint-dismiss {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 12px;
+    padding: 0 2px;
+}
+.chat-hint-dismiss:hover {
+    color: var(--text-primary);
+}
+
+/* ---- Long Conversation Hint ---- */
+.chat-long-hint {
+    text-align: center;
+    font-size: 11px;
+    color: var(--text-secondary);
+    padding: 8px;
+    border-top: 1px solid var(--border-color);
+    margin: 8px 0;
+}
+
 /* ---- Responsive ---- */
 @media (max-width: 768px) {
     .hamburger-btn { display: block; }

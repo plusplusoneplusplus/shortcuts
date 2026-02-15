@@ -829,6 +829,13 @@ export class CopilotSDKService {
     }
 
     /**
+     * Check whether a kept-alive session exists (without modifying it).
+     */
+    public hasKeptAliveSession(sessionId: string): boolean {
+        return this.keptAliveSessions.has(sessionId);
+    }
+
+    /**
      * Start the keep-alive cleanup timer (idempotent).
      */
     private ensureKeepAliveCleanupTimer(): void {

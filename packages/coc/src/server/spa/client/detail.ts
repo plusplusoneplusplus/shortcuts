@@ -166,6 +166,13 @@ let activeQueueTaskStream: EventSource | null = null;
 let queueTaskStreamContent = '';
 let queueTaskStreamProcessId: string | null = null;
 
+/** Tracks whether the user has manually scrolled up in the conversation. */
+let userHasScrolledUp = false;
+
+/** localStorage-backed preferences (read once at module init). */
+const chatEnterSend = localStorage.getItem('coc-chat-enter-send') !== 'false';
+const chatAutoScroll = localStorage.getItem('coc-chat-auto-scroll') !== 'false';
+
 export function closeQueueTaskStream(): void {
     if (activeQueueTaskStream) {
         activeQueueTaskStream.close();
@@ -239,8 +246,9 @@ function renderChatMessage(turn: ClientConversationTurn): string {
     const roleLabel = isUser ? 'You' : 'Assistant';
     const roleIcon = isUser ? '\u{1F464}' : '\u{1F916}';
     const bubbleClass = 'chat-message' + (isUser ? ' user' : ' assistant') + (turn.streaming ? ' streaming' : '');
+    const rawAttr = turn.content ? ' data-raw="' + escapeHtmlClient(turn.content) + '"' : '';
 
-    let html = '<div class="' + bubbleClass + '">';
+    let html = '<div class="' + bubbleClass + '"' + rawAttr + '>';
 
     // Header: role label + icon + timestamp + optional streaming indicator
     html += '<div class="chat-message-header">';
@@ -257,11 +265,9 @@ function renderChatMessage(turn: ClientConversationTurn): string {
     // Content
     html += '<div class="chat-message-content">' + renderMarkdown(turn.content || '') + '</div>';
 
-    // Copy button (assistant messages only)
-    if (!isUser && turn.content) {
-        html += '<button class="bubble-copy-btn" onclick="copyToClipboard(' +
-            escapeHtmlClient(JSON.stringify(turn.content)) +
-            ')" title="Copy message">\u{1F4CB}</button>';
+    // Per-message copy button (user and assistant)
+    if (turn.content) {
+        html += '<button class="bubble-copy-btn" onclick="handleMsgCopy(this)" title="Copy message">\u{1F4CB}</button>';
     }
 
     html += '</div>';
@@ -387,6 +393,11 @@ function renderQueueTaskConversation(processId: string, taskId: string, proc: an
 
     if (turns.length > 0) {
         for (let i = 0; i < turns.length; i++) {
+            // Long conversation separator after 20 messages
+            if (i === 20) {
+                html += '<div class="chat-long-hint">Showing all messages. ' +
+                    '<button class="scroll-to-bottom" onclick="scrollConversationToBottom()">Jump to latest \u2193</button></div>';
+            }
             html += renderChatMessage(turns[i]);
         }
     } else if (proc && proc.result && !isRunning) {
@@ -416,7 +427,17 @@ function renderQueueTaskConversation(processId: string, taskId: string, proc: an
         html += '<div class="conversation-waiting">No conversation data available.</div>';
     }
 
+    // Scroll-to-bottom floating button (hidden by default)
+    html += '<button id="scroll-to-bottom-btn" class="scroll-to-bottom" onclick="scrollConversationToBottom()">\u2193 New messages</button>';
+
     html += '</div></div>';
+
+    // First-time hint (above input bar)
+    if (!localStorage.getItem('coc-chat-hint-dismissed') && !isRunning) {
+        html += '<div id="chat-hint" class="chat-hint">' +
+            '\u{1F4A1} You can send follow-up messages to continue the conversation. ' +
+            '<button class="chat-hint-dismiss" onclick="dismissChatHint()">\u2715</button></div>';
+    }
 
     // Chat input bar
     const inputDisabled = (status === 'running' && queueState.isFollowUpStreaming) ||
@@ -460,10 +481,16 @@ function renderQueueTaskConversation(processId: string, taskId: string, proc: an
         });
     }
 
+    // Reset scroll tracking on re-render
+    userHasScrolledUp = false;
+
     // Auto-scroll to bottom if streaming
     if (isRunning) {
         scrollConversationToBottom();
     }
+
+    // Attach scroll listener for scroll-to-bottom button visibility
+    initScrollToBottomTracking();
 
     // Wire chat input handlers
     initChatInputHandlers(processId);
@@ -491,12 +518,23 @@ function initChatInputHandlers(processId: string): void {
         textarea.style.height = Math.min(textarea.scrollHeight, maxHeight) + 'px';
     });
 
-    // Enter sends, Shift+Enter inserts newline
+    // Enter sends (or Ctrl+Enter if preference is off), Shift+Enter inserts newline
     textarea.addEventListener('keydown', function(e: KeyboardEvent) {
-        if (e.key === 'Enter' && !e.shiftKey) {
+        const enterSends = chatEnterSend;
+        if (enterSends && e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             const content = textarea.value.trim();
             if (content && !textarea.disabled) {
+                dismissChatHint();
+                sendFollowUpMessage(processId, content);
+                textarea.value = '';
+                textarea.style.height = 'auto';
+            }
+        } else if (!enterSends && e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            const content = textarea.value.trim();
+            if (content && !textarea.disabled) {
+                dismissChatHint();
                 sendFollowUpMessage(processId, content);
                 textarea.value = '';
                 textarea.style.height = 'auto';
@@ -508,6 +546,7 @@ function initChatInputHandlers(processId: string): void {
     sendBtn.addEventListener('click', function() {
         const content = textarea.value.trim();
         if (content && !textarea.disabled) {
+            dismissChatHint();
             sendFollowUpMessage(processId, content);
             textarea.value = '';
             textarea.style.height = 'auto';
@@ -541,11 +580,18 @@ function sendFollowUpMessage(processId: string, content: string): void {
     }
 
     // POST the message
+    // Concurrent viewer note: multiple browser tabs may submit simultaneously.
+    // The queue executor bridge processes follow-ups sequentially (single-threaded
+    // Node.js). Last writer wins — both tabs see all SSE events.
     fetch(getApiBase() + '/processes/' + encodeURIComponent(processId) + '/message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: content }),
     }).then(function(res) {
+        if (res.status === 410) {
+            // Session expired — show inline error bubble and disable input
+            throw { sessionExpired: true };
+        }
         if (!res.ok) throw new Error('Failed to send message: ' + res.status);
         return res.json();
     }).then(function(data) {
@@ -554,9 +600,25 @@ function sendFollowUpMessage(processId: string, content: string): void {
         queueState.currentStreamingTurnIndex = turnIndex;
         connectFollowUpSSE(processId);
     }).catch(function(err) {
-        // Error — mark the assistant bubble with error state
         queueState.isFollowUpStreaming = false;
         queueState.currentStreamingTurnIndex = null;
+
+        if (err && err.sessionExpired) {
+            // Session expired — replace assistant bubble with error bubble, disable input permanently
+            const bubble = document.getElementById('follow-up-assistant-bubble');
+            if (bubble) { bubble.remove(); }
+            const convEl = document.getElementById('queue-task-conversation');
+            if (convEl) {
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'chat-error-bubble';
+                errorDiv.textContent = '\u26A0\uFE0F Session expired. Start a new task to continue.';
+                convEl.appendChild(errorDiv);
+            }
+            setInputBarDisabled(true);
+            return;
+        }
+
+        // Generic error — mark the assistant bubble with error state
         setInputBarDisabled(false);
 
         const bubble = document.getElementById('follow-up-assistant-bubble');
@@ -784,8 +846,46 @@ function updateConversationContent(): void {
 function scrollConversationToBottom(): void {
     const el = document.getElementById('queue-task-conversation');
     if (el) {
-        el.scrollTop = el.scrollHeight;
+        // Respect auto-scroll preference and user scroll state
+        if (!chatAutoScroll || userHasScrolledUp) return;
+        el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
     }
+}
+
+/** Track scroll position to show/hide the scroll-to-bottom button. */
+function initScrollToBottomTracking(): void {
+    const el = document.getElementById('queue-task-conversation');
+    const btn = document.getElementById('scroll-to-bottom-btn');
+    if (!el || !btn) return;
+
+    el.addEventListener('scroll', function() {
+        const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+        if (atBottom) {
+            userHasScrolledUp = false;
+            btn.classList.remove('visible');
+        } else {
+            userHasScrolledUp = true;
+            btn.classList.add('visible');
+        }
+    });
+}
+
+/** Dismiss the first-time chat hint and persist to localStorage. */
+function dismissChatHint(): void {
+    const hint = document.getElementById('chat-hint');
+    if (hint) hint.remove();
+    localStorage.setItem('coc-chat-hint-dismissed', '1');
+}
+
+/** Copy raw markdown from the bubble's data-raw attribute with brief "Copied" feedback. */
+function handleMsgCopy(btn: HTMLElement): void {
+    const bubble = btn.closest('.chat-message');
+    if (!bubble) return;
+    const raw = bubble.getAttribute('data-raw') || '';
+    copyToClipboard(raw);
+    const original = btn.textContent;
+    btn.textContent = '\u2713 Copied';
+    setTimeout(function() { btn.textContent = original; }, 1500);
 }
 
 export function copyQueueTaskResult(processId: string): void {
@@ -1005,3 +1105,13 @@ function showToast(message: string, type: 'success' | 'error'): void {
 (window as any).showQueueTaskDetail = showQueueTaskDetail;
 (window as any).sendFollowUpMessage = sendFollowUpMessage;
 (window as any).connectFollowUpSSE = connectFollowUpSSE;
+(window as any).scrollConversationToBottom = function() {
+    // Force-scroll (called from UI buttons — override user preference)
+    const el = document.getElementById('queue-task-conversation');
+    if (el) { el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }); }
+    userHasScrolledUp = false;
+    const btn = document.getElementById('scroll-to-bottom-btn');
+    if (btn) btn.classList.remove('visible');
+};
+(window as any).dismissChatHint = dismissChatHint;
+(window as any).handleMsgCopy = handleMsgCopy;

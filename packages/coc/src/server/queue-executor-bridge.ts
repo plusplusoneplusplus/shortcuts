@@ -58,6 +58,8 @@ export interface QueueExecutorBridgeOptions {
  */
 export interface QueueExecutorBridge {
     executeFollowUp(processId: string, message: string): Promise<void>;
+    /** Check whether the underlying SDK session for a process is still alive. */
+    isSessionAlive(processId: string): Promise<boolean>;
 }
 
 // ============================================================================
@@ -76,6 +78,8 @@ export class CLITaskExecutor implements TaskExecutor {
     private readonly dataDir?: string;
     /** Per-process output accumulator for persisting conversation output */
     private readonly outputBuffers: Map<string, string> = new Map();
+    /** SDK session IDs this executor has created (for session liveness checks). */
+    private readonly knownSessionIds: Set<string> = new Set();
 
     constructor(store: ProcessStore, options: { approvePermissions?: boolean; workingDirectory?: string; dataDir?: string } = {}) {
         this.store = store;
@@ -134,6 +138,9 @@ export class CLITaskExecutor implements TaskExecutor {
             // Extract session and response data for conversation tracking
             const sessionId = (result as any)?.sessionId;
             const responseText = (result as any)?.response ?? '';
+
+            // Track session ID for liveness checks
+            if (sessionId) this.knownSessionIds.add(sessionId);
 
             // Build initial conversation turns
             const conversationTurns: ConversationTurn[] = [
@@ -202,6 +209,23 @@ export class CLITaskExecutor implements TaskExecutor {
 
     cancel(taskId: string): void {
         this.cancelledTasks.add(taskId);
+    }
+
+    /**
+     * Check whether the SDK session for a process is still alive.
+     * Returns true (assume alive) if the session was not created by this executor.
+     */
+    async isSessionAlive(processId: string): Promise<boolean> {
+        const process = await this.store.getProcess(processId);
+        if (!process?.sdkSessionId) return false;
+        // Only report dead for sessions this executor actually created
+        if (!this.knownSessionIds.has(process.sdkSessionId)) return true;
+        try {
+            const sdkService = getCopilotSDKService();
+            return sdkService.hasKeptAliveSession(process.sdkSessionId);
+        } catch {
+            return true; // Can't verify — assume alive
+        }
     }
 
     /**

@@ -550,6 +550,14 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                 return sendError(res, 409, 'Process has no SDK session — follow-up not supported');
             }
 
+            // Check session liveness before forwarding the prompt
+            if (bridge && !(await bridge.isSessionAlive(id))) {
+                return sendJSON(res, 410, {
+                    error: 'session_expired',
+                    message: 'The AI session has ended. Please start a new task.',
+                });
+            }
+
             if (!bridge) {
                 return sendError(res, 501, 'Follow-up execution not available');
             }
