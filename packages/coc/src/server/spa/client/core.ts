@@ -109,17 +109,26 @@ export function handleHashChange(): void {
         return;
     }
 
+    // #repos/{id}/tasks or #repos/{id}/pipelines
+    const repoSubTabMatch = hash.match(/^repos\/([^/]+)\/(tasks|pipelines|info)$/);
+    if (repoSubTabMatch) {
+        (window as any).switchTab?.('repos');
+        (window as any).showRepoDetail?.(decodeURIComponent(repoSubTabMatch[1]), repoSubTabMatch[2]);
+        return;
+    }
+
     // #repos/{id}
-    const repoMatch = hash.match(/^repos\/(.+)$/);
+    const repoMatch = hash.match(/^repos\/([^/]+)$/);
     if (repoMatch) {
         (window as any).switchTab?.('repos');
         (window as any).showRepoDetail?.(decodeURIComponent(repoMatch[1]));
         return;
     }
 
-    // #tasks
+    // #tasks — backward compat: redirect to #repos
     if (hash === 'tasks') {
-        (window as any).switchTab?.('tasks');
+        setHashSilent('#repos');
+        (window as any).switchTab?.('repos');
         return;
     }
 

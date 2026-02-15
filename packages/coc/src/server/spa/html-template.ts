@@ -62,7 +62,6 @@ ${bundleCss}
     <nav class="tab-bar" id="tab-bar">
         <button class="tab-btn active" data-tab="processes">Processes</button>
         <button class="tab-btn" data-tab="repos">Repos</button>
-        <button class="tab-btn" data-tab="tasks">Tasks</button>
         <button class="tab-btn" data-tab="reports" disabled>Reports</button>
     </nav>
 
@@ -136,29 +135,6 @@ ${bundleCss}
             <div class="detail-content hidden" id="repo-detail-content">
             </div>
         </main>
-    </div>
-
-    <div class="app-view hidden" id="view-tasks">
-        <div class="tasks-container">
-            <div class="tasks-header">
-                <h2>Tasks</h2>
-                <div class="tasks-header-right">
-                    <select id="tasks-workspace-select" class="workspace-select">
-                        <option value="">Select workspace...</option>
-                    </select>
-                    <button class="enqueue-btn-primary" id="tasks-new-task-btn">+ New Task</button>
-                    <button class="enqueue-btn-primary" id="tasks-new-folder-btn">+ New Folder</button>
-                    <button class="enqueue-btn-primary" id="tasks-ai-generate-btn" title="Generate task with AI">🤖 AI Generate</button>
-                </div>
-            </div>
-            <div class="tasks-tree" id="tasks-tree">
-                <div class="empty-state">
-                    <div class="empty-state-icon">&#128203;</div>
-                    <div class="empty-state-title">Select a workspace</div>
-                    <div class="empty-state-text">Choose a workspace from the dropdown to manage tasks.</div>
-                </div>
-            </div>
-        </div>
     </div>
 
     <div class="app-view hidden" id="view-reports">

@@ -8,7 +8,7 @@ import { fetchApi } from './core';
 import { renderProcessList } from './sidebar';
 import { renderDetail, clearDetail } from './detail';
 import { renderQueuePanel, startQueuePolling, stopQueuePolling } from './queue';
-import { fetchTasksData } from './tasks';
+import { fetchRepoTasks } from './tasks';
 
 let wsReconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let wsReconnectDelay = 1000;
@@ -153,9 +153,9 @@ export function handleWsMessage(msg: any): void {
             }
         }
     } else if (msg.type === 'tasks-changed' && msg.workspaceId) {
-        // Re-fetch the task list if the changed workspace matches the currently viewed one
+        // Re-fetch the task list if the changed workspace matches the currently viewed repo
         if (taskPanelState.selectedWorkspaceId === msg.workspaceId) {
-            fetchTasksData();
+            fetchRepoTasks(msg.workspaceId);
         }
     }
 }

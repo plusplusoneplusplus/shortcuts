@@ -1,5 +1,7 @@
 /**
- * Tasks view: workspace task CRUD operations with tree rendering.
+ * Tasks module: workspace task CRUD operations with tree rendering.
+ * Tasks are rendered inside the repo detail panel's Tasks sub-tab.
+ * No standalone Tasks view — tasks are always repo-scoped.
  */
 
 import { appState, taskPanelState } from './state';
@@ -28,17 +30,12 @@ interface TaskItem {
 
 let currentTasks: TaskItem | null = null;
 
-export async function fetchTasksData(): Promise<void> {
-    const wsId = taskPanelState.selectedWorkspaceId;
-    if (!wsId) {
-        currentTasks = null;
-        renderTasksPanel();
-        return;
-    }
+export async function fetchRepoTasks(wsId: string): Promise<void> {
+    taskPanelState.selectedWorkspaceId = wsId;
 
     const data = await fetchApi(`/workspaces/${encodeURIComponent(wsId)}/tasks`);
     currentTasks = data || null;
-    renderTasksPanel();
+    renderTasksInRepo();
 }
 
 // ================================================================
@@ -117,10 +114,7 @@ function showInputDialog(
 // CRUD operations
 // ================================================================
 
-async function createTask(folder?: string): Promise<void> {
-    const wsId = taskPanelState.selectedWorkspaceId;
-    if (!wsId) return;
-
+export async function createRepoTask(wsId: string, folder?: string): Promise<void> {
     showInputDialog('New Task', 'Task name', async (name) => {
         const docTypeSelect = document.getElementById('task-dialog-doctype') as HTMLSelectElement | null;
         const docType = docTypeSelect?.value || '';
@@ -140,7 +134,7 @@ async function createTask(folder?: string): Promise<void> {
                 alert(data.error || 'Failed to create task');
                 return;
             }
-            await fetchTasksData();
+            await fetchRepoTasks(wsId);
         } catch {
             alert('Network error creating task');
         }
@@ -162,10 +156,7 @@ async function createTask(folder?: string): Promise<void> {
     ]);
 }
 
-async function createFolder(parent?: string): Promise<void> {
-    const wsId = taskPanelState.selectedWorkspaceId;
-    if (!wsId) return;
-
+export async function createRepoFolder(wsId: string, parent?: string): Promise<void> {
     showInputDialog('New Folder', 'Folder name', async (name) => {
         const body: any = { name, type: 'folder' };
         if (parent) body.parent = parent;
@@ -181,17 +172,14 @@ async function createFolder(parent?: string): Promise<void> {
                 alert(data.error || 'Failed to create folder');
                 return;
             }
-            await fetchTasksData();
+            await fetchRepoTasks(wsId);
         } catch {
             alert('Network error creating folder');
         }
     });
 }
 
-async function renameItem(itemPath: string, currentName: string): Promise<void> {
-    const wsId = taskPanelState.selectedWorkspaceId;
-    if (!wsId) return;
-
+async function renameItem(wsId: string, itemPath: string, currentName: string): Promise<void> {
     showInputDialog('Rename', 'New name', async (newName) => {
         try {
             const res = await fetch(getApiBase() + `/workspaces/${encodeURIComponent(wsId)}/tasks`, {
@@ -204,17 +192,14 @@ async function renameItem(itemPath: string, currentName: string): Promise<void> 
                 alert(data.error || 'Failed to rename');
                 return;
             }
-            await fetchTasksData();
+            await fetchRepoTasks(wsId);
         } catch {
             alert('Network error renaming');
         }
     }, currentName);
 }
 
-async function deleteItem(itemPath: string, name: string): Promise<void> {
-    const wsId = taskPanelState.selectedWorkspaceId;
-    if (!wsId) return;
-
+async function deleteItem(wsId: string, itemPath: string, name: string): Promise<void> {
     if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
 
     try {
@@ -228,16 +213,13 @@ async function deleteItem(itemPath: string, name: string): Promise<void> {
             alert(data.error || 'Failed to delete');
             return;
         }
-        await fetchTasksData();
+        await fetchRepoTasks(wsId);
     } catch {
         alert('Network error deleting');
     }
 }
 
-async function archiveItem(itemPath: string, action: 'archive' | 'unarchive'): Promise<void> {
-    const wsId = taskPanelState.selectedWorkspaceId;
-    if (!wsId) return;
-
+async function archiveItem(wsId: string, itemPath: string, action: 'archive' | 'unarchive'): Promise<void> {
     try {
         const res = await fetch(getApiBase() + `/workspaces/${encodeURIComponent(wsId)}/tasks/archive`, {
             method: 'POST',
@@ -249,16 +231,13 @@ async function archiveItem(itemPath: string, action: 'archive' | 'unarchive'): P
             alert(data.error || `Failed to ${action}`);
             return;
         }
-        await fetchTasksData();
+        await fetchRepoTasks(wsId);
     } catch {
         alert(`Network error during ${action}`);
     }
 }
 
-async function updateStatus(itemPath: string, status: string): Promise<void> {
-    const wsId = taskPanelState.selectedWorkspaceId;
-    if (!wsId) return;
-
+async function updateStatus(wsId: string, itemPath: string, status: string): Promise<void> {
     try {
         const res = await fetch(getApiBase() + `/workspaces/${encodeURIComponent(wsId)}/tasks`, {
             method: 'PATCH',
@@ -270,7 +249,7 @@ async function updateStatus(itemPath: string, status: string): Promise<void> {
             alert(data.error || 'Failed to update status');
             return;
         }
-        await fetchTasksData();
+        await fetchRepoTasks(wsId);
     } catch {
         alert('Network error updating status');
     }
@@ -300,24 +279,17 @@ function nextStatus(current: string): string {
 }
 
 // ================================================================
-// Rendering
+// Rendering (into repo detail Tasks sub-tab)
 // ================================================================
 
-function renderTasksPanel(): void {
-    const container = document.getElementById('tasks-tree');
+function renderTasksInRepo(): void {
+    const container = document.getElementById('repo-tasks-tree');
     if (!container) return;
 
-    if (!taskPanelState.selectedWorkspaceId) {
-        container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📋</div>' +
-            '<div class="empty-state-title">Select a workspace</div>' +
-            '<div class="empty-state-text">Choose a workspace from the dropdown to manage tasks.</div></div>';
-        return;
-    }
-
     if (!currentTasks) {
-        container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📋</div>' +
-            '<div class="empty-state-title">No tasks found</div>' +
-            '<div class="empty-state-text">Create a task to get started.</div></div>';
+        container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">&#128203;</div>' +
+            '<div class="empty-state-title">No tasks folder found</div>' +
+            '<div class="empty-state-text">Tasks are markdown files in .vscode/tasks/. Click "+ New Task" to get started.</div></div>';
         return;
     }
 
@@ -445,6 +417,9 @@ function renderArchiveButton(itemPath: string, name: string): string {
 // ================================================================
 
 function attachTreeEventListeners(container: HTMLElement): void {
+    const wsId = taskPanelState.selectedWorkspaceId;
+    if (!wsId) return;
+
     container.addEventListener('click', (e: Event) => {
         const target = e.target as HTMLElement;
         const btn = target.closest('[data-action]') as HTMLElement | null;
@@ -455,7 +430,7 @@ function attachTreeEventListeners(container: HTMLElement): void {
                 const folderKey = toggle.getAttribute('data-folder');
                 if (folderKey) {
                     taskPanelState.expandedFolders[folderKey] = !(taskPanelState.expandedFolders[folderKey] !== false);
-                    renderTasksPanel();
+                    renderTasksInRepo();
                 }
             }
             return;
@@ -470,78 +445,35 @@ function attachTreeEventListeners(container: HTMLElement): void {
 
         switch (action) {
             case 'new-task':
-                createTask(folder || undefined);
+                createRepoTask(wsId, folder || undefined);
                 break;
             case 'new-folder':
-                createFolder(parent || undefined);
+                createRepoFolder(wsId, parent || undefined);
                 break;
             case 'rename':
-                renameItem(itemPath, name);
+                renameItem(wsId, itemPath, name);
                 break;
             case 'delete':
-                deleteItem(itemPath, name);
+                deleteItem(wsId, itemPath, name);
                 break;
             case 'archive':
-                archiveItem(itemPath, 'archive');
+                archiveItem(wsId, itemPath, 'archive');
                 break;
             case 'unarchive':
-                archiveItem(itemPath, 'unarchive');
+                archiveItem(wsId, itemPath, 'unarchive');
                 break;
             case 'status':
-                updateStatus(itemPath, status);
+                updateStatus(wsId, itemPath, status);
                 break;
         }
     });
 }
 
 // ================================================================
-// Workspace selector for tasks tab
-// ================================================================
-
-function initTasksWorkspaceSelector(): void {
-    const select = document.getElementById('tasks-workspace-select') as HTMLSelectElement | null;
-    if (!select) return;
-
-    select.addEventListener('change', () => {
-        taskPanelState.selectedWorkspaceId = select.value || null;
-        fetchTasksData();
-    });
-}
-
-export function populateTasksWorkspaces(workspaces: any[]): void {
-    const select = document.getElementById('tasks-workspace-select') as HTMLSelectElement | null;
-    if (!select) return;
-
-    // Preserve current selection
-    const current = select.value;
-    select.innerHTML = '<option value="">Select workspace...</option>';
-    for (const ws of workspaces) {
-        const opt = document.createElement('option');
-        opt.value = ws.id;
-        opt.textContent = ws.name || ws.id;
-        select.appendChild(opt);
-    }
-
-    if (current && workspaces.some(w => w.id === current)) {
-        select.value = current;
-    } else if (workspaces.length === 1) {
-        select.value = workspaces[0].id;
-        taskPanelState.selectedWorkspaceId = workspaces[0].id;
-        fetchTasksData();
-    }
-}
-
-// ================================================================
 // AI Task Generation Dialog
 // ================================================================
 
-function showAIGenerateDialog(): void {
-    const wsId = taskPanelState.selectedWorkspaceId;
-    if (!wsId) {
-        alert('Select a workspace first');
-        return;
-    }
-
+export function showRepoAIGenerateDialog(wsId: string): void {
     const existing = document.getElementById('ai-generate-overlay');
     if (existing) existing.remove();
 
@@ -618,7 +550,7 @@ function showAIGenerateDialog(): void {
 
         try {
             const res = await fetch(
-                getApiBase() + `/workspaces/${encodeURIComponent(wsId!)}/tasks/generate`,
+                getApiBase() + `/workspaces/${encodeURIComponent(wsId)}/tasks/generate`,
                 {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -662,7 +594,7 @@ function showAIGenerateDialog(): void {
                             } else if (eventType === 'done') {
                                 if (data.success) {
                                     if (progressEl) progressEl.textContent += '\n✅ Task generated' + (data.filePath ? ': ' + data.filePath : '') + '\n';
-                                    await fetchTasksData();
+                                    await fetchRepoTasks(wsId);
                                 } else {
                                     if (progressEl) progressEl.textContent += '\n❌ Generation failed\n';
                                 }
@@ -681,21 +613,10 @@ function showAIGenerateDialog(): void {
 }
 
 // ================================================================
-// Init
+// Expose for global access (called from repos.ts)
 // ================================================================
 
-initTasksWorkspaceSelector();
-
-// Wire toolbar buttons
-const newTaskBtn = document.getElementById('tasks-new-task-btn');
-if (newTaskBtn) newTaskBtn.addEventListener('click', () => createTask());
-
-const newFolderBtn = document.getElementById('tasks-new-folder-btn');
-if (newFolderBtn) newFolderBtn.addEventListener('click', () => createFolder());
-
-const aiGenerateBtn = document.getElementById('tasks-ai-generate-btn');
-if (aiGenerateBtn) aiGenerateBtn.addEventListener('click', () => showAIGenerateDialog());
-
-// Expose for tab switching
-(window as any).fetchTasksData = fetchTasksData;
-(window as any).populateTasksWorkspaces = populateTasksWorkspaces;
+(window as any).fetchRepoTasks = fetchRepoTasks;
+(window as any).createRepoTask = createRepoTask;
+(window as any).createRepoFolder = createRepoFolder;
+(window as any).showRepoAIGenerateDialog = showRepoAIGenerateDialog;

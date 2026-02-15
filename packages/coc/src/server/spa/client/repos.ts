@@ -1,10 +1,10 @@
 /**
- * Repos view: sidebar list + detail panel layout.
- * Mirrors the Processes view pattern with a sidebar listing repos
- * and a main detail panel showing repo information.
+ * Repos view: sidebar list + detail panel layout with sub-tabs.
+ * Detail panel has sub-tabs: Info, Pipelines, Tasks.
+ * Tasks are embedded as a repo sub-page (no top-level Tasks tab).
  */
 
-import { appState, DashboardTab } from './state';
+import { appState, DashboardTab, RepoSubTab } from './state';
 import { getApiBase } from './config';
 import { fetchApi, setHashSilent } from './core';
 import { escapeHtmlClient, formatRelativeTime } from './utils';
@@ -22,7 +22,7 @@ export function switchTab(tab: DashboardTab): void {
     });
 
     // Show/hide views
-    const viewIds = ['view-processes', 'view-repos', 'view-reports', 'view-tasks'];
+    const viewIds = ['view-processes', 'view-repos', 'view-reports'];
     viewIds.forEach(id => {
         const el = document.getElementById(id);
         if (el) {
@@ -33,12 +33,6 @@ export function switchTab(tab: DashboardTab): void {
     // Refresh data when switching to repos
     if (tab === 'repos') {
         fetchReposData();
-    }
-
-    // Refresh data when switching to tasks
-    if (tab === 'tasks') {
-        (window as any).populateTasksWorkspaces?.(appState.workspaces || []);
-        (window as any).fetchTasksData?.();
     }
 }
 
@@ -66,9 +60,14 @@ interface RepoData {
     gitInfo?: { branch: string | null; dirty: boolean; isGitRepo: boolean };
     pipelines?: Array<{ name: string; path: string }>;
     stats?: { success: number; failed: number; running: number };
+    taskCount?: number;
 }
 
 let reposData: RepoData[] = [];
+
+export function getReposData(): RepoData[] {
+    return reposData;
+}
 
 export async function fetchReposData(): Promise<void> {
     const wsRes = await fetchApi('/workspaces');
@@ -77,12 +76,13 @@ export async function fetchReposData(): Promise<void> {
 
     appState.workspaces = workspaces;
 
-    // Fetch git info and pipelines for each workspace in parallel
+    // Fetch git info, pipelines, and task count for each workspace in parallel
     const enriched: RepoData[] = await Promise.all(
         workspaces.map(async (ws: any) => {
-            const [gitInfo, pipelinesRes] = await Promise.all([
+            const [gitInfo, pipelinesRes, tasksRes] = await Promise.all([
                 fetchApi(`/workspaces/${encodeURIComponent(ws.id)}/git-info`),
                 fetchApi(`/workspaces/${encodeURIComponent(ws.id)}/pipelines`),
+                fetchApi(`/workspaces/${encodeURIComponent(ws.id)}/tasks`),
             ]);
 
             // Count process stats for this workspace
@@ -95,11 +95,15 @@ export async function fetchReposData(): Promise<void> {
                 else if (p.status === 'running') stats.running++;
             }
 
+            // Count tasks recursively
+            const taskCount = countTasks(tasksRes);
+
             return {
                 workspace: ws,
                 gitInfo: gitInfo || undefined,
                 pipelines: pipelinesRes?.pipelines || [],
                 stats,
+                taskCount,
             };
         })
     );
@@ -116,6 +120,19 @@ export async function fetchReposData(): Promise<void> {
             clearRepoDetail();
         }
     }
+}
+
+function countTasks(node: any): number {
+    if (!node) return 0;
+    let count = 0;
+    if (node.singleDocuments) count += node.singleDocuments.length;
+    if (node.documentGroups) count += node.documentGroups.length;
+    if (node.children) {
+        for (const child of node.children) {
+            count += countTasks(child);
+        }
+    }
+    return count;
 }
 
 // ================================================================
@@ -163,10 +180,15 @@ function renderRepoItem(repo: RepoData, container: HTMLElement): void {
     const pipelineCount = repo.pipelines?.length || 0;
     const stats = repo.stats || { success: 0, failed: 0, running: 0 };
     const truncPath = truncatePath(ws.rootPath || '', 30);
+    const taskCount = repo.taskCount || 0;
 
     const div = document.createElement('div');
     div.className = 'repo-item' + (ws.id === appState.selectedRepoId ? ' active' : '');
     div.setAttribute('data-repo-id', ws.id);
+
+    const taskBadge = taskCount > 0
+        ? ' &middot; ' + taskCount + ' task' + (taskCount !== 1 ? 's' : '')
+        : '';
 
     div.innerHTML =
         '<div class="repo-item-row">' +
@@ -177,7 +199,7 @@ function renderRepoItem(repo: RepoData, container: HTMLElement): void {
             '<span class="repo-item-path" title="' + escapeHtmlClient(ws.rootPath || '') + '">' + escapeHtmlClient(truncPath) + '</span>' +
         '</div>' +
         '<div class="repo-item-stats">' +
-            '<span>branch: ' + escapeHtmlClient(branch) + '</span>' +
+            '<span>' + escapeHtmlClient(branch) + taskBadge + '</span>' +
             '<span>Pipelines: ' + pipelineCount + '</span>' +
             '<span class="repo-stat-counts">' +
                 '&#10003; ' + stats.success +
@@ -199,14 +221,18 @@ function truncatePath(p: string, max: number): string {
 }
 
 // ================================================================
-// Repo detail view
+// Repo detail view with sub-tabs
 // ================================================================
 
-export function showRepoDetail(wsId: string): void {
+export function showRepoDetail(wsId: string, subTab?: RepoSubTab): void {
     appState.selectedRepoId = wsId;
+    appState.activeRepoSubTab = subTab || 'info';
 
     // Update hash silently
-    setHashSilent('#repos/' + encodeURIComponent(wsId));
+    const hashSuffix = appState.activeRepoSubTab === 'info'
+        ? ''
+        : '/' + appState.activeRepoSubTab;
+    setHashSilent('#repos/' + encodeURIComponent(wsId) + hashSuffix);
 
     // Update active state in sidebar
     updateActiveRepoItem();
@@ -239,10 +265,10 @@ function renderRepoDetail(wsId: string): void {
 
     const ws = repo.workspace;
     const color = ws.color || '#848484';
-    const branch = repo.gitInfo?.branch || 'n/a';
-    const dirty = repo.gitInfo?.dirty ? ' (dirty)' : '';
-    const stats = repo.stats || { success: 0, failed: 0, running: 0 };
+    const taskCount = repo.taskCount || 0;
+    const activeSubTab = appState.activeRepoSubTab;
 
+    // Header
     let html = '<div class="repo-detail-header">' +
         '<span class="repo-color-dot" style="background:' + escapeHtmlClient(color) + ';width:14px;height:14px"></span>' +
         '<h1>' + escapeHtmlClient(ws.name) + '</h1>' +
@@ -250,43 +276,34 @@ function renderRepoDetail(wsId: string): void {
         '<button class="action-btn repo-remove-action" id="repo-remove-btn">Remove</button>' +
     '</div>';
 
-    // Metadata grid
-    html += '<div class="meta-grid">' +
-        '<div class="meta-item"><label>Path</label><span class="meta-path">' + escapeHtmlClient(ws.rootPath || '') + '</span></div>' +
-        '<div class="meta-item"><label>Branch</label><span>' + escapeHtmlClient(branch + dirty) + '</span></div>' +
-        '<div class="meta-item"><label>Color</label><span><span class="repo-color-dot" style="background:' + escapeHtmlClient(color) + ';display:inline-block;vertical-align:middle"></span> ' + escapeHtmlClient(color) + '</span></div>' +
-        '<div class="meta-item"><label>Pipelines</label><span>' + (repo.pipelines?.length || 0) + '</span></div>' +
-        '<div class="meta-item"><label>Completed</label><span>' + stats.success + '</span></div>' +
-        '<div class="meta-item"><label>Failed</label><span>' + stats.failed + '</span></div>' +
-        '<div class="meta-item"><label>Running</label><span>' + stats.running + '</span></div>' +
+    // Sub-tab bar
+    html += '<div class="repo-sub-tab-bar" id="repo-sub-tab-bar">' +
+        '<button class="repo-sub-tab' + (activeSubTab === 'info' ? ' active' : '') + '" data-subtab="info">Info</button>' +
+        '<button class="repo-sub-tab' + (activeSubTab === 'pipelines' ? ' active' : '') + '" data-subtab="pipelines">Pipelines</button>' +
+        '<button class="repo-sub-tab' + (activeSubTab === 'tasks' ? ' active' : '') + '" data-subtab="tasks">Tasks' +
+            (taskCount > 0 ? ' <span class="repo-sub-tab-badge">' + taskCount + '</span>' : '') +
+        '</button>' +
     '</div>';
 
-    // Pipelines list
-    html += '<div class="result-section">';
-    html += '<h2>Pipelines</h2>';
-    if (repo.pipelines && repo.pipelines.length > 0) {
-        html += '<ul class="repo-pipeline-list">';
-        for (const p of repo.pipelines) {
-            html += '<li class="repo-pipeline-item">' +
-                '<span class="pipeline-name">&#128203; ' + escapeHtmlClient(p.name) + '</span>' +
-                '<div class="repo-pipeline-actions">' +
-                    '<button class="action-btn">View</button>' +
-                '</div>' +
-            '</li>';
-        }
-        html += '</ul>';
-    } else {
-        html += '<div style="color:var(--text-secondary);font-size:13px">No pipelines found in this repository.</div>';
-    }
-    html += '</div>';
-
-    // Recent processes
-    html += '<div class="result-section">';
-    html += '<h2>Recent Processes</h2>';
-    html += '<div id="repo-processes-list" style="font-size:13px;color:var(--text-secondary)">Loading...</div>';
+    // Sub-tab content
+    html += '<div class="repo-sub-tab-content" id="repo-sub-tab-content">';
+    html += renderSubTabContent(repo, activeSubTab);
     html += '</div>';
 
     contentEl.innerHTML = html;
+
+    // Wire sub-tab clicks
+    const subTabBar = document.getElementById('repo-sub-tab-bar');
+    if (subTabBar) {
+        subTabBar.addEventListener('click', (e: Event) => {
+            const btn = (e.target as HTMLElement).closest('.repo-sub-tab') as HTMLElement | null;
+            if (!btn) return;
+            const tab = btn.getAttribute('data-subtab') as RepoSubTab;
+            if (tab && tab !== appState.activeRepoSubTab) {
+                showRepoDetail(wsId, tab);
+            }
+        });
+    }
 
     // Wire remove button
     const removeBtn = document.getElementById('repo-remove-btn');
@@ -300,9 +317,125 @@ function renderRepoDetail(wsId: string): void {
         editBtn.addEventListener('click', () => showEditRepoDialog(wsId));
     }
 
-    // Fetch recent processes
-    fetchRepoProcesses(wsId);
+    // Wire tasks toolbar buttons if on tasks sub-tab
+    if (activeSubTab === 'tasks') {
+        wireTasksToolbar(wsId);
+    }
+
+    // Fetch recent processes if on info sub-tab
+    if (activeSubTab === 'info') {
+        fetchRepoProcesses(wsId);
+    }
 }
+
+function renderSubTabContent(repo: RepoData, subTab: RepoSubTab): string {
+    switch (subTab) {
+        case 'info': return renderInfoTab(repo);
+        case 'pipelines': return renderPipelinesTab(repo);
+        case 'tasks': return renderTasksTab(repo);
+        default: return renderInfoTab(repo);
+    }
+}
+
+// ================================================================
+// Info sub-tab
+// ================================================================
+
+function renderInfoTab(repo: RepoData): string {
+    const ws = repo.workspace;
+    const color = ws.color || '#848484';
+    const branch = repo.gitInfo?.branch || 'n/a';
+    const dirty = repo.gitInfo?.dirty ? ' (dirty)' : '';
+    const stats = repo.stats || { success: 0, failed: 0, running: 0 };
+
+    let html = '<div class="meta-grid">' +
+        '<div class="meta-item"><label>Path</label><span class="meta-path">' + escapeHtmlClient(ws.rootPath || '') + '</span></div>' +
+        '<div class="meta-item"><label>Branch</label><span>' + escapeHtmlClient(branch + dirty) + '</span></div>' +
+        '<div class="meta-item"><label>Color</label><span><span class="repo-color-dot" style="background:' + escapeHtmlClient(color) + ';display:inline-block;vertical-align:middle"></span> ' + escapeHtmlClient(color) + '</span></div>' +
+        '<div class="meta-item"><label>Pipelines</label><span>' + (repo.pipelines?.length || 0) + '</span></div>' +
+        '<div class="meta-item"><label>Tasks</label><span>' + (repo.taskCount || 0) + '</span></div>' +
+        '<div class="meta-item"><label>Completed</label><span>' + stats.success + '</span></div>' +
+        '<div class="meta-item"><label>Failed</label><span>' + stats.failed + '</span></div>' +
+        '<div class="meta-item"><label>Running</label><span>' + stats.running + '</span></div>' +
+    '</div>';
+
+    // Recent processes
+    html += '<div class="result-section">';
+    html += '<h2>Recent Processes</h2>';
+    html += '<div id="repo-processes-list" style="font-size:13px;color:var(--text-secondary)">Loading...</div>';
+    html += '</div>';
+
+    return html;
+}
+
+// ================================================================
+// Pipelines sub-tab
+// ================================================================
+
+function renderPipelinesTab(repo: RepoData): string {
+    let html = '';
+    if (repo.pipelines && repo.pipelines.length > 0) {
+        html += '<ul class="repo-pipeline-list">';
+        for (const p of repo.pipelines) {
+            html += '<li class="repo-pipeline-item">' +
+                '<span class="pipeline-name">&#128203; ' + escapeHtmlClient(p.name) + '</span>' +
+                '<div class="repo-pipeline-actions">' +
+                    '<button class="action-btn">View</button>' +
+                '</div>' +
+            '</li>';
+        }
+        html += '</ul>';
+    } else {
+        html += '<div class="empty-state"><div class="empty-state-icon">&#128203;</div>' +
+            '<div class="empty-state-title">No pipelines found</div>' +
+            '<div class="empty-state-text">Add pipeline YAML files to .vscode/pipelines/ in this repository.</div></div>';
+    }
+    return html;
+}
+
+// ================================================================
+// Tasks sub-tab (embedded from tasks.ts)
+// ================================================================
+
+function renderTasksTab(repo: RepoData): string {
+    let html = '<div class="repo-tasks-toolbar">' +
+        '<button class="enqueue-btn-primary" id="repo-tasks-new-btn">+ New Task</button>' +
+        '<button class="enqueue-btn-primary" id="repo-tasks-folder-btn">+ New Folder</button>' +
+        '<button class="enqueue-btn-primary" id="repo-tasks-ai-btn" title="Generate task with AI">&#129302; AI Generate</button>' +
+    '</div>';
+    html += '<div class="tasks-tree" id="repo-tasks-tree">';
+    html += '<div class="empty-state"><div class="empty-state-icon">&#128203;</div>' +
+        '<div class="empty-state-title">Loading tasks...</div></div>';
+    html += '</div>';
+
+    // Trigger async task fetch
+    setTimeout(() => {
+        (window as any).fetchRepoTasks?.(repo.workspace.id);
+    }, 0);
+
+    return html;
+}
+
+function wireTasksToolbar(wsId: string): void {
+    const newBtn = document.getElementById('repo-tasks-new-btn');
+    if (newBtn) newBtn.addEventListener('click', () => {
+        (window as any).createRepoTask?.(wsId);
+    });
+
+    const folderBtn = document.getElementById('repo-tasks-folder-btn');
+    if (folderBtn) folderBtn.addEventListener('click', () => {
+        (window as any).createRepoFolder?.(wsId);
+    });
+
+    const aiBtn = document.getElementById('repo-tasks-ai-btn');
+    if (aiBtn) aiBtn.addEventListener('click', () => {
+        (window as any).showRepoAIGenerateDialog?.(wsId);
+    });
+}
+
+// ================================================================
+// Recent processes (Info tab)
+// ================================================================
 
 async function fetchRepoProcesses(wsId: string): Promise<void> {
     const res = await fetchApi(`/processes?workspace=${encodeURIComponent(wsId)}&limit=10`);
@@ -335,6 +468,7 @@ async function fetchRepoProcesses(wsId: string): Promise<void> {
 
 function clearRepoDetail(): void {
     appState.selectedRepoId = null;
+    appState.activeRepoSubTab = 'info';
     setHashSilent('#repos');
     const emptyEl = document.getElementById('repo-detail-empty');
     const contentEl = document.getElementById('repo-detail-content');
