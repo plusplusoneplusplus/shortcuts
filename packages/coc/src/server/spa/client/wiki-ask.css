@@ -1,0 +1,228 @@
+/* ========== Wiki Ask AI Floating Widget ========== */
+.wiki-ask-widget {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 200;
+    background: var(--bg-primary);
+    border-radius: 16px;
+    border: 1px solid var(--border-color);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
+    width: 720px;
+    max-width: calc(100vw - 40px);
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 100px);
+    transition: box-shadow 0.2s;
+}
+.wiki-ask-widget.expanded {
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.18);
+}
+
+/* Widget header (visible when expanded) */
+.wiki-ask-widget-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--content-border);
+    flex-shrink: 0;
+}
+.wiki-ask-widget-header.hidden { display: none; }
+.wiki-ask-widget-title { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.wiki-ask-widget-actions { display: flex; gap: 6px; align-items: center; }
+.wiki-ask-widget-clear {
+    background: none;
+    border: 1px solid var(--content-border);
+    border-radius: 4px;
+    padding: 2px 8px;
+    cursor: pointer;
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+.wiki-ask-widget-clear:hover { background: var(--code-bg); }
+.wiki-ask-widget-close {
+    background: none;
+    border: none;
+    font-size: 18px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    padding: 0 4px;
+    line-height: 1;
+}
+.wiki-ask-widget-close:hover { color: var(--text-primary); }
+
+/* Messages area (visible when expanded) */
+.wiki-ask-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    min-height: 0;
+}
+.wiki-ask-messages.hidden { display: none; }
+.ask-message { margin-bottom: 14px; line-height: 1.5; }
+.ask-message-user {
+    background: var(--accent);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 12px 12px 4px 12px;
+    max-width: 85%;
+    margin-left: auto;
+    word-wrap: break-word;
+}
+.ask-message-assistant {
+    background: var(--code-bg);
+    color: var(--text-primary);
+    padding: 10px 14px;
+    border-radius: 12px 12px 12px 4px;
+    max-width: 95%;
+    word-wrap: break-word;
+}
+.ask-message-assistant .markdown-body { max-width: 100%; font-size: 13px; line-height: 1.5; }
+.ask-message-assistant .markdown-body p { margin-bottom: 8px; }
+.ask-message-assistant .markdown-body p:last-child { margin-bottom: 0; }
+.ask-message-context {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+    padding: 6px 10px;
+    background: var(--stat-bg);
+    border-radius: 6px;
+    border: 1px solid var(--content-border);
+}
+.ask-message-context a { color: var(--link-color); cursor: pointer; text-decoration: none; }
+.ask-message-context a:hover { text-decoration: underline; }
+.ask-message-error {
+    color: var(--badge-high-bg);
+    font-size: 12px;
+    padding: 8px 12px;
+    background: var(--code-bg);
+    border-radius: 8px;
+    border: 1px solid var(--badge-high-bg);
+}
+.ask-message-typing {
+    display: inline-block;
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+.ask-message-typing::after {
+    content: '...';
+    animation: wiki-ask-typing 1s infinite;
+}
+@keyframes wiki-ask-typing {
+    0%, 33% { content: '.'; }
+    34%, 66% { content: '..'; }
+    67%, 100% { content: '...'; }
+}
+
+/* Input area (always visible) */
+.wiki-ask-widget-input {
+    padding: 12px 16px;
+    flex-shrink: 0;
+}
+.wiki-ask-widget-label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+.wiki-ask-widget-label strong { color: var(--text-primary); }
+.wiki-ask-widget.expanded .wiki-ask-widget-label { display: none; }
+.wiki-ask-widget.expanded .wiki-ask-widget-input {
+    border-top: 1px solid var(--content-border);
+}
+.wiki-ask-widget-input-row {
+    display: flex;
+    gap: 8px;
+}
+.wiki-ask-widget-textarea {
+    flex: 1;
+    padding: 9px 14px;
+    border: 1px solid var(--content-border);
+    border-radius: 8px;
+    font-size: 14px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    outline: none;
+    resize: none;
+    min-height: 38px;
+    max-height: 120px;
+    font-family: inherit;
+    line-height: 1.4;
+}
+.wiki-ask-widget-textarea:focus { border-color: var(--accent); }
+.wiki-ask-widget-textarea::placeholder { color: var(--text-secondary); }
+.wiki-ask-widget-send {
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 0 14px;
+    cursor: pointer;
+    font-size: 16px;
+    flex-shrink: 0;
+    align-self: flex-end;
+    height: 38px;
+}
+.wiki-ask-widget-send:hover { opacity: 0.9; }
+.wiki-ask-widget-send:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ========== Wiki Ask AI Responsive ========== */
+@media (max-width: 768px) {
+    .wiki-ask-widget { bottom: 12px; border-radius: 12px; }
+    .wiki-ask-widget-label { font-size: 11px; margin-bottom: 4px; }
+}
+
+/* ========== Deep Dive ========== */
+.deep-dive-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--stat-bg);
+    color: var(--link-color);
+    border: 1px solid var(--content-border);
+    border-radius: 6px;
+    padding: 6px 14px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 16px;
+    transition: background 0.15s, border-color 0.15s;
+}
+.deep-dive-btn:hover { background: var(--code-bg); border-color: var(--link-color); }
+.deep-dive-section {
+    margin-top: 16px;
+    padding: 14px;
+    background: var(--stat-bg);
+    border: 1px solid var(--content-border);
+    border-radius: 8px;
+}
+.deep-dive-input-area { display: flex; gap: 8px; margin-bottom: 12px; }
+.deep-dive-input {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid var(--content-border);
+    border-radius: 6px;
+    font-size: 13px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    outline: none;
+    font-family: inherit;
+}
+.deep-dive-input:focus { border-color: var(--accent); }
+.deep-dive-input::placeholder { color: var(--text-secondary); }
+.deep-dive-submit {
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 14px;
+    cursor: pointer;
+    font-size: 13px;
+    white-space: nowrap;
+}
+.deep-dive-submit:hover { opacity: 0.9; }
+.deep-dive-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+.deep-dive-result { margin-top: 12px; }
+.deep-dive-status { font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; }

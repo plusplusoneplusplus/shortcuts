@@ -192,6 +192,24 @@ ${bundleCss}
                 </div>
             </main>
         </div>
+        <!-- Floating Ask AI Widget -->
+        <div class="wiki-ask-widget" id="wiki-ask-widget">
+            <div class="wiki-ask-widget-header hidden" id="wiki-ask-widget-header">
+                <span class="wiki-ask-widget-title">Ask AI</span>
+                <div class="wiki-ask-widget-actions">
+                    <button class="wiki-ask-widget-clear" id="wiki-ask-clear" title="Clear conversation">Clear</button>
+                    <button class="wiki-ask-widget-close" id="wiki-ask-close" aria-label="Close">&times;</button>
+                </div>
+            </div>
+            <div class="wiki-ask-messages hidden" id="wiki-ask-messages"></div>
+            <div class="wiki-ask-widget-input">
+                <span class="wiki-ask-widget-label" id="wiki-ask-widget-label">Ask AI about this <strong id="wiki-ask-bar-subject">wiki</strong></span>
+                <div class="wiki-ask-widget-input-row">
+                    <textarea class="wiki-ask-widget-textarea" id="wiki-ask-textarea" placeholder="Ask about this codebase..." rows="1"></textarea>
+                    <button class="wiki-ask-widget-send" id="wiki-ask-widget-send" aria-label="Send question">&#10148;</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Add Wiki Dialog Overlay -->

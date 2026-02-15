@@ -11,6 +11,7 @@ import { fetchApi, setHashSilent } from './core';
 import { escapeHtmlClient } from './utils';
 import { buildComponentTree } from './wiki-components';
 import { setWikiGraph, clearWikiState, showWikiHome, loadWikiComponent } from './wiki-content';
+import { setupWikiAskListeners } from './wiki-ask';
 import type { WikiData, ComponentGraph } from './wiki-types';
 
 // ================================================================
@@ -374,3 +375,6 @@ if (wikiPathBrowserSelect) wikiPathBrowserSelect.addEventListener('click', selec
 (window as any).showWikiComponent = showWikiComponent;
 (window as any).showAddWikiDialog = showAddWikiDialog;
 (window as any).hideAddWikiDialog = hideAddWikiDialog;
+
+// Initialize Ask AI listeners
+setupWikiAskListeners();
