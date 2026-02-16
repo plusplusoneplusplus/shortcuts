@@ -65,6 +65,38 @@ describe('client/ai-actions.ts — Follow Prompt flow', () => {
         expect(content).toContain('60_000');
     });
 
+    // -- Tasks folder path resolution --
+
+    it('defines DEFAULT_TASKS_FOLDER constant matching server-side default', () => {
+        expect(content).toContain("const DEFAULT_TASKS_FOLDER = '.vscode/tasks'");
+    });
+
+    it('defines tasksFolderCache for caching workspace tasks folder paths', () => {
+        expect(content).toContain('const tasksFolderCache');
+    });
+
+    it('exports getTasksFolderPath function', () => {
+        expect(content).toContain('export async function getTasksFolderPath');
+    });
+
+    it('getTasksFolderPath fetches from tasks/settings endpoint', () => {
+        const fnIdx = content.indexOf('getTasksFolderPath');
+        const fnBody = content.slice(fnIdx, content.indexOf('\n}', fnIdx + 200));
+        expect(fnBody).toContain('/tasks/settings');
+    });
+
+    it('getTasksFolderPath returns DEFAULT_TASKS_FOLDER on fetch failure', () => {
+        const fnIdx = content.indexOf('getTasksFolderPath');
+        const fnBody = content.slice(fnIdx, content.indexOf('\n}', fnIdx + 200));
+        expect(fnBody).toContain('DEFAULT_TASKS_FOLDER');
+    });
+
+    it('getTasksFolderPath uses cache to avoid redundant API calls', () => {
+        const fnIdx = content.indexOf('getTasksFolderPath');
+        const fnBody = content.slice(fnIdx, content.indexOf('\n}', fnIdx + 200));
+        expect(fnBody).toContain('tasksFolderCache[wsId]');
+    });
+
     // -- fetchPromptsAndSkills --
 
     it('exports fetchPromptsAndSkills function', () => {
@@ -209,8 +241,8 @@ describe('client/ai-actions.ts — Follow Prompt flow', () => {
         expect(fnBody).not.toContain('/tasks/content?path=');
     });
 
-    it('enqueueFollowPrompt constructs planFilePath from workspace root + taskPath', () => {
-        expect(content).toContain("workingDirectory + '/' + taskPath");
+    it('enqueueFollowPrompt constructs planFilePath from workspace root + tasks folder + taskPath', () => {
+        expect(content).toContain("workingDirectory + '/' + tasksFolder + '/' + taskPath");
     });
 
     it('enqueueFollowPrompt builds promptFilePath for prompt items using workspace root + relativePath', () => {
@@ -329,6 +361,18 @@ describe('client bundle — Follow Prompt functions', () => {
 
     it('contains discovery cache TTL constant', () => {
         expect(script).toContain('CACHE_TTL_MS');
+    });
+
+    it('contains getTasksFolderPath function', () => {
+        expect(script).toContain('getTasksFolderPath');
+    });
+
+    it('contains DEFAULT_TASKS_FOLDER constant', () => {
+        expect(script).toContain('.vscode/tasks');
+    });
+
+    it('contains tasksFolderCache for workspace path caching', () => {
+        expect(script).toContain('tasksFolderCache');
     });
 
     it('contains follow-prompt-submenu overlay id', () => {
@@ -459,6 +503,23 @@ describe('Follow Prompt payload construction', () => {
         const fnStart = content.indexOf('async function enqueueFollowPrompt');
         const fnBody = content.slice(fnStart, content.indexOf('\n// ==', fnStart));
         expect(fnBody).not.toContain("'/.vscode/pipelines/'");
+    });
+
+    it('planFilePath includes tasks folder between workspace root and taskPath', () => {
+        // taskPath is relative to .vscode/tasks/, so planFilePath must include the tasks folder
+        const fnStart = content.indexOf('async function enqueueFollowPrompt');
+        const fnBody = content.slice(fnStart, content.indexOf('\n// ==', fnStart));
+        expect(fnBody).toContain("tasksFolder + '/' + taskPath");
+        expect(fnBody).toContain('getTasksFolderPath');
+    });
+
+    it('planFilePath resolves correctly for nested task paths', () => {
+        // e.g. workspace + '/' + '.vscode/tasks' + '/' + 'coc/e2e-repo-tests/013-doc.md'
+        // NOT workspace + '/' + 'coc/e2e-repo-tests/013-doc.md' (missing .vscode/tasks/)
+        const fnStart = content.indexOf('async function enqueueFollowPrompt');
+        const fnBody = content.slice(fnStart, content.indexOf('\n// ==', fnStart));
+        // Must NOT concatenate workingDirectory directly with taskPath
+        expect(fnBody).not.toMatch(/workingDirectory\s*\+\s*['"`]\/['"`]\s*\+\s*taskPath\b/);
     });
 
     it('skill payload includes skillName field', () => {

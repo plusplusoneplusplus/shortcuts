@@ -129,6 +129,34 @@ interface DiscoveryCache {
 const discoveryCache: Record<string, DiscoveryCache> = {};
 const CACHE_TTL_MS = 60_000; // 60 seconds
 
+/**
+ * Default tasks folder path relative to workspace root.
+ * Matches DEFAULT_SETTINGS.folderPath in tasks-handler.ts.
+ */
+const DEFAULT_TASKS_FOLDER = '.vscode/tasks';
+
+/** Cache for workspace tasks folder paths (wsId → folderPath). */
+const tasksFolderCache: Record<string, { folder: string; fetchedAt: number }> = {};
+
+/**
+ * Resolve the tasks folder path for a workspace.
+ * Fetches from /api/workspaces/:id/tasks/settings and caches the result.
+ */
+export async function getTasksFolderPath(wsId: string): Promise<string> {
+    const cached = tasksFolderCache[wsId];
+    if (cached && (Date.now() - cached.fetchedAt) < CACHE_TTL_MS) {
+        return cached.folder;
+    }
+    try {
+        const data = await fetchApi(`/workspaces/${encodeURIComponent(wsId)}/tasks/settings`);
+        const folder = (data && typeof data.folderPath === 'string') ? data.folderPath : DEFAULT_TASKS_FOLDER;
+        tasksFolderCache[wsId] = { folder, fetchedAt: Date.now() };
+        return folder;
+    } catch {
+        return DEFAULT_TASKS_FOLDER;
+    }
+}
+
 export async function fetchPromptsAndSkills(wsId: string): Promise<{ prompts: PromptItem[]; skills: SkillItem[] }> {
     const cached = discoveryCache[wsId];
     if (cached && (Date.now() - cached.fetchedAt) < CACHE_TTL_MS) {
@@ -276,9 +304,11 @@ async function enqueueFollowPrompt(
     const ws = appState.workspaces.find((w: any) => w.id === wsId);
     const workingDirectory = ws?.rootPath || '';
 
-    // Construct absolute planFilePath from workspace root + taskPath
+    // taskPath is relative to the tasks folder (e.g. "coc/e2e-repo-tests/013-doc.md"),
+    // so we must include the tasks folder prefix when constructing the absolute path.
+    const tasksFolder = await getTasksFolderPath(wsId);
     const planFilePath = workingDirectory
-        ? workingDirectory + '/' + taskPath
+        ? workingDirectory + '/' + tasksFolder + '/' + taskPath
         : taskPath;
 
     // Build payload based on item type
