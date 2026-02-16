@@ -8,7 +8,8 @@ import { appState, taskPanelState } from './state';
 import { getApiBase } from './config';
 import { fetchApi } from './core';
 import { escapeHtmlClient } from './utils';
-import { showAIActionDropdown, hideAIActionDropdown } from './ai-actions';
+import { showAIActionDropdown, hideAIActionDropdown, showFollowPromptSubmenu } from './ai-actions';
+import { showToast } from './ai-actions';
 
 // ================================================================
 // Types
@@ -49,6 +50,22 @@ let currentTasks: TaskFolder | null = null;
 /** Clear the checkbox selection state. */
 function clearSelection(): void {
     taskPanelState.selectedFilePaths.clear();
+}
+
+/**
+ * Get currently selected file paths (relative to tasks folder).
+ * Returns empty array if no selections.
+ */
+export function getSelectedFilePaths(): string[] {
+    return Array.from(taskPanelState.selectedFilePaths);
+}
+
+/**
+ * Clear all file selections and update UI.
+ */
+export function clearFileSelections(): void {
+    taskPanelState.selectedFilePaths.clear();
+    renderTasksInRepo();
 }
 
 export async function fetchRepoTasks(wsId: string): Promise<void> {
@@ -386,6 +403,50 @@ function collectPlanFilesInFolder(folder: TaskFolder): string[] {
     return paths;
 }
 
+/**
+ * Recursively collect all markdown files (.md) in a folder and its subfolders.
+ * Returns array of relativePath values. Excludes archived items.
+ */
+function collectMarkdownFilesInFolder(folder: TaskFolder): string[] {
+    const files: string[] = [];
+
+    // Add single documents
+    if (folder.singleDocuments) {
+        for (const doc of folder.singleDocuments) {
+            if (doc.relativePath && !doc.isArchived) {
+                const docPath = doc.relativePath + '/' + doc.fileName;
+                files.push(docPath);
+            } else if (!doc.isArchived && doc.fileName) {
+                files.push(doc.fileName);
+            }
+        }
+    }
+
+    // Add from document groups
+    if (folder.documentGroups) {
+        for (const group of folder.documentGroups) {
+            if (!group.isArchived) {
+                for (const doc of group.documents) {
+                    if (doc.relativePath) {
+                        files.push(doc.relativePath + '/' + doc.fileName);
+                    } else if (doc.fileName) {
+                        files.push(doc.fileName);
+                    }
+                }
+            }
+        }
+    }
+
+    // Recurse into subfolders
+    if (folder.children) {
+        for (const child of folder.children) {
+            files.push(...collectMarkdownFilesInFolder(child));
+        }
+    }
+
+    return files;
+}
+
 function renderTasksInRepo(): void {
     const container = document.getElementById('repo-tasks-tree');
     if (!container) return;
@@ -471,9 +532,10 @@ function renderColumn(folder: TaskFolder, folderPath: string, selectedChild: str
     const selCount = taskPanelState.selectedFilePaths.size;
     let html = '<div class="miller-column" data-column-path="' + escapeHtmlClient(folderPath) + '">';
     html += '<div class="miller-column-header">' + escapeHtmlClient(label);
-    // Show "Queue Selected (N)" button in the column that owns the selected items
+    // Show bulk action buttons in the column that owns the selected items
     if (selCount > 0 && isSelectionInColumn(folder, folderPath)) {
         html += '<button class="miller-bulk-action-btn" data-action="queue-selected">Queue Selected (' + selCount + ')</button>';
+        html += '<button class="miller-bulk-action-btn" data-action="follow-prompt-selected">\uD83D\uDCDD Follow Prompt (' + selCount + ')</button>';
     }
     html += '</div>';
     html += '<div class="miller-column-body">';
@@ -590,6 +652,13 @@ function attachMillerEventListeners(container: HTMLElement): void {
         // 0b. Queue Selected button
         if (target.matches('[data-action="queue-selected"]')) {
             e.stopPropagation();
+            return;
+        }
+
+        // 0b2. Follow Prompt (Selected) button
+        if (target.matches('[data-action="follow-prompt-selected"]')) {
+            e.stopPropagation();
+            applyFollowPromptToSelected();
             return;
         }
 
@@ -1035,6 +1104,18 @@ function showFolderContextMenu(x: number, y: number, folderPath: string): void {
             '<span class="ctx-menu-icon">📋</span><span>' + escapeHtmlClient(queueLabel) + '</span>' +
         '</div>';
 
+    // Follow Prompt (Bulk)
+    const mdCount = currentTasks ? collectMarkdownFilesInFolder(
+        resolveFolderByPath(currentTasks, folderPath) || { name: '', relativePath: '', children: [], documentGroups: [], singleDocuments: [] }
+    ).length : 0;
+    const bulkLabel = mdCount > 0
+        ? `Follow Prompt (${mdCount} file${mdCount > 1 ? 's' : ''})`
+        : 'Follow Prompt (none)';
+    itemsHtml +=
+        '<div class="task-context-menu-item' + (mdCount === 0 ? ' task-context-menu-item-disabled' : '') + '" data-ctx-action="bulk-follow-prompt" data-ctx-path="' + escapeHtmlClient(folderPath) + '">' +
+            '<span class="ctx-menu-icon">📝</span><span>' + escapeHtmlClient(bulkLabel) + '</span>' +
+        '</div>';
+
     // Separator
     itemsHtml += '<div class="task-context-menu-separator"></div>';
 
@@ -1116,6 +1197,19 @@ function showFolderContextMenu(x: number, y: number, folderPath: string): void {
             case 'queue-all-tasks':
                 queueAllTasksInFolder(wsId, path);
                 break;
+            case 'bulk-follow-prompt': {
+                if (!currentTasks) break;
+                const folder = resolveFolderByPath(currentTasks, path);
+                if (!folder) break;
+                const filesInFolder = collectMarkdownFilesInFolder(folder);
+                if (filesInFolder.length === 0) {
+                    showToast('No markdown files found in folder', 'error');
+                    break;
+                }
+                const folderLabel = path.split('/').pop() || path;
+                showFollowPromptSubmenu(wsId, filesInFolder, `${filesInFolder.length} tasks in ${folderLabel}`);
+                break;
+            }
             case 'move-folder':
                 showMoveDialog(wsId, path);
                 break;
@@ -1255,6 +1349,23 @@ function queueAllTasksInFolder(_wsId: string, folderPath: string): void {
 
     // TODO (commit 004): Show queue dialog with pre-selected files
     alert(`Feature in progress: Would queue ${planFiles.length} plan files.\n\nFiles: ${planFiles.slice(0, 3).join(', ')}${planFiles.length > 3 ? '...' : ''}`);
+}
+
+/**
+ * Launch follow prompt dialog for currently selected files.
+ */
+function applyFollowPromptToSelected(): void {
+    const selected = getSelectedFilePaths();
+    if (selected.length === 0) {
+        showToast('No files selected', 'error');
+        return;
+    }
+    const wsId = taskPanelState.selectedWorkspaceId;
+    if (!wsId) {
+        showToast('No workspace selected', 'error');
+        return;
+    }
+    showFollowPromptSubmenu(wsId, selected, `${selected.length} selected tasks`);
 }
 
 /** Delete a folder after confirmation via the DELETE API. */
@@ -1854,3 +1965,6 @@ export function showRepoAIGenerateDialog(wsId: string, preselectedFolder?: strin
 (window as any).createRepoFolder = createRepoFolder;
 (window as any).showRepoAIGenerateDialog = showRepoAIGenerateDialog;
 (window as any).openTaskFileFromHash = openTaskFileFromHash;
+(window as any).getSelectedFilePaths = getSelectedFilePaths;
+(window as any).clearFileSelections = clearFileSelections;
+(window as any).applyFollowPromptToSelected = applyFollowPromptToSelected;

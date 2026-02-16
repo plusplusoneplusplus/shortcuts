@@ -982,6 +982,18 @@ body {
     font-weight: 600;
     margin: 0;
 }
+/* Bulk mode task count badge in follow prompt dialog */
+.bulk-count-badge {
+    display: inline-block;
+    background: var(--accent, #0078d4);
+    color: white;
+    font-size: 0.75em;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 12px;
+    margin-left: 8px;
+    vertical-align: middle;
+}
 .enqueue-close-btn {
     background: transparent;
     border: none;

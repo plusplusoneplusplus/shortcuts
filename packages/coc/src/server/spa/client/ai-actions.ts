@@ -189,7 +189,22 @@ export function invalidateDiscoveryCache(wsId?: string): void {
 // Follow Prompt submenu
 // ================================================================
 
-export function showFollowPromptSubmenu(wsId: string, taskPath: string, taskName: string): void {
+/**
+ * Show Follow Prompt submenu.
+ *
+ * @param wsId - Workspace ID
+ * @param taskPathOrPaths - Single task path (string) or array of task paths for bulk mode
+ * @param displayName - Display name for the task(s)
+ */
+export function showFollowPromptSubmenu(
+    wsId: string,
+    taskPathOrPaths: string | string[],
+    displayName: string
+): void {
+    const isBulkMode = Array.isArray(taskPathOrPaths);
+    const taskPaths = isBulkMode ? taskPathOrPaths : [taskPathOrPaths];
+    const taskCount = taskPaths.length;
+
     document.getElementById('follow-prompt-submenu')?.remove();
 
     const overlay = document.createElement('div');
@@ -198,7 +213,9 @@ export function showFollowPromptSubmenu(wsId: string, taskPath: string, taskName
     overlay.innerHTML =
         '<div class="enqueue-dialog">' +
             '<div class="enqueue-dialog-header">' +
-                '<h2>Follow Prompt</h2>' +
+                '<h2>Follow Prompt' +
+                    (isBulkMode ? ' <span class="bulk-count-badge">' + taskCount + ' tasks</span>' : '') +
+                '</h2>' +
                 '<button class="enqueue-close-btn" id="fp-close">&times;</button>' +
             '</div>' +
             '<div class="enqueue-field" style="padding:0 16px">' +
@@ -286,7 +303,12 @@ export function showFollowPromptSubmenu(wsId: string, taskPath: string, taskName
             const path = fpItem.dataset.path;
             const model = (document.getElementById('fp-model') as HTMLSelectElement)?.value || '';
             overlay.remove();
-            enqueueFollowPrompt(wsId, taskPath, taskName, type, name, path, model);
+
+            if (isBulkMode) {
+                enqueueBulkFollowPrompt(wsId, taskPaths, displayName, type, name, path, model);
+            } else {
+                enqueueFollowPrompt(wsId, taskPaths[0], displayName, type, name, path, model);
+            }
         });
     });
 }
@@ -357,6 +379,95 @@ async function enqueueFollowPrompt(
         }
     } catch {
         showToast('Network error enqueuing task', 'error');
+    }
+}
+
+/**
+ * Enqueue a bulk follow prompt action to multiple tasks.
+ * Submits to POST /queue/bulk API endpoint.
+ */
+async function enqueueBulkFollowPrompt(
+    wsId: string,
+    taskPaths: string[],
+    displayName: string,
+    itemType: string,
+    itemName: string,
+    itemPath?: string,
+    model?: string,
+): Promise<void> {
+    const ws = appState.workspaces.find((w: any) => w.id === wsId);
+    const workingDirectory = ws?.rootPath || '';
+
+    const tasksFolder = await getTasksFolderPath(wsId);
+
+    const items = taskPaths.map((taskPath) => {
+        const planFilePath = workingDirectory
+            ? workingDirectory + '/' + tasksFolder + '/' + taskPath
+            : taskPath;
+
+        let payload: Record<string, string>;
+        if (itemType === 'prompt') {
+            const promptFilePath = workingDirectory
+                ? workingDirectory + '/' + (itemPath || '')
+                : itemPath || '';
+            payload = { promptFilePath, planFilePath, workingDirectory };
+        } else {
+            payload = {
+                skillName: itemName,
+                promptContent: `Use the ${itemName} skill.`,
+                planFilePath,
+                workingDirectory,
+            };
+        }
+
+        const taskName = taskPath.split('/').pop()?.replace(/\.md$/, '') || taskPath;
+        const queueItem: any = {
+            type: 'follow-prompt' as const,
+            priority: 'normal',
+            displayName: `Follow: ${itemName} on ${taskName}`,
+            payload,
+            config: {},
+        };
+        if (model) {
+            queueItem.config.model = model;
+        }
+        return queueItem;
+    });
+
+    try {
+        const res = await fetch(getApiBase() + '/queue/bulk', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ items }),
+        });
+
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: 'Failed' }));
+            showToast('Failed to enqueue bulk: ' + (err.error || 'Unknown error'), 'error');
+            return;
+        }
+
+        const result = await res.json();
+        const successCount = result.results?.filter((r: any) => r.success).length || 0;
+        const failCount = result.results?.filter((r: any) => !r.success).length || 0;
+
+        if (failCount === 0) {
+            showToast(`Enqueued ${successCount} tasks`, 'success');
+        } else {
+            showToast(`Enqueued ${successCount} tasks, ${failCount} failed`, 'error');
+        }
+
+        // Clear selections if this was a checkbox-based bulk operation
+        if ((window as any).clearFileSelections) {
+            (window as any).clearFileSelections();
+        }
+
+        // Refresh queue
+        if ((window as any).fetchQueue) {
+            (window as any).fetchQueue();
+        }
+    } catch {
+        showToast('Network error enqueuing bulk tasks', 'error');
     }
 }
 
