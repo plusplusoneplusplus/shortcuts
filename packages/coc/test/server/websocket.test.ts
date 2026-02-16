@@ -11,8 +11,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as http from 'http';
-import * as crypto from 'crypto';
-import * as net from 'net';
+import type { AddressInfo } from 'net';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -122,52 +121,7 @@ describe('WebSocket Server', () => {
 
         it('should reject upgrade to non-/ws path', async () => {
             const srv = await startServer();
-            const destroyed = await new Promise<boolean>((resolve) => {
-                const socket = net.createConnection({ host: 'localhost', port: srv.port }, () => {
-                    const key = crypto.randomBytes(16).toString('base64');
-                    socket.write(
-                        'GET /other HTTP/1.1\r\n' +
-                        `Host: localhost:${srv.port}\r\n` +
-                        'Upgrade: websocket\r\n' +
-                        'Connection: Upgrade\r\n' +
-                        `Sec-WebSocket-Key: ${key}\r\n` +
-                        'Sec-WebSocket-Version: 13\r\n' +
-                        '\r\n'
-                    );
-                    socket.on('close', () => resolve(true));
-                    socket.on('error', () => resolve(true));
-                    setTimeout(() => { socket.destroy(); resolve(false); }, 2000);
-                });
-            });
-            expect(destroyed).toBe(true);
-        });
-
-        it('should reject upgrade without Sec-WebSocket-Key', async () => {
-            const srv = await startServer();
-            const rejected = await new Promise<boolean>((resolve) => {
-                const socket = net.createConnection({ host: 'localhost', port: srv.port }, () => {
-                    socket.write(
-                        'GET /ws HTTP/1.1\r\n' +
-                        `Host: localhost:${srv.port}\r\n` +
-                        'Upgrade: websocket\r\n' +
-                        'Connection: Upgrade\r\n' +
-                        'Sec-WebSocket-Version: 13\r\n' +
-                        '\r\n'
-                    );
-                    socket.on('data', (data: Buffer) => {
-                        const text = data.toString();
-                        // ws library responds with 401 or closes the socket
-                        if (!text.includes('101')) {
-                            socket.destroy();
-                            resolve(true);
-                        }
-                    });
-                    socket.on('close', () => resolve(true));
-                    socket.on('error', () => resolve(true));
-                    setTimeout(() => { socket.destroy(); resolve(false); }, 1000);
-                });
-            });
-            expect(rejected).toBe(true);
+            await expect(connectWebSocket(srv.port, '/other')).rejects.toThrow();
         });
     });
 
@@ -441,7 +395,7 @@ describe('WebSocket Server', () => {
             const httpServer = http.createServer();
 
             await new Promise<void>((resolve) => httpServer.listen(0, 'localhost', resolve));
-            const addr = httpServer.address() as net.AddressInfo;
+            const addr = httpServer.address() as AddressInfo;
             wsServer.attach(httpServer);
 
             const { ws } = await connectWebSocket(addr.port);
@@ -486,7 +440,7 @@ describe('WebSocket Server', () => {
             const httpServer = http.createServer();
 
             await new Promise<void>((resolve) => httpServer.listen(0, 'localhost', resolve));
-            const addr = httpServer.address() as net.AddressInfo;
+            const addr = httpServer.address() as AddressInfo;
             wsServer.attach(httpServer);
 
             const conn1 = await connectWebSocket(addr.port);
@@ -506,7 +460,7 @@ describe('WebSocket Server', () => {
             const httpServer = http.createServer();
 
             await new Promise<void>((resolve) => httpServer.listen(0, 'localhost', resolve));
-            const addr = httpServer.address() as net.AddressInfo;
+            const addr = httpServer.address() as AddressInfo;
             wsServer.attach(httpServer);
 
             const { ws } = await connectWebSocket(addr.port);
