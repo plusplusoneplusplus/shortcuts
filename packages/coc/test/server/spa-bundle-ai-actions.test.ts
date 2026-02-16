@@ -347,6 +347,14 @@ describe('client bundle — Follow Prompt functions', () => {
         // Should not contain the old stub log message
         expect(script).not.toContain('stub action');
     });
+
+    it('contains fp-model select id for Follow Prompt model dropdown', () => {
+        expect(script).toContain('fp-model');
+    });
+
+    it('contains enqueue-model reference for populating model options', () => {
+        expect(script).toContain('enqueue-model');
+    });
 });
 
 // ============================================================================
@@ -464,5 +472,67 @@ describe('Follow Prompt payload construction', () => {
         expect(content).toContain('displayName:');
         expect(content).toContain('payload,');
         expect(content).toContain('config: {},');
+    });
+});
+
+// ============================================================================
+// Follow Prompt model selection
+// ============================================================================
+
+describe('Follow Prompt model selection', () => {
+    let content: string;
+    beforeAll(() => { content = readClientFile('ai-actions.ts'); });
+
+    // -- Model dropdown UI --
+
+    it('showFollowPromptSubmenu includes model select with fp-model id', () => {
+        expect(content).toContain("id=\"fp-model\"");
+    });
+
+    it('showFollowPromptSubmenu includes model label with optional hint', () => {
+        expect(content).toContain('Model <span class="enqueue-optional">(optional)</span>');
+    });
+
+    it('showFollowPromptSubmenu includes Default option with empty value', () => {
+        expect(content).toContain('<option value="">Default</option>');
+    });
+
+    it('showFollowPromptSubmenu populates model options from #enqueue-model', () => {
+        expect(content).toContain("document.getElementById('enqueue-model')");
+        expect(content).toContain("document.getElementById('fp-model')");
+        expect(content).toContain('fpSourceSelect');
+        expect(content).toContain('fpTargetSelect');
+    });
+
+    it('showFollowPromptSubmenu clones options from source select', () => {
+        expect(content).toContain('opt.cloneNode(true)');
+    });
+
+    // -- Model passed to enqueue --
+
+    it('click handler reads model value from fp-model select', () => {
+        expect(content).toContain("(document.getElementById('fp-model') as HTMLSelectElement)?.value");
+    });
+
+    it('enqueueFollowPrompt accepts model parameter', () => {
+        const sig = content.match(/function enqueueFollowPrompt\([^)]+\)/s);
+        expect(sig).toBeTruthy();
+        expect(sig![0]).toContain('model?: string');
+    });
+
+    it('enqueueFollowPrompt sets config.model when model is provided', () => {
+        expect(content).toContain('body.config.model = model');
+    });
+
+    it('enqueueFollowPrompt only sets config.model when model is truthy', () => {
+        expect(content).toContain('if (model)');
+        expect(content).toContain('body.config.model = model');
+    });
+
+    it('config.model pattern matches Update Document implementation', () => {
+        // Both Follow Prompt and Update Document use the same pattern
+        const matches = content.match(/body\.config\.model\s*=\s*model/g);
+        expect(matches).toBeTruthy();
+        expect(matches!.length).toBe(2); // once in enqueueFollowPrompt, once in Update Document
     });
 });

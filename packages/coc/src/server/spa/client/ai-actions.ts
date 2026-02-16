@@ -172,9 +172,26 @@ export function showFollowPromptSubmenu(wsId: string, taskPath: string, taskName
                 '<h2>Follow Prompt</h2>' +
                 '<button class="enqueue-close-btn" id="fp-close">&times;</button>' +
             '</div>' +
+            '<div class="enqueue-field" style="padding:0 16px">' +
+                '<label for="fp-model">Model <span class="enqueue-optional">(optional)</span></label>' +
+                '<select id="fp-model">' +
+                    '<option value="">Default</option>' +
+                '</select>' +
+            '</div>' +
             '<div class="follow-prompt-body" style="padding:16px;color:var(--text-secondary)">Loading\u2026</div>' +
         '</div>';
     document.body.appendChild(overlay);
+
+    // Populate model options from the server-rendered #enqueue-model select
+    const fpSourceSelect = document.getElementById('enqueue-model') as HTMLSelectElement | null;
+    const fpTargetSelect = document.getElementById('fp-model') as HTMLSelectElement | null;
+    if (fpSourceSelect && fpTargetSelect) {
+        for (const opt of Array.from(fpSourceSelect.options)) {
+            if (opt.value) {
+                fpTargetSelect.appendChild(opt.cloneNode(true) as HTMLOptionElement);
+            }
+        }
+    }
 
     // Close handlers
     const closeBtn = document.getElementById('fp-close');
@@ -234,8 +251,9 @@ export function showFollowPromptSubmenu(wsId: string, taskPath: string, taskName
             const type = fpItem.dataset.type || '';
             const name = fpItem.dataset.name || '';
             const path = fpItem.dataset.path;
+            const model = (document.getElementById('fp-model') as HTMLSelectElement)?.value || '';
             overlay.remove();
-            enqueueFollowPrompt(wsId, taskPath, taskName, type, name, path);
+            enqueueFollowPrompt(wsId, taskPath, taskName, type, name, path, model);
         });
     });
 }
@@ -247,6 +265,7 @@ async function enqueueFollowPrompt(
     itemType: string,
     itemName: string,
     itemPath?: string,
+    model?: string,
 ): Promise<void> {
     // Fetch task content for additionalContext
     const data = await fetchApi(
@@ -275,13 +294,16 @@ async function enqueueFollowPrompt(
         };
     }
 
-    const body = {
+    const body: any = {
         type: 'follow-prompt' as const,
         priority: 'normal',
         displayName: `Follow: ${itemName} on ${taskName}`,
         payload,
         config: {},
     };
+    if (model) {
+        body.config.model = model;
+    }
 
     try {
         const res = await fetch(getApiBase() + '/queue', {
