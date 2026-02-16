@@ -89,7 +89,7 @@ When creating new tree data providers, prefer extending these base classes over 
 - **Server:** `coc serve` command in `packages/coc/` starts an HTTP server (default port 4000)
 - **Process Store:** `ProcessStore` interface and `FileProcessStore` in `packages/pipeline-core/` — JSON file-based persistence at `~/.coc/`, atomic writes, 500-process retention
 - **Workspace Awareness:** `WorkspaceInfo` type with deterministic SHA-256 ID from workspace root path; multiple VS Code workspaces submit processes to a single server
-- **Real-Time:** Raw WebSocket (RFC 6455, `/ws`) for process lifecycle events with workspace-scoped filtering; SSE (`/api/processes/:id/stream`) for streaming individual process output
+- **Real-Time:** WebSocket (`ws` library, `/ws`) for process lifecycle events with workspace-scoped filtering; SSE (`/api/processes/:id/stream`) for streaming individual process output
 - **REST API:** CRUD endpoints for processes (`/api/processes`), workspace registration (`/api/workspaces`), stats (`/api/stats`), and health (`/api/health`)
 - **SPA Dashboard:** Inline HTML/CSS/JS (no build step), vanilla JS, dark/light/auto theme support
 - **Extension Client:** Fire-and-forget `ServerClient` in `src/shortcuts/ai-service/server-client.ts` — bounded offline queue (500 items) with exponential back-off, connection state events

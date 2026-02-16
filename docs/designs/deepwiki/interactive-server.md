@@ -68,7 +68,7 @@ The current static site works well for browsing, but lacks the interactive explo
 
 The server uses only Node.js built-in modules (`http`, `fs`, `path`, `url`, `crypto`) and the existing `@plusplusoneplusplus/pipeline-core` dependency. No Express, no socket.io — keeping the package lightweight.
 
-WebSocket is implemented via the built-in `ws` upgrade on the `http` server (Node.js raw WebSocket handshake is ~40 lines).
+WebSocket is implemented via the `ws` library in noServer mode, attached to the `http` server.
 
 ## CLI Integration
 

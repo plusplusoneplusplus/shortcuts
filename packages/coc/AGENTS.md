@@ -84,7 +84,7 @@ src/
 │   ├── index.ts          # Server factory - createExecutionServer(), wires store + WebSocket + routes
 │   ├── router.ts         # HTTP router - Request routing, CORS, static files, SPA fallback
 │   ├── api-handler.ts    # REST API - CRUD for processes/workspaces, stats, query filtering
-│   ├── websocket.ts      # WebSocket server - Raw RFC 6455, workspace-scoped event broadcasting
+│   ├── websocket.ts      # WebSocket server - `ws` library, workspace-scoped event broadcasting
 │   ├── sse-handler.ts    # SSE streaming - Real-time process output via Server-Sent Events
 │   ├── types.ts          # Server types - ExecutionServer, Route, ServeCommandOptions
 │   └── spa/              # Dashboard SPA
