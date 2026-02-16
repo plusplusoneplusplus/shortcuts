@@ -9,6 +9,7 @@ MUST BE PROVIDED BY USER
 All plan files are written to: `.vscode/tasks/<feature>/<work>/`
 - `<feature>`: The high-level feature area (e.g., `auth`, `pipeline-refactor`)
 - `<work>`: A short slug for this specific body of work (e.g., `add-oauth`, `extract-core`)
+- check existing .vscode/tasks folders to see if relavant feature already exists
 
 ---
 
