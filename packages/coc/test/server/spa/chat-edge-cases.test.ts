@@ -233,6 +233,205 @@ describe('client bundle — chat edge cases', () => {
     });
 
     // ================================================================
+    // XSS prevention
+    // ================================================================
+
+    describe('XSS prevention', () => {
+        it('escapeHtmlClient replaces < and > with entities', () => {
+            expect(script).toContain('.replace(/</g');
+            expect(script).toContain('.replace(/>/g');
+        });
+
+        it('escapeHtmlClient replaces & with &amp;', () => {
+            expect(script).toContain('.replace(/&/g');
+        });
+
+        it('escapeHtmlClient replaces " with &quot;', () => {
+            expect(script).toContain('.replace(/"/g');
+        });
+
+        it('escapeHtmlClient handles null/undefined input gracefully', () => {
+            expect(script).toContain('if (!str) return');
+        });
+
+        it('renderChatMessage escapes turn.content via data-raw attribute', () => {
+            expect(script).toContain('escapeHtmlClient(turn.content)');
+            expect(script).toContain('data-raw');
+        });
+
+        it('error-alert content is escaped via escapeHtmlClient', () => {
+            expect(script).toContain('escapeHtmlClient(process.error)');
+        });
+
+        it('bubble-error content is escaped via escapeHtmlClient', () => {
+            expect(script).toContain('escapeHtmlClient(err.message');
+        });
+
+        it('process header h1 is escaped via escapeHtmlClient', () => {
+            expect(script).toContain('escapeHtmlClient(detailTitle)');
+        });
+
+        it('metadata grid values are escaped via escapeHtmlClient', () => {
+            expect(script).toContain('escapeHtmlClient(process.workspaceId)');
+            expect(script).toContain('escapeHtmlClient(typeLabel(');
+        });
+
+        it('inlineFormat escapes content inside inline code spans', () => {
+            expect(script).toContain('escapeHtmlClient(c)');
+        });
+
+        it('renderMarkdown escapes code block content via escapeHtmlClient', () => {
+            expect(script).toContain('escapeHtmlClient(codeContent)');
+        });
+    });
+
+    // ================================================================
+    // Error message rendering
+    // ================================================================
+
+    describe('error message rendering', () => {
+        it('renders error-alert div when process.error is present', () => {
+            expect(script).toContain('error-alert');
+            expect(script).toContain('process.error');
+        });
+
+        it('error-alert uses escapeHtmlClient for error text', () => {
+            expect(script).toContain('escapeHtmlClient(process.error)');
+        });
+
+        it('error-alert has CSS styles in bundle', () => {
+            expect(styles).toContain('.error-alert');
+        });
+
+        it('error-alert uses --status-failed color variable', () => {
+            expect(styles).toContain('--status-failed');
+        });
+
+        it('error-alert CSS has rgba(241, 76, 76) tinted background', () => {
+            expect(styles).toContain('rgba(241, 76, 76, 0.08)');
+        });
+
+        it('error-alert CSS has border with rgba(241, 76, 76) color', () => {
+            expect(styles).toContain('rgba(241, 76, 76, 0.2)');
+        });
+
+        it('renders bubble-error div on generic POST failure', () => {
+            expect(script).toContain('bubble-error');
+        });
+
+        it('bubble-error includes retry button with retry-btn class', () => {
+            expect(script).toContain('retry-btn');
+            expect(script).toContain('Retry');
+        });
+
+        it('bubble-error includes error message text (Failed to send message)', () => {
+            expect(script).toContain('Failed to send message');
+        });
+
+        it('adds error class to assistant bubble on failure', () => {
+            expect(script).toContain('classList.add("error")');
+        });
+
+        it('has chat-error-bubble CSS styles', () => {
+            expect(styles).toContain('.chat-error-bubble');
+        });
+    });
+
+    // ================================================================
+    // Empty conversation and edge states
+    // ================================================================
+
+    describe('empty conversation and edge states', () => {
+        it('shows "Waiting for response..." when process is running with no turns', () => {
+            expect(script).toContain('Waiting for response...');
+        });
+
+        it('shows "No conversation data available." for non-running process with no turns', () => {
+            expect(script).toContain('No conversation data available.');
+        });
+
+        it('renders synthetic bubbles from promptPreview/result for legacy processes', () => {
+            expect(script).toContain('promptPreview');
+            expect(script).toContain('proc.result');
+        });
+
+        it('renders streaming turn from queueTaskStreamContent legacy path', () => {
+            expect(script).toContain('queueTaskStreamContent');
+        });
+
+        it('conversation-waiting class is used for empty state messages', () => {
+            expect(script).toContain('conversation-waiting');
+        });
+
+        it('renderMarkdown returns empty string for empty/falsy input', () => {
+            expect(script).toContain('if (!text) return ""');
+        });
+
+        it('renderChatMessage handles empty content gracefully', () => {
+            expect(script).toContain('turn.content || ""');
+        });
+
+        it('renderChatMessage omits copy button when content is empty', () => {
+            expect(script).toContain('if (turn.content)');
+            expect(script).toContain('bubble-copy-btn');
+        });
+    });
+
+    // ================================================================
+    // Timestamp display
+    // ================================================================
+
+    describe('timestamp display', () => {
+        it('renderChatMessage formats timestamp via toLocaleTimeString', () => {
+            expect(script).toContain('toLocaleTimeString');
+        });
+
+        it('timestamp is wrapped in span with timestamp class', () => {
+            expect(script).toContain('timestamp');
+        });
+
+        it('timestamp is conditional on turn.timestamp presence', () => {
+            expect(script).toContain('turn.timestamp');
+        });
+
+        it('synthetic backward-compat bubbles pass startTime/endTime as timestamp', () => {
+            expect(script).toContain('proc.startTime');
+            expect(script).toContain('proc.endTime');
+        });
+    });
+
+    // ================================================================
+    // Streaming text accumulation
+    // ================================================================
+
+    describe('streaming text accumulation', () => {
+        it('connectFollowUpSSE initializes accumulatedContent as empty string', () => {
+            expect(script).toContain('accumulatedContent = ""');
+        });
+
+        it('chunk handler appends data.content to accumulatedContent', () => {
+            expect(script).toContain('accumulatedContent +=');
+        });
+
+        it('chunk handler calls renderMarkdown on accumulated content', () => {
+            expect(script).toContain('renderMarkdown(accumulatedContent)');
+        });
+
+        it('updateConversationContent calls renderMarkdown on queueTaskStreamContent', () => {
+            expect(script).toContain('renderMarkdown(queueTaskStreamContent)');
+        });
+
+        it('streaming bubble content div is updated via innerHTML with rendered markdown', () => {
+            expect(script).toContain('.innerHTML');
+            expect(script).toContain('renderMarkdown');
+        });
+
+        it('chunk handler removes streaming class after first content arrives', () => {
+            expect(script).toContain('classList.remove("streaming")');
+        });
+    });
+
+    // ================================================================
     // Concurrent viewer handling
     // ================================================================
 

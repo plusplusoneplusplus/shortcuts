@@ -7,6 +7,13 @@
 
 import { describe, it, expect, beforeAll } from 'vitest';
 import { getClientBundle } from './spa-test-helpers';
+import * as fs from 'fs';
+import * as path from 'path';
+
+function getStylesContent(): string {
+    const cssPath = path.join(__dirname, '..', '..', 'src', 'server', 'spa', 'client', 'dist', 'bundle.css');
+    return fs.readFileSync(cssPath, 'utf8');
+}
 
 describe('client bundle — chat bubble rendering', () => {
     let script: string;
@@ -168,5 +175,101 @@ describe('client bundle — chat bubble rendering', () => {
         // The SSE chunk handler should target .chat-message-content inside the bubble
         // rather than replacing the entire bubble innerHTML
         expect(script).toContain('.chat-message-content');
+    });
+});
+
+// ================================================================
+// Markdown rendering in chat bubbles
+// ================================================================
+
+describe('renderMarkdown in chat bubbles', () => {
+    let script: string;
+    let styles: string;
+    beforeAll(() => {
+        script = getClientBundle();
+        styles = getStylesContent();
+    });
+
+    it('renderMarkdown function is defined in bundle', () => {
+        expect(script).toContain('renderMarkdown');
+    });
+
+    it('renders fenced code blocks with pre and code tags', () => {
+        expect(script).toContain('<pre><code');
+    });
+
+    it('renders language class on code blocks', () => {
+        expect(script).toContain('language-');
+    });
+
+    it('renders headings h1 through h4', () => {
+        expect(script).toContain('<h1');
+        expect(script).toContain('<h2');
+        expect(script).toContain('<h3');
+        expect(script).toContain('<h4');
+    });
+
+    it('renders unordered lists with ul and li tags', () => {
+        expect(script).toContain('<ul>');
+        expect(script).toContain('<li>');
+    });
+
+    it('renders ordered lists with ol tag', () => {
+        expect(script).toContain('<ol>');
+    });
+
+    it('renders blockquotes with blockquote tag', () => {
+        expect(script).toContain('<blockquote>');
+        expect(script).toContain('</blockquote>');
+    });
+
+    it('renders horizontal rules with hr tag', () => {
+        expect(script).toContain('<hr>');
+    });
+
+    it('renders inline code with code tag via inlineFormat', () => {
+        expect(script).toContain('<code>');
+        expect(script).toContain('</code>');
+    });
+
+    it('renders bold text with strong tag', () => {
+        expect(script).toContain('<strong>');
+        expect(script).toContain('</strong>');
+    });
+
+    it('renders italic text with em tag', () => {
+        expect(script).toContain('<em>');
+        expect(script).toContain('</em>');
+    });
+
+    it('renders links with a tag and target="_blank"', () => {
+        expect(script).toContain('<a href=');
+        expect(script).toContain('target="_blank"');
+    });
+
+    it('links include rel="noopener" for security', () => {
+        expect(script).toContain('rel="noopener"');
+    });
+
+    it('code block content is escaped via escapeHtmlClient', () => {
+        expect(script).toContain('escapeHtmlClient(codeContent)');
+    });
+
+    it('inline code content is escaped via escapeHtmlClient', () => {
+        expect(script).toContain('escapeHtmlClient(c)');
+    });
+
+    it('conversation-body has overflow-y auto for scrolling', () => {
+        expect(styles).toContain('.conversation-body');
+        expect(styles).toContain('overflow-y: auto');
+    });
+
+    it('conversation-body has word-wrap break-word for long content', () => {
+        expect(styles).toContain('word-wrap: break-word');
+    });
+
+    it('conversation-body pre has overflow-x auto for wide code', () => {
+        expect(styles).toContain('.conversation-body pre');
+        expect(styles).toContain('overflow-x: auto');
     });
 });
