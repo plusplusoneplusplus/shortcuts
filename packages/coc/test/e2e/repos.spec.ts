@@ -10,7 +10,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { test, expect } from './fixtures/server-fixture';
-import { seedWorkspace, request } from './fixtures/seed';
+import { seedWorkspace, seedProcess, request } from './fixtures/seed';
 import { createRepoFixture, createTasksFixture } from './fixtures/repo-fixtures';
 
 test.describe('Repos tab', () => {
@@ -468,5 +468,127 @@ test.describe('Sub-tab Navigation', () => {
         // Pipelines sub-tab should be active
         await expect(page.locator('.repo-sub-tab[data-subtab="pipelines"]')).toHaveClass(/active/);
         await expect(page.locator('.repo-sub-tab[data-subtab="info"]')).not.toHaveClass(/active/);
+    });
+});
+
+// ================================================================
+// Info Tab Content (006-info-tab-content)
+// ================================================================
+
+test.describe('Info Tab Content', () => {
+    test('meta grid shows path and color', async ({ page, serverUrl }) => {
+        await seedWorkspace(serverUrl, 'ws-info-1', 'info-repo', '/tmp/info-repo', '#16825d');
+
+        await page.goto(serverUrl);
+        await page.click('[data-tab="repos"]');
+        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+
+        // Click repo to show detail — Info is the default sub-tab
+        await page.locator('.repo-item').first().click();
+        await expect(page.locator('#repo-detail-content')).toBeVisible();
+        await expect(page.locator('.meta-grid')).toBeVisible();
+
+        // Verify path is displayed
+        const pathCell = page.locator('.meta-item .meta-path');
+        await expect(pathCell).toContainText('/tmp/info-repo');
+
+        // Verify color dot and color value are shown
+        const colorItem = page.locator('.meta-item', { hasText: 'Color' });
+        await expect(colorItem).toBeVisible();
+        await expect(colorItem.locator('.repo-color-dot')).toHaveAttribute('style', /background:\s*#16825d/);
+        await expect(colorItem).toContainText('#16825d');
+
+        // Verify pipeline and task count cells exist
+        await expect(page.locator('.meta-item', { hasText: 'Pipelines' })).toBeVisible();
+        await expect(page.locator('.meta-item', { hasText: 'Tasks' })).toBeVisible();
+    });
+
+    test('git info displays branch', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-git-info-'));
+        const repoDir = createRepoFixture(tmpDir);
+
+        try {
+            // Register workspace with the real git repo path
+            await seedWorkspace(serverUrl, 'ws-git-info', 'git-info-repo', repoDir);
+
+            await page.goto(serverUrl);
+            await page.click('[data-tab="repos"]');
+            await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+
+            await page.locator('.repo-item').first().click();
+            await expect(page.locator('.meta-grid')).toBeVisible();
+
+            // Branch cell should show a real branch name (main or master)
+            const branchItem = page.locator('.meta-item', { hasText: 'Branch' });
+            await expect(branchItem).toBeVisible();
+            await expect(branchItem.locator('span').last()).toContainText(/main|master/);
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+    });
+
+    test('stats show process counts', async ({ page, serverUrl }) => {
+        await seedWorkspace(serverUrl, 'ws-stats', 'stats-repo', '/tmp/stats-repo');
+
+        // Seed 3 completed + 1 failed process for this workspace
+        await seedProcess(serverUrl, 'stats-p1', { status: 'completed', workspaceId: 'ws-stats' });
+        await seedProcess(serverUrl, 'stats-p2', { status: 'completed', workspaceId: 'ws-stats' });
+        await seedProcess(serverUrl, 'stats-p3', { status: 'completed', workspaceId: 'ws-stats' });
+        await seedProcess(serverUrl, 'stats-p4', { status: 'failed', workspaceId: 'ws-stats' });
+
+        await page.goto(serverUrl);
+        await page.click('[data-tab="repos"]');
+        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+
+        // Check sidebar stat counts
+        const statCounts = page.locator('.repo-stat-counts');
+        await expect(statCounts).toBeVisible();
+        // ✓ 3 (completed) and ✗ 1 (failed)
+        await expect(statCounts).toContainText('3');
+        await expect(statCounts).toContainText('1');
+
+        // Click repo to verify in Info tab meta grid
+        await page.locator('.repo-item').first().click();
+        await expect(page.locator('.meta-grid')).toBeVisible();
+
+        const completedItem = page.locator('.meta-item', { hasText: 'Completed' });
+        await expect(completedItem).toContainText('3');
+        const failedItem = page.locator('.meta-item', { hasText: 'Failed' });
+        await expect(failedItem).toContainText('1');
+        const runningItem = page.locator('.meta-item', { hasText: 'Running' });
+        await expect(runningItem).toContainText('0');
+    });
+
+    test('recent processes list', async ({ page, serverUrl }) => {
+        await seedWorkspace(serverUrl, 'ws-recent', 'recent-repo', '/tmp/recent-repo');
+
+        // Seed 5 processes for this workspace
+        for (let i = 1; i <= 5; i++) {
+            await seedProcess(serverUrl, `recent-p${i}`, {
+                status: 'completed',
+                workspaceId: 'ws-recent',
+                promptPreview: `Recent Process ${i}`,
+            });
+        }
+
+        await page.goto(serverUrl);
+        await page.click('[data-tab="repos"]');
+        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+
+        await page.locator('.repo-item').first().click();
+        await expect(page.locator('.meta-grid')).toBeVisible();
+
+        // Wait for recent processes to load
+        const processList = page.locator('#repo-processes-list');
+        await expect(processList).not.toContainText('Loading', { timeout: 10000 });
+        await expect(processList).not.toContainText('No processes');
+
+        // Should have 5 process entries
+        const processEntries = processList.locator('div[style*="padding"]');
+        await expect(processEntries).toHaveCount(5, { timeout: 10000 });
+
+        // Verify process names are shown
+        await expect(processList).toContainText('Recent Process 1');
+        await expect(processList).toContainText('Recent Process 5');
     });
 });
