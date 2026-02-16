@@ -171,11 +171,7 @@ describe('client bundle — clone grouping', () => {
         expect(script).toContain('repoGroupExpandedState');
     });
 
-    it('defines setRepoGroupingEnabled for toggling grouping', () => {
-        expect(script).toContain('setRepoGroupingEnabled');
-    });
-
-    it('tracks repoGroupingEnabled state variable', () => {
+    it('tracks repoGroupingEnabled as always-on constant', () => {
         expect(script).toContain('repoGroupingEnabled');
     });
 
@@ -199,12 +195,6 @@ describe('client bundle — clone grouping', () => {
 
     it('renders branch badges for grouped repo items', () => {
         expect(script).toContain('repo-branch-badge');
-    });
-
-    it('shows clone siblings in repo detail info tab', () => {
-        expect(script).toContain('clone-siblings-list');
-        expect(script).toContain('clone-sibling-item');
-        expect(script).toContain('clone-sibling-name');
     });
 
     it('shows remote URL in repo detail info tab', () => {
@@ -234,14 +224,25 @@ describe('client bundle — clone grouping', () => {
         expect(script).toContain('expanded');
     });
 
-    it('wires clone sibling click handlers', () => {
-        expect(script).toContain('clone-sibling-item');
-        expect(script).toContain('showRepoDetail');
-    });
-
     it('footer includes group count when grouping is enabled', () => {
         expect(script).toContain('group');
         expect(script).toContain('repos-footer');
+    });
+
+    it('always renders groups for repos with remote URL (even single repos)', () => {
+        // The renderReposList logic now checks normalizedUrl rather than repos.length >= 2
+        expect(script).toContain('normalizedUrl');
+        expect(script).toContain('renderRepoGroup');
+    });
+
+    it('does not contain clone-siblings-list (Related Clones section removed)', () => {
+        expect(script).not.toContain('clone-siblings-list');
+        expect(script).not.toContain('clone-sibling-item');
+        expect(script).not.toContain('clone-sibling-name');
+    });
+
+    it('does not contain setRepoGroupingEnabled (toggle removed)', () => {
+        expect(script).not.toContain('setRepoGroupingEnabled');
     });
 });
 
@@ -295,8 +296,7 @@ describe('Repos sidebar HTML structure', () => {
         expect(html).toContain('id="repo-detail-content"');
     });
 
-    it('contains clone grouping toggle button', () => {
-        expect(html).toContain('id="repo-group-toggle-btn"');
-        expect(html).toContain('repo-group-toggle-btn');
+    it('does not contain clone grouping toggle button (grouping is always on)', () => {
+        expect(html).not.toContain('id="repo-group-toggle-btn"');
     });
 });

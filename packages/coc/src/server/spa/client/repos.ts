@@ -170,17 +170,8 @@ function groupReposByRemote(repos: RepoData[]): RepoGroup[] {
 /** Track expanded/collapsed state of repo groups by normalized URL. */
 const repoGroupExpandedState: Record<string, boolean> = {};
 
-/** Whether repo grouping is enabled (user preference). */
-let repoGroupingEnabled = true;
-
-export function setRepoGroupingEnabled(enabled: boolean): void {
-    repoGroupingEnabled = enabled;
-    renderReposList();
-}
-
-export function isRepoGroupingEnabled(): boolean {
-    return repoGroupingEnabled;
-}
+/** Repo grouping is always enabled (repos grouped by remote URL). */
+const repoGroupingEnabled = true;
 
 let reposData: RepoData[] = [];
 
@@ -283,10 +274,11 @@ export function renderReposList(): void {
     if (repoGroupingEnabled) {
         const groups = groupReposByRemote(reposData);
         for (const group of groups) {
-            if (group.repos.length >= 2 && group.normalizedUrl) {
+            if (group.normalizedUrl) {
+                // Always show group header when there's a remote URL (even single repos)
                 renderRepoGroup(group, container);
             } else {
-                // Single repo or ungrouped — render flat
+                // Ungrouped (no remote) — render flat
                 for (const repo of group.repos) {
                     renderRepoItem(repo, container);
                 }
@@ -306,7 +298,8 @@ export function renderReposList(): void {
         const totalCompleted = reposData.reduce((s, r) => s + (r.stats?.success || 0), 0);
         let footerText = `${reposData.length} repo${reposData.length !== 1 ? 's' : ''}`;
         if (cloneGroups.length > 0) {
-            footerText += ` | ${cloneGroups.length} group${cloneGroups.length !== 1 ? 's' : ''}`;
+            const cloneCount = cloneGroups.reduce((s, g) => s + g.repos.length, 0);
+            footerText += ` | ${cloneCount} clone${cloneCount !== 1 ? 's' : ''} in ${cloneGroups.length} group${cloneGroups.length !== 1 ? 's' : ''}`;
         }
         footerText += ` | ${totalRunning} running | ${totalCompleted} completed`;
         footer.textContent = footerText;
@@ -512,14 +505,6 @@ function renderRepoDetail(wsId: string): void {
     // Fetch recent processes if on info sub-tab
     if (activeSubTab === 'info') {
         fetchRepoProcesses(wsId);
-
-        // Wire clone sibling clicks
-        contentEl.querySelectorAll('.clone-sibling-item').forEach(el => {
-            el.addEventListener('click', () => {
-                const id = el.getAttribute('data-repo-id');
-                if (id) showRepoDetail(id);
-            });
-        });
     }
 }
 
@@ -544,16 +529,6 @@ function renderInfoTab(repo: RepoData): string {
     const stats = repo.stats || { success: 0, failed: 0, running: 0 };
     const remoteUrl = ws.remoteUrl || repo.gitInfo?.remoteUrl || null;
 
-    // Find clone siblings (repos sharing the same remote URL)
-    let cloneSiblings: RepoData[] = [];
-    if (remoteUrl) {
-        const normalized = normalizeRemoteUrl(remoteUrl);
-        cloneSiblings = reposData.filter(r => {
-            const otherUrl = r.workspace.remoteUrl || r.gitInfo?.remoteUrl;
-            return otherUrl && normalizeRemoteUrl(otherUrl) === normalized && r.workspace.id !== ws.id;
-        });
-    }
-
     let html = '<div class="meta-grid">' +
         '<div class="meta-item"><label>Path</label><span class="meta-path">' + escapeHtmlClient(ws.rootPath || '') + '</span></div>' +
         '<div class="meta-item"><label>Branch</label><span>' + escapeHtmlClient(branch + dirty) + '</span></div>' +
@@ -565,25 +540,6 @@ function renderInfoTab(repo: RepoData): string {
         '<div class="meta-item"><label>Failed</label><span>' + stats.failed + '</span></div>' +
         '<div class="meta-item"><label>Running</label><span>' + stats.running + '</span></div>' +
     '</div>';
-
-    // Show clone siblings if any
-    if (cloneSiblings.length > 0) {
-        html += '<div class="result-section">';
-        html += '<h2>Related Clones <span class="repo-group-badge" style="vertical-align:middle">' + cloneSiblings.length + '</span></h2>';
-        html += '<div class="clone-siblings-list">';
-        for (const sibling of cloneSiblings) {
-            const sibBranch = sibling.gitInfo?.branch || 'n/a';
-            const sibColor = sibling.workspace.color || '#848484';
-            html += '<div class="clone-sibling-item" data-repo-id="' + escapeHtmlClient(sibling.workspace.id) + '">' +
-                '<span class="repo-color-dot" style="background:' + escapeHtmlClient(sibColor) + '"></span>' +
-                '<span class="clone-sibling-name">' + escapeHtmlClient(sibling.workspace.name) + '</span>' +
-                '<span class="repo-branch-badge">' + escapeHtmlClient(sibBranch) + '</span>' +
-                '<span class="clone-sibling-path">' + escapeHtmlClient(truncatePath(sibling.workspace.rootPath || '', 40)) + '</span>' +
-            '</div>';
-        }
-        html += '</div>';
-        html += '</div>';
-    }
 
     // Recent processes
     html += '<div class="result-section">';
@@ -970,20 +926,6 @@ function showEditRepoDialog(wsId: string): void {
 // ================================================================
 // Event listeners
 // ================================================================
-
-// Grouping toggle button
-const groupToggleBtn = document.getElementById('repo-group-toggle-btn');
-if (groupToggleBtn) {
-    const updateToggleStyle = () => {
-        groupToggleBtn.classList.toggle('active', repoGroupingEnabled);
-        groupToggleBtn.title = repoGroupingEnabled ? 'Disable clone grouping' : 'Enable clone grouping';
-    };
-    updateToggleStyle();
-    groupToggleBtn.addEventListener('click', () => {
-        setRepoGroupingEnabled(!repoGroupingEnabled);
-        updateToggleStyle();
-    });
-}
 
 // Add repo button
 const addRepoBtn = document.getElementById('add-repo-btn');

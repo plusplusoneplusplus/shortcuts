@@ -136,7 +136,6 @@ ${bundleCss}
         <aside class="sidebar repos-sidebar" id="repos-sidebar">
             <div class="repos-sidebar-header">
                 <h2>Repos</h2>
-                <button class="btn-icon repo-group-toggle-btn" id="repo-group-toggle-btn" title="Toggle clone grouping">&#x1F517;</button>
                 <button class="enqueue-btn-primary repos-add-btn" id="add-repo-btn">+ Add Repo</button>
             </div>
             <nav id="repos-list" class="repos-list">

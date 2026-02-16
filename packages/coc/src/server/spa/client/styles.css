@@ -1546,25 +1546,7 @@ body {
     margin: 0;
     flex: 1;
 }
-.repo-group-toggle-btn {
-    background: none;
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 14px;
-    padding: 2px 6px;
-    color: var(--text-secondary);
-    transition: all 0.15s;
-    line-height: 1;
-}
-.repo-group-toggle-btn:hover {
-    background: var(--hover-bg);
-}
-.repo-group-toggle-btn.active {
-    background: var(--active-bg);
-    border-color: var(--accent);
-    color: var(--accent);
-}
+
 .repos-add-btn {
     font-size: 11px;
     padding: 4px 10px;
@@ -1695,36 +1677,6 @@ body {
     font-weight: 500;
 }
 
-/* ---- Clone Siblings (Detail View) ---- */
-.clone-siblings-list {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-.clone-sibling-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 10px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 13px;
-}
-.clone-sibling-item:hover {
-    background: var(--hover-bg);
-}
-.clone-sibling-name {
-    font-weight: 500;
-}
-.clone-sibling-path {
-    color: var(--text-secondary);
-    font-size: 11px;
-    margin-left: auto;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 250px;
-}
 
 /* ---- Repos Sidebar Footer ---- */
 .repos-sidebar-footer {
