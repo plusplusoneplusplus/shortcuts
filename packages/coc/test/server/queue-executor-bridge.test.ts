@@ -36,7 +36,7 @@ import {
 import type { ProcessStore, AIProcess } from '@plusplusoneplusplus/pipeline-core';
 import { CLITaskExecutor, createQueueExecutorBridge } from '../../src/server/queue-executor-bridge';
 import { createMockSDKService } from '../helpers/mock-sdk-service';
-import { createMockProcessStore } from '../helpers/mock-process-store';
+import { createMockProcessStore, createCompletedProcessWithSession } from '../helpers/mock-process-store';
 
 // ============================================================================
 // Mock CopilotSDKService
@@ -1186,6 +1186,289 @@ describe('CLITaskExecutor.executeFollowUp', () => {
         // Verify streaming chunks were emitted
         expect(store.emitProcessOutput).toHaveBeenCalledWith('proc-4', 'chunk1');
         expect(store.emitProcessOutput).toHaveBeenCalledWith('proc-4', 'chunk2');
+    });
+});
+
+// ============================================================================
+// Follow-Up Chat Conversation Scenario Tests
+// ============================================================================
+
+describe('executeFollowUp - chat conversation scenarios', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+
+    beforeEach(() => {
+        store = createMockProcessStore();
+        mockSendMessage.mockReset();
+        mockIsAvailable.mockReset();
+        mockSendFollowUp.mockReset();
+        mockIsAvailable.mockResolvedValue({ available: true });
+    });
+
+    it('should accumulate turns across 3 sequential follow-ups', async () => {
+        const process = createCompletedProcessWithSession('proc-multi', 'sess-multi', [
+            { role: 'user', content: 'Question 1', timestamp: new Date(), turnIndex: 0 },
+            { role: 'assistant', content: 'Reply 1', timestamp: new Date(), turnIndex: 1 },
+        ]);
+        await store.addProcess(process);
+
+        mockSendFollowUp.mockResolvedValue({ success: true, response: 'Reply 2' });
+        const executor = new CLITaskExecutor(store);
+
+        // Follow-up 1
+        await executor.executeFollowUp('proc-multi', 'Question 2');
+
+        // Simulate api-handler adding user turn before 2nd follow-up
+        const after1 = await store.getProcess('proc-multi');
+        await store.updateProcess('proc-multi', {
+            conversationTurns: [
+                ...after1!.conversationTurns!,
+                { role: 'user', content: 'Question 3', timestamp: new Date(), turnIndex: after1!.conversationTurns!.length },
+            ],
+        });
+
+        mockSendFollowUp.mockResolvedValue({ success: true, response: 'Reply 3' });
+        // Follow-up 2
+        await executor.executeFollowUp('proc-multi', 'Question 3');
+
+        // Simulate api-handler adding user turn before 3rd follow-up
+        const after2 = await store.getProcess('proc-multi');
+        await store.updateProcess('proc-multi', {
+            conversationTurns: [
+                ...after2!.conversationTurns!,
+                { role: 'user', content: 'Question 4', timestamp: new Date(), turnIndex: after2!.conversationTurns!.length },
+            ],
+        });
+
+        mockSendFollowUp.mockResolvedValue({ success: true, response: 'Reply 4' });
+        // Follow-up 3
+        await executor.executeFollowUp('proc-multi', 'Question 4');
+
+        const final = await store.getProcess('proc-multi');
+        // 2 initial + 3 assistant + 2 manually-added user = 7
+        expect(final!.conversationTurns!.length).toBeGreaterThanOrEqual(5);
+
+        // Last 3 assistant turns have role 'assistant'
+        const assistantTurns = final!.conversationTurns!.filter(t => t.role === 'assistant');
+        expect(assistantTurns.length).toBeGreaterThanOrEqual(4); // original Reply 1 + 3 follow-up replies
+
+        // Each assistant turn's turnIndex equals its position
+        for (let i = 0; i < final!.conversationTurns!.length; i++) {
+            expect(final!.conversationTurns![i].turnIndex).toBe(i);
+        }
+
+        expect(mockSendFollowUp).toHaveBeenCalledTimes(3);
+        expect(mockSendFollowUp).toHaveBeenCalledWith('sess-multi', expect.any(String), expect.any(Object));
+    });
+
+    it('should use "(No text response)" fallback when SDK returns empty response', async () => {
+        const process = createCompletedProcessWithSession('proc-empty', 'sess-empty');
+        await store.addProcess(process);
+
+        mockSendFollowUp.mockResolvedValue({ success: true, response: '' });
+        const executor = new CLITaskExecutor(store);
+        await executor.executeFollowUp('proc-empty', 'What happened?');
+
+        const updated = await store.getProcess('proc-empty');
+        expect(updated!.conversationTurns).toHaveLength(3); // 2 initial + 1 assistant
+        expect(updated!.conversationTurns![2].content).toBe('(No text response)');
+        expect(updated!.status).toBe('completed');
+        // Empty string is falsy → result: undefined
+        expect(store.updateProcess).toHaveBeenCalledWith('proc-empty', expect.objectContaining({
+            result: undefined,
+        }));
+    });
+
+    it('should append error turn when sendFollowUp throws (session expired)', async () => {
+        const process = createCompletedProcessWithSession('proc-dying', 'sess-dying');
+        await store.addProcess(process);
+
+        mockSendFollowUp.mockRejectedValue(new Error('Session expired: connection reset'));
+        const executor = new CLITaskExecutor(store);
+        await executor.executeFollowUp('proc-dying', 'Are you still there?');
+
+        const updated = await store.getProcess('proc-dying');
+        expect(updated!.status).toBe('failed');
+        expect(updated!.error).toBe('Session expired: connection reset');
+        expect(updated!.conversationTurns![2].role).toBe('assistant');
+        expect(updated!.conversationTurns![2].content).toContain('Error: Session expired: connection reset');
+        expect(store.emitProcessComplete).toHaveBeenCalledWith('proc-dying', 'failed', expect.stringMatching(/\d+ms/));
+    });
+
+    it('should concatenate streaming chunks in output buffer', async () => {
+        const process = createCompletedProcessWithSession('proc-chunks', 'sess-chunks');
+        await store.addProcess(process);
+
+        mockSendFollowUp.mockImplementation(async (_sid: string, _prompt: string, options?: any) => {
+            if (options?.onStreamingChunk) {
+                options.onStreamingChunk('Hello');
+                options.onStreamingChunk(' ');
+                options.onStreamingChunk('world');
+                options.onStreamingChunk('!');
+            }
+            return { success: true, response: 'Hello world!' };
+        });
+
+        const executor = new CLITaskExecutor(store);
+        await executor.executeFollowUp('proc-chunks', 'stream it');
+
+        expect(store.emitProcessOutput).toHaveBeenCalledTimes(4);
+        expect(store.emitProcessOutput).toHaveBeenCalledWith('proc-chunks', 'Hello');
+        expect(store.emitProcessOutput).toHaveBeenCalledWith('proc-chunks', ' ');
+        expect(store.emitProcessOutput).toHaveBeenCalledWith('proc-chunks', 'world');
+        expect(store.emitProcessOutput).toHaveBeenCalledWith('proc-chunks', '!');
+
+        // Verify output chunks recorded in store
+        const outputChunks = store.outputs.get('proc-chunks');
+        expect(outputChunks).toEqual(['Hello', ' ', 'world', '!']);
+    });
+
+    it('should handle concurrent follow-ups on the same process without data corruption', async () => {
+        const process = createCompletedProcessWithSession('proc-concurrent', 'sess-concurrent');
+        await store.addProcess(process);
+
+        mockSendFollowUp.mockImplementation(async (_sid: string, _prompt: string) => {
+            await new Promise(r => setTimeout(r, 10));
+            return { success: true, response: 'concurrent reply' };
+        });
+
+        const executor = new CLITaskExecutor(store);
+        const [resultA, resultB] = await Promise.allSettled([
+            executor.executeFollowUp('proc-concurrent', 'msg A'),
+            executor.executeFollowUp('proc-concurrent', 'msg B'),
+        ]);
+
+        expect(resultA.status).toBe('fulfilled');
+        expect(resultB.status).toBe('fulfilled');
+        expect(mockSendFollowUp).toHaveBeenCalledTimes(2);
+
+        const final = await store.getProcess('proc-concurrent');
+        expect(final!.status).toBe('completed');
+        // At least 3: 2 initial + at least 1 assistant turn
+        expect(final!.conversationTurns!.length).toBeGreaterThanOrEqual(3);
+        expect(store.emitProcessComplete).toHaveBeenCalledTimes(2);
+    });
+
+    it('should handle a very long follow-up message without truncation', async () => {
+        const process = createCompletedProcessWithSession('proc-large', 'sess-large');
+        await store.addProcess(process);
+
+        mockSendFollowUp.mockResolvedValue({ success: true, response: 'ack' });
+        const executor = new CLITaskExecutor(store);
+        const longMsg = 'x'.repeat(100_000);
+        await executor.executeFollowUp('proc-large', longMsg);
+
+        expect(mockSendFollowUp).toHaveBeenCalledWith('sess-large', longMsg, expect.any(Object));
+        const updated = await store.getProcess('proc-large');
+        expect(updated!.status).toBe('completed');
+    });
+
+    it('should transition process status to completed on successful follow-up', async () => {
+        const process = createCompletedProcessWithSession('proc-status-ok', 'sess-status-ok');
+        process.status = 'running';
+        await store.addProcess(process);
+
+        mockSendFollowUp.mockResolvedValue({ success: true, response: 'done' });
+        const executor = new CLITaskExecutor(store);
+
+        const before = await store.getProcess('proc-status-ok');
+        expect(before!.status).toBe('running');
+
+        await executor.executeFollowUp('proc-status-ok', 'finish up');
+
+        const after = await store.getProcess('proc-status-ok');
+        expect(after!.status).toBe('completed');
+        expect(after!.endTime).toBeDefined();
+        expect(after!.result).toBe('done');
+    });
+
+    it('should transition process status to failed on follow-up error', async () => {
+        const process = createCompletedProcessWithSession('proc-status-fail', 'sess-status-fail');
+        process.status = 'running';
+        await store.addProcess(process);
+
+        mockSendFollowUp.mockRejectedValue(new Error('SDK crash'));
+        const executor = new CLITaskExecutor(store);
+        await executor.executeFollowUp('proc-status-fail', 'bad request');
+
+        const after = await store.getProcess('proc-status-fail');
+        expect(after!.status).toBe('failed');
+        expect(after!.endTime).toBeDefined();
+        expect(after!.error).toBe('SDK crash');
+        expect(after!.conversationTurns!.at(-1)!.content).toContain('Error: SDK crash');
+    });
+
+    it('should clean up outputBuffers map after follow-up (success and failure)', async () => {
+        const proc1 = createCompletedProcessWithSession('proc-cleanup-ok', 'sess-cleanup-ok');
+        const proc2 = createCompletedProcessWithSession('proc-cleanup-fail', 'sess-cleanup-fail');
+        await store.addProcess(proc1);
+        await store.addProcess(proc2);
+
+        // First follow-up succeeds with streaming
+        mockSendFollowUp.mockImplementationOnce(async (_sid: string, _prompt: string, options?: any) => {
+            if (options?.onStreamingChunk) {
+                options.onStreamingChunk('old-data');
+            }
+            return { success: true, response: 'ok' };
+        });
+        const executor = new CLITaskExecutor(store);
+        await executor.executeFollowUp('proc-cleanup-ok', 'first call');
+
+        // Second follow-up fails
+        mockSendFollowUp.mockRejectedValueOnce(new Error('boom'));
+        await executor.executeFollowUp('proc-cleanup-fail', 'fail call');
+
+        // Verify buffer cleanup: a subsequent follow-up starts fresh
+        mockSendFollowUp.mockImplementationOnce(async (_sid: string, _prompt: string, options?: any) => {
+            if (options?.onStreamingChunk) {
+                options.onStreamingChunk('new-chunk');
+            }
+            return { success: true, response: 'fresh' };
+        });
+        // Reset output tracking to isolate the 3rd call
+        store.outputs.clear();
+        await executor.executeFollowUp('proc-cleanup-ok', 'second call');
+
+        // Only 'new-chunk' should be present — no leftover 'old-data'
+        const chunks = store.outputs.get('proc-cleanup-ok');
+        expect(chunks).toEqual(['new-chunk']);
+    });
+
+    it('should handle follow-up when conversationTurns is empty array', async () => {
+        const process = createCompletedProcessWithSession('proc-empty-turns', 'sess-empty-turns', []);
+        await store.addProcess(process);
+
+        mockSendFollowUp.mockResolvedValue({ success: true, response: 'first reply' });
+        const executor = new CLITaskExecutor(store);
+        await executor.executeFollowUp('proc-empty-turns', 'hello');
+
+        const updated = await store.getProcess('proc-empty-turns');
+        expect(updated!.conversationTurns).toHaveLength(1);
+        expect(updated!.conversationTurns![0]).toMatchObject({
+            role: 'assistant',
+            content: 'first reply',
+            turnIndex: 0,
+        });
+    });
+
+    it('should handle follow-up when conversationTurns is undefined', async () => {
+        const process: AIProcess = {
+            id: 'proc-undef-turns',
+            type: 'clarification',
+            promptPreview: 'test',
+            fullPrompt: 'test',
+            status: 'completed',
+            startTime: new Date(),
+            sdkSessionId: 'sess-undef-turns',
+        };
+        await store.addProcess(process);
+
+        mockSendFollowUp.mockResolvedValue({ success: true, response: 'reply' });
+        const executor = new CLITaskExecutor(store);
+        await executor.executeFollowUp('proc-undef-turns', 'hi');
+
+        const updated = await store.getProcess('proc-undef-turns');
+        expect(updated!.conversationTurns).toHaveLength(1);
+        expect(updated!.conversationTurns![0].turnIndex).toBe(0);
     });
 });
 
