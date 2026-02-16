@@ -65,11 +65,9 @@ function request(
 // ============================================================================
 
 describe('Review SPA — HTML Template', () => {
-    it('dashboard nav shows Review link', () => {
+    it('dashboard nav does not show Review link', () => {
         const html = generateDashboardHtml();
-        expect(html).toContain('href="/review"');
-        expect(html).toContain('class="nav-link"');
-        expect(html).toContain('>Review<');
+        expect(html).not.toContain('data-page="review">Review</a>');
     });
 
     it('dashboard nav shows Dashboard link', () => {

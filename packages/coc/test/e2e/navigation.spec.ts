@@ -65,7 +65,7 @@ test.describe('Navigation', () => {
         await page.goto(serverUrl);
 
         await expect(page.locator('[data-page="dashboard"]')).toBeVisible();
-        await expect(page.locator('[data-page="review"]')).toBeVisible();
+        await expect(page.locator('[data-page="review"]')).toHaveCount(0);
     });
 
     test('hash navigation works for tab routing', async ({ page, serverUrl }) => {

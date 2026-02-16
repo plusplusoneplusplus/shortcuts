@@ -63,7 +63,6 @@ ${bundleCss}
             <span class="top-bar-logo">${escapeHtml(title)}</span>
             <nav class="top-bar-nav">
                 <a href="/" class="nav-link" data-page="dashboard">Dashboard</a>
-                <a href="/review" class="nav-link" data-page="review">Review</a>
             </nav>
         </div>
         <div class="top-bar-right">

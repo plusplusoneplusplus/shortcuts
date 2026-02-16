@@ -59,6 +59,13 @@ describe('generateDashboardHtml', () => {
         expect(html).toContain('class="top-bar-logo"');
     });
 
+    it('top-bar-nav contains Dashboard link but not Review link', () => {
+        const html = generateDashboardHtml();
+        expect(html).toContain('class="top-bar-nav"');
+        expect(html).toContain('data-page="dashboard">Dashboard</a>');
+        expect(html).not.toContain('data-page="review">Review</a>');
+    });
+
     it('contains workspace dropdown with All Repos option', () => {
         const html = generateDashboardHtml();
         expect(html).toContain('id="workspace-select"');
