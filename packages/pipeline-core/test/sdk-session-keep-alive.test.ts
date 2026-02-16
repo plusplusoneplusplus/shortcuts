@@ -13,77 +13,29 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { CopilotSDKService, resetCopilotSDKService } from '../src/copilot-sdk-wrapper/copilot-sdk-service';
 import { setLogger, nullLogger } from '../src/logger';
+import {
+    createMockSession,
+    createMockSDKModule,
+    setupService,
+} from './helpers/mock-sdk';
 
 // Suppress logger output during tests
 setLogger(nullLogger);
 
-// Mock the trusted-folder module
+// vi.mock factories must be inline (hoisted before imports)
 vi.mock('../src/copilot-sdk-wrapper/trusted-folder', async () => {
     const actual = await vi.importActual('../src/copilot-sdk-wrapper/trusted-folder');
-    return {
-        ...actual,
-        ensureFolderTrusted: vi.fn(),
-    };
+    return { ...actual, ensureFolderTrusted: vi.fn() };
 });
 
-// Mock the mcp-config-loader module
 vi.mock('../src/copilot-sdk-wrapper/mcp-config-loader', () => ({
     loadDefaultMcpConfig: vi.fn().mockReturnValue({
-        success: false,
-        fileExists: false,
-        mcpServers: {},
+        success: false, fileExists: false, mcpServers: {},
     }),
     mergeMcpConfigs: vi.fn().mockImplementation(
-        (base: Record<string, any>, override?: Record<string, any>) => ({
-            ...base,
-            ...override,
-        }),
+        (base: Record<string, any>, override?: Record<string, any>) => ({ ...base, ...override }),
     ),
 }));
-
-// ============================================================================
-// Mock Helpers
-// ============================================================================
-
-function createMockSession(overrides?: Partial<{
-    sessionId: string;
-    sendAndWaitResponse: any;
-    sendAndWaitError: Error;
-}>) {
-    const sessionId = overrides?.sessionId ?? 'sess-' + Math.random().toString(36).substring(7);
-    return {
-        sessionId,
-        sendAndWait: overrides?.sendAndWaitError
-            ? vi.fn().mockRejectedValue(overrides.sendAndWaitError)
-            : vi.fn().mockResolvedValue(
-                overrides?.sendAndWaitResponse ?? { data: { content: 'mock response' } }
-            ),
-        destroy: vi.fn().mockResolvedValue(undefined),
-    };
-}
-
-function createMockSDKModule(sessionOrFactory: any) {
-    const mockClient = {
-        createSession: typeof sessionOrFactory === 'function'
-            ? vi.fn().mockImplementation(() => Promise.resolve(sessionOrFactory()))
-            : vi.fn().mockResolvedValue(sessionOrFactory),
-        stop: vi.fn().mockResolvedValue(undefined),
-    };
-
-    class MockCopilotClient {
-        constructor() {
-            Object.assign(this, mockClient);
-        }
-    }
-    return { MockCopilotClient, mockClient };
-}
-
-function setupService(service: CopilotSDKService, session: any) {
-    const { MockCopilotClient } = createMockSDKModule(session);
-    const serviceAny = service as any;
-    serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
-    serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
-}
 
 // ============================================================================
 // Tests

@@ -9,127 +9,29 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { CopilotSDKService, resetCopilotSDKService, TokenUsage } from '../../src/copilot-sdk-wrapper/copilot-sdk-service';
 import { setLogger, nullLogger } from '../../src/logger';
 import * as trustedFolder from '../../src/copilot-sdk-wrapper/trusted-folder';
+import {
+    createMockSDKModule,
+    createStreamingMockSession,
+    createStreamingMockSDKModule,
+} from '../helpers/mock-sdk';
 
 // Suppress logger output during tests
 setLogger(nullLogger);
 
-// Mock the trusted-folder module so we can verify calls without touching disk
+// vi.mock factories must be inline (hoisted before imports)
 vi.mock('../../src/copilot-sdk-wrapper/trusted-folder', async () => {
     const actual = await vi.importActual('../../src/copilot-sdk-wrapper/trusted-folder');
-    return {
-        ...actual,
-        ensureFolderTrusted: vi.fn(),
-    };
+    return { ...actual, ensureFolderTrusted: vi.fn() };
 });
 
-// Mock the mcp-config-loader module to avoid file system access
 vi.mock('../../src/copilot-sdk-wrapper/mcp-config-loader', () => ({
     loadDefaultMcpConfig: vi.fn().mockReturnValue({
-        success: false,
-        fileExists: false,
-        mcpServers: {},
+        success: false, fileExists: false, mcpServers: {},
     }),
     mergeMcpConfigs: vi.fn().mockImplementation(
-        (base: Record<string, any>, override?: Record<string, any>) => ({
-            ...base,
-            ...override,
-        }),
+        (base: Record<string, any>, override?: Record<string, any>) => ({ ...base, ...override }),
     ),
 }));
-
-/**
- * Create a mock SDK module that captures constructor options.
- */
-function createMockSDKModule() {
-    const capturedOptions: any[] = [];
-
-    const mockClient = {
-        createSession: vi.fn().mockResolvedValue({
-            sessionId: 'test-session',
-            sendAndWait: vi.fn().mockResolvedValue('response'),
-            destroy: vi.fn().mockResolvedValue(undefined),
-        }),
-        stop: vi.fn().mockResolvedValue(undefined),
-    };
-
-    class MockCopilotClient {
-        constructor(options?: any) {
-            capturedOptions.push(options);
-            Object.assign(this, mockClient);
-        }
-    }
-
-    return { MockCopilotClient, capturedOptions, mockClient };
-}
-
-/**
- * Helper to create a mock session with streaming support.
- * The session captures event handlers registered via `on()` and supports
- * simulating SDK events by calling the handler directly.
- * 
- * SDK events use `event.type` as a plain string (e.g., "session.idle"),
- * NOT as `{ value: string }`.
- */
-function createStreamingMockSession() {
-    const handlers: Array<(event: any) => void> = [];
-
-    const session = {
-        sessionId: 'streaming-session-' + Math.random().toString(36).substring(7),
-        sendAndWait: vi.fn(),
-        destroy: vi.fn().mockResolvedValue(undefined),
-        on: vi.fn().mockImplementation((handler: (event: any) => void) => {
-            handlers.push(handler);
-            return () => {
-                const idx = handlers.indexOf(handler);
-                if (idx >= 0) handlers.splice(idx, 1);
-            };
-        }),
-        send: vi.fn().mockResolvedValue(undefined),
-    };
-
-    /**
-     * Dispatch an event to all registered handlers.
-     * Events are plain objects with `type` as a string — matching the real SDK behavior.
-     */
-    const dispatchEvent = (event: { type: string; data?: any }) => {
-        for (const handler of [...handlers]) {
-            handler(event);
-        }
-    };
-
-    return { session, dispatchEvent, handlers };
-}
-
-/**
- * Create a mock SDK module whose sessions support streaming.
- */
-function createStreamingMockSDKModule(sessionFactory?: () => ReturnType<typeof createStreamingMockSession>) {
-    const capturedOptions: any[] = [];
-    const sessions: Array<ReturnType<typeof createStreamingMockSession>> = [];
-
-    const createSession = () => {
-        const s = sessionFactory ? sessionFactory() : createStreamingMockSession();
-        sessions.push(s);
-        return s;
-    };
-
-    const mockClient = {
-        createSession: vi.fn().mockImplementation(() => {
-            const s = createSession();
-            return Promise.resolve(s.session);
-        }),
-        stop: vi.fn().mockResolvedValue(undefined),
-    };
-
-    class MockCopilotClient {
-        constructor(options?: any) {
-            capturedOptions.push(options);
-            Object.assign(this, mockClient);
-        }
-    }
-
-    return { MockCopilotClient, capturedOptions, mockClient, sessions };
-}
 
 describe('CopilotSDKService - Client Initialization', () => {
     let service: CopilotSDKService;

@@ -7,116 +7,30 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { CopilotSDKService, resetCopilotSDKService, SendFollowUpOptions } from '../../src/copilot-sdk-wrapper/copilot-sdk-service';
 import { setLogger, nullLogger } from '../../src/logger';
+import {
+    createMockSession,
+    createMockSDKModule,
+    createStreamingMockSession,
+    setupService,
+} from '../helpers/mock-sdk';
 
 // Suppress logger output during tests
 setLogger(nullLogger);
 
-// Mock the trusted-folder module
+// vi.mock factories must be inline (hoisted before imports)
 vi.mock('../../src/copilot-sdk-wrapper/trusted-folder', async () => {
     const actual = await vi.importActual('../../src/copilot-sdk-wrapper/trusted-folder');
-    return {
-        ...actual,
-        ensureFolderTrusted: vi.fn(),
-    };
+    return { ...actual, ensureFolderTrusted: vi.fn() };
 });
 
-// Mock the mcp-config-loader module
 vi.mock('../../src/copilot-sdk-wrapper/mcp-config-loader', () => ({
     loadDefaultMcpConfig: vi.fn().mockReturnValue({
-        success: false,
-        fileExists: false,
-        mcpServers: {},
+        success: false, fileExists: false, mcpServers: {},
     }),
     mergeMcpConfigs: vi.fn().mockImplementation(
-        (base: Record<string, any>, override?: Record<string, any>) => ({
-            ...base,
-            ...override,
-        }),
+        (base: Record<string, any>, override?: Record<string, any>) => ({ ...base, ...override }),
     ),
 }));
-
-/**
- * Create a mock session (non-streaming).
- */
-function createMockSession(overrides?: Partial<{
-    sessionId: string;
-    sendAndWaitResponse: any;
-    sendAndWaitError: Error;
-}>) {
-    const sessionId = overrides?.sessionId ?? 'test-session-' + Math.random().toString(36).substring(7);
-    return {
-        sessionId,
-        sendAndWait: overrides?.sendAndWaitError
-            ? vi.fn().mockRejectedValue(overrides.sendAndWaitError)
-            : vi.fn().mockResolvedValue(
-                overrides?.sendAndWaitResponse ?? { data: { content: 'mock response' } }
-            ),
-        destroy: vi.fn().mockResolvedValue(undefined),
-    };
-}
-
-/**
- * Create a streaming mock session with event dispatch support.
- */
-function createStreamingMockSession(sessionId?: string) {
-    const handlers: Array<(event: any) => void> = [];
-    const sid = sessionId ?? 'streaming-session-' + Math.random().toString(36).substring(7);
-
-    const session = {
-        sessionId: sid,
-        sendAndWait: vi.fn(),
-        destroy: vi.fn().mockResolvedValue(undefined),
-        on: vi.fn().mockImplementation((handler: (event: any) => void) => {
-            handlers.push(handler);
-            return () => {
-                const idx = handlers.indexOf(handler);
-                if (idx >= 0) handlers.splice(idx, 1);
-            };
-        }),
-        send: vi.fn().mockResolvedValue(undefined),
-    };
-
-    const dispatchEvent = (event: { type: string; data?: any }) => {
-        for (const handler of [...handlers]) {
-            handler(event);
-        }
-    };
-
-    return { session, dispatchEvent, handlers };
-}
-
-/**
- * Create a mock SDK module returning a specific session.
- */
-function createMockSDKModule(sessionOrFactory: any) {
-    const capturedOptions: any[] = [];
-
-    const mockClient = {
-        createSession: typeof sessionOrFactory === 'function'
-            ? vi.fn().mockImplementation(() => Promise.resolve(sessionOrFactory()))
-            : vi.fn().mockResolvedValue(sessionOrFactory),
-        stop: vi.fn().mockResolvedValue(undefined),
-    };
-
-    class MockCopilotClient {
-        constructor(options?: any) {
-            capturedOptions.push(options);
-            Object.assign(this, mockClient);
-        }
-    }
-
-    return { MockCopilotClient, capturedOptions, mockClient };
-}
-
-/**
- * Set up the service with a mock SDK module and return the service.
- */
-function setupService(service: CopilotSDKService, session: any) {
-    const { MockCopilotClient } = createMockSDKModule(session);
-    const serviceAny = service as any;
-    serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
-    serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
-}
 
 describe('CopilotSDKService - Keep-Alive', () => {
     let service: CopilotSDKService;
