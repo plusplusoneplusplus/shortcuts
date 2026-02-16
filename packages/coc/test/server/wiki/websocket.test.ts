@@ -4,27 +4,13 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as http from 'http';
-import * as crypto from 'crypto';
-import { Socket } from 'net';
+import WS from 'ws';
 import { WebSocketServer } from '../../../src/server/wiki/websocket';
 import type { WSMessage } from '../../../src/server/wiki/websocket';
 
 // ============================================================================
 // Helpers
 // ============================================================================
-
-function createTestServer(): { server: http.Server; getPort: () => number; close: () => Promise<void> } {
-    const server = http.createServer();
-    let port = 0;
-
-    return {
-        server,
-        getPort: () => port,
-        close: () => new Promise<void>((resolve, reject) => {
-            server.close(err => err ? reject(err) : resolve());
-        }),
-    };
-}
 
 async function startServer(server: http.Server): Promise<number> {
     return new Promise((resolve) => {
@@ -36,96 +22,29 @@ async function startServer(server: http.Server): Promise<number> {
 }
 
 /**
- * Create a raw WebSocket connection for testing.
- * Returns helpers to send/receive messages.
+ * Create a WebSocket connection using the `ws` library.
  */
 function connectWebSocket(port: number, path = '/ws'): Promise<{
-    socket: Socket;
+    ws: WS;
     send: (data: string) => void;
-    onMessage: (handler: (data: string) => void) => void;
     close: () => void;
     waitForMessage: () => Promise<string>;
 }> {
     return new Promise((resolve, reject) => {
-        const key = crypto.randomBytes(16).toString('base64');
-        const socket = new Socket();
-        const messageHandlers: Array<(data: string) => void> = [];
-        let connected = false;
+        const ws = new WS(`ws://localhost:${port}${path}`);
 
-        socket.connect(port, 'localhost', () => {
-            socket.write(
-                `GET ${path} HTTP/1.1\r\n` +
-                `Host: localhost:${port}\r\n` +
-                `Upgrade: websocket\r\n` +
-                `Connection: Upgrade\r\n` +
-                `Sec-WebSocket-Key: ${key}\r\n` +
-                `Sec-WebSocket-Version: 13\r\n` +
-                `\r\n`,
-            );
+        ws.on('open', () => {
+            resolve({
+                ws,
+                send: (data: string) => ws.send(data),
+                close: () => ws.close(),
+                waitForMessage: () => new Promise<string>((res) => {
+                    ws.once('message', (raw) => res(raw.toString()));
+                }),
+            });
         });
 
-        socket.on('data', (buf) => {
-            if (!connected) {
-                // Check for 101 response
-                const response = buf.toString();
-                if (response.includes('101')) {
-                    connected = true;
-                    resolve({
-                        socket,
-                        send: (data: string) => {
-                            const payload = Buffer.from(data, 'utf-8');
-                            const mask = crypto.randomBytes(4);
-                            let header: Buffer;
-
-                            if (payload.length < 126) {
-                                header = Buffer.alloc(6);
-                                header[0] = 0x81;
-                                header[1] = 0x80 | payload.length;
-                                mask.copy(header, 2);
-                            } else {
-                                header = Buffer.alloc(8);
-                                header[0] = 0x81;
-                                header[1] = 0x80 | 126;
-                                header.writeUInt16BE(payload.length, 2);
-                                mask.copy(header, 4);
-                            }
-
-                            const masked = Buffer.alloc(payload.length);
-                            for (let i = 0; i < payload.length; i++) {
-                                masked[i] = payload[i] ^ mask[i % 4];
-                            }
-
-                            socket.write(Buffer.concat([header, masked]));
-                        },
-                        onMessage: (handler) => messageHandlers.push(handler),
-                        close: () => socket.end(),
-                        waitForMessage: () => new Promise<string>((res) => {
-                            messageHandlers.push(res);
-                        }),
-                    });
-                }
-                return;
-            }
-
-            // Decode frame
-            if (buf.length < 2) return;
-            const opcode = buf[0] & 0x0f;
-            if (opcode !== 1) return;
-
-            let payloadLen = buf[1] & 0x7f;
-            let offset = 2;
-            if (payloadLen === 126) {
-                payloadLen = buf.readUInt16BE(2);
-                offset = 4;
-            }
-
-            const data = buf.slice(offset, offset + payloadLen).toString('utf-8');
-            for (const handler of messageHandlers) {
-                handler(data);
-            }
-        });
-
-        socket.on('error', reject);
+        ws.on('error', reject);
 
         setTimeout(() => reject(new Error('WebSocket connection timeout')), 5000);
     });
@@ -149,7 +68,6 @@ describe('WebSocketServer', () => {
 
     afterEach(async () => {
         wsServer.closeAll();
-        // Give sockets time to close before shutting down the server
         await new Promise(resolve => setTimeout(resolve, 100));
         await new Promise<void>((resolve) => {
             httpServer.close(() => resolve());
@@ -157,9 +75,9 @@ describe('WebSocketServer', () => {
     });
 
     it('should accept WebSocket connections', async () => {
-        const ws = await connectWebSocket(port);
+        const client = await connectWebSocket(port);
         expect(wsServer.clientCount).toBe(1);
-        ws.close();
+        client.close();
     });
 
     it('should reject non-/ws upgrade requests', async () => {
@@ -191,8 +109,8 @@ describe('WebSocketServer', () => {
         const messageHandler = vi.fn();
         wsServer.onMessage(messageHandler);
 
-        const ws = await connectWebSocket(port);
-        ws.send(JSON.stringify({ type: 'ping' }));
+        const client = await connectWebSocket(port);
+        client.send(JSON.stringify({ type: 'ping' }));
 
         // Wait for message to be received
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -202,7 +120,7 @@ describe('WebSocketServer', () => {
             { type: 'ping' },
         );
 
-        ws.close();
+        client.close();
     });
 
     it('should track client count on connect', async () => {
@@ -232,8 +150,8 @@ describe('WebSocketServer', () => {
     });
 
     it('should broadcast rebuilding messages', async () => {
-        const ws = await connectWebSocket(port);
-        const msgPromise = ws.waitForMessage();
+        const client = await connectWebSocket(port);
+        const msgPromise = client.waitForMessage();
 
         wsServer.broadcast({ type: 'rebuilding', components: ['api', 'config'] });
 
@@ -242,12 +160,12 @@ describe('WebSocketServer', () => {
         expect(parsed.type).toBe('rebuilding');
         expect(parsed.components).toEqual(['api', 'config']);
 
-        ws.close();
+        client.close();
     });
 
     it('should broadcast error messages', async () => {
-        const ws = await connectWebSocket(port);
-        const msgPromise = ws.waitForMessage();
+        const client = await connectWebSocket(port);
+        const msgPromise = client.waitForMessage();
 
         wsServer.broadcast({ type: 'error', message: 'Build failed' });
 
@@ -256,6 +174,27 @@ describe('WebSocketServer', () => {
         expect(parsed.type).toBe('error');
         expect(parsed.message).toBe('Build failed');
 
-        ws.close();
+        client.close();
+    });
+
+    it('should remove client from set on disconnect', async () => {
+        const client = await connectWebSocket(port);
+        expect(wsServer.clientCount).toBe(1);
+
+        client.close();
+        await new Promise(resolve => setTimeout(resolve, 200));
+        expect(wsServer.clientCount).toBe(0);
+    });
+
+    it('should not send to closed client during broadcast', async () => {
+        const ws1 = await connectWebSocket(port);
+        const ws2 = await connectWebSocket(port);
+
+        // Close ws1 from server side
+        wsServer.closeAll();
+        expect(wsServer.clientCount).toBe(0);
+
+        // Broadcast after close should not throw
+        expect(() => wsServer.broadcast({ type: 'reload', components: [] })).not.toThrow();
     });
 });
