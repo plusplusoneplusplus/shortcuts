@@ -1,0 +1,153 @@
+/**
+ * Miller Column Navigation E2E Tests (009)
+ *
+ * Tests the Tasks Miller columns layout: root column rendering,
+ * folder expansion, file preview, close preview, and folder count badges.
+ *
+ * Depends on createRepoFixture + createTasksFixture for on-disk task files.
+ */
+
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { test, expect } from './fixtures/server-fixture';
+import { seedWorkspace } from './fixtures/seed';
+import { createRepoFixture, createTasksFixture } from './fixtures/repo-fixtures';
+
+/** Helper: create a repo with tasks, seed it as a workspace, navigate to Tasks sub-tab. */
+async function setupRepoWithTasks(
+    page: import('@playwright/test').Page,
+    serverUrl: string,
+    tmpDir: string,
+): Promise<string> {
+    const repoDir = createRepoFixture(tmpDir);
+    createTasksFixture(repoDir);
+
+    await seedWorkspace(serverUrl, 'ws-miller', 'miller-repo', repoDir);
+
+    await page.goto(serverUrl);
+    await page.click('[data-tab="repos"]');
+    await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+
+    // Select repo
+    await page.locator('.repo-item').first().click();
+    await expect(page.locator('#repo-detail-content')).toBeVisible();
+
+    // Switch to Tasks sub-tab
+    await page.click('.repo-sub-tab[data-subtab="tasks"]');
+    await expect(page.locator('.repo-sub-tab[data-subtab="tasks"]')).toHaveClass(/active/);
+
+    // Wait for miller columns to render
+    await expect(page.locator('.miller-columns')).toBeVisible({ timeout: 10000 });
+
+    return repoDir;
+}
+
+test.describe('Miller Column Navigation (009)', () => {
+
+    test('9.1 root column shows tasks and folders', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-miller-'));
+        try {
+            await setupRepoWithTasks(page, serverUrl, tmpDir);
+
+            // Root column should be visible
+            const rootColumn = page.locator('.miller-column').first();
+            await expect(rootColumn).toBeVisible();
+
+            // Should contain folder row for "backlog" (archive hidden by default)
+            const folderRows = page.locator('.miller-row[data-nav-folder]');
+            await expect(folderRows).not.toHaveCount(0);
+            await expect(page.locator('.miller-row[data-nav-folder]', { hasText: 'backlog' })).toBeVisible();
+
+            // Should contain file rows for root tasks (task-a, task-b, feature docs)
+            const fileRows = page.locator('.miller-row.miller-file-row[data-file-path]');
+            await expect(fileRows).not.toHaveCount(0);
+            // task-a.md and task-b.md are single documents
+            await expect(page.locator('.miller-file-row', { hasText: 'task-a' })).toBeVisible();
+            await expect(page.locator('.miller-file-row', { hasText: 'task-b' })).toBeVisible();
+            // feature is a document group (feature.plan + feature.spec)
+            await expect(page.locator('.miller-file-row', { hasText: 'feature' })).toHaveCount(2);
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+    });
+
+    test('9.2 click folder opens new column', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-miller-'));
+        try {
+            await setupRepoWithTasks(page, serverUrl, tmpDir);
+
+            // Initially only root column visible
+            await expect(page.locator('.miller-column')).toHaveCount(1);
+
+            // Click the "backlog" folder row
+            await page.locator('.miller-row[data-nav-folder]', { hasText: 'backlog' }).click();
+
+            // A second column should appear
+            await expect(page.locator('.miller-column')).toHaveCount(2, { timeout: 5000 });
+
+            // Second column should contain "item" (item.md)
+            const secondColumn = page.locator('.miller-column').nth(1);
+            await expect(secondColumn.locator('.miller-file-row', { hasText: 'item' })).toBeVisible();
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+    });
+
+    test('9.3 click file opens preview column', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-miller-'));
+        try {
+            await setupRepoWithTasks(page, serverUrl, tmpDir);
+
+            // Click task-a.md file row
+            await page.locator('.miller-file-row', { hasText: 'task-a' }).click();
+
+            // Preview column should appear
+            await expect(page.locator('.miller-preview-column')).toBeVisible({ timeout: 10000 });
+
+            // Preview body should contain rendered markdown with "Task A" heading
+            const previewBody = page.locator('.task-preview-body');
+            await expect(previewBody).toContainText('Task A', { timeout: 10000 });
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+    });
+
+    test('9.4 close preview column', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-miller-'));
+        try {
+            await setupRepoWithTasks(page, serverUrl, tmpDir);
+
+            // Open a file preview first
+            await page.locator('.miller-file-row', { hasText: 'task-a' }).click();
+            await expect(page.locator('.miller-preview-column')).toBeVisible({ timeout: 10000 });
+            await expect(page.locator('.task-preview-body')).toContainText('Task A', { timeout: 10000 });
+
+            // Click the close button
+            await page.locator('.task-preview-close').click();
+
+            // Preview column should be removed
+            await expect(page.locator('.miller-preview-column')).toHaveCount(0, { timeout: 5000 });
+
+            // File row should no longer be selected
+            await expect(page.locator('.miller-file-row.miller-row-selected')).toHaveCount(0);
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+    });
+
+    test('9.5 folder count badges show item counts', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-miller-'));
+        try {
+            await setupRepoWithTasks(page, serverUrl, tmpDir);
+
+            // "backlog" folder has 1 item (item.md)
+            const backlogRow = page.locator('.miller-row[data-nav-folder]', { hasText: 'backlog' });
+            const backlogBadge = backlogRow.locator('.task-folder-count');
+            await expect(backlogBadge).toBeVisible();
+            await expect(backlogBadge).toHaveText('1');
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+    });
+});
