@@ -1043,10 +1043,10 @@ describe('client/repos.ts', () => {
         expect(content).toContain('(window as any).showRepoDetail = showRepoDetail');
     });
 
-    it('renders tasks sub-tab with toolbar', () => {
+    it('renders tasks sub-tab with toolbar (AI Generate moved to folder context menu)', () => {
         expect(content).toContain('repo-tasks-new-btn');
         expect(content).toContain('repo-tasks-folder-btn');
-        expect(content).toContain('repo-tasks-ai-btn');
+        expect(content).not.toContain('repo-tasks-ai-btn');
     });
 
     it('renders tasks container for Miller columns', () => {

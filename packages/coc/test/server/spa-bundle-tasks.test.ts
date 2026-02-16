@@ -77,7 +77,10 @@ describe('Tasks as repo sub-page — client bundle repos module', () => {
         expect(script).toContain('repo-tasks-toolbar');
         expect(script).toContain('repo-tasks-new-btn');
         expect(script).toContain('repo-tasks-folder-btn');
-        expect(script).toContain('repo-tasks-ai-btn');
+    });
+
+    it('does not render AI generate button in toolbar (moved to folder context menu)', () => {
+        expect(script).not.toContain('repo-tasks-ai-btn');
     });
 
     it('renders tasks tree container in tasks sub-tab', () => {
@@ -108,7 +111,6 @@ describe('Tasks as repo sub-page — client bundle repos module', () => {
         expect(script).toContain('wireTasksToolbar');
         expect(script).toContain('createRepoTask');
         expect(script).toContain('createRepoFolder');
-        expect(script).toContain('showRepoAIGenerateDialog');
     });
 
     it('updates hash with sub-tab suffix', () => {

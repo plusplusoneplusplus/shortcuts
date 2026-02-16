@@ -397,5 +397,315 @@ describe('Folder context menu — menu structure', () => {
         expect(script).toContain('\\u{1F4E6}'); // 📦 package
         expect(script).toContain('\\u{1F4E4}'); // 📤 outbox
         expect(script).toContain('\\u{1F5D1}'); // 🗑️ wastebasket
+        expect(script).toContain('\\u{1F916}'); // 🤖 robot
+    });
+});
+
+// ============================================================================
+// Folder context menu — AI Generate Task action
+// ============================================================================
+
+describe('Folder context menu — AI Generate Task menu item', () => {
+    let script: string;
+    beforeAll(() => { script = getClientBundle(); });
+
+    it('renders AI Generate Task menu item', () => {
+        expect(script).toContain('AI Generate Task');
+    });
+
+    it('uses data-ctx-action attribute for ai-generate-in-folder', () => {
+        expect(script).toContain('ai-generate-in-folder');
+    });
+
+    it('uses robot emoji icon for AI Generate Task', () => {
+        // esbuild encodes 🤖 as unicode escape
+        expect(script).toContain('\\u{1F916}');
+    });
+
+    it('calls showRepoAIGenerateDialog with folder path when AI Generate clicked', () => {
+        expect(script).toContain('showRepoAIGenerateDialog');
+    });
+
+    it('passes folder path to showRepoAIGenerateDialog', () => {
+        // The switch case passes the path from the context menu item
+        expect(script).toContain('ai-generate-in-folder');
+        expect(script).toContain('showRepoAIGenerateDialog(wsId, path)');
+    });
+
+    it('places AI Generate Task after Create Task in menu order', () => {
+        // Both items should be present and AI Generate should come after Create Task
+        const createIdx = script.indexOf('Create Task');
+        const aiGenIdx = script.indexOf('AI Generate Task');
+        expect(createIdx).toBeGreaterThan(-1);
+        expect(aiGenIdx).toBeGreaterThan(-1);
+        expect(aiGenIdx).toBeGreaterThan(createIdx);
+    });
+
+    it('places AI Generate Task before the separator before Archive', () => {
+        const aiGenIdx = script.indexOf('AI Generate Task');
+        const archiveIdx = script.indexOf('Archive Folder');
+        expect(aiGenIdx).toBeGreaterThan(-1);
+        expect(archiveIdx).toBeGreaterThan(-1);
+        expect(archiveIdx).toBeGreaterThan(aiGenIdx);
+    });
+});
+
+// ============================================================================
+// Folder context menu — AI Generate dialog (tabbed layout)
+// ============================================================================
+
+describe('Folder context menu — AI Generate dialog structure', () => {
+    let script: string;
+    beforeAll(() => { script = getClientBundle(); });
+
+    it('defines showRepoAIGenerateDialog with preselectedFolder parameter', () => {
+        expect(script).toContain('showRepoAIGenerateDialog');
+    });
+
+    it('creates ai-generate-overlay dialog', () => {
+        expect(script).toContain('ai-generate-overlay');
+    });
+
+    it('renders Create AI Task as dialog title', () => {
+        expect(script).toContain('Create AI Task');
+    });
+
+    it('renders mode tabs for Create New and From Feature', () => {
+        expect(script).toContain('ai-gen-mode-tabs');
+        expect(script).toContain('ai-gen-mode-tab');
+    });
+
+    it('renders Create New tab label', () => {
+        expect(script).toContain('Create New');
+    });
+
+    it('renders From Feature tab label', () => {
+        expect(script).toContain('From Feature');
+    });
+
+    it('renders create mode content container', () => {
+        expect(script).toContain('ai-gen-create-content');
+    });
+
+    it('renders feature mode content container', () => {
+        expect(script).toContain('ai-gen-feature-content');
+    });
+
+    it('renders Task Name input with optional label in create mode', () => {
+        expect(script).toContain('ai-gen-name');
+        expect(script).toContain('ai-gen-optional');
+    });
+
+    it('renders Location dropdown in create mode', () => {
+        expect(script).toContain('ai-gen-location');
+    });
+
+    it('renders Brief Description textarea in create mode', () => {
+        expect(script).toContain('ai-gen-prompt');
+        expect(script).toContain('Brief Description');
+    });
+
+    it('renders Feature Folder dropdown in from-feature mode', () => {
+        expect(script).toContain('ai-gen-feature-location');
+        expect(script).toContain('Feature Folder');
+    });
+
+    it('renders Task Focus textarea in from-feature mode', () => {
+        expect(script).toContain('ai-gen-focus');
+        expect(script).toContain('Task Focus');
+    });
+
+    it('renders depth options with Simple and Deep radio buttons', () => {
+        expect(script).toContain('ai-gen-depth-options');
+        expect(script).toContain('ai-gen-depth-simple');
+        expect(script).toContain('ai-gen-depth-deep');
+    });
+
+    it('renders Simple depth option label', () => {
+        expect(script).toContain('Simple');
+        expect(script).toContain('single-pass AI analysis');
+    });
+
+    it('renders Deep depth option label', () => {
+        expect(script).toContain('Deep');
+        expect(script).toContain('go-deep skill');
+    });
+
+    it('renders Create Task as submit button label', () => {
+        expect(script).toContain('Create Task');
+    });
+
+    it('renders name validation error container', () => {
+        expect(script).toContain('ai-gen-name-error');
+    });
+
+    it('renders feature name validation error container', () => {
+        expect(script).toContain('ai-gen-feature-name-error');
+    });
+
+    it('renders hint text for AI name generation', () => {
+        expect(script).toContain('Leave empty to let AI generate a name');
+    });
+
+    it('renders no-features message for empty repos', () => {
+        expect(script).toContain('ai-gen-no-features');
+        expect(script).toContain('No feature folders found');
+    });
+});
+
+// ============================================================================
+// Folder context menu — AI Generate dialog behavior
+// ============================================================================
+
+describe('Folder context menu — AI Generate dialog behavior', () => {
+    let script: string;
+    beforeAll(() => { script = getClientBundle(); });
+
+    it('collects folder paths from task tree for location dropdown', () => {
+        expect(script).toContain('collectFolderPaths');
+    });
+
+    it('includes Root option in folder dropdown', () => {
+        expect(script).toContain('(Root)');
+    });
+
+    it('validates task name for path separators', () => {
+        expect(script).toContain('path separators');
+    });
+
+    it('validates task name for invalid characters', () => {
+        expect(script).toContain('invalid characters');
+    });
+
+    it('switches between Create and From Feature mode tabs', () => {
+        expect(script).toContain('data-ai-mode');
+        expect(script).toContain('currentAIMode');
+    });
+
+    it('toggles mode content visibility on tab click', () => {
+        expect(script).toContain('ai-gen-create-content');
+        expect(script).toContain('ai-gen-feature-content');
+    });
+
+    it('submits to tasks/generate endpoint', () => {
+        expect(script).toContain('/tasks/generate');
+    });
+
+    it('sends mode in request body', () => {
+        expect(script).toContain('mode: currentAIMode');
+    });
+
+    it('reads SSE stream for progress updates', () => {
+        expect(script).toContain('getReader');
+        expect(script).toContain('TextDecoder');
+    });
+
+    it('handles progress, chunk, error, and done SSE events', () => {
+        expect(script).toContain('"progress"');
+        expect(script).toContain('"chunk"');
+        expect(script).toContain('"error"');
+        expect(script).toContain('"done"');
+    });
+
+    it('refreshes task tree after successful generation', () => {
+        expect(script).toContain('fetchRepoTasks');
+    });
+
+    it('supports Escape key to close dialog', () => {
+        expect(script).toContain('Escape');
+    });
+
+    it('supports Ctrl/Cmd+Enter to submit dialog', () => {
+        expect(script).toContain('ctrlKey');
+        expect(script).toContain('metaKey');
+    });
+
+    it('disables From Feature tab when no feature folders', () => {
+        expect(script).toContain('hasFeatureFolders');
+    });
+
+    it('pre-selects folder when preselectedFolder is provided', () => {
+        expect(script).toContain('preselectedFolder');
+    });
+
+    it('changes submit button text to Generate Again after completion', () => {
+        expect(script).toContain('Generate Again');
+    });
+});
+
+// ============================================================================
+// Folder context menu — AI Generate dialog CSS styles
+// ============================================================================
+
+describe('Folder context menu — AI Generate dialog CSS styles', () => {
+    const html = generateDashboardHtml();
+
+    it('defines ai-gen-mode-tabs style', () => {
+        expect(html).toContain('.ai-gen-mode-tabs');
+    });
+
+    it('defines ai-gen-mode-tab style', () => {
+        expect(html).toContain('.ai-gen-mode-tab');
+    });
+
+    it('defines active mode tab style', () => {
+        expect(html).toContain('.ai-gen-mode-tab.active');
+    });
+
+    it('defines disabled mode tab style', () => {
+        expect(html).toContain('.ai-gen-mode-tab:disabled');
+    });
+
+    it('defines ai-gen-depth-options style', () => {
+        expect(html).toContain('.ai-gen-depth-options');
+    });
+
+    it('defines ai-gen-depth-option style', () => {
+        expect(html).toContain('.ai-gen-depth-option');
+    });
+
+    it('defines selected depth option style', () => {
+        expect(html).toContain('.ai-gen-depth-option.selected');
+    });
+
+    it('defines ai-gen-depth-title style', () => {
+        expect(html).toContain('.ai-gen-depth-title');
+    });
+
+    it('defines ai-gen-depth-desc style', () => {
+        expect(html).toContain('.ai-gen-depth-desc');
+    });
+
+    it('defines ai-gen-hint style', () => {
+        expect(html).toContain('.ai-gen-hint');
+    });
+
+    it('defines ai-gen-error style', () => {
+        expect(html).toContain('.ai-gen-error');
+    });
+
+    it('defines ai-gen-optional style', () => {
+        expect(html).toContain('.ai-gen-optional');
+    });
+
+    it('defines ai-gen-divider style', () => {
+        expect(html).toContain('.ai-gen-divider');
+    });
+
+    it('defines ai-gen-no-features style', () => {
+        expect(html).toContain('.ai-gen-no-features');
+    });
+
+    it('defines ai-gen-mode-content style', () => {
+        expect(html).toContain('.ai-gen-mode-content');
+    });
+
+    it('defines depth option hover style with accent border', () => {
+        expect(html).toContain('.ai-gen-depth-option:hover');
+    });
+
+    it('defines depth option radio button accent color', () => {
+        // esbuild CSS minifier strips quotes: input[type=radio]
+        expect(html).toContain('.ai-gen-depth-option input[type=radio]');
     });
 });

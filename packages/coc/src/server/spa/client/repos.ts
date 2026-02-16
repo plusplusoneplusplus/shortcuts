@@ -410,7 +410,6 @@ function renderTasksTab(repo: RepoData): string {
     let html = '<div class="repo-tasks-toolbar">' +
         '<button class="enqueue-btn-primary" id="repo-tasks-new-btn">+ New Task</button>' +
         '<button class="enqueue-btn-primary" id="repo-tasks-folder-btn">+ New Folder</button>' +
-        '<button class="enqueue-btn-primary" id="repo-tasks-ai-btn" title="Generate task with AI">&#129302; AI Generate</button>' +
     '</div>';
     // Miller columns container — tasks.ts renders columns inside this div
     html += '<div id="repo-tasks-tree">';
@@ -435,11 +434,6 @@ function wireTasksToolbar(wsId: string): void {
     const folderBtn = document.getElementById('repo-tasks-folder-btn');
     if (folderBtn) folderBtn.addEventListener('click', () => {
         (window as any).createRepoFolder?.(wsId);
-    });
-
-    const aiBtn = document.getElementById('repo-tasks-ai-btn');
-    if (aiBtn) aiBtn.addEventListener('click', () => {
-        (window as any).showRepoAIGenerateDialog?.(wsId);
     });
 }
 

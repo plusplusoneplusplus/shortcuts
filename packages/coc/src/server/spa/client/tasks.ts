@@ -738,6 +738,12 @@ function showFolderContextMenu(x: number, y: number, folderPath: string): void {
             '<span class="ctx-menu-icon">📄</span><span>Create Task</span>' +
         '</div>';
 
+    // AI Generate Task
+    itemsHtml +=
+        '<div class="task-context-menu-item" data-ctx-action="ai-generate-in-folder" data-ctx-path="' + escapeHtmlClient(folderPath) + '">' +
+            '<span class="ctx-menu-icon">🤖</span><span>AI Generate Task</span>' +
+        '</div>';
+
     // Separator
     itemsHtml += '<div class="task-context-menu-separator"></div>';
 
@@ -802,6 +808,9 @@ function showFolderContextMenu(x: number, y: number, folderPath: string): void {
                 break;
             case 'create-task-in-folder':
                 createTaskInFolder(wsId, path);
+                break;
+            case 'ai-generate-in-folder':
+                showRepoAIGenerateDialog(wsId, path);
                 break;
             case 'archive-folder':
                 archiveItem(wsId, path, 'archive');
@@ -1113,58 +1122,196 @@ function renderMarkdown(md: string): string {
 // AI Task Generation Dialog
 // ================================================================
 
-export function showRepoAIGenerateDialog(wsId: string): void {
+/** Collect all folder paths from the task tree for the location dropdown. */
+function collectFolderPaths(folder: TaskFolder, result: Array<{ label: string; value: string }>): void {
+    if (folder.children) {
+        for (const child of folder.children) {
+            const childPath = folder.relativePath ? folder.relativePath + '/' + child.name : child.name;
+            result.push({ label: childPath, value: childPath });
+            collectFolderPaths(child, result);
+        }
+    }
+}
+
+export function showRepoAIGenerateDialog(wsId: string, preselectedFolder?: string): void {
     const existing = document.getElementById('ai-generate-overlay');
     if (existing) existing.remove();
+
+    // Build folder options from current task tree
+    const folderOptions: Array<{ label: string; value: string }> = [
+        { label: '(Root)', value: '' }
+    ];
+    if (currentTasks) {
+        collectFolderPaths(currentTasks, folderOptions);
+    }
+
+    // Build folder <option> elements
+    let folderOptionsHtml = '';
+    for (const opt of folderOptions) {
+        const selected = opt.value === (preselectedFolder || '') ? ' selected' : '';
+        folderOptionsHtml += '<option value="' + escapeHtmlClient(opt.value) + '"' + selected + '>' + escapeHtmlClient(opt.label) + '</option>';
+    }
+
+    // Check if we have feature folders (non-root folders for "From Feature" mode)
+    const hasFeatureFolders = folderOptions.length > 1;
+    let featureFolderOptionsHtml = '';
+    for (const opt of folderOptions) {
+        if (!opt.value) continue; // skip root
+        const selected = opt.value === (preselectedFolder || '') ? ' selected' : '';
+        featureFolderOptionsHtml += '<option value="' + escapeHtmlClient(opt.value) + '"' + selected + '>' + escapeHtmlClient(opt.label) + '</option>';
+    }
 
     const overlay = document.createElement('div');
     overlay.id = 'ai-generate-overlay';
     overlay.className = 'enqueue-overlay';
 
     overlay.innerHTML =
-        '<div class="enqueue-dialog" style="width:500px;max-height:80vh;overflow-y:auto">' +
+        '<div class="enqueue-dialog ai-gen-dialog" style="width:520px;max-height:85vh;overflow-y:auto">' +
             '<div class="enqueue-dialog-header">' +
-                '<h2>Generate Task with AI</h2>' +
+                '<h2>🤖 Create AI Task</h2>' +
                 '<button class="enqueue-close-btn" id="ai-gen-close">&times;</button>' +
             '</div>' +
+            // Mode tabs (aligned with VS Code extension)
+            '<div class="ai-gen-mode-tabs">' +
+                '<button class="ai-gen-mode-tab active" data-ai-mode="create">✨ Create New</button>' +
+                '<button class="ai-gen-mode-tab' + (!hasFeatureFolders ? ' disabled' : '') + '" data-ai-mode="from-feature"' +
+                    (!hasFeatureFolders ? ' disabled title="No feature folders found"' : '') + '>📁 From Feature</button>' +
+            '</div>' +
+            // Create mode content
             '<form id="ai-gen-form" class="enqueue-form">' +
-                '<div class="enqueue-field">' +
-                    '<label for="ai-gen-prompt">Description / Prompt</label>' +
-                    '<textarea id="ai-gen-prompt" rows="3" placeholder="Describe the task you want to create..." required style="width:100%;resize:vertical"></textarea>' +
+                '<div id="ai-gen-create-content" class="ai-gen-mode-content">' +
+                    '<div class="enqueue-field">' +
+                        '<label for="ai-gen-name">Task Name <span class="ai-gen-optional">(Optional)</span></label>' +
+                        '<input type="text" id="ai-gen-name" placeholder="implement-user-authentication" />' +
+                        '<div class="ai-gen-hint">Leave empty to let AI generate a name from the description</div>' +
+                        '<div class="ai-gen-error" id="ai-gen-name-error"></div>' +
+                    '</div>' +
+                    '<div class="enqueue-field">' +
+                        '<label for="ai-gen-location">Location</label>' +
+                        '<select id="ai-gen-location">' + folderOptionsHtml + '</select>' +
+                        '<div class="ai-gen-hint">Select where to create the task</div>' +
+                    '</div>' +
+                    '<div class="enqueue-field">' +
+                        '<label for="ai-gen-prompt">Brief Description</label>' +
+                        '<textarea id="ai-gen-prompt" rows="4" placeholder="Add JWT-based authentication with refresh tokens for the REST API endpoints..." style="width:100%;resize:vertical"></textarea>' +
+                        '<div class="ai-gen-hint">AI will expand this into a comprehensive task document</div>' +
+                    '</div>' +
                 '</div>' +
-                '<div class="enqueue-field">' +
-                    '<label for="ai-gen-name">Task Name (optional)</label>' +
-                    '<input type="text" id="ai-gen-name" placeholder="kebab-case name, or leave empty for AI to generate" />' +
+                // From Feature mode content
+                '<div id="ai-gen-feature-content" class="ai-gen-mode-content" style="display:none">' +
+                    (!hasFeatureFolders ?
+                        '<div class="ai-gen-no-features">No feature folders found. Create a folder first to use this mode.</div>' :
+                        '<div class="enqueue-field">' +
+                            '<label for="ai-gen-feature-name">Task Name <span class="ai-gen-optional">(Optional)</span></label>' +
+                            '<input type="text" id="ai-gen-feature-name" placeholder="implement-user-authentication" />' +
+                            '<div class="ai-gen-hint">Leave empty to let AI generate a name based on the feature</div>' +
+                            '<div class="ai-gen-error" id="ai-gen-feature-name-error"></div>' +
+                        '</div>' +
+                        '<div class="enqueue-field">' +
+                            '<label for="ai-gen-feature-location">Feature Folder</label>' +
+                            '<select id="ai-gen-feature-location">' + featureFolderOptionsHtml + '</select>' +
+                            '<div class="ai-gen-hint">Select the feature folder to analyze</div>' +
+                        '</div>' +
+                        '<div class="enqueue-field">' +
+                            '<label for="ai-gen-focus">Task Focus</label>' +
+                            '<textarea id="ai-gen-focus" rows="3" placeholder="Implement the core authentication flow..." style="width:100%;resize:vertical"></textarea>' +
+                            '<div class="ai-gen-hint">What specific aspect should this task focus on? (Leave empty for general task)</div>' +
+                        '</div>'
+                    ) +
                 '</div>' +
+                // Shared options (depth + separator)
+                '<hr class="ai-gen-divider" />' +
                 '<div class="enqueue-field">' +
-                    '<label for="ai-gen-folder">Target Folder (optional)</label>' +
-                    '<input type="text" id="ai-gen-folder" placeholder="relative path under .vscode/tasks/" />' +
-                '</div>' +
-                '<div class="enqueue-field">' +
-                    '<label for="ai-gen-mode">Mode</label>' +
-                    '<select id="ai-gen-mode">' +
-                        '<option value="create">Create from prompt</option>' +
-                        '<option value="from-feature">From feature context</option>' +
-                    '</select>' +
-                '</div>' +
-                '<div class="enqueue-field">' +
-                    '<label for="ai-gen-depth">Depth</label>' +
-                    '<select id="ai-gen-depth">' +
-                        '<option value="simple">Simple</option>' +
-                        '<option value="deep">Deep (go-deep skill)</option>' +
-                    '</select>' +
+                    '<label>Generation Depth</label>' +
+                    '<div class="ai-gen-depth-options">' +
+                        '<label class="ai-gen-depth-option selected" id="ai-gen-depth-simple">' +
+                            '<input type="radio" name="ai-gen-depth" value="simple" checked />' +
+                            '<div class="ai-gen-depth-content">' +
+                                '<div class="ai-gen-depth-title">⚡ Simple</div>' +
+                                '<div class="ai-gen-depth-desc">Quick, single-pass AI analysis</div>' +
+                            '</div>' +
+                        '</label>' +
+                        '<label class="ai-gen-depth-option" id="ai-gen-depth-deep">' +
+                            '<input type="radio" name="ai-gen-depth" value="deep" />' +
+                            '<div class="ai-gen-depth-content">' +
+                                '<div class="ai-gen-depth-title">🔬 Deep</div>' +
+                                '<div class="ai-gen-depth-desc">Multi-phase research using go-deep skill</div>' +
+                            '</div>' +
+                        '</label>' +
+                    '</div>' +
                 '</div>' +
                 '<div id="ai-gen-progress" class="hidden" style="margin:8px 0;padding:8px;background:var(--bg-secondary,#f5f5f5);border-radius:4px;font-size:0.85em;max-height:200px;overflow-y:auto;white-space:pre-wrap"></div>' +
                 '<div class="enqueue-actions">' +
                     '<button type="button" class="enqueue-btn-secondary" id="ai-gen-cancel">Cancel</button>' +
-                    '<button type="submit" class="enqueue-btn-primary" id="ai-gen-submit">Generate</button>' +
+                    '<button type="submit" class="enqueue-btn-primary" id="ai-gen-submit">Create Task</button>' +
                 '</div>' +
             '</form>' +
         '</div>';
 
     document.body.appendChild(overlay);
 
-    const promptEl = document.getElementById('ai-gen-prompt') as HTMLTextAreaElement;
+    // Current mode state
+    let currentAIMode = 'create';
+
+    // Tab switching
+    const tabs = overlay.querySelectorAll('.ai-gen-mode-tab');
+    const createContent = document.getElementById('ai-gen-create-content') as HTMLDivElement;
+    const featureContent = document.getElementById('ai-gen-feature-content') as HTMLDivElement;
+
+    tabs.forEach((tab) => {
+        tab.addEventListener('click', () => {
+            const mode = (tab as HTMLElement).getAttribute('data-ai-mode');
+            if (!mode || (tab as HTMLButtonElement).disabled) return;
+            currentAIMode = mode;
+            tabs.forEach(t => t.classList.toggle('active', t === tab));
+            if (createContent) createContent.style.display = mode === 'create' ? '' : 'none';
+            if (featureContent) featureContent.style.display = mode === 'from-feature' ? '' : 'none';
+        });
+    });
+
+    // Depth option selection
+    const depthSimple = document.getElementById('ai-gen-depth-simple') as HTMLLabelElement;
+    const depthDeep = document.getElementById('ai-gen-depth-deep') as HTMLLabelElement;
+
+    if (depthSimple && depthDeep) {
+        depthSimple.addEventListener('click', () => {
+            depthSimple.classList.add('selected');
+            depthDeep.classList.remove('selected');
+        });
+        depthDeep.addEventListener('click', () => {
+            depthDeep.classList.add('selected');
+            depthSimple.classList.remove('selected');
+        });
+    }
+
+    // Name validation
+    function validateTaskName(value: string): string | null {
+        if (!value || value.trim().length === 0) return null; // empty is OK
+        if (value.includes('/') || value.includes('\\')) return 'Task name cannot contain path separators';
+        if (/[<>:"|?*]/.test(value)) return 'Task name contains invalid characters';
+        return null;
+    }
+
+    const nameInput = document.getElementById('ai-gen-name') as HTMLInputElement;
+    const nameError = document.getElementById('ai-gen-name-error') as HTMLDivElement;
+    const featureNameInput = document.getElementById('ai-gen-feature-name') as HTMLInputElement;
+    const featureNameError = document.getElementById('ai-gen-feature-name-error') as HTMLDivElement;
+
+    if (nameInput && nameError) {
+        nameInput.addEventListener('input', () => {
+            const err = validateTaskName(nameInput.value);
+            nameError.textContent = err || '';
+        });
+    }
+    if (featureNameInput && featureNameError) {
+        featureNameInput.addEventListener('input', () => {
+            const err = validateTaskName(featureNameInput.value);
+            featureNameError.textContent = err || '';
+        });
+    }
+
+    // Focus first input
+    const promptEl = document.getElementById('ai-gen-name') as HTMLInputElement;
     if (promptEl) promptEl.focus();
 
     const close = () => overlay.remove();
@@ -1172,16 +1319,51 @@ export function showRepoAIGenerateDialog(wsId: string): void {
     document.getElementById('ai-gen-cancel')?.addEventListener('click', close);
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
 
+    // Keyboard shortcuts
+    overlay.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') close();
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            document.getElementById('ai-gen-submit')?.click();
+        }
+    });
+
     document.getElementById('ai-gen-form')?.addEventListener('submit', async (e) => {
         e.preventDefault();
 
-        const prompt = (document.getElementById('ai-gen-prompt') as HTMLTextAreaElement)?.value.trim();
-        if (!prompt) return;
+        let prompt: string | undefined;
+        let name: string | undefined;
+        let targetFolder: string | undefined;
+        const depth = (overlay.querySelector('input[name="ai-gen-depth"]:checked') as HTMLInputElement)?.value || 'simple';
 
-        const name = (document.getElementById('ai-gen-name') as HTMLInputElement)?.value.trim() || undefined;
-        const targetFolder = (document.getElementById('ai-gen-folder') as HTMLInputElement)?.value.trim() || undefined;
-        const mode = (document.getElementById('ai-gen-mode') as HTMLSelectElement)?.value || 'create';
-        const depth = (document.getElementById('ai-gen-depth') as HTMLSelectElement)?.value || 'simple';
+        if (currentAIMode === 'create') {
+            // Validate name
+            const nameVal = (document.getElementById('ai-gen-name') as HTMLInputElement)?.value.trim() || '';
+            const nameErr = validateTaskName(nameVal);
+            if (nameErr) {
+                if (nameError) nameError.textContent = nameErr;
+                return;
+            }
+            name = nameVal || undefined;
+            targetFolder = (document.getElementById('ai-gen-location') as HTMLSelectElement)?.value || undefined;
+            prompt = (document.getElementById('ai-gen-prompt') as HTMLTextAreaElement)?.value.trim();
+        } else {
+            // From Feature mode
+            const featureNameVal = (document.getElementById('ai-gen-feature-name') as HTMLInputElement)?.value.trim() || '';
+            const featureNameErr = validateTaskName(featureNameVal);
+            if (featureNameErr) {
+                if (featureNameError) featureNameError.textContent = featureNameErr;
+                return;
+            }
+            name = featureNameVal || undefined;
+            targetFolder = (document.getElementById('ai-gen-feature-location') as HTMLSelectElement)?.value || undefined;
+            prompt = (document.getElementById('ai-gen-focus') as HTMLTextAreaElement)?.value.trim();
+        }
+
+        if (!prompt) {
+            // For create mode, prompt is required; for from-feature, it's optional
+            if (currentAIMode === 'create') return;
+        }
 
         const submitBtn = document.getElementById('ai-gen-submit') as HTMLButtonElement;
         const progressEl = document.getElementById('ai-gen-progress') as HTMLDivElement;
@@ -1194,7 +1376,7 @@ export function showRepoAIGenerateDialog(wsId: string): void {
                 {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ prompt, name, targetFolder, mode, depth }),
+                    body: JSON.stringify({ prompt: prompt || '', name, targetFolder, mode: currentAIMode, depth }),
                 }
             );
 

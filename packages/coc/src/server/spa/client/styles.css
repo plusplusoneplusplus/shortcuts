@@ -2234,6 +2234,134 @@ body {
     background: rgba(241, 76, 76, 0.08);
 }
 
+/* ================================================================
+   AI Generate Task Dialog (aligned with VS Code extension dialog)
+   ================================================================ */
+
+.ai-gen-mode-tabs {
+    display: flex;
+    gap: 0;
+    padding: 0 20px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.ai-gen-mode-tab {
+    flex: 1;
+    padding: 10px 16px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: color 0.2s, border-color 0.2s;
+}
+
+.ai-gen-mode-tab:hover:not(:disabled) {
+    color: var(--text-primary);
+}
+
+.ai-gen-mode-tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+}
+
+.ai-gen-mode-tab:disabled,
+.ai-gen-mode-tab.disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.ai-gen-mode-content {
+    /* mode content wrapper, toggled via display */
+}
+
+.ai-gen-optional {
+    font-weight: 400;
+    font-size: 11px;
+    opacity: 0.7;
+}
+
+.ai-gen-hint {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+    opacity: 0.8;
+}
+
+.ai-gen-error {
+    font-size: 11px;
+    color: var(--status-failed, #f14c4c);
+    margin-top: 4px;
+    min-height: 0;
+}
+
+.ai-gen-divider {
+    border: none;
+    border-top: 1px solid var(--border-color);
+    margin: 16px 0 12px;
+}
+
+.ai-gen-depth-options {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.ai-gen-depth-option {
+    display: flex;
+    align-items: flex-start;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-secondary);
+    cursor: pointer;
+    transition: border-color 0.2s, background-color 0.2s;
+}
+
+.ai-gen-depth-option:hover {
+    border-color: var(--accent);
+    background: var(--hover-bg, rgba(255, 255, 255, 0.03));
+}
+
+.ai-gen-depth-option.selected {
+    border-color: var(--accent);
+    background: var(--selection-bg, rgba(0, 122, 204, 0.08));
+}
+
+.ai-gen-depth-option input[type="radio"] {
+    margin: 0 10px 0 0;
+    margin-top: 2px;
+    accent-color: var(--accent);
+}
+
+.ai-gen-depth-content {
+    flex: 1;
+}
+
+.ai-gen-depth-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.ai-gen-depth-desc {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+
+.ai-gen-no-features {
+    padding: 16px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-align: center;
+}
+
 /* Loading / error states */
 .task-preview-loading {
     padding: 24px;
