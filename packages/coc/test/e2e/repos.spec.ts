@@ -319,3 +319,51 @@ test.describe('Edit Repo workflow', () => {
         await expect(page.locator('.repo-item-name')).toContainText('keep-me');
     });
 });
+
+// ================================================================
+// Remove Repo (004-remove-repo)
+// ================================================================
+
+test.describe('Remove Repo', () => {
+    test('remove button deletes repo', async ({ page, serverUrl }) => {
+        await seedWorkspace(serverUrl, 'ws-rm-1', 'doomed-repo', '/tmp/doomed');
+
+        await page.goto(serverUrl);
+        await page.click('[data-tab="repos"]');
+        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+
+        // Select the repo to show detail with remove button
+        await page.locator('.repo-item').first().click();
+        await expect(page.locator('#repo-detail-content')).toBeVisible();
+
+        // Accept the upcoming window.confirm dialog
+        page.on('dialog', dialog => dialog.accept());
+
+        await page.click('#repo-remove-btn');
+
+        // Repo should be gone from sidebar, empty state shown
+        await expect(page.locator('.repo-item')).toHaveCount(0, { timeout: 10000 });
+        await expect(page.locator('#repos-empty')).toBeVisible();
+    });
+
+    test('removing selected repo clears detail panel', async ({ page, serverUrl }) => {
+        await seedWorkspace(serverUrl, 'ws-rm-2', 'selected-repo', '/tmp/selected');
+
+        await page.goto(serverUrl);
+        await page.click('[data-tab="repos"]');
+        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+
+        // Select the repo
+        await page.locator('.repo-item').first().click();
+        await expect(page.locator('#repo-detail-content')).toBeVisible();
+        await expect(page.locator('#repo-detail-empty')).toBeHidden();
+
+        // Accept the confirm dialog and remove
+        page.on('dialog', dialog => dialog.accept());
+        await page.click('#repo-remove-btn');
+
+        // Detail panel should revert to empty state
+        await expect(page.locator('#repo-detail-empty')).toBeVisible({ timeout: 10000 });
+        await expect(page.locator('#repo-detail-content')).toBeHidden();
+    });
+});
