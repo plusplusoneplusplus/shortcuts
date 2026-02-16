@@ -1,9 +1,11 @@
 /**
- * Review Navigation Tests
+ * SPA Navigation Tests
  *
- * Tests for the client-side SPA routing additions in core.ts
- * and the client modules (review-config, review-browser, review-editor).
+ * Tests for the client-side SPA routing in core.ts.
  * These tests verify the bundled client JS contains the expected routing logic.
+ *
+ * Note: Review-specific bundle tests were removed when review initialization
+ * was extracted from core.ts (004-remove-review-init).
  */
 
 import { describe, it, expect } from 'vitest';
@@ -15,55 +17,10 @@ function getClientBundle(): string {
     return fs.readFileSync(bundlePath, 'utf8');
 }
 
-describe('Review SPA — Client Bundle', () => {
-    it('contains review route detection for /review', () => {
-        const bundle = getClientBundle();
-        // The bundle should contain the route detection regex
-        expect(bundle).toContain('/review/');
-        expect(bundle).toContain('review-browser');
-    });
-
-    it('contains review-editor initialization', () => {
-        const bundle = getClientBundle();
-        expect(bundle).toContain('review-editor');
-        expect(bundle).toContain('__REVIEW_CONFIG__');
-    });
-
-    it('contains rich markdown rendering functions', () => {
-        const bundle = getClientBundle();
-        expect(bundle).toContain('renderMarkdownContent');
-        expect(bundle).toContain('renderSourceContent');
-        expect(bundle).toContain('review-code-block');
-    });
-
-    it('contains comment CRUD actions', () => {
-        const bundle = getClientBundle();
-        expect(bundle).toContain('resolveComment');
-        expect(bundle).toContain('deleteComment');
-        expect(bundle).toContain('reopenComment');
-        expect(bundle).toContain('addComment');
-    });
-
-    it('contains mode toggle logic', () => {
-        const bundle = getClientBundle();
-        expect(bundle).toContain('review-mode-review');
-        expect(bundle).toContain('review-mode-source');
-    });
-
-    it('contains HttpTransport class', () => {
-        const bundle = getClientBundle();
-        expect(bundle).toContain('HttpTransport');
-    });
-
+describe('SPA — Client Bundle Navigation', () => {
     it('contains showPage function', () => {
         const bundle = getClientBundle();
         expect(bundle).toContain('showPage');
-    });
-
-    it('contains file browser init logic', () => {
-        const bundle = getClientBundle();
-        expect(bundle).toContain('review-browser-content');
-        expect(bundle).toContain('review-file-card');
     });
 
     it('contains nav-link click interception', () => {
@@ -77,9 +34,19 @@ describe('Review SPA — Client Bundle', () => {
         expect(bundle).toContain('popstate');
     });
 
-    it('contains review-config module with getReviewConfig', () => {
+    it('does not contain review routing in core init', () => {
         const bundle = getClientBundle();
-        // esbuild may rename exports, but the function body references __REVIEW_CONFIG__
-        expect(bundle).toContain('getReviewConfig');
+        expect(bundle).not.toContain('initFileBrowser');
+        expect(bundle).not.toContain('initReviewEditor');
+        expect(bundle).not.toContain('isReviewMode');
+    });
+
+    it('dashboard is the only page type in showPage', () => {
+        // Read core.ts source directly to verify the type signature
+        const corePath = path.join(__dirname, '..', '..', 'src', 'server', 'spa', 'client', 'core.ts');
+        const core = fs.readFileSync(corePath, 'utf8');
+        expect(core).toContain("showPage(page: 'dashboard')");
+        expect(core).not.toContain("'review-browser'");
+        expect(core).not.toContain("'review-editor'");
     });
 });

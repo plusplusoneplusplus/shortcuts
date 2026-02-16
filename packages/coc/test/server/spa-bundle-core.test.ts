@@ -151,7 +151,7 @@ describe('client bundle — core module', () => {
     it('defines navigation functions with hash routing', () => {
         expect(script).toContain('navigateToProcess');
         expect(script).toContain('navigateToHome');
-        // history.pushState is now used for review page SPA navigation
+        // history.pushState is used for SPA navigation (nav-link interception)
         expect(script).toContain('history.pushState');
     });
 
