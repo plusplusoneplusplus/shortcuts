@@ -12,7 +12,6 @@ import {
 import {
     getSDKRequestTimeoutSetting,
     getSDKSessionTimeoutSetting,
-    getSDKMaxSessionsSetting,
     getSDKLoadMcpConfigSetting,
     getAIBackendSetting
 } from '../../shortcuts/ai-service/ai-config-helpers';
@@ -57,7 +56,6 @@ suite('AI Invoker Factory Tests', () => {
                 workingDirectory: '/tmp',
                 featureName: 'Test Feature',
                 processManager: mockProcessManager,
-                usePool: false,
                 clipboardFallback: false,
                 approvePermissions: true
             };
@@ -152,7 +150,6 @@ suite('AI Invoker Factory Tests', () => {
         test('should accept all options together', () => {
             const options: AIInvokerFactoryOptions = {
                 workingDirectory: '/workspace',
-                usePool: true,
                 model: 'gpt-4',
                 timeoutMs: 60000,
                 featureName: 'Pipeline Execution',
@@ -358,7 +355,6 @@ suite('AI Invoker Factory Tests', () => {
             
             const options: AIInvokerFactoryOptions = {
                 workingDirectory: '/workspace',
-                usePool: true,
                 model: 'gpt-4',
                 timeoutMs: 60000,
                 featureName: 'Pipeline Execution',
@@ -441,12 +437,6 @@ suite('AI Invoker Factory Tests', () => {
             const timeout = getSDKSessionTimeoutSetting();
             // Default is 1800000 (30 minutes)
             assert.strictEqual(timeout, 1800000, 'Default session timeout should be 1800000ms (30 minutes)');
-        });
-
-        test('getSDKMaxSessionsSetting should return default value', () => {
-            const maxSessions = getSDKMaxSessionsSetting();
-            // Default is 5
-            assert.strictEqual(maxSessions, 5, 'Default max sessions should be 5');
         });
 
         test('getSDKLoadMcpConfigSetting should return default value', () => {

@@ -18,8 +18,6 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { AIInvocationResult } from '../ai/types';
 import { getLogger, LogCategory } from '../logger';
-// Note: SessionPool is kept for backward compatibility but not used for clarification requests
-import { SessionPool, IPoolableSession, SessionPoolStats } from './session-pool';
 import { loadDefaultMcpConfig, mergeMcpConfigs } from './mcp-config-loader';
 import { ensureFolderTrusted } from './trusted-folder';
 import { DEFAULT_AI_TIMEOUT_MS } from '../ai/timeouts';
@@ -33,8 +31,6 @@ import {
     PermissionRequest,
     PermissionRequestResult,
     PermissionHandler,
-    SessionPoolConfig,
-    DEFAULT_SESSION_POOL_CONFIG,
     MCPServerConfigBase,
     MCPLocalServerConfig,
     MCPRemoteServerConfig,
@@ -56,8 +52,6 @@ export {
     PermissionRequest,
     PermissionRequestResult,
     PermissionHandler,
-    SessionPoolConfig,
-    DEFAULT_SESSION_POOL_CONFIG,
     approveAllPermissions,
     denyAllPermissions,
 } from './types';
@@ -242,8 +236,6 @@ export class CopilotSDKService {
     private sdkModule: { CopilotClient: new (options?: ICopilotClientOptions) => ICopilotClient } | null = null;
     private initializationPromise: Promise<void> | null = null;
     private availabilityCache: SDKAvailabilityResult | null = null;
-    private sessionPool: SessionPool | null = null;
-    private sessionPoolConfig: Required<SessionPoolConfig> = { ...DEFAULT_SESSION_POOL_CONFIG };
     private disposed = false;
 
     /** Map of active sessions for cancellation support */
@@ -286,26 +278,6 @@ export class CopilotSDKService {
             CopilotSDKService.instance.dispose();
             CopilotSDKService.instance = null;
         }
-    }
-
-    /**
-     * Configure the session pool settings.
-     * Call this before using the session pool to override default values.
-     * Typically called during extension activation with values from VS Code settings.
-     *
-     * @param config Session pool configuration
-     */
-    public configureSessionPool(config: SessionPoolConfig): void {
-        this.sessionPoolConfig = {
-            maxSessions: config.maxSessions ?? DEFAULT_SESSION_POOL_CONFIG.maxSessions,
-            idleTimeoutMs: config.idleTimeoutMs ?? DEFAULT_SESSION_POOL_CONFIG.idleTimeoutMs
-        };
-
-        const logger = getLogger();
-        logger.debug(
-            LogCategory.AI,
-            `CopilotSDKService: Session pool configured with maxSessions=${this.sessionPoolConfig.maxSessions}, idleTimeoutMs=${this.sessionPoolConfig.idleTimeoutMs}`
-        );
     }
 
     /**
@@ -421,114 +393,12 @@ export class CopilotSDKService {
 
     /**
      * Send a message to Copilot via the SDK.
-     * By default, creates a new session for each request (session-per-request pattern).
-     * When usePool is true, uses the session pool for efficient parallel requests.
+     * Creates a new session for each request (session-per-request pattern).
      *
      * @param options Message options including prompt and optional settings
      * @returns Invocation result with response or error
      */
     public async sendMessage(options: SendMessageOptions): Promise<SDKInvocationResult> {
-        if (options.usePool) {
-            return this.sendMessageWithPool(options);
-        }
-        return this.sendMessageDirect(options);
-    }
-
-    /**
-     * Send a message using a session from the pool.
-     * This is more efficient for parallel workloads as sessions are reused.
-     *
-     * @param options Message options including prompt and optional settings
-     * @returns Invocation result with response or error
-     */
-    private async sendMessageWithPool(options: SendMessageOptions): Promise<SDKInvocationResult> {
-        const logger = getLogger();
-        const startTime = Date.now();
-
-        // Check availability first
-        const availability = await this.isAvailable();
-        if (!availability.available) {
-            return {
-                success: false,
-                error: availability.error || 'Copilot SDK is not available'
-            };
-        }
-
-        let session: IPoolableSession | null = null;
-        let shouldDestroySession = false;
-
-        try {
-            const pool = await this.ensureSessionPool();
-            const timeoutMs = options.timeoutMs ?? CopilotSDKService.DEFAULT_TIMEOUT_MS;
-
-            logger.debug(LogCategory.AI, 'CopilotSDKService: Acquiring session from pool');
-            session = await pool.acquire(timeoutMs);
-            logger.debug(LogCategory.AI, `CopilotSDKService [${session.sessionId}]: Acquired session from pool`);
-
-            // Send the message with timeout
-            const result = await this.sendWithTimeout(session, options.prompt, timeoutMs);
-
-            const response = result?.data?.content || '';
-            const durationMs = Date.now() - startTime;
-
-            logger.debug(LogCategory.AI, `CopilotSDKService [${session.sessionId}]: Pooled request completed in ${durationMs}ms`);
-
-            if (!response) {
-                return {
-                    success: false,
-                    error: 'No response received from Copilot SDK',
-                    sessionId: session.sessionId
-                };
-            }
-
-            return {
-                success: true,
-                response,
-                sessionId: session.sessionId,
-                rawResponse: result
-            };
-
-        } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            const durationMs = Date.now() - startTime;
-
-            logger.error(LogCategory.AI, `CopilotSDKService [${session?.sessionId ?? 'no-session'}]: Pooled request failed after ${durationMs}ms`, error instanceof Error ? error : undefined);
-
-            // Mark session for destruction on error (don't reuse potentially broken sessions)
-            shouldDestroySession = true;
-
-            return {
-                success: false,
-                error: `Copilot SDK error: ${errorMessage}`,
-                sessionId: session?.sessionId
-            };
-
-        } finally {
-            // Release or destroy session
-            if (session && this.sessionPool) {
-                if (shouldDestroySession) {
-                    try {
-                        await this.sessionPool.destroy(session);
-                        logger.debug(LogCategory.AI, `CopilotSDKService [${session.sessionId}]: Session destroyed after error`);
-                    } catch (destroyError) {
-                        logger.debug(LogCategory.AI, `CopilotSDKService [${session.sessionId}]: Warning: Error destroying session: ${destroyError}`);
-                    }
-                } else {
-                    this.sessionPool.release(session);
-                    logger.debug(LogCategory.AI, `CopilotSDKService [${session.sessionId}]: Session released back to pool`);
-                }
-            }
-        }
-    }
-
-    /**
-     * Send a message directly (creates client with cwd, creates session, destroys session).
-     * This creates a fresh client with the specified working directory.
-     *
-     * @param options Message options including prompt and optional settings
-     * @returns Invocation result with response or error
-     */
-    private async sendMessageDirect(options: SendMessageOptions): Promise<SDKInvocationResult> {
         const logger = getLogger();
         const startTime = Date.now();
 
@@ -889,63 +759,6 @@ export class CopilotSDKService {
     }
 
     /**
-     * Get the session pool, creating it if necessary.
-     * The pool is lazily initialized on first use.
-     *
-     * @returns The session pool
-     * @throws Error if SDK is not available
-     */
-    private async ensureSessionPool(): Promise<SessionPool> {
-        if (this.disposed) {
-            throw new Error('CopilotSDKService has been disposed');
-        }
-
-        if (this.sessionPool) {
-            return this.sessionPool;
-        }
-
-        const logger = getLogger();
-        logger.debug(LogCategory.AI, 'CopilotSDKService: Creating session pool');
-
-        // Ensure client is initialized first
-        const client = await this.ensureClient();
-
-        // Create the session pool with a factory that creates sessions from the client
-        this.sessionPool = new SessionPool(
-            async () => {
-                const session = await client.createSession();
-                return session as IPoolableSession;
-            },
-            {
-                maxSessions: this.sessionPoolConfig.maxSessions,
-                idleTimeoutMs: this.sessionPoolConfig.idleTimeoutMs
-            }
-        );
-
-        logger.debug(LogCategory.AI, 'CopilotSDKService: Session pool created');
-        return this.sessionPool;
-    }
-
-    /**
-     * Get statistics about the session pool.
-     * Returns null if the pool has not been initialized.
-     *
-     * @returns Pool statistics or null
-     */
-    public getPoolStats(): SessionPoolStats | null {
-        return this.sessionPool?.getStats() ?? null;
-    }
-
-    /**
-     * Check if the session pool is active.
-     *
-     * @returns True if the pool exists and is not disposed
-     */
-    public hasActivePool(): boolean {
-        return this.sessionPool !== null && !this.sessionPool.isDisposed();
-    }
-
-    /**
      * Abort an active session by its ID.
      * This destroys the session and removes it from tracking.
      * Used for cancellation support in the AI Processes panel.
@@ -1041,17 +854,6 @@ export class CopilotSDKService {
             this.keepAliveCleanupTimer = undefined;
         }
         await Promise.allSettled(keepAlivePromises);
-
-        // Dispose session pool
-        if (this.sessionPool) {
-            try {
-                await this.sessionPool.dispose();
-                logger.debug(LogCategory.AI, 'CopilotSDKService: Session pool disposed');
-            } catch (error) {
-                logger.debug(LogCategory.AI, `CopilotSDKService: Warning: Error disposing session pool: ${error}`);
-            }
-            this.sessionPool = null;
-        }
 
         if (this.client) {
             try {

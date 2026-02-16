@@ -133,7 +133,6 @@ export async function executeVSCodePipeline(
     const defaultModel = getAIModelSetting();
 
     const aiInvoker: AIInvoker = createAIInvoker({
-        usePool: true, // Use session pool for parallel pipeline execution
         workingDirectory: effectiveWorkingDirectory,
         model: defaultModel,
         featureName: 'Pipeline'
@@ -289,7 +288,6 @@ export async function executeVSCodePipelineWithItems(
     const defaultModel = getAIModelSetting();
 
     const aiInvoker: AIInvoker = createAIInvoker({
-        usePool: true, // Use session pool for parallel pipeline execution
         workingDirectory: effectiveWorkingDirectory,
         model: defaultModel,
         featureName: 'Pipeline'

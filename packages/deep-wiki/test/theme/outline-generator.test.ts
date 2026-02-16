@@ -533,22 +533,6 @@ describe('outline-generator', () => {
             expect(call.timeoutMs).toBe(60_000);
         });
 
-        it('should use direct session (usePool: false)', async () => {
-            mockIsAvailable.mockResolvedValue(true);
-            mockSendMessage.mockResolvedValue({
-                success: true,
-                response: JSON.stringify({
-                    title: 'T', layout: 'single',
-                    articles: [{ slug: 'x', title: 'X', description: '', isIndex: true, coveredComponentIds: [], coveredFiles: [] }],
-                }),
-            });
-
-            await generateThemeOutline(makeOptions(1));
-
-            const call = mockSendMessage.mock.calls[0][0];
-            expect(call.usePool).toBe(false);
-        });
-
         it('should handle depth=shallow producing fewer articles via AI', async () => {
             mockIsAvailable.mockResolvedValue(true);
             mockSendMessage.mockResolvedValue({

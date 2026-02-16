@@ -219,7 +219,6 @@ describe('CLITaskExecutor', () => {
                 model: 'gpt-4',
                 timeoutMs: 60000,
                 workingDirectory: '/my/dir',
-                usePool: false,
             }));
         });
     });

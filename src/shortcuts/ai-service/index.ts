@@ -5,7 +5,7 @@
  * This module provides generic AI invocation capabilities that can be used
  * by any feature in the extension.
  *
- * Core AI functionality (CopilotSDKService, SessionPool, CLI utilities) is
+ * Core AI functionality (CopilotSDKService, CLI utilities) is
  * provided by the @plusplusoneplusplus/pipeline-core package.
  * Import those directly from pipeline-core.
  */
@@ -164,7 +164,6 @@ export {
 // Export AI config helpers (VS Code-specific)
 export {
     getAIBackendSetting,
-    getSDKMaxSessionsSetting,
     getSDKSessionTimeoutSetting,
     getAvailableModels,
     getFollowPromptDefaultMode,

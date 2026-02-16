@@ -80,19 +80,6 @@ describe('AI Invoker Factory', () => {
             expect(callArgs.availableTools).toEqual(['view', 'grep', 'glob']);
         });
 
-        it('should use direct session (usePool: false)', async () => {
-            mockSendMessage.mockResolvedValue({
-                success: true,
-                response: 'result',
-            });
-
-            const invoker = createAnalysisInvoker({ repoPath: '/repo' });
-            await invoker('test');
-
-            const callArgs = mockSendMessage.mock.calls[0][0];
-            expect(callArgs.usePool).toBe(false);
-        });
-
         it('should set read-only permissions', async () => {
             mockSendMessage.mockResolvedValue({
                 success: true,
@@ -229,16 +216,6 @@ describe('AI Invoker Factory', () => {
     // ========================================================================
 
     describe('createWritingInvoker', () => {
-        it('should use direct session (usePool: false)', async () => {
-            mockSendMessage.mockResolvedValue({ success: true, response: 'ok' });
-
-            const invoker = createWritingInvoker({});
-            await invoker('test');
-
-            const callArgs = mockSendMessage.mock.calls[0][0];
-            expect(callArgs.usePool).toBe(false);
-        });
-
         it('should pass repoPath as workingDirectory', async () => {
             mockSendMessage.mockResolvedValue({ success: true, response: 'ok' });
 

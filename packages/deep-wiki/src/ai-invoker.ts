@@ -99,7 +99,7 @@ export async function checkAIAvailability(): Promise<AIAvailabilityResult> {
 /**
  * Create an AIInvoker for Phase 3 (Deep Analysis).
  *
- * Uses direct sessions (usePool: false) with read-only MCP tools
+ * Uses direct sessions with read-only MCP tools
  * (view, grep, glob) so the AI can investigate source code.
  * Permissions: approve reads, deny everything else.
  */
@@ -116,7 +116,6 @@ export function createAnalysisInvoker(options: AnalysisInvokerOptions): AIInvoke
                 model,
                 workingDirectory: options.repoPath,
                 timeoutMs,
-                usePool: false, // Direct session — MCP tools require it
                 availableTools: ANALYSIS_TOOLS,
                 onPermissionRequest: (req) =>
                     req.kind === 'read' ? { kind: 'approved' } : { kind: 'denied-by-rules' },
@@ -148,7 +147,7 @@ export function createAnalysisInvoker(options: AnalysisInvokerOptions): AIInvoke
 /**
  * Create an AIInvoker for Phase 4 (Article Writing).
  *
- * Uses direct sessions (usePool: false) without tools for
+ * Uses direct sessions without tools for
  * article generation. No MCP tools are needed since all context
  * is provided in the prompt.
  */
@@ -165,7 +164,6 @@ export function createWritingInvoker(options: WritingInvokerOptions): AIInvoker 
                 model,
                 workingDirectory: options.repoPath,
                 timeoutMs,
-                usePool: false, // Direct session — consistent with all deep-wiki phases
                 loadDefaultMcpConfig: false, // Writing doesn't need MCP; avoid user's global MCP config
             };
 
@@ -210,7 +208,7 @@ const DEFAULT_CONSOLIDATION_TIMEOUT_MS = 1_800_000;
 /**
  * Create an AIInvoker for Phase 2 (Component Consolidation).
  *
- * Uses direct sessions (usePool: false) without tools.
+ * Uses direct sessions without tools.
  * The AI only needs to analyze the component list and return clusters.
  */
 export function createConsolidationInvoker(options: ConsolidationInvokerOptions): AIInvoker {
@@ -226,7 +224,6 @@ export function createConsolidationInvoker(options: ConsolidationInvokerOptions)
                 model,
                 timeoutMs,
                 workingDirectory: options.workingDirectory,
-                usePool: false,
                 loadDefaultMcpConfig: false,
             };
 

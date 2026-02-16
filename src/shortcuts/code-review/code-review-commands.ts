@@ -306,7 +306,6 @@ export function registerCodeReviewCommands(
 
                     // Create AI invoker using the unified factory
                     const aiInvoker: AIInvoker = createAIInvoker({
-                        usePool: true, // Use session pool for parallel code review
                         workingDirectory: workspaceRoot,
                         featureName: 'Code Review'
                     });

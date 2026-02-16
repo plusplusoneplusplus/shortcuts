@@ -194,12 +194,6 @@ export {
     // Concurrency
     DEFAULT_PARALLEL_LIMIT,
     DEFAULT_MAX_CONCURRENCY,
-    // Session Pool
-    DEFAULT_MAX_SESSIONS,
-    DEFAULT_IDLE_TIMEOUT_MS,
-    DEFAULT_MIN_SESSIONS,
-    DEFAULT_CLEANUP_INTERVAL_MS,
-    DEFAULT_ACQUIRE_TIMEOUT_MS,
     // Chunk Splitter
     DEFAULT_CHUNK_MAX_SIZE,
     DEFAULT_CHUNK_OVERLAP_SIZE,
@@ -291,12 +285,6 @@ export {
     ProcessEventType,
     ProcessEvent,
     ProcessCounts,
-    // Session Pool
-    SessionPool,
-    IPoolableSession,
-    SessionFactory,
-    SessionPoolOptions,
-    SessionPoolStats,
     // CLI Utilities
     PROMPT_LENGTH_THRESHOLD,
     PROBLEMATIC_CHARS_PATTERN,
@@ -324,8 +312,6 @@ export {
     PermissionRequest,
     PermissionRequestResult,
     PermissionHandler,
-    SessionPoolConfig,
-    DEFAULT_SESSION_POOL_CONFIG,
     approveAllPermissions,
     denyAllPermissions,
     // DEFAULT_AI_TIMEOUT_MS is exported from ./config

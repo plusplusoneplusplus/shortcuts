@@ -244,7 +244,6 @@ async function generateSubArticle(
 
     const sendOptions: SendMessageOptions = {
         prompt,
-        usePool: false,
         timeoutMs: timeout ?? DEFAULT_ARTICLE_TIMEOUT_MS,
     };
 
@@ -292,7 +291,6 @@ async function generateIndexPage(
 
     const sendOptions: SendMessageOptions = {
         prompt,
-        usePool: false,
         timeoutMs: timeout ?? DEFAULT_INDEX_TIMEOUT_MS,
     };
 

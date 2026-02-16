@@ -166,7 +166,6 @@ export async function handleAIClarificationBase(
     try {
         // Use the unified AI invoker with SDK/CLI fallback and clipboard fallback
         const result = await invokeAIWithFallback(prompt, {
-            usePool: false, // Clarification is a one-off request
             workingDirectory: workspaceRoot,
             clipboardFallback: true,
             featureName: 'Clarification'

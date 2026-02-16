@@ -99,7 +99,6 @@ export function createCLIAIInvoker(options: CLIAIInvokerOptions = {}): AIInvoker
                 model,
                 workingDirectory: options.workingDirectory,
                 timeoutMs,
-                usePool: false, // Direct session for permission handling
                 onPermissionRequest: permissionHandler,
                 loadDefaultMcpConfig: options.loadMcpConfig !== false,
                 onStreamingChunk: options.onChunk,

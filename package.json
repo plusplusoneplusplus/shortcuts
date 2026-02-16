@@ -343,13 +343,6 @@
           "default": "copilot-cli",
           "markdownDescription": "AI backend for requests. **copilot-sdk** is recommended for better session management and reliability. Falls back to **copilot-cli** if SDK is unavailable."
         },
-        "workspaceShortcuts.aiService.sdk.maxSessions": {
-          "type": "number",
-          "default": 5,
-          "minimum": 1,
-          "maximum": 20,
-          "markdownDescription": "Maximum number of concurrent SDK sessions for parallel operations (e.g., code review, pipeline execution)."
-        },
         "workspaceShortcuts.aiService.sdk.sessionTimeout": {
           "type": "number",
           "default": 1800000,

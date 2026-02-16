@@ -177,22 +177,19 @@ export interface SendMessageOptions {
     workingDirectory?: string;
     /** Optional timeout in milliseconds (default: 1800000 = 30 minutes) */
     timeoutMs?: number;
-    /** Use session pool for efficient parallel requests (default: false) */
-    usePool?: boolean;
     /** Enable streaming for real-time response chunks (default: false) */
     streaming?: boolean;
 
     // MCP Control Options (Session-level tool filtering)
 
-    /** Whitelist of tool names to make available. Only applies to direct sessions (usePool: false). */
+    /** Whitelist of tool names to make available. */
     availableTools?: string[];
-    /** Blacklist of tool names to exclude. Only applies to direct sessions (usePool: false). */
+    /** Blacklist of tool names to exclude. */
     excludedTools?: string[];
-    /** Custom MCP server configurations. Only applies to direct sessions (usePool: false). */
+    /** Custom MCP server configurations. */
     mcpServers?: Record<string, MCPServerConfig>;
     /**
      * Whether to automatically load MCP server configuration from ~/.copilot/mcp-config.json.
-     * Only applies to direct sessions (usePool: false).
      * @default true
      */
     loadDefaultMcpConfig?: boolean;
@@ -200,21 +197,18 @@ export interface SendMessageOptions {
     /**
      * Handler for permission requests from the Copilot CLI.
      * Without a handler, all permission requests are denied by default.
-     * Only applies to direct sessions (usePool: false).
      */
     onPermissionRequest?: PermissionHandler;
 
     /**
      * Callback invoked for each streaming chunk as it arrives from the SDK.
      * When provided, streaming mode is automatically enabled.
-     * Only works with direct sessions (usePool: false).
      */
     onStreamingChunk?: (chunk: string) => void;
 
     /**
      * When true, the session is NOT destroyed after the first message completes.
      * The returned `sessionId` can be passed to `sendFollowUp()` for multi-turn conversation.
-     * Only applies to direct sessions (usePool: false).
      * @default false
      */
     keepAlive?: boolean;
@@ -247,30 +241,6 @@ export interface SDKAvailabilityResult {
     /** Error message if not available */
     error?: string;
 }
-
-// ============================================================================
-// Session Pool Configuration
-// ============================================================================
-
-/**
- * Configuration options for the session pool.
- * These are passed to the service to avoid VS Code dependencies.
- */
-export interface SessionPoolConfig {
-    /** Maximum number of concurrent sessions in the pool (default: 5) */
-    maxSessions?: number;
-    /** Idle timeout in milliseconds before sessions are destroyed (default: 300000 = 5 minutes) */
-    idleTimeoutMs?: number;
-}
-
-/**
- * Default session pool configuration values.
- * These match the VS Code setting defaults.
- */
-export const DEFAULT_SESSION_POOL_CONFIG: Required<SessionPoolConfig> = {
-    maxSessions: 5,
-    idleTimeoutMs: 300000
-};
 
 // ============================================================================
 // Permission Handler Helpers

@@ -37,35 +37,6 @@ export const DEFAULT_PARALLEL_LIMIT = 5;
 export const DEFAULT_MAX_CONCURRENCY = 5;
 
 // ============================================================================
-// Session Pool
-// ============================================================================
-
-/**
- * Default maximum number of sessions in the pool.
- */
-export const DEFAULT_MAX_SESSIONS = 5;
-
-/**
- * Default idle timeout for pool sessions (5 minutes).
- */
-export const DEFAULT_IDLE_TIMEOUT_MS = 300000;
-
-/**
- * Default minimum number of sessions to keep in the pool.
- */
-export const DEFAULT_MIN_SESSIONS = 0;
-
-/**
- * Default cleanup interval for the session pool (1 minute).
- */
-export const DEFAULT_CLEANUP_INTERVAL_MS = 60000;
-
-/**
- * Default timeout for acquiring a session from the pool (30 seconds).
- */
-export const DEFAULT_ACQUIRE_TIMEOUT_MS = 30000;
-
-// ============================================================================
 // Chunk Splitter
 // ============================================================================
 

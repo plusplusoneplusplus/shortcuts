@@ -89,7 +89,6 @@ export async function runSeedsSession(
         workingDirectory: repoPath,
         availableTools: SEEDS_TOOLS,
         onPermissionRequest: readOnlyPermissions,
-        usePool: false, // Direct session for MCP tool access
         timeoutMs,
     };
 

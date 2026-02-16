@@ -495,7 +495,6 @@ export class EditorMessageRouter {
             const result = await sdkService.sendMessage({
                 prompt,
                 workingDirectory,
-                usePool: true,
                 onPermissionRequest: approveAllPermissions
             });
 

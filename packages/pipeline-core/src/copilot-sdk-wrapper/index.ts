@@ -22,9 +22,6 @@ export {
     PermissionRequest,
     PermissionRequestResult,
     PermissionHandler,
-    // Session pool config
-    SessionPoolConfig,
-    DEFAULT_SESSION_POOL_CONFIG,
     // Permission helpers
     approveAllPermissions,
     denyAllPermissions,
@@ -46,15 +43,6 @@ export {
     getModelCount,
     getModelsByTier,
 } from './model-registry';
-
-// Session Pool
-export {
-    SessionPool,
-    IPoolableSession,
-    SessionFactory,
-    SessionPoolOptions,
-    SessionPoolStats,
-} from './session-pool';
 
 // Copilot SDK Service
 export {

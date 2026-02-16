@@ -455,7 +455,6 @@ export class AIDiscoveryEngine implements vscode.Disposable {
 
         // Use the unified AI invoker with SDK/CLI fallback
         const result = await invokeAIWithFallback(prompt, {
-            usePool: false, // Discovery is a one-off operation
             workingDirectory: workspaceRoot,
             timeoutMs: timeoutSeconds * 1000,
             featureName: 'Discovery'

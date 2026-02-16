@@ -90,7 +90,6 @@ export async function runThemeProbe(
         workingDirectory: repoPath,
         availableTools: PROBE_TOOLS,
         onPermissionRequest: readOnlyPermissions,
-        usePool: false, // Direct session for MCP tool access
         timeoutMs: options.timeout || DEFAULT_PROBE_TIMEOUT_MS,
     };
 

@@ -11,7 +11,6 @@ import { describe, it, expect } from 'vitest';
 // Import from the wrapper module barrel
 import {
     // Types
-    DEFAULT_SESSION_POOL_CONFIG,
     approveAllPermissions,
     denyAllPermissions,
     // Model Registry
@@ -27,8 +26,6 @@ import {
     isValidModelId,
     getModelCount,
     getModelsByTier,
-    // Session Pool
-    SessionPool,
     // SDK Service
     CopilotSDKService,
     getCopilotSDKService,
@@ -57,13 +54,11 @@ import {
     TokenUsage as AiTokenUsage,
     SDKInvocationResult as AiSDKInvocationResult,
     PermissionHandler as AiPermissionHandler,
-    SessionPoolConfig as AiSessionPoolConfig,
     approveAllPermissions as aiApproveAll,
     denyAllPermissions as aiDenyAll,
     CopilotSDKService as AiCopilotSDKService,
     getCopilotSDKService as aiGetService,
     resetCopilotSDKService as aiResetService,
-    SessionPool as AiSessionPool,
     AIModel as AiAIModel,
     VALID_MODELS as AiVALID_MODELS,
     DEFAULT_MODEL_ID as AiDEFAULT_MODEL_ID,
@@ -95,11 +90,6 @@ describe('Copilot SDK Wrapper Module', () => {
             expect(MODEL_REGISTRY.size).toBeGreaterThan(0);
         });
 
-        it('should export session pool class', () => {
-            expect(SessionPool).toBeDefined();
-            expect(typeof SessionPool).toBe('function');
-        });
-
         it('should export SDK service', () => {
             expect(CopilotSDKService).toBeDefined();
             expect(typeof getCopilotSDKService).toBe('function');
@@ -127,12 +117,6 @@ describe('Copilot SDK Wrapper Module', () => {
         it('should export permission helpers', () => {
             expect(typeof approveAllPermissions).toBe('function');
             expect(typeof denyAllPermissions).toBe('function');
-        });
-
-        it('should export session pool config defaults', () => {
-            expect(DEFAULT_SESSION_POOL_CONFIG).toBeDefined();
-            expect(DEFAULT_SESSION_POOL_CONFIG.maxSessions).toBe(5);
-            expect(DEFAULT_SESSION_POOL_CONFIG.idleTimeoutMs).toBe(300000);
         });
     });
 
@@ -167,10 +151,6 @@ describe('Copilot SDK Wrapper Module', () => {
         it('should re-export the same convenience functions', () => {
             expect(aiGetService).toBe(getCopilotSDKService);
             expect(aiResetService).toBe(resetCopilotSDKService);
-        });
-
-        it('should re-export the same SessionPool class', () => {
-            expect(AiSessionPool).toBe(SessionPool);
         });
 
         it('should re-export model constants', () => {

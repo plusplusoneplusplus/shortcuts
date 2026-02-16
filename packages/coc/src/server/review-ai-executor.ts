@@ -167,7 +167,6 @@ export async function executeAIClarification(
             model: request.model,
             workingDirectory,
             timeoutMs: request.timeoutMs || DEFAULT_AI_TIMEOUT_MS,
-            usePool: false,
             onPermissionRequest: approveAllPermissions,
         });
 

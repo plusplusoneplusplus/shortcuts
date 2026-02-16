@@ -44,18 +44,9 @@ export {
     PermissionRequest,
     PermissionRequestResult,
     PermissionHandler,
-    // Session pool config
-    SessionPoolConfig,
-    DEFAULT_SESSION_POOL_CONFIG,
     // Permission helpers
     approveAllPermissions,
     denyAllPermissions,
-    // Session Pool
-    SessionPool,
-    IPoolableSession,
-    SessionFactory,
-    SessionPoolOptions,
-    SessionPoolStats,
     // Copilot SDK Service
     CopilotSDKService,
     getCopilotSDKService,

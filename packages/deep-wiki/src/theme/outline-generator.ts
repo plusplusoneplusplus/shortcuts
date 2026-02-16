@@ -70,7 +70,6 @@ export async function generateThemeOutline(
     const sendOptions: SendMessageOptions = {
         prompt,
         workingDirectory: repoPath,
-        usePool: false,
         timeoutMs: timeout ?? DEFAULT_OUTLINE_TIMEOUT_MS,
     };
 

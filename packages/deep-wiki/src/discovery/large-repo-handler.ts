@@ -85,7 +85,6 @@ export async function estimateFileCount(repoPath: string): Promise<number> {
         workingDirectory: repoPath,
         availableTools: ['glob'],
         onPermissionRequest: readOnlyPermissions,
-        usePool: false,
         timeoutMs: 1_800_000,
     });
 
@@ -237,7 +236,6 @@ async function performStructuralScan(options: DiscoveryOptions): Promise<Structu
         workingDirectory: options.repoPath,
         availableTools: DISCOVERY_TOOLS,
         onPermissionRequest: readOnlyPermissions,
-        usePool: false,
         timeoutMs: STRUCTURAL_SCAN_TIMEOUT_MS,
     };
 
@@ -279,7 +277,6 @@ async function discoverDomain(
         workingDirectory: options.repoPath,
         availableTools: DISCOVERY_TOOLS,
         onPermissionRequest: readOnlyPermissions,
-        usePool: false,
         timeoutMs: PER_DOMAIN_TIMEOUT_MS,
     };
 

@@ -1,14 +1,13 @@
 /**
  * Parallel SDK Integration Tests
  *
- * Tests for the SDK session pool integration with parallel consumers
+ * Tests for the SDK integration with parallel consumers
  * (Code Review and YAML Pipeline).
  *
  * These tests verify:
  * 1. SDK backend routing for parallel workloads
- * 2. Session pool usage with usePool: true
- * 3. Fallback to CLI when SDK is unavailable
- * 4. Proper error handling and logging
+ * 2. Fallback to CLI when SDK is unavailable
+ * 3. Proper error handling and logging
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
@@ -40,57 +39,6 @@ async function isSDKAvailable(): Promise<boolean> {
 }
 
 // ============================================================================
-// SendMessageOptions with usePool Tests
-// ============================================================================
-
-suite('Parallel SDK Integration - SendMessageOptions', () => {
-    test('usePool option should be supported', () => {
-        const options: SendMessageOptions = {
-            prompt: 'Test prompt',
-            usePool: true
-        };
-
-        assert.strictEqual(options.prompt, 'Test prompt');
-        assert.strictEqual(options.usePool, true);
-    });
-
-    test('usePool false should be explicit', () => {
-        const options: SendMessageOptions = {
-            prompt: 'Test prompt',
-            usePool: false
-        };
-
-        assert.strictEqual(options.usePool, false);
-    });
-
-    test('usePool undefined should default to direct mode', () => {
-        const options: SendMessageOptions = {
-            prompt: 'Test prompt'
-        };
-
-        assert.strictEqual(options.usePool, undefined);
-    });
-
-    test('usePool works with all other options', () => {
-        const options: SendMessageOptions = {
-            prompt: 'Test prompt',
-            model: 'gpt-4',
-            workingDirectory: '/path/to/workspace',
-            timeoutMs: 60000,
-            usePool: true,
-            streaming: false
-        };
-
-        assert.strictEqual(options.prompt, 'Test prompt');
-        assert.strictEqual(options.model, 'gpt-4');
-        assert.strictEqual(options.workingDirectory, '/path/to/workspace');
-        assert.strictEqual(options.timeoutMs, 60000);
-        assert.strictEqual(options.usePool, true);
-        assert.strictEqual(options.streaming, false);
-    });
-});
-
-// ============================================================================
 // Backend Selection Tests
 // ============================================================================
 
@@ -118,46 +66,6 @@ suite('Parallel SDK Integration - Backend Selection', () => {
 });
 
 // ============================================================================
-// Session Pool State Tests
-// ============================================================================
-
-suite('Parallel SDK Integration - Session Pool State', () => {
-    setup(() => {
-        resetCopilotSDKService();
-    });
-
-    teardown(() => {
-        resetCopilotSDKService();
-    });
-
-    test('pool is not initialized by default', () => {
-        const service = getCopilotSDKService();
-        assert.strictEqual(service.hasActivePool(), false);
-    });
-
-    test('getPoolStats returns null when pool not initialized', () => {
-        const service = getCopilotSDKService();
-        const stats = service.getPoolStats();
-        assert.strictEqual(stats, null);
-    });
-
-    test('hasActivePool returns false after dispose', () => {
-        const service = getCopilotSDKService();
-        service.dispose();
-        assert.strictEqual(service.hasActivePool(), false);
-    });
-
-    test('cleanup disposes session pool', async () => {
-        const service = getCopilotSDKService();
-        
-        // Cleanup should not throw even if pool wasn't initialized
-        await service.cleanup();
-        
-        assert.strictEqual(service.hasActivePool(), false);
-    });
-});
-
-// ============================================================================
 // Error Handling Tests
 // ============================================================================
 
@@ -170,25 +78,15 @@ suite('Parallel SDK Integration - Error Handling', () => {
         resetCopilotSDKService();
     });
 
-    test('sendMessage with usePool returns error when disposed', async () => {
+    test('sendMessage returns error when disposed', async () => {
         const service = getCopilotSDKService();
         service.dispose();
 
-        const result = await service.sendMessage({ prompt: 'Test', usePool: true });
+        const result = await service.sendMessage({ prompt: 'Test' });
 
         assert.strictEqual(result.success, false);
         assert.ok(result.error, 'Should have error message');
         assert.ok(result.error?.includes('disposed') || result.error?.includes('unavailable'));
-    });
-
-    test('sendMessage without usePool returns error when disposed', async () => {
-        const service = getCopilotSDKService();
-        service.dispose();
-
-        const result = await service.sendMessage({ prompt: 'Test', usePool: false });
-
-        assert.strictEqual(result.success, false);
-        assert.ok(result.error, 'Should have error message');
     });
 
     test('SDKInvocationResult has proper error structure', () => {
@@ -229,7 +127,7 @@ suite('Parallel SDK Integration - Request Patterns', () => {
         resetCopilotSDKService();
     });
 
-    test('multiple sendMessage calls with usePool should not throw when disposed', async () => {
+    test('multiple sendMessage calls should not throw when disposed', async () => {
         const service = getCopilotSDKService();
         
         // Dispose the service first to ensure immediate failure (no SDK lookup timeout)
@@ -237,9 +135,9 @@ suite('Parallel SDK Integration - Request Patterns', () => {
         
         // These will fail immediately because service is disposed
         const promises = [
-            service.sendMessage({ prompt: 'Prompt 1', usePool: true }),
-            service.sendMessage({ prompt: 'Prompt 2', usePool: true }),
-            service.sendMessage({ prompt: 'Prompt 3', usePool: true })
+            service.sendMessage({ prompt: 'Prompt 1' }),
+            service.sendMessage({ prompt: 'Prompt 2' }),
+            service.sendMessage({ prompt: 'Prompt 3' })
         ];
 
         const results = await Promise.all(promises);
@@ -249,26 +147,6 @@ suite('Parallel SDK Integration - Request Patterns', () => {
         for (const result of results) {
             assert.strictEqual(result.success, false);
             assert.ok(result.error, 'Failed results should have error message');
-        }
-    });
-
-    test('mixed usePool settings should return errors when disposed', async () => {
-        const service = getCopilotSDKService();
-        
-        // Dispose the service first to ensure immediate failure
-        service.dispose();
-        
-        const promises = [
-            service.sendMessage({ prompt: 'Direct 1', usePool: false }),
-            service.sendMessage({ prompt: 'Pooled 1', usePool: true }),
-            service.sendMessage({ prompt: 'Direct 2', usePool: false })
-        ];
-
-        const results = await Promise.all(promises);
-
-        assert.strictEqual(results.length, 3);
-        for (const result of results) {
-            assert.strictEqual(result.success, false);
         }
     });
 
@@ -345,19 +223,16 @@ suite('Parallel SDK Integration - Pipeline Pattern', () => {
     test('model option is passed correctly', () => {
         const options: SendMessageOptions = {
             prompt: 'Analyze data',
-            model: 'gpt-4',
-            usePool: true
+            model: 'gpt-4'
         };
 
         assert.strictEqual(options.model, 'gpt-4');
-        assert.strictEqual(options.usePool, true);
     });
 
     test('workingDirectory option is passed correctly', () => {
         const options: SendMessageOptions = {
             prompt: 'Execute pipeline',
-            workingDirectory: '/workspace/project',
-            usePool: true
+            workingDirectory: '/workspace/project'
         };
 
         assert.strictEqual(options.workingDirectory, '/workspace/project');
@@ -379,8 +254,7 @@ suite('Parallel SDK Integration - Pipeline Pattern', () => {
         const results = await Promise.all(
             pipelineItems.map(item =>
                 service.sendMessage({
-                    prompt: `Process: ${item.data}`,
-                    usePool: true
+                    prompt: `Process: ${item.data}`
                 })
             )
         );
@@ -402,8 +276,7 @@ suite('Parallel SDK Integration - Cross-Platform', () => {
     test('Unix-style paths are accepted', () => {
         const options: SendMessageOptions = {
             prompt: 'Test',
-            workingDirectory: '/home/user/workspace',
-            usePool: true
+            workingDirectory: '/home/user/workspace'
         };
 
         assert.strictEqual(options.workingDirectory, '/home/user/workspace');
@@ -412,8 +285,7 @@ suite('Parallel SDK Integration - Cross-Platform', () => {
     test('Windows-style paths are accepted', () => {
         const options: SendMessageOptions = {
             prompt: 'Test',
-            workingDirectory: 'C:\\Users\\test\\workspace',
-            usePool: true
+            workingDirectory: 'C:\\Users\\test\\workspace'
         };
 
         assert.strictEqual(options.workingDirectory, 'C:\\Users\\test\\workspace');
@@ -425,8 +297,6 @@ suite('Parallel SDK Integration - Cross-Platform', () => {
         assert.ok(service, 'Service should be instantiated');
         assert.ok(typeof service.sendMessage === 'function');
         assert.ok(typeof service.isAvailable === 'function');
-        assert.ok(typeof service.hasActivePool === 'function');
-        assert.ok(typeof service.getPoolStats === 'function');
     });
 });
 

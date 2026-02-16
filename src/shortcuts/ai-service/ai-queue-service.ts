@@ -239,7 +239,6 @@ class AITaskExecutor implements TaskExecutor {
             model: task.config.model,
             workingDirectory: payload.workingDirectory,
             timeoutMs: task.config.timeoutMs,
-            usePool: false,
             onPermissionRequest: approveAllPermissions,
         });
 
@@ -289,7 +288,6 @@ class AITaskExecutor implements TaskExecutor {
             model: payload.model || task.config.model,
             workingDirectory: payload.workingDirectory,
             timeoutMs: task.config.timeoutMs,
-            usePool: false,
             onPermissionRequest: approveAllPermissions,
         });
 

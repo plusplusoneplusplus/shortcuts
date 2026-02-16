@@ -32,16 +32,6 @@ export function getAIBackendSetting(): AIBackendType {
 }
 
 /**
- * Get the SDK max sessions setting.
- *
- * @returns Maximum number of concurrent SDK sessions
- */
-export function getSDKMaxSessionsSetting(): number {
-    const config = vscode.workspace.getConfiguration('workspaceShortcuts.aiService.sdk');
-    return config.get<number>('maxSessions', 5);
-}
-
-/**
  * Get the SDK session timeout setting.
  *
  * @returns Session timeout in milliseconds

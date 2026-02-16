@@ -219,7 +219,6 @@ export async function analyzeArticleScope(
     const sendOptions: SendMessageOptions = {
         prompt,
         workingDirectory: repoPath,
-        usePool: false,
         timeoutMs: options.timeout ?? DEFAULT_ARTICLE_TIMEOUT_MS,
     };
 
@@ -269,7 +268,6 @@ export async function analyzeCrossCutting(
     const sendOptions: SendMessageOptions = {
         prompt,
         workingDirectory: repoPath,
-        usePool: false,
         timeoutMs: options.timeout ?? DEFAULT_CROSS_CUTTING_TIMEOUT_MS,
     };
 

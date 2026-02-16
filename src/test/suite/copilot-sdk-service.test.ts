@@ -24,7 +24,6 @@ import {
 } from '@plusplusoneplusplus/pipeline-core';
 import {
     getAIBackendSetting,
-    getSDKMaxSessionsSetting,
     getSDKSessionTimeoutSetting
 } from '../../shortcuts/ai-service/ai-config-helpers';
 import { AIBackendType } from '../../shortcuts/ai-service/types';
@@ -363,14 +362,6 @@ suite('CopilotSDKService - Configuration Helpers', () => {
         assert.ok(validBackends.includes(backend), `Backend should be one of: ${validBackends.join(', ')}`);
     });
 
-    test('getSDKMaxSessionsSetting should return a number', () => {
-        const maxSessions = getSDKMaxSessionsSetting();
-
-        assert.ok(typeof maxSessions === 'number', 'Should return a number');
-        assert.ok(maxSessions >= 1, 'Should be at least 1');
-        assert.ok(maxSessions <= 20, 'Should be at most 20');
-    });
-
     test('getSDKSessionTimeoutSetting should return a number', () => {
         const timeout = getSDKSessionTimeoutSetting();
 
@@ -386,13 +377,6 @@ suite('CopilotSDKService - Configuration Helpers', () => {
 
         // Default is copilot-cli according to package.json
         assert.strictEqual(backend, 'copilot-cli', 'Default backend should be copilot-cli');
-    });
-
-    test('default max sessions should be 5', () => {
-        const maxSessions = getSDKMaxSessionsSetting();
-
-        // Default is 5 according to package.json
-        assert.strictEqual(maxSessions, 5, 'Default max sessions should be 5');
     });
 
     test('default session timeout should be 1800000ms (30 minutes)', () => {
@@ -597,121 +581,6 @@ suite('CopilotSDKService - AIBackendType', () => {
     test('AIBackendType should include clipboard', () => {
         const backend: AIBackendType = 'clipboard';
         assert.strictEqual(backend, 'clipboard');
-    });
-});
-
-// ============================================================================
-// Session Pool Integration Tests
-// ============================================================================
-
-suite('CopilotSDKService - Session Pool Integration', () => {
-    setup(() => {
-        resetCopilotSDKService();
-    });
-
-    teardown(() => {
-        resetCopilotSDKService();
-    });
-
-    test('SendMessageOptions should support usePool option', () => {
-        const options: SendMessageOptions = {
-            prompt: 'Test prompt',
-            usePool: true
-        };
-
-        assert.strictEqual(options.prompt, 'Test prompt');
-        assert.strictEqual(options.usePool, true);
-    });
-
-    test('SendMessageOptions usePool should default to undefined', () => {
-        const options: SendMessageOptions = {
-            prompt: 'Test prompt'
-        };
-
-        assert.strictEqual(options.usePool, undefined);
-    });
-
-    test('getPoolStats should return null when pool not initialized', () => {
-        const service = getCopilotSDKService();
-        const stats = service.getPoolStats();
-
-        assert.strictEqual(stats, null, 'Should return null when pool not initialized');
-    });
-
-    test('hasActivePool should return false when pool not initialized', () => {
-        const service = getCopilotSDKService();
-        const hasPool = service.hasActivePool();
-
-        assert.strictEqual(hasPool, false, 'Should return false when pool not initialized');
-    });
-
-    test('hasActivePool should return false after dispose', () => {
-        const service = getCopilotSDKService();
-        service.dispose();
-
-        const hasPool = service.hasActivePool();
-        assert.strictEqual(hasPool, false, 'Should return false after dispose');
-    });
-
-    test('sendMessage with usePool should return error when SDK unavailable', async () => {
-        const service = getCopilotSDKService();
-        service.dispose();
-
-        const result = await service.sendMessage({ prompt: 'Test', usePool: true });
-
-        assert.strictEqual(result.success, false, 'Should not succeed');
-        assert.ok(result.error, 'Should have error message');
-    });
-
-    test('sendMessage without usePool should use direct mode', async () => {
-        const service = getCopilotSDKService();
-        service.dispose();
-
-        // Even when disposed, sendMessage should return an error (not throw)
-        const result = await service.sendMessage({ prompt: 'Test', usePool: false });
-
-        assert.strictEqual(result.success, false);
-        assert.ok(result.error);
-    });
-
-    test('cleanup should dispose session pool', async () => {
-        const service = getCopilotSDKService();
-
-        // Cleanup should not throw even if pool wasn't initialized
-        await service.cleanup();
-
-        assert.strictEqual(service.hasActivePool(), false);
-    });
-});
-
-// ============================================================================
-// Session Pool Options Tests
-// ============================================================================
-
-suite('CopilotSDKService - Pool Options', () => {
-    test('SendMessageOptions should support all pool-related fields', () => {
-        const fullOptions: SendMessageOptions = {
-            prompt: 'Test prompt',
-            model: DEFAULT_MODEL_ID,
-            workingDirectory: '/path/to/workspace',
-            timeoutMs: 60000,
-            usePool: true
-        };
-
-        assert.strictEqual(fullOptions.prompt, 'Test prompt');
-        assert.strictEqual(fullOptions.model, DEFAULT_MODEL_ID);
-        assert.strictEqual(fullOptions.workingDirectory, '/path/to/workspace');
-        assert.strictEqual(fullOptions.timeoutMs, 60000);
-        assert.strictEqual(fullOptions.usePool, true);
-    });
-
-    test('usePool false should be explicit', () => {
-        const options: SendMessageOptions = {
-            prompt: 'Test',
-            usePool: false
-        };
-
-        assert.strictEqual(options.usePool, false);
     });
 });
 

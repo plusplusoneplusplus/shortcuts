@@ -86,7 +86,6 @@ export async function mergeProbeResults(
         workingDirectory: repoPath,
         availableTools: MERGE_TOOLS,
         onPermissionRequest: readOnlyPermissions,
-        usePool: false, // Direct session for MCP tool access
         timeoutMs: options.timeout || DEFAULT_MERGE_TIMEOUT_MS,
     };
 

@@ -434,7 +434,6 @@ export class PipelineResultViewerProvider {
         const workspaceRoot = getWorkspaceRoot() || '';
         const defaultModel = getAIModelSetting();
         const aiInvoker: AIInvoker = createAIInvoker({
-            usePool: true,
             workingDirectory: data.pipelineDirectory || workspaceRoot,
             model: data.pipelineConfig.map.model || defaultModel,
             featureName: 'Pipeline Retry'

@@ -25,15 +25,6 @@ import { IAIProcessManager } from './types';
  */
 export interface AIInvokerFactoryOptions {
     /**
-     * Use session pool for parallel workloads.
-     * Set to true for features that make multiple concurrent requests
-     * (e.g., code review with multiple rules, pipeline execution).
-     * Set to false for one-off requests (e.g., clarification, discovery).
-     * @default false
-     */
-    usePool?: boolean;
-
-    /**
      * Working directory for AI operations.
      * Used by both SDK and CLI backends.
      */
@@ -120,7 +111,6 @@ export type AIInvoker = (
  * @example
  * // For parallel workloads (code review, pipelines)
  * const aiInvoker = createAIInvoker({
- *     usePool: true,
  *     workingDirectory: workspaceRoot,
  *     featureName: 'Code Review'
  * });
@@ -128,7 +118,6 @@ export type AIInvoker = (
  * @example
  * // For one-off requests with clipboard fallback
  * const aiInvoker = createAIInvoker({
- *     usePool: false,
  *     workingDirectory: workspaceRoot,
  *     clipboardFallback: true,
  *     featureName: 'Clarification'
@@ -136,7 +125,6 @@ export type AIInvoker = (
  */
 export function createAIInvoker(options: AIInvokerFactoryOptions): AIInvoker {
     const {
-        usePool = false,
         workingDirectory,
         model: defaultModel,
         timeoutMs,
@@ -178,7 +166,7 @@ export function createAIInvoker(options: AIInvokerFactoryOptions): AIInvoker {
             if (availability.available) {
                 logger.debug(
                     LogCategory.AI,
-                    `${featureName}: Using SDK ${usePool ? 'session pool' : 'direct mode'}`
+                    `${featureName}: Using SDK direct mode`
                 );
 
                 // Register cancellation listener if token provided
@@ -217,7 +205,6 @@ export function createAIInvoker(options: AIInvokerFactoryOptions): AIInvoker {
                         model,
                         workingDirectory,
                         timeoutMs: effectiveTimeoutMs,
-                        usePool,
                         loadDefaultMcpConfig: loadMcpConfig,
                         onPermissionRequest: approvePermissions ? approveAllPermissions : undefined
                     });

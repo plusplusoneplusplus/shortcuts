@@ -235,7 +235,6 @@ async function executeAITaskCreation(
                 }
                 
                 const aiInvoker = createAIInvoker({
-                    usePool: false,
                     workingDirectory: workspaceRoot,
                     model,
                     featureName,
@@ -384,7 +383,6 @@ async function createTaskWithAI(
                 const workingDirectory = taskManager.getWorkspaceRoot();
                 
                 const aiInvoker = createAIInvoker({
-                    usePool: false,
                     workingDirectory,
                     featureName: 'Task Creation',
                     clipboardFallback: false,
@@ -565,7 +563,6 @@ async function createTaskFromFeature(
                 const workingDirectory = workspaceRoot;
 
                 const aiInvoker = createAIInvoker({
-                    usePool: false,
                     workingDirectory,
                     featureName: 'Task from Feature',
                     clipboardFallback: false,
@@ -1082,7 +1079,6 @@ Response format: Just the filename, nothing else.`;
 
     try {
         const aiInvoker = createAIInvoker({
-            usePool: true, // Use pool for quick name generation
             workingDirectory: workspaceRoot,
             model,
             featureName: 'Task Name Generation',

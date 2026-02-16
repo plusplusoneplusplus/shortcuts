@@ -412,7 +412,6 @@ export class CLITaskExecutor implements TaskExecutor {
             model: task.config.model,
             workingDirectory,
             timeoutMs,
-            usePool: false,
             keepAlive: true,
             onPermissionRequest: this.approvePermissions ? approveAllPermissions : undefined,
             // Stream response chunks to the process store for real-time UI updates

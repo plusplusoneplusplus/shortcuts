@@ -98,7 +98,6 @@ export async function runDiscoverySession(options: DiscoveryOptions): Promise<Di
         workingDirectory: options.repoPath,
         availableTools: DISCOVERY_TOOLS,
         onPermissionRequest: readOnlyPermissions,
-        usePool: false, // Direct session for MCP tool access
         timeoutMs,
     };
 

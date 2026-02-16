@@ -164,7 +164,6 @@ export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStor
                     model: model || undefined,
                     workingDirectory: ws.rootPath,
                     timeoutMs: DEFAULT_AI_TIMEOUT_MS,
-                    usePool: false,
                     onPermissionRequest: approveAllPermissions,
                     onStreamingChunk: (chunk: string) => {
                         if (!clientDisconnected) {
@@ -255,7 +254,6 @@ export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStor
                     prompt: discoveryPrompt,
                     workingDirectory: ws.rootPath,
                     timeoutMs: DEFAULT_AI_TIMEOUT_MS,
-                    usePool: false,
                     onPermissionRequest: denyAllPermissions,
                 });
 
