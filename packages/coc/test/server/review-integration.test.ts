@@ -152,12 +152,6 @@ describe('Review SPA — Router', () => {
             routes,
             spaHtml,
             store: stubStore(),
-            generateReviewHtml: (filePath: string) => {
-                return generateDashboardHtml({
-                    reviewFilePath: filePath,
-                    projectDir: tmpDir,
-                });
-            },
         });
 
         server = http.createServer(handler);
@@ -185,19 +179,19 @@ describe('Review SPA — Router', () => {
         expect(res.body).not.toContain("window.__REVIEW_CONFIG__ = {");
     });
 
-    it('GET /review/README.md returns SPA with __REVIEW_CONFIG__', async () => {
+    it('GET /review/README.md returns SPA fallback (no __REVIEW_CONFIG__)', async () => {
         const res = await request(baseUrl, '/review/README.md');
         expect(res.status).toBe(200);
-        expect(res.body).toContain("window.__REVIEW_CONFIG__ = {");
-        expect(res.body).toContain("filePath: 'README.md'");
+        expect(res.body).not.toContain("window.__REVIEW_CONFIG__ = {");
+        expect(res.body).toContain('__DASHBOARD_CONFIG__');
     });
 
-    it('GET /review/path/to/deep/file.md handles nested paths', async () => {
+    it('GET /review/path/to/deep/file.md returns SPA fallback', async () => {
         const nestedPath = encodeURIComponent('docs/guide.md');
         const res = await request(baseUrl, `/review/${nestedPath}`);
         expect(res.status).toBe(200);
-        expect(res.body).toContain('__REVIEW_CONFIG__');
-        expect(res.body).toContain('docs/guide.md');
+        expect(res.body).not.toContain("window.__REVIEW_CONFIG__ = {");
+        expect(res.body).toContain('__DASHBOARD_CONFIG__');
     });
 
     it('POST /api/review/files/:path/content saves file', async () => {

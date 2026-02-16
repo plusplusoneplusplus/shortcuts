@@ -231,12 +231,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         routes,
         spaHtml,
         store,
-        generateReviewHtml: (filePath: string) => {
-            return generateDashboardHtml({
-                reviewFilePath: filePath,
-                projectDir,
-            });
-        },
+
     });
     const server = http.createServer(handler);
 
