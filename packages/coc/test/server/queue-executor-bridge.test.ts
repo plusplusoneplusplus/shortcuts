@@ -162,17 +162,17 @@ describe('CLITaskExecutor', () => {
             // Verify process was created in store
             expect(store.addProcess).toHaveBeenCalledOnce();
             const addedProcess = (store.addProcess as any).mock.calls[0][0];
-            expect(addedProcess.id).toBe('queue-task-1');
+            expect(addedProcess.id).toBe('queue_task-1');
             expect(addedProcess.type).toBe('queue-ai-clarification');
             expect(addedProcess.status).toBe('running');
             expect(addedProcess.fullPrompt).toBe('Explain this code');
 
             // Verify process was marked completed
-            expect(store.updateProcess).toHaveBeenCalledWith('queue-task-1', expect.objectContaining({
+            expect(store.updateProcess).toHaveBeenCalledWith('queue_task-1', expect.objectContaining({
                 status: 'completed',
             }));
             expect(store.emitProcessComplete).toHaveBeenCalledWith(
-                'queue-task-1',
+                'queue_task-1',
                 'completed',
                 expect.stringMatching(/\d+ms/)
             );
@@ -813,12 +813,12 @@ describe('CLITaskExecutor', () => {
             expect(result.error?.message).toContain('not available');
 
             // Verify process was marked as failed
-            expect(store.updateProcess).toHaveBeenCalledWith('queue-task-err-1', expect.objectContaining({
+            expect(store.updateProcess).toHaveBeenCalledWith('queue_task-err-1', expect.objectContaining({
                 status: 'failed',
                 error: expect.stringContaining('not available'),
             }));
             expect(store.emitProcessComplete).toHaveBeenCalledWith(
-                'queue-task-err-1',
+                'queue_task-err-1',
                 'failed',
                 expect.stringMatching(/\d+ms/)
             );
@@ -1059,7 +1059,7 @@ describe('CLITaskExecutor', () => {
 
             await executor.execute(task);
 
-            expect(task.processId).toBe('queue-task-meta-3');
+            expect(task.processId).toBe('queue_task-meta-3');
         });
     });
 
@@ -1273,7 +1273,7 @@ describe('session tracking and conversation turns', () => {
         };
         await executor.execute(task);
 
-        const processId = `queue-${task.id}`;
+        const processId = `queue_${task.id}`;
         const process = store.processes.get(processId);
         expect(process?.sdkSessionId).toBe('sdk-session-abc');
     });
@@ -1291,7 +1291,7 @@ describe('session tracking and conversation turns', () => {
         };
         await executor.execute(task);
 
-        const processId = `queue-${task.id}`;
+        const processId = `queue_${task.id}`;
         const process = store.processes.get(processId);
         expect(process?.conversationTurns).toHaveLength(2);
 
@@ -1432,7 +1432,7 @@ describe('createQueueExecutorBridge', () => {
         // Process should be in store
         expect(store.addProcess).toHaveBeenCalled();
         expect(store.updateProcess).toHaveBeenCalledWith(
-            expect.stringContaining('queue-'),
+            expect.stringContaining('queue_'),
             expect.objectContaining({ status: 'completed' })
         );
 
@@ -1756,9 +1756,9 @@ describe('Queue execution via HTTP API', () => {
         await executor.execute(task);
 
         // Verify chunks were emitted to the store
-        expect(store.emitProcessOutput).toHaveBeenCalledWith('queue-task-stream-2', 'Hello ');
-        expect(store.emitProcessOutput).toHaveBeenCalledWith('queue-task-stream-2', 'world!');
-        expect(store.outputs.get('queue-task-stream-2')).toEqual(['Hello ', 'world!']);
+        expect(store.emitProcessOutput).toHaveBeenCalledWith('queue_task-stream-2', 'Hello ');
+        expect(store.emitProcessOutput).toHaveBeenCalledWith('queue_task-stream-2', 'world!');
+        expect(store.outputs.get('queue_task-stream-2')).toEqual(['Hello ', 'world!']);
     });
 
     it('should handle store.emitProcessOutput errors gracefully during streaming', async () => {
@@ -1814,7 +1814,7 @@ describe('Queue execution via HTTP API', () => {
 
         await executor.execute(task);
 
-        expect(store.emitProcessOutput).toHaveBeenCalledWith('queue-task-stream-custom', 'custom chunk');
+        expect(store.emitProcessOutput).toHaveBeenCalledWith('queue_task-stream-custom', 'custom chunk');
     });
 
     it('should emit streaming chunks for follow-prompt tasks', async () => {
@@ -1839,7 +1839,7 @@ describe('Queue execution via HTTP API', () => {
 
         await executor.execute(task);
 
-        expect(store.emitProcessOutput).toHaveBeenCalledWith('queue-task-stream-follow', 'follow chunk');
+        expect(store.emitProcessOutput).toHaveBeenCalledWith('queue_task-stream-follow', 'follow chunk');
     });
 
     it('should use default working directory from options', async () => {
@@ -1927,7 +1927,7 @@ describe('Queue execution via HTTP API', () => {
             // Verify output file was written with concatenated chunks
             const path = await import('path');
             const fsPromises = await import('fs/promises');
-            const outputPath = path.join(tmpDir, 'outputs', 'queue-task-output-1.md');
+            const outputPath = path.join(tmpDir, 'outputs', 'queue_task-output-1.md');
             const content = await fsPromises.readFile(outputPath, 'utf-8');
             expect(content).toBe('chunk1chunk2chunk3');
         });
@@ -1954,8 +1954,8 @@ describe('Queue execution via HTTP API', () => {
 
             // Check that updateProcess was called with rawStdoutFilePath
             const path = await import('path');
-            const expectedPath = path.join(tmpDir, 'outputs', 'queue-task-output-path.md');
-            expect(store.updateProcess).toHaveBeenCalledWith('queue-task-output-path', {
+            const expectedPath = path.join(tmpDir, 'outputs', 'queue_task-output-path.md');
+            expect(store.updateProcess).toHaveBeenCalledWith('queue_task-output-path', {
                 rawStdoutFilePath: expectedPath,
             });
         });
@@ -1985,7 +1985,7 @@ describe('Queue execution via HTTP API', () => {
             // Verify partial output was still saved
             const path = await import('path');
             const fsPromises = await import('fs/promises');
-            const outputPath = path.join(tmpDir, 'outputs', 'queue-task-output-fail.md');
+            const outputPath = path.join(tmpDir, 'outputs', 'queue_task-output-fail.md');
             const content = await fsPromises.readFile(outputPath, 'utf-8');
             expect(content).toBe('partial1partial2');
         });
@@ -2012,13 +2012,13 @@ describe('Queue execution via HTTP API', () => {
             await executor.execute(task);
 
             // Verify streaming chunks were emitted to store (SSE/WS)
-            expect(store.emitProcessOutput).toHaveBeenCalledWith('queue-task-output-sse', 'chunk-a');
-            expect(store.emitProcessOutput).toHaveBeenCalledWith('queue-task-output-sse', 'chunk-b');
+            expect(store.emitProcessOutput).toHaveBeenCalledWith('queue_task-output-sse', 'chunk-a');
+            expect(store.emitProcessOutput).toHaveBeenCalledWith('queue_task-output-sse', 'chunk-b');
 
             // And also verify file was written
             const path = await import('path');
             const fsPromises = await import('fs/promises');
-            const outputPath = path.join(tmpDir, 'outputs', 'queue-task-output-sse.md');
+            const outputPath = path.join(tmpDir, 'outputs', 'queue_task-output-sse.md');
             const content = await fsPromises.readFile(outputPath, 'utf-8');
             expect(content).toBe('chunk-achunk-b');
         });

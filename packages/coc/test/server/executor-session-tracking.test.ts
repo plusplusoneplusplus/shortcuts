@@ -128,7 +128,7 @@ describe('executor session tracking', () => {
 
             await executor.execute(task);
 
-            const process = store.processes.get('queue-task-init-1');
+            const process = store.processes.get('queue_task-init-1');
             expect(process?.sdkSessionId).toBe('sdk-session-001');
         });
 
@@ -146,7 +146,7 @@ describe('executor session tracking', () => {
 
             await executor.execute(task);
 
-            const process = store.processes.get('queue-task-init-2');
+            const process = store.processes.get('queue_task-init-2');
             expect(process?.conversationTurns).toHaveLength(2);
 
             const [userTurn, assistantTurn] = process!.conversationTurns!;
@@ -174,7 +174,7 @@ describe('executor session tracking', () => {
 
             await executor.execute(task);
 
-            const process = store.processes.get('queue-task-init-3');
+            const process = store.processes.get('queue_task-init-3');
             // The process should be completed with session data
             expect(process?.status).toBe('completed');
             expect(process?.sdkSessionId).toBeDefined();

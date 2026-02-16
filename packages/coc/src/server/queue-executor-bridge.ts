@@ -101,7 +101,8 @@ export class CLITaskExecutor implements TaskExecutor {
         }
 
         // Create a process in the store for tracking
-        const processId = `queue-${task.id}`;
+        // Format: <type>_<uuid> e.g. queue_1771242852770-g94u3ig
+        const processId = `queue_${task.id}`;
         const prompt = this.extractPrompt(task);
         const workingDirectory = this.getWorkingDirectory(task);
         const process: AIProcess = {
@@ -415,7 +416,7 @@ export class CLITaskExecutor implements TaskExecutor {
 
     private async executeWithAI(task: QueuedTask, prompt: string): Promise<unknown> {
         const sdkService = getCopilotSDKService();
-        const processId = `queue-${task.id}`;
+        const processId = `queue_${task.id}`;
 
         // Initialize output accumulator for this process
         this.outputBuffers.set(processId, '');

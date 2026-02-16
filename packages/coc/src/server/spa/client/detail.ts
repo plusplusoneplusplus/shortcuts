@@ -231,7 +231,7 @@ export function closeQueueTaskStream(): void {
  * Connects to SSE for real-time streaming if the task is running.
  */
 export function showQueueTaskDetail(taskId: string): void {
-    const processId = 'queue-' + taskId;
+    const processId = 'queue_' + taskId;
 
     // Close any previous stream
     closeQueueTaskStream();
@@ -401,7 +401,7 @@ function renderQueueTaskConversation(processId: string, taskId: string, proc: an
     }
     html += '</summary>';
     html += '<div class="meta-grid">';
-    html += '<div class="meta-item"><label>Process ID</label><span>' + escapeHtmlClient(processId) + '</span></div>';
+    html += '<div class="meta-item"><label>ID</label><span>' + escapeHtmlClient(processId) + '</span></div>';
     if (proc && proc.metadata && proc.metadata.model) {
         html += '<div class="meta-item"><label>Model</label><span>' + escapeHtmlClient(proc.metadata.model) + '</span></div>';
     }

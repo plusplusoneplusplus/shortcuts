@@ -12,6 +12,7 @@ import {
     CreateTaskInput,
     QueueChangeEvent,
     TaskPriority,
+    generateTaskId,
 } from '../../src/queue';
 
 describe('TaskQueueManager', () => {
@@ -54,7 +55,7 @@ describe('TaskQueueManager', () => {
     describe('enqueue', () => {
         it('adds task to queue and returns ID', () => {
             const taskId = manager.enqueue(createTestTask());
-            expect(taskId).toMatch(/^queue-\d+-[a-z0-9]+$/);
+            expect(taskId).toMatch(/^\d+-[a-z0-9]+$/);
             expect(manager.size()).toBe(1);
         });
 
@@ -922,6 +923,44 @@ describe('TaskQueueManager', () => {
             expect(manager.getFailed()).toHaveLength(1);
             expect(manager.getCancelled()).toHaveLength(1);
         });
+    });
+});
+
+// ============================================================================
+// generateTaskId
+// ============================================================================
+
+describe('generateTaskId', () => {
+    it('returns a string with timestamp-random format', () => {
+        const id = generateTaskId();
+        expect(typeof id).toBe('string');
+        expect(id.length).toBeGreaterThan(0);
+    });
+
+    it('does not include a queue- prefix', () => {
+        const id = generateTaskId();
+        expect(id).not.toMatch(/^queue-/);
+    });
+
+    it('matches <timestamp>-<random> pattern', () => {
+        const id = generateTaskId();
+        // Format: <digits>-<alphanumeric>
+        expect(id).toMatch(/^\d+-[a-z0-9]+$/);
+    });
+
+    it('generates unique IDs', () => {
+        const ids = new Set<string>();
+        for (let i = 0; i < 100; i++) {
+            ids.add(generateTaskId());
+        }
+        expect(ids.size).toBe(100);
+    });
+
+    it('produces IDs that form valid process IDs with queue_ prefix', () => {
+        const id = generateTaskId();
+        const processId = `queue_${id}`;
+        // Should match <type>_<timestamp>-<random> format
+        expect(processId).toMatch(/^queue_\d+-[a-z0-9]+$/);
     });
 });
 

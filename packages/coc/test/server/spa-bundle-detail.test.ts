@@ -36,6 +36,14 @@ describe('client bundle — detail module', () => {
         expect(script).toContain('meta-path');
     });
 
+    it('uses queue_ prefix for process ID construction', () => {
+        expect(script).toContain('queue_');
+    });
+
+    it('labels the process ID field as ID (not Process ID)', () => {
+        expect(script).not.toContain('Process ID');
+    });
+
     it('renders action buttons', () => {
         expect(script).toContain('Copy Result');
         expect(script).toContain('Copy Link');

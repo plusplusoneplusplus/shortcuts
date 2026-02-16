@@ -306,8 +306,8 @@ describe('Queue task conversation view', () => {
             expect(script).toContain('copyConversationOutput');
         });
 
-        it('constructs process ID with queue- prefix', () => {
-            expect(script).toContain('queue-');
+        it('constructs process ID with queue_ prefix', () => {
+            expect(script).toContain('queue_');
         });
 
         it('uses EventSource for SSE streaming', () => {

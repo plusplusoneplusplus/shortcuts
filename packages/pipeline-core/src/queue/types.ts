@@ -447,8 +447,11 @@ export function isCustomTaskPayload(payload: TaskPayload): payload is CustomTask
 }
 
 /**
- * Generate a unique task ID
+ * Generate a unique task ID.
+ * Format: `<timestamp>-<random>` (e.g., `1771242852770-g94u3ig`).
+ * The queue executor bridge prefixes this with the process type
+ * to form the process ID (e.g., `queue-1771242852770-g94u3ig`).
  */
 export function generateTaskId(): string {
-    return `queue-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 }

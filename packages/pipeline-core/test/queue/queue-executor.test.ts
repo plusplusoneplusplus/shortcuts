@@ -550,7 +550,7 @@ function createTestTask(
 
 function createQueuedTask(overrides: Partial<QueuedTask> = {}): QueuedTask {
     return {
-        id: `queue-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+        id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
         type: 'follow-prompt',
         priority: 'normal',
         status: 'queued',
