@@ -239,3 +239,83 @@ test.describe('Add Repo workflow', () => {
         }
     });
 });
+
+// ================================================================
+// Edit Repo workflow (003-edit-repo)
+// ================================================================
+
+test.describe('Edit Repo workflow', () => {
+    test('edit button opens dialog pre-filled', async ({ page, serverUrl }) => {
+        await seedWorkspace(serverUrl, 'ws-edit-1', 'original-name', '/tmp/original', '#16825d');
+
+        await page.goto(serverUrl);
+        await page.click('[data-tab="repos"]');
+        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+
+        // Select the repo to show detail
+        await page.locator('.repo-item').first().click();
+        await expect(page.locator('#repo-detail-content')).toBeVisible();
+
+        // Click Edit button
+        await page.click('#repo-edit-btn');
+        await expect(page.locator('#add-repo-overlay')).toBeVisible();
+
+        // Path should be read-only and pre-filled
+        const pathInput = page.locator('#repo-path');
+        await expect(pathInput).toHaveValue('/tmp/original');
+        await expect(pathInput).toHaveAttribute('readonly', '');
+
+        // Name and color should be pre-filled
+        await expect(page.locator('#repo-alias')).toHaveValue('original-name');
+        await expect(page.locator('#repo-color')).toHaveValue('#16825d');
+    });
+
+    test('save edits updates sidebar and detail', async ({ page, serverUrl }) => {
+        await seedWorkspace(serverUrl, 'ws-edit-2', 'old-name', '/tmp/edit-save', '#0078d4');
+
+        await page.goto(serverUrl);
+        await page.click('[data-tab="repos"]');
+        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+
+        // Select repo and open edit dialog
+        await page.locator('.repo-item').first().click();
+        await expect(page.locator('#repo-detail-content')).toBeVisible();
+        await page.click('#repo-edit-btn');
+        await expect(page.locator('#add-repo-overlay')).toBeVisible();
+
+        // Change name and color
+        await page.fill('#repo-alias', 'new-name');
+        await page.selectOption('#repo-color', '#16825d'); // Green
+
+        await page.click('#add-repo-submit');
+        await expect(page.locator('#add-repo-overlay')).toBeHidden({ timeout: 5000 });
+
+        // Sidebar item name should be updated
+        await expect(page.locator('.repo-item-name')).toContainText('new-name', { timeout: 10000 });
+
+        // Detail header should be updated
+        await expect(page.locator('.repo-detail-header h1')).toContainText('new-name');
+    });
+
+    test('cancel edit preserves original', async ({ page, serverUrl }) => {
+        await seedWorkspace(serverUrl, 'ws-edit-3', 'keep-me', '/tmp/edit-cancel', '#0078d4');
+
+        await page.goto(serverUrl);
+        await page.click('[data-tab="repos"]');
+        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+
+        // Select repo and open edit dialog
+        await page.locator('.repo-item').first().click();
+        await expect(page.locator('#repo-detail-content')).toBeVisible();
+        await page.click('#repo-edit-btn');
+        await expect(page.locator('#add-repo-overlay')).toBeVisible();
+
+        // Change name but cancel
+        await page.fill('#repo-alias', 'changed-name');
+        await page.click('#add-repo-cancel-btn');
+        await expect(page.locator('#add-repo-overlay')).toBeHidden();
+
+        // Sidebar should still show original name
+        await expect(page.locator('.repo-item-name')).toContainText('keep-me');
+    });
+});

@@ -92,12 +92,15 @@ export async function seedWorkspace(
     id: string,
     name: string,
     rootPath?: string,
+    color?: string,
 ): Promise<Record<string, unknown>> {
-    const body = JSON.stringify({
+    const payload: Record<string, string> = {
         id,
         name,
         rootPath: rootPath ?? `/ws/${name}`,
-    });
+    };
+    if (color) payload.color = color;
+    const body = JSON.stringify(payload);
     const res = await request(`${baseURL}/api/workspaces`, { method: 'POST', body });
     return JSON.parse(res.body);
 }
