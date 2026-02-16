@@ -363,7 +363,7 @@ body {
 }
 .detail-empty-icon { font-size: 48px; margin-bottom: 12px; }
 .detail-empty-text { font-size: 14px; }
-.detail-content { max-width: 800px; margin: 0 auto; }
+.detail-content { max-width: none; margin: 0; }
 #repo-detail-panel { padding: 16px 12px; }
 #repo-detail-content { max-width: none; margin: 0; }
 .detail-header { margin-bottom: 20px; }

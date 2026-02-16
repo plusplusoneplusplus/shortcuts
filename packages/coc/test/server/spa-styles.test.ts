@@ -60,6 +60,15 @@ describe('Bundled CSS — via generateDashboardHtml', () => {
     it('defines collapsible prompt section', () => {
         expect(html).toContain('.prompt-section');
     });
+
+    it('detail-content uses full width without max-width constraint', () => {
+        const detailStart = html.indexOf('.detail-content {');
+        expect(detailStart).toBeGreaterThan(-1);
+        const detailEnd = html.indexOf('}', detailStart);
+        const detailRule = html.substring(detailStart, detailEnd + 1);
+        expect(detailRule).not.toContain('max-width: 800px');
+        expect(detailRule).toContain('max-width: none');
+    });
 });
 
 describe('Unified design tokens — wiki variables', () => {
