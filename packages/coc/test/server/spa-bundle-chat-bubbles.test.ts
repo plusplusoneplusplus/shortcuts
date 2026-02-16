@@ -141,4 +141,32 @@ describe('client bundle — chat bubble rendering', () => {
     it('streaming class applied to streaming bubbles', () => {
         expect(script).toContain(' streaming');
     });
+
+    // ---- Follow-up optimistic UI uses correct chat-message class ----
+
+    it('sendFollowUpMessage creates user bubble via renderChatMessage', () => {
+        // The optimistic user bubble should use renderChatMessage (not raw chat-bubble class)
+        expect(script).toContain('renderChatMessage(userTurn)');
+    });
+
+    it('sendFollowUpMessage creates assistant bubble with chat-message class', () => {
+        // The optimistic assistant bubble must use "chat-message" (not "chat-bubble")
+        expect(script).toContain('chat-message assistant streaming');
+        // Must NOT use the old incorrect "chat-bubble" class for follow-up bubbles
+        expect(script).not.toContain('chat-bubble user');
+        expect(script).not.toContain('chat-bubble assistant');
+    });
+
+    it('sendFollowUpMessage assistant bubble has proper inner structure', () => {
+        // The optimistic assistant bubble should have chat-message-header and chat-message-content
+        expect(script).toContain('follow-up-assistant-bubble');
+        expect(script).toContain('chat-message-header');
+        expect(script).toContain('chat-message-content');
+    });
+
+    it('follow-up SSE chunk handler updates chat-message-content inside bubble', () => {
+        // The SSE chunk handler should target .chat-message-content inside the bubble
+        // rather than replacing the entire bubble innerHTML
+        expect(script).toContain('.chat-message-content');
+    });
 });

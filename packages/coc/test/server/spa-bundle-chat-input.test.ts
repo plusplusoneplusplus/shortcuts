@@ -115,12 +115,12 @@ describe('client bundle — chat input bar', () => {
             expect(script).toContain('JSON.stringify({ content');
         });
 
-        it('creates optimistic user bubble', () => {
-            expect(script).toContain('chat-bubble user');
+        it('creates optimistic user bubble via renderChatMessage', () => {
+            expect(script).toContain('renderChatMessage(userTurn)');
         });
 
-        it('creates streaming assistant bubble', () => {
-            expect(script).toContain('chat-bubble assistant streaming');
+        it('creates streaming assistant bubble with chat-message class', () => {
+            expect(script).toContain('chat-message assistant streaming');
             expect(script).toContain('follow-up-assistant-bubble');
         });
 

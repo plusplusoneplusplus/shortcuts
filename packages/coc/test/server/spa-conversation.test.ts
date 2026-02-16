@@ -124,9 +124,9 @@ describe('SPA conversation rendering', () => {
             expect(script).toContain('renderChatMessage');
         });
 
-        it('should contain chat-bubble CSS class in bundle', () => {
-            // The client code uses chat-bubble class for follow-up bubbles
-            expect(script).toContain('chat-bubble');
+        it('should contain chat-message CSS class for follow-up bubbles', () => {
+            // Follow-up bubbles use the same chat-message class as renderChatMessage
+            expect(script).toContain('chat-message assistant streaming');
         });
 
         it('should contain sendFollowUpMessage function in bundle', () => {

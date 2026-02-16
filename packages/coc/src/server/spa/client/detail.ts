@@ -564,16 +564,23 @@ function sendFollowUpMessage(processId: string, content: string): void {
     // Optimistic UI: append user bubble immediately
     const conversationEl = document.getElementById('queue-task-conversation');
     if (conversationEl) {
-        const userBubble = document.createElement('div');
-        userBubble.className = 'chat-bubble user';
-        userBubble.innerHTML = renderMarkdown(content);
-        conversationEl.appendChild(userBubble);
+        const userTurn: ClientConversationTurn = {
+            role: 'user',
+            content: content,
+            timestamp: new Date().toISOString(),
+        };
+        conversationEl.insertAdjacentHTML('beforeend', renderChatMessage(userTurn));
 
         // Append empty assistant bubble with streaming indicator
         const assistantBubble = document.createElement('div');
-        assistantBubble.className = 'chat-bubble assistant streaming';
+        assistantBubble.className = 'chat-message assistant streaming';
         assistantBubble.id = 'follow-up-assistant-bubble';
-        assistantBubble.innerHTML = '<span class="streaming-indicator">\u25CF</span>';
+        assistantBubble.innerHTML = '<div class="chat-message-header">' +
+            '<span class="role-icon">\u{1F916}</span>' +
+            '<span class="role-label">Assistant</span>' +
+            '<span class="streaming-indicator">\u25CF Live</span>' +
+            '</div>' +
+            '<div class="chat-message-content"></div>';
         conversationEl.appendChild(assistantBubble);
 
         scrollConversationToBottom();
@@ -647,7 +654,10 @@ function connectFollowUpSSE(processId: string): void {
                 const bubble = document.getElementById('follow-up-assistant-bubble');
                 if (bubble) {
                     bubble.classList.remove('streaming');
-                    bubble.innerHTML = renderMarkdown(accumulatedContent);
+                    const contentDiv = bubble.querySelector('.chat-message-content');
+                    if (contentDiv) {
+                        contentDiv.innerHTML = renderMarkdown(accumulatedContent);
+                    }
                 }
                 scrollConversationToBottom();
             }
