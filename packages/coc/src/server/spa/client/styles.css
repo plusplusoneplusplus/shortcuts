@@ -1544,6 +1544,26 @@ body {
     font-size: 14px;
     font-weight: 600;
     margin: 0;
+    flex: 1;
+}
+.repo-group-toggle-btn {
+    background: none;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 2px 6px;
+    color: var(--text-secondary);
+    transition: all 0.15s;
+    line-height: 1;
+}
+.repo-group-toggle-btn:hover {
+    background: var(--hover-bg);
+}
+.repo-group-toggle-btn.active {
+    background: var(--active-bg);
+    border-color: var(--accent);
+    color: var(--accent);
 }
 .repos-add-btn {
     font-size: 11px;
@@ -1609,6 +1629,104 @@ body {
 }
 .repo-item-stats span { white-space: nowrap; }
 .repo-stat-counts { letter-spacing: 0.3px; }
+
+/* ---- Repo Groups (Clone Grouping) ---- */
+.repo-group {
+    border-bottom: 1px solid var(--border-color);
+}
+.repo-group-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text-secondary);
+    background: var(--bg-secondary);
+    user-select: none;
+}
+.repo-group-header:hover {
+    background: var(--hover-bg);
+}
+.repo-group-toggle {
+    font-size: 10px;
+    width: 12px;
+    text-align: center;
+    flex-shrink: 0;
+}
+.repo-group-icon {
+    font-size: 14px;
+    flex-shrink: 0;
+}
+.repo-group-label {
+    flex: 1;
+    font-weight: 600;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.repo-group-badge {
+    background: var(--accent);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 10px;
+    flex-shrink: 0;
+}
+.repo-group-children {
+    padding-left: 8px;
+    border-left: 2px solid var(--accent);
+    margin-left: 16px;
+}
+.repo-item-grouped {
+    padding-left: 8px;
+}
+.repo-branch-badge {
+    font-size: 10px;
+    background: var(--bg-secondary);
+    color: var(--accent);
+    border: 1px solid var(--border-color);
+    padding: 0 5px;
+    border-radius: 3px;
+    margin-left: 6px;
+    white-space: nowrap;
+    font-weight: 500;
+}
+
+/* ---- Clone Siblings (Detail View) ---- */
+.clone-siblings-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.clone-sibling-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+}
+.clone-sibling-item:hover {
+    background: var(--hover-bg);
+}
+.clone-sibling-name {
+    font-weight: 500;
+}
+.clone-sibling-path {
+    color: var(--text-secondary);
+    font-size: 11px;
+    margin-left: auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 250px;
+}
+
+/* ---- Repos Sidebar Footer ---- */
 .repos-sidebar-footer {
     padding: 8px 12px;
     border-top: 1px solid var(--border-color);

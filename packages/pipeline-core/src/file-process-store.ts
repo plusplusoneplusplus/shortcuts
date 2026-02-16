@@ -245,6 +245,7 @@ export class FileProcessStore implements ProcessStore {
                 if (updates.name !== undefined) { workspaces[idx].name = updates.name; }
                 if (updates.rootPath !== undefined) { workspaces[idx].rootPath = updates.rootPath; }
                 if (updates.color !== undefined) { workspaces[idx].color = updates.color; }
+                if (updates.remoteUrl !== undefined) { workspaces[idx].remoteUrl = updates.remoteUrl; }
                 updated = { ...workspaces[idx] };
                 await this.writeWorkspaces(workspaces);
             }

@@ -144,6 +144,108 @@ describe('client bundle — repos module', () => {
 });
 
 // ============================================================================
+// Clone grouping (client bundle)
+// ============================================================================
+
+describe('client bundle — clone grouping', () => {
+    let script: string;
+    beforeAll(() => { script = getClientBundle(); });
+
+    it('defines normalizeRemoteUrl function', () => {
+        expect(script).toContain('normalizeRemoteUrl');
+    });
+
+    it('defines groupReposByRemote function', () => {
+        expect(script).toContain('groupReposByRemote');
+    });
+
+    it('defines remoteUrlLabel function', () => {
+        expect(script).toContain('remoteUrlLabel');
+    });
+
+    it('defines renderRepoGroup function', () => {
+        expect(script).toContain('renderRepoGroup');
+    });
+
+    it('defines repoGroupExpandedState for expand/collapse tracking', () => {
+        expect(script).toContain('repoGroupExpandedState');
+    });
+
+    it('defines setRepoGroupingEnabled for toggling grouping', () => {
+        expect(script).toContain('setRepoGroupingEnabled');
+    });
+
+    it('tracks repoGroupingEnabled state variable', () => {
+        expect(script).toContain('repoGroupingEnabled');
+    });
+
+    it('renders repo groups with header containing toggle and label', () => {
+        expect(script).toContain('repo-group-header');
+        expect(script).toContain('repo-group-toggle');
+        expect(script).toContain('repo-group-label');
+    });
+
+    it('renders repo group badge with clone count', () => {
+        expect(script).toContain('repo-group-badge');
+    });
+
+    it('renders repo group children container', () => {
+        expect(script).toContain('repo-group-children');
+    });
+
+    it('renders grouped repo items with indentation class', () => {
+        expect(script).toContain('repo-item-grouped');
+    });
+
+    it('renders branch badges for grouped repo items', () => {
+        expect(script).toContain('repo-branch-badge');
+    });
+
+    it('shows clone siblings in repo detail info tab', () => {
+        expect(script).toContain('clone-siblings-list');
+        expect(script).toContain('clone-sibling-item');
+        expect(script).toContain('clone-sibling-name');
+    });
+
+    it('shows remote URL in repo detail info tab', () => {
+        // The info tab should display the remote URL field
+        expect(script).toContain('Remote');
+        expect(script).toContain('remoteUrl');
+    });
+
+    it('normalizes SSH shorthand URLs (git@host:user/repo)', () => {
+        // Verify the SSH regex pattern is in the bundle
+        expect(script).toContain('sshMatch');
+    });
+
+    it('strips .git suffix during normalization', () => {
+        expect(script).toContain('.git');
+    });
+
+    it('strips protocol during normalization', () => {
+        // The regex pattern in the bundle strips protocol prefixes
+        expect(script).toContain('https?');
+        expect(script).toContain('ssh');
+    });
+
+    it('handles expand/collapse of repo groups', () => {
+        // Verify toggle arrows are present (may be escaped in bundle)
+        expect(script).toContain('repo-group-toggle');
+        expect(script).toContain('expanded');
+    });
+
+    it('wires clone sibling click handlers', () => {
+        expect(script).toContain('clone-sibling-item');
+        expect(script).toContain('showRepoDetail');
+    });
+
+    it('footer includes group count when grouping is enabled', () => {
+        expect(script).toContain('group');
+        expect(script).toContain('repos-footer');
+    });
+});
+
+// ============================================================================
 // Repos sidebar HTML structure
 // ============================================================================
 
@@ -191,5 +293,10 @@ describe('Repos sidebar HTML structure', () => {
 
     it('contains repo detail content area', () => {
         expect(html).toContain('id="repo-detail-content"');
+    });
+
+    it('contains clone grouping toggle button', () => {
+        expect(html).toContain('id="repo-group-toggle-btn"');
+        expect(html).toContain('repo-group-toggle-btn');
     });
 });

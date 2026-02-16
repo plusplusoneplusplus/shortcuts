@@ -299,6 +299,60 @@ describe('FileProcessStore', () => {
         expect(updated).toBeUndefined();
     });
 
+    // --- Workspace remoteUrl ---
+    it('should register workspace with remoteUrl', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.registerWorkspace({
+            id: 'ws-remote', name: 'Remote', rootPath: '/path',
+            remoteUrl: 'https://github.com/user/repo.git',
+        });
+        const workspaces = await store.getWorkspaces();
+        const ws = workspaces.find(w => w.id === 'ws-remote');
+        expect(ws).toBeDefined();
+        expect(ws!.remoteUrl).toBe('https://github.com/user/repo.git');
+    });
+
+    it('should persist remoteUrl across reads', async () => {
+        const store1 = new FileProcessStore({ dataDir: tmpDir });
+        await store1.registerWorkspace({
+            id: 'ws-persist', name: 'Persist', rootPath: '/path',
+            remoteUrl: 'git@github.com:user/repo.git',
+        });
+
+        // Create a new store instance to read from disk
+        const store2 = new FileProcessStore({ dataDir: tmpDir });
+        const workspaces = await store2.getWorkspaces();
+        const ws = workspaces.find(w => w.id === 'ws-persist');
+        expect(ws!.remoteUrl).toBe('git@github.com:user/repo.git');
+    });
+
+    it('should update remoteUrl via updateWorkspace', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.registerWorkspace({
+            id: 'ws-update-remote', name: 'Update', rootPath: '/path',
+        });
+
+        const updated = await store.updateWorkspace('ws-update-remote', {
+            remoteUrl: 'https://github.com/updated/repo.git',
+        });
+        expect(updated).toBeDefined();
+        expect(updated!.remoteUrl).toBe('https://github.com/updated/repo.git');
+
+        const workspaces = await store.getWorkspaces();
+        expect(workspaces.find(w => w.id === 'ws-update-remote')!.remoteUrl)
+            .toBe('https://github.com/updated/repo.git');
+    });
+
+    it('should register workspace without remoteUrl (undefined)', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.registerWorkspace({
+            id: 'ws-no-remote', name: 'No Remote', rootPath: '/path',
+        });
+        const workspaces = await store.getWorkspaces();
+        const ws = workspaces.find(w => w.id === 'ws-no-remote');
+        expect(ws!.remoteUrl).toBeUndefined();
+    });
+
     // --- Wiki registration ---
     it('should register and retrieve wikis', async () => {
         const store = new FileProcessStore({ dataDir: tmpDir });

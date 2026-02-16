@@ -36,6 +36,8 @@ export interface WorkspaceInfo {
     rootPath: string;
     /** Optional UI color for dashboard differentiation */
     color?: string;
+    /** Git remote URL (typically origin) — used to group clones of the same repo */
+    remoteUrl?: string;
 }
 
 /**

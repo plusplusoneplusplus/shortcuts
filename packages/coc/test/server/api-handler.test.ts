@@ -388,6 +388,83 @@ describe('API Handler', () => {
             expect(res.status).toBe(404);
         });
 
+        it('should auto-detect remoteUrl during workspace registration for git repos', async () => {
+            const srv = await startServer();
+            const repoPath = path.resolve(__dirname, '..', '..', '..', '..');
+            const createRes = await postJSON(`${srv.url}/api/workspaces`, {
+                id: 'ws-remote', name: 'remote-test', rootPath: repoPath,
+            });
+            expect(createRes.status).toBe(201);
+            const body = JSON.parse(createRes.body);
+            // The project root is a git repo with a remote
+            expect(body.remoteUrl).toBeDefined();
+            expect(typeof body.remoteUrl).toBe('string');
+            expect(body.remoteUrl!.length).toBeGreaterThan(0);
+        });
+
+        it('should use provided remoteUrl over auto-detected one', async () => {
+            const srv = await startServer();
+            const repoPath = path.resolve(__dirname, '..', '..', '..', '..');
+            const createRes = await postJSON(`${srv.url}/api/workspaces`, {
+                id: 'ws-explicit-remote', name: 'explicit-remote', rootPath: repoPath,
+                remoteUrl: 'https://github.com/custom/repo.git',
+            });
+            expect(createRes.status).toBe(201);
+            const body = JSON.parse(createRes.body);
+            expect(body.remoteUrl).toBe('https://github.com/custom/repo.git');
+        });
+
+        it('should not set remoteUrl for non-git directories', async () => {
+            const srv = await startServer();
+            const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'no-git-'));
+            await postJSON(`${srv.url}/api/workspaces`, {
+                id: 'ws-no-remote', name: 'no-remote', rootPath: tmpDir,
+            });
+            const listRes = await request(`${srv.url}/api/workspaces`);
+            const workspaces = JSON.parse(listRes.body).workspaces;
+            const ws = workspaces.find((w: any) => w.id === 'ws-no-remote');
+            expect(ws.remoteUrl).toBeUndefined();
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        });
+
+        it('should include remoteUrl in git-info response', async () => {
+            const srv = await startServer();
+            const repoPath = path.resolve(__dirname, '..', '..', '..', '..');
+            await postJSON(`${srv.url}/api/workspaces`, {
+                id: 'ws-gitinfo-remote', name: 'gitinfo-remote', rootPath: repoPath,
+            });
+            const res = await request(`${srv.url}/api/workspaces/ws-gitinfo-remote/git-info`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.isGitRepo).toBe(true);
+            expect(body).toHaveProperty('remoteUrl');
+            expect(typeof body.remoteUrl).toBe('string');
+        });
+
+        it('should return null remoteUrl in git-info for non-git dirs', async () => {
+            const srv = await startServer();
+            await postJSON(`${srv.url}/api/workspaces`, {
+                id: 'ws-no-gitinfo-remote', name: 'no-gitinfo-remote', rootPath: os.tmpdir(),
+            });
+            const res = await request(`${srv.url}/api/workspaces/ws-no-gitinfo-remote/git-info`);
+            const body = JSON.parse(res.body);
+            expect(body.isGitRepo).toBe(false);
+            expect(body.remoteUrl).toBeNull();
+        });
+
+        it('should allow updating remoteUrl via PATCH', async () => {
+            const srv = await startServer();
+            await postJSON(`${srv.url}/api/workspaces`, {
+                id: 'ws-patch-remote', name: 'patch-remote', rootPath: '/tmp/patch-remote',
+            });
+            const patchRes = await patchJSON(`${srv.url}/api/workspaces/ws-patch-remote`, {
+                remoteUrl: 'https://github.com/patched/repo.git',
+            });
+            expect(patchRes.status).toBe(200);
+            const body = JSON.parse(patchRes.body);
+            expect(body.workspace.remoteUrl).toBe('https://github.com/patched/repo.git');
+        });
+
         it('should discover pipelines in a workspace', async () => {
             const srv = await startServer();
             // Create a fake pipeline directory structure

@@ -174,11 +174,18 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                 return sendError(res, 400, 'Missing required fields: id, name, rootPath');
             }
 
+            // Auto-detect git remote URL if not explicitly provided
+            let remoteUrl: string | undefined = body.remoteUrl;
+            if (!remoteUrl) {
+                remoteUrl = detectRemoteUrl(body.rootPath);
+            }
+
             const workspace: WorkspaceInfo = {
                 id: body.id,
                 name: body.name,
                 rootPath: body.rootPath,
                 color: body.color,
+                remoteUrl,
             };
 
             await store.registerWorkspace(workspace);
@@ -228,6 +235,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             if (body.name !== undefined) { updates.name = body.name; }
             if (body.color !== undefined) { updates.color = body.color; }
             if (body.rootPath !== undefined) { updates.rootPath = body.rootPath; }
+            if (body.remoteUrl !== undefined) { updates.remoteUrl = body.remoteUrl; }
 
             const updated = await store.updateWorkspace(id, updates);
             if (!updated) {
@@ -253,9 +261,16 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                 const branch = execGitSync('rev-parse --abbrev-ref HEAD', ws.rootPath);
                 const status = execGitSync('status --porcelain', ws.rootPath);
                 const dirty = status.trim().length > 0;
-                sendJSON(res, 200, { branch, dirty, isGitRepo: true });
+                const remoteUrl = detectRemoteUrl(ws.rootPath);
+
+                // Update workspace remoteUrl if it changed (or wasn't set)
+                if (remoteUrl && remoteUrl !== ws.remoteUrl) {
+                    await store.updateWorkspace(ws.id, { remoteUrl });
+                }
+
+                sendJSON(res, 200, { branch, dirty, isGitRepo: true, remoteUrl: remoteUrl || null });
             } catch {
-                sendJSON(res, 200, { branch: null, dirty: false, isGitRepo: false });
+                sendJSON(res, 200, { branch: null, dirty: false, isGitRepo: false, remoteUrl: null });
             }
         },
     });
@@ -678,6 +693,59 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
 /** Run a git command synchronously in the given directory. */
 export function execGitSync(args: string, cwd: string): string {
     return childProcess.execSync(`git ${args}`, { cwd, encoding: 'utf-8', timeout: 5000 }).trim();
+}
+
+/**
+ * Detect the primary git remote URL for a workspace directory.
+ * Returns undefined if not a git repo or no remotes configured.
+ */
+export function detectRemoteUrl(cwd: string): string | undefined {
+    try {
+        return execGitSync('remote get-url origin', cwd) || undefined;
+    } catch {
+        // No origin remote — try first available remote
+        try {
+            const remotes = execGitSync('remote', cwd);
+            const firstRemote = remotes.split('\n').filter(Boolean)[0];
+            if (firstRemote) {
+                return execGitSync(`remote get-url ${firstRemote}`, cwd) || undefined;
+            }
+        } catch { /* not a git repo or no remotes */ }
+        return undefined;
+    }
+}
+
+/**
+ * Normalize a git remote URL for comparison.
+ * Converts SSH, HTTPS, and git:// URLs to a canonical form:
+ *   `github.com/user/repo` (no protocol, no .git suffix, no trailing slash)
+ *
+ * Examples:
+ *   git@github.com:user/repo.git     → github.com/user/repo
+ *   https://github.com/user/repo.git → github.com/user/repo
+ *   ssh://git@github.com/user/repo   → github.com/user/repo
+ *   git://github.com/user/repo.git/  → github.com/user/repo
+ */
+export function normalizeRemoteUrl(rawUrl: string): string {
+    let url = rawUrl.trim();
+
+    // SSH shorthand: git@host:user/repo.git → host/user/repo.git
+    const sshMatch = url.match(/^[\w.-]+@([\w.-]+):(.+)$/);
+    if (sshMatch) {
+        url = sshMatch[1] + '/' + sshMatch[2];
+    } else {
+        // Strip protocol (https://, ssh://, git://, http://)
+        url = url.replace(/^(?:https?|ssh|git):\/\//, '');
+        // Strip userinfo (user@, git@)
+        url = url.replace(/^[^@]+@/, '');
+    }
+
+    // Strip trailing .git
+    url = url.replace(/\.git\/?$/, '');
+    // Strip trailing slash
+    url = url.replace(/\/+$/, '');
+
+    return url;
 }
 
 /** Discover pipeline packages in a directory. Each subdirectory with a pipeline.yaml is a package. */
