@@ -237,3 +237,45 @@ describe('Repos sidebar CSS styles', () => {
         expect(html).toContain('.repo-detail-header');
     });
 });
+
+// ============================================================================
+// History view styles
+// ============================================================================
+
+describe('SPA styles — history view', () => {
+    let html: string;
+    beforeAll(() => { html = generateDashboardHtml(); });
+
+    it('defines view mode toggle styles', () => {
+        expect(html).toContain('.view-mode-toggle');
+        expect(html).toContain('.view-mode-btn');
+    });
+
+    it('defines active state for view mode button', () => {
+        expect(html).toContain('.view-mode-btn.active');
+    });
+
+    it('defines history item compact styles', () => {
+        expect(html).toContain('.history-item');
+        expect(html).toContain('.history-status-icon');
+    });
+
+    it('defines history date header styles', () => {
+        expect(html).toContain('.history-date-header');
+        expect(html).toContain('.date-group-label');
+    });
+
+    it('defines history load more button styles', () => {
+        expect(html).toContain('.history-load-more');
+        expect(html).toContain('.history-load-more-btn');
+    });
+
+    it('defines history loading spinner', () => {
+        expect(html).toContain('.history-loading');
+        expect(html).toContain('.history-loading-spinner');
+    });
+
+    it('defines spin animation for loading spinner', () => {
+        expect(html).toContain('@keyframes spin');
+    });
+});

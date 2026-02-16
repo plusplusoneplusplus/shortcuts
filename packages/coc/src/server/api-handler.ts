@@ -66,6 +66,9 @@ const VALID_STATUSES: Set<string> = new Set(['queued', 'running', 'completed', '
 /** Terminal statuses that cannot be cancelled. */
 const TERMINAL_STATUSES: Set<string> = new Set(['completed', 'failed', 'cancelled']);
 
+/** Valid exclude field values for the `exclude` query parameter. */
+const VALID_EXCLUDE_FIELDS: Set<string> = new Set(['conversation']);
+
 /**
  * Extract filter parameters from URL query string into a typed ProcessFilter.
  * - `status` is parsed as comma-separated AIProcessStatus values (invalid values ignored).
@@ -116,7 +119,30 @@ export function parseQueryParams(reqUrl: string): ProcessFilter {
         }
     }
 
+    if (typeof query.exclude === 'string' && query.exclude) {
+        const excludeFields = query.exclude
+            .split(',')
+            .map(s => s.trim())
+            .filter(s => VALID_EXCLUDE_FIELDS.has(s));
+        if (excludeFields.length > 0) {
+            filter.exclude = excludeFields;
+        }
+    }
+
     return filter;
+}
+
+/**
+ * Strip heavy fields from a process for lightweight list responses.
+ * When `exclude` contains 'conversation', removes conversationTurns, fullPrompt,
+ * result, and structuredResult to reduce payload size (~100KB → ~5KB per process).
+ */
+export function stripExcludedFields(process: any, exclude?: string[]): any {
+    if (!exclude || exclude.length === 0) return process;
+    if (!exclude.includes('conversation')) return process;
+
+    const { conversationTurns, fullPrompt, result, structuredResult, ...lightweight } = process;
+    return lightweight;
 }
 
 // ============================================================================
@@ -326,7 +352,12 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             const paginatedFilter: ProcessFilter = { ...filter, limit, offset };
             const processes = await store.getAllProcesses(paginatedFilter);
 
-            sendJSON(res, 200, { processes, total, limit, offset });
+            // Strip excluded fields for lightweight responses
+            const responseProcesses = filter.exclude
+                ? processes.map(p => stripExcludedFields(p, filter.exclude))
+                : processes;
+
+            sendJSON(res, 200, { processes: responseProcesses, total, limit, offset });
         },
     });
 

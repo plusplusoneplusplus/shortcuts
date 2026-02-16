@@ -11,7 +11,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as http from 'http';
 import { createExecutionServer } from '../../src/server/index';
-import { sendJSON, sendError, parseQueryParams } from '../../src/server/api-handler';
+import { sendJSON, sendError, parseQueryParams, stripExcludedFields } from '../../src/server/api-handler';
 import { FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
 import type { ExecutionServer } from '../../src/server/types';
 import * as fs from 'fs';
@@ -189,6 +189,78 @@ describe('API Handler', () => {
             const filter = parseQueryParams('/api/processes?workspace=&status=');
             expect(filter.workspaceId).toBeUndefined();
             expect(filter.status).toBeUndefined();
+        });
+
+        it('should parse exclude=conversation param', () => {
+            const filter = parseQueryParams('/api/processes?exclude=conversation');
+            expect(filter.exclude).toEqual(['conversation']);
+        });
+
+        it('should ignore invalid exclude values', () => {
+            const filter = parseQueryParams('/api/processes?exclude=invalid');
+            expect(filter.exclude).toBeUndefined();
+        });
+
+        it('should parse comma-separated exclude values', () => {
+            const filter = parseQueryParams('/api/processes?exclude=conversation,invalid');
+            expect(filter.exclude).toEqual(['conversation']);
+        });
+
+        it('should not set exclude for empty string', () => {
+            const filter = parseQueryParams('/api/processes?exclude=');
+            expect(filter.exclude).toBeUndefined();
+        });
+    });
+
+    // ========================================================================
+    // stripExcludedFields
+    // ========================================================================
+
+    describe('stripExcludedFields', () => {
+        it('should return process unchanged when exclude is undefined', () => {
+            const process = { id: 'p1', conversationTurns: [{ role: 'user' }], fullPrompt: 'test' };
+            const result = stripExcludedFields(process, undefined);
+            expect(result).toBe(process);
+        });
+
+        it('should return process unchanged when exclude is empty', () => {
+            const process = { id: 'p1', conversationTurns: [{ role: 'user' }] };
+            const result = stripExcludedFields(process, []);
+            expect(result).toBe(process);
+        });
+
+        it('should strip conversation fields when exclude includes conversation', () => {
+            const process = {
+                id: 'p1',
+                promptPreview: 'Test prompt',
+                fullPrompt: 'Full test prompt',
+                status: 'completed',
+                conversationTurns: [{ role: 'user', content: 'hello' }],
+                result: 'Big result data',
+                structuredResult: '{"key":"value"}',
+                startTime: '2026-01-01T00:00:00Z',
+                type: 'clarification',
+            };
+            const result = stripExcludedFields(process, ['conversation']);
+            expect(result.id).toBe('p1');
+            expect(result.promptPreview).toBe('Test prompt');
+            expect(result.status).toBe('completed');
+            expect(result.startTime).toBe('2026-01-01T00:00:00Z');
+            expect(result.type).toBe('clarification');
+            expect(result.conversationTurns).toBeUndefined();
+            expect(result.fullPrompt).toBeUndefined();
+            expect(result.result).toBeUndefined();
+            expect(result.structuredResult).toBeUndefined();
+        });
+
+        it('should not strip fields for non-conversation exclude values', () => {
+            const process = {
+                id: 'p1',
+                conversationTurns: [{ role: 'user' }],
+                fullPrompt: 'Full prompt',
+            };
+            const result = stripExcludedFields(process, ['other']);
+            expect(result).toBe(process);
         });
     });
 
@@ -1032,6 +1104,142 @@ describe('API Handler', () => {
             expect(res.status).toBe(202);
             const body = JSON.parse(res.body);
             expect(body.turnIndex).toBe(0);
+        });
+    });
+
+    // ========================================================================
+    // History endpoint: exclude=conversation
+    // ========================================================================
+
+    describe('History endpoint optimization (exclude=conversation)', () => {
+        it('should return processes without conversation data when exclude=conversation', async () => {
+            const srv = await startServer();
+            const proc = makeProcess({
+                id: 'hist-1',
+                status: 'completed',
+                fullPrompt: 'This is a very long full prompt text',
+            });
+            await postJSON(`${srv.url}/api/processes`, proc);
+
+            // Update with result and structuredResult
+            await patchJSON(`${srv.url}/api/processes/hist-1`, {
+                result: 'This is a big result output',
+                structuredResult: '{"key":"value"}',
+            });
+
+            // Fetch with exclude=conversation
+            const res = await request(`${srv.url}/api/processes?exclude=conversation`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.processes).toHaveLength(1);
+
+            const p = body.processes[0];
+            expect(p.id).toBe('hist-1');
+            expect(p.promptPreview).toBe('Test prompt');
+            expect(p.status).toBe('completed');
+            // These fields should be stripped
+            expect(p.fullPrompt).toBeUndefined();
+            expect(p.result).toBeUndefined();
+            expect(p.structuredResult).toBeUndefined();
+        });
+
+        it('should return full data when exclude param is not set', async () => {
+            const srv = await startServer();
+            const proc = makeProcess({
+                id: 'hist-2',
+                status: 'completed',
+                fullPrompt: 'Full prompt text',
+            });
+            await postJSON(`${srv.url}/api/processes`, proc);
+            await patchJSON(`${srv.url}/api/processes/hist-2`, {
+                result: 'Some result',
+            });
+
+            const res = await request(`${srv.url}/api/processes`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.processes).toHaveLength(1);
+
+            const p = body.processes[0];
+            expect(p.fullPrompt).toBe('Full prompt text');
+            expect(p.result).toBe('Some result');
+        });
+
+        it('should combine exclude=conversation with status filter for history queries', async () => {
+            const srv = await startServer();
+
+            // Create processes with different statuses
+            await postJSON(`${srv.url}/api/processes`, makeProcess({ id: 'active-1', status: 'running' }));
+            await postJSON(`${srv.url}/api/processes`, makeProcess({ id: 'done-1', status: 'completed' }));
+            await postJSON(`${srv.url}/api/processes`, makeProcess({ id: 'fail-1', status: 'failed' }));
+            await postJSON(`${srv.url}/api/processes`, makeProcess({ id: 'cancel-1', status: 'cancelled' }));
+
+            // History query: completed + failed + cancelled, excluding conversation data
+            const res = await request(`${srv.url}/api/processes?status=completed,failed,cancelled&exclude=conversation`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.processes).toHaveLength(3);
+            expect(body.total).toBe(3);
+
+            // Verify all returned processes are terminal
+            body.processes.forEach((p: any) => {
+                expect(['completed', 'failed', 'cancelled']).toContain(p.status);
+                expect(p.conversationTurns).toBeUndefined();
+                expect(p.fullPrompt).toBeUndefined();
+            });
+        });
+
+        it('should support pagination with exclude=conversation', async () => {
+            const srv = await startServer();
+
+            // Create 5 completed processes
+            for (let i = 0; i < 5; i++) {
+                await postJSON(`${srv.url}/api/processes`, makeProcess({
+                    id: `pag-hist-${i}`,
+                    status: 'completed',
+                }));
+            }
+
+            const res = await request(`${srv.url}/api/processes?status=completed&exclude=conversation&limit=2&offset=0`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.processes).toHaveLength(2);
+            expect(body.total).toBe(5);
+            expect(body.limit).toBe(2);
+            expect(body.offset).toBe(0);
+
+            // Verify conversation data is stripped
+            body.processes.forEach((p: any) => {
+                expect(p.conversationTurns).toBeUndefined();
+                expect(p.fullPrompt).toBeUndefined();
+            });
+        });
+
+        it('should reduce payload size significantly with exclude=conversation', async () => {
+            const srv = await startServer();
+            const longContent = 'x'.repeat(10000);
+            const proc = makeProcess({
+                id: 'payload-test',
+                status: 'completed',
+                fullPrompt: longContent,
+            });
+            await postJSON(`${srv.url}/api/processes`, proc);
+            await patchJSON(`${srv.url}/api/processes/payload-test`, {
+                result: longContent,
+            });
+
+            // Full response
+            const fullRes = await request(`${srv.url}/api/processes`);
+            const fullBody = fullRes.body;
+
+            // Lightweight response
+            const lightRes = await request(`${srv.url}/api/processes?exclude=conversation`);
+            const lightBody = lightRes.body;
+
+            // Lightweight should be significantly smaller
+            expect(lightBody.length).toBeLessThan(fullBody.length);
+            // The reduction should be substantial (at least 30% — fullPrompt + result stripped)
+            expect(lightBody.length).toBeLessThan(fullBody.length * 0.7);
         });
     });
 });

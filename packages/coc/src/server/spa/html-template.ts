@@ -84,6 +84,10 @@ ${bundleCss}
     <div class="app-layout" id="view-processes">
         <aside class="sidebar" id="sidebar">
             <div class="filter-bar">
+                <div class="view-mode-toggle">
+                    <button id="view-mode-active" class="view-mode-btn active" title="Show running and queued processes">Active</button>
+                    <button id="view-mode-history" class="view-mode-btn" title="Show completed, failed, and cancelled processes">History</button>
+                </div>
                 <input type="text" id="search-input" placeholder="Search processes..." />
                 <select id="status-filter">
                     <option value="__all">All Statuses</option>

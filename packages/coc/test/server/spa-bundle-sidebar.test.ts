@@ -38,6 +38,71 @@ describe('client bundle — sidebar module', () => {
 });
 
 // ============================================================================
+// History view module
+// ============================================================================
+
+describe('client bundle — history view', () => {
+    let script: string;
+    beforeAll(() => { script = getClientBundle(); });
+
+    it('defines view mode toggle functionality', () => {
+        expect(script).toContain('switchViewMode');
+        expect(script).toContain('viewMode');
+    });
+
+    it('supports active and history view modes', () => {
+        expect(script).toContain('view-mode-active');
+        expect(script).toContain('view-mode-history');
+    });
+
+    it('groups history items by date', () => {
+        expect(script).toContain('Today');
+        expect(script).toContain('Yesterday');
+        expect(script).toContain('This Week');
+        expect(script).toContain('Older');
+    });
+
+    it('fetches history with exclude=conversation for lightweight payloads', () => {
+        expect(script).toContain('exclude=conversation');
+    });
+
+    it('renders history items in compact format', () => {
+        expect(script).toContain('history-item');
+        expect(script).toContain('history-status-icon');
+    });
+
+    it('supports load more for pagination', () => {
+        expect(script).toContain('Load More');
+        expect(script).toContain('loadMoreHistory');
+    });
+
+    it('caches conversations with TTL and max entries', () => {
+        expect(script).toContain('conversationCache');
+        expect(script).toContain('cacheConversation');
+        expect(script).toContain('getCachedConversation');
+    });
+
+    it('shows loading spinner for lazy conversation loading', () => {
+        expect(script).toContain('Loading conversation');
+        expect(script).toContain('history-loading');
+    });
+
+    it('stores history processes separately', () => {
+        expect(script).toContain('historyProcesses');
+        expect(script).toContain('historyTotal');
+        expect(script).toContain('historyLoaded');
+    });
+
+    it('fetches history processes on first mode switch', () => {
+        expect(script).toContain('fetchHistoryProcesses');
+    });
+
+    it('resets history when workspace changes', () => {
+        expect(script).toContain('historyLoaded');
+    });
+});
+
+// ============================================================================
 // Filters module
 // ============================================================================
 

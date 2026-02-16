@@ -44,7 +44,9 @@ export async function init(): Promise<void> {
             populateWorkspaces(wsRes);
         }
         const pRes = await fetchApi('/processes');
-        if (pRes && Array.isArray(pRes)) {
+        if (pRes && pRes.processes && Array.isArray(pRes.processes)) {
+            appState.processes = pRes.processes;
+        } else if (pRes && Array.isArray(pRes)) {
             appState.processes = pRes;
         }
         renderProcessList();

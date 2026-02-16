@@ -10,10 +10,44 @@ import {
     typeLabel, escapeHtmlClient, copyToClipboard,
 } from './utils';
 import { navigateToProcess, fetchApi } from './core';
+import { getCachedConversation, cacheConversation } from './sidebar';
 
 export function renderDetail(id: string): void {
-    const process = appState.processes.find(function(p: any) { return p.id === id; });
-    if (!process) { clearDetail(); return; }
+    // Look up in both active processes and history
+    let process = appState.processes.find(function(p: any) { return p.id === id; });
+    if (!process) {
+        process = appState.historyProcesses.find(function(p: any) { return p.id === id; });
+    }
+    if (!process) {
+        // Not found locally — try fetching from API
+        fetchProcessAndRender(id);
+        return;
+    }
+
+    renderProcessDetail(process, id);
+}
+
+/** Fetch a process by ID from the API and render it. Shows loading spinner while fetching. */
+function fetchProcessAndRender(id: string): void {
+    const emptyEl = document.getElementById('detail-empty');
+    const contentEl = document.getElementById('detail-content');
+    if (emptyEl) emptyEl.classList.add('hidden');
+    if (!contentEl) return;
+    contentEl.classList.remove('hidden');
+    contentEl.innerHTML = '<div class="history-loading"><div class="history-loading-spinner"></div> Loading process...</div>';
+
+    fetchApi('/processes/' + encodeURIComponent(id)).then(function(data: any) {
+        if (data && data.process) {
+            renderProcessDetail(data.process, id);
+        } else {
+            clearDetail();
+        }
+    }).catch(function() {
+        clearDetail();
+    });
+}
+
+function renderProcessDetail(process: any, id: string): void {
 
     const emptyEl = document.getElementById('detail-empty');
     const contentEl = document.getElementById('detail-content');
@@ -127,56 +161,65 @@ export function renderDetail(id: string): void {
     if (isTerminal) {
         const sectionEl = document.getElementById('process-conversation-section');
         if (sectionEl) {
-            // First try to fetch the full process with conversationTurns
-            fetchApi('/processes/' + encodeURIComponent(id)).then(function(data: any) {
-                const proc = data && data.process ? data.process : null;
-                if (proc && proc.conversationTurns && proc.conversationTurns.length > 0) {
-                    // Render conversation turns as chat bubbles
-                    sectionEl.innerHTML = renderConversationBubbles(id, proc.conversationTurns);
-                } else {
-                    // Fall back to /output endpoint and render as chat bubbles
-                    return fetchApi('/processes/' + encodeURIComponent(id) + '/output')
-                        .then(function(outputData: any) {
-                            if (outputData && outputData.content) {
-                                // Build synthetic turns from the process
-                                const syntheticTurns: ClientConversationTurn[] = [];
-                                if (process.fullPrompt || process.promptPreview) {
+            // Check client-side cache first
+            const cached = getCachedConversation(id);
+            if (cached && cached.length > 0) {
+                sectionEl.innerHTML = renderConversationBubbles(id, cached);
+            } else {
+                // Show loading spinner
+                sectionEl.innerHTML = '<div class="history-loading"><div class="history-loading-spinner"></div> Loading conversation...</div>';
+
+                // Fetch the full process with conversationTurns
+                fetchApi('/processes/' + encodeURIComponent(id)).then(function(data: any) {
+                    const proc = data && data.process ? data.process : null;
+                    if (proc && proc.conversationTurns && proc.conversationTurns.length > 0) {
+                        cacheConversation(id, proc.conversationTurns);
+                        sectionEl.innerHTML = renderConversationBubbles(id, proc.conversationTurns);
+                    } else {
+                        // Fall back to /output endpoint and render as chat bubbles
+                        return fetchApi('/processes/' + encodeURIComponent(id) + '/output')
+                            .then(function(outputData: any) {
+                                if (outputData && outputData.content) {
+                                    const syntheticTurns: ClientConversationTurn[] = [];
+                                    if (process.fullPrompt || process.promptPreview) {
+                                        syntheticTurns.push({
+                                            role: 'user',
+                                            content: process.fullPrompt || process.promptPreview,
+                                            timestamp: process.startTime || undefined,
+                                        });
+                                    }
                                     syntheticTurns.push({
-                                        role: 'user',
-                                        content: process.fullPrompt || process.promptPreview,
-                                        timestamp: process.startTime || undefined,
+                                        role: 'assistant',
+                                        content: outputData.content,
+                                        timestamp: process.endTime || undefined,
                                     });
-                                }
-                                syntheticTurns.push({
-                                    role: 'assistant',
-                                    content: outputData.content,
-                                    timestamp: process.endTime || undefined,
-                                });
-                                sectionEl.innerHTML = renderConversationBubbles(id, syntheticTurns);
-                            } else if (process.result) {
-                                // No output but has result — build synthetic from result
-                                const syntheticTurns: ClientConversationTurn[] = [];
-                                if (process.fullPrompt || process.promptPreview) {
+                                    cacheConversation(id, syntheticTurns);
+                                    sectionEl.innerHTML = renderConversationBubbles(id, syntheticTurns);
+                                } else if (process.result) {
+                                    const syntheticTurns: ClientConversationTurn[] = [];
+                                    if (process.fullPrompt || process.promptPreview) {
+                                        syntheticTurns.push({
+                                            role: 'user',
+                                            content: process.fullPrompt || process.promptPreview,
+                                            timestamp: process.startTime || undefined,
+                                        });
+                                    }
                                     syntheticTurns.push({
-                                        role: 'user',
-                                        content: process.fullPrompt || process.promptPreview,
-                                        timestamp: process.startTime || undefined,
+                                        role: 'assistant',
+                                        content: process.result,
+                                        timestamp: process.endTime || undefined,
                                     });
+                                    cacheConversation(id, syntheticTurns);
+                                    sectionEl.innerHTML = renderConversationBubbles(id, syntheticTurns);
+                                } else {
+                                    sectionEl.innerHTML = '<div class="conversation-waiting">No conversation output saved.</div>';
                                 }
-                                syntheticTurns.push({
-                                    role: 'assistant',
-                                    content: process.result,
-                                    timestamp: process.endTime || undefined,
-                                });
-                                sectionEl.innerHTML = renderConversationBubbles(id, syntheticTurns);
-                            } else {
-                                sectionEl.innerHTML = '<div class="conversation-waiting">No conversation output saved.</div>';
-                            }
-                        });
-                }
-            }).catch(function() {
-                sectionEl.innerHTML = '<div class="conversation-waiting">No conversation output saved.</div>';
-            });
+                            });
+                    }
+                }).catch(function() {
+                    sectionEl.innerHTML = '<div class="conversation-waiting">No conversation output saved.</div>';
+                });
+            }
         }
     }
 }

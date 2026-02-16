@@ -6,6 +6,23 @@
 export type DashboardTab = 'processes' | 'repos' | 'wiki' | 'reports';
 export type RepoSubTab = 'info' | 'pipelines' | 'tasks';
 
+export type ProcessViewMode = 'active' | 'history';
+
+/** Lightweight conversation turn for the SPA client (timestamps are strings) */
+export interface ClientConversationTurn {
+    role: 'user' | 'assistant';
+    content: string;
+    timestamp?: string;
+    turnIndex?: number;
+    streaming?: boolean;
+}
+
+/** Cached conversation data for a historical process. */
+export interface ConversationCacheEntry {
+    turns: ClientConversationTurn[];
+    cachedAt: number;
+}
+
 export interface AppState {
     processes: any[];
     selectedId: string | null;
@@ -21,6 +38,16 @@ export interface AppState {
     activeRepoSubTab: RepoSubTab;
     selectedWikiId: string | null;
     selectedWikiComponentId: string | null;
+    /** Active/History view mode for the processes sidebar. */
+    viewMode: ProcessViewMode;
+    /** History processes loaded separately (lightweight, no conversation data). */
+    historyProcesses: any[];
+    /** Total count of history processes (for pagination). */
+    historyTotal: number;
+    /** Client-side cache of loaded conversations (processId → turns). */
+    conversationCache: Record<string, ConversationCacheEntry>;
+    /** Whether history data has been loaded at least once. */
+    historyLoaded: boolean;
 }
 
 export const appState: AppState = {
@@ -38,6 +65,11 @@ export const appState: AppState = {
     activeRepoSubTab: 'info',
     selectedWikiId: null,
     selectedWikiComponentId: null,
+    viewMode: 'active',
+    historyProcesses: [],
+    historyTotal: 0,
+    conversationCache: {},
+    historyLoaded: false,
 };
 
 export interface QueueState {
@@ -86,15 +118,6 @@ export const taskPanelState: TaskPanelState = {
 // ================================================================
 // Queue Task Conversation State
 // ================================================================
-
-/** Lightweight conversation turn for the SPA client (timestamps are strings) */
-export interface ClientConversationTurn {
-    role: 'user' | 'assistant';
-    content: string;
-    timestamp?: string;
-    turnIndex?: number;
-    streaming?: boolean;
-}
 
 /** Parsed conversation turns for the active queue task detail view */
 export let queueTaskConversationTurns: ClientConversationTurn[] = [];

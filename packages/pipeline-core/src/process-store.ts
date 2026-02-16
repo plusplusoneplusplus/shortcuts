@@ -70,6 +70,12 @@ export interface ProcessFilter {
     since?: Date;
     limit?: number;
     offset?: number;
+    /**
+     * Fields to exclude from the response.
+     * Currently supported: 'conversation' — strips conversationTurns, fullPrompt, and result
+     * to reduce payload size for history/list views.
+     */
+    exclude?: string[];
 }
 
 /**

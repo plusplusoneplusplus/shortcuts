@@ -4,7 +4,7 @@
 
 import { appState } from './state';
 import { fetchApi } from './core';
-import { renderProcessList } from './sidebar';
+import { renderProcessList, fetchHistoryProcesses } from './sidebar';
 import { clearDetail } from './detail';
 
 export function debounce(fn: Function, ms: number): (...args: any[]) => void {
@@ -65,9 +65,14 @@ if (wsSelect) {
         appState.workspace = (e.target as HTMLSelectElement).value;
         const path = appState.workspace === '__all' ? '/processes' : '/processes?workspace=' + encodeURIComponent(appState.workspace);
         fetchApi(path).then(function(data: any) {
-            if (data && Array.isArray(data)) {
+            if (data && data.processes && Array.isArray(data.processes)) {
+                appState.processes = data.processes;
+            } else if (data && Array.isArray(data)) {
                 appState.processes = data;
             }
+            // Reset history for new workspace
+            appState.historyLoaded = false;
+            appState.historyProcesses = [];
             appState.selectedId = null;
             clearDetail();
             renderProcessList();

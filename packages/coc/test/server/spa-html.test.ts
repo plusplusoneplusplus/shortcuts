@@ -122,6 +122,15 @@ describe('generateDashboardHtml', () => {
         expect(html).toContain('id="type-filter"');
     });
 
+    it('contains view mode toggle buttons for Active/History', () => {
+        const html = generateDashboardHtml();
+        expect(html).toContain('id="view-mode-active"');
+        expect(html).toContain('id="view-mode-history"');
+        expect(html).toContain('class="view-mode-toggle"');
+        expect(html).toContain('>Active<');
+        expect(html).toContain('>History<');
+    });
+
     it('contains status filter options', () => {
         const html = generateDashboardHtml();
         expect(html).toContain('All Statuses');
