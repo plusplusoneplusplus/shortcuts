@@ -91,6 +91,61 @@ function serializeTask(task: QueuedTask): Record<string, unknown> {
 }
 
 // ============================================================================
+// Shared Validation
+// ============================================================================
+
+/**
+ * Validation result for a single task specification.
+ * Used internally for bulk validation before enqueueing.
+ */
+interface TaskValidationResult {
+    valid: boolean;
+    error?: string;
+    input?: CreateTaskInput;
+}
+
+/**
+ * Validate a single task specification and construct CreateTaskInput.
+ * Extracted from POST /api/queue handler to enable reuse in bulk endpoint.
+ */
+function validateAndParseTask(taskSpec: any): TaskValidationResult {
+    if (!taskSpec.type) {
+        return { valid: false, error: 'Missing required field: type' };
+    }
+    if (!VALID_TASK_TYPES.has(taskSpec.type)) {
+        return {
+            valid: false,
+            error: `Invalid task type: ${taskSpec.type}. Valid types: ${Array.from(VALID_TASK_TYPES).join(', ')}`,
+        };
+    }
+
+    const priority: TaskPriority = VALID_PRIORITIES.has(taskSpec.priority)
+        ? taskSpec.priority
+        : 'normal';
+
+    const payload = taskSpec.payload || { data: {} };
+    const displayName = (typeof taskSpec.displayName === 'string' && taskSpec.displayName.trim())
+        ? taskSpec.displayName.trim()
+        : generateDisplayName(taskSpec.type, payload);
+
+    const input: CreateTaskInput = {
+        type: taskSpec.type,
+        priority,
+        payload,
+        config: {
+            model: taskSpec.config?.model,
+            timeoutMs: taskSpec.config?.timeoutMs,
+            retryOnFailure: taskSpec.config?.retryOnFailure ?? false,
+            retryAttempts: taskSpec.config?.retryAttempts,
+            retryDelayMs: taskSpec.config?.retryDelayMs,
+        },
+        displayName,
+    };
+
+    return { valid: true, input };
+}
+
+// ============================================================================
 // Route Registration
 // ============================================================================
 
@@ -133,43 +188,118 @@ export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueMana
                 return sendError(res, 400, 'Invalid JSON');
             }
 
-            // Validate required fields
-            if (!body.type) {
-                return sendError(res, 400, 'Missing required field: type');
+            const validation = validateAndParseTask(body);
+            if (!validation.valid) {
+                return sendError(res, 400, validation.error!);
             }
-            if (!VALID_TASK_TYPES.has(body.type)) {
-                return sendError(res, 400, `Invalid task type: ${body.type}. Valid types: ${Array.from(VALID_TASK_TYPES).join(', ')}`);
-            }
-
-            const priority: TaskPriority = VALID_PRIORITIES.has(body.priority) ? body.priority : 'normal';
-
-            const payload = body.payload || { data: {} };
-            const displayName = (typeof body.displayName === 'string' && body.displayName.trim())
-                ? body.displayName.trim()
-                : generateDisplayName(body.type, payload);
-
-            const input: CreateTaskInput = {
-                type: body.type,
-                priority,
-                payload,
-                config: {
-                    model: body.config?.model,
-                    timeoutMs: body.config?.timeoutMs,
-                    retryOnFailure: body.config?.retryOnFailure ?? false,
-                    retryAttempts: body.config?.retryAttempts,
-                    retryDelayMs: body.config?.retryDelayMs,
-                },
-                displayName,
-            };
 
             try {
-                const taskId = queueManager.enqueue(input);
+                const taskId = queueManager.enqueue(validation.input!);
                 const task = queueManager.getTask(taskId);
                 sendJSON(res, 201, { task: task ? serializeTask(task) : { id: taskId } });
             } catch (err) {
                 const message = err instanceof Error ? err.message : 'Failed to enqueue task';
                 return sendError(res, 400, message);
             }
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // POST /api/queue/bulk — Enqueue multiple tasks atomically
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'POST',
+        pattern: '/api/queue/bulk',
+        handler: async (req, res) => {
+            let body: any;
+            try {
+                body = await parseBody(req);
+            } catch {
+                return sendError(res, 400, 'Invalid JSON');
+            }
+
+            // Validate request structure
+            if (!body.tasks || !Array.isArray(body.tasks)) {
+                return sendError(res, 400, 'Missing or invalid field: tasks (must be an array)');
+            }
+            if (body.tasks.length === 0) {
+                return sendError(res, 400, 'tasks array cannot be empty');
+            }
+            if (body.tasks.length > 100) {
+                return sendError(res, 400, 'tasks array cannot exceed 100 items');
+            }
+
+            // Phase 1: Validate ALL tasks before enqueueing ANY
+            const validations: TaskValidationResult[] = [];
+            const validationErrors: Array<{ index: number; error: string; taskSpec: any }> = [];
+
+            for (let i = 0; i < body.tasks.length; i++) {
+                const taskSpec = body.tasks[i];
+                const validation = validateAndParseTask(taskSpec);
+                validations.push(validation);
+
+                if (!validation.valid) {
+                    validationErrors.push({
+                        index: i,
+                        error: validation.error!,
+                        taskSpec,
+                    });
+                }
+            }
+
+            // If any task failed validation, abort with 400
+            if (validationErrors.length > 0) {
+                return sendJSON(res, 400, {
+                    success: [],
+                    failed: validationErrors,
+                    summary: {
+                        total: body.tasks.length,
+                        succeeded: 0,
+                        failed: validationErrors.length,
+                    },
+                });
+            }
+
+            // Phase 2: Enqueue all validated tasks
+            const successResults: Array<{ index: number; taskId: string; task: Record<string, unknown> }> = [];
+            const enqueueErrors: Array<{ index: number; error: string; taskSpec: any }> = [];
+
+            for (let i = 0; i < validations.length; i++) {
+                const validation = validations[i];
+                const taskSpec = body.tasks[i];
+
+                try {
+                    const taskId = queueManager.enqueue(validation.input!);
+                    const task = queueManager.getTask(taskId);
+
+                    successResults.push({
+                        index: i,
+                        taskId,
+                        task: task ? serializeTask(task) : { id: taskId },
+                    });
+                } catch (err) {
+                    const message = err instanceof Error ? err.message : 'Failed to enqueue task';
+                    enqueueErrors.push({
+                        index: i,
+                        error: message,
+                        taskSpec,
+                    });
+                }
+            }
+
+            const response = {
+                success: successResults,
+                failed: enqueueErrors,
+                summary: {
+                    total: body.tasks.length,
+                    succeeded: successResults.length,
+                    failed: enqueueErrors.length,
+                },
+            };
+
+            // 201 if all succeeded, 207 (Multi-Status) if partial success
+            const statusCode = enqueueErrors.length === 0 ? 201 : 207;
+            sendJSON(res, statusCode, response);
         },
     });
 
@@ -344,7 +474,7 @@ export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueMana
             const id = decodeURIComponent(match![1]);
 
             // Skip known sub-routes
-            if (['stats', 'history', 'pause', 'resume', 'force-fail-running'].includes(id)) {
+            if (['stats', 'history', 'pause', 'resume', 'force-fail-running', 'bulk'].includes(id)) {
                 return sendError(res, 404, 'Task not found');
             }
 

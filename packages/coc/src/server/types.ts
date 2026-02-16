@@ -90,3 +90,55 @@ export interface Route {
     pattern: string | RegExp;
     handler: (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => void | Promise<void>;
 }
+
+/**
+ * Request body for POST /api/queue/bulk endpoint.
+ * Contains an array of task specifications to enqueue.
+ */
+export interface BulkQueueRequest {
+    /** Array of tasks to enqueue (1-100 items). */
+    tasks: Array<{
+        type: string;
+        priority?: string;
+        payload?: any;
+        config?: {
+            model?: string;
+            timeoutMs?: number;
+            retryOnFailure?: boolean;
+            retryAttempts?: number;
+            retryDelayMs?: number;
+        };
+        displayName?: string;
+    }>;
+}
+
+/**
+ * Response body for POST /api/queue/bulk endpoint.
+ * Reports both successful enqueues and validation failures.
+ */
+export interface BulkQueueResponse {
+    /** Successfully enqueued tasks with their IDs. */
+    success: Array<{
+        /** Index in the original request array (0-based). */
+        index: number;
+        /** Assigned task ID. */
+        taskId: string;
+        /** Serialized task snapshot (same format as single POST). */
+        task: Record<string, unknown>;
+    }>;
+    /** Validation or enqueue failures. */
+    failed: Array<{
+        /** Index in the original request array (0-based). */
+        index: number;
+        /** Error message explaining the failure. */
+        error: string;
+        /** Original task spec that failed (for client retry/debugging). */
+        taskSpec: Record<string, unknown>;
+    }>;
+    /** Summary statistics. */
+    summary: {
+        total: number;
+        succeeded: number;
+        failed: number;
+    };
+}
