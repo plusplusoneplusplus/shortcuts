@@ -3990,6 +3990,7 @@
     "lint": "eslint src --ext ts",
     "validate:models": "node scripts/validate-model-registry.js",
     "test": "node ./out/test/runTest.js",
+    "build:packages": "npm run build -w packages/pipeline-core && npm run build -w packages/coc && npm run build -w packages/deep-wiki",
     "coc:link": "cd packages/pipeline-core && npm run build && npm link && cd ../coc && npm run build && npm link",
     "deep-wiki:link": "cd packages/deep-wiki && npm run build && npm link",
     "vsce:package": "vsce package",

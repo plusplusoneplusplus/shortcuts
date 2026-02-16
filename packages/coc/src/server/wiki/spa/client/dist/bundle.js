@@ -1,6 +1,6 @@
 "use strict";
 (() => {
-  // src/server/spa/client/core.ts
+  // src/server/wiki/spa/client/core.ts
   var componentGraph = null;
   var currentComponentId = null;
   var currentTheme = window.__WIKI_CONFIG__?.defaultTheme ?? "auto";
@@ -50,7 +50,7 @@
     return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
 
-  // src/server/spa/client/theme.ts
+  // src/server/wiki/spa/client/theme.ts
   function initTheme() {
     const saved = localStorage.getItem("deep-wiki-theme");
     if (saved) {
@@ -111,7 +111,7 @@
     }
   }
 
-  // src/server/spa/client/sidebar.ts
+  // src/server/wiki/spa/client/sidebar.ts
   var config = window.__WIKI_CONFIG__;
   function initializeSidebar() {
     const topBarProject = document.getElementById("top-bar-project");
@@ -336,7 +336,7 @@
     if (askWidget) askWidget.style.display = "none";
   }
 
-  // src/server/spa/client/content.ts
+  // src/server/wiki/spa/client/content.ts
   var config2 = window.__WIKI_CONFIG__;
   function showHome(skipHistory) {
     setCurrentComponentId(null);
@@ -629,7 +629,7 @@
     if (contentScroll) contentScroll.scrollTop = 0;
   }
 
-  // src/server/spa/client/mermaid-zoom.ts
+  // src/server/wiki/spa/client/mermaid-zoom.ts
   var MERMAID_MIN_ZOOM = 0.25;
   var MERMAID_MAX_ZOOM = 4;
   var MERMAID_ZOOM_STEP = 0.25;
@@ -721,7 +721,7 @@
     });
   }
 
-  // src/server/spa/client/markdown.ts
+  // src/server/wiki/spa/client/markdown.ts
   function renderMarkdownContent(markdown) {
     const html = marked.parse(markdown);
     const container = document.getElementById("content");
@@ -839,7 +839,7 @@
     });
   }
 
-  // src/server/spa/client/toc.ts
+  // src/server/wiki/spa/client/toc.ts
   function buildToc() {
     const tocNav = document.getElementById("toc-nav");
     if (!tocNav) return;
@@ -894,7 +894,7 @@
     });
   }
 
-  // src/server/spa/client/graph.ts
+  // src/server/wiki/spa/client/graph.ts
   var graphRendered = false;
   var disabledCategories = /* @__PURE__ */ new Set();
   var CATEGORY_COLORS = [
@@ -1076,7 +1076,7 @@
     });
   }
 
-  // src/server/spa/client/ask-ai.ts
+  // src/server/wiki/spa/client/ask-ai.ts
   var conversationHistory = [];
   var askStreaming = false;
   var askPanelOpen = false;
@@ -1473,7 +1473,7 @@
     });
   }
 
-  // src/server/spa/client/websocket.ts
+  // src/server/wiki/spa/client/websocket.ts
   var wsReconnectTimer = null;
   var wsReconnectDelay = 1e3;
   function connectWebSocket() {
@@ -1531,7 +1531,7 @@
     }
   }
 
-  // src/server/spa/client/admin.ts
+  // src/server/wiki/spa/client/admin.ts
   var adminSeedsOriginal = "";
   var adminConfigOriginal = "";
   var adminInitialized = false;
@@ -2114,7 +2114,7 @@
     }
   }
 
-  // src/server/spa/client/index.ts
+  // src/server/wiki/spa/client/index.ts
   var config3 = window.__WIKI_CONFIG__;
   window.loadComponent = loadComponent;
   window.showHome = showHome;

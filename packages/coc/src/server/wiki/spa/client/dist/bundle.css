@@ -1,4 +1,4 @@
-/* src/server/spa/client/ask-widget.css */
+/* src/server/wiki/spa/client/ask-widget.css */
 .ask-widget {
   position: fixed;
   bottom: 24px;
@@ -224,7 +224,7 @@
   }
 }
 
-/* src/server/spa/client/styles.css */
+/* src/server/wiki/spa/client/styles.css */
 :root {
   --sidebar-bg: #ffffff;
   --sidebar-header-bg: #ffffff;

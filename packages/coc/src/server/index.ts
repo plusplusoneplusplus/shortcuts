@@ -81,6 +81,10 @@ function createStubStore(): ProcessStore {
         registerWorkspace: async () => {},
         removeWorkspace: async () => false,
         updateWorkspace: async () => undefined,
+        getWikis: async () => [],
+        registerWiki: async () => {},
+        removeWiki: async () => false,
+        updateWiki: async () => undefined,
         onProcessOutput: (id, callback) => {
             const emitter = getOrCreateEmitter(id);
             const listener = (event: ProcessOutputEvent) => callback(event);
