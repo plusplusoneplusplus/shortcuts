@@ -291,7 +291,7 @@ ${bundleCss}
                 <div class="enqueue-field">
                     <label for="repo-path">Path</label>
                     <div class="path-input-row">
-                        <input type="text" id="repo-path" placeholder="/path/to/repository" required />
+                        <input type="text" id="repo-path" placeholder="/path/to/repository" />
                         <button type="button" class="browse-btn" id="browse-btn">Browse</button>
                     </div>
                     <span class="enqueue-optional">Absolute path to git repo root</span>

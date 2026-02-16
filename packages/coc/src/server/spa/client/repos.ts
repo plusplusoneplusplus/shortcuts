@@ -658,7 +658,10 @@ async function submitAddRepo(e: Event): Promise<void> {
     const colorSelect = document.getElementById('repo-color') as HTMLSelectElement | null;
 
     const rootPath = pathInput?.value.trim() || '';
-    if (!rootPath) return;
+    if (!rootPath) {
+        showValidation('Path is required', false);
+        return;
+    }
 
     const name = aliasInput?.value.trim() || rootPath.split('/').filter(Boolean).pop() || 'repo';
     const color = colorSelect?.value || '#0078d4';
