@@ -1,0 +1,489 @@
+/* ==========================================================================
+   Review Editor Styles — embedded in the SPA dashboard
+   Scoped under #page-review-editor to avoid conflicts with dashboard styles.
+   ========================================================================== */
+
+/* ---------- Layout ---------- */
+.review-editor-layout {
+    display: flex;
+    gap: 0;
+    min-height: calc(100vh - 160px);
+}
+
+.review-content {
+    flex: 1;
+    min-width: 0;
+    overflow: auto;
+    padding: 16px 24px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+    color: var(--text-primary);
+}
+
+.review-comments-panel {
+    width: 320px;
+    border-left: 1px solid var(--border-color);
+    overflow-y: auto;
+    background: var(--bg-secondary);
+    padding: 12px;
+    flex-shrink: 0;
+}
+
+/* ---------- Toolbar ---------- */
+.review-editor-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+    flex-wrap: wrap;
+}
+
+.review-editor-toolbar .back-link {
+    color: var(--accent);
+    text-decoration: none;
+    font-size: 13px;
+    white-space: nowrap;
+}
+.review-editor-toolbar .back-link:hover { text-decoration: underline; }
+
+.review-file-name {
+    flex: 1;
+    font-weight: 600;
+    font-size: 13px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.review-toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.review-toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Mode toggle */
+.review-mode-toggle {
+    display: inline-flex;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.review-mode-btn {
+    padding: 4px 10px;
+    font-size: 12px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+.review-mode-btn:hover { background: var(--hover-bg); }
+.review-mode-btn.active {
+    background: var(--accent);
+    color: #fff;
+}
+
+/* Stats */
+.review-stats {
+    font-size: 12px;
+    color: var(--text-secondary);
+    display: flex;
+    gap: 10px;
+}
+.review-stats .stat-open { color: var(--accent); }
+.review-stats .stat-resolved { color: var(--status-completed); }
+
+/* Comment count badge */
+.review-comment-count {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+/* Show resolved checkbox */
+.review-show-resolved {
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+
+/* ---------- Rendered Markdown ---------- */
+.review-rendered-content {
+    max-width: 860px;
+}
+
+/* Lines */
+.review-line {
+    padding: 1px 0;
+    border-left: 3px solid transparent;
+    padding-left: 8px;
+    position: relative;
+}
+
+.review-line.has-comment.comment-active {
+    background: rgba(255, 213, 79, 0.10);
+    border-left-color: #ffd54f;
+}
+.review-line.has-comment.comment-resolved {
+    background: rgba(76, 175, 80, 0.06);
+    border-left-color: rgba(76, 175, 80, 0.4);
+}
+.review-line.has-comment.comment-ai-suggestion {
+    border-left-color: #42a5f5;
+}
+.review-line.has-comment.comment-ai-clarification {
+    border-left-color: #ab47bc;
+}
+
+/* Headings */
+.review-rendered-content h1 { font-size: 2em; border-bottom: 1px solid var(--border-color); padding-bottom: 0.3em; margin: 1em 0 0.5em; }
+.review-rendered-content h2 { font-size: 1.5em; border-bottom: 1px solid var(--border-color); padding-bottom: 0.2em; margin: 0.8em 0 0.4em; }
+.review-rendered-content h3 { font-size: 1.25em; margin: 0.8em 0 0.4em; }
+.review-rendered-content h4 { font-size: 1.1em; margin: 0.6em 0 0.3em; }
+.review-rendered-content h5 { font-size: 1em; margin: 0.5em 0 0.3em; }
+.review-rendered-content h6 { font-size: 0.95em; margin: 0.5em 0 0.3em; color: var(--text-secondary); }
+
+.review-rendered-content .md-heading {
+    scroll-margin-top: 80px;
+}
+
+/* Blockquotes */
+.review-rendered-content blockquote {
+    border-left: 4px solid var(--accent);
+    margin: 0.5em 0;
+    padding: 4px 12px;
+    color: var(--text-secondary);
+    background: var(--hover-bg);
+}
+
+/* Lists */
+.review-rendered-content .md-list-item {
+    list-style: disc;
+    margin-left: 1.5em;
+    display: list-item;
+}
+.review-rendered-content .md-list-ordered {
+    list-style: decimal;
+}
+
+/* Inline code */
+.review-rendered-content .md-inline-code {
+    background: var(--code-bg, rgba(0,0,0,0.06));
+    border: 1px solid var(--code-border, rgba(0,0,0,0.08));
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.88em;
+}
+
+/* Links */
+.review-rendered-content a.md-link {
+    color: var(--accent);
+    text-decoration: none;
+}
+.review-rendered-content a.md-link:hover {
+    text-decoration: underline;
+}
+
+/* Horizontal rule */
+.review-rendered-content hr.md-hr {
+    border: none;
+    border-top: 1px solid var(--border-color);
+    margin: 1.5em 0;
+}
+
+/* Images */
+.review-rendered-content .md-image-preview {
+    max-width: 100%;
+    max-height: 400px;
+    border-radius: 4px;
+    margin: 8px 0;
+}
+
+/* Checkboxes */
+.review-rendered-content input[type="checkbox"] {
+    margin-right: 6px;
+    vertical-align: middle;
+}
+
+/* ---------- Code Blocks ---------- */
+.review-code-block {
+    margin: 12px 0;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    overflow: hidden;
+    background: var(--bg-secondary);
+}
+
+.review-code-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 12px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    background: var(--hover-bg);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.review-code-lang {
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.review-code-block pre {
+    margin: 0;
+    padding: 12px 16px;
+    overflow-x: auto;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.review-code-block code {
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+}
+
+/* ---------- Source Mode ---------- */
+.review-line.source-mode {
+    display: flex;
+    align-items: baseline;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    border-left: none;
+    padding-left: 0;
+}
+
+.review-line-number {
+    display: inline-block;
+    width: 48px;
+    text-align: right;
+    padding-right: 12px;
+    color: var(--text-secondary);
+    opacity: 0.5;
+    user-select: none;
+    flex-shrink: 0;
+    font-size: 12px;
+}
+
+.review-line-content {
+    flex: 1;
+    min-width: 0;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+/* Source mode syntax colors */
+.src-code-fence { color: var(--text-secondary); }
+.src-hr { color: var(--text-secondary); }
+.src-blockquote { color: var(--text-secondary); font-style: italic; }
+.src-h1, .src-h2, .src-h3, .src-h4, .src-h5, .src-h6 {
+    font-weight: 700;
+    color: var(--accent);
+}
+
+/* ---------- Comments Panel ---------- */
+.review-no-comments {
+    padding: 24px 16px;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+
+.review-comment-card {
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    background: var(--bg-primary);
+    transition: border-color 0.15s, opacity 0.15s;
+    cursor: pointer;
+}
+.review-comment-card:hover {
+    border-color: var(--accent);
+}
+.review-comment-card.resolved {
+    opacity: 0.55;
+}
+
+.review-comment-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    margin-bottom: 6px;
+}
+
+.review-comment-status { flex-shrink: 0; }
+
+.review-comment-quote {
+    color: var(--text-secondary);
+    font-style: italic;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11px;
+}
+
+.review-comment-body {
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-primary);
+}
+
+.review-comment-actions {
+    display: flex;
+    gap: 4px;
+    margin-top: 8px;
+    padding-top: 6px;
+    border-top: 1px solid var(--border-color);
+}
+
+.review-comment-action-btn {
+    font-size: 11px;
+    padding: 2px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+.review-comment-action-btn:hover {
+    background: var(--hover-bg);
+    color: var(--text-primary);
+}
+.review-comment-action-btn.resolve { color: var(--status-completed); }
+.review-comment-action-btn.delete { color: var(--status-failed); }
+
+/* ---------- Floating Comment Input ---------- */
+.review-floating-panel {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    width: 380px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+    padding: 12px;
+}
+.review-floating-panel.visible { display: block; }
+
+.review-floating-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.review-floating-close {
+    background: none;
+    border: none;
+    font-size: 18px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    padding: 0 4px;
+}
+
+.review-floating-selection {
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-style: italic;
+    margin-bottom: 8px;
+    padding: 4px 8px;
+    background: var(--hover-bg);
+    border-radius: 4px;
+    max-height: 60px;
+    overflow: hidden;
+}
+
+.review-floating-textarea {
+    width: 100%;
+    min-height: 60px;
+    padding: 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 13px;
+    font-family: inherit;
+    resize: vertical;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    box-sizing: border-box;
+}
+.review-floating-textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.review-floating-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.review-floating-footer button {
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    border: 1px solid var(--border-color);
+}
+.review-floating-footer .review-btn-primary {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+}
+.review-floating-footer .review-btn-secondary {
+    background: transparent;
+    color: var(--text-primary);
+}
+
+/* ---------- highlight.js theme overrides ---------- */
+.review-code-block .hljs { background: transparent !important; padding: 0 !important; }
+
+/* Dark theme code colors */
+html[data-theme="dark"] .review-code-block {
+    background: #1e1e1e;
+    border-color: #3c3c3c;
+}
+html[data-theme="dark"] .review-code-header {
+    background: #2d2d30;
+    border-bottom-color: #3c3c3c;
+}
+html[data-theme="dark"] .hljs-keyword,
+html[data-theme="dark"] .hljs-selector-tag,
+html[data-theme="dark"] .hljs-built_in,
+html[data-theme="dark"] .hljs-name,
+html[data-theme="dark"] .hljs-tag { color: #7dcfff !important; }
+html[data-theme="dark"] .hljs-string,
+html[data-theme="dark"] .hljs-title,
+html[data-theme="dark"] .hljs-section,
+html[data-theme="dark"] .hljs-attribute,
+html[data-theme="dark"] .hljs-literal { color: #ce9178 !important; }
+html[data-theme="dark"] .hljs-number,
+html[data-theme="dark"] .hljs-symbol { color: #b5cea8 !important; }
+html[data-theme="dark"] .hljs-comment,
+html[data-theme="dark"] .hljs-quote { color: #6a9955 !important; }
+html[data-theme="dark"] .hljs-variable,
+html[data-theme="dark"] .hljs-attr { color: #9cdcfe !important; }
+html[data-theme="dark"] .hljs-type,
+html[data-theme="dark"] .hljs-title.class_ { color: #4ec9b0 !important; }

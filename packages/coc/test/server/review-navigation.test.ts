@@ -29,6 +29,27 @@ describe('Review SPA — Client Bundle', () => {
         expect(bundle).toContain('__REVIEW_CONFIG__');
     });
 
+    it('contains rich markdown rendering functions', () => {
+        const bundle = getClientBundle();
+        expect(bundle).toContain('renderMarkdownContent');
+        expect(bundle).toContain('renderSourceContent');
+        expect(bundle).toContain('review-code-block');
+    });
+
+    it('contains comment CRUD actions', () => {
+        const bundle = getClientBundle();
+        expect(bundle).toContain('resolveComment');
+        expect(bundle).toContain('deleteComment');
+        expect(bundle).toContain('reopenComment');
+        expect(bundle).toContain('addComment');
+    });
+
+    it('contains mode toggle logic', () => {
+        const bundle = getClientBundle();
+        expect(bundle).toContain('review-mode-review');
+        expect(bundle).toContain('review-mode-source');
+    });
+
     it('contains HttpTransport class', () => {
         const bundle = getClientBundle();
         expect(bundle).toContain('HttpTransport');

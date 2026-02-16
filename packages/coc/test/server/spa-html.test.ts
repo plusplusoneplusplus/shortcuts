@@ -29,14 +29,16 @@ describe('generateDashboardHtml', () => {
         expect(html).not.toContain('<title>Test <script></title>');
     });
 
-    it('has no external CDN dependencies in initial HTML markup', () => {
+    it('always includes highlight.js CDN for review editor and wiki', () => {
         const html = generateDashboardHtml();
-        // Check that no <script src> or <link href> point to external CDNs.
-        // CDN URLs inside bundled JS strings (e.g. lazy-loaded D3) are allowed.
-        const scriptSrcMatches = html.match(/<script\s+src="[^"]*(?:cdn\.|cdnjs\.|jsdelivr\.|unpkg\.)[^"]*"/gi);
-        expect(scriptSrcMatches).toBeNull();
-        const linkHrefMatches = html.match(/<link\s+[^>]*href="[^"]*(?:cdn\.|cdnjs\.|jsdelivr\.|unpkg\.)[^"]*"/gi);
-        expect(linkHrefMatches).toBeNull();
+        // highlight.js is always loaded for the review editor's code block rendering
+        expect(html).toContain('highlight.min.js');
+        expect(html).toContain('github.min.css');
+        // Mermaid and marked are wiki-only and should NOT be present without enableWiki
+        const mermaidMatch = html.match(/<script\s+src="[^"]*mermaid[^"]*"/gi);
+        expect(mermaidMatch).toBeNull();
+        const markedMatch = html.match(/<script\s+src="[^"]*marked[^"]*"/gi);
+        expect(markedMatch).toBeNull();
     });
 
     it('contains inlined style block', () => {
@@ -176,5 +178,43 @@ describe('generateDashboardHtml', () => {
         const html = generateDashboardHtml({ theme: 'auto' });
         // Should not have data-theme in the html tag (auto resolves at runtime)
         expect(html).toMatch(/<html lang="en">/);
+    });
+
+    it('contains review editor with rich UI elements', () => {
+        const html = generateDashboardHtml();
+        // Mode toggle
+        expect(html).toContain('id="review-mode-toggle"');
+        expect(html).toContain('review-mode-review');
+        expect(html).toContain('review-mode-source');
+        // Stats
+        expect(html).toContain('id="review-open-count"');
+        expect(html).toContain('id="review-resolved-count"');
+        // Show resolved checkbox
+        expect(html).toContain('id="review-show-resolved"');
+        // Rich content container
+        expect(html).toContain('id="review-rendered-content"');
+        // Floating comment panel
+        expect(html).toContain('id="review-floating-panel"');
+        expect(html).toContain('id="review-floating-input"');
+    });
+
+    it('contains review file browser page', () => {
+        const html = generateDashboardHtml();
+        expect(html).toContain('id="page-review-browser"');
+        expect(html).toContain('id="review-browser-content"');
+    });
+
+    it('injects __REVIEW_CONFIG__ when reviewFilePath is provided', () => {
+        const html = generateDashboardHtml({ reviewFilePath: '/path/to/file.md', projectDir: '/project' });
+        expect(html).toContain('__REVIEW_CONFIG__');
+        expect(html).toContain('/path/to/file.md');
+        expect(html).toContain('/project');
+    });
+
+    it('does not inject __REVIEW_CONFIG__ script block without reviewFilePath', () => {
+        const html = generateDashboardHtml();
+        // The string __REVIEW_CONFIG__ exists in the bundled JS (review-config.ts),
+        // but the separate <script> block that sets window.__REVIEW_CONFIG__ should not exist
+        expect(html).not.toContain('window.__REVIEW_CONFIG__ = {');
     });
 });

@@ -43,11 +43,11 @@ export function generateDashboardHtml(options: DashboardOptions = {}): string {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${escapeHtml(title)}</title>${enableWiki ? `
-    <!-- highlight.js 11.9.0 — syntax highlighting (wiki) -->
+    <title>${escapeHtml(title)}</title>
+    <!-- highlight.js 11.9.0 — syntax highlighting (review editor + wiki) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" id="hljs-light">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" id="hljs-dark" disabled>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"><\/script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"><\/script>${enableWiki ? `
     <!-- mermaid 10.x — diagram rendering (wiki) -->
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"><\/script>
     <!-- marked — markdown-to-HTML parser (wiki) -->
@@ -408,13 +408,44 @@ ${getAllModels().map(m => `                            <option value="${escapeHt
             <a href="/review" class="back-link" id="review-back-link">&larr; Files</a>
             <span class="review-file-name" id="review-file-name"></span>
             <div class="review-toolbar-actions">
+                <div class="review-toolbar-group">
+                    <div class="review-mode-toggle" id="review-mode-toggle">
+                        <button class="review-mode-btn active" data-mode="review" id="review-mode-review">📝 Review</button>
+                        <button class="review-mode-btn" data-mode="source" id="review-mode-source">📄 Source</button>
+                    </div>
+                </div>
+                <div class="review-toolbar-group">
+                    <label class="review-show-resolved">
+                        <input type="checkbox" id="review-show-resolved" checked>
+                        Show Resolved
+                    </label>
+                </div>
+                <div class="review-toolbar-group review-stats" id="review-stats">
+                    <span class="stat-open">Open: <span id="review-open-count">0</span></span>
+                    <span class="stat-resolved">Resolved: <span id="review-resolved-count">0</span></span>
+                </div>
                 <button id="review-resolve-all" class="enqueue-btn-secondary">Resolve All</button>
-                <span class="review-comment-count" id="review-comment-count"></span>
             </div>
         </div>
         <div class="review-editor-layout">
-            <div class="review-content" id="review-content"></div>
+            <div class="review-content" id="review-content">
+                <div class="review-rendered-content" id="review-rendered-content"></div>
+            </div>
             <aside class="review-comments-panel" id="review-comments-panel"></aside>
+        </div>
+
+        <!-- Floating comment input panel -->
+        <div class="review-floating-panel" id="review-floating-panel">
+            <div class="review-floating-header">
+                <span>💬 Add Comment</span>
+                <button class="review-floating-close" id="review-floating-close">&times;</button>
+            </div>
+            <div class="review-floating-selection" id="review-floating-selection"></div>
+            <textarea class="review-floating-textarea" id="review-floating-input" placeholder="Enter your comment... (Ctrl+Enter to submit)" rows="3"></textarea>
+            <div class="review-floating-footer">
+                <button class="review-btn-secondary" id="review-floating-cancel">Cancel</button>
+                <button class="review-btn-primary" id="review-floating-save">Add Comment</button>
+            </div>
         </div>
     </div>
 

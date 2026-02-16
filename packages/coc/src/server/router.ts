@@ -177,14 +177,16 @@ export function createRequestHandler(
             }
         }
 
-        // Review editor — dynamic SPA with file-specific config
+        // Review editor — serve SPA with review config injected
         if (generateReviewHtml) {
             const reviewEditorMatch = pathname.match(/^\/review\/(.+)$/);
             if (reviewEditorMatch) {
                 const filePath = decodeURIComponent(reviewEditorMatch[1]);
-                const reviewHtml = generateReviewHtml(filePath);
+                // Serve the SPA dashboard HTML with __REVIEW_CONFIG__ injected
+                // The SPA client-side routing will detect the /review/:path URL
+                // and initialize the rich review editor
                 res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-                res.end(reviewHtml);
+                res.end(generateReviewHtml(filePath));
                 return;
             }
         }
