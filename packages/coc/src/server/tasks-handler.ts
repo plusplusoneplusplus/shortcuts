@@ -13,8 +13,8 @@ import * as url from 'url';
 import * as path from 'path';
 import * as fs from 'fs';
 import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
-import { TaskManager } from '@plusplusoneplusplus/pipeline-core';
-import type { TasksViewerSettings } from '@plusplusoneplusplus/pipeline-core';
+import { TaskManager, scanDocumentsRecursively, scanFoldersRecursively, groupTaskDocuments } from '@plusplusoneplusplus/pipeline-core';
+import type { TasksViewerSettings, TaskFolder } from '@plusplusoneplusplus/pipeline-core';
 import { sendJSON, sendError, parseBody } from './api-handler';
 import type { Route } from './types';
 
@@ -144,6 +144,7 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore): void {
             const folder = (typeof parsed.query.folder === 'string' && parsed.query.folder)
                 ? parsed.query.folder
                 : DEFAULT_SETTINGS.folderPath;
+            const includeArchiveFolder = parsed.query.showArchived === 'true';
 
             const manager = new TaskManager({
                 workspaceRoot: ws.rootPath,
@@ -152,12 +153,59 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore): void {
 
             try {
                 const hierarchy = await manager.getTaskFolderHierarchy();
+
+                // When showArchived=true, include archive/ as a visible subfolder
+                if (includeArchiveFolder) {
+                    const tasksFolder = path.resolve(ws.rootPath, folder);
+                    const archiveDir = path.join(tasksFolder, 'archive');
+                    try {
+                        const stat = await fs.promises.stat(archiveDir);
+                        if (stat.isDirectory()) {
+                            const archiveNode = buildArchiveFolderNode(archiveDir);
+                            hierarchy.children = hierarchy.children || [];
+                            hierarchy.children.push(archiveNode);
+                        }
+                    } catch { /* archive folder doesn't exist — skip */ }
+                }
+
                 sendJSON(res, 200, hierarchy);
             } catch (err: any) {
                 return sendError(res, 500, 'Failed to scan tasks: ' + (err.message || 'Unknown error'));
             }
         },
     });
+}
+
+// ============================================================================
+// Archive Folder Helper
+// ============================================================================
+
+/**
+ * Build a TaskFolder node for the archive/ subfolder so it appears
+ * as a navigable folder in the SPA's Miller columns.
+ * Files inside get relativePath prefixed with 'archive/'.
+ */
+function buildArchiveFolderNode(archiveDir: string): TaskFolder {
+    const docs = scanDocumentsRecursively(archiveDir, 'archive', true);
+    const { groups, singles } = groupTaskDocuments(docs);
+
+    const archiveNode: TaskFolder = {
+        name: 'archive',
+        folderPath: archiveDir,
+        relativePath: 'archive',
+        isArchived: true,
+        children: [],
+        tasks: [],
+        documentGroups: groups,
+        singleDocuments: singles,
+    };
+
+    // Scan sub-folders inside archive
+    const folderMap = new Map<string, TaskFolder>();
+    folderMap.set('archive', archiveNode);
+    scanFoldersRecursively(archiveDir, 'archive', true, folderMap, archiveNode);
+
+    return archiveNode;
 }
 
 // ============================================================================

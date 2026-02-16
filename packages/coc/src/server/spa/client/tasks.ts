@@ -49,7 +49,7 @@ let currentTasks: TaskFolder | null = null;
 export async function fetchRepoTasks(wsId: string): Promise<void> {
     taskPanelState.selectedWorkspaceId = wsId;
 
-    const data = await fetchApi(`/workspaces/${encodeURIComponent(wsId)}/tasks`);
+    const data = await fetchApi(`/workspaces/${encodeURIComponent(wsId)}/tasks?showArchived=true`);
     currentTasks = data || null;
     renderTasksInRepo();
 }
@@ -580,8 +580,9 @@ function showTaskContextMenu(x: number, y: number, filePath: string, currentStat
     }
 
     const fileName = filePath.split('/').pop() || filePath;
+    const isArchivedTask = filePath.startsWith('archive/') || filePath.startsWith('archive\\');
 
-    menu.innerHTML =
+    let itemsHtml =
         '<div class="task-context-menu-item has-submenu">' +
             '<span>Change Status</span>' +
             '<div class="task-context-submenu">' + submenuHtml + '</div>' +
@@ -590,10 +591,27 @@ function showTaskContextMenu(x: number, y: number, filePath: string, currentStat
         '<div class="task-context-menu-item" data-ctx-action="rename-task" data-ctx-path="' + escapeHtmlClient(filePath) + '" data-ctx-name="' + escapeHtmlClient(fileName) + '">' +
             '<span class="ctx-menu-icon">✏️</span><span>Rename</span>' +
         '</div>' +
+        '<div class="task-context-menu-separator"></div>';
+
+    if (isArchivedTask) {
+        itemsHtml +=
+            '<div class="task-context-menu-item" data-ctx-action="unarchive-task" data-ctx-path="' + escapeHtmlClient(filePath) + '">' +
+                '<span class="ctx-menu-icon">📤</span><span>Unarchive</span>' +
+            '</div>';
+    } else {
+        itemsHtml +=
+            '<div class="task-context-menu-item" data-ctx-action="archive-task" data-ctx-path="' + escapeHtmlClient(filePath) + '">' +
+                '<span class="ctx-menu-icon">📦</span><span>Archive</span>' +
+            '</div>';
+    }
+
+    itemsHtml +=
         '<div class="task-context-menu-separator"></div>' +
         '<div class="task-context-menu-item task-context-menu-item-danger" data-ctx-action="delete-task" data-ctx-path="' + escapeHtmlClient(filePath) + '" data-ctx-name="' + escapeHtmlClient(fileName) + '">' +
             '<span class="ctx-menu-icon">🗑️</span><span>Delete</span>' +
         '</div>';
+
+    menu.innerHTML = itemsHtml;
 
     document.body.appendChild(menu);
 
@@ -653,6 +671,10 @@ function showTaskContextMenu(x: number, y: number, filePath: string, currentStat
                 renameItem(wsId, path, name);
             } else if (action === 'delete-task') {
                 deleteItem(wsId, path, name);
+            } else if (action === 'archive-task') {
+                archiveItem(wsId, path, 'archive');
+            } else if (action === 'unarchive-task') {
+                archiveItem(wsId, path, 'unarchive');
             }
             dismissContextMenu();
         }
