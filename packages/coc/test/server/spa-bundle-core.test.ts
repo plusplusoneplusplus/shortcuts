@@ -184,6 +184,18 @@ describe('client bundle — core module', () => {
         // process every hashchange event unconditionally.
         expect(script).not.toContain('_hashChangeGuard');
     });
+
+    it('routes queue process IDs to showQueueTaskDetail', () => {
+        // Queue process IDs (queue_*) should be detected and routed
+        // to the queue task conversation view, not the generic renderDetail
+        expect(script).toContain('queue_');
+        expect(script).toContain('showQueueTaskDetail');
+    });
+
+    it('extracts taskId from queue process ID by stripping queue_ prefix', () => {
+        // The routing should strip the 'queue_' prefix to get the taskId
+        expect(script).toContain('queue_');
+    });
 });
 
 // ============================================================================

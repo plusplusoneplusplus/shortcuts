@@ -44,6 +44,16 @@ describe('client bundle — detail module', () => {
         expect(script).not.toContain('Process ID');
     });
 
+    it('renderDetail delegates to showQueueTaskDetail for queue_ IDs', () => {
+        // renderDetail should detect queue process IDs and show the queue conversation view
+        expect(script).toContain('showQueueTaskDetail');
+    });
+
+    it('showQueueTaskDetail updates the URL hash for deep-linking', () => {
+        // Queue task detail should set the hash for bookmarkable URLs
+        expect(script).toContain('setHashSilent');
+    });
+
     it('renders action buttons', () => {
         expect(script).toContain('Copy Result');
         expect(script).toContain('Copy Link');

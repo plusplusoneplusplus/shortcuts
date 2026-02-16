@@ -167,7 +167,16 @@ export function handleHashChange(): void {
     const processMatch = hash.match(/^process\/(.+)$/);
     if (processMatch) {
         (window as any).switchTab?.('processes');
-        selectProcess(decodeURIComponent(processMatch[1]));
+        const processId = decodeURIComponent(processMatch[1]);
+        // Queue process IDs start with 'queue_' — route to queue task detail
+        if (processId.startsWith('queue_')) {
+            const taskId = processId.substring('queue_'.length);
+            appState.selectedId = processId;
+            updateActiveItem();
+            (window as any).showQueueTaskDetail?.(taskId);
+        } else {
+            selectProcess(processId);
+        }
         return;
     }
 

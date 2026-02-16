@@ -9,10 +9,17 @@ import {
     formatDuration, formatRelativeTime, statusIcon, statusLabel,
     typeLabel, escapeHtmlClient, copyToClipboard,
 } from './utils';
-import { navigateToProcess, fetchApi } from './core';
+import { navigateToProcess, setHashSilent, fetchApi } from './core';
 import { getCachedConversation, cacheConversation } from './sidebar';
 
 export function renderDetail(id: string): void {
+    // Queue processes (ID starts with 'queue_') should use the queue task conversation view
+    if (id.startsWith('queue_')) {
+        const taskId = id.substring('queue_'.length);
+        showQueueTaskDetail(taskId);
+        return;
+    }
+
     // Look up in both active processes and history
     let process = appState.processes.find(function(p: any) { return p.id === id; });
     if (!process) {
@@ -275,6 +282,9 @@ export function closeQueueTaskStream(): void {
  */
 export function showQueueTaskDetail(taskId: string): void {
     const processId = 'queue_' + taskId;
+
+    // Update the URL hash for deep-linking
+    setHashSilent('#process/' + encodeURIComponent(processId));
 
     // Close any previous stream
     closeQueueTaskStream();
