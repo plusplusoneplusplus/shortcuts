@@ -2137,6 +2137,9 @@ body {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
 .miller-column-body {
@@ -2671,6 +2674,37 @@ html[data-theme="dark"] .ai-action-dropdown {
 
 .miller-file-row:hover .task-tree-actions {
     opacity: 1;
+}
+
+/* ================================================================
+   Checkbox Selection & Bulk Actions
+   ================================================================ */
+
+.task-checkbox {
+    width: 14px;
+    height: 14px;
+    margin: 0 6px 0 0;
+    cursor: pointer;
+    flex-shrink: 0;
+    accent-color: var(--accent);
+}
+
+.miller-bulk-action-btn {
+    margin-left: auto;
+    padding: 2px 8px;
+    font-size: 10px;
+    font-weight: 600;
+    color: #fff;
+    background: var(--accent);
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+    line-height: 1.4;
+}
+
+.miller-bulk-action-btn:hover {
+    opacity: 0.85;
 }
 
 /* Follow Prompt submenu */

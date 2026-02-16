@@ -486,3 +486,132 @@ describe('Tasks context menu — client bundle functions', () => {
         expect(script).toContain('set-status');
     });
 });
+
+// ============================================================================
+// Checkbox selection UI
+// ============================================================================
+
+describe('Checkbox selection UI — state', () => {
+    let script: string;
+    beforeAll(() => { script = getClientBundle(); });
+
+    it('defines selectedFilePaths in TaskPanelState', () => {
+        expect(script).toContain('selectedFilePaths');
+    });
+
+    it('initializes selectedFilePaths as a Set', () => {
+        expect(script).toContain('new Set');
+    });
+
+    it('defines clearSelection helper', () => {
+        expect(script).toContain('clearSelection');
+    });
+});
+
+describe('Checkbox selection UI — rendering', () => {
+    let script: string;
+    beforeAll(() => { script = getClientBundle(); });
+
+    it('renders checkboxes with task-checkbox class on file rows', () => {
+        expect(script).toContain('task-checkbox');
+        expect(script).toContain('type="checkbox"');
+    });
+
+    it('uses data-check-path attribute on checkboxes', () => {
+        expect(script).toContain('data-check-path');
+    });
+
+    it('sets checked attribute based on selectedFilePaths state', () => {
+        expect(script).toContain('selectedFilePaths.has');
+    });
+
+    it('renders Queue Selected button with count', () => {
+        expect(script).toContain('Queue Selected');
+        expect(script).toContain('queue-selected');
+    });
+
+    it('renders Queue Selected button with data-action attribute', () => {
+        expect(script).toContain('data-action="queue-selected"');
+    });
+
+    it('renders Queue Selected button as miller-bulk-action-btn', () => {
+        expect(script).toContain('miller-bulk-action-btn');
+    });
+
+    it('only shows Queue Selected when selection count > 0', () => {
+        // The button rendering is gated by selCount > 0
+        expect(script).toContain('selCount > 0');
+    });
+
+    it('checks isSelectionInColumn before showing button', () => {
+        expect(script).toContain('isSelectionInColumn');
+    });
+});
+
+describe('Checkbox selection UI — event handling', () => {
+    let script: string;
+    beforeAll(() => { script = getClientBundle(); });
+
+    it('listens for change events on task-checkbox inputs', () => {
+        expect(script).toContain('.task-checkbox');
+    });
+
+    it('adds file path to selectedFilePaths when checkbox checked', () => {
+        expect(script).toContain('selectedFilePaths.add');
+    });
+
+    it('removes file path from selectedFilePaths when checkbox unchecked', () => {
+        expect(script).toContain('selectedFilePaths.delete');
+    });
+
+    it('prevents checkbox click from triggering file navigation', () => {
+        // Checkbox click handler returns early before file click handler
+        expect(script).toContain('.task-checkbox');
+    });
+
+    it('clears selection on folder navigation', () => {
+        expect(script).toContain('clearSelection');
+    });
+
+    it('clears selection on file click (open preview)', () => {
+        // clearSelection is called before openTaskFile
+        expect(script).toContain('clearSelection');
+    });
+
+    it('stops propagation on checkbox change event', () => {
+        expect(script).toContain('stopPropagation');
+    });
+
+    it('re-renders columns after checkbox state change', () => {
+        expect(script).toContain('renderMillerColumns');
+    });
+});
+
+describe('Checkbox selection UI — CSS styles', () => {
+    const html = generateDashboardHtml();
+
+    it('defines task-checkbox style', () => {
+        expect(html).toContain('.task-checkbox');
+    });
+
+    it('defines miller-bulk-action-btn style', () => {
+        expect(html).toContain('.miller-bulk-action-btn');
+    });
+
+    it('uses accent color for checkbox', () => {
+        expect(html).toContain('accent-color: var(--accent)');
+    });
+
+    it('uses accent color for bulk action button background', () => {
+        expect(html).toContain('.miller-bulk-action-btn');
+    });
+
+    it('makes miller-column-header a flex container for button placement', () => {
+        // The header now uses display: flex to accommodate the button
+        expect(html).toMatch(/\.miller-column-header\s*\{[^}]*display:\s*flex/);
+    });
+
+    it('defines hover state for bulk action button', () => {
+        expect(html).toContain('.miller-bulk-action-btn:hover');
+    });
+});

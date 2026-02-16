@@ -46,6 +46,11 @@ interface TaskDocument {
 
 let currentTasks: TaskFolder | null = null;
 
+/** Clear the checkbox selection state. */
+function clearSelection(): void {
+    taskPanelState.selectedFilePaths.clear();
+}
+
 export async function fetchRepoTasks(wsId: string): Promise<void> {
     taskPanelState.selectedWorkspaceId = wsId;
 
@@ -397,8 +402,14 @@ function renderMillerColumns(container: HTMLElement): void {
 /** Render a single Miller column showing the contents of a folder. */
 function renderColumn(folder: TaskFolder, folderPath: string, selectedChild: string | null): string {
     const label = folderPath ? folderPath.split('/').pop()! : 'tasks';
+    const selCount = taskPanelState.selectedFilePaths.size;
     let html = '<div class="miller-column" data-column-path="' + escapeHtmlClient(folderPath) + '">';
-    html += '<div class="miller-column-header">' + escapeHtmlClient(label) + '</div>';
+    html += '<div class="miller-column-header">' + escapeHtmlClient(label);
+    // Show "Queue Selected (N)" button in the column that owns the selected items
+    if (selCount > 0 && isSelectionInColumn(folder, folderPath)) {
+        html += '<button class="miller-bulk-action-btn" data-action="queue-selected">Queue Selected (' + selCount + ')</button>';
+    }
+    html += '</div>';
     html += '<div class="miller-column-body">';
 
     // Child folders
@@ -423,8 +434,10 @@ function renderColumn(folder: TaskFolder, folderPath: string, selectedChild: str
             for (const doc of group.documents) {
                 const docPath = doc.relativePath ? doc.relativePath + '/' + doc.fileName : doc.fileName;
                 const isActive = taskPanelState.openFilePath === docPath;
+                const isChecked = taskPanelState.selectedFilePaths.has(docPath);
                 const displayName = doc.docType ? group.baseName + '.' + doc.docType : doc.fileName;
                 html += '<div class="miller-row miller-file-row' + (isActive ? ' miller-row-selected' : '') + '" data-file-path="' + escapeHtmlClient(docPath) + '">' +
+                    '<input type="checkbox" class="task-checkbox" data-check-path="' + escapeHtmlClient(docPath) + '"' + (isChecked ? ' checked' : '') + '>' +
                     '<span class="task-tree-icon">📄</span>' +
                     '<span class="miller-row-name">' + escapeHtmlClient(displayName) + '</span>' +
                     (doc.status ? '<span class="miller-status task-status-' + escapeHtmlClient(doc.status) + '">' + (STATUS_ICONS[doc.status] || '') + '</span>' : '') +
@@ -439,7 +452,9 @@ function renderColumn(folder: TaskFolder, folderPath: string, selectedChild: str
         for (const doc of folder.singleDocuments) {
             const docPath = doc.relativePath ? doc.relativePath + '/' + doc.fileName : doc.fileName;
             const isActive = taskPanelState.openFilePath === docPath;
+            const isChecked = taskPanelState.selectedFilePaths.has(docPath);
             html += '<div class="miller-row miller-file-row' + (isActive ? ' miller-row-selected' : '') + '" data-file-path="' + escapeHtmlClient(docPath) + '">' +
+                '<input type="checkbox" class="task-checkbox" data-check-path="' + escapeHtmlClient(docPath) + '"' + (isChecked ? ' checked' : '') + '>' +
                 '<span class="task-tree-icon">📄</span>' +
                 '<span class="miller-row-name">' + escapeHtmlClient(doc.baseName) + '</span>' +
                 (doc.status ? '<span class="miller-status task-status-' + escapeHtmlClient(doc.status) + '">' + (STATUS_ICONS[doc.status] || '') + '</span>' : '') +
@@ -456,14 +471,63 @@ function renderColumn(folder: TaskFolder, folderPath: string, selectedChild: str
     return html;
 }
 
+/** Check whether any selected file belongs to this column's folder. */
+function isSelectionInColumn(folder: TaskFolder, folderPath: string): boolean {
+    for (const fp of taskPanelState.selectedFilePaths) {
+        // File paths for docs in this folder start with folderPath prefix (or are root-level when folderPath is '')
+        if (folder.documentGroups) {
+            for (const g of folder.documentGroups) {
+                for (const d of g.documents) {
+                    const dp = d.relativePath ? d.relativePath + '/' + d.fileName : d.fileName;
+                    if (dp === fp) return true;
+                }
+            }
+        }
+        if (folder.singleDocuments) {
+            for (const d of folder.singleDocuments) {
+                const dp = d.relativePath ? d.relativePath + '/' + d.fileName : d.fileName;
+                if (dp === fp) return true;
+            }
+        }
+    }
+    return false;
+}
+
 /** Attach event delegation for the Miller columns container. */
 function attachMillerEventListeners(container: HTMLElement): void {
+    // Checkbox change handler — update selection state
+    container.addEventListener('change', (e: Event) => {
+        const target = e.target as HTMLInputElement;
+        if (!target.matches('.task-checkbox')) return;
+        e.stopPropagation();
+        const checkPath = target.getAttribute('data-check-path');
+        if (!checkPath) return;
+        if (target.checked) {
+            taskPanelState.selectedFilePaths.add(checkPath);
+        } else {
+            taskPanelState.selectedFilePaths.delete(checkPath);
+        }
+        // Re-render column headers to update Queue Selected button
+        if (currentTasks) renderMillerColumns(container);
+    });
+
     container.addEventListener('click', (e: Event) => {
         const wsId = taskPanelState.selectedWorkspaceId;
         if (!wsId) return;
         const target = e.target as HTMLElement;
 
-        // 0. AI action button — show dropdown
+        // 0a. Checkbox click — prevent file navigation
+        if (target.matches('.task-checkbox')) {
+            return;
+        }
+
+        // 0b. Queue Selected button
+        if (target.matches('[data-action="queue-selected"]')) {
+            e.stopPropagation();
+            return;
+        }
+
+        // 0c. AI action button — show dropdown
         const aiActionBtn = target.closest('[data-action="ai-action"]') as HTMLElement | null;
         if (aiActionBtn) {
             e.stopPropagation();
@@ -478,6 +542,7 @@ function attachMillerEventListeners(container: HTMLElement): void {
             const navPath = folderRow.getAttribute('data-nav-folder') || '';
             taskPanelState.expandedFolders['__navPath'] = navPath as any;
             taskPanelState.openFilePath = null;
+            clearSelection();
             updateTaskHash(wsId, null);
             renderMillerColumns(container);
             return;
@@ -488,6 +553,7 @@ function attachMillerEventListeners(container: HTMLElement): void {
         if (fileRow) {
             const filePath = fileRow.getAttribute('data-file-path');
             if (filePath) {
+                clearSelection();
                 openTaskFile(wsId, filePath);
             }
             return;

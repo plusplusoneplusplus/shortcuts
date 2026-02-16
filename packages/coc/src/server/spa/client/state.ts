@@ -116,12 +116,14 @@ export interface TaskPanelState {
     selectedWorkspaceId: string | null;
     expandedFolders: Record<string, boolean>;
     openFilePath: string | null;
+    selectedFilePaths: Set<string>;
 }
 
 export const taskPanelState: TaskPanelState = {
     selectedWorkspaceId: null,
     expandedFolders: {},
     openFilePath: null,
+    selectedFilePaths: new Set(),
 };
 
 // ================================================================
