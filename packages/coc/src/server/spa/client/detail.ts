@@ -28,8 +28,11 @@ export function renderDetail(id: string): void {
         duration = formatDuration(end - start);
     }
 
+    // Use fullPrompt for the title when available (promptPreview may be truncated)
+    const detailTitle = process.fullPrompt || process.promptPreview || process.id || 'Process';
+
     let html = '<div class="detail-header">' +
-        '<h1>' + escapeHtmlClient(process.promptPreview || process.id || 'Process') + '</h1>' +
+        '<h1>' + escapeHtmlClient(detailTitle) + '</h1>' +
         '<span class="status-badge ' + (process.status || 'queued') + '">' +
             statusIcon(process.status) + ' ' + statusLabel(process.status) +
             (duration ? ' \u00B7 ' + duration : '') +
@@ -79,7 +82,7 @@ export function renderDetail(id: string): void {
             children.forEach(function(c: any) {
                 html += '<tr onclick="navigateToProcess(\'' + escapeHtmlClient(c.id) + '\')">' +
                     '<td>' + statusIcon(c.status) + '</td>' +
-                    '<td>' + escapeHtmlClient((c.promptPreview || c.id || '').substring(0, 50)) + '</td>' +
+                    '<td>' + escapeHtmlClient(c.promptPreview || c.id || '') + '</td>' +
                     '<td>' + escapeHtmlClient(typeLabel(c.type)) + '</td>' +
                     '<td>' + formatRelativeTime(c.startTime) + '</td></tr>';
             });
@@ -106,7 +109,7 @@ export function renderDetail(id: string): void {
             '<div class="prompt-body">' + escapeHtmlClient(process.fullPrompt) + '</div></details>';
     }
 
-    // Conversation section for terminal processes
+    // Conversation section for terminal processes — use chat bubbles
     const isTerminal = process.status === 'completed' || process.status === 'failed';
     if (isTerminal) {
         html += '<div id="process-conversation-section"></div>';
@@ -126,27 +129,75 @@ export function renderDetail(id: string): void {
 
     contentEl.innerHTML = html;
 
-    // Load conversation output asynchronously for terminal processes
+    // Load conversation output asynchronously for terminal processes — render as chat bubbles
     if (isTerminal) {
         const sectionEl = document.getElementById('process-conversation-section');
         if (sectionEl) {
-            fetchApi('/processes/' + encodeURIComponent(id) + '/output')
-                .then(function(data: any) {
-                    if (data && data.content) {
-                        sectionEl.innerHTML = '<div class="conversation-section"><h2>Conversation</h2>' +
-                            '<div id="process-conversation" class="conversation-body">' +
-                            renderMarkdown(data.content) + '</div>' +
-                            '<button class="action-btn" onclick="copyConversationOutput(\'' +
-                            escapeHtmlClient(id) + '\')">\u{1F4CB} Copy Conversation</button></div>';
-                    } else {
-                        sectionEl.innerHTML = '<div class="conversation-waiting">No conversation output saved.</div>';
-                    }
-                })
-                .catch(function() {
-                    sectionEl.innerHTML = '<div class="conversation-waiting">No conversation output saved.</div>';
-                });
+            // First try to fetch the full process with conversationTurns
+            fetchApi('/processes/' + encodeURIComponent(id)).then(function(data: any) {
+                const proc = data && data.process ? data.process : null;
+                if (proc && proc.conversationTurns && proc.conversationTurns.length > 0) {
+                    // Render conversation turns as chat bubbles
+                    sectionEl.innerHTML = renderConversationBubbles(id, proc.conversationTurns);
+                } else {
+                    // Fall back to /output endpoint and render as chat bubbles
+                    return fetchApi('/processes/' + encodeURIComponent(id) + '/output')
+                        .then(function(outputData: any) {
+                            if (outputData && outputData.content) {
+                                // Build synthetic turns from the process
+                                const syntheticTurns: ClientConversationTurn[] = [];
+                                if (process.fullPrompt || process.promptPreview) {
+                                    syntheticTurns.push({
+                                        role: 'user',
+                                        content: process.fullPrompt || process.promptPreview,
+                                        timestamp: process.startTime || undefined,
+                                    });
+                                }
+                                syntheticTurns.push({
+                                    role: 'assistant',
+                                    content: outputData.content,
+                                    timestamp: process.endTime || undefined,
+                                });
+                                sectionEl.innerHTML = renderConversationBubbles(id, syntheticTurns);
+                            } else if (process.result) {
+                                // No output but has result — build synthetic from result
+                                const syntheticTurns: ClientConversationTurn[] = [];
+                                if (process.fullPrompt || process.promptPreview) {
+                                    syntheticTurns.push({
+                                        role: 'user',
+                                        content: process.fullPrompt || process.promptPreview,
+                                        timestamp: process.startTime || undefined,
+                                    });
+                                }
+                                syntheticTurns.push({
+                                    role: 'assistant',
+                                    content: process.result,
+                                    timestamp: process.endTime || undefined,
+                                });
+                                sectionEl.innerHTML = renderConversationBubbles(id, syntheticTurns);
+                            } else {
+                                sectionEl.innerHTML = '<div class="conversation-waiting">No conversation output saved.</div>';
+                            }
+                        });
+                }
+            }).catch(function() {
+                sectionEl.innerHTML = '<div class="conversation-waiting">No conversation output saved.</div>';
+            });
         }
     }
+}
+
+/** Render conversation turns as chat bubbles for the legacy process detail view. */
+function renderConversationBubbles(processId: string, turns: ClientConversationTurn[]): string {
+    let html = '<div class="conversation-section"><h2>Conversation</h2>' +
+        '<div id="process-conversation" class="conversation-body">';
+    for (let i = 0; i < turns.length; i++) {
+        html += renderChatMessage(turns[i]);
+    }
+    html += '</div>' +
+        '<button class="action-btn" onclick="copyConversationOutput(\'' +
+        escapeHtmlClient(processId) + '\')">\u{1F4CB} Copy Conversation</button></div>';
+    return html;
 }
 
 export function clearDetail(): void {
@@ -211,12 +262,13 @@ export function showQueueTaskDetail(taskId: string): void {
         if (proc && proc.conversationTurns && proc.conversationTurns.length > 0) {
             setQueueTaskConversationTurns(proc.conversationTurns);
         } else if (proc) {
-            // Build synthetic turns from legacy fields
+            // Build synthetic turns from legacy fields — prefer full prompt over truncated preview
             const syntheticTurns: ClientConversationTurn[] = [];
-            if (proc.promptPreview) {
+            const userContent = proc.fullPrompt || proc.promptPreview;
+            if (userContent) {
                 syntheticTurns.push({
                     role: 'user',
-                    content: proc.promptPreview,
+                    content: userContent,
                     timestamp: proc.startTime || undefined,
                 });
             }
@@ -286,7 +338,7 @@ function renderQueueTaskConversation(processId: string, taskId: string, proc: an
     let endTime = '';
 
     if (proc) {
-        name = proc.promptPreview || proc.id || 'Queue Task';
+        name = proc.fullPrompt || proc.promptPreview || proc.id || 'Queue Task';
         status = proc.status || 'running';
         prompt = proc.fullPrompt || '';
         error = proc.error || '';
@@ -402,10 +454,11 @@ function renderQueueTaskConversation(processId: string, taskId: string, proc: an
         }
     } else if (proc && proc.result && !isRunning) {
         // Backward compatibility: no conversationTurns, build synthetic bubbles
-        if (proc.promptPreview) {
+        const userContent = proc.fullPrompt || proc.promptPreview;
+        if (userContent) {
             html += renderChatMessage({
                 role: 'user',
-                content: proc.promptPreview,
+                content: userContent,
                 timestamp: proc.startTime || undefined,
             });
         }

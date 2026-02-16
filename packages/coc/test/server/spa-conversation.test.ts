@@ -102,6 +102,39 @@ describe('SPA conversation rendering', () => {
             expect(script).toContain('No conversation data available.');
             expect(script).toContain('Waiting for response...');
         });
+
+        it('should prefer fullPrompt over truncated promptPreview for synthetic turns', () => {
+            // Synthetic turns use fullPrompt when available
+            expect(script).toContain('fullPrompt');
+            expect(script).toMatch(/fullPrompt\s*\|\|\s*[\w.]*promptPreview/);
+        });
+    });
+
+    // ====================================================================
+    // Legacy process detail — chat bubble rendering
+    // ====================================================================
+
+    describe('legacy process detail bubble rendering', () => {
+        it('should contain renderConversationBubbles function for legacy detail view', () => {
+            expect(script).toContain('renderConversationBubbles');
+        });
+
+        it('should use fullPrompt for legacy detail header title', () => {
+            // renderDetail uses fullPrompt || promptPreview for the title
+            expect(script).toContain('fullPrompt');
+            expect(script).toContain('detailTitle');
+        });
+
+        it('should fetch conversationTurns from process API for legacy detail', () => {
+            // renderDetail fetches full process to get conversationTurns
+            expect(script).toContain('conversationTurns');
+        });
+
+        it('should render conversation as chat bubbles in legacy detail view', () => {
+            // renderConversationBubbles wraps turns in chat-message bubbles
+            expect(script).toContain('renderChatMessage');
+            expect(script).toContain('conversation-body');
+        });
     });
 
     // ====================================================================
