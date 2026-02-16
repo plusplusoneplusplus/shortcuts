@@ -2192,6 +2192,42 @@ body {
 }
 
 /* ================================================================
+   Folder Drag-and-Drop
+   ================================================================ */
+
+.miller-row[draggable="true"] {
+    cursor: grab;
+}
+
+.miller-row[draggable="true"]:active {
+    cursor: grabbing;
+}
+
+.miller-row-dragging {
+    opacity: 0.85;
+}
+
+.miller-row-drag-ghost {
+    opacity: 0.4;
+}
+
+.miller-row-drop-target {
+    background: var(--accent-15, rgba(0, 122, 204, 0.15)) !important;
+    outline: 2px dashed var(--accent, #007acc);
+    outline-offset: -2px;
+    border-radius: 4px;
+}
+
+.miller-row-drop-target .miller-row-name {
+    font-weight: 600;
+}
+
+html[data-theme="dark"] .miller-row-drop-target {
+    background: rgba(0, 122, 204, 0.2) !important;
+    outline-color: var(--accent, #3794ff);
+}
+
+/* ================================================================
    Task File Preview Panel (rightmost Miller column)
    ================================================================ */
 

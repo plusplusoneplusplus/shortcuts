@@ -602,6 +602,105 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore): v
     });
 
     // ------------------------------------------------------------------
+    // POST /api/workspaces/:id/tasks/move — Move file or folder
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/tasks\/move$/,
+        handler: async (req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const ws = await resolveWorkspace(store, id);
+            if (!ws) {
+                return sendError(res, 404, 'Workspace not found');
+            }
+
+            let body: any;
+            try {
+                body = await parseBody(req);
+            } catch {
+                return sendError(res, 400, 'Invalid JSON body');
+            }
+
+            const { sourcePath, destinationFolder } = body || {};
+            if (!sourcePath || typeof sourcePath !== 'string') {
+                return sendError(res, 400, 'Missing required field: sourcePath');
+            }
+            if (typeof destinationFolder !== 'string') {
+                return sendError(res, 400, 'Missing required field: destinationFolder');
+            }
+
+            const tasksFolder = path.resolve(ws.rootPath, DEFAULT_SETTINGS.folderPath);
+            const resolvedSource = resolveAndValidatePath(tasksFolder, sourcePath);
+            if (!resolvedSource) {
+                return sendError(res, 403, 'Access denied: source path is outside tasks folder');
+            }
+
+            const resolvedDest = destinationFolder
+                ? resolveAndValidatePath(tasksFolder, destinationFolder)
+                : tasksFolder;
+            if (!resolvedDest) {
+                return sendError(res, 403, 'Access denied: destination path is outside tasks folder');
+            }
+
+            // Verify source exists
+            try {
+                await fs.promises.stat(resolvedSource);
+            } catch (err: any) {
+                if (err.code === 'ENOENT') {
+                    return sendError(res, 404, 'Source file or folder not found');
+                }
+                return sendError(res, 500, 'Failed to access source');
+            }
+
+            // Verify destination is a directory
+            try {
+                const destStat = await fs.promises.stat(resolvedDest);
+                if (!destStat.isDirectory()) {
+                    return sendError(res, 400, 'Destination is not a directory');
+                }
+            } catch (err: any) {
+                if (err.code === 'ENOENT') {
+                    return sendError(res, 404, 'Destination folder not found');
+                }
+                return sendError(res, 500, 'Failed to access destination');
+            }
+
+            // Prevent moving into itself or a descendant
+            const sourceName = path.basename(resolvedSource);
+            const targetPath = path.join(resolvedDest, sourceName);
+
+            if (resolvedDest === path.dirname(resolvedSource)) {
+                return sendError(res, 400, 'Source is already in the destination folder');
+            }
+
+            if (resolvedDest.startsWith(resolvedSource + path.sep) || resolvedDest === resolvedSource) {
+                return sendError(res, 400, 'Cannot move a folder into itself or its descendant');
+            }
+
+            if (!resolveAndValidatePath(tasksFolder, path.relative(tasksFolder, targetPath))) {
+                return sendError(res, 403, 'Access denied: target path is outside tasks folder');
+            }
+
+            // Handle name collision
+            let finalTarget = targetPath;
+            try {
+                await fs.promises.access(finalTarget);
+                const ext = path.extname(finalTarget);
+                const base = finalTarget.slice(0, finalTarget.length - ext.length);
+                finalTarget = `${base}-${Date.now()}${ext}`;
+            } catch { /* no collision */ }
+
+            try {
+                await fs.promises.rename(resolvedSource, finalTarget);
+                const newRelPath = path.relative(tasksFolder, finalTarget);
+                sendJSON(res, 200, { path: newRelPath, name: path.basename(finalTarget) });
+            } catch (err: any) {
+                return sendError(res, 500, 'Failed to move: ' + (err.message || 'Unknown error'));
+            }
+        },
+    });
+
+    // ------------------------------------------------------------------
     // POST /api/workspaces/:id/tasks/archive — Archive or unarchive
     // ------------------------------------------------------------------
     routes.push({

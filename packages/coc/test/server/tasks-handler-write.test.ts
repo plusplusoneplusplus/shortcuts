@@ -609,4 +609,261 @@ describe('Tasks Handler Write', () => {
             expect(res.status).toBe(403);
         });
     });
+
+    // ========================================================================
+    // POST /api/workspaces/:id/tasks/move — Move file or folder
+    // ========================================================================
+
+    describe('Move (POST /tasks/move)', () => {
+        it('should move a folder into another sibling folder', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            createTaskFiles({
+                'folderA/task1.md': '# Task 1',
+                'folderB/task2.md': '# Task 2',
+            });
+
+            const res = await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks/move`, 'POST', {
+                sourcePath: 'folderA',
+                destinationFolder: 'folderB',
+            });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.path).toContain('folderB');
+            expect(body.name).toBe('folderA');
+
+            // Source should be gone, destination should have it
+            expect(fs.existsSync(path.join(tasksDir(), 'folderA'))).toBe(false);
+            expect(fs.existsSync(path.join(tasksDir(), 'folderB', 'folderA', 'task1.md'))).toBe(true);
+        });
+
+        it('should move a file into a folder', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            createTaskFiles({
+                'standalone.md': '# Standalone',
+                'target-folder/existing.md': '# Existing',
+            });
+
+            const res = await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks/move`, 'POST', {
+                sourcePath: 'standalone.md',
+                destinationFolder: 'target-folder',
+            });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.path).toContain('target-folder');
+
+            expect(fs.existsSync(path.join(tasksDir(), 'standalone.md'))).toBe(false);
+            expect(fs.existsSync(path.join(tasksDir(), 'target-folder', 'standalone.md'))).toBe(true);
+        });
+
+        it('should move a folder to the tasks root', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            createTaskFiles({
+                'parent/child/task.md': '# Task',
+            });
+
+            const res = await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks/move`, 'POST', {
+                sourcePath: 'parent/child',
+                destinationFolder: '',
+            });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.name).toBe('child');
+
+            expect(fs.existsSync(path.join(tasksDir(), 'parent', 'child'))).toBe(false);
+            expect(fs.existsSync(path.join(tasksDir(), 'child', 'task.md'))).toBe(true);
+        });
+
+        it('should handle name collision by appending timestamp', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            createTaskFiles({
+                'folderA/task.md': '# From A',
+                'dest/folderA/task.md': '# Already in dest',
+            });
+
+            const res = await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks/move`, 'POST', {
+                sourcePath: 'folderA',
+                destinationFolder: 'dest',
+            });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            // Name should contain a timestamp suffix due to collision
+            expect(body.path).toContain('dest');
+            expect(body.name).toContain('folderA');
+
+            // Original in dest should still exist
+            expect(fs.existsSync(path.join(tasksDir(), 'dest', 'folderA', 'task.md'))).toBe(true);
+        });
+
+        it('should return 400 when source is already in destination', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            createTaskFiles({
+                'parent/child/task.md': '# Task',
+            });
+
+            const res = await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks/move`, 'POST', {
+                sourcePath: 'parent/child',
+                destinationFolder: 'parent',
+            });
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('already in the destination');
+        });
+
+        it('should return 400 when moving folder into itself', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            createTaskFiles({
+                'folderA/task.md': '# Task',
+            });
+
+            const res = await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks/move`, 'POST', {
+                sourcePath: 'folderA',
+                destinationFolder: 'folderA',
+            });
+            expect(res.status).toBe(400);
+        });
+
+        it('should return 400 when moving folder into its descendant', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            createTaskFiles({
+                'folderA/sub/task.md': '# Task',
+            });
+
+            const res = await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks/move`, 'POST', {
+                sourcePath: 'folderA',
+                destinationFolder: 'folderA/sub',
+            });
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('Cannot move');
+        });
+
+        it('should return 404 for non-existent source', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            createTaskFiles({ 'dest/placeholder.md': '# P' });
+
+            const res = await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks/move`, 'POST', {
+                sourcePath: 'nonexistent',
+                destinationFolder: 'dest',
+            });
+            expect(res.status).toBe(404);
+        });
+
+        it('should return 404 for non-existent destination', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            createTaskFiles({ 'source/task.md': '# Task' });
+
+            const res = await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks/move`, 'POST', {
+                sourcePath: 'source',
+                destinationFolder: 'nonexistent-dest',
+            });
+            expect(res.status).toBe(404);
+        });
+
+        it('should return 400 when destination is a file not a directory', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            createTaskFiles({
+                'source/task.md': '# Task',
+                'dest-file.md': '# Not a folder',
+            });
+
+            const res = await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks/move`, 'POST', {
+                sourcePath: 'source',
+                destinationFolder: 'dest-file.md',
+            });
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('not a directory');
+        });
+
+        it('should return 400 for missing sourcePath', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+
+            const res = await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks/move`, 'POST', {
+                destinationFolder: 'dest',
+            });
+            expect(res.status).toBe(400);
+            expect(JSON.parse(res.body).error).toContain('sourcePath');
+        });
+
+        it('should return 400 for missing destinationFolder', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+
+            const res = await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks/move`, 'POST', {
+                sourcePath: 'folder',
+            });
+            expect(res.status).toBe(400);
+            expect(JSON.parse(res.body).error).toContain('destinationFolder');
+        });
+
+        it('should return 403 for path traversal in sourcePath', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+
+            const res = await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks/move`, 'POST', {
+                sourcePath: '../../etc',
+                destinationFolder: '',
+            });
+            expect(res.status).toBe(403);
+        });
+
+        it('should return 403 for path traversal in destinationFolder', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            createTaskFiles({ 'source/task.md': '# Task' });
+
+            const res = await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks/move`, 'POST', {
+                sourcePath: 'source',
+                destinationFolder: '../../tmp',
+            });
+            expect(res.status).toBe(403);
+        });
+
+        it('should return 404 for non-existent workspace', async () => {
+            const srv = await startServer();
+
+            const res = await jsonRequest(`${srv.url}/api/workspaces/nonexistent/tasks/move`, 'POST', {
+                sourcePath: 'folder',
+                destinationFolder: 'dest',
+            });
+            expect(res.status).toBe(404);
+        });
+
+        it('should preserve folder contents when moving', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            createTaskFiles({
+                'source/sub1/task1.md': '# Task 1',
+                'source/sub2/task2.md': '# Task 2',
+                'source/root-task.md': '# Root Task',
+                'dest/existing.md': '# Existing',
+            });
+
+            const res = await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks/move`, 'POST', {
+                sourcePath: 'source',
+                destinationFolder: 'dest',
+            });
+            expect(res.status).toBe(200);
+
+            // All contents should be preserved in new location
+            expect(fs.existsSync(path.join(tasksDir(), 'dest', 'source', 'sub1', 'task1.md'))).toBe(true);
+            expect(fs.existsSync(path.join(tasksDir(), 'dest', 'source', 'sub2', 'task2.md'))).toBe(true);
+            expect(fs.existsSync(path.join(tasksDir(), 'dest', 'source', 'root-task.md'))).toBe(true);
+            // Existing dest content untouched
+            expect(fs.existsSync(path.join(tasksDir(), 'dest', 'existing.md'))).toBe(true);
+            // Source should be gone
+            expect(fs.existsSync(path.join(tasksDir(), 'source'))).toBe(false);
+        });
+    });
 });

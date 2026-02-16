@@ -334,6 +334,7 @@ function renderTasksInRepo(): void {
         columnsListenerAttached = true;
         columnsListenerContainer = container;
         attachMillerEventListeners(container);
+        attachDragAndDropListeners(container);
     }
 }
 
@@ -408,7 +409,7 @@ function renderColumn(folder: TaskFolder, folderPath: string, selectedChild: str
             const isArchive = child.name === 'archive';
             const itemCount = countFolderItems(child);
             const countBadge = itemCount > 0 ? '<span class="task-folder-count">' + itemCount + '</span>' : '';
-            html += '<div class="miller-row' + (isSelected ? ' miller-row-selected' : '') + (isArchive ? ' task-archive-folder' : '') + '" data-nav-folder="' + escapeHtmlClient(childPath) + '">' +
+            html += '<div class="miller-row' + (isSelected ? ' miller-row-selected' : '') + (isArchive ? ' task-archive-folder' : '') + '" data-nav-folder="' + escapeHtmlClient(childPath) + '" draggable="true">' +
                 '<span class="task-tree-icon">📁</span>' +
                 '<span class="miller-row-name">' + escapeHtmlClient(child.name) + countBadge + '</span>' +
                 '<span class="miller-chevron">▶</span>' +
@@ -519,6 +520,154 @@ function attachMillerEventListeners(container: HTMLElement): void {
         const currentStatus = resolveFileStatus(filePath);
         showTaskContextMenu(me.clientX, me.clientY, filePath, currentStatus);
     });
+}
+
+// ================================================================
+// Drag-and-drop: Move folders between same-level sibling folders
+// ================================================================
+
+/** Track the drag source path for folder drag-and-drop. */
+let dragSourcePath: string | null = null;
+
+/** Attach drag-and-drop event listeners to a Miller columns container. */
+function attachDragAndDropListeners(container: HTMLElement): void {
+    // --- dragstart: fired on the folder row being dragged ---
+    container.addEventListener('dragstart', (e: DragEvent) => {
+        const target = (e.target as HTMLElement).closest('[data-nav-folder]') as HTMLElement | null;
+        if (!target) return;
+
+        const folderPath = target.getAttribute('data-nav-folder') || '';
+        dragSourcePath = folderPath;
+
+        // Set transfer data
+        e.dataTransfer!.effectAllowed = 'move';
+        e.dataTransfer!.setData('text/plain', folderPath);
+
+        // Style the dragged row
+        target.classList.add('miller-row-dragging');
+
+        // Use a slight delay so the browser can capture the drag image before we style it
+        setTimeout(() => {
+            target.classList.add('miller-row-drag-ghost');
+        }, 0);
+    });
+
+    // --- dragend: cleanup ---
+    container.addEventListener('dragend', (e: DragEvent) => {
+        const target = (e.target as HTMLElement).closest('[data-nav-folder]') as HTMLElement | null;
+        if (target) {
+            target.classList.remove('miller-row-dragging', 'miller-row-drag-ghost');
+        }
+        dragSourcePath = null;
+
+        // Clean up all drop-target highlights
+        container.querySelectorAll('.miller-row-drop-target, .miller-row-drop-above, .miller-row-drop-below').forEach(el => {
+            el.classList.remove('miller-row-drop-target', 'miller-row-drop-above', 'miller-row-drop-below');
+        });
+    });
+
+    // --- dragover: determine if drop is valid and show visual indicator ---
+    container.addEventListener('dragover', (e: DragEvent) => {
+        if (!dragSourcePath) return;
+
+        const folderRow = (e.target as HTMLElement).closest('[data-nav-folder]') as HTMLElement | null;
+        if (!folderRow) return;
+
+        const destFolderPath = folderRow.getAttribute('data-nav-folder') || '';
+
+        // Only allow dropping onto folders at the same parent level
+        if (!isValidDropTarget(dragSourcePath, destFolderPath)) return;
+
+        e.preventDefault();
+        e.dataTransfer!.dropEffect = 'move';
+
+        // Remove previous highlights in this column
+        const column = folderRow.closest('.miller-column');
+        if (column) {
+            column.querySelectorAll('.miller-row-drop-target').forEach(el => {
+                el.classList.remove('miller-row-drop-target');
+            });
+        }
+
+        folderRow.classList.add('miller-row-drop-target');
+    });
+
+    // --- dragleave: remove highlight ---
+    container.addEventListener('dragleave', (e: DragEvent) => {
+        const folderRow = (e.target as HTMLElement).closest('[data-nav-folder]') as HTMLElement | null;
+        if (folderRow) {
+            // Only remove if actually leaving the element (not entering a child)
+            const related = e.relatedTarget as HTMLElement | null;
+            if (!related || !folderRow.contains(related)) {
+                folderRow.classList.remove('miller-row-drop-target');
+            }
+        }
+    });
+
+    // --- drop: perform the move ---
+    container.addEventListener('drop', async (e: DragEvent) => {
+        e.preventDefault();
+
+        const sourcePath = e.dataTransfer?.getData('text/plain') || dragSourcePath;
+        if (!sourcePath) return;
+
+        const folderRow = (e.target as HTMLElement).closest('[data-nav-folder]') as HTMLElement | null;
+        if (!folderRow) return;
+
+        const destFolderPath = folderRow.getAttribute('data-nav-folder') || '';
+
+        if (!isValidDropTarget(sourcePath, destFolderPath)) return;
+
+        // Remove all visual indicators
+        container.querySelectorAll('.miller-row-drop-target').forEach(el => {
+            el.classList.remove('miller-row-drop-target');
+        });
+
+        const wsId = taskPanelState.selectedWorkspaceId;
+        if (!wsId) return;
+
+        await moveItem(wsId, sourcePath, destFolderPath);
+    });
+}
+
+/** Check if dropping sourcePath onto destFolderPath is valid. */
+function isValidDropTarget(sourcePath: string, destFolderPath: string): boolean {
+    // Can't drop on itself
+    if (sourcePath === destFolderPath) return false;
+
+    // Can't drop into a descendant of itself
+    if (destFolderPath.startsWith(sourcePath + '/')) return false;
+
+    // Source must be at the same parent level as dest, OR dest is a sibling folder
+    // Allow dropping into any folder (move source into dest folder)
+    const sourceParent = sourcePath.includes('/') ? sourcePath.substring(0, sourcePath.lastIndexOf('/')) : '';
+    const destParent = destFolderPath.includes('/') ? destFolderPath.substring(0, destFolderPath.lastIndexOf('/')) : '';
+
+    // Allow if same parent (sibling folders) — move source into dest
+    if (sourceParent === destParent) return true;
+
+    // Also allow dropping onto child folders in the currently navigated column
+    // (i.e. dest is inside the same parent hierarchy)
+    return true;
+}
+
+/** Call the move API endpoint. */
+async function moveItem(wsId: string, sourcePath: string, destinationFolder: string): Promise<void> {
+    try {
+        const res = await fetch(getApiBase() + `/workspaces/${encodeURIComponent(wsId)}/tasks/move`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sourcePath, destinationFolder }),
+        });
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({ error: 'Failed' }));
+            alert(data.error || 'Failed to move item');
+            return;
+        }
+        await fetchRepoTasks(wsId);
+    } catch {
+        alert('Network error moving item');
+    }
 }
 
 // ================================================================
@@ -747,6 +896,15 @@ function showFolderContextMenu(x: number, y: number, folderPath: string): void {
     // Separator
     itemsHtml += '<div class="task-context-menu-separator"></div>';
 
+    // Move to Folder
+    itemsHtml +=
+        '<div class="task-context-menu-item" data-ctx-action="move-folder" data-ctx-path="' + escapeHtmlClient(folderPath) + '">' +
+            '<span class="ctx-menu-icon">📂</span><span>Move to...</span>' +
+        '</div>';
+
+    // Separator
+    itemsHtml += '<div class="task-context-menu-separator"></div>';
+
     // Archive / Unarchive
     if (isArchived) {
         itemsHtml +=
@@ -811,6 +969,9 @@ function showFolderContextMenu(x: number, y: number, folderPath: string): void {
                 break;
             case 'ai-generate-in-folder':
                 showRepoAIGenerateDialog(wsId, path);
+                break;
+            case 'move-folder':
+                showMoveDialog(wsId, path);
                 break;
             case 'archive-folder':
                 archiveItem(wsId, path, 'archive');
@@ -933,6 +1094,89 @@ function createTaskInFolder(wsId: string, parentPath: string): void {
 function deleteFolderFromMenu(wsId: string, folderPath: string, folderName: string): void {
     if (!confirm(`Delete folder "${folderName}" and all its contents? This cannot be undone.`)) return;
     deleteItem(wsId, folderPath, folderName);
+}
+
+/** Show a dialog for choosing a destination folder to move the source into. */
+function showMoveDialog(wsId: string, sourcePath: string): void {
+    if (!currentTasks) return;
+
+    const folderOptions: Array<{ label: string; value: string }> = [
+        { label: '(Root)', value: '' }
+    ];
+    collectAllFolderPaths(currentTasks, '', folderOptions);
+
+    // Filter out the source folder itself and its descendants, and its current parent
+    const sourceParent = sourcePath.includes('/') ? sourcePath.substring(0, sourcePath.lastIndexOf('/')) : '';
+    const filtered = folderOptions.filter(opt => {
+        if (opt.value === sourcePath) return false;
+        if (opt.value.startsWith(sourcePath + '/')) return false;
+        if (opt.value === sourceParent) return false;
+        return true;
+    });
+
+    if (filtered.length === 0) {
+        alert('No valid destination folders available.');
+        return;
+    }
+
+    const folderName = sourcePath.split('/').pop() || sourcePath;
+
+    // Build options HTML
+    let optionsHtml = '';
+    for (const opt of filtered) {
+        optionsHtml += '<option value="' + escapeHtmlClient(opt.value) + '">' + escapeHtmlClient(opt.label || '(Root)') + '</option>';
+    }
+
+    const existing = document.getElementById('task-input-dialog-overlay');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'task-input-dialog-overlay';
+    overlay.className = 'enqueue-overlay';
+
+    overlay.innerHTML =
+        '<div class="enqueue-dialog" style="width:400px">' +
+            '<div class="enqueue-dialog-header">' +
+                '<h2>Move "' + escapeHtmlClient(folderName) + '"</h2>' +
+                '<button class="enqueue-close-btn" id="task-dialog-close">&times;</button>' +
+            '</div>' +
+            '<form id="task-dialog-form" class="enqueue-form">' +
+                '<div class="enqueue-field">' +
+                    '<label for="move-dest-select">Destination Folder</label>' +
+                    '<select id="move-dest-select">' + optionsHtml + '</select>' +
+                '</div>' +
+                '<div class="enqueue-actions">' +
+                    '<button type="button" class="enqueue-btn-secondary" id="task-dialog-cancel">Cancel</button>' +
+                    '<button type="submit" class="enqueue-btn-primary">Move</button>' +
+                '</div>' +
+            '</form>' +
+        '</div>';
+
+    document.body.appendChild(overlay);
+
+    const close = () => overlay.remove();
+
+    document.getElementById('task-dialog-close')?.addEventListener('click', close);
+    document.getElementById('task-dialog-cancel')?.addEventListener('click', close);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+    document.getElementById('task-dialog-form')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const destValue = (document.getElementById('move-dest-select') as HTMLSelectElement)?.value ?? '';
+        close();
+        await moveItem(wsId, sourcePath, destValue);
+    });
+}
+
+/** Collect all folder paths recursively from the task tree for the move dialog. */
+function collectAllFolderPaths(folder: TaskFolder, parentPath: string, result: Array<{ label: string; value: string }>): void {
+    if (folder.children) {
+        for (const child of folder.children) {
+            const childPath = parentPath ? parentPath + '/' + child.name : child.name;
+            result.push({ label: childPath, value: childPath });
+            collectAllFolderPaths(child, childPath, result);
+        }
+    }
 }
 
 /** Resolve the current status of a file from the task tree data. */
