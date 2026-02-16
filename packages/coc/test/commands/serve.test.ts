@@ -18,7 +18,7 @@ import type { ServeCommandOptions } from '../../src/server/types';
 // Mock the server module to avoid starting a real HTTP server
 // ============================================================================
 
-const mockClose = vi.fn().mockResolvedValue(undefined);
+const mockClose = vi.fn().mockResolvedValue({ drainOutcome: 'completed' });
 const mockGetAllProcesses = vi.fn().mockResolvedValue([{ id: '1' }, { id: '2' }]);
 const mockStore = {
     addProcess: vi.fn(),
@@ -73,19 +73,30 @@ async function runServeWithSigint(options: ServeCommandOptions, delayMs = 50): P
 describe('Serve Command', () => {
     let stderrSpy: ReturnType<typeof vi.spyOn>;
     let tmpDir: string;
+    let savedSigintListeners: Function[];
 
     beforeEach(() => {
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-serve-'));
         stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
         setColorEnabled(false);
         mockClose.mockClear();
+        mockClose.mockResolvedValue({ drainOutcome: 'completed' });
         mockGetAllProcesses.mockClear();
         mockExec.mockClear();
         mockCreateExecutionServer.mockReset();
         mockCreateExecutionServer.mockResolvedValue(makeServerResult());
+        // Save and remove all SIGINT listeners to isolate tests
+        savedSigintListeners = process.rawListeners('SIGINT') as Function[];
+        process.removeAllListeners('SIGINT');
     });
 
     afterEach(() => {
+        // Remove any listeners added during test
+        process.removeAllListeners('SIGINT');
+        // Restore original listeners
+        for (const listener of savedSigintListeners) {
+            process.on('SIGINT', listener as (...args: any[]) => void);
+        }
         stderrSpy.mockRestore();
         setColorEnabled(true);
         fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -194,6 +205,11 @@ describe('Serve Command', () => {
             expect(mockClose).toHaveBeenCalled();
             expect(exitCode).toBe(EXIT_CODES.SUCCESS);
         });
+
+        it('should call server.close() with drain options by default', async () => {
+            await runServeWithSigint({ dataDir: tmpDir, open: false });
+            expect(mockClose).toHaveBeenCalledWith({ drain: true, drainTimeoutMs: undefined });
+        });
     });
 
     // ========================================================================
@@ -273,7 +289,97 @@ describe('Serve Command', () => {
     });
 
     // ========================================================================
-    // 11. FileProcessStore wired into createExecutionServer
+    // 11. Graceful drain on shutdown
+    // ========================================================================
+
+    describe('Graceful drain', () => {
+        it('should call close with drain options when drain enabled', async () => {
+            const exitCode = await runServeWithSigint({ dataDir: tmpDir, open: false });
+            expect(mockClose).toHaveBeenCalled();
+            // Default is drain: true
+            const closeArgs = mockClose.mock.calls[0];
+            expect(closeArgs[0]).toEqual({ drain: true, drainTimeoutMs: undefined });
+            expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+        });
+
+        it('should pass drainTimeoutMs when --drain-timeout is set', async () => {
+            const exitCode = await runServeWithSigint({
+                dataDir: tmpDir,
+                open: false,
+                drainTimeout: 30, // 30 seconds
+            });
+            expect(mockClose).toHaveBeenCalled();
+            const closeArgs = mockClose.mock.calls[0];
+            expect(closeArgs[0]).toEqual({ drain: true, drainTimeoutMs: 30000 });
+            expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+        });
+
+        it('should skip drain when --no-drain is set', async () => {
+            const exitCode = await runServeWithSigint({
+                dataDir: tmpDir,
+                open: false,
+                noDrain: true,
+            });
+            expect(mockClose).toHaveBeenCalled();
+            // noDrain means close is called without drain options
+            const closeArgs = mockClose.mock.calls[0];
+            expect(closeArgs[0]).toBeUndefined();
+            expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+        });
+
+        it('should report drain timeout result', async () => {
+            mockClose.mockResolvedValueOnce({ drainOutcome: 'timeout' });
+
+            const exitCode = await runServeWithSigint({
+                dataDir: tmpDir,
+                open: false,
+                drainTimeout: 1,
+            });
+
+            expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+            const output = stderrSpy.mock.calls.map(c => String(c[0])).join('');
+            expect(output).toContain('timeout');
+        });
+    });
+
+    // ========================================================================
+    // 12. CLI option parsing for drain flags
+    // ========================================================================
+
+    describe('Drain CLI flags', () => {
+        it('should register drain-timeout and no-drain options', () => {
+            const program = createProgram();
+            const serveCmd = program.commands.find(c => c.name() === 'serve')!;
+            const optionNames = serveCmd.options.map(o => o.long || o.short);
+            expect(optionNames).toContain('--drain-timeout');
+            expect(optionNames.some((n: string) => n === '--no-drain' || n === '--drain')).toBe(true);
+        });
+
+        it('should parse --drain-timeout value', () => {
+            const program = createProgram();
+            const serveCmd = program.commands.find(c => c.name() === 'serve')!;
+            serveCmd.action(() => {});
+
+            program.parse(['node', 'coc', 'serve', '--drain-timeout', '60']);
+
+            const opts = serveCmd.opts();
+            expect(opts.drainTimeout).toBe(60);
+        });
+
+        it('should parse --no-drain flag', () => {
+            const program = createProgram();
+            const serveCmd = program.commands.find(c => c.name() === 'serve')!;
+            serveCmd.action(() => {});
+
+            program.parse(['node', 'coc', 'serve', '--no-drain']);
+
+            const opts = serveCmd.opts();
+            expect(opts.drain).toBe(false);
+        });
+    });
+
+    // ========================================================================
+    // 13. FileProcessStore wired into createExecutionServer
     // ========================================================================
 
     describe('FileProcessStore wiring', () => {

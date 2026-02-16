@@ -248,7 +248,9 @@ export type QueueChangeType =
     | 'reordered'
     | 'cleared'
     | 'paused'
-    | 'resumed';
+    | 'resumed'
+    | 'drain-started'
+    | 'drain-cancelled';
 
 /**
  * Event emitted when the queue changes
@@ -278,6 +280,31 @@ export interface QueueEvents {
     taskCancelled: (task: QueuedTask) => void;
     paused: () => void;
     resumed: () => void;
+    'drain-started': () => void;
+    'drain-cancelled': () => void;
+}
+
+/**
+ * Event types for the queue executor drain lifecycle
+ */
+export interface DrainEvent {
+    queued: number;
+    running: number;
+}
+
+export interface DrainCompleteEvent extends DrainEvent {
+    outcome: 'completed';
+}
+
+export interface DrainTimeoutEvent extends DrainEvent {
+    timeoutMs?: number;
+}
+
+export interface QueueExecutorDrainEvents {
+    'drain-start': (event: DrainEvent) => void;
+    'drain-progress': (event: DrainEvent) => void;
+    'drain-complete': (event: DrainCompleteEvent) => void;
+    'drain-timeout': (event: DrainTimeoutEvent) => void;
 }
 
 // ============================================================================
@@ -378,6 +405,8 @@ export interface QueueStats {
     total: number;
     /** Whether the queue is paused */
     isPaused: boolean;
+    /** Whether the queue is in drain mode */
+    isDraining: boolean;
 }
 
 // ============================================================================

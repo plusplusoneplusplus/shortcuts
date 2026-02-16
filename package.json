@@ -593,6 +593,12 @@
           "default": true,
           "markdownDescription": "Show a notification when a queued task completes."
         },
+        "workspaceShortcuts.server.drainTimeout": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "markdownDescription": "Maximum time (in milliseconds) to wait for queued tasks to complete when the server shuts down. `0` means wait indefinitely. Only applies when the extension manages the `coc serve` server lifecycle."
+        },
         "workspaceShortcuts.codeReview.rulesFolder": {
           "type": "string",
           "default": ".github/cr-rules",

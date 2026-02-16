@@ -52,8 +52,22 @@ export function renderQueuePanel(): void {
     const stats = queueState.stats;
     const totalActive = stats.queued + stats.running;
 
+    // Drain banner (server shutting down)
+    let html = '';
+    if (queueState.draining) {
+        const drainTotal = queueState.drainQueued + queueState.drainRunning;
+        html += '<div class="queue-drain-banner">' +
+            '<div class="queue-drain-icon">\u23F3</div>' +
+            '<div class="queue-drain-text">' +
+                '<strong>Server shutting down...</strong><br>' +
+                'Waiting for ' + drainTotal + ' task' + (drainTotal !== 1 ? 's' : '') + ' to complete' +
+                (queueState.drainRunning > 0 ? ' (' + queueState.drainRunning + ' running)' : '') +
+            '</div>' +
+        '</div>';
+    }
+
     // Queue header with count and controls
-    let html = '<div class="queue-header">' +
+    html += '<div class="queue-header">' +
         '<div class="queue-header-left">' +
             '<span class="queue-title">Queue</span>' +
             (totalActive > 0 ? ' <span class="queue-count">' + totalActive + '</span>' : '') +

@@ -1092,6 +1092,266 @@ describe('TaskQueueManager', () => {
             expect(task!.error).toBe('Task was force-failed (assumed stale)');
         });
     });
+
+    // ========================================================================
+    // Drain Mode
+    // ========================================================================
+
+    describe('drain mode', () => {
+        it('enterDrainMode sets draining state', () => {
+            manager.enterDrainMode();
+            expect(manager.isDraining()).toBe(true);
+        });
+
+        it('exitDrainMode clears draining state', () => {
+            manager.enterDrainMode();
+            expect(manager.isDraining()).toBe(true);
+
+            manager.exitDrainMode();
+            expect(manager.isDraining()).toBe(false);
+        });
+
+        it('enterDrainMode is idempotent (no double event)', () => {
+            const handler = vi.fn();
+            manager.on('drain-started', handler);
+
+            manager.enterDrainMode();
+            manager.enterDrainMode(); // second call should be no-op
+            expect(handler).toHaveBeenCalledTimes(1);
+        });
+
+        it('exitDrainMode is idempotent', () => {
+            const handler = vi.fn();
+            manager.on('drain-cancelled', handler);
+
+            manager.enterDrainMode();
+            manager.exitDrainMode();
+            manager.exitDrainMode(); // second call should be no-op
+            expect(handler).toHaveBeenCalledTimes(1);
+        });
+
+        it('enqueue rejects when draining', () => {
+            manager.enterDrainMode();
+
+            expect(() => {
+                manager.enqueue(createTestTask());
+            }).toThrow('Queue is draining — no new tasks accepted');
+        });
+
+        it('enqueue works again after exitDrainMode', () => {
+            manager.enterDrainMode();
+            manager.exitDrainMode();
+
+            const id = manager.enqueue(createTestTask());
+            expect(id).toBeTruthy();
+            expect(manager.size()).toBe(1);
+        });
+
+        it('getStats includes isDraining', () => {
+            expect(manager.getStats().isDraining).toBe(false);
+
+            manager.enterDrainMode();
+            expect(manager.getStats().isDraining).toBe(true);
+
+            manager.exitDrainMode();
+            expect(manager.getStats().isDraining).toBe(false);
+        });
+
+        it('emits drain-started change event', () => {
+            const handler = vi.fn();
+            manager.on('change', handler);
+
+            manager.enterDrainMode();
+
+            expect(handler).toHaveBeenCalledWith(
+                expect.objectContaining({ type: 'drain-started' })
+            );
+        });
+
+        it('emits drain-cancelled change event', () => {
+            manager.enterDrainMode();
+
+            const handler = vi.fn();
+            manager.on('change', handler);
+
+            manager.exitDrainMode();
+
+            expect(handler).toHaveBeenCalledWith(
+                expect.objectContaining({ type: 'drain-cancelled' })
+            );
+        });
+
+        it('reset clears draining state', () => {
+            manager.enterDrainMode();
+            manager.reset();
+            expect(manager.isDraining()).toBe(false);
+        });
+    });
+
+    describe('getTaskCounts', () => {
+        it('returns zero counts when empty', () => {
+            const counts = manager.getTaskCounts();
+            expect(counts).toEqual({ queued: 0, running: 0, total: 0 });
+        });
+
+        it('counts queued tasks', () => {
+            manager.enqueue(createTestTask());
+            manager.enqueue(createTestTask());
+
+            const counts = manager.getTaskCounts();
+            expect(counts).toEqual({ queued: 2, running: 0, total: 2 });
+        });
+
+        it('counts running tasks', () => {
+            const id = manager.enqueue(createTestTask());
+            manager.markStarted(id);
+
+            const counts = manager.getTaskCounts();
+            expect(counts).toEqual({ queued: 0, running: 1, total: 1 });
+        });
+
+        it('counts both queued and running', () => {
+            const id1 = manager.enqueue(createTestTask());
+            manager.enqueue(createTestTask());
+            manager.markStarted(id1);
+
+            const counts = manager.getTaskCounts();
+            expect(counts).toEqual({ queued: 1, running: 1, total: 2 });
+        });
+    });
+
+    describe('waitUntilIdle', () => {
+        it('resolves immediately when queue is empty', async () => {
+            await expect(manager.waitUntilIdle()).resolves.toBeUndefined();
+        });
+
+        it('waits for queued tasks to drain', async () => {
+            const id = manager.enqueue(createTestTask());
+            let resolved = false;
+
+            const promise = manager.waitUntilIdle().then(() => { resolved = true; });
+
+            expect(resolved).toBe(false);
+
+            // Mark started then completed
+            manager.markStarted(id);
+            expect(resolved).toBe(false);
+
+            manager.markCompleted(id, 'done');
+
+            await promise;
+            expect(resolved).toBe(true);
+        });
+
+        it('waits for running tasks to finish', async () => {
+            const id = manager.enqueue(createTestTask());
+            manager.markStarted(id);
+            let resolved = false;
+
+            const promise = manager.waitUntilIdle().then(() => { resolved = true; });
+
+            expect(resolved).toBe(false);
+
+            manager.markCompleted(id, 'done');
+
+            await promise;
+            expect(resolved).toBe(true);
+        });
+
+        it('resolves when task fails (failure counts as completion)', async () => {
+            const id = manager.enqueue(createTestTask());
+            manager.markStarted(id);
+            let resolved = false;
+
+            const promise = manager.waitUntilIdle().then(() => { resolved = true; });
+
+            manager.markFailed(id, 'error');
+
+            await promise;
+            expect(resolved).toBe(true);
+        });
+
+        it('resolves when running task is cancelled', async () => {
+            const id = manager.enqueue(createTestTask());
+            manager.markStarted(id);
+            let resolved = false;
+
+            const promise = manager.waitUntilIdle().then(() => { resolved = true; });
+
+            manager.cancelTask(id);
+
+            await promise;
+            expect(resolved).toBe(true);
+        });
+
+        it('resolves when forceFailRunning is called', async () => {
+            const id = manager.enqueue(createTestTask());
+            manager.markStarted(id);
+            let resolved = false;
+
+            const promise = manager.waitUntilIdle().then(() => { resolved = true; });
+
+            manager.forceFailRunning();
+
+            await promise;
+            expect(resolved).toBe(true);
+        });
+
+        it('resolves when forceFailTask is called', async () => {
+            const id = manager.enqueue(createTestTask());
+            manager.markStarted(id);
+            let resolved = false;
+
+            const promise = manager.waitUntilIdle().then(() => { resolved = true; });
+
+            manager.forceFailTask(id);
+
+            await promise;
+            expect(resolved).toBe(true);
+        });
+
+        it('resolves on reset', async () => {
+            const id = manager.enqueue(createTestTask());
+            manager.markStarted(id);
+
+            const promise = manager.waitUntilIdle();
+
+            manager.reset();
+
+            await expect(promise).resolves.toBeUndefined();
+        });
+
+        it('multiple waiters all resolve', async () => {
+            const id = manager.enqueue(createTestTask());
+            manager.markStarted(id);
+
+            const results: number[] = [];
+            const p1 = manager.waitUntilIdle().then(() => results.push(1));
+            const p2 = manager.waitUntilIdle().then(() => results.push(2));
+            const p3 = manager.waitUntilIdle().then(() => results.push(3));
+
+            manager.markCompleted(id, 'done');
+
+            await Promise.all([p1, p2, p3]);
+            expect(results).toHaveLength(3);
+        });
+
+        it('exitDrainMode clears idle resolvers without resolving', async () => {
+            const id = manager.enqueue(createTestTask());
+            manager.markStarted(id);
+            manager.enterDrainMode();
+            let resolved = false;
+
+            // This waiter should never resolve because exitDrainMode clears them
+            manager.waitUntilIdle().then(() => { resolved = true; });
+
+            manager.exitDrainMode();
+
+            // Give microtask queue a chance to settle
+            await new Promise(r => setTimeout(r, 50));
+            expect(resolved).toBe(false);
+        });
+    });
 });
 
 // ============================================================================
@@ -1112,7 +1372,6 @@ describe('generateTaskId', () => {
 
     it('matches <timestamp>-<random> pattern', () => {
         const id = generateTaskId();
-        // Format: <digits>-<alphanumeric>
         expect(id).toMatch(/^\d+-[a-z0-9]+$/);
     });
 
@@ -1127,7 +1386,6 @@ describe('generateTaskId', () => {
     it('produces IDs that form valid process IDs with queue_ prefix', () => {
         const id = generateTaskId();
         const processId = `queue_${id}`;
-        // Should match <type>_<timestamp>-<random> format
         expect(processId).toMatch(/^queue_\d+-[a-z0-9]+$/);
     });
 });

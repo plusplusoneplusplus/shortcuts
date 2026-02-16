@@ -96,6 +96,7 @@ export interface QueueSnapshot {
         cancelled: number;
         total: number;
         isPaused: boolean;
+        isDraining: boolean;
     };
 }
 
@@ -108,6 +109,10 @@ export type ServerMessage =
     | { type: 'process-removed'; processId: string }
     | { type: 'processes-cleared'; count: number }
     | { type: 'queue-updated'; queue: QueueSnapshot }
+    | { type: 'drain-start'; queued: number; running: number }
+    | { type: 'drain-progress'; queued: number; running: number }
+    | { type: 'drain-complete'; outcome: 'completed'; queued: number; running: number }
+    | { type: 'drain-timeout'; queued: number; running: number; timeoutMs?: number }
     | { type: 'tasks-changed'; workspaceId: string; timestamp: number }
     | { type: 'wiki-reload'; wikiId: string; components: string[] }
     | { type: 'wiki-rebuilding'; wikiId: string; components: string[] }

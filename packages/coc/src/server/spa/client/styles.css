@@ -748,6 +748,31 @@ body {
     font-weight: 600;
     text-transform: uppercase;
 }
+.queue-drain-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--status-running);
+    color: #fff;
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin: 0 0 8px 0;
+    animation: drain-pulse 2s ease-in-out infinite;
+}
+.queue-drain-icon {
+    font-size: 20px;
+}
+.queue-drain-text {
+    font-size: 12px;
+    line-height: 1.4;
+}
+.queue-drain-text strong {
+    font-size: 13px;
+}
+@keyframes drain-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
 .queue-header-right {
     display: flex;
     align-items: center;

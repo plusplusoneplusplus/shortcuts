@@ -24,6 +24,10 @@ export interface ServeCommandOptions {
     theme?: 'auto' | 'light' | 'dark';
     /** Disable colored output. */
     noColor?: boolean;
+    /** Timeout in seconds for graceful queue draining on shutdown (undefined = infinite). */
+    drainTimeout?: number;
+    /** Disable graceful queue draining on shutdown entirely. */
+    noDrain?: boolean;
 }
 
 /** Options for the wiki module within the execution server. */
@@ -56,6 +60,14 @@ export interface ExecutionServerOptions {
     projectDir?: string;
 }
 
+/** Options for graceful shutdown with queue draining. */
+export interface ServerCloseOptions {
+    /** Whether to drain the queue before shutting down (default: false). */
+    drain?: boolean;
+    /** Maximum time to wait for drain in ms. undefined = infinite. */
+    drainTimeoutMs?: number;
+}
+
 /** A running execution server instance. */
 export interface ExecutionServer {
     server: http.Server;
@@ -65,7 +77,7 @@ export interface ExecutionServer {
     host: string;
     url: string;
     /** Gracefully shut the server down. */
-    close: () => Promise<void>;
+    close: (options?: ServerCloseOptions) => Promise<{ drainOutcome?: 'completed' | 'timeout' }>;
 }
 
 /**

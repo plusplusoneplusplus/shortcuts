@@ -110,6 +110,77 @@ export class QueueExecutor extends EventEmitter {
     }
 
     // ========================================================================
+    // Graceful Drain
+    // ========================================================================
+
+    /**
+     * Drain all queued and running tasks, then dispose.
+     *
+     * 1. Enters drain mode on the queue manager (rejects new tasks).
+     * 2. Waits for all queued + running tasks to finish (or timeout).
+     * 3. Calls dispose().
+     *
+     * @param timeoutMs Optional maximum wait time in ms. undefined = wait forever.
+     * @returns Object with drain outcome: 'completed' | 'timeout'
+     */
+    async drainAndDispose(timeoutMs?: number): Promise<{ outcome: 'completed' | 'timeout' }> {
+        const counts = this.queueManager.getTaskCounts();
+        this.emit('drain-start', { queued: counts.queued, running: counts.running });
+
+        // Enter drain mode to stop accepting new tasks
+        this.queueManager.enterDrainMode();
+
+        // If already idle, finish immediately
+        if (counts.queued === 0 && counts.running === 0) {
+            this.emit('drain-complete', { outcome: 'completed', queued: 0, running: 0 });
+            this.dispose();
+            return { outcome: 'completed' };
+        }
+
+        // Set up progress polling
+        const pollInterval = setInterval(() => {
+            const current = this.queueManager.getTaskCounts();
+            this.emit('drain-progress', { queued: current.queued, running: current.running });
+        }, 1000);
+
+        try {
+            const idlePromise = this.queueManager.waitUntilIdle();
+
+            let outcome: 'completed' | 'timeout';
+
+            if (timeoutMs !== undefined && timeoutMs > 0) {
+                // Race between idle and timeout
+                const timeoutPromise = new Promise<'timeout'>((resolve) => {
+                    setTimeout(() => resolve('timeout'), timeoutMs);
+                });
+
+                const result = await Promise.race([
+                    idlePromise.then(() => 'completed' as const),
+                    timeoutPromise,
+                ]);
+                outcome = result;
+            } else {
+                // Wait forever
+                await idlePromise;
+                outcome = 'completed';
+            }
+
+            const finalCounts = this.queueManager.getTaskCounts();
+
+            if (outcome === 'timeout') {
+                this.emit('drain-timeout', { queued: finalCounts.queued, running: finalCounts.running, timeoutMs });
+            } else {
+                this.emit('drain-complete', { outcome: 'completed', queued: 0, running: 0 });
+            }
+
+            return { outcome };
+        } finally {
+            clearInterval(pollInterval);
+            this.dispose();
+        }
+    }
+
+    // ========================================================================
     // Configuration
     // ========================================================================
 

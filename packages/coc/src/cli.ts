@@ -137,6 +137,8 @@ export function createProgram(): Command {
         .option('-d, --data-dir <path>', 'Data directory for process storage')
         .option('--no-open', 'Don\'t auto-open browser')
         .option('--theme <theme>', 'UI theme: auto, light, dark')
+        .option('--drain-timeout <seconds>', 'Max wait for queue drain on shutdown (default: infinite)', (v: string) => parseInt(v, 10))
+        .option('--no-drain', 'Skip graceful queue draining on shutdown')
         .option('--no-color', 'Disable colored output')
         .action(async (opts: Record<string, unknown>) => {
             const config = resolveConfig();
@@ -150,6 +152,8 @@ export function createProgram(): Command {
                 open: opts.open as boolean | undefined,
                 theme: ((opts.theme as string | undefined) ?? config.serve?.theme) as ServeCommandOptions['theme'],
                 noColor: opts.color === false,
+                drainTimeout: opts.drainTimeout as number | undefined,
+                noDrain: opts.drain === false,
             });
             process.exit(exitCode);
         });

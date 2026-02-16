@@ -37,6 +37,10 @@ export async function executeServe(options: ServeCommandOptions): Promise<number
     const port = options.port ?? 4000;
     const host = options.host ?? 'localhost';
     const dataDir = resolveDataDir(options.dataDir ?? '~/.coc');
+    const drainEnabled = options.noDrain !== true;
+    const drainTimeoutMs = options.drainTimeout !== undefined && options.drainTimeout > 0
+        ? options.drainTimeout * 1000
+        : undefined; // undefined = infinite
 
     // Ensure data directory exists
     fs.mkdirSync(dataDir, { recursive: true });
@@ -70,17 +74,50 @@ export async function executeServe(options: ServeCommandOptions): Promise<number
             openBrowser(server.url);
         }
 
-        // Wait for SIGINT/SIGTERM
+        // Wait for SIGINT/SIGTERM with graceful drain support
         await new Promise<void>((resolve) => {
-            const shutdown = async () => {
+            let sigintCount = 0;
+            let isShuttingDown = false;
+
+            const shutdown = async (forceImmediate: boolean = false) => {
+                if (isShuttingDown && !forceImmediate) {
+                    return;
+                }
+                isShuttingDown = true;
                 process.stderr.write('\n');
-                printInfo('Shutting down server...');
-                await server.close();
-                printSuccess('Server stopped.');
+
+                if (drainEnabled && !forceImmediate) {
+                    const timeoutLabel = drainTimeoutMs
+                        ? ` (timeout: ${options.drainTimeout}s)`
+                        : ' (no timeout — Ctrl+C again to force)';
+                    printInfo(`Draining queue before shutdown...${timeoutLabel}`);
+
+                    const result = await server.close({ drain: true, drainTimeoutMs });
+                    if (result.drainOutcome === 'timeout') {
+                        printInfo('Drain timeout reached — shutting down with tasks still running.');
+                    } else {
+                        printSuccess('All tasks completed. Server stopped.');
+                    }
+                } else {
+                    printInfo('Shutting down server...');
+                    await server.close();
+                    printSuccess('Server stopped.');
+                }
                 resolve();
             };
-            process.on('SIGINT', () => void shutdown());
-            process.on('SIGTERM', () => void shutdown());
+
+            process.on('SIGINT', () => {
+                sigintCount++;
+                if (sigintCount >= 2) {
+                    // Force immediate shutdown on second Ctrl+C
+                    process.stderr.write('\n');
+                    printInfo('Force shutdown requested.');
+                    void shutdown(true);
+                } else {
+                    void shutdown(false);
+                }
+            });
+            process.on('SIGTERM', () => void shutdown(false));
         });
 
         return EXIT_CODES.SUCCESS;

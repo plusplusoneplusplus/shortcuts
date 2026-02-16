@@ -37,6 +37,10 @@ export class TaskQueueManager extends EventEmitter {
     private history: QueuedTask[] = [];
     /** Whether the queue is paused */
     private paused = false;
+    /** Whether the queue is in drain mode (no new tasks accepted) */
+    private draining = false;
+    /** Callbacks waiting for the queue to become idle */
+    private idleResolvers: Array<() => void> = [];
     /** Configuration options */
     private readonly options: Required<TaskQueueManagerOptions>;
 
@@ -57,6 +61,11 @@ export class TaskQueueManager extends EventEmitter {
     enqueue<TPayload extends TaskPayload = TaskPayload>(
         input: CreateTaskInput<TPayload>
     ): string {
+        // Reject new tasks when in drain mode
+        if (this.draining) {
+            throw new Error('Queue is draining — no new tasks accepted');
+        }
+
         // Check queue size limit
         if (this.options.maxQueueSize > 0 && this.queue.length >= this.options.maxQueueSize) {
             throw new Error(`Queue is full (max size: ${this.options.maxQueueSize})`);
@@ -173,6 +182,7 @@ export class TaskQueueManager extends EventEmitter {
             cancelled: this.history.filter(t => t.status === 'cancelled').length,
             total: this.queue.length + this.running.size + this.history.length,
             isPaused: this.paused,
+            isDraining: this.draining,
         };
     }
 
@@ -286,6 +296,7 @@ export class TaskQueueManager extends EventEmitter {
             this.addToHistory(running);
             this.emitChange('updated', running);
             this.emit('taskCancelled', running);
+            this.checkIdle();
             return true;
         }
 
@@ -337,6 +348,7 @@ export class TaskQueueManager extends EventEmitter {
 
         this.emitChange('updated', task);
         this.emit('taskCompleted', task, result);
+        this.checkIdle();
         return task;
     }
 
@@ -360,6 +372,7 @@ export class TaskQueueManager extends EventEmitter {
 
         this.emitChange('updated', task);
         this.emit('taskFailed', task, typeof error === 'string' ? new Error(error) : error);
+        this.checkIdle();
         return task;
     }
 
@@ -493,6 +506,68 @@ export class TaskQueueManager extends EventEmitter {
         return this.paused;
     }
 
+    // ========================================================================
+    // Drain Mode
+    // ========================================================================
+
+    /**
+     * Enter drain mode: stop accepting new tasks.
+     * Existing queued and running tasks continue to completion.
+     */
+    enterDrainMode(): void {
+        if (!this.draining) {
+            this.draining = true;
+            this.emitChange('drain-started');
+            this.emit('drain-started');
+            // Check if already idle
+            this.checkIdle();
+        }
+    }
+
+    /**
+     * Exit drain mode: re-enable normal task acceptance.
+     */
+    exitDrainMode(): void {
+        if (this.draining) {
+            this.draining = false;
+            // Clear any pending idle resolvers
+            this.idleResolvers = [];
+            this.emitChange('drain-cancelled');
+            this.emit('drain-cancelled');
+        }
+    }
+
+    /**
+     * Check if the queue is in drain mode.
+     */
+    isDraining(): boolean {
+        return this.draining;
+    }
+
+    /**
+     * Wait until the queue is idle (queued=0 and running=0).
+     * Resolves immediately if already idle.
+     */
+    waitUntilIdle(): Promise<void> {
+        if (this.queue.length === 0 && this.running.size === 0) {
+            return Promise.resolve();
+        }
+        return new Promise<void>((resolve) => {
+            this.idleResolvers.push(resolve);
+        });
+    }
+
+    /**
+     * Get counts of queued and running tasks.
+     */
+    getTaskCounts(): { queued: number; running: number; total: number } {
+        return {
+            queued: this.queue.length,
+            running: this.running.size,
+            total: this.queue.length + this.running.size,
+        };
+    }
+
     /**
      * Clear all queued tasks (does not affect running or history)
      */
@@ -556,6 +631,7 @@ export class TaskQueueManager extends EventEmitter {
             this.emit('taskFailed', task, new Error(error));
         }
 
+        this.checkIdle();
         return runningTasks.length;
     }
 
@@ -578,6 +654,7 @@ export class TaskQueueManager extends EventEmitter {
         this.addToHistory(task);
         this.emitChange('updated', task);
         this.emit('taskFailed', task, new Error(error));
+        this.checkIdle();
         return true;
     }
 
@@ -589,12 +666,32 @@ export class TaskQueueManager extends EventEmitter {
         this.running.clear();
         this.history = [];
         this.paused = false;
+        this.draining = false;
+        // Resolve any pending idle waiters since there's nothing left
+        const resolvers = this.idleResolvers;
+        this.idleResolvers = [];
+        for (const resolve of resolvers) {
+            resolve();
+        }
         this.emitChange('cleared');
     }
 
     // ========================================================================
     // Private Helpers
     // ========================================================================
+
+    /**
+     * Check if queue is idle and resolve pending waiters
+     */
+    private checkIdle(): void {
+        if (this.queue.length === 0 && this.running.size === 0 && this.idleResolvers.length > 0) {
+            const resolvers = this.idleResolvers;
+            this.idleResolvers = [];
+            for (const resolve of resolvers) {
+                resolve();
+            }
+        }
+    }
 
     /**
      * Insert a task into the queue maintaining priority order

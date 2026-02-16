@@ -79,22 +79,31 @@ export interface QueueState {
     stats: {
         queued: number; running: number; completed: number;
         failed: number; cancelled: number; total: number; isPaused: boolean;
+        isDraining: boolean;
     };
     showDialog: boolean;
     showHistory: boolean;
     isFollowUpStreaming: boolean;
     currentStreamingTurnIndex: number | null;
+    /** Server is shutting down — drain in progress */
+    draining: boolean;
+    /** Drain progress: remaining tasks */
+    drainQueued: number;
+    drainRunning: number;
 }
 
 export const queueState: QueueState = {
     queued: [],
     running: [],
     history: [],
-    stats: { queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0, total: 0, isPaused: false },
+    stats: { queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0, total: 0, isPaused: false, isDraining: false },
     showDialog: false,
     showHistory: false,
     isFollowUpStreaming: false,
     currentStreamingTurnIndex: null,
+    draining: false,
+    drainQueued: 0,
+    drainRunning: 0,
 };
 
 (window as any).appState = appState;

@@ -152,6 +152,20 @@ export function handleWsMessage(msg: any): void {
                 // Already rendered above
             });
         }
+    } else if (msg.type === 'drain-start') {
+        queueState.draining = true;
+        queueState.drainQueued = msg.queued || 0;
+        queueState.drainRunning = msg.running || 0;
+        renderQueuePanel();
+    } else if (msg.type === 'drain-progress') {
+        queueState.drainQueued = msg.queued || 0;
+        queueState.drainRunning = msg.running || 0;
+        renderQueuePanel();
+    } else if (msg.type === 'drain-complete' || msg.type === 'drain-timeout') {
+        queueState.draining = false;
+        queueState.drainQueued = 0;
+        queueState.drainRunning = 0;
+        renderQueuePanel();
     } else if (msg.type === 'workspace-registered' && msg.data) {
         const select = document.getElementById('workspace-select') as HTMLSelectElement | null;
         if (select) {

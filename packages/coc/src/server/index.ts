@@ -247,6 +247,20 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // Bridge review comment changes to WebSocket
     bridgeReviewToWebSocket(commentsManager, wsServer);
 
+    // Wire drain events from executor to WebSocket
+    queueExecutor.on('drain-start', (event: { queued: number; running: number }) => {
+        wsServer.broadcastProcessEvent({ type: 'drain-start', queued: event.queued, running: event.running });
+    });
+    queueExecutor.on('drain-progress', (event: { queued: number; running: number }) => {
+        wsServer.broadcastProcessEvent({ type: 'drain-progress', queued: event.queued, running: event.running });
+    });
+    queueExecutor.on('drain-complete', (event: { outcome: 'completed'; queued: number; running: number }) => {
+        wsServer.broadcastProcessEvent({ type: 'drain-complete', outcome: event.outcome, queued: event.queued, running: event.running });
+    });
+    queueExecutor.on('drain-timeout', (event: { queued: number; running: number; timeoutMs?: number }) => {
+        wsServer.broadcastProcessEvent({ type: 'drain-timeout', queued: event.queued, running: event.running, timeoutMs: event.timeoutMs });
+    });
+
     // Create file watcher for review editor — lazily watches .md files
     const reviewWatcher = new ReviewFileWatcher(projectDir, wsServer);
 
@@ -386,7 +400,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         port: actualPort,
         host,
         url,
-        close: async () => {
+        close: async (closeOptions?: import('./types').ServerCloseOptions) => {
             // Stop stale task detection
             staleDetector.dispose();
             // Stop output pruner cleanup
@@ -397,10 +411,24 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             taskWatcher.closeAll();
             // Dispose wiki manager (stop file watchers, destroy sessions)
             wikiManager?.disposeAll();
-            // Flush persisted queue state before stopping executor
-            queuePersistence.dispose();
-            // Stop the queue executor first
-            queueExecutor.dispose();
+
+            // Drain queue if requested
+            let drainOutcome: 'completed' | 'timeout' | undefined;
+            if (closeOptions?.drain) {
+                const result = await queueExecutor.drainAndDispose(closeOptions.drainTimeoutMs);
+                drainOutcome = result.outcome;
+            } else {
+                // Flush persisted queue state before stopping executor
+                queuePersistence.dispose();
+                // Stop the queue executor immediately
+                queueExecutor.dispose();
+            }
+
+            // If drain was used, still flush persistence
+            if (closeOptions?.drain) {
+                queuePersistence.dispose();
+            }
+
             wsServer.closeAll();
             // Destroy remaining keep-alive connections
             for (const socket of activeSockets) {
@@ -413,12 +441,14 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                     else { resolve(); }
                 });
             });
+
+            return { drainOutcome };
         },
     };
 }
 
 // Re-exports
-export type { ExecutionServerOptions, ExecutionServer, Route, WikiServerOptions } from './types';
+export type { ExecutionServerOptions, ExecutionServer, Route, WikiServerOptions, ServerCloseOptions } from './types';
 export type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
 export { sendJson, send404, send400, send500, readJsonBody, createRequestHandler } from './router';
 export { registerApiRoutes, sendJSON, sendError, parseBody, parseQueryParams } from './api-handler';

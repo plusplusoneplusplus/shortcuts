@@ -81,6 +81,10 @@ export {
     QueueChangeType,
     QueueChangeEvent,
     QueueEvents,
+    DrainEvent,
+    DrainCompleteEvent,
+    DrainTimeoutEvent,
+    QueueExecutorDrainEvents,
 
     // Executor types
     TaskExecutionResult,
