@@ -26,10 +26,15 @@ describe('client bundle — sidebar module', () => {
         expect(script).toContain('expandedGroups');
     });
 
-    it('handles clear completed button', () => {
+    it('handles clear completed & failed button', () => {
         expect(script).toContain('clear-completed');
-        expect(script).toContain('/processes/completed');
+        expect(script).toContain('/processes?status=completed,failed');
         expect(script).toContain('DELETE');
+    });
+
+    it('filters out both completed and failed from local state after clear', () => {
+        expect(script).toContain('completed');
+        expect(script).toContain('failed');
     });
 
     it('has mobile hamburger handler', () => {

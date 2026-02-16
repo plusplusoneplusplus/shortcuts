@@ -822,6 +822,83 @@ describe('Queue Handler', () => {
     // Multiple operations lifecycle
     // ========================================================================
 
+    // ========================================================================
+    // Force-fail running tasks
+    // ========================================================================
+
+    describe('POST /api/queue/force-fail-running — Force-fail all', () => {
+        it('should force-fail all running tasks', async () => {
+            const srv = await startServer();
+
+            // Pause queue to prevent auto-execution of tasks
+            await postJSON(`${srv.url}/api/queue/pause`, {});
+
+            // Enqueue tasks
+            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'Task A' }));
+            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'Task B' }));
+
+            // Get task IDs
+            let list = await request(`${srv.url}/api/queue`);
+            const queued = JSON.parse(list.body).queued;
+            expect(queued).toHaveLength(2);
+
+            // Force-fail with custom error message
+            const res = await postJSON(`${srv.url}/api/queue/force-fail-running`, {
+                error: 'Manually force-failed',
+            });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            // Tasks are queued, not running, so none should be force-failed
+            expect(body.forceFailed).toBe(0);
+        });
+
+        it('should return 0 when no running tasks', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(`${srv.url}/api/queue/force-fail-running`, {});
+            expect(res.status).toBe(200);
+            expect(JSON.parse(res.body).forceFailed).toBe(0);
+        });
+
+        it('should use default error message when not provided', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(`${srv.url}/api/queue/force-fail-running`, {});
+            expect(res.status).toBe(200);
+            expect(JSON.parse(res.body).stats).toBeDefined();
+        });
+    });
+
+    describe('POST /api/queue/:id/force-fail — Force-fail single', () => {
+        it('should return 404 for non-existent task', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(`${srv.url}/api/queue/nonexistent/force-fail`, {
+                error: 'test',
+            });
+            expect(res.status).toBe(404);
+        });
+
+        it('should return 404 for queued (non-running) task', async () => {
+            const srv = await startServer();
+
+            // Pause to prevent execution
+            await postJSON(`${srv.url}/api/queue/pause`, {});
+
+            const createRes = await postJSON(`${srv.url}/api/queue`, makeTask());
+            const taskId = JSON.parse(createRes.body).task.id;
+
+            const res = await postJSON(`${srv.url}/api/queue/${taskId}/force-fail`, {
+                error: 'test',
+            });
+            expect(res.status).toBe(404);
+        });
+    });
+
+    // ========================================================================
+    // Lifecycle
+    // ========================================================================
+
     describe('Lifecycle', () => {
         it('should handle enqueue, reorder, cancel, clear lifecycle', async () => {
             const srv = await startServer();

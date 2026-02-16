@@ -430,14 +430,14 @@ export function updateActiveItem(): void {
     });
 }
 
-// Clear completed button
+// Clear completed & failed button
 const clearBtn = document.getElementById('clear-completed');
 if (clearBtn) {
     clearBtn.addEventListener('click', function() {
-        fetch(getApiBase() + '/processes/completed', { method: 'DELETE' })
+        fetch(getApiBase() + '/processes?status=completed,failed', { method: 'DELETE' })
             .then(function() {
                 appState.processes = appState.processes.filter(function(p: any) {
-                    return p.status !== 'completed';
+                    return p.status !== 'completed' && p.status !== 'failed';
                 });
                 if (appState.selectedId) {
                     const sel = appState.processes.find(function(p: any) { return p.id === appState.selectedId; });

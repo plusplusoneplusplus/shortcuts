@@ -118,7 +118,7 @@ ${bundleCss}
                 </div>
             </nav>
             <div class="sidebar-footer">
-                <button id="clear-completed" class="sidebar-btn">Clear &#9989;</button>
+                <button id="clear-completed" class="sidebar-btn">Clear &#9989;&#10060;</button>
             </div>
         </aside>
 

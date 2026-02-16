@@ -535,6 +535,53 @@ export class TaskQueueManager extends EventEmitter {
     }
 
     /**
+     * Force-fail all running tasks (e.g., stale processes killed externally).
+     * Moves all running tasks to history with a failed status.
+     * @param error Error message to set on the failed tasks
+     * @returns The number of tasks force-failed
+     */
+    forceFailRunning(error: string = 'Task was force-failed (assumed stale)'): number {
+        const runningTasks = Array.from(this.running.values());
+        if (runningTasks.length === 0) {
+            return 0;
+        }
+
+        for (const task of runningTasks) {
+            task.status = 'failed';
+            task.completedAt = Date.now();
+            task.error = error;
+            this.running.delete(task.id);
+            this.addToHistory(task);
+            this.emitChange('updated', task);
+            this.emit('taskFailed', task, new Error(error));
+        }
+
+        return runningTasks.length;
+    }
+
+    /**
+     * Force-fail a single running task by ID.
+     * @param id Task ID
+     * @param error Error message
+     * @returns true if task was found and force-failed
+     */
+    forceFailTask(id: string, error: string = 'Task was force-failed (assumed stale)'): boolean {
+        const task = this.running.get(id);
+        if (!task) {
+            return false;
+        }
+
+        task.status = 'failed';
+        task.completedAt = Date.now();
+        task.error = error;
+        this.running.delete(id);
+        this.addToHistory(task);
+        this.emitChange('updated', task);
+        this.emit('taskFailed', task, new Error(error));
+        return true;
+    }
+
+    /**
      * Reset the queue manager (clears everything)
      */
     reset(): void {

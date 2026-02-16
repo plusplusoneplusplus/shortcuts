@@ -223,6 +223,21 @@ describe('client bundle — queue module', () => {
     it('uses confirm dialog for clear', () => {
         expect(script).toContain('confirm(');
     });
+
+    it('defines queueForceFailAll function', () => {
+        expect(script).toContain('queueForceFailAll');
+        expect(script).toContain('force-fail-running');
+    });
+
+    it('defines queueForceFailTask function', () => {
+        expect(script).toContain('queueForceFailTask');
+        expect(script).toContain('force-fail');
+    });
+
+    it('registers force-fail functions on window', () => {
+        expect(script).toContain('queueForceFailAll');
+        expect(script).toContain('queueForceFailTask');
+    });
 });
 
 // ============================================================================

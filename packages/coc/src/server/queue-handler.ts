@@ -9,7 +9,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { TaskQueueManager, QueuedTask, CreateTaskInput, TaskPriority, QueueStats } from '@plusplusoneplusplus/pipeline-core';
+import type { TaskQueueManager, QueuedTask, CreateTaskInput, TaskPriority, QueueStats, ProcessStore } from '@plusplusoneplusplus/pipeline-core';
 import { sendJSON, sendError, parseBody } from './api-handler';
 import type { Route } from './types';
 
@@ -97,8 +97,12 @@ function serializeTask(task: QueuedTask): Record<string, unknown> {
 /**
  * Register all queue API routes on the given route table.
  * Mutates the `routes` array in-place.
+ *
+ * @param routes - Route table to mutate
+ * @param queueManager - Task queue manager
+ * @param store - Optional process store (used by force-fail routes to update linked process status)
  */
-export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueManager): void {
+export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueManager, store?: ProcessStore): void {
 
     // ------------------------------------------------------------------
     // GET /api/queue — List all queued tasks
@@ -243,6 +247,94 @@ export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueMana
     });
 
     // ------------------------------------------------------------------
+    // POST /api/queue/force-fail-running — Force-fail all stale running tasks
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'POST',
+        pattern: '/api/queue/force-fail-running',
+        handler: async (req, res) => {
+            let body: any = {};
+            try {
+                body = await parseBody(req);
+            } catch {
+                // Use defaults
+            }
+            const error = (typeof body.error === 'string' && body.error.trim())
+                ? body.error.trim()
+                : 'Task was force-failed (assumed stale)';
+
+            // Collect running task process IDs before force-failing
+            const runningTasks = queueManager.getRunning();
+            const processIds = runningTasks
+                .map(t => t.processId)
+                .filter((pid): pid is string => !!pid);
+
+            const count = queueManager.forceFailRunning(error);
+
+            // Also update linked processes in the store
+            if (store && processIds.length > 0) {
+                for (const pid of processIds) {
+                    try {
+                        await store.updateProcess(pid, {
+                            status: 'failed',
+                            endTime: new Date(),
+                            error,
+                        });
+                    } catch {
+                        // Non-fatal: process may not exist in store
+                    }
+                }
+            }
+
+            sendJSON(res, 200, { forceFailed: count, stats: queueManager.getStats() });
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // POST /api/queue/:id/force-fail — Force-fail a single running task
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/queue\/([^/]+)\/force-fail$/,
+        handler: async (req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            let body: any = {};
+            try {
+                body = await parseBody(req);
+            } catch {
+                // Use defaults
+            }
+            const error = (typeof body.error === 'string' && body.error.trim())
+                ? body.error.trim()
+                : 'Task was force-failed (assumed stale)';
+
+            // Get the task's linked process ID before force-failing
+            const task = queueManager.getTask(id);
+            const processId = task?.processId;
+
+            const success = queueManager.forceFailTask(id, error);
+            if (!success) {
+                return sendError(res, 404, 'Task not found or not running');
+            }
+
+            // Also update the linked process in the store
+            if (store && processId) {
+                try {
+                    await store.updateProcess(processId, {
+                        status: 'failed',
+                        endTime: new Date(),
+                        error,
+                    });
+                } catch {
+                    // Non-fatal
+                }
+            }
+
+            sendJSON(res, 200, { forceFailed: true, stats: queueManager.getStats() });
+        },
+    });
+
+    // ------------------------------------------------------------------
     // GET /api/queue/:id — Get a single task by ID
     // ------------------------------------------------------------------
     routes.push({
@@ -252,7 +344,7 @@ export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueMana
             const id = decodeURIComponent(match![1]);
 
             // Skip known sub-routes
-            if (['stats', 'history', 'pause', 'resume'].includes(id)) {
+            if (['stats', 'history', 'pause', 'resume', 'force-fail-running'].includes(id)) {
                 return sendError(res, 404, 'Task not found');
             }
 

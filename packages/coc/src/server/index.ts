@@ -33,6 +33,7 @@ import { TaskQueueManager, FileProcessStore } from '@plusplusoneplusplus/pipelin
 import { createQueueExecutorBridge } from './queue-executor-bridge';
 import { QueuePersistence } from './queue-persistence';
 import { OutputPruner } from './output-pruner';
+import { StaleTaskDetector } from './stale-task-detector';
 import { TaskWatcher } from './task-watcher';
 import { ReviewFileWatcher } from './review-watcher';
 
@@ -161,6 +162,10 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         dataDir,
     });
 
+    // Start periodic stale task detection (checks every 60s, grace 5min after timeout)
+    const staleDetector = new StaleTaskDetector(queueManager, store);
+    staleDetector.start();
+
     // Start event-driven output cleanup and run initial orphan scan
     outputPruner.startListening();
     outputPruner.cleanupOrphans().catch(() => {});
@@ -172,7 +177,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // Build API routes
     const routes: Route[] = [];
     registerApiRoutes(routes, store, bridge);
-    registerQueueRoutes(routes, queueManager);
+    registerQueueRoutes(routes, queueManager, store);
     registerTaskRoutes(routes, store);
     registerTaskWriteRoutes(routes, store);
     registerTaskGenerationRoutes(routes, store);
@@ -382,6 +387,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         host,
         url,
         close: async () => {
+            // Stop stale task detection
+            staleDetector.dispose();
             // Stop output pruner cleanup
             outputPruner.stopListening();
             // Close review file watchers
@@ -428,6 +435,8 @@ export { CLITaskExecutor, createQueueExecutorBridge } from './queue-executor-bri
 export type { QueueExecutorBridgeOptions, QueueExecutorBridge } from './queue-executor-bridge';
 export { QueuePersistence } from './queue-persistence';
 export { OutputPruner } from './output-pruner';
+export { StaleTaskDetector } from './stale-task-detector';
+export type { StaleTaskDetectorOptions } from './stale-task-detector';
 export { TaskWatcher } from './task-watcher';
 export type { TasksChangedCallback } from './task-watcher';
 export { registerWikiRoutes } from './wiki';

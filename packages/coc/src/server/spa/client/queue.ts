@@ -70,7 +70,9 @@ export function renderQueuePanel(): void {
 
     // Running tasks
     if (queueState.running.length > 0) {
-        html += '<div class="queue-section-label">Running <span class="queue-section-count">' + queueState.running.length + '</span></div>';
+        html += '<div class="queue-section-label">Running <span class="queue-section-count">' + queueState.running.length + '</span>' +
+            '<button class="queue-action-btn queue-action-danger queue-history-clear" onclick="event.stopPropagation(); queueForceFailAll()" title="Force-fail all running (stale) tasks">&#9888;</button>' +
+        '</div>';
         queueState.running.forEach(function(task: any) {
             html += renderQueueTask(task, false);
         });
@@ -144,8 +146,9 @@ export function renderQueueTask(task: any, isQueued: boolean, index?: number): s
             '<button class="queue-action-btn queue-action-danger" onclick="event.stopPropagation(); queueCancelTask(\'' + escapeHtmlClient(task.id) + '\')" title="Cancel">&#10005;</button>' +
         '</div>';
     } else {
-        // Running task — show cancel only
+        // Running task — show force-fail and cancel
         html += '<div class="queue-task-actions">' +
+            '<button class="queue-action-btn queue-action-danger" onclick="event.stopPropagation(); queueForceFailTask(\'' + escapeHtmlClient(task.id) + '\')" title="Force-fail (mark as stale)">&#9888;</button>' +
             '<button class="queue-action-btn queue-action-danger" onclick="event.stopPropagation(); queueCancelTask(\'' + escapeHtmlClient(task.id) + '\')" title="Cancel">&#10005;</button>' +
         '</div>';
     }
@@ -234,6 +237,26 @@ export async function queueMoveUp(taskId: string): Promise<void> {
 
 export async function queueMoveDown(taskId: string): Promise<void> {
     await fetch(getApiBase() + '/queue/' + encodeURIComponent(taskId) + '/move-down', { method: 'POST' });
+    fetchQueue();
+}
+
+export async function queueForceFailAll(): Promise<void> {
+    if (!confirm('Force-fail all running tasks? Use this if tasks appear stuck/stale.')) return;
+    await fetch(getApiBase() + '/queue/force-fail-running', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ error: 'Manually force-failed by user (assumed stale)' }),
+    });
+    fetchQueue();
+}
+
+export async function queueForceFailTask(taskId: string): Promise<void> {
+    if (!confirm('Force-fail this running task? Use this if the task appears stuck.')) return;
+    await fetch(getApiBase() + '/queue/' + encodeURIComponent(taskId) + '/force-fail', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ error: 'Manually force-failed by user (assumed stale)' }),
+    });
     fetchQueue();
 }
 
@@ -379,3 +402,5 @@ if (enqueueOverlay) {
 (window as any).queueMoveToTop = queueMoveToTop;
 (window as any).toggleQueueHistory = toggleQueueHistory;
 (window as any).showQueueTaskDetail = showQueueTaskDetail;
+(window as any).queueForceFailAll = queueForceFailAll;
+(window as any).queueForceFailTask = queueForceFailTask;

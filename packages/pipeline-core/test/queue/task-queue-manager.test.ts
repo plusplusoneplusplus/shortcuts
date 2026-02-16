@@ -924,6 +924,174 @@ describe('TaskQueueManager', () => {
             expect(manager.getCancelled()).toHaveLength(1);
         });
     });
+
+    // ========================================================================
+    // Force-Fail Operations
+    // ========================================================================
+
+    describe('forceFailRunning', () => {
+        it('force-fails all running tasks', () => {
+            const id1 = manager.enqueue(createTestTask());
+            const id2 = manager.enqueue(createTestTask());
+            manager.markStarted(id1);
+            manager.markStarted(id2);
+
+            expect(manager.getRunning()).toHaveLength(2);
+
+            const count = manager.forceFailRunning('stale');
+            expect(count).toBe(2);
+            expect(manager.getRunning()).toHaveLength(0);
+            expect(manager.getFailed()).toHaveLength(2);
+        });
+
+        it('sets error message and completedAt on force-failed tasks', () => {
+            const id = manager.enqueue(createTestTask());
+            manager.markStarted(id);
+
+            manager.forceFailRunning('Custom stale message');
+
+            const task = manager.getTask(id);
+            expect(task!.status).toBe('failed');
+            expect(task!.error).toBe('Custom stale message');
+            expect(task!.completedAt).toBeGreaterThan(0);
+        });
+
+        it('returns 0 when no running tasks', () => {
+            manager.enqueue(createTestTask());
+            const count = manager.forceFailRunning();
+            expect(count).toBe(0);
+        });
+
+        it('does not affect queued tasks', () => {
+            const id1 = manager.enqueue(createTestTask());
+            const id2 = manager.enqueue(createTestTask());
+            manager.markStarted(id1);
+
+            manager.forceFailRunning();
+
+            expect(manager.size()).toBe(1); // id2 still queued
+            expect(manager.getTask(id2)!.status).toBe('queued');
+        });
+
+        it('emits taskFailed events for each force-failed task', () => {
+            const listener = vi.fn();
+            manager.on('taskFailed', listener);
+
+            const id1 = manager.enqueue(createTestTask());
+            const id2 = manager.enqueue(createTestTask());
+            manager.markStarted(id1);
+            manager.markStarted(id2);
+
+            manager.forceFailRunning('error');
+
+            expect(listener).toHaveBeenCalledTimes(2);
+        });
+
+        it('emits change events for each force-failed task', () => {
+            const listener = vi.fn();
+            manager.on('change', listener);
+
+            const id = manager.enqueue(createTestTask());
+            manager.markStarted(id);
+            listener.mockClear();
+
+            manager.forceFailRunning();
+
+            expect(listener).toHaveBeenCalledTimes(1);
+            expect(listener.mock.calls[0][0].type).toBe('updated');
+        });
+
+        it('uses default error message when not provided', () => {
+            const id = manager.enqueue(createTestTask());
+            manager.markStarted(id);
+
+            manager.forceFailRunning();
+
+            const task = manager.getTask(id);
+            expect(task!.error).toBe('Task was force-failed (assumed stale)');
+        });
+
+        it('moves tasks to history', () => {
+            const id1 = manager.enqueue(createTestTask());
+            const id2 = manager.enqueue(createTestTask());
+            manager.markStarted(id1);
+            manager.markStarted(id2);
+
+            manager.forceFailRunning();
+
+            expect(manager.getHistory()).toHaveLength(2);
+            expect(manager.getHistory().every(t => t.status === 'failed')).toBe(true);
+        });
+    });
+
+    describe('forceFailTask', () => {
+        it('force-fails a single running task', () => {
+            const id = manager.enqueue(createTestTask());
+            manager.markStarted(id);
+
+            const success = manager.forceFailTask(id, 'stale');
+            expect(success).toBe(true);
+            expect(manager.getRunning()).toHaveLength(0);
+            expect(manager.getFailed()).toHaveLength(1);
+        });
+
+        it('returns false for non-existent task', () => {
+            const success = manager.forceFailTask('nonexistent');
+            expect(success).toBe(false);
+        });
+
+        it('returns false for queued (non-running) task', () => {
+            const id = manager.enqueue(createTestTask());
+            const success = manager.forceFailTask(id);
+            expect(success).toBe(false);
+        });
+
+        it('sets error and completedAt', () => {
+            const id = manager.enqueue(createTestTask());
+            manager.markStarted(id);
+
+            manager.forceFailTask(id, 'Custom error');
+
+            const task = manager.getTask(id);
+            expect(task!.status).toBe('failed');
+            expect(task!.error).toBe('Custom error');
+            expect(task!.completedAt).toBeGreaterThan(0);
+        });
+
+        it('does not affect other running tasks', () => {
+            const id1 = manager.enqueue(createTestTask());
+            const id2 = manager.enqueue(createTestTask());
+            manager.markStarted(id1);
+            manager.markStarted(id2);
+
+            manager.forceFailTask(id1, 'fail one');
+
+            expect(manager.getRunning()).toHaveLength(1);
+            expect(manager.getTask(id2)!.status).toBe('running');
+        });
+
+        it('emits taskFailed event', () => {
+            const listener = vi.fn();
+            manager.on('taskFailed', listener);
+
+            const id = manager.enqueue(createTestTask());
+            manager.markStarted(id);
+
+            manager.forceFailTask(id, 'error');
+
+            expect(listener).toHaveBeenCalledTimes(1);
+        });
+
+        it('uses default error message when not provided', () => {
+            const id = manager.enqueue(createTestTask());
+            manager.markStarted(id);
+
+            manager.forceFailTask(id);
+
+            const task = manager.getTask(id);
+            expect(task!.error).toBe('Task was force-failed (assumed stale)');
+        });
+    });
 });
 
 // ============================================================================
