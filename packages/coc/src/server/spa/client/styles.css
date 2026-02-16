@@ -482,41 +482,6 @@ body {
     margin: 16px 0;
 }
 
-/* ---- Collapsible Prompt ---- */
-.prompt-section { margin-bottom: 20px; }
-.prompt-section summary {
-    cursor: pointer;
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
-    padding: 8px 0;
-    user-select: none;
-    list-style: none;
-}
-.prompt-section summary::before {
-    content: '\25B6';
-    display: inline-block;
-    margin-right: 6px;
-    font-size: 10px;
-    transition: transform 0.15s;
-}
-.prompt-section[open] summary::before {
-    transform: rotate(90deg);
-}
-.prompt-body {
-    padding: 12px 16px;
-    background: var(--bg-secondary);
-    border-radius: 8px;
-    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
-    font-size: 12px;
-    white-space: pre-wrap;
-    word-break: break-word;
-    max-height: 400px;
-    overflow-y: auto;
-}
-
 /* ---- Error Alert ---- */
 .error-alert {
     padding: 12px 16px;

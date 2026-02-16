@@ -380,9 +380,8 @@ describe('Queue task conversation view', () => {
             expect(script).toContain('copyQueueTaskResult');
         });
 
-        it('renders prompt section when available', () => {
-            expect(script).toContain('prompt-section');
-            expect(script).toContain('Prompt');
+        it('does not render a separate prompt section (prompt shown in conversation bubbles)', () => {
+            expect(script).not.toContain('prompt-section');
         });
 
         it('renders error alert when process has error', () => {

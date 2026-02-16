@@ -103,12 +103,6 @@ export function renderDetail(id: string): void {
             '</code></pre></div></div>';
     }
 
-    // Prompt section (collapsible)
-    if (process.fullPrompt) {
-        html += '<details class="prompt-section"><summary>Prompt</summary>' +
-            '<div class="prompt-body">' + escapeHtmlClient(process.fullPrompt) + '</div></details>';
-    }
-
     // Conversation section for terminal processes — use chat bubbles
     const isTerminal = process.status === 'completed' || process.status === 'failed';
     if (isTerminal) {
@@ -332,7 +326,6 @@ function renderQueueTaskConversation(processId: string, taskId: string, proc: an
 
     let name = '';
     let status = '';
-    let prompt = '';
     let error = '';
     let startTime = '';
     let endTime = '';
@@ -340,7 +333,6 @@ function renderQueueTaskConversation(processId: string, taskId: string, proc: an
     if (proc) {
         name = proc.fullPrompt || proc.promptPreview || proc.id || 'Queue Task';
         status = proc.status || 'running';
-        prompt = proc.fullPrompt || '';
         error = proc.error || '';
         startTime = proc.startTime ? new Date(proc.startTime).toLocaleString() : '';
         endTime = proc.endTime ? new Date(proc.endTime).toLocaleString() : '';
@@ -428,12 +420,6 @@ function renderQueueTaskConversation(processId: string, taskId: string, proc: an
     // Error
     if (error) {
         html += '<div class="error-alert">' + escapeHtmlClient(error) + '</div>';
-    }
-
-    // Prompt (collapsible)
-    if (prompt) {
-        html += '<details class="prompt-section"><summary>Prompt</summary>' +
-            '<div class="prompt-body">' + escapeHtmlClient(prompt) + '</div></details>';
     }
 
     // Conversation area — chat bubbles

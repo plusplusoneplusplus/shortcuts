@@ -57,8 +57,8 @@ describe('Bundled CSS — via generateDashboardHtml', () => {
         expect(html).toContain('.result-body');
     });
 
-    it('defines collapsible prompt section', () => {
-        expect(html).toContain('.prompt-section');
+    it('does not define prompt-section styles (prompt shown in conversation bubbles)', () => {
+        expect(html).not.toContain('.prompt-section');
     });
 
     it('detail-content uses full width without max-width constraint', () => {

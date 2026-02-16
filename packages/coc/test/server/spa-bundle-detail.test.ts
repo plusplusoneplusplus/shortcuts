@@ -21,9 +21,8 @@ describe('client bundle — detail module', () => {
         expect(script).toContain('pipeline-execution');
     });
 
-    it('renders collapsible prompt section', () => {
-        expect(script).toContain('prompt-section');
-        expect(script).toContain('fullPrompt');
+    it('does not render a separate prompt section (prompt shown in conversation bubbles)', () => {
+        expect(script).not.toContain('prompt-section');
     });
 
     it('renders model in metadata grid when available', () => {
