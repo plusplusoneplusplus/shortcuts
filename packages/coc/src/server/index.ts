@@ -19,6 +19,7 @@ import { registerQueueRoutes } from './queue-handler';
 import { registerTaskRoutes, registerTaskWriteRoutes } from './tasks-handler';
 import { registerTaskGenerationRoutes } from './task-generation-handler';
 import { registerPromptRoutes } from './prompt-handler';
+import { registerPreferencesRoutes } from './preferences-handler';
 import { registerWikiRoutes } from './wiki';
 import { registerReviewRoutes } from './review-handler';
 import { registerReviewAIRoutes } from './review-ai-handler';
@@ -176,6 +177,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     registerTaskWriteRoutes(routes, store);
     registerTaskGenerationRoutes(routes, store);
     registerPromptRoutes(routes, store);
+    registerPreferencesRoutes(routes, dataDir);
 
     // Register review editor routes
     const projectDir = options.projectDir ?? process.cwd();
@@ -439,6 +441,8 @@ export { executeAIClarification, buildClarificationPrompt, createReviewTaskExecu
 export type { ReviewAIClarificationRequest, ReviewAIClarificationResult } from './review-ai-executor';
 export { discoverPromptFiles, readPromptFileContent } from './prompt-utils';
 export type { PromptFileInfo } from './prompt-utils';
+export { registerPreferencesRoutes, readPreferences, writePreferences, validatePreferences } from './preferences-handler';
+export type { UserPreferences } from './preferences-handler';
 export { bridgeReviewToWebSocket } from './review-websocket-bridge';
 export { ReviewFileWatcher } from './review-watcher';
 export { generateReviewEditorHtml, createImageRoute } from './review-editor';

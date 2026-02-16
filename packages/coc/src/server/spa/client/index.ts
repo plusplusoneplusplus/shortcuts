@@ -46,15 +46,20 @@ import './wiki-ask';
 import './wiki-graph';
 import './wiki-admin';
 
-// 11. AI Actions (dropdown for task AI operations)
+// 11. Preferences (loads saved model, attaches persistence listeners)
+import { loadPreferences, initModelPersistence } from './preferences';
+loadPreferences();
+initModelPersistence();
+
+// 12. AI Actions (dropdown for task AI operations)
 import './ai-actions';
 
-// 12. Review modules (no side effects — activated by route detection in core.ts)
+// 13. Review modules (no side effects — activated by route detection in core.ts)
 import './review-config';
 import './review-browser';
 import './review-editor';
 
-// 13. WebSocket (calls connectWebSocket())
+// 14. WebSocket (calls connectWebSocket())
 import './websocket';
 
 // Bootstrap the app

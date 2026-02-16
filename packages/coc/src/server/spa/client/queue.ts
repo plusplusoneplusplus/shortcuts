@@ -7,6 +7,7 @@ import { queueState } from './state';
 import { fetchApi } from './core';
 import { formatDuration, formatRelativeTime, escapeHtmlClient } from './utils';
 import { showQueueTaskDetail } from './detail';
+import { saveModelPreference } from './preferences';
 
 export async function fetchQueue(): Promise<void> {
     try {
@@ -289,6 +290,9 @@ export async function submitEnqueueForm(e: Event): Promise<void> {
     if (model) {
         config.model = model;
     }
+
+    // Persist model selection for next use
+    saveModelPreference(model);
 
     const body: any = {
         type: type,

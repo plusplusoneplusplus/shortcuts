@@ -8,6 +8,7 @@ import { getApiBase } from './config';
 import { fetchApi } from './core';
 import { fetchQueue, startQueuePolling } from './queue';
 import { appState, taskPanelState } from './state';
+import { applyModelToSelect, watchModelSelect, saveModelPreference } from './preferences';
 
 let activeDropdown: HTMLElement | null = null;
 let outsideClickHandler: ((e: MouseEvent) => void) | null = null;
@@ -192,6 +193,10 @@ export function showFollowPromptSubmenu(wsId: string, taskPath: string, taskName
             }
         }
     }
+
+    // Apply persisted model preference and watch for changes
+    applyModelToSelect('fp-model');
+    watchModelSelect('fp-model');
 
     // Close handlers
     const closeBtn = document.getElementById('fp-close');
@@ -395,6 +400,10 @@ export function showUpdateDocumentModal(wsId: string, taskPath: string, taskName
             }
         }
     }
+
+    // Apply persisted model preference and watch for changes
+    applyModelToSelect('update-doc-model');
+    watchModelSelect('update-doc-model');
 
     // Focus the instruction textarea
     const instructionEl = document.getElementById('update-doc-instruction') as HTMLTextAreaElement;
