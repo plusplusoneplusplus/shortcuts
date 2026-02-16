@@ -213,8 +213,9 @@ describe('client/ai-actions.ts — Follow Prompt flow', () => {
         expect(content).toContain("workingDirectory + '/' + taskPath");
     });
 
-    it('enqueueFollowPrompt builds promptFilePath for prompt items', () => {
-        expect(content).toContain('/.vscode/pipelines/');
+    it('enqueueFollowPrompt builds promptFilePath for prompt items using workspace root + relativePath', () => {
+        // promptFilePath is constructed from workingDirectory + '/' + itemPath (relativePath from findPromptFiles)
+        expect(content).toContain("workingDirectory + '/' + (itemPath || '')");
         expect(content).toContain('promptFilePath');
     });
 
@@ -446,8 +447,18 @@ describe('Follow Prompt payload construction', () => {
         expect(content).toContain('promptFilePath');
     });
 
-    it('prompt payload constructs absolute path from rootPath + pipelines path', () => {
-        expect(content).toContain("workingDirectory + '/.vscode/pipelines/' + (itemPath || '')");
+    it('prompt payload constructs absolute path from rootPath + relativePath', () => {
+        // itemPath is relativePath from findPromptFiles(), already relative to workspace root
+        expect(content).toContain("workingDirectory + '/' + (itemPath || '')");
+    });
+
+    it('prompt payload does NOT hardcode .vscode/pipelines/ in path construction', () => {
+        // Regression test: relativePath from findPromptFiles() is already relative to rootDir
+        // so we must NOT prepend .vscode/pipelines/ (which would create a wrong path like
+        // /workspace/.vscode/pipelines/.github/prompts/impl.prompt.md)
+        const fnStart = content.indexOf('async function enqueueFollowPrompt');
+        const fnBody = content.slice(fnStart, content.indexOf('\n// ==', fnStart));
+        expect(fnBody).not.toContain("'/.vscode/pipelines/'");
     });
 
     it('skill payload includes skillName field', () => {

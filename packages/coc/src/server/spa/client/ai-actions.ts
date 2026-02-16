@@ -279,8 +279,9 @@ async function enqueueFollowPrompt(
     // Build payload based on item type
     let payload: Record<string, string>;
     if (itemType === 'prompt') {
+        // itemPath is relativePath from findPromptFiles(), already relative to workspace root
         const promptFilePath = workingDirectory
-            ? workingDirectory + '/.vscode/pipelines/' + (itemPath || '')
+            ? workingDirectory + '/' + (itemPath || '')
             : itemPath || '';
         payload = { promptFilePath, planFilePath, workingDirectory };
     } else {

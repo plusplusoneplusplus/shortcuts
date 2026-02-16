@@ -611,6 +611,86 @@ describe('CLITaskExecutor', () => {
                 }));
             });
 
+            it('should include planFilePath in prompt when promptFilePath exists and no additionalContext (SPA flow)', async () => {
+                // This test verifies the end-to-end flow when the SPA correctly constructs
+                // promptFilePath as rootPath + relativePath (e.g., /workspace/.github/prompts/impl.prompt.md)
+                const existsSyncMock = vi.mocked(fs.existsSync);
+
+                existsSyncMock.mockImplementation((p: fs.PathLike) => {
+                    if (String(p) === '/workspace/.github/prompts/impl.prompt.md') return true;
+                    return false;
+                });
+
+                const executor = new CLITaskExecutor(store);
+
+                const task: QueuedTask = {
+                    id: 'task-spa-prompt',
+                    type: 'follow-prompt',
+                    priority: 'normal',
+                    status: 'running',
+                    createdAt: Date.now(),
+                    payload: {
+                        promptFilePath: '/workspace/.github/prompts/impl.prompt.md',
+                        planFilePath: '/workspace/.vscode/tasks/coc/e2e-repo-tests/013-document-groups.md',
+                        workingDirectory: '/workspace',
+                    },
+                    config: {},
+                };
+
+                const result = await executor.execute(task);
+
+                expect(result.success).toBe(true);
+                // Should use the new-style format: "Follow the instruction {promptFilePath}. {planFilePath}"
+                expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+                    prompt: 'Follow the instruction /workspace/.github/prompts/impl.prompt.md. /workspace/.vscode/tasks/coc/e2e-repo-tests/013-document-groups.md',
+                    workingDirectory: '/workspace',
+                }));
+
+                existsSyncMock.mockReset();
+            });
+
+            it('should NOT include planFilePath when promptFilePath has wrong path (regression)', async () => {
+                // This test documents the old bug: when promptFilePath was wrongly constructed
+                // as /workspace/.vscode/pipelines/.github/prompts/impl.prompt.md, fs.existsSync
+                // would return false, causing the prompt to fall through to legacy path without planFilePath
+                const existsSyncMock = vi.mocked(fs.existsSync);
+
+                existsSyncMock.mockImplementation((_p: fs.PathLike) => {
+                    // The wrong path doesn't exist
+                    return false;
+                });
+
+                const executor = new CLITaskExecutor(store);
+
+                const task: QueuedTask = {
+                    id: 'task-wrong-path',
+                    type: 'follow-prompt',
+                    priority: 'normal',
+                    status: 'running',
+                    createdAt: Date.now(),
+                    payload: {
+                        promptFilePath: '/workspace/.vscode/pipelines/.github/prompts/impl.prompt.md',
+                        planFilePath: '/workspace/.vscode/tasks/my-task.md',
+                        workingDirectory: '/workspace',
+                    },
+                    config: {},
+                };
+
+                const result = await executor.execute(task);
+
+                expect(result.success).toBe(true);
+                // With wrong path, falls through to legacy: "Follow prompt: {path}" without planFilePath
+                expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+                    prompt: expect.stringContaining('Follow prompt:'),
+                }));
+                // The planFilePath is NOT included because the prompt file doesn't exist
+                expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+                    prompt: expect.not.stringContaining('my-task.md'),
+                }));
+
+                existsSyncMock.mockReset();
+            });
+
             it('should fall back to legacy context block when additionalContext is present with planFilePath', async () => {
                 const existsSyncMock = vi.mocked(fs.existsSync);
                 const readFileSyncMock = vi.mocked(fs.readFileSync);
