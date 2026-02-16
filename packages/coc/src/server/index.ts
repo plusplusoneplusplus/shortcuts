@@ -417,7 +417,7 @@ export { registerQueueRoutes } from './queue-handler';
 export { registerTaskRoutes, registerTaskWriteRoutes } from './tasks-handler';
 export { registerTaskGenerationRoutes } from './task-generation-handler';
 export { handleProcessStream } from './sse-handler';
-export { ProcessWebSocketServer, toProcessSummary, toCommentSummary, sendFrame, decodeFrame } from './websocket';
+export { ProcessWebSocketServer, toProcessSummary, toCommentSummary } from './websocket';
 export type { WSClient, ProcessSummary, MarkdownCommentSummary, QueueTaskSummary, QueueHistoryTaskSummary, QueueSnapshot, ServerMessage, ClientMessage } from './websocket';
 export type { RouterOptions } from './router';
 export { generateDashboardHtml } from './spa';

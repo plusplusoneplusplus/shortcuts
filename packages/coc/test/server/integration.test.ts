@@ -9,15 +9,13 @@
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import * as http from 'http';
-import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { WebSocket } from 'ws';
 import { createExecutionServer } from '../../src/server/index';
-import { sendFrame, decodeFrame } from '../../src/server/websocket';
 import { FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
 import type { ExecutionServer } from '../../src/server/types';
-import type { Socket } from 'net';
 
 // ============================================================================
 // Helpers
@@ -197,58 +195,29 @@ describe('Server Integration', () => {
 
             const messages = await new Promise<any[]>((resolve, reject) => {
                 const collected: any[] = [];
-                const socket = new (require('net').Socket)();
-                const key = crypto.randomBytes(16).toString('base64');
+                const ws = new WebSocket(`ws://127.0.0.1:${wsPort}/ws`);
 
-                socket.connect(Number(wsPort), '127.0.0.1', () => {
-                    socket.write(
-                        'GET /ws HTTP/1.1\r\n' +
-                        `Host: 127.0.0.1:${wsPort}\r\n` +
-                        'Upgrade: websocket\r\n' +
-                        'Connection: Upgrade\r\n' +
-                        `Sec-WebSocket-Key: ${key}\r\n` +
-                        'Sec-WebSocket-Version: 13\r\n' +
-                        '\r\n'
-                    );
+                ws.on('open', () => {
+                    // Now create a process via REST to trigger broadcast
+                    request(`${baseUrl}/api/processes`, {
+                        method: 'POST',
+                        body: makeProcessBody('ws-proc-1'),
+                    }).catch(reject);
                 });
 
-                let handshakeDone = false;
-                socket.on('data', (buf: Buffer) => {
-                    if (!handshakeDone) {
-                        const text = buf.toString();
-                        if (text.includes('101')) {
-                            handshakeDone = true;
-                            // Now create a process via REST to trigger broadcast
-                            request(`${baseUrl}/api/processes`, {
-                                method: 'POST',
-                                body: makeProcessBody('ws-proc-1'),
-                            }).catch(reject);
-                        }
-                        // Handle case where handshake + first frame arrive together
-                        const headerEnd = buf.indexOf(Buffer.from('\r\n\r\n'));
-                        if (headerEnd >= 0 && headerEnd + 4 < buf.length) {
-                            const wsFrame = buf.slice(headerEnd + 4);
-                            const decoded = decodeFrame(wsFrame);
-                            if (decoded) {
-                                collected.push(JSON.parse(decoded));
-                            }
-                        }
-                        return;
-                    }
-                    const decoded = decodeFrame(buf);
-                    if (decoded) {
-                        collected.push(JSON.parse(decoded));
-                        // Wait for process-added event (second message after welcome)
-                        if (collected.some(m => m.type === 'process-added')) {
-                            socket.end();
-                        }
+                ws.on('message', (data: Buffer | string) => {
+                    const text = typeof data === 'string' ? data : data.toString('utf-8');
+                    collected.push(JSON.parse(text));
+                    // Wait for process-added event (second message after welcome)
+                    if (collected.some(m => m.type === 'process-added')) {
+                        ws.close();
                     }
                 });
 
-                socket.on('close', () => resolve(collected));
-                socket.on('error', reject);
+                ws.on('close', () => resolve(collected));
+                ws.on('error', reject);
                 setTimeout(() => {
-                    socket.end();
+                    ws.close();
                     resolve(collected);
                 }, 3000);
             });

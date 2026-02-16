@@ -4,7 +4,7 @@
  * Comprehensive tests for the ProcessWebSocketServer:
  * handshake, welcome message, process event broadcasting,
  * workspace subscription filtering, heartbeat, shutdown,
- * and frame codec unit tests.
+ * and helper function unit tests.
  *
  * Uses port 0 (OS-assigned) for test isolation.
  */
@@ -16,8 +16,9 @@ import * as net from 'net';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { WebSocket } from 'ws';
 import { createExecutionServer } from '../../src/server/index';
-import { ProcessWebSocketServer, sendFrame, decodeFrame, toProcessSummary } from '../../src/server/websocket';
+import { ProcessWebSocketServer, toProcessSummary } from '../../src/server/websocket';
 import { FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
 import type { ExecutionServer } from '../../src/server/types';
 import type { ProcessSummary, ServerMessage } from '../../src/server/websocket';
@@ -27,93 +28,23 @@ import type { AIProcess } from '@plusplusoneplusplus/pipeline-core';
 // Helpers
 // ============================================================================
 
-const WS_MAGIC = '258EAFA5-E914-47DA-95CA-5AB5DC11E65B';
-
-/** Create a raw TCP connection and perform WebSocket handshake. */
-function connectWebSocket(port: number, wsPath = '/ws'): Promise<{ socket: net.Socket; messages: string[] }> {
+/** Create a WebSocket connection using the ws library client. */
+function connectWebSocket(port: number, wsPath = '/ws'): Promise<{ ws: WebSocket; messages: string[] }> {
     return new Promise((resolve, reject) => {
-        const socket = net.createConnection({ host: 'localhost', port }, () => {
-            const key = crypto.randomBytes(16).toString('base64');
-            socket.write(
-                `GET ${wsPath} HTTP/1.1\r\n` +
-                `Host: localhost:${port}\r\n` +
-                `Upgrade: websocket\r\n` +
-                `Connection: Upgrade\r\n` +
-                `Sec-WebSocket-Key: ${key}\r\n` +
-                `Sec-WebSocket-Version: 13\r\n` +
-                `\r\n`
-            );
-
-            const messages: string[] = [];
-            let handshakeDone = false;
-            let pendingData = Buffer.alloc(0);
-
-            socket.on('data', (data: Buffer) => {
-                if (!handshakeDone) {
-                    const str = data.toString();
-                    if (str.includes('101 Switching Protocols')) {
-                        handshakeDone = true;
-                        // Check for any WebSocket data after the handshake headers
-                        const headerEnd = data.indexOf('\r\n\r\n');
-                        if (headerEnd !== -1) {
-                            const remaining = data.slice(headerEnd + 4);
-                            if (remaining.length > 0) {
-                                const msg = decodeFrame(remaining);
-                                if (msg) messages.push(msg);
-                            }
-                        }
-                        resolve({ socket, messages });
-                    } else {
-                        reject(new Error(`Handshake failed: ${str}`));
-                    }
-                } else {
-                    // Accumulate data
-                    pendingData = Buffer.concat([pendingData, data]);
-                    // Try to decode frames from accumulated data
-                    const msg = decodeFrame(pendingData);
-                    if (msg !== null) {
-                        messages.push(msg);
-                        pendingData = Buffer.alloc(0);
-                    }
-                }
-            });
-
-            socket.on('error', reject);
+        const messages: string[] = [];
+        const ws = new WebSocket(`ws://localhost:${port}${wsPath}`);
+        ws.on('open', () => resolve({ ws, messages }));
+        ws.on('message', (data: Buffer | string) => {
+            const text = typeof data === 'string' ? data : data.toString('utf-8');
+            messages.push(text);
         });
-        socket.on('error', reject);
+        ws.on('error', reject);
     });
 }
 
-/** Send a masked text frame (as browsers do). */
-function sendMaskedFrame(socket: net.Socket, data: string): void {
-    const payload = Buffer.from(data, 'utf-8');
-    const length = payload.length;
-    const maskKey = crypto.randomBytes(4);
-
-    let header: Buffer;
-    if (length < 126) {
-        header = Buffer.alloc(2);
-        header[0] = 0x81;
-        header[1] = 0x80 | length; // Mask bit set
-    } else if (length < 65536) {
-        header = Buffer.alloc(4);
-        header[0] = 0x81;
-        header[1] = 0x80 | 126;
-        header.writeUInt16BE(length, 2);
-    } else {
-        header = Buffer.alloc(10);
-        header[0] = 0x81;
-        header[1] = 0x80 | 127;
-        header.writeUInt32BE(0, 2);
-        header.writeUInt32BE(length, 6);
-    }
-
-    const masked = Buffer.alloc(payload.length);
-    for (let i = 0; i < payload.length; i++) {
-        masked[i] = payload[i] ^ maskKey[i % 4];
-    }
-
-    socket.write(Buffer.concat([header, maskKey, masked]));
+/** Send a JSON message via ws client. */
+function sendMessage(ws: WebSocket, data: string): void {
+    ws.send(data);
 }
 
 /** Wait for a specific number of messages or timeout. */
@@ -184,9 +115,9 @@ describe('WebSocket Server', () => {
     describe('Handshake', () => {
         it('should complete WebSocket handshake on /ws', async () => {
             const srv = await startServer();
-            const { socket, messages } = await connectWebSocket(srv.port);
-            expect(socket.writable).toBe(true);
-            socket.destroy();
+            const { ws, messages } = await connectWebSocket(srv.port);
+            expect(ws.readyState).toBe(WebSocket.OPEN);
+            ws.close();
         });
 
         it('should reject upgrade to non-/ws path', async () => {
@@ -213,7 +144,7 @@ describe('WebSocket Server', () => {
 
         it('should reject upgrade without Sec-WebSocket-Key', async () => {
             const srv = await startServer();
-            const destroyed = await new Promise<boolean>((resolve) => {
+            const rejected = await new Promise<boolean>((resolve) => {
                 const socket = net.createConnection({ host: 'localhost', port: srv.port }, () => {
                     socket.write(
                         'GET /ws HTTP/1.1\r\n' +
@@ -223,12 +154,20 @@ describe('WebSocket Server', () => {
                         'Sec-WebSocket-Version: 13\r\n' +
                         '\r\n'
                     );
+                    socket.on('data', (data: Buffer) => {
+                        const text = data.toString();
+                        // ws library responds with 401 or closes the socket
+                        if (!text.includes('101')) {
+                            socket.destroy();
+                            resolve(true);
+                        }
+                    });
                     socket.on('close', () => resolve(true));
                     socket.on('error', () => resolve(true));
-                    setTimeout(() => resolve(false), 1000);
+                    setTimeout(() => { socket.destroy(); resolve(false); }, 1000);
                 });
             });
-            expect(destroyed).toBe(true);
+            expect(rejected).toBe(true);
         });
     });
 
@@ -239,7 +178,7 @@ describe('WebSocket Server', () => {
     describe('Welcome Message', () => {
         it('should send welcome message on connect', async () => {
             const srv = await startServer();
-            const { socket, messages } = await connectWebSocket(srv.port);
+            const { ws, messages } = await connectWebSocket(srv.port);
 
             await waitForMessages(messages, 1);
 
@@ -249,7 +188,7 @@ describe('WebSocket Server', () => {
             expect(typeof welcome.clientId).toBe('string');
             expect(typeof welcome.timestamp).toBe('number');
 
-            socket.destroy();
+            ws.close();
         });
 
         it('should assign unique client IDs', async () => {
@@ -264,8 +203,8 @@ describe('WebSocket Server', () => {
             const id2 = JSON.parse(conn2.messages[0]).clientId;
             expect(id1).not.toBe(id2);
 
-            conn1.socket.destroy();
-            conn2.socket.destroy();
+            conn1.ws.close();
+            conn2.ws.close();
         });
     });
 
@@ -276,7 +215,7 @@ describe('WebSocket Server', () => {
     describe('Process Event Broadcasting', () => {
         it('should broadcast process-added event', async () => {
             const srv = await startServer();
-            const { socket, messages } = await connectWebSocket(srv.port);
+            const { ws, messages } = await connectWebSocket(srv.port);
             await waitForMessages(messages, 1); // welcome
 
             const proc = makeAIProcess();
@@ -289,7 +228,7 @@ describe('WebSocket Server', () => {
             expect(event.process.id).toBe(proc.id);
             expect(event.process.status).toBe('running');
 
-            socket.destroy();
+            ws.close();
         });
 
         it('should broadcast process-updated event', async () => {
@@ -297,7 +236,7 @@ describe('WebSocket Server', () => {
             const proc = makeAIProcess();
             await srv.store.addProcess(proc);
 
-            const { socket, messages } = await connectWebSocket(srv.port);
+            const { ws, messages } = await connectWebSocket(srv.port);
             await waitForMessages(messages, 1); // welcome
 
             await srv.store.updateProcess(proc.id, { status: 'completed' });
@@ -309,7 +248,7 @@ describe('WebSocket Server', () => {
             expect(event.process.id).toBe(proc.id);
             expect(event.process.status).toBe('completed');
 
-            socket.destroy();
+            ws.close();
         });
 
         it('should broadcast process-removed event', async () => {
@@ -317,7 +256,7 @@ describe('WebSocket Server', () => {
             const proc = makeAIProcess();
             await srv.store.addProcess(proc);
 
-            const { socket, messages } = await connectWebSocket(srv.port);
+            const { ws, messages } = await connectWebSocket(srv.port);
             await waitForMessages(messages, 1); // welcome
 
             await srv.store.removeProcess(proc.id);
@@ -328,7 +267,7 @@ describe('WebSocket Server', () => {
             expect(event.type).toBe('process-removed');
             expect(event.processId).toBe(proc.id);
 
-            socket.destroy();
+            ws.close();
         });
 
         it('should broadcast processes-cleared event', async () => {
@@ -338,7 +277,7 @@ describe('WebSocket Server', () => {
             await srv.store.addProcess(proc1);
             await srv.store.addProcess(proc2);
 
-            const { socket, messages } = await connectWebSocket(srv.port);
+            const { ws, messages } = await connectWebSocket(srv.port);
             await waitForMessages(messages, 1); // welcome
 
             await srv.store.clearProcesses();
@@ -348,7 +287,7 @@ describe('WebSocket Server', () => {
             const event = JSON.parse(messages[1]);
             expect(event.type).toBe('processes-cleared');
 
-            socket.destroy();
+            ws.close();
         });
 
         it('should broadcast to multiple clients', async () => {
@@ -374,9 +313,9 @@ describe('WebSocket Server', () => {
                 expect(event.process.id).toBe(proc.id);
             }
 
-            conn1.socket.destroy();
-            conn2.socket.destroy();
-            conn3.socket.destroy();
+            conn1.ws.close();
+            conn2.ws.close();
+            conn3.ws.close();
         });
     });
 
@@ -387,7 +326,7 @@ describe('WebSocket Server', () => {
     describe('Workspace Subscription Filtering', () => {
         it('should send all events to unsubscribed client', async () => {
             const srv = await startServer();
-            const { socket, messages } = await connectWebSocket(srv.port);
+            const { ws, messages } = await connectWebSocket(srv.port);
             await waitForMessages(messages, 1); // welcome
 
             const proc = makeAIProcess({
@@ -399,7 +338,7 @@ describe('WebSocket Server', () => {
             const event = JSON.parse(messages[1]);
             expect(event.type).toBe('process-added');
 
-            socket.destroy();
+            ws.close();
         });
 
         it('should filter events by workspace subscription', async () => {
@@ -408,7 +347,7 @@ describe('WebSocket Server', () => {
             // Client subscribes to workspace "ws-a"
             const connA = await connectWebSocket(srv.port);
             await waitForMessages(connA.messages, 1); // welcome
-            sendMaskedFrame(connA.socket, JSON.stringify({ type: 'subscribe', workspaceId: 'ws-a' }));
+            sendMessage(connA.ws, JSON.stringify({ type: 'subscribe', workspaceId: 'ws-a' }));
             await delay(50);
 
             // Unsubscribed client
@@ -441,8 +380,8 @@ describe('WebSocket Server', () => {
             expect(JSON.parse(connA.messages[1]).type).toBe('process-added');
             expect(JSON.parse(connA.messages[1]).process.id).toBe(procA.id);
 
-            connA.socket.destroy();
-            connAll.socket.destroy();
+            connA.ws.close();
+            connAll.ws.close();
         });
 
         it('should handle mixed subscribed and unsubscribed clients', async () => {
@@ -450,7 +389,7 @@ describe('WebSocket Server', () => {
 
             const connA = await connectWebSocket(srv.port);
             await waitForMessages(connA.messages, 1);
-            sendMaskedFrame(connA.socket, JSON.stringify({ type: 'subscribe', workspaceId: 'ws-a' }));
+            sendMessage(connA.ws, JSON.stringify({ type: 'subscribe', workspaceId: 'ws-a' }));
             await delay(50);
 
             const connNone = await connectWebSocket(srv.port);
@@ -471,8 +410,8 @@ describe('WebSocket Server', () => {
             await delay(100);
             expect(connA.messages.length).toBe(2); // welcome + ws-a event only
 
-            connA.socket.destroy();
-            connNone.socket.destroy();
+            connA.ws.close();
+            connNone.ws.close();
         });
     });
 
@@ -483,17 +422,17 @@ describe('WebSocket Server', () => {
     describe('Heartbeat and Timeout', () => {
         it('should respond with pong on ping', async () => {
             const srv = await startServer();
-            const { socket, messages } = await connectWebSocket(srv.port);
+            const { ws, messages } = await connectWebSocket(srv.port);
             await waitForMessages(messages, 1); // welcome
 
-            sendMaskedFrame(socket, JSON.stringify({ type: 'ping' }));
+            sendMessage(ws, JSON.stringify({ type: 'ping' }));
 
             await waitForMessages(messages, 2);
 
             const pong = JSON.parse(messages[1]);
             expect(pong.type).toBe('pong');
 
-            socket.destroy();
+            ws.close();
         });
 
         it('should prune dead connections after heartbeat timeout', async () => {
@@ -505,14 +444,14 @@ describe('WebSocket Server', () => {
             const addr = httpServer.address() as net.AddressInfo;
             wsServer.attach(httpServer);
 
-            const { socket } = await connectWebSocket(addr.port);
+            const { ws } = await connectWebSocket(addr.port);
             expect(wsServer.clientCount).toBe(1);
 
             // Manually set lastSeen to far in the past by accessing internals
             // We use the broadcastProcessEvent to verify client is there, then gone
             // Instead, we'll use vi.useFakeTimers approach
 
-            socket.destroy();
+            ws.close();
             await delay(50);
 
             expect(wsServer.clientCount).toBe(0);
@@ -523,17 +462,17 @@ describe('WebSocket Server', () => {
 
         it('should keep active connections alive', async () => {
             const srv = await startServer();
-            const { socket, messages } = await connectWebSocket(srv.port);
+            const { ws, messages } = await connectWebSocket(srv.port);
             await waitForMessages(messages, 1);
 
             // Send a ping to update lastSeen
-            sendMaskedFrame(socket, JSON.stringify({ type: 'ping' }));
+            sendMessage(ws, JSON.stringify({ type: 'ping' }));
             await waitForMessages(messages, 2);
 
             // Client should still be connected
-            expect(socket.writable).toBe(true);
+            expect(ws.readyState).toBe(WebSocket.OPEN);
 
-            socket.destroy();
+            ws.close();
         });
     });
 
@@ -570,7 +509,7 @@ describe('WebSocket Server', () => {
             const addr = httpServer.address() as net.AddressInfo;
             wsServer.attach(httpServer);
 
-            const { socket } = await connectWebSocket(addr.port);
+            const { ws } = await connectWebSocket(addr.port);
             expect(wsServer.clientCount).toBe(1);
 
             wsServer.closeAll();
@@ -593,7 +532,7 @@ describe('WebSocket Server', () => {
     describe('Queue Event Broadcasting', () => {
         it('should broadcast queue-updated event when task is enqueued', async () => {
             const srv = await startServer();
-            const { socket, messages } = await connectWebSocket(srv.port);
+            const { ws, messages } = await connectWebSocket(srv.port);
             await waitForMessages(messages, 1); // welcome
 
             // Enqueue a task via REST
@@ -634,12 +573,12 @@ describe('WebSocket Server', () => {
             expect(queueMsg.queue.queued).toBeDefined();
             expect(queueMsg.queue.running).toBeDefined();
 
-            socket.destroy();
+            ws.close();
         });
 
         it('should include history in queue-updated event', async () => {
             const srv = await startServer();
-            const { socket, messages } = await connectWebSocket(srv.port);
+            const { ws, messages } = await connectWebSocket(srv.port);
             await waitForMessages(messages, 1); // welcome
 
             // Enqueue a task that will complete quickly (code-review is a no-op)
@@ -682,12 +621,12 @@ describe('WebSocket Server', () => {
             expect(lastQueueMsg.queue.history).toBeDefined();
             expect(Array.isArray(lastQueueMsg.queue.history)).toBe(true);
 
-            socket.destroy();
+            ws.close();
         });
 
         it('should include task details in history entries of queue-updated event', async () => {
             const srv = await startServer();
-            const { socket, messages } = await connectWebSocket(srv.port);
+            const { ws, messages } = await connectWebSocket(srv.port);
             await waitForMessages(messages, 1); // welcome
 
             // Enqueue a code-review task (completes as no-op)
@@ -735,71 +674,7 @@ describe('WebSocket Server', () => {
                 expect(typeof historyEntry.completedAt).toBe('number');
             }
 
-            socket.destroy();
-        });
-    });
-
-    // ========================================================================
-    // Frame Codec
-    // ========================================================================
-
-    describe('Frame Codec', () => {
-        it('should encode and decode small payload (< 126 bytes)', () => {
-            const data = 'Hello, WebSocket!';
-            const chunks: Buffer[] = [];
-            const mockSocket = {
-                write: (buf: Buffer) => { chunks.push(buf); },
-            } as unknown as net.Socket;
-
-            sendFrame(mockSocket, data);
-            const frame = Buffer.concat(chunks);
-            const decoded = decodeFrame(frame);
-            expect(decoded).toBe(data);
-        });
-
-        it('should encode and decode medium payload (126–65535 bytes)', () => {
-            const data = 'x'.repeat(500);
-            const chunks: Buffer[] = [];
-            const mockSocket = {
-                write: (buf: Buffer) => { chunks.push(buf); },
-            } as unknown as net.Socket;
-
-            sendFrame(mockSocket, data);
-            const frame = Buffer.concat(chunks);
-            const decoded = decodeFrame(frame);
-            expect(decoded).toBe(data);
-        });
-
-        it('should decode masked client frame', () => {
-            const data = 'masked message';
-            const payload = Buffer.from(data, 'utf-8');
-            const maskKey = Buffer.from([0x37, 0xfa, 0x21, 0x3d]);
-
-            const masked = Buffer.alloc(payload.length);
-            for (let i = 0; i < payload.length; i++) {
-                masked[i] = payload[i] ^ maskKey[i % 4];
-            }
-
-            const header = Buffer.alloc(2);
-            header[0] = 0x81;
-            header[1] = 0x80 | payload.length;
-
-            const frame = Buffer.concat([header, maskKey, masked]);
-            const decoded = decodeFrame(frame);
-            expect(decoded).toBe(data);
-        });
-
-        it('should return null for non-text frames', () => {
-            const frame = Buffer.alloc(4);
-            frame[0] = 0x88; // Close frame
-            frame[1] = 0x02;
-            frame[2] = 0x03;
-            frame[3] = 0xe8;
-            expect(decodeFrame(frame)).toBeNull();
-        });
-
-        it('should return null for too-short buffer', () => {
-            expect(decodeFrame(Buffer.alloc(1))).toBeNull();
+            ws.close();
         });
     });
 
@@ -862,7 +737,7 @@ describe('WebSocket Server', () => {
     describe('tasks-changed message', () => {
         it('should broadcast tasks-changed with correct workspaceId', async () => {
             const srv = await startServer();
-            const { socket, messages } = await connectWebSocket(srv.port);
+            const { ws, messages } = await connectWebSocket(srv.port);
             await waitForMessages(messages, 1); // welcome
 
             // Broadcast a tasks-changed event directly
@@ -870,7 +745,7 @@ describe('WebSocket Server', () => {
             // Use broadcastProcessEvent via a direct import approach
             // Instead, we can test the getMessageWorkspaceId logic indirectly
             // by broadcasting through the ws server
-            const ws = new ProcessWebSocketServer();
+            const wsTestInstance = new ProcessWebSocketServer();
 
             // For this test, use the full integration: create an execution server
             // and use the store's workspace mechanism
@@ -898,7 +773,7 @@ describe('WebSocket Server', () => {
             // but we can't easily trigger real fs events in this unit test.
             // Instead, test the workspace-scoped filtering directly.
 
-            socket.destroy();
+            ws.close();
         });
 
         it('should filter tasks-changed by workspace subscription', async () => {
@@ -907,7 +782,7 @@ describe('WebSocket Server', () => {
             // Client subscribed to workspace "ws-a"
             const connA = await connectWebSocket(srv.port);
             await waitForMessages(connA.messages, 1);
-            sendMaskedFrame(connA.socket, JSON.stringify({ type: 'subscribe', workspaceId: 'ws-a' }));
+            sendMessage(connA.ws, JSON.stringify({ type: 'subscribe', workspaceId: 'ws-a' }));
             await delay(50);
 
             // Unsubscribed client
@@ -926,8 +801,8 @@ describe('WebSocket Server', () => {
             // We can verify by testing that getMessageWorkspaceId works for tasks-changed
             // messages via the broadcast method. Let's test it with a standalone instance.
 
-            connA.socket.destroy();
-            connAll.socket.destroy();
+            connA.ws.close();
+            connAll.ws.close();
         });
 
         it('should correctly identify workspaceId from tasks-changed message via broadcast', async () => {
@@ -936,13 +811,13 @@ describe('WebSocket Server', () => {
             // Subscribe client to 'ws-a'
             const connA = await connectWebSocket(srv.port);
             await waitForMessages(connA.messages, 1);
-            sendMaskedFrame(connA.socket, JSON.stringify({ type: 'subscribe', workspaceId: 'ws-a' }));
+            sendMessage(connA.ws, JSON.stringify({ type: 'subscribe', workspaceId: 'ws-a' }));
             await delay(50);
 
             // Subscribe client to 'ws-b'
             const connB = await connectWebSocket(srv.port);
             await waitForMessages(connB.messages, 1);
-            sendMaskedFrame(connB.socket, JSON.stringify({ type: 'subscribe', workspaceId: 'ws-b' }));
+            sendMessage(connB.ws, JSON.stringify({ type: 'subscribe', workspaceId: 'ws-b' }));
             await delay(50);
 
             // Unsubscribed client (receives everything)
@@ -1006,9 +881,9 @@ describe('WebSocket Server', () => {
                 .filter(m => m?.type === 'tasks-changed');
             expect(allTaskEvents.length).toBeGreaterThanOrEqual(1);
 
-            connA.socket.destroy();
-            connB.socket.destroy();
-            connAll.socket.destroy();
+            connA.ws.close();
+            connB.ws.close();
+            connAll.ws.close();
             fs.rmSync(tmpRoot, { recursive: true, force: true });
         });
     });
@@ -1035,7 +910,7 @@ describe('WebSocket Server', () => {
             expect(wikiMsg.wikiId).toBe('w1');
             expect(wikiMsg.components).toEqual(['auth-module']);
 
-            conn.socket.destroy();
+            conn.ws.close();
         });
 
         it('should broadcast wiki-rebuilding event', async () => {
@@ -1055,7 +930,7 @@ describe('WebSocket Server', () => {
             expect(msg.wikiId).toBe('w1');
             expect(msg.components).toEqual(['db-layer']);
 
-            conn.socket.destroy();
+            conn.ws.close();
         });
 
         it('should broadcast wiki-error event', async () => {
@@ -1075,7 +950,7 @@ describe('WebSocket Server', () => {
             expect(msg.wikiId).toBe('w1');
             expect(msg.message).toBe('Reload failed');
 
-            conn.socket.destroy();
+            conn.ws.close();
         });
 
         it('should filter wiki events by subscription', async () => {
@@ -1086,8 +961,8 @@ describe('WebSocket Server', () => {
             await waitForMessages(connB.messages, 1);
 
             // Subscribe A to w1, B to w2
-            sendMaskedFrame(connA.socket, JSON.stringify({ type: 'subscribe-wiki', wikiId: 'w1' }));
-            sendMaskedFrame(connB.socket, JSON.stringify({ type: 'subscribe-wiki', wikiId: 'w2' }));
+            sendMessage(connA.ws, JSON.stringify({ type: 'subscribe-wiki', wikiId: 'w1' }));
+            sendMessage(connB.ws, JSON.stringify({ type: 'subscribe-wiki', wikiId: 'w2' }));
             await delay(100);
 
             // Broadcast wiki-reload for w1
@@ -1111,8 +986,8 @@ describe('WebSocket Server', () => {
                 .filter(m => m?.type === 'wiki-reload');
             expect(bWikiEvents).toHaveLength(0);
 
-            connA.socket.destroy();
-            connB.socket.destroy();
+            connA.ws.close();
+            connB.ws.close();
         });
 
         it('should send wiki events to unsubscribed clients (backward compat)', async () => {
@@ -1123,7 +998,7 @@ describe('WebSocket Server', () => {
             await waitForMessages(connUnsubscribed.messages, 1);
 
             // Only subscribe one client
-            sendMaskedFrame(connSubscribed.socket, JSON.stringify({ type: 'subscribe-wiki', wikiId: 'w1' }));
+            sendMessage(connSubscribed.ws, JSON.stringify({ type: 'subscribe-wiki', wikiId: 'w1' }));
             await delay(100);
 
             // Broadcast wiki event for w1
@@ -1146,8 +1021,8 @@ describe('WebSocket Server', () => {
                 .filter(m => m?.type === 'wiki-reload');
             expect(unsubEvents).toHaveLength(1);
 
-            connSubscribed.socket.destroy();
-            connUnsubscribed.socket.destroy();
+            connSubscribed.ws.close();
+            connUnsubscribed.ws.close();
         });
 
         it('should handle subscribe-wiki client message and store wikiId', async () => {
@@ -1155,7 +1030,7 @@ describe('WebSocket Server', () => {
             const conn = await connectWebSocket(srv.port);
             await waitForMessages(conn.messages, 1);
 
-            sendMaskedFrame(conn.socket, JSON.stringify({ type: 'subscribe-wiki', wikiId: 'w1' }));
+            sendMessage(conn.ws, JSON.stringify({ type: 'subscribe-wiki', wikiId: 'w1' }));
             await delay(100);
 
             // Verify by sending wiki event for w1 — client should receive it
@@ -1179,7 +1054,7 @@ describe('WebSocket Server', () => {
             expect(wikiEvents).toHaveLength(1);
             expect(wikiEvents[0].wikiId).toBe('w1');
 
-            conn.socket.destroy();
+            conn.ws.close();
         });
 
         it('should support multiple wiki subscriptions per client', async () => {
@@ -1188,9 +1063,9 @@ describe('WebSocket Server', () => {
             await waitForMessages(conn.messages, 1);
 
             // Subscribe to w1 and w2
-            sendMaskedFrame(conn.socket, JSON.stringify({ type: 'subscribe-wiki', wikiId: 'w1' }));
+            sendMessage(conn.ws, JSON.stringify({ type: 'subscribe-wiki', wikiId: 'w1' }));
             await delay(50);
-            sendMaskedFrame(conn.socket, JSON.stringify({ type: 'subscribe-wiki', wikiId: 'w2' }));
+            sendMessage(conn.ws, JSON.stringify({ type: 'subscribe-wiki', wikiId: 'w2' }));
             await delay(100);
 
             // Broadcast events for w1, w2, and w3
@@ -1209,7 +1084,7 @@ describe('WebSocket Server', () => {
             expect(wikiEvents).toHaveLength(2);
             expect(wikiEvents.map((e: any) => e.wikiId).sort()).toEqual(['w1', 'w2']);
 
-            conn.socket.destroy();
+            conn.ws.close();
         });
 
         it('should not affect existing process event broadcasting', async () => {
@@ -1218,7 +1093,7 @@ describe('WebSocket Server', () => {
             await waitForMessages(conn.messages, 1);
 
             // Subscribe to a wiki — should not affect process events
-            sendMaskedFrame(conn.socket, JSON.stringify({ type: 'subscribe-wiki', wikiId: 'w1' }));
+            sendMessage(conn.ws, JSON.stringify({ type: 'subscribe-wiki', wikiId: 'w1' }));
             await delay(100);
 
             // Broadcast a process event
@@ -1239,7 +1114,7 @@ describe('WebSocket Server', () => {
             expect(processEvents).toHaveLength(1);
             expect(processEvents[0].process.id).toBe('proc-1');
 
-            conn.socket.destroy();
+            conn.ws.close();
         });
     });
 });

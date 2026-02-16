@@ -1,13 +1,11 @@
 /**
  * WebSocket Server for Process Events
  *
- * Raw WebSocket implementation using Node.js http upgrade event.
- * No external dependencies — implements the WebSocket handshake
- * and frame protocol directly (RFC 6455).
+ * Uses the `ws` library for WebSocket protocol handling (RFC 6455).
  *
- * Follows the deep-wiki WebSocket pattern with extensions for:
+ * Features:
  * - Welcome message on connect
- * - Heartbeat (ping/pong) with dead-connection pruning
+ * - Heartbeat using ws-level ping/pong with dead-connection pruning
  * - Workspace-scoped subscription filtering
  * - Process event broadcasting
  *
@@ -16,7 +14,7 @@
 
 import * as http from 'http';
 import * as crypto from 'crypto';
-import type { Socket } from 'net';
+import { WebSocketServer, WebSocket } from 'ws';
 import type { AIProcess, MarkdownComment } from '@plusplusoneplusplus/pipeline-core';
 
 // ============================================================================
@@ -24,7 +22,7 @@ import type { AIProcess, MarkdownComment } from '@plusplusoneplusplus/pipeline-c
 // ============================================================================
 
 export interface WSClient {
-    socket: Socket;
+    socket: WebSocket;
     id: string;
     send: (data: string) => void;
     close: () => void;
@@ -134,7 +132,6 @@ export type ClientMessage =
 // ============================================================================
 
 const HEARTBEAT_INTERVAL_MS = 60_000;
-const HEARTBEAT_TIMEOUT_MS = 90_000;
 
 /**
  * Minimal WebSocket server that attaches to an existing HTTP server
@@ -143,6 +140,11 @@ const HEARTBEAT_TIMEOUT_MS = 90_000;
 export class ProcessWebSocketServer {
     private clients: Set<WSClient> = new Set();
     private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+    private wss: WebSocketServer;
+
+    constructor() {
+        this.wss = new WebSocketServer({ noServer: true });
+    }
 
     get clientCount(): number {
         return this.clients.size;
@@ -153,50 +155,31 @@ export class ProcessWebSocketServer {
      * Handles upgrade requests to /ws.
      */
     attach(server: http.Server): void {
-        server.on('upgrade', (req: http.IncomingMessage, socket: Socket, _head: Buffer) => {
+        server.on('upgrade', (req: http.IncomingMessage, socket, head: Buffer) => {
             if (req.url !== '/ws') {
                 socket.destroy();
                 return;
             }
+            this.wss.handleUpgrade(req, socket, head, (ws) => {
+                this.wss.emit('connection', ws, req);
+            });
+        });
 
-            const key = req.headers['sec-websocket-key'];
-            if (!key) {
-                socket.destroy();
-                return;
-            }
-
-            // Perform WebSocket handshake
-            const acceptKey = crypto
-                .createHash('sha1')
-                .update(key + '258EAFA5-E914-47DA-95CA-5AB5DC11E65B')
-                .digest('base64');
-
-            socket.write(
-                'HTTP/1.1 101 Switching Protocols\r\n' +
-                'Upgrade: websocket\r\n' +
-                'Connection: Upgrade\r\n' +
-                `Sec-WebSocket-Accept: ${acceptKey}\r\n` +
-                '\r\n',
-            );
-
+        this.wss.on('connection', (ws: WebSocket) => {
             const clientId = crypto.randomUUID();
+            (ws as any).isAlive = true;
+
             const client: WSClient = {
-                socket,
+                socket: ws,
                 id: clientId,
                 lastSeen: Date.now(),
                 send: (data: string) => {
-                    try {
-                        sendFrame(socket, data);
-                    } catch {
-                        // Ignore send errors on closed sockets
+                    if (ws.readyState === WebSocket.OPEN) {
+                        ws.send(data);
                     }
                 },
                 close: () => {
-                    try {
-                        socket.end();
-                    } catch {
-                        // Ignore
-                    }
+                    try { ws.close(); } catch { /* ignore */ }
                     this.clients.delete(client);
                 },
             };
@@ -210,26 +193,20 @@ export class ProcessWebSocketServer {
                 timestamp: Date.now(),
             }));
 
-            // Handle incoming messages
-            socket.on('data', (buf: Buffer) => {
+            ws.on('pong', () => { (ws as any).isAlive = true; });
+
+            ws.on('message', (data: Buffer | string) => {
                 try {
-                    const message = decodeFrame(buf);
-                    if (message !== null) {
-                        const parsed = JSON.parse(message) as ClientMessage;
-                        this.handleClientMessage(client, parsed);
-                    }
+                    const text = typeof data === 'string' ? data : data.toString('utf-8');
+                    const parsed = JSON.parse(text) as ClientMessage;
+                    this.handleClientMessage(client, parsed);
                 } catch {
                     // Ignore parse errors
                 }
             });
 
-            const removeClient = () => {
-                this.clients.delete(client);
-            };
-
-            socket.on('close', removeClient);
-            socket.on('end', removeClient);
-            socket.on('error', removeClient);
+            ws.on('close', () => this.clients.delete(client));
+            ws.on('error', () => this.clients.delete(client));
         });
 
         // Start heartbeat check
@@ -308,6 +285,7 @@ export class ProcessWebSocketServer {
             client.close();
         }
         this.clients.clear();
+        try { this.wss.close(); } catch { /* ignore double-close */ }
     }
 
     // ========================================================================
@@ -347,11 +325,15 @@ export class ProcessWebSocketServer {
 
     private startHeartbeat(): void {
         this.heartbeatTimer = setInterval(() => {
-            const now = Date.now();
             for (const client of this.clients) {
-                if (now - client.lastSeen > HEARTBEAT_TIMEOUT_MS) {
+                const ws = client.socket;
+                if (!(ws as any).isAlive) {
                     client.close();
+                    ws.terminate();
+                    continue;
                 }
+                (ws as any).isAlive = false;
+                ws.ping();
             }
         }, HEARTBEAT_INTERVAL_MS);
 
@@ -416,76 +398,4 @@ export function toCommentSummary(comment: MarkdownComment): MarkdownCommentSumma
     };
 }
 
-// ============================================================================
-// WebSocket Frame Encoding/Decoding (exported for testing)
-// ============================================================================
 
-/**
- * Send a text frame over the socket.
- */
-export function sendFrame(socket: Socket, data: string): void {
-    const payload = Buffer.from(data, 'utf-8');
-    const length = payload.length;
-
-    let header: Buffer;
-
-    if (length < 126) {
-        header = Buffer.alloc(2);
-        header[0] = 0x81; // FIN + text opcode
-        header[1] = length;
-    } else if (length < 65536) {
-        header = Buffer.alloc(4);
-        header[0] = 0x81;
-        header[1] = 126;
-        header.writeUInt16BE(length, 2);
-    } else {
-        header = Buffer.alloc(10);
-        header[0] = 0x81;
-        header[1] = 127;
-        header.writeUInt32BE(0, 2);
-        header.writeUInt32BE(length, 6);
-    }
-
-    socket.write(Buffer.concat([header, payload]));
-}
-
-/**
- * Decode a WebSocket text frame.
- * Returns the decoded text or null if the frame is a close/binary/etc.
- */
-export function decodeFrame(buf: Buffer): string | null {
-    if (buf.length < 2) return null;
-
-    const opcode = buf[0] & 0x0f;
-
-    // Only handle text frames (opcode 1)
-    if (opcode !== 1) return null;
-
-    const masked = (buf[1] & 0x80) !== 0;
-    let payloadLength = buf[1] & 0x7f;
-    let offset = 2;
-
-    if (payloadLength === 126) {
-        if (buf.length < 4) return null;
-        payloadLength = buf.readUInt16BE(2);
-        offset = 4;
-    } else if (payloadLength === 127) {
-        if (buf.length < 10) return null;
-        payloadLength = buf.readUInt32BE(6);
-        offset = 10;
-    }
-
-    if (masked) {
-        if (buf.length < offset + 4 + payloadLength) return null;
-        const maskKey = buf.slice(offset, offset + 4);
-        offset += 4;
-        const payload = buf.slice(offset, offset + payloadLength);
-        for (let i = 0; i < payload.length; i++) {
-            payload[i] ^= maskKey[i % 4];
-        }
-        return payload.toString('utf-8');
-    }
-
-    if (buf.length < offset + payloadLength) return null;
-    return buf.slice(offset, offset + payloadLength).toString('utf-8');
-}
