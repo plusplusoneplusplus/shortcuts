@@ -21,9 +21,6 @@ import { registerTaskGenerationRoutes } from './task-generation-handler';
 import { registerPromptRoutes } from './prompt-handler';
 import { registerPreferencesRoutes } from './preferences-handler';
 import { registerWikiRoutes } from './wiki';
-import { registerReviewRoutes } from './review-handler';
-import { registerReviewAIRoutes } from './review-ai-handler';
-import { bridgeReviewToWebSocket } from './review-websocket-bridge';
 import { ProcessWebSocketServer, toProcessSummary } from './websocket';
 import { generateDashboardHtml } from './spa';
 import type { ExecutionServerOptions, ExecutionServer } from './types';
@@ -35,7 +32,6 @@ import { QueuePersistence } from './queue-persistence';
 import { OutputPruner } from './output-pruner';
 import { StaleTaskDetector } from './stale-task-detector';
 import { TaskWatcher } from './task-watcher';
-import { ReviewFileWatcher } from './review-watcher';
 
 // ============================================================================
 // Stub Process Store
@@ -184,18 +180,6 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     registerPromptRoutes(routes, store);
     registerPreferencesRoutes(routes, dataDir);
 
-    // Register review editor routes
-    const projectDir = options.projectDir ?? process.cwd();
-    const { commentsManager } = registerReviewRoutes(routes, projectDir);
-
-    // Register review AI routes (ask-ai, queued, prompt generation, prompt listing)
-    registerReviewAIRoutes(routes, {
-        projectDir,
-        store,
-        queueManager,
-        commentsManager,
-    });
-
     // Register wiki routes if enabled
     let wikiManager: import('./wiki').WikiManager | undefined;
     if (options.wiki?.enabled) {
@@ -239,9 +223,6 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const wsServer = new ProcessWebSocketServer();
     wsServer.attach(server);
 
-    // Bridge review comment changes to WebSocket
-    bridgeReviewToWebSocket(commentsManager, wsServer);
-
     // Wire drain events from executor to WebSocket
     queueExecutor.on('drain-start', (event: { queued: number; running: number }) => {
         wsServer.broadcastProcessEvent({ type: 'drain-start', queued: event.queued, running: event.running });
@@ -255,9 +236,6 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     queueExecutor.on('drain-timeout', (event: { queued: number; running: number; timeoutMs?: number }) => {
         wsServer.broadcastProcessEvent({ type: 'drain-timeout', queued: event.queued, running: event.running, timeoutMs: event.timeoutMs });
     });
-
-    // Create file watcher for review editor — lazily watches .md files
-    const reviewWatcher = new ReviewFileWatcher(projectDir, wsServer);
 
     store.onProcessChange = (event) => {
         switch (event.type) {
@@ -400,8 +378,6 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             staleDetector.dispose();
             // Stop output pruner cleanup
             outputPruner.stopListening();
-            // Close review file watchers
-            reviewWatcher.closeAll();
             // Close task file watchers
             taskWatcher.closeAll();
             // Dispose wiki manager (stop file watchers, destroy sessions)
@@ -466,18 +442,7 @@ export { TaskWatcher } from './task-watcher';
 export type { TasksChangedCallback } from './task-watcher';
 export { registerWikiRoutes } from './wiki';
 export type { WikiRouteOptions } from './wiki';
-export { registerReviewRoutes, safePath, walkMarkdownFiles } from './review-handler';
-export type { CommentChangeEvent } from './review-handler';
-export { ReviewCommentsManager } from './review-handler';
-export { registerReviewAIRoutes } from './review-ai-handler';
-export type { ReviewAIDeps } from './review-ai-handler';
-export { executeAIClarification, buildClarificationPrompt, createReviewTaskExecutor } from './review-ai-executor';
-export type { ReviewAIClarificationRequest, ReviewAIClarificationResult } from './review-ai-executor';
 export { discoverPromptFiles, readPromptFileContent } from './prompt-utils';
 export type { PromptFileInfo } from './prompt-utils';
 export { registerPreferencesRoutes, readPreferences, writePreferences, validatePreferences } from './preferences-handler';
 export type { UserPreferences } from './preferences-handler';
-export { bridgeReviewToWebSocket } from './review-websocket-bridge';
-export { ReviewFileWatcher } from './review-watcher';
-export { generateReviewEditorHtml, createImageRoute } from './review-editor';
-export type { ReviewEditorOptions } from './review-editor';

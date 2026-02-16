@@ -56,8 +56,6 @@ export interface ExecutionServerOptions {
     theme?: 'auto' | 'light' | 'dark';
     /** Options for the wiki module. */
     wiki?: WikiServerOptions;
-    /** Root directory for the review editor file tree (default: `process.cwd()`). */
-    projectDir?: string;
 }
 
 /** Options for graceful shutdown with queue draining. */
