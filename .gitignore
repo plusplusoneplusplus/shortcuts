@@ -130,3 +130,6 @@ dist/
 
 # SPA client build output (esbuild)
 **/spa/client/dist/
+# Playwright
+playwright-report/
+test-results/

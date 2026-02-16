@@ -16,6 +16,7 @@
     "build": "npm run build:client && tsc && npm run build:copy-client && chmod +x dist/index.js",
     "test": "vitest",
     "test:run": "vitest run",
+    "test:e2e": "npx playwright test --config test/e2e/playwright.config.ts",
     "lint": "eslint src"
   },
   "dependencies": {
@@ -24,11 +25,12 @@
     "js-yaml": "^4.1.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "@types/js-yaml": "^4.0.0",
+    "@types/node": "^20.0.0",
     "esbuild": "^0.21.5",
     "typescript": "^5.3.0",
-    "vitest": "^1.0.0",
-    "@types/node": "^20.0.0",
-    "@types/js-yaml": "^4.0.0"
+    "vitest": "^1.0.0"
   },
   "engines": {
     "node": ">=18"
