@@ -592,3 +592,69 @@ test.describe('Info Tab Content', () => {
         await expect(processList).toContainText('Recent Process 5');
     });
 });
+
+// ================================================================
+// Pipelines Tab Content (007-pipelines-tab)
+// ================================================================
+
+test.describe('Pipelines Tab Content', () => {
+    test('discovered pipelines render with name and View button', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-pipe-'));
+        const repoDir = createRepoFixture(tmpDir);
+
+        try {
+            // Register workspace pointing to the real fixture repo (has .vscode/pipelines/p1/)
+            await seedWorkspace(serverUrl, 'ws-pipe-1', 'pipe-repo', repoDir);
+
+            await page.goto(serverUrl);
+            await page.click('[data-tab="repos"]');
+            await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+
+            // Select repo and switch to Pipelines sub-tab
+            await page.locator('.repo-item').first().click();
+            await expect(page.locator('#repo-detail-content')).toBeVisible();
+            await page.click('.repo-sub-tab[data-subtab="pipelines"]');
+            await expect(page.locator('.repo-sub-tab[data-subtab="pipelines"]')).toHaveClass(/active/);
+
+            // Pipeline list should be visible with at least one item
+            const pipelineList = page.locator('.repo-pipeline-list');
+            await expect(pipelineList).toBeVisible({ timeout: 10000 });
+
+            const pipelineItems = page.locator('.repo-pipeline-item');
+            await expect(pipelineItems).toHaveCount(1);
+
+            // Pipeline name should contain the fixture pipeline name
+            await expect(page.locator('.pipeline-name').first()).toContainText('p1');
+
+            // View button should be present
+            await expect(pipelineItems.first().locator('.repo-pipeline-actions .action-btn')).toBeVisible();
+            await expect(pipelineItems.first().locator('.repo-pipeline-actions .action-btn')).toContainText('View');
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+    });
+
+    test('empty state when no pipelines exist', async ({ page, serverUrl }) => {
+        // Seed a workspace with a non-existent path (no pipelines directory)
+        await seedWorkspace(serverUrl, 'ws-pipe-empty', 'empty-pipe-repo', '/tmp/no-such-repo');
+
+        await page.goto(serverUrl);
+        await page.click('[data-tab="repos"]');
+        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+
+        // Select repo and switch to Pipelines sub-tab
+        await page.locator('.repo-item').first().click();
+        await expect(page.locator('#repo-detail-content')).toBeVisible();
+        await page.click('.repo-sub-tab[data-subtab="pipelines"]');
+        await expect(page.locator('.repo-sub-tab[data-subtab="pipelines"]')).toHaveClass(/active/);
+
+        // Pipeline list should NOT be present
+        await expect(page.locator('.repo-pipeline-list')).toHaveCount(0);
+
+        // Empty state should be visible with appropriate message
+        const subContent = page.locator('#repo-sub-tab-content');
+        const emptyState = subContent.locator('.empty-state');
+        await expect(emptyState).toBeVisible({ timeout: 10000 });
+        await expect(emptyState).toContainText('No pipelines found');
+    });
+});
