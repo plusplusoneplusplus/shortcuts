@@ -17,6 +17,7 @@ import type { AIProcess, ProcessStore } from '@plusplusoneplusplus/pipeline-core
 import { createRequestHandler, registerApiRoutes, generateDashboardHtml } from '../../src/server/index';
 import type { QueueExecutorBridge } from '../../src/server/queue-executor-bridge';
 import type { Route } from '../../src/server/types';
+import { createMockBridge } from '../helpers/mock-sdk-service';
 
 // ============================================================================
 // Helpers
@@ -77,10 +78,7 @@ describe('POST /api/processes/:id/message', () => {
         dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'follow-up-api-test-'));
         store = new FileProcessStore({ dataDir });
 
-        mockBridge = {
-            executeFollowUp: vi.fn().mockResolvedValue(undefined),
-            isSessionAlive: vi.fn().mockResolvedValue(true),
-        };
+        mockBridge = createMockBridge();
 
         const routes: Route[] = [];
         registerApiRoutes(routes, store, mockBridge);

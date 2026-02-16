@@ -35,74 +35,23 @@ import {
 } from '@plusplusoneplusplus/pipeline-core';
 import type { ProcessStore, AIProcess } from '@plusplusoneplusplus/pipeline-core';
 import { CLITaskExecutor, createQueueExecutorBridge } from '../../src/server/queue-executor-bridge';
+import { createMockSDKService } from '../helpers/mock-sdk-service';
+import { createMockProcessStore } from '../helpers/mock-process-store';
 
 // ============================================================================
 // Mock CopilotSDKService
 // ============================================================================
 
-const mockSendMessage = vi.fn();
-const mockIsAvailable = vi.fn();
-const mockSendFollowUp = vi.fn();
+const sdkMocks = createMockSDKService();
+const { mockSendMessage, mockIsAvailable, mockSendFollowUp } = sdkMocks;
 
 vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@plusplusoneplusplus/pipeline-core')>();
     return {
         ...actual,
-        getCopilotSDKService: () => ({
-            sendMessage: mockSendMessage,
-            isAvailable: mockIsAvailable,
-            sendFollowUp: mockSendFollowUp,
-        }),
+        getCopilotSDKService: () => sdkMocks.service,
     };
 });
-
-// ============================================================================
-// Mock ProcessStore
-// ============================================================================
-
-function createMockStore(): ProcessStore & {
-    processes: Map<string, AIProcess>;
-    outputs: Map<string, string[]>;
-    completions: Map<string, { status: string; duration: string }>;
-} {
-    const processes = new Map<string, AIProcess>();
-    const outputs = new Map<string, string[]>();
-    const completions = new Map<string, { status: string; duration: string }>();
-
-    return {
-        processes,
-        outputs,
-        completions,
-        addProcess: vi.fn(async (process: AIProcess) => {
-            processes.set(process.id, { ...process });
-        }),
-        updateProcess: vi.fn(async (id: string, updates: Partial<AIProcess>) => {
-            const existing = processes.get(id);
-            if (existing) {
-                processes.set(id, { ...existing, ...updates });
-            }
-        }),
-        getProcess: vi.fn(async (id: string) => processes.get(id)),
-        getAllProcesses: vi.fn(async () => Array.from(processes.values())),
-        removeProcess: vi.fn(async (id: string) => { processes.delete(id); }),
-        clearProcesses: vi.fn(async () => {
-            const count = processes.size;
-            processes.clear();
-            return count;
-        }),
-        getWorkspaces: vi.fn(async () => []),
-        registerWorkspace: vi.fn(async () => {}),
-        onProcessOutput: vi.fn((_id: string, _callback: any) => () => {}),
-        emitProcessOutput: vi.fn((id: string, content: string) => {
-            const existing = outputs.get(id) || [];
-            existing.push(content);
-            outputs.set(id, existing);
-        }),
-        emitProcessComplete: vi.fn((id: string, status: string, duration: string) => {
-            completions.set(id, { status, duration });
-        }),
-    };
-}
 
 // ============================================================================
 // Helpers
@@ -117,10 +66,10 @@ function delay(ms: number): Promise<void> {
 // ============================================================================
 
 describe('CLITaskExecutor', () => {
-    let store: ReturnType<typeof createMockStore>;
+    let store: ReturnType<typeof createMockProcessStore>;
 
     beforeEach(() => {
-        store = createMockStore();
+        store = createMockProcessStore();
         mockSendMessage.mockReset();
         mockIsAvailable.mockReset();
         mockIsAvailable.mockResolvedValue({ available: true });
@@ -1115,10 +1064,10 @@ describe('CLITaskExecutor', () => {
 // ============================================================================
 
 describe('CLITaskExecutor.executeFollowUp', () => {
-    let store: ReturnType<typeof createMockStore>;
+    let store: ReturnType<typeof createMockProcessStore>;
 
     beforeEach(() => {
-        store = createMockStore();
+        store = createMockProcessStore();
         mockSendMessage.mockReset();
         mockIsAvailable.mockReset();
         mockSendFollowUp.mockReset();
@@ -1245,10 +1194,10 @@ describe('CLITaskExecutor.executeFollowUp', () => {
 // ============================================================================
 
 describe('session tracking and conversation turns', () => {
-    let store: ReturnType<typeof createMockStore>;
+    let store: ReturnType<typeof createMockProcessStore>;
 
     beforeEach(() => {
-        store = createMockStore();
+        store = createMockProcessStore();
         mockSendMessage.mockReset();
         mockIsAvailable.mockReset();
         mockSendFollowUp.mockReset();
@@ -1380,11 +1329,11 @@ describe('session tracking and conversation turns', () => {
 // ============================================================================
 
 describe('createQueueExecutorBridge', () => {
-    let store: ReturnType<typeof createMockStore>;
+    let store: ReturnType<typeof createMockProcessStore>;
     let queueManager: TaskQueueManager;
 
     beforeEach(() => {
-        store = createMockStore();
+        store = createMockProcessStore();
         queueManager = new TaskQueueManager({
             maxQueueSize: 0,
             keepHistory: true,
@@ -1626,10 +1575,10 @@ describe('createQueueExecutorBridge', () => {
 describe('Queue execution via HTTP API', () => {
     // These tests verify the full flow: HTTP enqueue → executor picks up → task completes
 
-    let store: ReturnType<typeof createMockStore>;
+    let store: ReturnType<typeof createMockProcessStore>;
 
     beforeEach(() => {
-        store = createMockStore();
+        store = createMockProcessStore();
         mockSendMessage.mockReset();
         mockIsAvailable.mockReset();
         mockIsAvailable.mockResolvedValue({ available: true });
@@ -1647,7 +1596,7 @@ describe('Queue execution via HTTP API', () => {
 
     it('should handle store errors gracefully', async () => {
         // Make store.addProcess throw
-        const failingStore = createMockStore();
+        const failingStore = createMockProcessStore();
         (failingStore.addProcess as any).mockRejectedValue(new Error('Store error'));
 
         const executor = new CLITaskExecutor(failingStore);
@@ -1668,7 +1617,7 @@ describe('Queue execution via HTTP API', () => {
     });
 
     it('should handle store update errors gracefully on success', async () => {
-        const failingStore = createMockStore();
+        const failingStore = createMockProcessStore();
         (failingStore.updateProcess as any).mockRejectedValue(new Error('Update error'));
 
         const executor = new CLITaskExecutor(failingStore);
@@ -1690,7 +1639,7 @@ describe('Queue execution via HTTP API', () => {
     it('should handle store update errors gracefully on failure', async () => {
         mockSendMessage.mockResolvedValue({ success: false, error: 'AI error' });
 
-        const failingStore = createMockStore();
+        const failingStore = createMockProcessStore();
         (failingStore.updateProcess as any).mockRejectedValue(new Error('Update error'));
 
         const executor = new CLITaskExecutor(failingStore);
@@ -1763,7 +1712,7 @@ describe('Queue execution via HTTP API', () => {
 
     it('should handle store.emitProcessOutput errors gracefully during streaming', async () => {
         // Make emitProcessOutput throw
-        const failingStore = createMockStore();
+        const failingStore = createMockProcessStore();
         (failingStore.emitProcessOutput as any).mockImplementation(() => {
             throw new Error('Store emit error');
         });
