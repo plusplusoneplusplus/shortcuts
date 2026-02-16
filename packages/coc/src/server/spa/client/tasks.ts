@@ -579,10 +579,20 @@ function showTaskContextMenu(x: number, y: number, filePath: string, currentStat
             '</div>';
     }
 
+    const fileName = filePath.split('/').pop() || filePath;
+
     menu.innerHTML =
         '<div class="task-context-menu-item has-submenu">' +
             '<span>Change Status</span>' +
             '<div class="task-context-submenu">' + submenuHtml + '</div>' +
+        '</div>' +
+        '<div class="task-context-menu-separator"></div>' +
+        '<div class="task-context-menu-item" data-ctx-action="rename-task" data-ctx-path="' + escapeHtmlClient(filePath) + '" data-ctx-name="' + escapeHtmlClient(fileName) + '">' +
+            '<span class="ctx-menu-icon">✏️</span><span>Rename</span>' +
+        '</div>' +
+        '<div class="task-context-menu-separator"></div>' +
+        '<div class="task-context-menu-item task-context-menu-item-danger" data-ctx-action="delete-task" data-ctx-path="' + escapeHtmlClient(filePath) + '" data-ctx-name="' + escapeHtmlClient(fileName) + '">' +
+            '<span class="ctx-menu-icon">🗑️</span><span>Delete</span>' +
         '</div>';
 
     document.body.appendChild(menu);
@@ -617,15 +627,32 @@ function showTaskContextMenu(x: number, y: number, filePath: string, currentStat
         }
     }
 
-    // Click handler for submenu items
+    // Click handler for menu items
     menu.addEventListener('click', (e: Event) => {
         const target = e.target as HTMLElement;
-        const item = target.closest('[data-ctx-action="set-status"]') as HTMLElement | null;
-        if (item) {
-            const newStatus = item.getAttribute('data-ctx-status');
-            const path = item.getAttribute('data-ctx-path');
+
+        // Handle status submenu items
+        const statusItem = target.closest('[data-ctx-action="set-status"]') as HTMLElement | null;
+        if (statusItem) {
+            const newStatus = statusItem.getAttribute('data-ctx-status');
+            const path = statusItem.getAttribute('data-ctx-path');
             if (newStatus && path) {
                 updateStatus(wsId, path, newStatus);
+            }
+            dismissContextMenu();
+            return;
+        }
+
+        // Handle rename / delete actions
+        const actionItem = target.closest('[data-ctx-action]') as HTMLElement | null;
+        if (actionItem) {
+            const action = actionItem.getAttribute('data-ctx-action');
+            const path = actionItem.getAttribute('data-ctx-path') || '';
+            const name = actionItem.getAttribute('data-ctx-name') || '';
+            if (action === 'rename-task') {
+                renameItem(wsId, path, name);
+            } else if (action === 'delete-task') {
+                deleteItem(wsId, path, name);
             }
             dismissContextMenu();
         }
