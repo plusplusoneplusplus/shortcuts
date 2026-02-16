@@ -320,6 +320,72 @@ function countFolderItems(folder: TaskFolder): number {
     return count;
 }
 
+/** Recursively count all .plan.md files in a folder and its subfolders. */
+function countPlanFilesRecursive(folderPath: string): number {
+    if (!currentTasks) return 0;
+    const folder = resolveFolderByPath(currentTasks, folderPath);
+    if (!folder) return 0;
+    return countPlanFilesInFolder(folder);
+}
+
+function countPlanFilesInFolder(folder: TaskFolder): number {
+    let count = 0;
+    if (folder.documentGroups) {
+        for (const group of folder.documentGroups) {
+            for (const doc of group.documents) {
+                if (doc.docType === 'plan') count++;
+            }
+        }
+    }
+    if (folder.singleDocuments) {
+        for (const doc of folder.singleDocuments) {
+            if (doc.fileName.endsWith('.plan.md')) count++;
+        }
+    }
+    if (folder.children) {
+        for (const child of folder.children) {
+            count += countPlanFilesInFolder(child);
+        }
+    }
+    return count;
+}
+
+/** Recursively collect all .plan.md file paths in a folder and its subfolders. */
+function collectPlanFilesRecursive(folderPath: string): string[] {
+    if (!currentTasks) return [];
+    const folder = resolveFolderByPath(currentTasks, folderPath);
+    if (!folder) return [];
+    return collectPlanFilesInFolder(folder);
+}
+
+function collectPlanFilesInFolder(folder: TaskFolder): string[] {
+    const paths: string[] = [];
+    if (folder.documentGroups) {
+        for (const group of folder.documentGroups) {
+            for (const doc of group.documents) {
+                if (doc.docType === 'plan') {
+                    const docPath = doc.relativePath ? doc.relativePath + '/' + doc.fileName : doc.fileName;
+                    paths.push(docPath);
+                }
+            }
+        }
+    }
+    if (folder.singleDocuments) {
+        for (const doc of folder.singleDocuments) {
+            if (doc.fileName.endsWith('.plan.md')) {
+                const docPath = doc.relativePath ? doc.relativePath + '/' + doc.fileName : doc.fileName;
+                paths.push(docPath);
+            }
+        }
+    }
+    if (folder.children) {
+        for (const child of folder.children) {
+            paths.push(...collectPlanFilesInFolder(child));
+        }
+    }
+    return paths;
+}
+
 function renderTasksInRepo(): void {
     const container = document.getElementById('repo-tasks-tree');
     if (!container) return;
@@ -959,6 +1025,16 @@ function showFolderContextMenu(x: number, y: number, folderPath: string): void {
             '<span class="ctx-menu-icon">🤖</span><span>AI Generate Task</span>' +
         '</div>';
 
+    // Queue All Tasks
+    const planCount = countPlanFilesRecursive(folderPath);
+    const queueLabel = planCount > 0
+        ? `Queue All Tasks (${planCount} plan${planCount > 1 ? 's' : ''})`
+        : 'Queue All Tasks (none)';
+    itemsHtml +=
+        '<div class="task-context-menu-item' + (planCount === 0 ? ' task-context-menu-item-disabled' : '') + '" data-ctx-action="queue-all-tasks" data-ctx-path="' + escapeHtmlClient(folderPath) + '" data-ctx-count="' + planCount + '">' +
+            '<span class="ctx-menu-icon">📋</span><span>' + escapeHtmlClient(queueLabel) + '</span>' +
+        '</div>';
+
     // Separator
     itemsHtml += '<div class="task-context-menu-separator"></div>';
 
@@ -1018,6 +1094,7 @@ function showFolderContextMenu(x: number, y: number, folderPath: string): void {
         const target = e.target as HTMLElement;
         const item = target.closest('[data-ctx-action]') as HTMLElement | null;
         if (!item) return;
+        if (item.classList.contains('task-context-menu-item-disabled')) return;
 
         const action = item.getAttribute('data-ctx-action');
         const path = item.getAttribute('data-ctx-path') || '';
@@ -1035,6 +1112,9 @@ function showFolderContextMenu(x: number, y: number, folderPath: string): void {
                 break;
             case 'ai-generate-in-folder':
                 showRepoAIGenerateDialog(wsId, path);
+                break;
+            case 'queue-all-tasks':
+                queueAllTasksInFolder(wsId, path);
                 break;
             case 'move-folder':
                 showMoveDialog(wsId, path);
@@ -1154,6 +1234,27 @@ function createTaskInFolder(wsId: string, parentPath: string): void {
             ],
         },
     ]);
+}
+
+/** Queue all .plan.md files in a folder and its subfolders. */
+function queueAllTasksInFolder(_wsId: string, folderPath: string): void {
+    const planFiles = collectPlanFilesRecursive(folderPath);
+
+    if (planFiles.length === 0) {
+        alert('No plan files found in this folder.');
+        return;
+    }
+
+    const folderName = folderPath.split('/').pop() || folderPath;
+    const message = `Queue ${planFiles.length} plan file${planFiles.length > 1 ? 's' : ''} from "${folderName}"?`;
+
+    if (!confirm(message)) return;
+
+    // TODO (commit 003): Integrate with checkbox selection state
+    console.log('[Queue All Tasks] Would queue:', planFiles);
+
+    // TODO (commit 004): Show queue dialog with pre-selected files
+    alert(`Feature in progress: Would queue ${planFiles.length} plan files.\n\nFiles: ${planFiles.slice(0, 3).join(', ')}${planFiles.length > 3 ? '...' : ''}`);
 }
 
 /** Delete a folder after confirmation via the DELETE API. */

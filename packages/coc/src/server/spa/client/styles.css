@@ -2463,6 +2463,18 @@ html[data-theme="dark"] .miller-row-drop-target {
     background: rgba(241, 76, 76, 0.08);
 }
 
+/* Disabled context menu item */
+.task-context-menu-item-disabled {
+    color: var(--vscode-disabledForeground, #6c6c6c);
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.task-context-menu-item-disabled:hover {
+    background: transparent;
+    cursor: not-allowed;
+}
+
 /* ================================================================
    AI Generate Task Dialog (aligned with VS Code extension dialog)
    ================================================================ */
