@@ -162,9 +162,27 @@ describe('client bundle — core module', () => {
         expect(script).toContain('reports');
     });
 
-    it('has setHashSilent guard to prevent double-dispatch', () => {
+    it('has setHashSilent using replaceState to prevent hashchange', () => {
         expect(script).toContain('setHashSilent');
-        expect(script).toContain('_hashChangeGuard');
+        expect(script).toContain('replaceState');
+    });
+
+    it('setHashSilent does not use location.hash assignment', () => {
+        // Ensure the old guard-based approach is fully removed.
+        // The bundle should NOT contain the old _hashChangeGuard variable.
+        expect(script).not.toContain('_hashChangeGuard');
+    });
+
+    it('setHashSilent uses history.replaceState for silent hash updates', () => {
+        // replaceState updates the URL without triggering hashchange,
+        // which prevents race conditions when selecting repos.
+        expect(script).toContain('history.replaceState');
+    });
+
+    it('handleHashChange does not check a guard variable', () => {
+        // The guard-based approach was removed; handleHashChange should
+        // process every hashchange event unconditionally.
+        expect(script).not.toContain('_hashChangeGuard');
     });
 });
 

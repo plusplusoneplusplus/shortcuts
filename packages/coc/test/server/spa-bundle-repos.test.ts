@@ -114,6 +114,33 @@ describe('client bundle — repos module', () => {
         expect(script).toContain('path-browser');
         expect(script).toContain('openPathBrowser');
     });
+
+    it('showRepoDetail calls setHashSilent (not location.hash)', () => {
+        // showRepoDetail must use setHashSilent to update the hash
+        // without triggering hashchange, preventing navigation away from repos.
+        expect(script).toContain('setHashSilent');
+        expect(script).toContain('showRepoDetail');
+    });
+
+    it('showRepoDetail updates selectedRepoId in appState', () => {
+        expect(script).toContain('selectedRepoId');
+    });
+
+    it('showRepoDetail updates activeRepoSubTab in appState', () => {
+        expect(script).toContain('activeRepoSubTab');
+    });
+
+    it('setHashSilent uses replaceState to avoid hashchange race', () => {
+        // The fix: replaceState does not fire hashchange, so clicking a
+        // repo item won't accidentally navigate back to the processes tab.
+        expect(script).toContain('replaceState');
+        expect(script).not.toContain('_hashChangeGuard');
+    });
+
+    it('clearRepoDetail resets selectedRepoId and hash', () => {
+        expect(script).toContain('clearRepoDetail');
+        expect(script).toContain('selectedRepoId');
+    });
 });
 
 // ============================================================================

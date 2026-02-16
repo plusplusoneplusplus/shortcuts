@@ -149,18 +149,16 @@ window.addEventListener('popstate', () => {
 // Hash-based routing
 // ================================================================
 
-let _hashChangeGuard = false;
-
 export function setHashSilent(hash: string): void {
-    _hashChangeGuard = true;
-    location.hash = hash;
-    // Guard is reset asynchronously after the hashchange event fires
-    setTimeout(() => { _hashChangeGuard = false; }, 0);
+    // Use replaceState to update the URL hash without triggering hashchange.
+    // This avoids a race condition where setTimeout(0) guard could be reset
+    // before the asynchronous hashchange event fires, causing unintended
+    // re-navigation (e.g., clicking a repo item would flash back to processes).
+    const url = hash.startsWith('#') ? hash : '#' + hash;
+    history.replaceState(null, '', url);
 }
 
 export function handleHashChange(): void {
-    if (_hashChangeGuard) return;
-
     const hash = location.hash.replace(/^#/, '');
 
     // #process/{id}
