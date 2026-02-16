@@ -11,7 +11,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { test, expect } from './fixtures/server-fixture';
 import { seedWorkspace, request } from './fixtures/seed';
-import { createRepoFixture } from './fixtures/repo-fixtures';
+import { createRepoFixture, createTasksFixture } from './fixtures/repo-fixtures';
 
 test.describe('Repos tab', () => {
     test('shows empty state when no repos exist', async ({ page, serverUrl }) => {
@@ -365,5 +365,108 @@ test.describe('Remove Repo', () => {
         // Detail panel should revert to empty state
         await expect(page.locator('#repo-detail-empty')).toBeVisible({ timeout: 10000 });
         await expect(page.locator('#repo-detail-content')).toBeHidden();
+    });
+});
+
+// ================================================================
+// Sub-tab Navigation (005-subtab-navigation)
+// ================================================================
+
+test.describe('Sub-tab Navigation', () => {
+    test('default sub-tab is Info', async ({ page, serverUrl }) => {
+        await seedWorkspace(serverUrl, 'ws-sub-1', 'info-repo', '/tmp/info-repo');
+
+        await page.goto(serverUrl);
+        await page.click('[data-tab="repos"]');
+        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+
+        await page.locator('.repo-item').first().click();
+        await expect(page.locator('#repo-detail-content')).toBeVisible();
+
+        // Info sub-tab should be active by default
+        await expect(page.locator('.repo-sub-tab[data-subtab="info"]')).toHaveClass(/active/);
+        // meta-grid is rendered by the Info tab
+        await expect(page.locator('.meta-grid')).toBeVisible();
+    });
+
+    test('switch to Pipelines tab', async ({ page, serverUrl }) => {
+        await seedWorkspace(serverUrl, 'ws-sub-2', 'pipe-repo', '/tmp/pipe-repo');
+
+        await page.goto(serverUrl);
+        await page.click('[data-tab="repos"]');
+        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+
+        await page.locator('.repo-item').first().click();
+        await expect(page.locator('#repo-detail-content')).toBeVisible();
+
+        // Click Pipelines sub-tab
+        await page.click('.repo-sub-tab[data-subtab="pipelines"]');
+        await expect(page.locator('.repo-sub-tab[data-subtab="pipelines"]')).toHaveClass(/active/);
+        await expect(page.locator('.repo-sub-tab[data-subtab="info"]')).not.toHaveClass(/active/);
+
+        // Pipeline list or empty state should render inside sub-tab content
+        const subContent = page.locator('#repo-sub-tab-content');
+        await expect(subContent).toBeVisible();
+        // Either a pipeline list or the empty state text is shown
+        await expect(subContent.locator('.repo-pipeline-list, .empty-state')).toHaveCount(1);
+    });
+
+    test('switch to Tasks tab', async ({ page, serverUrl }) => {
+        await seedWorkspace(serverUrl, 'ws-sub-3', 'tasks-repo', '/tmp/tasks-repo');
+
+        await page.goto(serverUrl);
+        await page.click('[data-tab="repos"]');
+        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+
+        await page.locator('.repo-item').first().click();
+        await expect(page.locator('#repo-detail-content')).toBeVisible();
+
+        // Click Tasks sub-tab
+        await page.click('.repo-sub-tab[data-subtab="tasks"]');
+        await expect(page.locator('.repo-sub-tab[data-subtab="tasks"]')).toHaveClass(/active/);
+
+        // Tasks toolbar should be visible
+        await expect(page.locator('.repo-tasks-toolbar')).toBeVisible();
+    });
+
+    test('sub-tab state persists on re-select', async ({ page, serverUrl }) => {
+        await seedWorkspace(serverUrl, 'ws-sub-4a', 'repo-alpha', '/tmp/repo-alpha');
+        await seedWorkspace(serverUrl, 'ws-sub-4b', 'repo-beta', '/tmp/repo-beta');
+
+        await page.goto(serverUrl);
+        await page.click('[data-tab="repos"]');
+        await expect(page.locator('.repo-item')).toHaveCount(2, { timeout: 10000 });
+
+        // Select first repo and switch to Pipelines sub-tab
+        await page.locator('.repo-item').first().click();
+        await expect(page.locator('#repo-detail-content')).toBeVisible();
+        await page.click('.repo-sub-tab[data-subtab="pipelines"]');
+        await expect(page.locator('.repo-sub-tab[data-subtab="pipelines"]')).toHaveClass(/active/);
+
+        // Click the other repo
+        await page.locator('.repo-item').nth(1).click();
+        await expect(page.locator('#repo-detail-content')).toBeVisible();
+
+        // Click back to the first repo
+        await page.locator('.repo-item').first().click();
+        await expect(page.locator('#repo-detail-content')).toBeVisible();
+
+        // Pipelines sub-tab should still be active (state persisted in appState)
+        await expect(page.locator('.repo-sub-tab[data-subtab="pipelines"]')).toHaveClass(/active/);
+    });
+
+    test('hash navigation works for sub-tab', async ({ page, serverUrl }) => {
+        await seedWorkspace(serverUrl, 'ws-sub-5', 'hash-repo', '/tmp/hash-repo');
+
+        // Navigate directly to the pipelines sub-tab via hash
+        await page.goto(`${serverUrl}/#repos/ws-sub-5/pipelines`);
+
+        // Should be on repos tab with the correct repo selected
+        await expect(page.locator('[data-tab="repos"]')).toHaveClass(/active/);
+        await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 10000 });
+
+        // Pipelines sub-tab should be active
+        await expect(page.locator('.repo-sub-tab[data-subtab="pipelines"]')).toHaveClass(/active/);
+        await expect(page.locator('.repo-sub-tab[data-subtab="info"]')).not.toHaveClass(/active/);
     });
 });

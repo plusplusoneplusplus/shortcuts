@@ -231,7 +231,7 @@ function truncatePath(p: string, max: number): string {
 
 export function showRepoDetail(wsId: string, subTab?: RepoSubTab, taskFile?: string): void {
     appState.selectedRepoId = wsId;
-    appState.activeRepoSubTab = subTab || 'info';
+    appState.activeRepoSubTab = subTab || appState.activeRepoSubTab || 'info';
 
     // Update hash silently — include task file path if on tasks tab
     let hashSuffix = '';
