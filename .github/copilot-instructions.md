@@ -1,1 +1,1 @@
-1. You should never add/commit files under .vscode/tasks
+1. You should never git add/commit files under .vscode/tasks. Creating files are fine. 
