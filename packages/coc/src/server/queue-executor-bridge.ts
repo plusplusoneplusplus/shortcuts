@@ -336,7 +336,28 @@ export class CLITaskExecutor implements TaskExecutor {
         }
 
         if (isFollowPromptPayload(task.payload)) {
-            // Resolve structured context block from additionalContext + planFilePath content
+            // New-style payloads (planFilePath without additionalContext):
+            // Use VS Code extension format: "Follow the instruction {promptFilePath}. {planFilePath}"
+            const hasAdditionalContext = !!task.payload.additionalContext;
+            const hasPlanFilePath = !!task.payload.planFilePath;
+
+            if (!hasAdditionalContext && hasPlanFilePath && !task.payload.promptContent) {
+                // New-style: file-path-based prompt referencing both files
+                try {
+                    if (task.payload.promptFilePath && fs.existsSync(task.payload.promptFilePath)) {
+                        return `Follow the instruction ${task.payload.promptFilePath}. ${task.payload.planFilePath}`;
+                    }
+                } catch {
+                    // Fall through to legacy handling
+                }
+            }
+
+            if (!hasAdditionalContext && hasPlanFilePath && task.payload.promptContent) {
+                // Skill-type: promptContent + planFilePath reference (no inline content)
+                return `${task.payload.promptContent} ${task.payload.planFilePath}`;
+            }
+
+            // Legacy path: resolve context block from additionalContext + planFilePath content
             const contextBlock = this.resolveContextBlock(task.payload);
 
             // Prefer direct prompt content when available (no file I/O needed)

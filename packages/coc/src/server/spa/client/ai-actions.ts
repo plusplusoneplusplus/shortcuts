@@ -267,15 +267,14 @@ async function enqueueFollowPrompt(
     itemPath?: string,
     model?: string,
 ): Promise<void> {
-    // Fetch task content for additionalContext
-    const data = await fetchApi(
-        `/workspaces/${encodeURIComponent(wsId)}/tasks/content?path=${encodeURIComponent(taskPath)}`
-    );
-    const taskContent = data?.content || '';
-
     // Resolve workspace rootPath for workingDirectory
     const ws = appState.workspaces.find((w: any) => w.id === wsId);
     const workingDirectory = ws?.rootPath || '';
+
+    // Construct absolute planFilePath from workspace root + taskPath
+    const planFilePath = workingDirectory
+        ? workingDirectory + '/' + taskPath
+        : taskPath;
 
     // Build payload based on item type
     let payload: Record<string, string>;
@@ -283,13 +282,13 @@ async function enqueueFollowPrompt(
         const promptFilePath = workingDirectory
             ? workingDirectory + '/.vscode/pipelines/' + (itemPath || '')
             : itemPath || '';
-        payload = { promptFilePath, additionalContext: taskContent, workingDirectory };
+        payload = { promptFilePath, planFilePath, workingDirectory };
     } else {
         // Skill — use promptContent for type guard satisfaction
         payload = {
             skillName: itemName,
             promptContent: `Use the ${itemName} skill.`,
-            additionalContext: taskContent,
+            planFilePath,
             workingDirectory,
         };
     }

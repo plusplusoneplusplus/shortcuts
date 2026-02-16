@@ -201,13 +201,16 @@ describe('client/ai-actions.ts — Follow Prompt flow', () => {
         expect(content).toContain('async function enqueueFollowPrompt');
     });
 
-    it('enqueueFollowPrompt fetches task content via tasks/content endpoint', () => {
-        expect(content).toContain('/tasks/content?path=');
+    it('enqueueFollowPrompt does not fetch task content via tasks/content endpoint', () => {
+        // New behavior: no /tasks/content API call
+        const fnContent = content.slice(content.indexOf('enqueueFollowPrompt'));
+        const fnEnd = fnContent.indexOf('\nasync function') > 0 ? fnContent.indexOf('\nasync function') : fnContent.indexOf('\nexport function');
+        const fnBody = fnEnd > 0 ? fnContent.slice(0, fnEnd) : fnContent;
+        expect(fnBody).not.toContain('/tasks/content?path=');
     });
 
-    it('enqueueFollowPrompt resolves workspace rootPath from appState', () => {
-        expect(content).toContain('appState.workspaces.find');
-        expect(content).toContain('ws?.rootPath');
+    it('enqueueFollowPrompt constructs planFilePath from workspace root + taskPath', () => {
+        expect(content).toContain("workingDirectory + '/' + taskPath");
     });
 
     it('enqueueFollowPrompt builds promptFilePath for prompt items', () => {
@@ -220,8 +223,12 @@ describe('client/ai-actions.ts — Follow Prompt flow', () => {
         expect(content).toContain('promptContent:');
     });
 
-    it('enqueueFollowPrompt sets additionalContext to task content', () => {
-        expect(content).toContain('additionalContext: taskContent');
+    it('enqueueFollowPrompt sends planFilePath instead of additionalContext', () => {
+        expect(content).toContain('planFilePath');
+        // Should not have additionalContext in the enqueue payload
+        const fnStart = content.indexOf('async function enqueueFollowPrompt');
+        const fnBody = content.slice(fnStart, content.indexOf('\n// ==', fnStart));
+        expect(fnBody).not.toContain('additionalContext');
     });
 
     it('enqueueFollowPrompt sets workingDirectory', () => {
@@ -452,10 +459,12 @@ describe('Follow Prompt payload construction', () => {
         expect(content).toContain('promptContent: `Use the ${itemName} skill.`');
     });
 
-    it('both payloads include additionalContext', () => {
-        const matches = content.match(/additionalContext: taskContent/g);
+    it('both payloads include planFilePath', () => {
+        const fnStart = content.indexOf('async function enqueueFollowPrompt');
+        const fnBody = content.slice(fnStart, content.indexOf('\n// ==', fnStart));
+        const matches = fnBody.match(/planFilePath/g);
         expect(matches).toBeTruthy();
-        expect(matches!.length).toBeGreaterThanOrEqual(2);
+        expect(matches!.length).toBeGreaterThanOrEqual(3);
     });
 
     it('both payloads include workingDirectory', () => {
