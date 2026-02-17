@@ -22,10 +22,23 @@ import {
     ProcessEvent
 } from './ai/process-types';
 
-/** On-disk shape inside processes.json */
+/** On-disk shape for individual process files (processes/<id>.json) */
 export interface StoredProcessEntry {
     workspaceId: string;
     process: SerializedAIProcess;
+}
+
+/** Lightweight index entry stored in processes/index.json */
+export interface ProcessIndexEntry {
+    id: string;
+    workspaceId: string;
+    status: string;
+    type: string;
+    startTime: string;
+    endTime?: string;
+    promptPreview: string;
+    error?: string;
+    parentProcessId?: string;
 }
 
 export interface FileProcessStoreOptions {
@@ -52,11 +65,14 @@ export async function ensureDataDir(dirPath: string): Promise<string> {
 export class FileProcessStore implements ProcessStore {
     private readonly dataDir: string;
     private readonly maxProcesses: number;
-    private readonly processesPath: string;
+    private readonly processesDir: string;
+    private readonly indexPath: string;
+    private readonly legacyProcessesPath: string;
     private readonly workspacesPath: string;
     private readonly wikisPath: string;
     private writeQueue: Promise<void>;
     private readonly emitters: Map<string, EventEmitter> = new Map();
+    private initPromise: Promise<void> | null = null;
 
     onProcessChange?: ProcessChangeCallback;
     /** Optional callback invoked with entries removed during pruneIfNeeded() */
@@ -65,61 +81,81 @@ export class FileProcessStore implements ProcessStore {
     constructor(options?: FileProcessStoreOptions) {
         this.dataDir = options?.dataDir ?? getDefaultDataDir();
         this.maxProcesses = options?.maxProcesses ?? 500;
-        this.processesPath = path.join(this.dataDir, 'processes.json');
+        this.processesDir = path.join(this.dataDir, 'processes');
+        this.indexPath = path.join(this.processesDir, 'index.json');
+        this.legacyProcessesPath = path.join(this.dataDir, 'processes.json');
         this.workspacesPath = path.join(this.dataDir, 'workspaces.json');
         this.wikisPath = path.join(this.dataDir, 'wikis.json');
         this.writeQueue = Promise.resolve();
         this.onPrune = options?.onPrune;
     }
 
+    private ensureInitialized(): Promise<void> {
+        if (!this.initPromise) {
+            this.initPromise = this.migrateIfNeeded();
+        }
+        return this.initPromise;
+    }
+
     async addProcess(process: AIProcess): Promise<void> {
         await this.enqueueWrite(async () => {
-            await ensureDataDir(this.dataDir);
-            const entries = await this.readProcesses();
+            await this.ensureInitialized();
+            await ensureDataDir(this.processesDir);
             const workspaceId = process.metadata?.workspaceId ?? '';
-            entries.push({
+            const entry: StoredProcessEntry = {
                 workspaceId,
                 process: serializeProcess(process)
-            });
-            const pruned = this.pruneIfNeeded(entries);
-            await this.writeProcesses(pruned);
+            };
+            // Write per-process file first (orphan on crash is harmless)
+            await this.writeProcessFile(process.id, entry);
+            // Append to index then prune
+            const index = await this.readIndex();
+            index.push(this.toIndexEntry(entry));
+            const pruned = await this.pruneIfNeeded(index);
+            await this.writeIndex(pruned);
         });
         this.onProcessChange?.({ type: 'process-added', process });
     }
 
     async getProcess(id: string): Promise<AIProcess | undefined> {
-        const entries = await this.readProcesses();
-        const entry = entries.find(e => e.process.id === id);
+        await this.ensureInitialized();
+        const entry = await this.readProcessFile(id);
         return entry ? deserializeProcess(entry.process) : undefined;
     }
 
     async getAllProcesses(filter?: ProcessFilter): Promise<AIProcess[]> {
-        const entries = await this.readProcesses();
-        let results = entries;
+        await this.ensureInitialized();
+        let indexEntries = await this.readIndex();
 
+        // Filter on index fields first (no file I/O)
         if (filter?.workspaceId) {
-            results = results.filter(e => e.workspaceId === filter.workspaceId);
+            indexEntries = indexEntries.filter(e => e.workspaceId === filter.workspaceId);
         }
-
-        let processes = results.map(e => deserializeProcess(e.process));
-
         if (filter?.status) {
             const statuses = Array.isArray(filter.status) ? filter.status : [filter.status];
-            processes = processes.filter(p => statuses.includes(p.status));
+            indexEntries = indexEntries.filter(e => statuses.includes(e.status as AIProcessStatus));
         }
-
         if (filter?.type) {
-            processes = processes.filter(p => p.type === filter.type);
+            indexEntries = indexEntries.filter(e => e.type === filter.type);
         }
-
         if (filter?.since) {
-            const since = filter.since;
-            processes = processes.filter(p => p.startTime >= since);
+            const sinceTime = filter.since.getTime();
+            indexEntries = indexEntries.filter(e => new Date(e.startTime).getTime() >= sinceTime);
         }
 
+        // Apply pagination on index
         if (filter?.limit !== undefined) {
             const offset = filter.offset ?? 0;
-            processes = processes.slice(offset, offset + filter.limit);
+            indexEntries = indexEntries.slice(offset, offset + filter.limit);
+        }
+
+        // Load only matching process files
+        const processes: AIProcess[] = [];
+        for (const ie of indexEntries) {
+            const entry = await this.readProcessFile(ie.id);
+            if (entry) {
+                processes.push(deserializeProcess(entry.process));
+            }
         }
 
         return processes;
@@ -128,20 +164,26 @@ export class FileProcessStore implements ProcessStore {
     async updateProcess(id: string, updates: Partial<AIProcess>): Promise<void> {
         let updated: AIProcess | undefined;
         await this.enqueueWrite(async () => {
-            const entries = await this.readProcesses();
-            const idx = entries.findIndex(e => e.process.id === id);
-            if (idx === -1) { return; }
+            await this.ensureInitialized();
+            const entry = await this.readProcessFile(id);
+            if (!entry) { return; }
 
-            const existing = deserializeProcess(entries[idx].process);
-            // Spread-merge replaces arrays (e.g. conversationTurns) wholesale.
-            // Callers must supply the complete array on each update.
+            const existing = deserializeProcess(entry.process);
             const merged = { ...existing, ...updates };
-            entries[idx] = {
-                workspaceId: merged.metadata?.workspaceId ?? entries[idx].workspaceId,
+            const newEntry: StoredProcessEntry = {
+                workspaceId: merged.metadata?.workspaceId ?? entry.workspaceId,
                 process: serializeProcess(merged)
             };
+            await this.writeProcessFile(id, newEntry);
+
+            // Update index entry
+            const index = await this.readIndex();
+            const idx = index.findIndex(e => e.id === id);
+            if (idx !== -1) {
+                index[idx] = this.toIndexEntry(newEntry);
+                await this.writeIndex(index);
+            }
             updated = merged;
-            await this.writeProcesses(entries);
         });
         if (updated) {
             this.onProcessChange?.({ type: 'process-updated', process: updated });
@@ -151,12 +193,14 @@ export class FileProcessStore implements ProcessStore {
     async removeProcess(id: string): Promise<void> {
         let removed: AIProcess | undefined;
         await this.enqueueWrite(async () => {
-            const entries = await this.readProcesses();
-            const idx = entries.findIndex(e => e.process.id === id);
-            if (idx === -1) { return; }
-            removed = deserializeProcess(entries[idx].process);
-            entries.splice(idx, 1);
-            await this.writeProcesses(entries);
+            await this.ensureInitialized();
+            const entry = await this.readProcessFile(id);
+            if (!entry) { return; }
+            removed = deserializeProcess(entry.process);
+            await this.deleteProcessFile(id);
+            const index = await this.readIndex();
+            const filtered = index.filter(e => e.id !== id);
+            await this.writeIndex(filtered);
         });
         if (removed) {
             this.onProcessChange?.({ type: 'process-removed', process: removed });
@@ -166,39 +210,43 @@ export class FileProcessStore implements ProcessStore {
     async clearProcesses(filter?: ProcessFilter): Promise<number> {
         let count = 0;
         await this.enqueueWrite(async () => {
-            const entries = await this.readProcesses();
+            await this.ensureInitialized();
+            const index = await this.readIndex();
             if (!filter) {
-                count = entries.length;
-                await this.writeProcesses([]);
+                count = index.length;
+                // Delete all process files
+                await Promise.all(index.map(e => this.deleteProcessFile(e.id)));
+                await this.writeIndex([]);
                 return;
             }
 
-            const remaining: StoredProcessEntry[] = [];
-            for (const entry of entries) {
+            const remaining: ProcessIndexEntry[] = [];
+            const toDelete: string[] = [];
+            for (const ie of index) {
                 let match = true;
 
                 if (filter.workspaceId) {
-                    match = entry.workspaceId === filter.workspaceId;
+                    match = ie.workspaceId === filter.workspaceId;
                 }
 
                 if (match && filter.status) {
                     const statuses = Array.isArray(filter.status) ? filter.status : [filter.status];
-                    const process = deserializeProcess(entry.process);
-                    match = statuses.includes(process.status);
+                    match = statuses.includes(ie.status as AIProcessStatus);
                 }
 
                 if (match && filter.type) {
-                    const process = deserializeProcess(entry.process);
-                    match = process.type === filter.type;
+                    match = ie.type === filter.type;
                 }
 
                 if (match) {
                     count++;
+                    toDelete.push(ie.id);
                 } else {
-                    remaining.push(entry);
+                    remaining.push(ie);
                 }
             }
-            await this.writeProcesses(remaining);
+            await Promise.all(toDelete.map(id => this.deleteProcessFile(id)));
+            await this.writeIndex(remaining);
         });
         this.onProcessChange?.({ type: 'processes-cleared' });
         return count;
@@ -333,6 +381,7 @@ export class FileProcessStore implements ProcessStore {
     }
 
     async getStorageStats(): Promise<StorageStats> {
+        await this.ensureInitialized();
         const [processes, workspaces, wikis] = await Promise.all([
             this.getAllProcesses(),
             this.getWorkspaces(),
@@ -340,13 +389,29 @@ export class FileProcessStore implements ProcessStore {
         ]);
 
         let storageSize = 0;
-        for (const filePath of [this.processesPath, this.workspacesPath, this.wikisPath]) {
+        // Sum up index file + all per-process files + workspaces + wikis
+        for (const filePath of [this.indexPath, this.workspacesPath, this.wikisPath]) {
             try {
                 const stat = await fs.stat(filePath);
                 storageSize += stat.size;
             } catch {
                 // File may not exist yet
             }
+        }
+        // Add per-process file sizes
+        try {
+            const entries = await fs.readdir(this.processesDir);
+            for (const entry of entries) {
+                if (entry === 'index.json') { continue; }
+                try {
+                    const stat = await fs.stat(path.join(this.processesDir, entry));
+                    storageSize += stat.size;
+                } catch {
+                    // File may have been removed
+                }
+            }
+        } catch {
+            // processesDir may not exist yet
         }
 
         return {
@@ -391,21 +456,111 @@ export class FileProcessStore implements ProcessStore {
         this.emitters.delete(id);
     }
 
-    // --- Internal helpers ---
+    // --- Internal helpers: index + per-process files ---
 
-    private async readProcesses(): Promise<StoredProcessEntry[]> {
+    private sanitizeId(id: string): string {
+        return id.replace(/[^a-zA-Z0-9\-_]/g, '_');
+    }
+
+    private processFilePath(id: string): string {
+        return path.join(this.processesDir, `${this.sanitizeId(id)}.json`);
+    }
+
+    private async readIndex(): Promise<ProcessIndexEntry[]> {
         try {
-            const data = await fs.readFile(this.processesPath, 'utf-8');
-            return JSON.parse(data) as StoredProcessEntry[];
+            const data = await fs.readFile(this.indexPath, 'utf-8');
+            return JSON.parse(data) as ProcessIndexEntry[];
         } catch {
             return [];
         }
     }
 
-    private async writeProcesses(entries: StoredProcessEntry[]): Promise<void> {
-        const tmpPath = this.processesPath + '.tmp';
+    private async writeIndex(entries: ProcessIndexEntry[]): Promise<void> {
+        await ensureDataDir(this.processesDir);
+        const tmpPath = this.indexPath + '.tmp';
         await fs.writeFile(tmpPath, JSON.stringify(entries, null, 2), 'utf-8');
-        await fs.rename(tmpPath, this.processesPath);
+        await fs.rename(tmpPath, this.indexPath);
+    }
+
+    private async readProcessFile(id: string): Promise<StoredProcessEntry | undefined> {
+        try {
+            const data = await fs.readFile(this.processFilePath(id), 'utf-8');
+            return JSON.parse(data) as StoredProcessEntry;
+        } catch {
+            return undefined;
+        }
+    }
+
+    private async writeProcessFile(id: string, entry: StoredProcessEntry): Promise<void> {
+        const filePath = this.processFilePath(id);
+        const tmpPath = filePath + '.tmp';
+        await fs.writeFile(tmpPath, JSON.stringify(entry, null, 2), 'utf-8');
+        await fs.rename(tmpPath, filePath);
+    }
+
+    private async deleteProcessFile(id: string): Promise<void> {
+        try {
+            await fs.unlink(this.processFilePath(id));
+        } catch {
+            // Ignore missing file
+        }
+    }
+
+    private toIndexEntry(entry: StoredProcessEntry): ProcessIndexEntry {
+        return {
+            id: entry.process.id,
+            workspaceId: entry.workspaceId,
+            status: entry.process.status,
+            type: entry.process.type || 'clarification',
+            startTime: entry.process.startTime,
+            endTime: entry.process.endTime,
+            promptPreview: entry.process.promptPreview,
+            error: entry.process.error,
+            parentProcessId: entry.process.parentProcessId,
+        };
+    }
+
+    private async migrateIfNeeded(): Promise<void> {
+        try {
+            // Check if legacy file exists AND index does NOT
+            await fs.access(this.legacyProcessesPath);
+            try {
+                await fs.access(this.indexPath);
+                return; // Already migrated
+            } catch {
+                // index doesn't exist — proceed with migration
+            }
+        } catch {
+            return; // No legacy file — nothing to migrate
+        }
+
+        // Read legacy file
+        let entries: StoredProcessEntry[];
+        try {
+            const data = await fs.readFile(this.legacyProcessesPath, 'utf-8');
+            entries = JSON.parse(data) as StoredProcessEntry[];
+        } catch {
+            return; // Corrupt or empty legacy file
+        }
+
+        // Create processes/ directory
+        await ensureDataDir(this.processesDir);
+
+        // Write each entry as a per-process file
+        for (const entry of entries) {
+            await this.writeProcessFile(entry.process.id, entry);
+        }
+
+        // Build and write index
+        const index = entries.map(e => this.toIndexEntry(e));
+        await this.writeIndex(index);
+
+        // Rename legacy file to .bak
+        try {
+            await fs.rename(this.legacyProcessesPath, this.legacyProcessesPath + '.bak');
+        } catch {
+            // Best-effort rename
+        }
     }
 
     private async readWorkspaces(): Promise<WorkspaceInfo[]> {
@@ -444,17 +599,16 @@ export class FileProcessStore implements ProcessStore {
         return result;
     }
 
-    private pruneIfNeeded(entries: StoredProcessEntry[]): StoredProcessEntry[] {
+    private async pruneIfNeeded(entries: ProcessIndexEntry[]): Promise<ProcessIndexEntry[]> {
         if (entries.length <= this.maxProcesses) {
             return entries;
         }
 
         // Separate non-terminal (running/queued) from terminal processes
-        const nonTerminal: StoredProcessEntry[] = [];
-        const terminal: StoredProcessEntry[] = [];
+        const nonTerminal: ProcessIndexEntry[] = [];
+        const terminal: ProcessIndexEntry[] = [];
         for (const entry of entries) {
-            const status = entry.process.status;
-            if (status === 'running' || status === 'queued') {
+            if (entry.status === 'running' || entry.status === 'queued') {
                 nonTerminal.push(entry);
             } else {
                 terminal.push(entry);
@@ -463,8 +617,8 @@ export class FileProcessStore implements ProcessStore {
 
         // Sort terminal by startTime ascending (oldest first)
         terminal.sort((a, b) => {
-            const timeA = new Date(a.process.startTime).getTime();
-            const timeB = new Date(b.process.startTime).getTime();
+            const timeA = new Date(a.startTime).getTime();
+            const timeB = new Date(b.startTime).getTime();
             return timeA - timeB;
         });
 
@@ -472,13 +626,24 @@ export class FileProcessStore implements ProcessStore {
         const toKeep = this.maxProcesses - nonTerminal.length;
         const keptTerminal = toKeep > 0 ? terminal.slice(terminal.length - toKeep) : [];
 
-        // Notify about pruned entries
-        if (this.onPrune) {
-            const prunedCount = terminal.length - keptTerminal.length;
-            if (prunedCount > 0) {
-                const pruned = terminal.slice(0, prunedCount);
-                this.onPrune(pruned);
+        const prunedCount = terminal.length - keptTerminal.length;
+        if (prunedCount > 0) {
+            const prunedEntries = terminal.slice(0, prunedCount);
+
+            // Notify about pruned entries (load full data for onPrune callback)
+            if (this.onPrune) {
+                const fullEntries: StoredProcessEntry[] = [];
+                for (const ie of prunedEntries) {
+                    const entry = await this.readProcessFile(ie.id);
+                    if (entry) { fullEntries.push(entry); }
+                }
+                if (fullEntries.length > 0) {
+                    this.onPrune(fullEntries);
+                }
             }
+
+            // Delete pruned process files
+            await Promise.all(prunedEntries.map(e => this.deleteProcessFile(e.id)));
         }
 
         return [...nonTerminal, ...keptTerminal];

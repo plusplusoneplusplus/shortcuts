@@ -16,6 +16,8 @@ import {
     AIProcess,
     AIProcessStatus,
     ProcessOutputEvent,
+    ProcessIndexEntry,
+    StoredProcessEntry,
 } from '../src/index';
 
 function makeProcess(id: string, overrides?: Partial<AIProcess>): AIProcess {
@@ -213,8 +215,8 @@ describe('FileProcessStore', () => {
         const all = await store.getAllProcesses();
         expect(all).toHaveLength(count);
 
-        // Verify JSON file is valid
-        const raw = await fs.readFile(path.join(tmpDir, 'processes.json'), 'utf-8');
+        // Verify index.json file is valid
+        const raw = await fs.readFile(path.join(tmpDir, 'processes', 'index.json'), 'utf-8');
         expect(() => JSON.parse(raw)).not.toThrow();
     });
 
@@ -810,5 +812,228 @@ describe('FileProcessStore - Admin Methods', () => {
         expect(stats.totalWorkspaces).toBe(0);
         expect(stats.totalWikis).toBe(0);
         expect(stats.storageSize).toBe(0);
+    });
+});
+
+// ============================================================================
+// Index + Per-Process Files Architecture
+// ============================================================================
+
+describe('FileProcessStore - Index + Per-Process Files', () => {
+    let tmpDir: string;
+
+    beforeEach(async () => {
+        tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'fps-index-'));
+    });
+
+    afterEach(async () => {
+        await fs.rm(tmpDir, { recursive: true, force: true });
+    });
+
+    it('should create processes/ directory with index.json and per-process files', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.addProcess(makeProcess('p1'));
+        await store.addProcess(makeProcess('p2'));
+
+        // Verify directory structure
+        const indexRaw = await fs.readFile(path.join(tmpDir, 'processes', 'index.json'), 'utf-8');
+        const index = JSON.parse(indexRaw) as ProcessIndexEntry[];
+        expect(index).toHaveLength(2);
+        expect(index.map(e => e.id).sort()).toEqual(['p1', 'p2']);
+
+        // Verify per-process files exist
+        const p1Raw = await fs.readFile(path.join(tmpDir, 'processes', 'p1.json'), 'utf-8');
+        const p1Entry = JSON.parse(p1Raw) as StoredProcessEntry;
+        expect(p1Entry.process.id).toBe('p1');
+        expect(p1Entry.process.fullPrompt).toBe('Full prompt for p1');
+    });
+
+    it('index.json should not contain heavy fields (fullPrompt, result, conversationTurns)', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.addProcess(makeProcess('p1', {
+            fullPrompt: 'A very long prompt...',
+            result: 'A very long result...',
+            conversationTurns: [
+                { role: 'user', content: 'Hello', timestamp: new Date(), turnIndex: 0 },
+            ],
+        }));
+
+        const indexRaw = await fs.readFile(path.join(tmpDir, 'processes', 'index.json'), 'utf-8');
+        const index = JSON.parse(indexRaw);
+        expect(index).toHaveLength(1);
+        const entry = index[0];
+        expect(entry.fullPrompt).toBeUndefined();
+        expect(entry.result).toBeUndefined();
+        expect(entry.conversationTurns).toBeUndefined();
+        expect(entry.id).toBe('p1');
+        expect(entry.status).toBe('completed');
+    });
+
+    it('should handle missing per-process file gracefully (getProcess returns undefined)', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.addProcess(makeProcess('p1'));
+        await store.addProcess(makeProcess('p2'));
+
+        // Manually delete p1's file to simulate inconsistency
+        await fs.unlink(path.join(tmpDir, 'processes', 'p1.json'));
+
+        expect(await store.getProcess('p1')).toBeUndefined();
+        // p2 should still work
+        const p2 = await store.getProcess('p2');
+        expect(p2).toBeDefined();
+        expect(p2!.id).toBe('p2');
+    });
+
+    it('should skip missing per-process files in getAllProcesses', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.addProcess(makeProcess('p1'));
+        await store.addProcess(makeProcess('p2'));
+        await store.addProcess(makeProcess('p3'));
+
+        // Delete p2's file
+        await fs.unlink(path.join(tmpDir, 'processes', 'p2.json'));
+
+        const all = await store.getAllProcesses();
+        expect(all).toHaveLength(2);
+        expect(all.map(p => p.id).sort()).toEqual(['p1', 'p3']);
+    });
+
+    it('prune should delete per-process files for pruned entries', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir, maxProcesses: 5 });
+
+        for (let i = 0; i < 8; i++) {
+            await store.addProcess(makeProcess(`p${i}`, {
+                status: 'completed',
+                startTime: new Date(Date.now() + i * 1000),
+            }));
+        }
+
+        const all = await store.getAllProcesses();
+        expect(all.length).toBeLessThanOrEqual(5);
+
+        // Verify pruned files are gone
+        const files = await fs.readdir(path.join(tmpDir, 'processes'));
+        const jsonFiles = files.filter(f => f !== 'index.json' && f.endsWith('.json'));
+        expect(jsonFiles.length).toBeLessThanOrEqual(5);
+    });
+
+    it('clear should delete per-process files', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.addProcess(makeProcess('p1'));
+        await store.addProcess(makeProcess('p2'));
+        await store.addProcess(makeProcess('p3'));
+
+        await store.clearProcesses();
+
+        // Verify all process files are deleted
+        const files = await fs.readdir(path.join(tmpDir, 'processes'));
+        const jsonFiles = files.filter(f => f !== 'index.json' && f.endsWith('.json'));
+        expect(jsonFiles).toHaveLength(0);
+
+        // Index should be empty
+        const indexRaw = await fs.readFile(path.join(tmpDir, 'processes', 'index.json'), 'utf-8');
+        expect(JSON.parse(indexRaw)).toEqual([]);
+    });
+
+    it('remove should delete the per-process file', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.addProcess(makeProcess('p1'));
+        await store.addProcess(makeProcess('p2'));
+
+        await store.removeProcess('p1');
+
+        // p1 file should be gone
+        const files = await fs.readdir(path.join(tmpDir, 'processes'));
+        const jsonFiles = files.filter(f => f !== 'index.json' && f.endsWith('.json'));
+        expect(jsonFiles).toEqual(['p2.json']);
+    });
+
+    // --- Legacy migration ---
+    it('should migrate legacy processes.json to index + per-process files', async () => {
+        // Create a legacy processes.json
+        const legacyEntries: StoredProcessEntry[] = [
+            {
+                workspaceId: 'ws-1',
+                process: {
+                    id: 'legacy-1',
+                    type: 'clarification',
+                    promptPreview: 'prompt-1',
+                    fullPrompt: 'Full prompt 1',
+                    status: 'completed',
+                    startTime: '2026-01-15T10:00:00.000Z',
+                },
+            },
+            {
+                workspaceId: 'ws-2',
+                process: {
+                    id: 'legacy-2',
+                    type: 'code-review',
+                    promptPreview: 'prompt-2',
+                    fullPrompt: 'Full prompt 2',
+                    status: 'running',
+                    startTime: '2026-01-15T11:00:00.000Z',
+                },
+            },
+        ];
+        await fs.writeFile(
+            path.join(tmpDir, 'processes.json'),
+            JSON.stringify(legacyEntries, null, 2),
+            'utf-8'
+        );
+
+        // Create store — migration should run on first access
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        const all = await store.getAllProcesses();
+        expect(all).toHaveLength(2);
+        expect(all.map(p => p.id).sort()).toEqual(['legacy-1', 'legacy-2']);
+
+        // Verify index.json was created
+        const indexRaw = await fs.readFile(path.join(tmpDir, 'processes', 'index.json'), 'utf-8');
+        const index = JSON.parse(indexRaw) as ProcessIndexEntry[];
+        expect(index).toHaveLength(2);
+
+        // Verify per-process files were created
+        const p1 = await store.getProcess('legacy-1');
+        expect(p1).toBeDefined();
+        expect(p1!.fullPrompt).toBe('Full prompt 1');
+
+        // Verify legacy file was renamed to .bak
+        const bakExists = await fs.access(path.join(tmpDir, 'processes.json.bak')).then(() => true, () => false);
+        expect(bakExists).toBe(true);
+
+        // Original processes.json should be gone
+        const origExists = await fs.access(path.join(tmpDir, 'processes.json')).then(() => true, () => false);
+        expect(origExists).toBe(false);
+    });
+
+    it('should not re-migrate if index.json already exists', async () => {
+        // Create legacy file AND already-migrated index
+        await fs.writeFile(path.join(tmpDir, 'processes.json'), '[]', 'utf-8');
+        await fs.mkdir(path.join(tmpDir, 'processes'), { recursive: true });
+        await fs.writeFile(path.join(tmpDir, 'processes', 'index.json'), '[]', 'utf-8');
+
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.addProcess(makeProcess('p1'));
+
+        // Legacy file should still exist (not renamed)
+        const origExists = await fs.access(path.join(tmpDir, 'processes.json')).then(() => true, () => false);
+        expect(origExists).toBe(true);
+    });
+
+    it('should sanitize process IDs in filenames to prevent path traversal', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        const dangerousId = '../../../etc/passwd';
+        await store.addProcess(makeProcess(dangerousId));
+
+        const retrieved = await store.getProcess(dangerousId);
+        expect(retrieved).toBeDefined();
+        expect(retrieved!.id).toBe(dangerousId);
+
+        // The file should be inside processesDir, not escaping it
+        const files = await fs.readdir(path.join(tmpDir, 'processes'));
+        const jsonFiles = files.filter(f => f !== 'index.json' && f.endsWith('.json'));
+        expect(jsonFiles).toHaveLength(1);
+        // Sanitized: ../../../etc/passwd -> ______etc_passwd
+        expect(jsonFiles[0]).not.toContain('..');
     });
 });
