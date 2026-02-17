@@ -10,12 +10,13 @@
 
 import * as crypto from 'crypto';
 import * as url from 'url';
-import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore, TaskQueueManager } from '@plusplusoneplusplus/pipeline-core';
 import { sendJSON, sendError, parseBody } from './api-handler';
 import type { Route } from './types';
 import { DataWiper } from './data-wiper';
 import { exportAllData } from './data-exporter';
 import type { ProcessWebSocketServer } from './websocket';
+import type { QueuePersistence } from './queue-persistence';
 import { getResolvedConfigWithSource, loadConfigFile, writeConfigFile, getConfigFilePath } from '../config';
 import type { CLIConfig } from '../config';
 
@@ -72,6 +73,10 @@ export interface AdminRouteOptions {
     getWsServer?: () => ProcessWebSocketServer | undefined;
     /** Optional config file path override (for tests). When absent, uses getConfigFilePath(). */
     configPath?: string;
+    /** Lazy getter for the queue manager (for import reset). */
+    getQueueManager?: () => TaskQueueManager | undefined;
+    /** Lazy getter for queue persistence (for import restore). */
+    getQueuePersistence?: () => QueuePersistence | undefined;
 }
 
 /**

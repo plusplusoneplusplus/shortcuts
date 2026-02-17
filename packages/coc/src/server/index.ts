@@ -197,7 +197,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     registerPromptRoutes(routes, store);
     registerPreferencesRoutes(routes, dataDir);
     registerTaskCommentsRoutes(routes, dataDir);
-    registerAdminRoutes(routes, { store, dataDir, getWsServer: () => wsServer, configPath: options.configPath });
+    registerAdminRoutes(routes, { store, dataDir, getWsServer: () => wsServer, configPath: options.configPath, getQueueManager: () => queueManager, getQueuePersistence: () => queuePersistence });
 
     // Always register wiki routes (they are safe even with no wikis registered)
     const wikiManager = registerWikiRoutes(routes, {
