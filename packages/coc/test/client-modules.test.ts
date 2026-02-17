@@ -1180,3 +1180,145 @@ describe('escape character conversion', () => {
         }
     });
 });
+
+// ============================================================================
+// Conversation cache integration in detail.ts
+// ============================================================================
+
+describe('conversation cache integration in detail.ts', () => {
+    let detailContent: string;
+
+    beforeAll(() => {
+        detailContent = readClientFile('detail.ts');
+    });
+
+    it('should import getCachedConversation and cacheConversation from sidebar', () => {
+        expect(detailContent).toMatch(/import\s*\{[^}]*getCachedConversation[^}]*\}\s*from\s*['"]\.\/sidebar['"]/);
+        expect(detailContent).toMatch(/import\s*\{[^}]*cacheConversation[^}]*\}\s*from\s*['"]\.\/sidebar['"]/);
+    });
+
+    it('should restore from cache before resetting in showQueueTaskDetail', () => {
+        // Must call getCachedConversation before setQueueTaskConversationTurns
+        const cacheRestorePattern = /getCachedConversation\(processId\)[\s\S]*?setQueueTaskConversationTurns\(cached \|\| \[\]\)/;
+        expect(detailContent).toMatch(cacheRestorePattern);
+    });
+
+    it('should NOT unconditionally reset to empty array in showQueueTaskDetail', () => {
+        // Extract the showQueueTaskDetail function body
+        const fnStart = detailContent.indexOf('function showQueueTaskDetail(');
+        expect(fnStart).toBeGreaterThan(-1);
+        const fnBody = detailContent.substring(fnStart, fnStart + 1500);
+        // Should not have bare setQueueTaskConversationTurns([]) without cache check
+        expect(fnBody).not.toMatch(/setQueueTaskConversationTurns\(\[\]\)/);
+    });
+
+    it('should cache conversation turns after fetching process with conversationTurns', () => {
+        // After setQueueTaskConversationTurns(proc.conversationTurns), should cache
+        const fetchCachePattern = /setQueueTaskConversationTurns\(proc\.conversationTurns\);\s*\n\s*cacheConversation\(processId,\s*proc\.conversationTurns\)/;
+        expect(detailContent).toMatch(fetchCachePattern);
+    });
+
+    it('should cache synthetic turns after building from legacy fields', () => {
+        // After setQueueTaskConversationTurns(syntheticTurns), should cache
+        const syntheticCachePattern = /setQueueTaskConversationTurns\(syntheticTurns\);\s*\n\s*cacheConversation\(processId,\s*syntheticTurns\)/;
+        expect(detailContent).toMatch(syntheticCachePattern);
+    });
+
+    it('should cache on stream completion status handler', () => {
+        // In the status event handler after fetching final state, should cache
+        const statusHandlerIdx = detailContent.indexOf("// Mark streaming complete");
+        expect(statusHandlerIdx).toBeGreaterThan(-1);
+        const afterStatusHandler = detailContent.substring(statusHandlerIdx, statusHandlerIdx + 800);
+        expect(afterStatusHandler).toContain('cacheConversation(processId, result.process.conversationTurns)');
+    });
+
+    it('should have cache-before-reset pattern with correct variable name', () => {
+        // Ensure the pattern uses 'cached' variable
+        expect(detailContent).toContain('const cached = getCachedConversation(processId)');
+        expect(detailContent).toContain('setQueueTaskConversationTurns(cached || [])');
+    });
+});
+
+// ============================================================================
+// Cache utility functions in sidebar.ts
+// ============================================================================
+
+describe('conversation cache utilities in sidebar.ts', () => {
+    let sidebarContent: string;
+
+    beforeAll(() => {
+        sidebarContent = readClientFile('sidebar.ts');
+    });
+
+    it('should export cacheConversation function', () => {
+        expect(sidebarContent).toMatch(/export function cacheConversation\(/);
+    });
+
+    it('should export getCachedConversation function', () => {
+        expect(sidebarContent).toMatch(/export function getCachedConversation\(/);
+    });
+
+    it('should enforce MAX_CACHE_ENTRIES limit', () => {
+        expect(sidebarContent).toMatch(/MAX_CACHE_ENTRIES\s*=\s*50/);
+        // cacheConversation should check capacity
+        const fnStart = sidebarContent.indexOf('export function cacheConversation(');
+        const fnEnd = sidebarContent.indexOf('export function getCachedConversation(');
+        const fnBody = sidebarContent.substring(fnStart, fnEnd);
+        expect(fnBody).toContain('MAX_CACHE_ENTRIES');
+    });
+
+    it('should enforce CACHE_TTL_MS of 1 hour', () => {
+        expect(sidebarContent).toMatch(/CACHE_TTL_MS\s*=\s*60\s*\*\s*60\s*\*\s*1000/);
+    });
+
+    it('should evict expired entries in cacheConversation', () => {
+        const fnStart = sidebarContent.indexOf('export function cacheConversation(');
+        const fnEnd = sidebarContent.indexOf('export function getCachedConversation(');
+        const fnBody = sidebarContent.substring(fnStart, fnEnd);
+        expect(fnBody).toContain('CACHE_TTL_MS');
+        expect(fnBody).toMatch(/delete\s+appState\.conversationCache\[/);
+    });
+
+    it('should return null for expired entries in getCachedConversation', () => {
+        const fnStart = sidebarContent.indexOf('export function getCachedConversation(');
+        const fnBody = sidebarContent.substring(fnStart, fnStart + 500);
+        expect(fnBody).toContain('CACHE_TTL_MS');
+        expect(fnBody).toContain('return null');
+    });
+
+    it('should use LRU eviction strategy', () => {
+        const fnStart = sidebarContent.indexOf('export function cacheConversation(');
+        const fnEnd = sidebarContent.indexOf('export function getCachedConversation(');
+        const fnBody = sidebarContent.substring(fnStart, fnEnd);
+        // Should find oldest entry by cachedAt
+        expect(fnBody).toContain('oldestKey');
+        expect(fnBody).toContain('oldestTime');
+        expect(fnBody).toContain('cachedAt');
+    });
+});
+
+// ============================================================================
+// Conversation cache state in state.ts
+// ============================================================================
+
+describe('conversation cache state in state.ts', () => {
+    let stateContent: string;
+
+    beforeAll(() => {
+        stateContent = readClientFile('state.ts');
+    });
+
+    it('should define ConversationCacheEntry interface', () => {
+        expect(stateContent).toContain('interface ConversationCacheEntry');
+        expect(stateContent).toContain('turns:');
+        expect(stateContent).toContain('cachedAt: number');
+    });
+
+    it('should have conversationCache in AppState interface', () => {
+        expect(stateContent).toMatch(/conversationCache:\s*Record<string,\s*ConversationCacheEntry>/);
+    });
+
+    it('should initialize conversationCache as empty object', () => {
+        expect(stateContent).toMatch(/conversationCache:\s*\{\}/);
+    });
+});

@@ -307,8 +307,9 @@ export function showQueueTaskDetail(taskId: string): void {
     queueTaskStreamContent = '';
     queueTaskStreamProcessId = processId;
 
-    // Reset conversation turns
-    setQueueTaskConversationTurns([]);
+    // Restore from cache if available (eliminates flicker on tab switch)
+    const cached = getCachedConversation(processId);
+    setQueueTaskConversationTurns(cached || []);
 
     // First, try to fetch the process from the store for metadata
     fetchApi('/processes/' + encodeURIComponent(processId)).then(function(data: any) {
@@ -317,6 +318,7 @@ export function showQueueTaskDetail(taskId: string): void {
         // Populate conversation turns from process data
         if (proc && proc.conversationTurns && proc.conversationTurns.length > 0) {
             setQueueTaskConversationTurns(proc.conversationTurns);
+            cacheConversation(processId, proc.conversationTurns);
 
             // If the last turn is a streaming assistant turn, seed the stream content
             // so SSE can continue appending to it seamlessly after page refresh
@@ -343,6 +345,7 @@ export function showQueueTaskDetail(taskId: string): void {
                 });
             }
             setQueueTaskConversationTurns(syntheticTurns);
+            cacheConversation(processId, syntheticTurns);
         }
 
         renderQueueTaskConversation(processId, taskId, proc);
@@ -1021,6 +1024,7 @@ function connectQueueTaskSSE(processId: string, taskId: string, proc: any): void
                 if (result && result.process) {
                     if (result.process.conversationTurns && result.process.conversationTurns.length > 0) {
                         setQueueTaskConversationTurns(result.process.conversationTurns);
+                        cacheConversation(processId, result.process.conversationTurns);
                     }
                     renderQueueTaskConversation(processId, taskId, result.process);
                 }
