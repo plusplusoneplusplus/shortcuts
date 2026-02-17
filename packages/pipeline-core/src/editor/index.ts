@@ -65,3 +65,6 @@ export {
 
 // Rendering primitives
 export * from './rendering';
+
+// Parsing & block renderers
+export * from './parsing';
