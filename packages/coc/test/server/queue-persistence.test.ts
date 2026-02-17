@@ -9,7 +9,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { TaskQueueManager } from '@plusplusoneplusplus/pipeline-core';
+import { TaskQueueManager, type TaskQueueManagerOptions } from '@plusplusoneplusplus/pipeline-core';
 import { QueuePersistence, computeRepoId, getRepoQueueFilePath } from '../../src/server/queue-persistence';
 
 // ============================================================================
@@ -20,11 +20,12 @@ let dataDir: string;
 let queueManager: TaskQueueManager;
 let persistence: QueuePersistence;
 
-function createManager(): TaskQueueManager {
+function createManager(options: Partial<TaskQueueManagerOptions> = {}): TaskQueueManager {
     return new TaskQueueManager({
         maxQueueSize: 0,
         keepHistory: true,
         maxHistorySize: 100,
+        ...options,
     });
 }
 
@@ -837,6 +838,207 @@ describe('QueuePersistence', () => {
             expect(qm2.isRepoPaused(repoId)).toBe(true);
 
             p2.dispose();
+        });
+    });
+
+    // ========================================================================
+    // Per-Repo Pause State Persistence
+    // ========================================================================
+
+    describe('per-repo pause state persistence', () => {
+        it('persists per-repo paused state to separate files', () => {
+            persistence = new QueuePersistence(queueManager, dataDir);
+
+            // Enqueue tasks for two different repos
+            queueManager.enqueue({
+                type: 'custom',
+                priority: 'normal',
+                payload: { workingDirectory: '/pause/repo-A' },
+                config: {},
+            });
+            queueManager.enqueue({
+                type: 'custom',
+                priority: 'normal',
+                payload: { workingDirectory: '/pause/repo-B' },
+                config: {},
+            });
+
+            // Pause only repo-A
+            const repoAId = computeRepoId('/pause/repo-A');
+            queueManager.pauseRepo(repoAId);
+
+            flushSave();
+
+            // Verify repo-A file has isPaused: true
+            const repoAFile = path.join(dataDir, 'queues', `repo-${repoAId}.json`);
+            const repoAState = JSON.parse(fs.readFileSync(repoAFile, 'utf-8'));
+            expect(repoAState.isPaused).toBe(true);
+
+            // Verify repo-B file has isPaused: false
+            const repoBId = computeRepoId('/pause/repo-B');
+            const repoBFile = path.join(dataDir, 'queues', `repo-${repoBId}.json`);
+            const repoBState = JSON.parse(fs.readFileSync(repoBFile, 'utf-8'));
+            expect(repoBState.isPaused).toBe(false);
+        });
+
+        it('restores per-repo paused state on startup', () => {
+            const queuesDir = path.join(dataDir, 'queues');
+            fs.mkdirSync(queuesDir, { recursive: true });
+
+            // Create persisted state with repo-A paused
+            const repoAPath = '/restore/repo-A';
+            const repoBPath = '/restore/repo-B';
+
+            const repoAId = computeRepoId(repoAPath);
+            const repoBId = computeRepoId(repoBPath);
+
+            const stateA = makeRepoState(repoAPath, [makeTask('t1', 'queued', repoAPath)], [], true);
+            fs.writeFileSync(
+                path.join(queuesDir, `repo-${repoAId}.json`),
+                JSON.stringify(stateA)
+            );
+
+            const stateB = makeRepoState(repoBPath, [makeTask('t2', 'queued', repoBPath)], [], false);
+            fs.writeFileSync(
+                path.join(queuesDir, `repo-${repoBId}.json`),
+                JSON.stringify(stateB)
+            );
+
+            // Initialize queue manager with repo ID extractor
+            queueManager = createManager({
+                getTaskRepoId: (task) => {
+                    const payload = task.payload as Record<string, unknown>;
+                    const rootPath = (payload?.workingDirectory as string) || process.cwd();
+                    return computeRepoId(rootPath);
+                },
+            });
+
+            persistence = new QueuePersistence(queueManager, dataDir);
+            persistence.restore();
+
+            // Verify repo-A is paused
+            expect(queueManager.isRepoPaused(repoAId)).toBe(true);
+
+            // Verify repo-B is not paused
+            expect(queueManager.isRepoPaused(repoBId)).toBe(false);
+        });
+
+        it('handles mixed paused/resumed repos', () => {
+            persistence = new QueuePersistence(queueManager, dataDir);
+
+            // Enqueue tasks for three repos
+            queueManager.enqueue({
+                type: 'custom',
+                priority: 'normal',
+                payload: { workingDirectory: '/mixed/repo-1' },
+                config: {},
+            });
+            queueManager.enqueue({
+                type: 'custom',
+                priority: 'normal',
+                payload: { workingDirectory: '/mixed/repo-2' },
+                config: {},
+            });
+            queueManager.enqueue({
+                type: 'custom',
+                priority: 'normal',
+                payload: { workingDirectory: '/mixed/repo-3' },
+                config: {},
+            });
+
+            // Pause repo-1 and repo-3, leave repo-2 active
+            const repo1Id = computeRepoId('/mixed/repo-1');
+            const repo3Id = computeRepoId('/mixed/repo-3');
+            queueManager.pauseRepo(repo1Id);
+            queueManager.pauseRepo(repo3Id);
+
+            flushSave();
+
+            // Dispose and create new manager + persistence
+            persistence.dispose();
+            persistence = undefined!;
+
+            const qm2 = createManager();
+            const p2 = new QueuePersistence(qm2, dataDir);
+            p2.restore();
+
+            // Verify pause states
+            expect(qm2.isRepoPaused(repo1Id)).toBe(true);
+            expect(qm2.isRepoPaused(computeRepoId('/mixed/repo-2'))).toBe(false);
+            expect(qm2.isRepoPaused(repo3Id)).toBe(true);
+
+            p2.dispose();
+        });
+
+        it('migrates v2 to v3 with isPaused defaulting to false', () => {
+            const queuesDir = path.join(dataDir, 'queues');
+            fs.mkdirSync(queuesDir, { recursive: true });
+
+            const rootPath = '/migrate/repo';
+            const repoId = computeRepoId(rootPath);
+
+            // Create v2 state without isPaused field
+            const v2State = {
+                version: 2,
+                savedAt: new Date().toISOString(),
+                repoRootPath: rootPath,
+                repoId,
+                pending: [makeTask('t1', 'queued', rootPath)],
+                history: [],
+                // No isPaused field
+            };
+
+            fs.writeFileSync(
+                path.join(queuesDir, `repo-${repoId}.json`),
+                JSON.stringify(v2State)
+            );
+
+            // Initialize queue manager with repo ID extractor
+            queueManager = createManager({
+                getTaskRepoId: (task) => {
+                    const payload = task.payload as Record<string, unknown>;
+                    const rootPath = (payload?.workingDirectory as string) || process.cwd();
+                    return computeRepoId(rootPath);
+                },
+            });
+
+            persistence = new QueuePersistence(queueManager, dataDir);
+            persistence.restore();
+
+            // Verify repo is NOT paused (default behavior)
+            expect(queueManager.isRepoPaused(repoId)).toBe(false);
+        });
+
+        it('handles missing isPaused field gracefully', () => {
+            const queuesDir = path.join(dataDir, 'queues');
+            fs.mkdirSync(queuesDir, { recursive: true });
+
+            const rootPath = '/graceful/repo';
+            const repoId = computeRepoId(rootPath);
+
+            // Create state with version 3 but missing isPaused (edge case)
+            const state = makeRepoState(rootPath, [makeTask('t1', 'queued', rootPath)]);
+            delete (state as any).isPaused;  // Simulate corrupt data
+
+            fs.writeFileSync(
+                path.join(queuesDir, `repo-${repoId}.json`),
+                JSON.stringify(state)
+            );
+
+            // Initialize queue manager with repo ID extractor
+            queueManager = createManager({
+                getTaskRepoId: (task) => {
+                    const payload = task.payload as Record<string, unknown>;
+                    const rootPath = (payload?.workingDirectory as string) || process.cwd();
+                    return computeRepoId(rootPath);
+                },
+            });
+
+            persistence = new QueuePersistence(queueManager, dataDir);
+            persistence.restore();
+
+            // Should default to unpaused
+            expect(queueManager.isRepoPaused(repoId)).toBe(false);
         });
     });
 });
