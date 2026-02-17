@@ -18,6 +18,9 @@ export type { CommentSelection, CommentAnchor } from '@plusplusoneplusplus/pipel
 /** Comment status values. */
 export type TaskCommentStatus = 'open' | 'resolved';
 
+/** Comment categories. */
+export type TaskCommentCategory = 'bug' | 'question' | 'suggestion' | 'praise' | 'nitpick' | 'general';
+
 /**
  * A single comment on a task document in the web UI.
  */
@@ -40,6 +43,8 @@ export interface TaskComment {
     updatedAt: string;
     /** Optional author name */
     author?: string;
+    /** Optional comment category */
+    category?: TaskCommentCategory;
     /** Optional anchor for robust location tracking after content changes */
     anchor?: import('@plusplusoneplusplus/pipeline-core/editor/types').CommentAnchor;
 }

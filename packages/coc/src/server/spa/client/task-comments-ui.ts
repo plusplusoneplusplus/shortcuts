@@ -203,24 +203,37 @@ export function attachCommentCardHandlers(
 // ============================================================================
 
 export interface SelectionToolbarOptions {
-    onAddComment: (selection: SelectionInfo, category: CommentCategory) => void;
+    onSubmitComment: (selection: SelectionInfo, category: CommentCategory, commentText: string) => void;
 }
 
 /**
- * Render selection toolbar HTML.
+ * Render selection toolbar HTML with category buttons and comment input panel.
  */
 export function renderSelectionToolbarHTML(): string {
     let html = '<div class="selection-toolbar" role="toolbar" aria-label="Add comment">';
 
+    // Category buttons row
+    html += '<div class="selection-toolbar__categories">';
     for (const cat of ALL_CATEGORIES) {
         const info = CATEGORY_INFO[cat];
-        html += '<button class="selection-toolbar__btn selection-toolbar__btn--' + cat + '" ' +
+        const activeClass = cat === 'general' ? ' selection-toolbar__btn--active' : '';
+        html += '<button class="selection-toolbar__btn selection-toolbar__btn--' + cat + activeClass + '" ' +
             'data-category="' + cat + '" ' +
             'title="' + escapeHtml(info.label) + '" ' +
-            'aria-label="Add ' + escapeHtml(info.label) + ' comment">';
+            'aria-label="' + escapeHtml(info.label) + ' comment">';
         html += '<span class="selection-toolbar__btn-icon">' + info.icon + '</span>';
         html += '</button>';
     }
+    html += '</div>';
+
+    // Comment input panel
+    html += '<div class="selection-toolbar__input-panel">';
+    html += '<textarea class="selection-toolbar__textarea" placeholder="Add your comment…" rows="2"></textarea>';
+    html += '<div class="selection-toolbar__actions">';
+    html += '<button class="selection-toolbar__cancel-btn" type="button">Cancel</button>';
+    html += '<button class="selection-toolbar__submit-btn" type="button">Submit <kbd>Ctrl+Enter</kbd></button>';
+    html += '</div>';
+    html += '</div>';
 
     html += '<div class="selection-toolbar__arrow"></div>';
     html += '</div>';
@@ -265,6 +278,7 @@ export class SelectionToolbar {
     private element: HTMLElement | null = null;
     private options: SelectionToolbarOptions;
     private currentSelection: SelectionInfo | null = null;
+    private selectedCategory: CommentCategory = 'general';
     private boundHide: () => void;
     private boundOnKeydown: (e: KeyboardEvent) => void;
 
@@ -273,6 +287,11 @@ export class SelectionToolbar {
         this.boundHide = () => this.hide();
         this.boundOnKeydown = (e: KeyboardEvent) => {
             if (e.key === 'Escape') this.hide();
+            // Ctrl+Enter / Cmd+Enter to submit
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                e.preventDefault();
+                this.submit();
+            }
         };
     }
 
@@ -280,6 +299,7 @@ export class SelectionToolbar {
     show(selection: SelectionInfo): void {
         this.hide();
         this.currentSelection = selection;
+        this.selectedCategory = 'general';
 
         const container = document.createElement('div');
         container.innerHTML = renderSelectionToolbarHTML();
@@ -301,17 +321,49 @@ export class SelectionToolbar {
             this.element.classList.add('selection-toolbar--below');
         }
 
-        // Event handlers
+        // Category button click handlers
         this.element.addEventListener('click', (e) => {
             const btn = (e.target as HTMLElement).closest('.selection-toolbar__btn') as HTMLElement | null;
-            if (btn && this.currentSelection) {
+            if (btn) {
                 const cat = btn.getAttribute('data-category') as CommentCategory;
                 if (cat) {
-                    this.options.onAddComment(this.currentSelection, cat);
-                    this.hide();
+                    this.selectedCategory = cat;
+                    // Update active state
+                    this.element!.querySelectorAll('.selection-toolbar__btn').forEach(b =>
+                        b.classList.remove('selection-toolbar__btn--active'));
+                    btn.classList.add('selection-toolbar__btn--active');
+                }
+            }
+
+            // Cancel button
+            if ((e.target as HTMLElement).closest('.selection-toolbar__cancel-btn')) {
+                this.hide();
+            }
+
+            // Submit button
+            if ((e.target as HTMLElement).closest('.selection-toolbar__submit-btn')) {
+                this.submit();
+            }
+        });
+
+        // Tab through category buttons
+        this.element.addEventListener('keydown', (e) => {
+            if (e.key === 'Tab' && !e.shiftKey) {
+                const btns = Array.from(this.element!.querySelectorAll('.selection-toolbar__btn'));
+                const focused = document.activeElement as HTMLElement;
+                const idx = btns.indexOf(focused);
+                if (idx >= 0 && idx < btns.length - 1) {
+                    e.preventDefault();
+                    (btns[idx + 1] as HTMLElement).focus();
                 }
             }
         });
+
+        // Focus the textarea
+        const textarea = this.element.querySelector('.selection-toolbar__textarea') as HTMLTextAreaElement | null;
+        if (textarea) {
+            setTimeout(() => textarea.focus(), 0);
+        }
 
         // Dismiss handlers
         setTimeout(() => {
@@ -329,6 +381,7 @@ export class SelectionToolbar {
             this.element = null;
         }
         this.currentSelection = null;
+        this.selectedCategory = 'general';
         document.removeEventListener('mousedown', this.handleClickAway);
         document.removeEventListener('keydown', this.boundOnKeydown);
         window.removeEventListener('scroll', this.boundHide, { capture: true });
@@ -341,6 +394,16 @@ export class SelectionToolbar {
     }
 
     dispose(): void {
+        this.hide();
+    }
+
+    /** Submit the comment from the input panel. */
+    private submit(): void {
+        if (!this.element || !this.currentSelection) return;
+        const textarea = this.element.querySelector('.selection-toolbar__textarea') as HTMLTextAreaElement | null;
+        const text = textarea?.value?.trim();
+        if (!text) return;
+        this.options.onSubmitComment(this.currentSelection, this.selectedCategory, text);
         this.hide();
     }
 
@@ -363,9 +426,13 @@ export interface CommentSidebarOptions {
     onClose?: () => void;
 }
 
-/** Get category from a TaskComment (stored as metadata or default). */
+/** Get category from a TaskComment (field first, then text prefix fallback). */
 export function getCommentCategory(comment: TaskComment): CommentCategory {
-    // Category may be stored in the comment text prefix like "[bug]" or as a future field
+    // Prefer explicit category field
+    if (comment.category && ALL_CATEGORIES.includes(comment.category as CommentCategory)) {
+        return comment.category as CommentCategory;
+    }
+    // Fall back to text prefix like "[bug]"
     const match = comment.comment.match(/^\[(bug|question|suggestion|praise|nitpick|general)\]\s*/i);
     if (match) return match[1].toLowerCase() as CommentCategory;
     return 'general';

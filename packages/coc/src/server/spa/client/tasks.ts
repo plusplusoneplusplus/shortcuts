@@ -37,6 +37,9 @@ import {
     clearCommentHighlights,
     scrollToCommentHighlight,
     getCommentCategory,
+    getPreviewSelection,
+    SelectionToolbar,
+    MIN_SELECTION_LENGTH,
     type CommentCategory,
     type CommentFilter,
     type StatusFilter,
@@ -118,6 +121,10 @@ let previewRawContent: string = '';
 let commentEventUnsub: (() => void) | null = null;
 /** Keyboard shortcut handler reference for cleanup. */
 let commentKeyHandler: ((e: KeyboardEvent) => void) | null = null;
+/** Selection toolbar instance for the current preview. */
+let selectionToolbar: SelectionToolbar | null = null;
+/** Mouseup handler for selection detection. */
+let mouseupHandler: ((e: MouseEvent) => void) | null = null;
 /** Comment counts per file path for tree badges. */
 let treeCommentCounts: Record<string, number> = {};
 
@@ -1678,6 +1685,9 @@ async function loadPreviewContent(wsId: string, filePath: string): Promise<void>
         // Set up keyboard shortcut (Ctrl+Shift+M / Cmd+Shift+M)
         setupCommentKeyboardShortcut(wsId, filePath);
 
+        // Set up selection toolbar for text selection → comment creation
+        setupSelectionToolbar(wsId, filePath);
+
         // Load comments asynchronously
         loadAndRenderComments(wsId, filePath);
     } catch {
@@ -1694,6 +1704,14 @@ function cleanupCommentState(): void {
     if (commentKeyHandler) {
         document.removeEventListener('keydown', commentKeyHandler);
         commentKeyHandler = null;
+    }
+    if (selectionToolbar) {
+        selectionToolbar.dispose();
+        selectionToolbar = null;
+    }
+    if (mouseupHandler) {
+        document.removeEventListener('mouseup', mouseupHandler);
+        mouseupHandler = null;
     }
     previewComments = [];
     previewRawContent = '';
@@ -1924,7 +1942,57 @@ function setupCodeBlockHandlers(): void {
     });
 }
 
-/** Set up Ctrl+Shift+M / Cmd+Shift+M keyboard shortcut for adding comments. */
+/** Set up the selection toolbar that shows on text selection in the preview body. */
+function setupSelectionToolbar(wsId: string, filePath: string): void {
+    if (selectionToolbar) {
+        selectionToolbar.dispose();
+    }
+    if (mouseupHandler) {
+        document.removeEventListener('mouseup', mouseupHandler);
+    }
+
+    selectionToolbar = new SelectionToolbar({
+        onSubmitComment: (selection, category, commentText) => {
+            const previewBody = document.getElementById('task-preview-body');
+            if (!previewBody) return;
+
+            const captured = captureSelectionWithAnchor(previewBody, previewRawContent);
+            const anchor = captured?.anchor;
+            const sel = captured?.selection || selection;
+
+            const request: CreateCommentRequest = {
+                filePath,
+                selection: {
+                    startLine: sel.startLine,
+                    startColumn: sel.startColumn,
+                    endLine: sel.endLine,
+                    endColumn: sel.endColumn,
+                },
+                selectedText: selection.text,
+                comment: commentText,
+                status: 'open',
+                category,
+                ...(anchor ? { anchor } : {}),
+            };
+
+            createComment(wsId, filePath, request).catch(() => {});
+        },
+    });
+
+    mouseupHandler = () => {
+        const previewBody = document.getElementById('task-preview-body');
+        if (!previewBody || !selectionToolbar) return;
+
+        const selInfo = getPreviewSelection(previewBody);
+        if (!selInfo) return;
+
+        selectionToolbar.show(selInfo);
+    };
+
+    document.addEventListener('mouseup', mouseupHandler);
+}
+
+/** Set up Ctrl+Shift+M / Cmd+Shift+M keyboard shortcut for showing selection toolbar. */
 function setupCommentKeyboardShortcut(wsId: string, filePath: string): void {
     if (commentKeyHandler) {
         document.removeEventListener('keydown', commentKeyHandler);
@@ -1934,49 +2002,19 @@ function setupCommentKeyboardShortcut(wsId: string, filePath: string): void {
         if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'M') {
             e.preventDefault();
             const previewBody = document.getElementById('task-preview-body');
-            if (!previewBody) return;
+            if (!previewBody || !selectionToolbar) return;
 
-            const captured = captureSelectionWithAnchor(previewBody, previewRawContent);
-            if (!captured) {
+            const selInfo = getPreviewSelection(previewBody);
+            if (!selInfo) {
                 showToast('Please select text before creating a comment', 'error');
                 return;
             }
 
-            showCreateCommentPrompt(wsId, filePath, captured.selection.text, {
-                startLine: captured.selection.startLine,
-                startColumn: captured.selection.startColumn,
-                endLine: captured.selection.endLine,
-                endColumn: captured.selection.endColumn,
-            }, captured.anchor);
+            selectionToolbar.show(selInfo);
         }
     };
 
     document.addEventListener('keydown', commentKeyHandler);
-}
-
-/** Show a simple prompt to create a comment. */
-function showCreateCommentPrompt(
-    wsId: string,
-    filePath: string,
-    selectedText: string,
-    selection: { startLine: number; startColumn: number; endLine: number; endColumn: number },
-    anchor: import('./task-comments-types').CommentAnchor
-): void {
-    const commentText = prompt('Add a comment on the selected text:');
-    if (!commentText || !commentText.trim()) return;
-
-    const request: CreateCommentRequest = {
-        filePath,
-        selection,
-        selectedText,
-        comment: commentText.trim(),
-        status: 'open',
-        anchor,
-    };
-
-    createComment(wsId, filePath, request).catch(() => {
-        // Error already handled via event system
-    });
 }
 
 /**

@@ -51,6 +51,8 @@ export interface TaskComment {
     author?: string;
     /** Optional tags. */
     tags?: string[];
+    /** Optional comment category. */
+    category?: string;
     /** Optional anchor for robust location tracking. */
     anchor?: CommentAnchor;
 }

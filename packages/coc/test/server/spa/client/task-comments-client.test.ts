@@ -616,3 +616,49 @@ describe('fetchCommentCounts', () => {
         expect(counts).toEqual({});
     });
 });
+
+// ============================================================================
+// CreateCommentRequest with category
+// ============================================================================
+
+describe('createComment with category', () => {
+    it('sends category field in POST payload', async () => {
+        const created = makeComment({ id: 'cat-id' });
+        mockFetchResponse(201, { comment: created });
+
+        const request: CreateCommentRequest = {
+            filePath: 'task.md',
+            selection: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 10 },
+            selectedText: 'hello',
+            comment: 'Found a bug',
+            status: 'open',
+            category: 'bug',
+        };
+
+        await createComment('ws1', 'task.md', request);
+
+        const callArgs = (globalThis as any).fetch.mock.calls[0];
+        const body = JSON.parse(callArgs[1].body);
+        expect(body.category).toBe('bug');
+    });
+
+    it('category is optional in CreateCommentRequest', async () => {
+        const created = makeComment({ id: 'no-cat-id' });
+        mockFetchResponse(201, { comment: created });
+
+        const request: CreateCommentRequest = {
+            filePath: 'task.md',
+            selection: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 10 },
+            selectedText: 'hello',
+            comment: 'No category',
+            status: 'open',
+        };
+
+        const result = await createComment('ws1', 'task.md', request);
+        expect(result.id).toBe('no-cat-id');
+
+        const callArgs = (globalThis as any).fetch.mock.calls[0];
+        const body = JSON.parse(callArgs[1].body);
+        expect(body.category).toBeUndefined();
+    });
+});

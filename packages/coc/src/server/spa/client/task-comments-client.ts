@@ -42,6 +42,7 @@ export interface CreateCommentRequest {
     status?: TaskCommentStatus;
     author?: string;
     anchor?: CommentAnchor;
+    category?: string;
 }
 
 /** Request payload for updating a comment. */

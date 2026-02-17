@@ -112,6 +112,36 @@ describe('TaskComment', () => {
         };
         expect(comment.author).toBeUndefined();
         expect(comment.anchor).toBeUndefined();
+        expect(comment.category).toBeUndefined();
+    });
+
+    it('accepts category field', () => {
+        const comment: TaskComment = {
+            id: 'c2',
+            taskId: 't2',
+            selection: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 5 },
+            selectedText: 'test',
+            comment: 'A bug',
+            status: 'open',
+            createdAt: '2026-01-01T00:00:00Z',
+            updatedAt: '2026-01-01T00:00:00Z',
+            category: 'bug',
+        };
+        expect(comment.category).toBe('bug');
+    });
+
+    it('supports all category values', () => {
+        const categories = ['bug', 'question', 'suggestion', 'praise', 'nitpick', 'general'] as const;
+        for (const cat of categories) {
+            const c: TaskComment = {
+                id: 'x', taskId: 'y',
+                selection: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 2 },
+                selectedText: '', comment: '', status: 'open',
+                createdAt: '', updatedAt: '',
+                category: cat,
+            };
+            expect(c.category).toBe(cat);
+        }
     });
 
     it('supports both status values', () => {

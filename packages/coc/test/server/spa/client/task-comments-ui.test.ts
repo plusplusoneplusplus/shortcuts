@@ -253,9 +253,9 @@ describe('renderSelectionToolbarHTML', () => {
 
     it('includes accessible labels for each button', () => {
         const html = renderSelectionToolbarHTML();
-        expect(html).toContain('aria-label="Add Bug comment"');
-        expect(html).toContain('aria-label="Add Question comment"');
-        expect(html).toContain('aria-label="Add Suggestion comment"');
+        expect(html).toContain('aria-label="Bug comment"');
+        expect(html).toContain('aria-label="Question comment"');
+        expect(html).toContain('aria-label="Suggestion comment"');
     });
 
     it('includes title tooltips', () => {
@@ -788,5 +788,94 @@ describe('Comment UI integration scenarios', () => {
                 expect(html).toContain('comment-card--resolved');
             }
         }
+    });
+});
+
+// ============================================================================
+// getCommentCategory — field-based lookup
+// ============================================================================
+
+describe('getCommentCategory (field-based)', () => {
+    it('returns category from field when set', () => {
+        const comment = makeComment({ category: 'bug' as any, comment: 'Some issue' });
+        expect(getCommentCategory(comment)).toBe('bug');
+    });
+
+    it('prefers field over text prefix', () => {
+        const comment = makeComment({ category: 'suggestion' as any, comment: '[bug] Some issue' });
+        expect(getCommentCategory(comment)).toBe('suggestion');
+    });
+
+    it('falls back to text prefix when field is not set', () => {
+        const comment = makeComment({ comment: '[question] Why is this?' });
+        expect(getCommentCategory(comment)).toBe('question');
+    });
+
+    it('falls back to general when no field and no prefix', () => {
+        const comment = makeComment({ comment: 'Just a comment' });
+        expect(getCommentCategory(comment)).toBe('general');
+    });
+
+    it('ignores invalid category field values', () => {
+        const comment = makeComment({ category: 'invalid' as any, comment: '[praise] Nice work' });
+        expect(getCommentCategory(comment)).toBe('praise');
+    });
+
+    it('handles undefined category field', () => {
+        const comment = makeComment({ category: undefined });
+        expect(getCommentCategory(comment)).toBe('general');
+    });
+
+    it('handles all valid category values via field', () => {
+        for (const cat of ALL_CATEGORIES) {
+            const comment = makeComment({ category: cat as any, comment: 'test' });
+            expect(getCommentCategory(comment)).toBe(cat);
+        }
+    });
+});
+
+// ============================================================================
+// Selection Toolbar — input panel rendering
+// ============================================================================
+
+describe('renderSelectionToolbarHTML (input panel)', () => {
+    it('includes categories container', () => {
+        const html = renderSelectionToolbarHTML();
+        expect(html).toContain('selection-toolbar__categories');
+    });
+
+    it('includes input panel', () => {
+        const html = renderSelectionToolbarHTML();
+        expect(html).toContain('selection-toolbar__input-panel');
+    });
+
+    it('includes textarea', () => {
+        const html = renderSelectionToolbarHTML();
+        expect(html).toContain('selection-toolbar__textarea');
+        expect(html).toContain('placeholder="Add your comment…"');
+    });
+
+    it('includes submit button with Ctrl+Enter hint', () => {
+        const html = renderSelectionToolbarHTML();
+        expect(html).toContain('selection-toolbar__submit-btn');
+        expect(html).toContain('Ctrl+Enter');
+    });
+
+    it('includes cancel button', () => {
+        const html = renderSelectionToolbarHTML();
+        expect(html).toContain('selection-toolbar__cancel-btn');
+        expect(html).toContain('Cancel');
+    });
+
+    it('marks general as default active category', () => {
+        const html = renderSelectionToolbarHTML();
+        expect(html).toContain('selection-toolbar__btn--general selection-toolbar__btn--active');
+    });
+
+    it('no other category is active by default', () => {
+        const html = renderSelectionToolbarHTML();
+        // Only general should have the active class
+        const matches = html.match(/selection-toolbar__btn--active/g);
+        expect(matches).toHaveLength(1);
     });
 });
