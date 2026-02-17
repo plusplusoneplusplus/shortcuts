@@ -69,6 +69,7 @@ ${bundleCss}
             <select id="workspace-select" class="workspace-select">
                 <option value="__all">All Repos</option>
             </select>
+            <button id="admin-toggle" class="top-bar-btn" aria-label="Admin" title="Admin">&#9881;</button>
             <button id="theme-toggle" class="top-bar-btn" aria-label="Toggle theme">&#127761;</button>
         </div>
     </header>

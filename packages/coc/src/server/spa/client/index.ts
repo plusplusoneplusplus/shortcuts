@@ -46,15 +46,18 @@ import './wiki-ask';
 import './wiki-graph';
 import './wiki-admin';
 
-// 11. Preferences (loads saved model, attaches persistence listeners)
+// 11. Global admin overlay (gear icon in top bar)
+import './admin';
+
+// 12. Preferences (loads saved model, attaches persistence listeners)
 import { loadPreferences, initModelPersistence } from './preferences';
 loadPreferences();
 initModelPersistence();
 
-// 12. AI Actions (dropdown for task AI operations)
+// 13. AI Actions (dropdown for task AI operations)
 import './ai-actions';
 
-// 13. WebSocket (calls connectWebSocket())
+// 14. WebSocket (calls connectWebSocket())
 import './websocket';
 
 // Bootstrap the app
