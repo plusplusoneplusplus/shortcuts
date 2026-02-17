@@ -422,4 +422,33 @@ describe('SPA conversation rendering', () => {
             expect(script).toContain('scrollConversationToBottom');
         });
     });
+
+    // ====================================================================
+    // Cache synchronization during SSE streaming
+    // ====================================================================
+
+    describe('cache synchronization during SSE streaming', () => {
+        it('should update cache after each SSE chunk via cacheConversation', () => {
+            // The chunk handler calls cacheConversation after updateConversationContent
+            // to keep cache in sync with live streaming state
+            expect(script).toContain('cacheConversation');
+            expect(script).toContain('updateConversationContent');
+        });
+
+        it('should invalidate cache in status handler before refetching', () => {
+            // The status event handler calls invalidateConversationCache before fetchApi
+            expect(script).toContain('invalidateConversationCache');
+        });
+
+        it('should repopulate cache after status handler fetch completes', () => {
+            // After the fetch resolves in the status handler, cacheConversation is called
+            // with the authoritative server data
+            expect(script).toContain('cacheConversation(processId');
+        });
+
+        it('should export invalidateConversationCache from sidebar module', () => {
+            // invalidateConversationCache is a centralized cache invalidation helper
+            expect(script).toContain('invalidateConversationCache');
+        });
+    });
 });

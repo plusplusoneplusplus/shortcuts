@@ -56,6 +56,10 @@ describe('client bundle — queue history', () => {
         expect(script).toContain('getCachedConversation');
     });
 
+    it('exports invalidateConversationCache for cache removal', () => {
+        expect(script).toContain('invalidateConversationCache');
+    });
+
     it('supports queue clear history', () => {
         expect(script).toContain('queueClearHistory');
         expect(script).toContain('/queue/history');

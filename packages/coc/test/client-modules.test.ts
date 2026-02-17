@@ -1228,7 +1228,7 @@ describe('conversation cache integration in detail.ts', () => {
         // In the status event handler after fetching final state, should cache
         const statusHandlerIdx = detailContent.indexOf("// Mark streaming complete");
         expect(statusHandlerIdx).toBeGreaterThan(-1);
-        const afterStatusHandler = detailContent.substring(statusHandlerIdx, statusHandlerIdx + 800);
+        const afterStatusHandler = detailContent.substring(statusHandlerIdx, statusHandlerIdx + 1000);
         expect(afterStatusHandler).toContain('cacheConversation(processId, result.process.conversationTurns)');
     });
 
@@ -1236,6 +1236,40 @@ describe('conversation cache integration in detail.ts', () => {
         // Ensure the pattern uses 'cached' variable
         expect(detailContent).toContain('const cached = getCachedConversation(processId)');
         expect(detailContent).toContain('setQueueTaskConversationTurns(cached || [])');
+    });
+
+    it('should import invalidateConversationCache from sidebar', () => {
+        expect(detailContent).toMatch(/import\s*\{[^}]*invalidateConversationCache[^}]*\}\s*from\s*['"]\.\/sidebar['"]/);
+    });
+
+    it('should update cache during SSE chunk streaming', () => {
+        // The chunk handler in connectQueueTaskSSE should call cacheConversation after updateConversationContent
+        const fnStart = detailContent.indexOf('function connectQueueTaskSSE(');
+        expect(fnStart).toBeGreaterThan(-1);
+        const fnBody = detailContent.substring(fnStart, fnStart + 2000);
+        expect(fnBody).toContain('updateConversationContent()');
+        expect(fnBody).toContain('cacheConversation(processId, queueTaskConversationTurns)');
+    });
+
+    it('should cache after updateConversationContent, not before', () => {
+        // cacheConversation must appear after updateConversationContent in chunk handler
+        const fnStart = detailContent.indexOf('function connectQueueTaskSSE(');
+        const fnBody = detailContent.substring(fnStart, fnStart + 2000);
+        const updateIdx = fnBody.indexOf('updateConversationContent()');
+        const cacheIdx = fnBody.indexOf('cacheConversation(processId, queueTaskConversationTurns)');
+        expect(updateIdx).toBeGreaterThan(-1);
+        expect(cacheIdx).toBeGreaterThan(updateIdx);
+    });
+
+    it('should invalidate cache in status handler before refetching', () => {
+        // The status handler should invalidate cache before calling fetchApi
+        const statusHandlerIdx = detailContent.indexOf("// Mark streaming complete");
+        expect(statusHandlerIdx).toBeGreaterThan(-1);
+        const afterStatusHandler = detailContent.substring(statusHandlerIdx, statusHandlerIdx + 1000);
+        const invalidateIdx = afterStatusHandler.indexOf('invalidateConversationCache(processId)');
+        const fetchIdx = afterStatusHandler.indexOf("fetchApi('/processes/'");
+        expect(invalidateIdx).toBeGreaterThan(-1);
+        expect(fetchIdx).toBeGreaterThan(invalidateIdx);
     });
 });
 
@@ -1256,6 +1290,17 @@ describe('conversation cache utilities in sidebar.ts', () => {
 
     it('should export getCachedConversation function', () => {
         expect(sidebarContent).toMatch(/export function getCachedConversation\(/);
+    });
+
+    it('should export invalidateConversationCache function', () => {
+        expect(sidebarContent).toMatch(/export function invalidateConversationCache\(/);
+    });
+
+    it('should delete cache entry in invalidateConversationCache', () => {
+        const fnStart = sidebarContent.indexOf('export function invalidateConversationCache(');
+        expect(fnStart).toBeGreaterThan(-1);
+        const fnBody = sidebarContent.substring(fnStart, fnStart + 200);
+        expect(fnBody).toContain('delete appState.conversationCache[processId]');
     });
 
     it('should enforce MAX_CACHE_ENTRIES limit', () => {

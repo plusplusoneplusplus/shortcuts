@@ -59,6 +59,11 @@ export function cacheConversation(processId: string, turns: any[]): void {
     appState.conversationCache[processId] = { turns: turns, cachedAt: now };
 }
 
+/** Invalidate (remove) cached conversation for a process. */
+export function invalidateConversationCache(processId: string): void {
+    delete appState.conversationCache[processId];
+}
+
 /** Get cached conversation turns, or null if not cached or expired. */
 export function getCachedConversation(processId: string): any[] | null {
     const entry = appState.conversationCache[processId];

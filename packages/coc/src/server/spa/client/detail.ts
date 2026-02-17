@@ -10,7 +10,7 @@ import {
     typeLabel, escapeHtmlClient, copyToClipboard,
 } from './utils';
 import { navigateToProcess, setHashSilent, fetchApi } from './core';
-import { getCachedConversation, cacheConversation } from './sidebar';
+import { getCachedConversation, cacheConversation, invalidateConversationCache } from './sidebar';
 import { renderToolCallHTML, attachToolCallToggleHandlers, normalizeToolCall, renderToolCall, updateToolCallStatus } from './tool-renderer';
 
 export function renderDetail(id: string): void {
@@ -948,6 +948,7 @@ function connectQueueTaskSSE(processId: string, taskId: string, proc: any): void
                 }
 
                 updateConversationContent();
+                cacheConversation(processId, queueTaskConversationTurns);
             }
         } catch(err) {}
     });
@@ -1019,6 +1020,8 @@ function connectQueueTaskSSE(processId: string, taskId: string, proc: any): void
             if (turns.length > 0 && turns[turns.length - 1].streaming) {
                 turns[turns.length - 1].streaming = false;
             }
+            // Invalidate cache so fresh server data replaces stale streaming state
+            invalidateConversationCache(processId);
             // Refresh the full detail to show final state
             fetchApi('/processes/' + encodeURIComponent(processId)).then(function(result: any) {
                 if (result && result.process) {
