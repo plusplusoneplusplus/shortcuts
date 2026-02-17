@@ -21,6 +21,7 @@ export function initAdminPage(): void {
     container.innerHTML = renderAdminPage();
     attachAdminListeners(container);
     loadStats();
+    loadConfig();
 }
 
 // ================================================================
@@ -60,6 +61,13 @@ function renderAdminPage(): string {
             </div>
         </div>
         <button class="admin-btn admin-refresh-btn" id="admin-refresh-stats">Refresh</button>
+    </section>
+
+    <section class="admin-section admin-config-section">
+        <h3>Configuration</h3>
+        <div id="admin-config-content">
+            <div class="admin-config-loading">Loading configuration…</div>
+        </div>
     </section>
 
     <section class="admin-section admin-danger-zone">
@@ -181,6 +189,59 @@ async function confirmAndWipe(): Promise<void> {
 }
 
 // ================================================================
+// Config loading
+// ================================================================
+
+export async function loadConfig(): Promise<void> {
+    const container = document.getElementById('admin-config-content');
+    if (!container) return;
+
+    const data = await fetchApi('/admin/config');
+    if (!data) {
+        container.innerHTML = '<div class="admin-config-error">Failed to load configuration</div>';
+        return;
+    }
+
+    container.innerHTML = renderConfigSection(data);
+}
+
+function renderConfigSection(data: any): string {
+    const resolved = data.resolved ?? {};
+    const sources: Record<string, string> = data.sources ?? {};
+    const configFilePath: string = data.configFilePath ?? 'Unknown';
+
+    const fields: Array<{ key: string; label: string; value: string }> = [
+        { key: 'model', label: 'Model', value: String(resolved.model ?? '—') },
+        { key: 'parallel', label: 'Parallelism', value: String(resolved.parallel ?? '—') },
+        { key: 'timeout', label: 'Timeout', value: String(resolved.timeout ?? '—') },
+        { key: 'output', label: 'Output Format', value: String(resolved.output ?? '—') },
+        { key: 'approvePermissions', label: 'Approve Permissions', value: String(resolved.approvePermissions ?? '—') },
+        { key: 'mcpConfig', label: 'MCP Config', value: String(resolved.mcpConfig ?? '—') },
+        { key: 'persist', label: 'Persist', value: String(resolved.persist ?? '—') },
+        { key: 'serve.port', label: 'Serve Port', value: String(resolved.serve?.port ?? '—') },
+        { key: 'serve.host', label: 'Serve Host', value: String(resolved.serve?.host ?? '—') },
+        { key: 'serve.dataDir', label: 'Serve Data Dir', value: String(resolved.serve?.dataDir ?? '—') },
+        { key: 'serve.theme', label: 'Serve Theme', value: String(resolved.serve?.theme ?? '—') },
+    ];
+
+    const rows = fields.map(f => {
+        const src = sources[f.key] ?? 'default';
+        const badge = `<span class="admin-config-source-badge admin-config-source-${src}">${src}</span>`;
+        return `<tr><td class="admin-config-key">${f.label}</td><td class="admin-config-value">${f.value} ${badge}</td></tr>`;
+    }).join('\n');
+
+    return `
+<div class="admin-config-path">
+    <span class="admin-config-path-label">Config file:</span>
+    <code class="admin-config-path-value">${configFilePath}</code>
+</div>
+<table class="admin-config-table">
+    <thead><tr><th>Setting</th><th>Value</th></tr></thead>
+    <tbody>${rows}</tbody>
+</table>`;
+}
+
+// ================================================================
 // Utilities
 // ================================================================
 
@@ -199,3 +260,4 @@ export function formatBytes(bytes: number): string {
 (window as any).navigateToAdmin = navigateToAdmin;
 (window as any).initAdminPage = initAdminPage;
 (window as any).loadAdminStats = loadStats;
+(window as any).loadAdminConfig = loadConfig;

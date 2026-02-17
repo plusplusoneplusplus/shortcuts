@@ -504,6 +504,158 @@ describe('client bundle — global admin module', () => {
 });
 
 // ============================================================================
+// admin.ts — Configuration section (read-only viewer)
+// ============================================================================
+
+describe('global admin — config section HTML', () => {
+    let content: string;
+    beforeAll(() => { content = readClientFile('admin.ts'); });
+
+    it('renders admin-config-section between stats and danger zone', () => {
+        const statsIdx = content.indexOf('admin-stats-grid');
+        const configIdx = content.indexOf('admin-config-section');
+        const dangerIdx = content.indexOf('admin-danger-zone');
+        expect(configIdx).toBeGreaterThan(statsIdx);
+        expect(configIdx).toBeLessThan(dangerIdx);
+    });
+
+    it('has admin-config-content container', () => {
+        expect(content).toContain('id="admin-config-content"');
+    });
+
+    it('calls loadConfig in initAdminPage', () => {
+        expect(content).toContain('loadConfig()');
+    });
+
+    it('exports loadConfig function', () => {
+        expect(content).toContain('export async function loadConfig');
+    });
+
+    it('fetches /admin/config API endpoint', () => {
+        expect(content).toContain("fetchApi('/admin/config')");
+    });
+
+    it('renders config file path', () => {
+        expect(content).toContain('admin-config-path');
+        expect(content).toContain('admin-config-path-value');
+    });
+
+    it('renders config table with key-value rows', () => {
+        expect(content).toContain('admin-config-table');
+        expect(content).toContain('admin-config-key');
+        expect(content).toContain('admin-config-value');
+    });
+
+    it('renders source badges for default and file', () => {
+        expect(content).toContain('admin-config-source-badge');
+        expect(content).toContain('admin-config-source-${src}');
+    });
+
+    it('displays all expected config fields', () => {
+        for (const field of ['model', 'parallel', 'timeout', 'output', 'approvePermissions', 'mcpConfig', 'persist']) {
+            expect(content).toContain(`key: '${field}'`);
+        }
+    });
+
+    it('displays serve sub-fields', () => {
+        for (const field of ['serve.port', 'serve.host', 'serve.dataDir', 'serve.theme']) {
+            expect(content).toContain(`key: '${field}'`);
+        }
+    });
+
+    it('shows error message on fetch failure', () => {
+        expect(content).toContain('Failed to load configuration');
+        expect(content).toContain('admin-config-error');
+    });
+
+    it('exposes loadAdminConfig on window', () => {
+        expect(content).toContain('(window as any).loadAdminConfig = loadConfig');
+    });
+});
+
+// ============================================================================
+// CSS — admin config styles
+// ============================================================================
+
+describe('CSS — admin config styles', () => {
+    let css: string;
+    beforeAll(() => { css = readClientFile('styles.css'); });
+
+    it('defines .admin-config-section style', () => {
+        expect(css).toContain('.admin-config-section');
+    });
+
+    it('defines .admin-config-path style', () => {
+        expect(css).toContain('.admin-config-path');
+    });
+
+    it('defines .admin-config-path-value style', () => {
+        expect(css).toContain('.admin-config-path-value');
+    });
+
+    it('defines .admin-config-table style', () => {
+        expect(css).toContain('.admin-config-table');
+    });
+
+    it('defines .admin-config-key style', () => {
+        expect(css).toContain('.admin-config-key');
+    });
+
+    it('defines .admin-config-value style', () => {
+        expect(css).toContain('.admin-config-value');
+    });
+
+    it('defines .admin-config-source-badge style', () => {
+        expect(css).toContain('.admin-config-source-badge');
+    });
+
+    it('defines .admin-config-source-default style', () => {
+        expect(css).toContain('.admin-config-source-default');
+    });
+
+    it('defines .admin-config-source-file style', () => {
+        expect(css).toContain('.admin-config-source-file');
+    });
+
+    it('defines .admin-config-error style', () => {
+        expect(css).toContain('.admin-config-error');
+    });
+
+    it('defines .admin-config-loading style', () => {
+        expect(css).toContain('.admin-config-loading');
+    });
+});
+
+// ============================================================================
+// Client bundle — admin config
+// ============================================================================
+
+describe('client bundle — admin config module', () => {
+    let script: string;
+    beforeAll(() => { script = getClientBundle(); });
+
+    it('includes admin-config-content element ID', () => {
+        expect(script).toContain('admin-config-content');
+    });
+
+    it('includes loadConfig function', () => {
+        expect(script).toContain('loadConfig');
+    });
+
+    it('includes /admin/config API path', () => {
+        expect(script).toContain('/admin/config');
+    });
+
+    it('includes admin-config-table class', () => {
+        expect(script).toContain('admin-config-table');
+    });
+
+    it('includes admin-config-source-badge class', () => {
+        expect(script).toContain('admin-config-source-badge');
+    });
+});
+
+// ============================================================================
 // Global admin does not interfere with wiki admin
 // ============================================================================
 
