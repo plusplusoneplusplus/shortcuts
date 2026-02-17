@@ -136,7 +136,11 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
         handler: async (req, res) => {
             let body: Record<string, unknown>;
             try {
-                body = await parseBody(req);
+                const parsed = await parseBody(req);
+                if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+                    return sendError(res, 400, 'Request body must be a JSON object');
+                }
+                body = parsed;
             } catch {
                 return sendError(res, 400, 'Invalid JSON body');
             }

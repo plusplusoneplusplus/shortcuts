@@ -492,5 +492,175 @@ describe('Admin Handler', () => {
             const content = fs.readFileSync(configPath, 'utf-8');
             expect(content).toContain('persisted-model');
         });
+
+        it('should create config file when none exists', async () => {
+            const configPath = path.join(dataDir, 'brand-new-config.yaml');
+            expect(fs.existsSync(configPath)).toBe(false);
+
+            const srv = await startServerWithConfig(configPath);
+
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ model: 'new-model', parallel: 4 }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(200);
+            expect(fs.existsSync(configPath)).toBe(true);
+
+            const content = fs.readFileSync(configPath, 'utf-8');
+            expect(content).toContain('new-model');
+            expect(content).toContain('4');
+        });
+
+        it('should preserve serve.* keys when only updating model', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const yaml = require('js-yaml');
+            fs.writeFileSync(configPath, yaml.dump({
+                model: 'old-model',
+                serve: { port: 5000, host: '0.0.0.0', dataDir: '/tmp/coc', theme: 'dark' },
+            }), 'utf-8');
+
+            const srv = await startServerWithConfig(configPath);
+
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ model: 'updated-model' }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.model).toBe('updated-model');
+            expect(body.resolved.serve.port).toBe(5000);
+            expect(body.resolved.serve.host).toBe('0.0.0.0');
+            expect(body.resolved.serve.dataDir).toBe('/tmp/coc');
+            expect(body.resolved.serve.theme).toBe('dark');
+
+            // Verify on disk
+            const diskConfig = yaml.load(fs.readFileSync(configPath, 'utf-8'));
+            expect(diskConfig.serve.port).toBe(5000);
+            expect(diskConfig.serve.host).toBe('0.0.0.0');
+        });
+
+        it('should preserve approvePermissions and persist when updating other fields', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const yaml = require('js-yaml');
+            fs.writeFileSync(configPath, yaml.dump({
+                approvePermissions: true,
+                persist: false,
+                mcpConfig: '/path/to/mcp.json',
+                parallel: 10,
+            }), 'utf-8');
+
+            const srv = await startServerWithConfig(configPath);
+
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ timeout: 300 }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.timeout).toBe(300);
+            expect(body.resolved.approvePermissions).toBe(true);
+            expect(body.resolved.persist).toBe(false);
+            expect(body.resolved.mcpConfig).toBe('/path/to/mcp.json');
+            expect(body.resolved.parallel).toBe(10);
+        });
+
+        it('should reject non-object body (array)', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify([1, 2, 3]),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(400);
+        });
+
+        it('should reject empty body', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: '',
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(400);
+        });
+    });
+
+    // ========================================================================
+    // Integration: GET → PUT → GET round-trip
+    // ========================================================================
+
+    describe('Admin Config Integration', () => {
+        it('GET → PUT → GET round-trip should reflect updates', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+
+            // Initial GET: defaults
+            const get1 = await request(`${srv.url}/api/admin/config`);
+            expect(get1.status).toBe(200);
+            const initial = JSON.parse(get1.body);
+            expect(initial.resolved.parallel).toBe(5);
+            expect(initial.sources.parallel).toBe('default');
+
+            // PUT: change parallel
+            const putRes = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ parallel: 12, model: 'round-trip-model' }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+            expect(putRes.status).toBe(200);
+
+            // Second GET: should see updated values
+            const get2 = await request(`${srv.url}/api/admin/config`);
+            expect(get2.status).toBe(200);
+            const updated = JSON.parse(get2.body);
+            expect(updated.resolved.parallel).toBe(12);
+            expect(updated.resolved.model).toBe('round-trip-model');
+            expect(updated.sources.parallel).toBe('file');
+            expect(updated.sources.model).toBe('file');
+        });
+
+        it('multiple PUTs should accumulate changes without losing earlier edits', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+
+            // First PUT: set model
+            await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ model: 'first-model' }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            // Second PUT: set parallel (model should persist)
+            await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ parallel: 7 }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            // Third PUT: set timeout (model and parallel should persist)
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ timeout: 180 }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.model).toBe('first-model');
+            expect(body.resolved.parallel).toBe(7);
+            expect(body.resolved.timeout).toBe(180);
+        });
     });
 });
