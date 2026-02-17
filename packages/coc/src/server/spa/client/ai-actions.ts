@@ -438,7 +438,7 @@ async function enqueueBulkFollowPrompt(
         const res = await fetch(getApiBase() + '/queue/bulk', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ items }),
+            body: JSON.stringify({ tasks: items }),
         });
 
         if (!res.ok) {
@@ -448,8 +448,8 @@ async function enqueueBulkFollowPrompt(
         }
 
         const result = await res.json();
-        const successCount = result.results?.filter((r: any) => r.success).length || 0;
-        const failCount = result.results?.filter((r: any) => !r.success).length || 0;
+        const successCount = result.summary?.succeeded ?? result.success?.length ?? 0;
+        const failCount = result.summary?.failed ?? result.failed?.length ?? 0;
 
         if (failCount === 0) {
             showToast(`Enqueued ${successCount} tasks`, 'success');

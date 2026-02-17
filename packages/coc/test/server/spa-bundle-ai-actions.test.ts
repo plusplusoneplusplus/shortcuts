@@ -617,3 +617,52 @@ describe('Follow Prompt model selection', () => {
         expect(matches!.length).toBe(2); // once in enqueueFollowPrompt, once in Update Document
     });
 });
+
+// ============================================================================
+// Bulk Follow Prompt — enqueueBulkFollowPrompt request/response contract
+// ============================================================================
+
+describe('enqueueBulkFollowPrompt — API contract alignment', () => {
+    let content: string;
+    beforeAll(() => { content = readClientFile('ai-actions.ts'); });
+
+    it('sends request body with "tasks" key (not "items") matching POST /api/queue/bulk contract', () => {
+        const fnStart = content.indexOf('async function enqueueBulkFollowPrompt');
+        const fnBody = content.slice(fnStart, content.indexOf('\n// ==', fnStart));
+        // Must use { tasks: items } not { items }
+        expect(fnBody).toContain('JSON.stringify({ tasks: items })');
+        expect(fnBody).not.toMatch(/JSON\.stringify\(\{\s*items\s*\}\)/);
+    });
+
+    it('parses success count from result.summary.succeeded (not result.results)', () => {
+        const fnStart = content.indexOf('async function enqueueBulkFollowPrompt');
+        const fnBody = content.slice(fnStart, content.indexOf('\n// ==', fnStart));
+        expect(fnBody).toContain('result.summary?.succeeded');
+        expect(fnBody).not.toContain('result.results?.filter');
+    });
+
+    it('parses failure count from result.summary.failed (not result.results)', () => {
+        const fnStart = content.indexOf('async function enqueueBulkFollowPrompt');
+        const fnBody = content.slice(fnStart, content.indexOf('\n// ==', fnStart));
+        expect(fnBody).toContain('result.summary?.failed');
+    });
+
+    it('falls back to result.success.length when summary is absent', () => {
+        const fnStart = content.indexOf('async function enqueueBulkFollowPrompt');
+        const fnBody = content.slice(fnStart, content.indexOf('\n// ==', fnStart));
+        expect(fnBody).toContain('result.success?.length');
+    });
+
+    it('falls back to result.failed.length when summary is absent', () => {
+        const fnStart = content.indexOf('async function enqueueBulkFollowPrompt');
+        const fnBody = content.slice(fnStart, content.indexOf('\n// ==', fnStart));
+        expect(fnBody).toContain('result.failed?.length');
+    });
+
+    it('uses nullish coalescing for robust fallback chain', () => {
+        const fnStart = content.indexOf('async function enqueueBulkFollowPrompt');
+        const fnBody = content.slice(fnStart, content.indexOf('\n// ==', fnStart));
+        // Should use ?? for fallback, not ||
+        expect(fnBody).toContain('??');
+    });
+});

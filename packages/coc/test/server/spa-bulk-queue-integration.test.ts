@@ -6,7 +6,15 @@
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
+import * as fs from 'fs';
+import * as path from 'path';
 import { getClientBundle, generateDashboardHtml } from './spa-test-helpers';
+
+const CLIENT_DIR = path.resolve(__dirname, '..', '..', 'src', 'server', 'spa', 'client');
+
+function readClientFile(name: string): string {
+    return fs.readFileSync(path.join(CLIENT_DIR, name), 'utf8');
+}
 
 // ============================================================================
 // Bulk Queue — tasks.ts selection helpers
@@ -233,8 +241,8 @@ describe('Bulk Queue — enqueueBulkFollowPrompt function', () => {
         expect(script).toContain('/queue/bulk');
     });
 
-    it('sends items array in request body', () => {
-        expect(script).toContain('items');
+    it('sends tasks array in request body matching API contract', () => {
+        expect(script).toContain('tasks:');
     });
 
     it('builds individual queue items per task file', () => {
@@ -365,5 +373,57 @@ describe('Bulk Queue — backward compatibility', () => {
 
     it('preserves single-file follow-prompt action in AI dropdown', () => {
         expect(script).toContain('follow-prompt');
+    });
+});
+
+// ============================================================================
+// Bulk Queue — source-level API contract verification
+// ============================================================================
+
+describe('Bulk Queue — enqueueBulkFollowPrompt source-level API contract', () => {
+    let content: string;
+    beforeAll(() => { content = readClientFile('ai-actions.ts'); });
+
+    it('sends { tasks: items } in request body to match POST /api/queue/bulk', () => {
+        const fnStart = content.indexOf('async function enqueueBulkFollowPrompt');
+        const fnBody = content.slice(fnStart, content.indexOf('\n// ==', fnStart));
+        expect(fnBody).toContain('JSON.stringify({ tasks: items })');
+    });
+
+    it('does NOT send { items } directly (regression guard)', () => {
+        const fnStart = content.indexOf('async function enqueueBulkFollowPrompt');
+        const fnBody = content.slice(fnStart, content.indexOf('\n// ==', fnStart));
+        // Must not have JSON.stringify({ items }) without the tasks: key
+        expect(fnBody).not.toMatch(/JSON\.stringify\(\{\s*items\s*\}\)/);
+    });
+
+    it('reads success count from result.summary.succeeded', () => {
+        const fnStart = content.indexOf('async function enqueueBulkFollowPrompt');
+        const fnBody = content.slice(fnStart, content.indexOf('\n// ==', fnStart));
+        expect(fnBody).toContain('result.summary?.succeeded');
+    });
+
+    it('reads failure count from result.summary.failed', () => {
+        const fnStart = content.indexOf('async function enqueueBulkFollowPrompt');
+        const fnBody = content.slice(fnStart, content.indexOf('\n// ==', fnStart));
+        expect(fnBody).toContain('result.summary?.failed');
+    });
+
+    it('falls back to result.success array length for success count', () => {
+        const fnStart = content.indexOf('async function enqueueBulkFollowPrompt');
+        const fnBody = content.slice(fnStart, content.indexOf('\n// ==', fnStart));
+        expect(fnBody).toContain('result.success?.length');
+    });
+
+    it('falls back to result.failed array length for failure count', () => {
+        const fnStart = content.indexOf('async function enqueueBulkFollowPrompt');
+        const fnBody = content.slice(fnStart, content.indexOf('\n// ==', fnStart));
+        expect(fnBody).toContain('result.failed?.length');
+    });
+
+    it('does NOT use result.results (old incorrect response shape)', () => {
+        const fnStart = content.indexOf('async function enqueueBulkFollowPrompt');
+        const fnBody = content.slice(fnStart, content.indexOf('\n// ==', fnStart));
+        expect(fnBody).not.toContain('result.results');
     });
 });
