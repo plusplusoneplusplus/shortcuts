@@ -381,14 +381,25 @@ function renderChatMessage(turn: ClientConversationTurn): string {
     }
     html += '</div>';
 
-    // Content
-    html += '<div class="chat-message-content">' + renderMarkdown(turn.content || '') + '</div>';
-
-    // Tool calls (assistant only) — consecutive same-tool+file calls grouped
-    if (!isUser && turn.toolCalls && turn.toolCalls.length > 0) {
-        html += '<div class="tool-calls-container">';
-        html += renderToolCallsHTML(turn.toolCalls);
-        html += '</div>';
+    // Chronological rendering from timeline (tools appear inline where they executed)
+    if (turn.timeline && turn.timeline.length > 0) {
+        for (const item of turn.timeline) {
+            if (item.type === 'content') {
+                html += '<div class="chat-message-content">' + renderMarkdown(item.content || '') + '</div>';
+            } else if (item.type.startsWith('tool-')) {
+                html += '<div class="tool-calls-container">';
+                html += renderToolCallHTML(item.toolCall);
+                html += '</div>';
+            }
+        }
+    } else {
+        // Empty timeline: streaming/optimistic/backward-compat turns
+        html += '<div class="chat-message-content">' + renderMarkdown(turn.content || '') + '</div>';
+        if (!isUser && turn.toolCalls && turn.toolCalls.length > 0) {
+            html += '<div class="tool-calls-container">';
+            html += renderToolCallsHTML(turn.toolCalls);
+            html += '</div>';
+        }
     }
 
     // Per-message copy button (user and assistant)
@@ -527,12 +538,14 @@ function renderQueueTaskConversation(processId: string, taskId: string, proc: an
                 role: 'user',
                 content: userContent,
                 timestamp: proc.startTime || undefined,
+                timeline: [],
             });
         }
         html += renderChatMessage({
             role: 'assistant',
             content: proc.result,
             timestamp: proc.endTime || undefined,
+            timeline: [],
         });
     } else if (queueTaskStreamContent) {
         // Streaming in progress with no parsed turns — legacy path
@@ -540,6 +553,7 @@ function renderQueueTaskConversation(processId: string, taskId: string, proc: an
             role: 'assistant',
             content: queueTaskStreamContent,
             streaming: true,
+            timeline: [],
         });
     } else if (isRunning) {
         html += '<div class="conversation-waiting">Waiting for response...</div>';

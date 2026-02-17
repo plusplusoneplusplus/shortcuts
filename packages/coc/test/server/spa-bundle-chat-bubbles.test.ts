@@ -68,6 +68,30 @@ describe('client bundle — chat bubble rendering', () => {
         expect(script).toContain('chat-message-header');
     });
 
+    // ---- Timeline inline rendering ----
+
+    it('renderChatMessage iterates turn.timeline for chronological rendering', () => {
+        expect(script).toContain('turn.timeline');
+        expect(script).toContain('.timeline.length');
+    });
+
+    it('renderChatMessage renders content items from timeline inline', () => {
+        // Timeline content items use item.content
+        expect(script).toContain('item.content');
+        expect(script).toContain('item.type');
+    });
+
+    it('renderChatMessage renders tool items from timeline inline via renderToolCallHTML', () => {
+        // Timeline tool items check type starts with 'tool-' and render via renderToolCallHTML
+        expect(script).toContain('tool-');
+        expect(script).toContain('item.toolCall');
+    });
+
+    it('renderChatMessage falls back to content+tools when timeline is empty', () => {
+        // Empty timeline: streaming/optimistic/backward-compat turns use turn.content
+        expect(script).toContain('renderMarkdown(turn.content');
+    });
+
     // ---- Conversation turn iteration ----
 
     it('iterates queueTaskConversationTurns for bubble rendering', () => {
