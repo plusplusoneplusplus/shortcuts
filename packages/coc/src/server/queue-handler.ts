@@ -13,6 +13,7 @@ import type { TaskQueueManager, QueuedTask, CreateTaskInput, TaskPriority, Queue
 import { sendJSON, sendError, parseBody } from './api-handler';
 import type { Route } from './types';
 import { computeRepoId } from './queue-persistence';
+import { extractRepoId } from './repo-utils';
 import * as url from 'url';
 
 // ============================================================================
@@ -173,11 +174,26 @@ export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueMana
     routes.push({
         method: 'GET',
         pattern: '/api/queue',
-        handler: async (_req, res) => {
-            const queued = queueManager.getQueued().map(serializeTask);
-            const running = queueManager.getRunning().map(serializeTask);
-            const stats = queueManager.getStats();
+        handler: async (req, res) => {
+            const parsed = url.parse(req.url || '/', true);
+            const repoId = typeof parsed.query.repoId === 'string' && parsed.query.repoId
+                ? parsed.query.repoId
+                : undefined;
 
+            let queued: Record<string, unknown>[];
+            let running: Record<string, unknown>[];
+
+            if (repoId) {
+                const matchesRepo = (task: QueuedTask): boolean =>
+                    task.repoId === repoId || extractRepoId(task.payload) === repoId;
+                queued = queueManager.getQueued().filter(matchesRepo).map(serializeTask);
+                running = queueManager.getRunning().filter(matchesRepo).map(serializeTask);
+            } else {
+                queued = queueManager.getQueued().map(serializeTask);
+                running = queueManager.getRunning().map(serializeTask);
+            }
+
+            const stats = queueManager.getStats();
             sendJSON(res, 200, { queued, running, stats });
         },
     });

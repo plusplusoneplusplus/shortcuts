@@ -402,6 +402,107 @@ describe('Queue Handler', () => {
     });
 
     // ========================================================================
+    // List with repoId filtering
+    // ========================================================================
+
+    describe('GET /api/queue?repoId — Filter by repo', () => {
+        it('should return all tasks when no repoId param is provided', async () => {
+            const srv = await startServer();
+
+            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'A', repoId: 'repo-1' }));
+            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'B', repoId: 'repo-2' }));
+
+            const res = await request(`${srv.url}/api/queue`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.queued).toHaveLength(2);
+        });
+
+        it('should filter queued tasks by explicit repoId', async () => {
+            const srv = await startServer();
+
+            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'A', repoId: 'repo-1' }));
+            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'B', repoId: 'repo-2' }));
+            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'C', repoId: 'repo-1' }));
+
+            const res = await request(`${srv.url}/api/queue?repoId=repo-1`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.queued).toHaveLength(2);
+            expect(body.queued.every((t: any) => t.repoId === 'repo-1')).toBe(true);
+        });
+
+        it('should return empty arrays for non-existent repoId', async () => {
+            const srv = await startServer();
+
+            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'A', repoId: 'repo-1' }));
+
+            const res = await request(`${srv.url}/api/queue?repoId=nonexistent`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.queued).toEqual([]);
+            expect(body.running).toEqual([]);
+        });
+
+        it('should treat empty repoId parameter as no filter', async () => {
+            const srv = await startServer();
+
+            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'A', repoId: 'repo-1' }));
+            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'B', repoId: 'repo-2' }));
+
+            const res = await request(`${srv.url}/api/queue?repoId=`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.queued).toHaveLength(2);
+        });
+
+        it('should return global stats even when filtering', async () => {
+            const srv = await startServer();
+
+            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'A', repoId: 'repo-1' }));
+            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'B', repoId: 'repo-2' }));
+            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'C', repoId: 'repo-1' }));
+
+            const res = await request(`${srv.url}/api/queue?repoId=repo-1`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            // Filtered results
+            expect(body.queued).toHaveLength(2);
+            // Global stats (not filtered)
+            expect(body.stats.queued).toBe(3);
+        });
+
+        it('should preserve response structure with filtering', async () => {
+            const srv = await startServer();
+
+            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'A', repoId: 'repo-1' }));
+
+            const res = await request(`${srv.url}/api/queue?repoId=repo-1`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body).toHaveProperty('queued');
+            expect(body).toHaveProperty('running');
+            expect(body).toHaveProperty('stats');
+            expect(Array.isArray(body.queued)).toBe(true);
+            expect(Array.isArray(body.running)).toBe(true);
+        });
+
+        it('should exclude tasks without matching repoId', async () => {
+            const srv = await startServer();
+
+            // Task with no repoId
+            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'NoRepo' }));
+            // Task with different repoId
+            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'Other', repoId: 'repo-2' }));
+
+            const res = await request(`${srv.url}/api/queue?repoId=repo-1`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.queued).toEqual([]);
+        });
+    });
+
+    // ========================================================================
     // Get single task
     // ========================================================================
 
