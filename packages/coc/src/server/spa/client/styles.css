@@ -2466,6 +2466,82 @@ html[data-theme="dark"] .miller-row-drop-target {
 
 .task-preview-body strong { font-weight: 600; }
 
+/* ---- Markdown Table Styles ---- */
+
+.task-preview-body .md-table-container {
+    position: relative;
+    overflow-x: auto;
+    margin: 12px 0;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+}
+
+.task-preview-body .md-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.task-preview-body .md-table thead th {
+    font-weight: 600;
+    background: var(--bg-secondary);
+    border-bottom: 2px solid var(--border-color);
+    padding: 8px 12px;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.task-preview-body .md-table tbody td {
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.task-preview-body .md-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.task-preview-body .md-table tbody tr:nth-child(even) {
+    background: var(--bg-secondary);
+}
+
+.task-preview-body .md-table tbody tr:hover {
+    background: var(--hover-bg);
+}
+
+.task-preview-body .md-table .align-center {
+    text-align: center;
+}
+
+.task-preview-body .md-table .align-right {
+    text-align: right;
+}
+
+.md-table-copy-btn {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    background: var(--copy-btn-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 11px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s;
+    color: var(--text-secondary);
+    z-index: 1;
+}
+
+.md-table-container:hover .md-table-copy-btn {
+    opacity: 1;
+}
+
+.md-table-copy-btn:hover {
+    background: var(--copy-btn-hover-bg);
+    color: var(--text-primary);
+}
+
 /* Checkbox styling */
 .task-checkbox {
     padding: 2px 0;

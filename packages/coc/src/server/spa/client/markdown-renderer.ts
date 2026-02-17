@@ -83,7 +83,13 @@ export function renderMarkdownToHtml(content: string, options?: RenderOptions): 
 
     const tableHtml = new Map<number, string>();
     for (const table of tables) {
-        tableHtml.set(table.startLine, renderTable(table, { formatCell: applyInlineMarkdownFromLine }));
+        const html = renderTable(table, { formatCell: applyInlineMarkdownFromLine });
+        const markdown = reconstructTableMarkdown(table);
+        // Inject copy-as-markdown button into the container div
+        const btnHtml = '<button class="md-table-copy-btn" title="Copy as Markdown" data-table-markdown="' +
+            escapeAttr(markdown) + '">⧉ Copy</button>';
+        // Insert button just before the closing </div>
+        tableHtml.set(table.startLine, html.replace(/<\/div>$/, btnHtml + '</div>'));
     }
 
     // -- Line-by-line rendering ---------------------------------------------
@@ -199,4 +205,41 @@ function buildHighlightFn(): ((code: string, language: string) => string) | unde
 function applyInlineMarkdownFromLine(text: string): string {
     const result = applyMarkdownHighlighting(text, 0, false, null);
     return result.html;
+}
+
+/**
+ * Reconstruct the original markdown source from a `ParsedTable`.
+ */
+export function reconstructTableMarkdown(table: ParsedTable): string {
+    const lines: string[] = [];
+
+    // Header row
+    lines.push('| ' + table.headers.join(' | ') + ' |');
+
+    // Separator row with alignments
+    const sep = table.alignments.map(a => {
+        if (a === 'center') return ':---:';
+        if (a === 'right') return '---:';
+        return '---';
+    });
+    lines.push('| ' + sep.join(' | ') + ' |');
+
+    // Body rows
+    for (const row of table.rows) {
+        lines.push('| ' + row.join(' | ') + ' |');
+    }
+
+    return lines.join('\n');
+}
+
+/**
+ * Escape a string for safe use in an HTML attribute value (double-quoted).
+ */
+function escapeAttr(str: string): string {
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\n/g, '&#10;');
 }

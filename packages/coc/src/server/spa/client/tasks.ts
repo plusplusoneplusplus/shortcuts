@@ -7,7 +7,7 @@
 import { appState, taskPanelState } from './state';
 import { getApiBase } from './config';
 import { fetchApi } from './core';
-import { escapeHtmlClient } from './utils';
+import { escapeHtmlClient, copyToClipboard } from './utils';
 import { showAIActionDropdown, hideAIActionDropdown, showFollowPromptSubmenu } from './ai-actions';
 import { showToast } from './ai-actions';
 import { renderMarkdownToHtml } from './markdown-renderer';
@@ -1654,6 +1654,9 @@ async function loadPreviewContent(wsId: string, filePath: string): Promise<void>
 
         document.getElementById('task-preview-close')?.addEventListener('click', closeTaskPreview);
 
+        // Set up table copy-as-markdown buttons (event delegation)
+        setupTableCopyHandlers();
+
         // Set up comment toggle button
         const toggleBtn = document.getElementById('comment-toggle-btn');
         if (toggleBtn) {
@@ -1852,6 +1855,27 @@ function highlightPreviewComments(): void {
             addCommentHighlight(previewBody, comment.id, comment.selectedText);
         }
     }
+}
+
+/** Set up click handlers for table copy-as-markdown buttons. */
+function setupTableCopyHandlers(): void {
+    const previewBody = document.getElementById('task-preview-body');
+    if (!previewBody) return;
+
+    previewBody.addEventListener('click', (e: MouseEvent) => {
+        const target = e.target as HTMLElement;
+        if (!target.classList.contains('md-table-copy-btn')) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+        const markdown = target.getAttribute('data-table-markdown');
+        if (markdown) {
+            copyToClipboard(markdown);
+            const originalText = target.textContent;
+            target.textContent = '✓ Copied';
+            setTimeout(() => { target.textContent = originalText; }, 1500);
+        }
+    });
 }
 
 /** Set up Ctrl+Shift+M / Cmd+Shift+M keyboard shortcut for adding comments. */
