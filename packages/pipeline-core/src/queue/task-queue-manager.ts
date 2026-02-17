@@ -42,11 +42,17 @@ export class TaskQueueManager extends EventEmitter {
     /** Callbacks waiting for the queue to become idle */
     private idleResolvers: Array<() => void> = [];
     /** Configuration options */
-    private readonly options: Required<TaskQueueManagerOptions>;
+    private readonly options: Required<Omit<TaskQueueManagerOptions, 'getTaskRepoId'>>;
+    /** Set of paused repository IDs */
+    private pausedRepos = new Set<string>();
+    /** Function to extract repo ID from a task (injected) */
+    private readonly getTaskRepoId?: (task: QueuedTask) => string;
 
     constructor(options: TaskQueueManagerOptions = {}) {
         super();
-        this.options = { ...DEFAULT_QUEUE_MANAGER_OPTIONS, ...options };
+        const { getTaskRepoId, ...rest } = options;
+        this.options = { ...DEFAULT_QUEUE_MANAGER_OPTIONS, ...rest };
+        this.getTaskRepoId = getTaskRepoId;
     }
 
     // ========================================================================
@@ -98,8 +104,21 @@ export class TaskQueueManager extends EventEmitter {
             return undefined;
         }
 
-        const task = this.queue.shift()!;
-        return task;
+        // If a repo ID extractor is configured, skip tasks from paused repos
+        if (this.getTaskRepoId && this.pausedRepos.size > 0) {
+            for (let i = 0; i < this.queue.length; i++) {
+                const task = this.queue[i];
+                const repoId = this.getTaskRepoId(task);
+                if (!this.pausedRepos.has(repoId)) {
+                    this.queue.splice(i, 1);
+                    return task;
+                }
+            }
+            // All tasks are from paused repos
+            return undefined;
+        }
+
+        return this.queue.shift()!;
     }
 
     /**
@@ -183,6 +202,7 @@ export class TaskQueueManager extends EventEmitter {
             total: this.queue.length + this.running.size + this.history.length,
             isPaused: this.paused,
             isDraining: this.draining,
+            pausedRepos: Array.from(this.pausedRepos),
         };
     }
 
@@ -507,6 +527,46 @@ export class TaskQueueManager extends EventEmitter {
     }
 
     // ========================================================================
+    // Per-Repo Pause Control
+    // ========================================================================
+
+    /**
+     * Pause queue processing for a specific repository.
+     * Tasks from this repo will remain in queue but won't be dequeued.
+     */
+    pauseRepo(repoId: string): void {
+        if (!this.pausedRepos.has(repoId)) {
+            this.pausedRepos.add(repoId);
+            this.emitChange('repo-paused');
+            this.emit('repo-paused', repoId);
+        }
+    }
+
+    /**
+     * Resume queue processing for a specific repository.
+     */
+    resumeRepo(repoId: string): void {
+        if (this.pausedRepos.delete(repoId)) {
+            this.emitChange('repo-resumed');
+            this.emit('repo-resumed', repoId);
+        }
+    }
+
+    /**
+     * Check if a specific repository is paused.
+     */
+    isRepoPaused(repoId: string): boolean {
+        return this.pausedRepos.has(repoId);
+    }
+
+    /**
+     * Get all paused repository IDs.
+     */
+    getPausedRepos(): string[] {
+        return Array.from(this.pausedRepos);
+    }
+
+    // ========================================================================
     // Drain Mode
     // ========================================================================
 
@@ -667,6 +727,7 @@ export class TaskQueueManager extends EventEmitter {
         this.history = [];
         this.paused = false;
         this.draining = false;
+        this.pausedRepos.clear();
         // Resolve any pending idle waiters since there's nothing left
         const resolvers = this.idleResolvers;
         this.idleResolvers = [];

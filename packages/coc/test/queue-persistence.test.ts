@@ -92,7 +92,7 @@ describe('QueuePersistence', () => {
             await wait(400);
 
             const state = readAnyRepoQueueFile(dataDir);
-            expect(state.version).toBe(2);
+            expect(state.version).toBe(3);
             expect(state.savedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
             expect(state.repoRootPath).toBeTruthy();
             expect(state.repoId).toBeTruthy();

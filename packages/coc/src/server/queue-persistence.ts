@@ -30,9 +30,10 @@ interface PersistedQueueState {
     repoId: string;
     pending: QueuedTask[];
     history: QueuedTask[];
+    isPaused?: boolean;
 }
 
-const CURRENT_VERSION = 2;
+const CURRENT_VERSION = 3;
 const DEBOUNCE_MS = 300;
 const MAX_PERSISTED_HISTORY = 100;
 
@@ -162,6 +163,11 @@ export class QueuePersistence {
             return { restored: 0, historyCount: 0 };
         }
 
+        if (state.version === 2) {
+            // Migrate v2 → v3: default to unpaused
+            state = { ...state, version: 3, isPaused: false };
+        }
+
         if (state.version !== CURRENT_VERSION) {
             process.stderr.write(
                 `[QueuePersistence] Unknown version ${state.version} in ${path.basename(filePath)} — skipping\n`
@@ -205,6 +211,11 @@ export class QueuePersistence {
         }
         if (historyToRestore.length > 0) {
             this.queueManager.restoreHistory(historyToRestore);
+        }
+
+        // Restore per-repo pause state
+        if (state.isPaused === true && state.repoId) {
+            this.queueManager.pauseRepo(state.repoId);
         }
 
         return { restored: restoredPending, historyCount: historyToRestore.length };
@@ -253,13 +264,15 @@ export class QueuePersistence {
 
         // Write a file for each repo with tasks
         for (const [rootPath, { pending, history: hist }] of tasksByRepo) {
+            const repoId = computeRepoId(rootPath);
             const state: PersistedQueueState = {
                 version: CURRENT_VERSION,
                 savedAt: new Date().toISOString(),
                 repoRootPath: rootPath,
-                repoId: computeRepoId(rootPath),
+                repoId,
                 pending,
                 history: hist.slice(0, MAX_PERSISTED_HISTORY),
+                isPaused: this.queueManager.isRepoPaused(repoId),
             };
             const filePath = getRepoQueueFilePath(this.dataDir, rootPath);
             this.atomicWrite(filePath, state);

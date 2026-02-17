@@ -581,6 +581,88 @@ describe('Queue Handler', () => {
             const stats = JSON.parse(statsRes.body).stats;
             expect(stats.isPaused).toBe(true);
         });
+
+        it('should pause a specific repo', async () => {
+            const srv = await startServer();
+
+            // Pause queue first to prevent auto-execution
+            await postJSON(`${srv.url}/api/queue/pause`, {});
+
+            // Enqueue task with workingDirectory
+            await postJSON(`${srv.url}/api/queue`, makeTask({
+                payload: { data: { prompt: 'test' }, workingDirectory: '/my/repo' },
+            }));
+
+            // Pause specific repo
+            const repoId = require('crypto').createHash('sha256').update('/my/repo').digest('hex').substring(0, 16);
+            const res = await postJSON(`${srv.url}/api/queue/pause?repoId=${repoId}`, {});
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.repoId).toBe(repoId);
+            expect(body.paused).toBe(true);
+            expect(body.stats.pausedRepos).toContain(repoId);
+        });
+
+        it('should resume a specific repo', async () => {
+            const srv = await startServer();
+
+            const repoId = require('crypto').createHash('sha256').update('/my/repo').digest('hex').substring(0, 16);
+
+            // Pause then resume repo
+            await postJSON(`${srv.url}/api/queue/pause?repoId=${repoId}`, {});
+            const res = await postJSON(`${srv.url}/api/queue/resume?repoId=${repoId}`, {});
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.repoId).toBe(repoId);
+            expect(body.paused).toBe(false);
+            expect(body.stats.pausedRepos).not.toContain(repoId);
+        });
+
+        it('should include pausedRepos in stats', async () => {
+            const srv = await startServer();
+
+            const repoId = require('crypto').createHash('sha256').update('/test/repo').digest('hex').substring(0, 16);
+            await postJSON(`${srv.url}/api/queue/pause?repoId=${repoId}`, {});
+
+            const statsRes = await request(`${srv.url}/api/queue/stats`);
+            const stats = JSON.parse(statsRes.body).stats;
+            expect(stats.pausedRepos).toContain(repoId);
+        });
+
+        it('GET /api/queue/repos should list repos with pause states', async () => {
+            const srv = await startServer();
+
+            // Pause queue to prevent auto-execution
+            await postJSON(`${srv.url}/api/queue/pause`, {});
+
+            // Enqueue tasks for different repos
+            await postJSON(`${srv.url}/api/queue`, makeTask({
+                payload: { data: { prompt: 'a' }, workingDirectory: '/repo/one' },
+            }));
+            await postJSON(`${srv.url}/api/queue`, makeTask({
+                payload: { data: { prompt: 'b' }, workingDirectory: '/repo/two' },
+            }));
+
+            // Pause one repo
+            const repoOneId = require('crypto').createHash('sha256').update('/repo/one').digest('hex').substring(0, 16);
+            await postJSON(`${srv.url}/api/queue/pause?repoId=${repoOneId}`, {});
+
+            const res = await request(`${srv.url}/api/queue/repos`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.repos).toBeDefined();
+            expect(body.repos.length).toBeGreaterThanOrEqual(2);
+
+            const repoOne = body.repos.find((r: any) => r.repoId === repoOneId);
+            expect(repoOne).toBeDefined();
+            expect(repoOne.isPaused).toBe(true);
+            expect(repoOne.taskCount).toBeGreaterThanOrEqual(1);
+
+            const repoTwoId = require('crypto').createHash('sha256').update('/repo/two').digest('hex').substring(0, 16);
+            const repoTwo = body.repos.find((r: any) => r.repoId === repoTwoId);
+            expect(repoTwo).toBeDefined();
+            expect(repoTwo.isPaused).toBe(false);
+        });
     });
 
     // ========================================================================

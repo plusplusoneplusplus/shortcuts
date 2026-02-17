@@ -29,7 +29,7 @@ import type { Route } from './types';
 import type { ProcessStore, AIProcess, ProcessChangeCallback, ProcessOutputEvent } from '@plusplusoneplusplus/pipeline-core';
 import { TaskQueueManager, FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
 import { createQueueExecutorBridge } from './queue-executor-bridge';
-import { QueuePersistence } from './queue-persistence';
+import { QueuePersistence, computeRepoId } from './queue-persistence';
 import { OutputPruner } from './output-pruner';
 import { StaleTaskDetector } from './stale-task-detector';
 import { TaskWatcher } from './task-watcher';
@@ -135,11 +135,18 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // Ensure data directory exists
     fs.mkdirSync(dataDir, { recursive: true });
 
-    // Create queue manager
+    // Create queue manager with per-repo pause support
     const queueManager = new TaskQueueManager({
         maxQueueSize: 0,  // unlimited
         keepHistory: true,
         maxHistorySize: 100,
+        getTaskRepoId: (task) => {
+            const payload = task.payload as Record<string, unknown>;
+            const rootPath = (typeof payload?.workingDirectory === 'string' && payload.workingDirectory)
+                ? payload.workingDirectory
+                : process.cwd();
+            return computeRepoId(rootPath);
+        },
     });
 
     // Restore persisted queue state before executor starts processing

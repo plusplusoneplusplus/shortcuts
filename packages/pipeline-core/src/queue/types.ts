@@ -261,6 +261,8 @@ export type QueueChangeType =
     | 'cleared'
     | 'paused'
     | 'resumed'
+    | 'repo-paused'
+    | 'repo-resumed'
     | 'drain-started'
     | 'drain-cancelled';
 
@@ -388,12 +390,14 @@ export interface TaskQueueManagerOptions {
     keepHistory?: boolean;
     /** Maximum history size (default: 100) */
     maxHistorySize?: number;
+    /** Extract a repo ID from a task for per-repo pause support */
+    getTaskRepoId?: (task: QueuedTask) => string;
 }
 
 /**
  * Default queue manager options
  */
-export const DEFAULT_QUEUE_MANAGER_OPTIONS: Required<TaskQueueManagerOptions> = {
+export const DEFAULT_QUEUE_MANAGER_OPTIONS: Required<Omit<TaskQueueManagerOptions, 'getTaskRepoId'>> = {
     maxQueueSize: 0,
     keepHistory: true,
     maxHistorySize: 100,
@@ -419,6 +423,8 @@ export interface QueueStats {
     isPaused: boolean;
     /** Whether the queue is in drain mode */
     isDraining: boolean;
+    /** Repository IDs that are currently paused */
+    pausedRepos: string[];
 }
 
 // ============================================================================

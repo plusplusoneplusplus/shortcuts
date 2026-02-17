@@ -12,6 +12,8 @@
 import type { TaskQueueManager, QueuedTask, CreateTaskInput, TaskPriority, QueueStats, ProcessStore } from '@plusplusoneplusplus/pipeline-core';
 import { sendJSON, sendError, parseBody } from './api-handler';
 import type { Route } from './types';
+import { computeRepoId } from './queue-persistence';
+import * as url from 'url';
 
 // ============================================================================
 // Validation Helpers
@@ -334,26 +336,86 @@ export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueMana
     });
 
     // ------------------------------------------------------------------
-    // POST /api/queue/pause — Pause queue processing
+    // POST /api/queue/pause — Pause queue processing (global or per-repo)
     // ------------------------------------------------------------------
     routes.push({
         method: 'POST',
         pattern: '/api/queue/pause',
-        handler: async (_req, res) => {
-            queueManager.pause();
-            sendJSON(res, 200, { paused: true, stats: queueManager.getStats() });
+        handler: async (req, res) => {
+            const parsed = url.parse(req.url || '/', true);
+            const repoId = typeof parsed.query.repoId === 'string' ? parsed.query.repoId : undefined;
+
+            if (repoId) {
+                queueManager.pauseRepo(repoId);
+                sendJSON(res, 200, { repoId, paused: true, stats: queueManager.getStats() });
+            } else {
+                queueManager.pause();
+                sendJSON(res, 200, { paused: true, stats: queueManager.getStats() });
+            }
         },
     });
 
     // ------------------------------------------------------------------
-    // POST /api/queue/resume — Resume queue processing
+    // POST /api/queue/resume — Resume queue processing (global or per-repo)
     // ------------------------------------------------------------------
     routes.push({
         method: 'POST',
         pattern: '/api/queue/resume',
+        handler: async (req, res) => {
+            const parsed = url.parse(req.url || '/', true);
+            const repoId = typeof parsed.query.repoId === 'string' ? parsed.query.repoId : undefined;
+
+            if (repoId) {
+                queueManager.resumeRepo(repoId);
+                sendJSON(res, 200, { repoId, paused: false, stats: queueManager.getStats() });
+            } else {
+                queueManager.resume();
+                sendJSON(res, 200, { paused: false, stats: queueManager.getStats() });
+            }
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // GET /api/queue/repos — List repos with pause states and task counts
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'GET',
+        pattern: '/api/queue/repos',
         handler: async (_req, res) => {
-            queueManager.resume();
-            sendJSON(res, 200, { paused: false, stats: queueManager.getStats() });
+            const allTasks = [...queueManager.getQueued(), ...queueManager.getRunning()];
+            const repoMap = new Map<string, { repoId: string; rootPath: string; isPaused: boolean; taskCount: number }>();
+
+            for (const task of allTasks) {
+                const payload = task.payload as Record<string, unknown>;
+                const rootPath = (typeof payload?.workingDirectory === 'string' && payload.workingDirectory)
+                    ? payload.workingDirectory
+                    : process.cwd();
+                const repoId = computeRepoId(rootPath);
+
+                if (!repoMap.has(repoId)) {
+                    repoMap.set(repoId, {
+                        repoId,
+                        rootPath,
+                        isPaused: queueManager.isRepoPaused(repoId),
+                        taskCount: 0,
+                    });
+                }
+                repoMap.get(repoId)!.taskCount++;
+            }
+
+            // Also include paused repos that may have no active tasks
+            for (const pausedId of queueManager.getPausedRepos()) {
+                if (!repoMap.has(pausedId)) {
+                    repoMap.set(pausedId, {
+                        repoId: pausedId,
+                        rootPath: '',
+                        isPaused: true,
+                        taskCount: 0,
+                    });
+                }
+            }
+
+            sendJSON(res, 200, { repos: Array.from(repoMap.values()) });
         },
     });
 
@@ -480,7 +542,7 @@ export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueMana
             const id = decodeURIComponent(match![1]);
 
             // Skip known sub-routes
-            if (['stats', 'history', 'pause', 'resume', 'force-fail-running', 'bulk'].includes(id)) {
+            if (['stats', 'history', 'pause', 'resume', 'force-fail-running', 'bulk', 'repos'].includes(id)) {
                 return sendError(res, 404, 'Task not found');
             }
 

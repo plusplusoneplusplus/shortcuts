@@ -1355,6 +1355,194 @@ describe('TaskQueueManager', () => {
             expect(resolved).toBe(false);
         });
     });
+
+    // ========================================================================
+    // Per-Repo Pause
+    // ========================================================================
+
+    describe('per-repo pause', () => {
+        let repoManager: TaskQueueManager;
+
+        beforeEach(() => {
+            repoManager = new TaskQueueManager({
+                getTaskRepoId: (task) => {
+                    const payload = task.payload as Record<string, unknown>;
+                    return (payload?.repoId as string) || 'default';
+                },
+            });
+        });
+
+        it('pauseRepo marks a repo as paused', () => {
+            repoManager.pauseRepo('repo-A');
+            expect(repoManager.isRepoPaused('repo-A')).toBe(true);
+            expect(repoManager.isRepoPaused('repo-B')).toBe(false);
+        });
+
+        it('resumeRepo clears paused state', () => {
+            repoManager.pauseRepo('repo-A');
+            repoManager.resumeRepo('repo-A');
+            expect(repoManager.isRepoPaused('repo-A')).toBe(false);
+        });
+
+        it('getPausedRepos returns all paused repo IDs', () => {
+            repoManager.pauseRepo('repo-A');
+            repoManager.pauseRepo('repo-B');
+            const paused = repoManager.getPausedRepos().sort();
+            expect(paused).toEqual(['repo-A', 'repo-B']);
+        });
+
+        it('double pauseRepo is idempotent', () => {
+            const listener = vi.fn();
+            repoManager.on('repo-paused', listener);
+
+            repoManager.pauseRepo('repo-A');
+            repoManager.pauseRepo('repo-A');
+
+            expect(listener).toHaveBeenCalledTimes(1);
+        });
+
+        it('resumeRepo on non-paused repo is no-op', () => {
+            const listener = vi.fn();
+            repoManager.on('repo-resumed', listener);
+
+            repoManager.resumeRepo('repo-A');
+
+            expect(listener).not.toHaveBeenCalled();
+        });
+
+        it('emits repo-paused event with repoId', () => {
+            const listener = vi.fn();
+            repoManager.on('repo-paused', listener);
+
+            repoManager.pauseRepo('repo-X');
+
+            expect(listener).toHaveBeenCalledWith('repo-X');
+        });
+
+        it('emits repo-resumed event with repoId', () => {
+            const listener = vi.fn();
+            repoManager.on('repo-resumed', listener);
+
+            repoManager.pauseRepo('repo-X');
+            repoManager.resumeRepo('repo-X');
+
+            expect(listener).toHaveBeenCalledWith('repo-X');
+        });
+
+        it('emits change event on repo-paused', () => {
+            const listener = vi.fn();
+            repoManager.on('change', listener);
+
+            repoManager.pauseRepo('repo-A');
+
+            expect(listener).toHaveBeenCalledWith(
+                expect.objectContaining({ type: 'repo-paused' })
+            );
+        });
+
+        it('emits change event on repo-resumed', () => {
+            repoManager.pauseRepo('repo-A');
+            const listener = vi.fn();
+            repoManager.on('change', listener);
+
+            repoManager.resumeRepo('repo-A');
+
+            expect(listener).toHaveBeenCalledWith(
+                expect.objectContaining({ type: 'repo-resumed' })
+            );
+        });
+
+        it('dequeue skips tasks from paused repos', () => {
+            const idA = repoManager.enqueue(createTestTask({ payload: { repoId: 'repo-A' } as any }));
+            const idB = repoManager.enqueue(createTestTask({ payload: { repoId: 'repo-B' } as any }));
+
+            repoManager.pauseRepo('repo-A');
+
+            const task = repoManager.dequeue();
+            expect(task).toBeDefined();
+            expect(task!.id).toBe(idB);
+        });
+
+        it('dequeue returns undefined when all tasks are from paused repos', () => {
+            repoManager.enqueue(createTestTask({ payload: { repoId: 'repo-A' } as any }));
+            repoManager.enqueue(createTestTask({ payload: { repoId: 'repo-A' } as any }));
+
+            repoManager.pauseRepo('repo-A');
+
+            expect(repoManager.dequeue()).toBeUndefined();
+        });
+
+        it('dequeue returns task after repo is resumed', () => {
+            repoManager.enqueue(createTestTask({ payload: { repoId: 'repo-A' } as any }));
+
+            repoManager.pauseRepo('repo-A');
+            expect(repoManager.dequeue()).toBeUndefined();
+
+            repoManager.resumeRepo('repo-A');
+            expect(repoManager.dequeue()).toBeDefined();
+        });
+
+        it('dequeue works normally when no repos are paused', () => {
+            const id = repoManager.enqueue(createTestTask({ payload: { repoId: 'repo-A' } as any }));
+            const task = repoManager.dequeue();
+            expect(task).toBeDefined();
+            expect(task!.id).toBe(id);
+        });
+
+        it('dequeue works normally without getTaskRepoId', () => {
+            // Use default manager without getTaskRepoId
+            const id = manager.enqueue(createTestTask());
+            const task = manager.dequeue();
+            expect(task).toBeDefined();
+            expect(task!.id).toBe(id);
+        });
+
+        it('getStats includes pausedRepos', () => {
+            repoManager.pauseRepo('repo-A');
+            repoManager.pauseRepo('repo-B');
+
+            const stats = repoManager.getStats();
+            expect(stats.pausedRepos).toHaveLength(2);
+            expect(stats.pausedRepos.sort()).toEqual(['repo-A', 'repo-B']);
+        });
+
+        it('getStats returns empty pausedRepos by default', () => {
+            const stats = manager.getStats();
+            expect(stats.pausedRepos).toEqual([]);
+        });
+
+        it('reset clears pausedRepos', () => {
+            repoManager.pauseRepo('repo-A');
+            repoManager.reset();
+
+            expect(repoManager.isRepoPaused('repo-A')).toBe(false);
+            expect(repoManager.getPausedRepos()).toEqual([]);
+        });
+
+        it('mixed repos: only tasks from unpaused repos are dequeued', () => {
+            repoManager.enqueue(createTestTask({ payload: { repoId: 'repo-A' } as any, displayName: 'A1' }));
+            repoManager.enqueue(createTestTask({ payload: { repoId: 'repo-B' } as any, displayName: 'B1' }));
+            repoManager.enqueue(createTestTask({ payload: { repoId: 'repo-A' } as any, displayName: 'A2' }));
+            repoManager.enqueue(createTestTask({ payload: { repoId: 'repo-C' } as any, displayName: 'C1' }));
+
+            repoManager.pauseRepo('repo-A');
+
+            const t1 = repoManager.dequeue();
+            expect(t1!.displayName).toBe('B1');
+
+            const t2 = repoManager.dequeue();
+            expect(t2!.displayName).toBe('C1');
+
+            // Only repo-A tasks remain
+            expect(repoManager.dequeue()).toBeUndefined();
+            expect(repoManager.size()).toBe(2);
+
+            // Resume repo-A
+            repoManager.resumeRepo('repo-A');
+            expect(repoManager.dequeue()!.displayName).toBe('A1');
+            expect(repoManager.dequeue()!.displayName).toBe('A2');
+        });
+    });
 });
 
 // ============================================================================
