@@ -89,6 +89,30 @@ export interface CompleteGroupOptions {
 }
 
 /**
+ * A chronological event within a conversation turn (content chunk or tool lifecycle)
+ */
+export interface TimelineItem {
+    /** Event type */
+    type: 'content' | 'tool-start' | 'tool-complete' | 'tool-failed';
+    /** When the event occurred */
+    timestamp: Date;
+    /** Text content (for 'content' events) */
+    content?: string;
+    /** Associated tool call (for tool events) */
+    toolCall?: ToolCall;
+}
+
+/**
+ * Serialized format of TimelineItem for persistence (Date → ISO string)
+ */
+export interface SerializedTimelineItem {
+    type: 'content' | 'tool-start' | 'tool-complete' | 'tool-failed';
+    timestamp: string;  // ISO string
+    content?: string;
+    toolCall?: SerializedToolCall;
+}
+
+/**
  * A single turn in a multi-turn conversation
  */
 export interface ConversationTurn {
@@ -104,6 +128,8 @@ export interface ConversationTurn {
     streaming?: boolean;
     /** Tool calls executed during this turn (typically assistant turns only) */
     toolCalls?: ToolCall[];
+    /** Chronological execution events (content chunks + tool lifecycle) */
+    timeline: TimelineItem[];
 }
 
 /**
@@ -116,6 +142,8 @@ export interface SerializedConversationTurn {
     turnIndex: number;
     streaming?: boolean;
     toolCalls?: SerializedToolCall[];
+    /** Chronological execution events (timestamps as ISO strings) */
+    timeline: SerializedTimelineItem[];
 }
 
 /**
@@ -465,6 +493,32 @@ export function serializeProcess(process: AIProcess & Partial<TrackedProcessFiel
                     timestamp: tc.permissionResult.timestamp.toISOString(),
                     reason: tc.permissionResult.reason
                 } : undefined
+            })),
+            timeline: (turn.timeline ?? []).map(item => ({
+                type: item.type,
+                timestamp: item.timestamp.toISOString(),
+                content: item.content,
+                toolCall: item.toolCall ? {
+                    id: item.toolCall.id,
+                    name: item.toolCall.name,
+                    status: item.toolCall.status,
+                    startTime: item.toolCall.startTime.toISOString(),
+                    endTime: item.toolCall.endTime?.toISOString(),
+                    args: item.toolCall.args,
+                    result: item.toolCall.result,
+                    error: item.toolCall.error,
+                    permissionRequest: item.toolCall.permissionRequest ? {
+                        kind: item.toolCall.permissionRequest.kind,
+                        timestamp: item.toolCall.permissionRequest.timestamp.toISOString(),
+                        resource: item.toolCall.permissionRequest.resource,
+                        operation: item.toolCall.permissionRequest.operation
+                    } : undefined,
+                    permissionResult: item.toolCall.permissionResult ? {
+                        approved: item.toolCall.permissionResult.approved,
+                        timestamp: item.toolCall.permissionResult.timestamp.toISOString(),
+                        reason: item.toolCall.permissionResult.reason
+                    } : undefined
+                } : undefined
             }))
         }))
     };
@@ -523,6 +577,32 @@ export function deserializeProcess(serialized: SerializedAIProcess): AIProcess {
                     approved: tc.permissionResult.approved,
                     timestamp: new Date(tc.permissionResult.timestamp),
                     reason: tc.permissionResult.reason
+                } : undefined
+            })),
+            timeline: (turn.timeline ?? []).map(item => ({
+                type: item.type,
+                timestamp: new Date(item.timestamp),
+                content: item.content,
+                toolCall: item.toolCall ? {
+                    id: item.toolCall.id,
+                    name: item.toolCall.name,
+                    status: item.toolCall.status,
+                    startTime: new Date(item.toolCall.startTime),
+                    endTime: item.toolCall.endTime ? new Date(item.toolCall.endTime) : undefined,
+                    args: item.toolCall.args,
+                    result: item.toolCall.result,
+                    error: item.toolCall.error,
+                    permissionRequest: item.toolCall.permissionRequest ? {
+                        kind: item.toolCall.permissionRequest.kind,
+                        timestamp: new Date(item.toolCall.permissionRequest.timestamp),
+                        resource: item.toolCall.permissionRequest.resource,
+                        operation: item.toolCall.permissionRequest.operation
+                    } : undefined,
+                    permissionResult: item.toolCall.permissionResult ? {
+                        approved: item.toolCall.permissionResult.approved,
+                        timestamp: new Date(item.toolCall.permissionResult.timestamp),
+                        reason: item.toolCall.permissionResult.reason
+                    } : undefined
                 } : undefined
             }))
         }))

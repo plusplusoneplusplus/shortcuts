@@ -1109,7 +1109,7 @@ describe('CLITaskExecutor.executeFollowUp', () => {
             startTime: new Date(),
             sdkSessionId: 'sess-123',
             conversationTurns: [
-                { role: 'user', content: 'initial question', timestamp: new Date(), turnIndex: 0 },
+                { role: 'user', content: 'initial question', timestamp: new Date(), turnIndex: 0 , timeline: [] },
             ],
         };
         await store.addProcess(process);
@@ -1206,8 +1206,8 @@ describe('executeFollowUp - chat conversation scenarios', () => {
 
     it('should accumulate turns across 3 sequential follow-ups', async () => {
         const process = createCompletedProcessWithSession('proc-multi', 'sess-multi', [
-            { role: 'user', content: 'Question 1', timestamp: new Date(), turnIndex: 0 },
-            { role: 'assistant', content: 'Reply 1', timestamp: new Date(), turnIndex: 1 },
+            { role: 'user', content: 'Question 1', timestamp: new Date(), turnIndex: 0 , timeline: [] },
+            { role: 'assistant', content: 'Reply 1', timestamp: new Date(), turnIndex: 1 , timeline: [] },
         ]);
         await store.addProcess(process);
 
@@ -1222,7 +1222,7 @@ describe('executeFollowUp - chat conversation scenarios', () => {
         await store.updateProcess('proc-multi', {
             conversationTurns: [
                 ...after1!.conversationTurns!,
-                { role: 'user', content: 'Question 3', timestamp: new Date(), turnIndex: after1!.conversationTurns!.length },
+                { role: 'user', content: 'Question 3', timestamp: new Date(), turnIndex: after1!.conversationTurns!.length , timeline: [] },
             ],
         });
 
@@ -1235,7 +1235,7 @@ describe('executeFollowUp - chat conversation scenarios', () => {
         await store.updateProcess('proc-multi', {
             conversationTurns: [
                 ...after2!.conversationTurns!,
-                { role: 'user', content: 'Question 4', timestamp: new Date(), turnIndex: after2!.conversationTurns!.length },
+                { role: 'user', content: 'Question 4', timestamp: new Date(), turnIndex: after2!.conversationTurns!.length , timeline: [] },
             ],
         });
 
@@ -1447,6 +1447,7 @@ describe('executeFollowUp - chat conversation scenarios', () => {
             role: 'assistant',
             content: 'first reply',
             turnIndex: 0,
+            timeline: [],
         });
     });
 
@@ -1567,8 +1568,8 @@ describe('session tracking and conversation turns', () => {
             startTime: new Date(),
             sdkSessionId: 'sess-existing',
             conversationTurns: [
-                { role: 'user', content: 'initial', timestamp: new Date(), turnIndex: 0 },
-                { role: 'assistant', content: 'reply', timestamp: new Date(), turnIndex: 1 },
+                { role: 'user', content: 'initial', timestamp: new Date(), turnIndex: 0 , timeline: [] },
+                { role: 'assistant', content: 'reply', timestamp: new Date(), turnIndex: 1 , timeline: [] },
             ],
         };
         await store.addProcess(process);

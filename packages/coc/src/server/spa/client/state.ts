@@ -17,6 +17,14 @@ export interface ClientToolCall {
     endTime?: string;
 }
 
+/** Timeline event for the SPA client (timestamps are ISO strings) */
+export interface ClientTimelineItem {
+    type: 'content' | 'tool-start' | 'tool-complete' | 'tool-failed';
+    timestamp: string;
+    content?: string;
+    toolCall?: ClientToolCall;
+}
+
 /** Lightweight conversation turn for the SPA client (timestamps are strings) */
 export interface ClientConversationTurn {
     role: 'user' | 'assistant';
@@ -25,6 +33,7 @@ export interface ClientConversationTurn {
     turnIndex?: number;
     streaming?: boolean;
     toolCalls?: ClientToolCall[];
+    timeline: ClientTimelineItem[];
 }
 
 /** Cached conversation data for a historical process. */

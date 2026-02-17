@@ -137,6 +137,7 @@ export class CLITaskExecutor implements TaskExecutor {
                 content: prompt,
                 timestamp: process.startTime,
                 turnIndex: 0,
+                timeline: [],
             },
         ];
         process.conversationTurns = initialTurns;
@@ -179,6 +180,7 @@ export class CLITaskExecutor implements TaskExecutor {
                     timestamp: new Date(),
                     turnIndex: 1,
                     toolCalls: (result as any)?.toolCalls || undefined,
+                    timeline: [],
                 },
             ];
 
@@ -338,6 +340,7 @@ export class CLITaskExecutor implements TaskExecutor {
                 timestamp: new Date(),
                 turnIndex: cleanTurns.length,
                 toolCalls: result.toolCalls || undefined,
+                timeline: [],
             };
 
             await this.store.updateProcess(processId, {
@@ -366,6 +369,7 @@ export class CLITaskExecutor implements TaskExecutor {
                 content: `Error: ${errorMsg}`,
                 timestamp: new Date(),
                 turnIndex: cleanTurns.length,
+                timeline: [],
             };
 
             await this.store.updateProcess(processId, {
@@ -637,6 +641,7 @@ export class CLITaskExecutor implements TaskExecutor {
                         timestamp: new Date(),
                         turnIndex: existingTurns.length,
                         streaming: streaming || undefined,
+                        timeline: [],
                     },
                 ];
             }

@@ -119,6 +119,8 @@ export {
     TrackedProcessFields,
     ConversationTurn,
     SerializedConversationTurn,
+    TimelineItem,
+    SerializedTimelineItem,
     ToolCallStatus,
     ToolCallPermissionRequest,
     ToolCallPermissionResult,

@@ -146,8 +146,8 @@ describe('executor session tracking', () => {
                 startTime: new Date(),
                 sdkSessionId: 'sess-follow-1',
                 conversationTurns: [
-                    { role: 'user', content: 'initial', timestamp: new Date(), turnIndex: 0 },
-                    { role: 'assistant', content: 'reply', timestamp: new Date(), turnIndex: 1 },
+                    { role: 'user', content: 'initial', timestamp: new Date(), turnIndex: 0, timeline: [] },
+                    { role: 'assistant', content: 'reply', timestamp: new Date(), turnIndex: 1, timeline: [] },
                 ],
             };
             await store.addProcess(proc);
@@ -171,9 +171,9 @@ describe('executor session tracking', () => {
         it('should preserve existing turns when appending', async () => {
             const processId = 'proc-follow-2';
             const existingTurns = [
-                { role: 'user' as const, content: 'Q1', timestamp: new Date(), turnIndex: 0 },
-                { role: 'assistant' as const, content: 'A1', timestamp: new Date(), turnIndex: 1 },
-                { role: 'user' as const, content: 'Q2', timestamp: new Date(), turnIndex: 2 },
+                { role: 'user' as const, content: 'Q1', timestamp: new Date(), turnIndex: 0 , timeline: [] },
+                { role: 'assistant' as const, content: 'A1', timestamp: new Date(), turnIndex: 1 , timeline: [] },
+                { role: 'user' as const, content: 'Q2', timestamp: new Date(), turnIndex: 2 , timeline: [] },
             ];
             const proc: AIProcess = {
                 id: processId,
@@ -317,7 +317,7 @@ describe('executor session tracking', () => {
                 startTime: new Date(),
                 sdkSessionId: 'sess-err-2',
                 conversationTurns: [
-                    { role: 'user', content: 'Q1', timestamp: new Date(), turnIndex: 0 },
+                    { role: 'user', content: 'Q1', timestamp: new Date(), turnIndex: 0 , timeline: [] },
                 ],
             };
             await store.addProcess(proc);

@@ -438,8 +438,8 @@ describe('Tool Event Capture', () => {
             startTime: new Date(),
             sdkSessionId: 'sess-follow',
             conversationTurns: [
-                { role: 'user', content: 'initial', timestamp: new Date(), turnIndex: 0 },
-                { role: 'assistant', content: 'reply', timestamp: new Date(), turnIndex: 1 },
+                { role: 'user', content: 'initial', timestamp: new Date(), turnIndex: 0, timeline: [] },
+                { role: 'assistant', content: 'reply', timestamp: new Date(), turnIndex: 1, timeline: [] },
             ],
         });
 

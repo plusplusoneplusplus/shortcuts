@@ -644,6 +644,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                 content: body.content,
                 timestamp: new Date(),
                 turnIndex,
+                timeline: [],
             };
             const updatedTurns = [...existingTurns, userTurn];
 

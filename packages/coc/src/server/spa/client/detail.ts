@@ -187,12 +187,14 @@ function renderProcessDetail(process: any, id: string): void {
                                             role: 'user',
                                             content: process.fullPrompt || process.promptPreview,
                                             timestamp: process.startTime || undefined,
+                                            timeline: [],
                                         });
                                     }
                                     syntheticTurns.push({
                                         role: 'assistant',
                                         content: outputData.content,
                                         timestamp: process.endTime || undefined,
+                                        timeline: [],
                                     });
                                     cacheConversation(id, syntheticTurns);
                                     setConversationHTML(sectionEl, id, syntheticTurns);
@@ -203,12 +205,14 @@ function renderProcessDetail(process: any, id: string): void {
                                             role: 'user',
                                             content: process.fullPrompt || process.promptPreview,
                                             timestamp: process.startTime || undefined,
+                                            timeline: [],
                                         });
                                     }
                                     syntheticTurns.push({
                                         role: 'assistant',
                                         content: process.result,
                                         timestamp: process.endTime || undefined,
+                                        timeline: [],
                                     });
                                     cacheConversation(id, syntheticTurns);
                                     setConversationHTML(sectionEl, id, syntheticTurns);
@@ -330,6 +334,7 @@ export function showQueueTaskDetail(taskId: string): void {
                     role: 'user',
                     content: userContent,
                     timestamp: proc.startTime || undefined,
+                    timeline: [],
                 });
             }
             if (proc.result) {
@@ -337,6 +342,7 @@ export function showQueueTaskDetail(taskId: string): void {
                     role: 'assistant',
                     content: proc.result,
                     timestamp: proc.endTime || undefined,
+                    timeline: [],
                 });
             }
             setQueueTaskConversationTurns(syntheticTurns);
@@ -690,6 +696,7 @@ function sendFollowUpMessage(processId: string, content: string): void {
             role: 'user',
             content: content,
             timestamp: new Date().toISOString(),
+            timeline: [],
         };
         conversationEl.insertAdjacentHTML('beforeend', renderChatMessage(userTurn));
 
@@ -1092,6 +1099,7 @@ function updateConversationContent(): void {
             role: 'assistant',
             content: queueTaskStreamContent,
             streaming: true,
+            timeline: [],
         };
         container.insertAdjacentHTML('beforeend', renderChatMessage(streamingTurn));
     }

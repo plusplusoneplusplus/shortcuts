@@ -45,7 +45,8 @@ describe('ToolCall serialization', () => {
             content: 'Hello',
             timestamp: new Date('2026-02-15T10:01:00.000Z'),
             turnIndex: 0,
-            toolCalls: undefined
+            toolCalls: undefined,
+            timeline: [],
         };
         const process = makeProcess({ conversationTurns: [turn] });
 
@@ -62,7 +63,8 @@ describe('ToolCall serialization', () => {
             content: 'No tools used',
             timestamp: new Date('2026-02-15T10:01:00.000Z'),
             turnIndex: 0,
-            toolCalls: []
+            toolCalls: [],
+            timeline: [],
         };
         const process = makeProcess({ conversationTurns: [turn] });
 
@@ -90,7 +92,8 @@ describe('ToolCall serialization', () => {
             content: 'Viewing file',
             timestamp: new Date('2026-02-15T10:01:00.000Z'),
             turnIndex: 0,
-            toolCalls: [tc]
+            toolCalls: [tc],
+            timeline: [],
         };
         const process = makeProcess({ conversationTurns: [turn] });
 
@@ -150,7 +153,8 @@ describe('ToolCall serialization', () => {
             content: 'Running command',
             timestamp: new Date('2026-02-15T10:01:00.000Z'),
             turnIndex: 0,
-            toolCalls: [tc]
+            toolCalls: [tc],
+            timeline: [],
         };
         const process = makeProcess({ conversationTurns: [turn] });
 
@@ -203,7 +207,8 @@ describe('ToolCall serialization', () => {
             content: 'Trying to edit',
             timestamp: new Date('2026-02-15T10:01:00.000Z'),
             turnIndex: 0,
-            toolCalls: [tc]
+            toolCalls: [tc],
+            timeline: [],
         };
         const process = makeProcess({ conversationTurns: [turn] });
 
@@ -257,7 +262,8 @@ describe('ToolCall serialization', () => {
             content: 'Working on changes',
             timestamp: new Date('2026-02-15T10:01:00.000Z'),
             turnIndex: 0,
-            toolCalls
+            toolCalls,
+            timeline: [],
         };
         const process = makeProcess({ conversationTurns: [turn] });
 
@@ -286,7 +292,8 @@ describe('ToolCall serialization', () => {
                 role: 'user',
                 content: 'Fix the bug',
                 timestamp: new Date('2026-02-15T10:00:00.000Z'),
-                turnIndex: 0
+                turnIndex: 0,
+                timeline: [],
                 // No tool calls on user turn
             },
             {
@@ -312,13 +319,15 @@ describe('ToolCall serialization', () => {
                         endTime: new Date('2026-02-15T10:00:07.000Z'),
                         args: { path: '/bug.ts', old_str: 'bug', new_str: 'fix' }
                     }
-                ]
+                ],
+                timeline: [],
             },
             {
                 role: 'user',
                 content: 'Run the tests',
                 timestamp: new Date('2026-02-15T10:01:00.000Z'),
-                turnIndex: 2
+                turnIndex: 2,
+                timeline: [],
             },
             {
                 role: 'assistant',
@@ -335,7 +344,8 @@ describe('ToolCall serialization', () => {
                         args: { command: 'npm test' },
                         error: 'Test suite failed: 3 failures'
                     }
-                ]
+                ],
+                timeline: [],
             }
         ];
         const process = makeProcess({ conversationTurns: turns });
@@ -373,7 +383,8 @@ describe('ToolCall serialization', () => {
             content: 'Running...',
             timestamp: new Date('2026-02-15T10:01:00.000Z'),
             turnIndex: 0,
-            toolCalls: [tc]
+            toolCalls: [tc],
+            timeline: [],
         };
         const process = makeProcess({ conversationTurns: [turn] });
 
@@ -402,7 +413,8 @@ describe('ToolCall serialization', () => {
             content: 'Done',
             timestamp: new Date('2026-02-15T10:01:00.000Z'),
             turnIndex: 0,
-            toolCalls: [tc]
+            toolCalls: [tc],
+            timeline: [],
         };
         const process = makeProcess({ conversationTurns: [turn] });
 
@@ -426,7 +438,8 @@ describe('ToolCall serialization', () => {
             content: 'File content',
             timestamp: new Date('2026-02-15T10:01:00.000Z'),
             turnIndex: 0,
-            toolCalls: [tc]
+            toolCalls: [tc],
+            timeline: [],
         };
         const process = makeProcess({ conversationTurns: [turn] });
 
@@ -450,7 +463,8 @@ describe('ToolCall serialization', () => {
             content: 'Failed',
             timestamp: new Date('2026-02-15T10:01:00.000Z'),
             turnIndex: 0,
-            toolCalls: [tc]
+            toolCalls: [tc],
+            timeline: [],
         };
         const process = makeProcess({ conversationTurns: [turn] });
 
@@ -474,7 +488,8 @@ describe('ToolCall serialization', () => {
             content: 'Queued',
             timestamp: new Date('2026-02-15T10:01:00.000Z'),
             turnIndex: 0,
-            toolCalls: [tc]
+            toolCalls: [tc],
+            timeline: [],
         };
         const process = makeProcess({ conversationTurns: [turn] });
 

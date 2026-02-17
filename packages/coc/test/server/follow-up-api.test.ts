@@ -121,8 +121,8 @@ describe('POST /api/processes/:id/message', () => {
                 startTime: new Date(),
                 sdkSessionId: 'sess-abc',
                 conversationTurns: [
-                    { role: 'user', content: 'initial', timestamp: new Date(), turnIndex: 0 },
-                    { role: 'assistant', content: 'reply', timestamp: new Date(), turnIndex: 1 },
+                    { role: 'user', content: 'initial', timestamp: new Date(), turnIndex: 0 , timeline: [] },
+                    { role: 'assistant', content: 'reply', timestamp: new Date(), turnIndex: 1 , timeline: [] },
                 ],
             };
             await store.addProcess(proc);
@@ -689,9 +689,9 @@ describe('POST /api/processes/:id/message', () => {
                 startTime: new Date(),
                 sdkSessionId: 'sess-tidx-len',
                 conversationTurns: [
-                    { role: 'user', content: 'q1', timestamp: new Date(), turnIndex: 0 },
-                    { role: 'assistant', content: 'a1', timestamp: new Date(), turnIndex: 1 },
-                    { role: 'user', content: 'q2', timestamp: new Date(), turnIndex: 2 },
+                    { role: 'user', content: 'q1', timestamp: new Date(), turnIndex: 0 , timeline: [] },
+                    { role: 'assistant', content: 'a1', timestamp: new Date(), turnIndex: 1 , timeline: [] },
+                    { role: 'user', content: 'q2', timestamp: new Date(), turnIndex: 2 , timeline: [] },
                 ],
             };
             await store.addProcess(proc);
@@ -713,6 +713,7 @@ describe('POST /api/processes/:id/message', () => {
                 content: `turn-${i}`,
                 timestamp: new Date(),
                 turnIndex: i,
+                timeline: [],
             }));
             const proc: AIProcess = {
                 id: 'proc-tidx-incr',

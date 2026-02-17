@@ -79,6 +79,7 @@ function makeTurn(role: 'user' | 'assistant', content: string, turnIndex: number
         timestamp: new Date('2026-01-01T00:00:00Z'),
         turnIndex,
         ...(streaming !== undefined ? { streaming } : {}),
+        timeline: [],
     };
 }
 

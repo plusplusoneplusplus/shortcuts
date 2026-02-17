@@ -282,8 +282,9 @@ describe('API Handler', () => {
                         content: 'Checking...',
                         turnIndex: 0,
                         toolCalls: [{ id: 'call_1', name: 'view', parameters: {}, result: 'ok', status: 'completed' }],
+                        timeline: [],
                     },
-                    { role: 'user', content: 'Thanks', turnIndex: 1 },
+                    { role: 'user', content: 'Thanks', turnIndex: 1, timeline: [] },
                 ],
                 fullPrompt: 'Full prompt',
             };
@@ -1399,6 +1400,7 @@ describe('API Handler', () => {
                                 result: 'File contents...',
                             },
                         ],
+                        timeline: [],
                     },
                 ],
             });
@@ -1423,6 +1425,7 @@ describe('API Handler', () => {
                         timestamp: new Date(),
                         turnIndex: 0,
                         toolCalls: [{ id: 'call_xyz', name: 'grep', status: 'completed' as const, startTime: new Date(), args: {}, result: '' }],
+                        timeline: [],
                     },
                 ],
             });
@@ -1448,6 +1451,7 @@ describe('API Handler', () => {
                         timestamp: new Date(),
                         turnIndex: 0,
                         toolCalls: [{ id: 'call_list', name: 'edit', status: 'completed' as const, startTime: new Date(), args: {} }],
+                        timeline: [],
                     },
                 ],
             });
@@ -1474,12 +1478,14 @@ describe('API Handler', () => {
                         timestamp: new Date(),
                         turnIndex: 0,
                         toolCalls: [{ id: 'c1', name: 'view', status: 'completed' as const, startTime: new Date(), args: {} }],
+                        timeline: [],
                     },
                     {
                         role: 'user',
                         content: 'Turn 1',
                         timestamp: new Date(),
                         turnIndex: 1,
+                        timeline: [],
                     },
                 ],
             });

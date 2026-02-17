@@ -12,6 +12,8 @@ import {
     SerializedAIProcess,
     ConversationTurn,
     SerializedConversationTurn,
+    TimelineItem,
+    ToolCall,
     serializeProcess,
     deserializeProcess
 } from '../src/ai/process-types';
@@ -55,7 +57,8 @@ describe('ConversationTurn serialization', () => {
             role: 'user',
             content: 'What does this code do?',
             timestamp: ts,
-            turnIndex: 0
+            turnIndex: 0,
+            timeline: [],
         };
         const process = makeProcess({ conversationTurns: [turn] });
 
@@ -76,27 +79,33 @@ describe('ConversationTurn serialization', () => {
                 role: 'user',
                 content: 'Explain this function',
                 timestamp: new Date('2026-02-01T12:00:00.000Z'),
-                turnIndex: 0
+                turnIndex: 0,
+                timeline: [],
             },
             {
                 role: 'assistant',
                 content: 'This function calculates...',
                 timestamp: new Date('2026-02-01T12:00:05.000Z'),
                 turnIndex: 1,
-                streaming: false
+                timeline: [],
+                streaming: false,
+                timeline: [],
             },
             {
                 role: 'user',
                 content: 'Can you simplify it?',
                 timestamp: new Date('2026-02-01T12:01:00.000Z'),
-                turnIndex: 2
+                turnIndex: 2,
+                timeline: [],
             },
             {
                 role: 'assistant',
                 content: 'Sure, here is a simpler version...',
                 timestamp: new Date('2026-02-01T12:01:10.000Z'),
                 turnIndex: 3,
-                streaming: true
+                timeline: [],
+                streaming: true,
+                timeline: [],
             }
         ];
 
@@ -177,6 +186,7 @@ describe('ConversationTurn type', () => {
             content: 'Hello',
             timestamp: new Date(),
             turnIndex: 0,
+            timeline: [],
         };
         expect(turn.role).toBe('user');
         expect(turn.content).toBe('Hello');
@@ -189,7 +199,9 @@ describe('ConversationTurn type', () => {
             content: 'Streaming...',
             timestamp: new Date(),
             turnIndex: 1,
+            timeline: [],
             streaming: true,
+            timeline: [],
         };
         expect(turnWithStreaming.streaming).toBe(true);
 
@@ -198,6 +210,7 @@ describe('ConversationTurn type', () => {
             content: 'Done',
             timestamp: new Date(),
             turnIndex: 2,
+            timeline: [],
         };
         expect(turnWithout.streaming).toBeUndefined();
     });
@@ -233,7 +246,7 @@ describe('deserializeProcess edge cases', () => {
             status: 'completed',
             startTime: '2026-01-15T10:00:00.000Z',
             conversationTurns: [
-                { role: 'user', content: 'hi', timestamp: '2026-01-15T10:00:00.000Z', turnIndex: 0 },
+                { role: 'user', content: 'hi', timestamp: '2026-01-15T10:00:00.000Z', turnIndex: 0, timeline: [] },
             ],
         };
 
@@ -254,6 +267,7 @@ describe('ConversationTurn content edge cases', () => {
             content: '',
             timestamp: new Date('2026-01-15T10:00:00.000Z'),
             turnIndex: 0,
+            timeline: [],
         };
         const process = makeProcess({ conversationTurns: [turn] });
 
@@ -270,6 +284,7 @@ describe('ConversationTurn content edge cases', () => {
             content: longContent,
             timestamp: new Date('2026-01-15T10:00:00.000Z'),
             turnIndex: 0,
+            timeline: [],
         };
         const process = makeProcess({ conversationTurns: [turn] });
 
@@ -277,5 +292,185 @@ describe('ConversationTurn content edge cases', () => {
         expect(roundTripped.conversationTurns).toHaveLength(1);
         expect(roundTripped.conversationTurns![0].content).toBe(longContent);
         expect(roundTripped.conversationTurns![0].content.length).toBe(100_000);
+    });
+});
+
+// ============================================================================
+// Timeline Serialization
+// ============================================================================
+
+describe('Timeline serialization', () => {
+    it('round-trips empty timeline array', () => {
+        const turn: ConversationTurn = {
+            role: 'assistant',
+            content: 'Hello',
+            timestamp: new Date('2026-02-15T10:00:00.000Z'),
+            turnIndex: 0,
+            timeline: [],
+        };
+        const process = makeProcess({ conversationTurns: [turn] });
+
+        const serialized = serializeProcess(process);
+        expect(serialized.conversationTurns![0].timeline).toEqual([]);
+
+        const deserialized = deserializeProcess(serialized);
+        expect(deserialized.conversationTurns![0].timeline).toEqual([]);
+    });
+
+    it('round-trips timeline with content items (Date conversion)', () => {
+        const ts1 = new Date('2026-02-15T10:00:01.000Z');
+        const ts2 = new Date('2026-02-15T10:00:02.000Z');
+        const turn: ConversationTurn = {
+            role: 'assistant',
+            content: 'Here is the answer',
+            timestamp: new Date('2026-02-15T10:00:00.000Z'),
+            turnIndex: 0,
+            timeline: [
+                { type: 'content', timestamp: ts1, content: 'Here is ' },
+                { type: 'content', timestamp: ts2, content: 'the answer' },
+            ],
+        };
+        const process = makeProcess({ conversationTurns: [turn] });
+
+        const serialized = serializeProcess(process);
+        expect(serialized.conversationTurns![0].timeline).toHaveLength(2);
+        expect(typeof serialized.conversationTurns![0].timeline[0].timestamp).toBe('string');
+        expect(serialized.conversationTurns![0].timeline[0].timestamp).toBe('2026-02-15T10:00:01.000Z');
+        expect(serialized.conversationTurns![0].timeline[0].content).toBe('Here is ');
+
+        const deserialized = deserializeProcess(serialized);
+        expect(deserialized.conversationTurns![0].timeline).toHaveLength(2);
+        expect(deserialized.conversationTurns![0].timeline[0].timestamp).toBeInstanceOf(Date);
+        expect(deserialized.conversationTurns![0].timeline[0].timestamp.toISOString()).toBe('2026-02-15T10:00:01.000Z');
+        expect(deserialized.conversationTurns![0].timeline[0].content).toBe('Here is ');
+        expect(deserialized.conversationTurns![0].timeline[1].content).toBe('the answer');
+    });
+
+    it('round-trips timeline with tool events (full ToolCall preserved)', () => {
+        const toolCall: ToolCall = {
+            id: 'tc-timeline-1',
+            name: 'view',
+            status: 'completed',
+            startTime: new Date('2026-02-15T10:00:01.000Z'),
+            endTime: new Date('2026-02-15T10:00:02.000Z'),
+            args: { path: '/src/main.ts' },
+            result: 'file content',
+        };
+        const turn: ConversationTurn = {
+            role: 'assistant',
+            content: 'Viewing file',
+            timestamp: new Date('2026-02-15T10:00:00.000Z'),
+            turnIndex: 0,
+            timeline: [
+                { type: 'tool-start', timestamp: new Date('2026-02-15T10:00:01.000Z'), toolCall },
+                { type: 'tool-complete', timestamp: new Date('2026-02-15T10:00:02.000Z'), toolCall },
+            ],
+        };
+        const process = makeProcess({ conversationTurns: [turn] });
+
+        const serialized = serializeProcess(process);
+        const sItem = serialized.conversationTurns![0].timeline[0];
+        expect(sItem.type).toBe('tool-start');
+        expect(sItem.toolCall).toBeDefined();
+        expect(sItem.toolCall!.id).toBe('tc-timeline-1');
+        expect(typeof sItem.toolCall!.startTime).toBe('string');
+
+        const deserialized = deserializeProcess(serialized);
+        const dItem = deserialized.conversationTurns![0].timeline[0];
+        expect(dItem.type).toBe('tool-start');
+        expect(dItem.toolCall).toBeDefined();
+        expect(dItem.toolCall!.id).toBe('tc-timeline-1');
+        expect(dItem.toolCall!.startTime).toBeInstanceOf(Date);
+        expect(dItem.toolCall!.startTime.toISOString()).toBe('2026-02-15T10:00:01.000Z');
+        expect(dItem.toolCall!.result).toBe('file content');
+    });
+
+    it('round-trips timeline with multiple interleaved content/tool events', () => {
+        const toolCall: ToolCall = {
+            id: 'tc-interleaved',
+            name: 'bash',
+            status: 'completed',
+            startTime: new Date('2026-02-15T10:00:02.000Z'),
+            endTime: new Date('2026-02-15T10:00:04.000Z'),
+            args: { command: 'ls' },
+            result: 'file1.ts\nfile2.ts',
+        };
+        const timeline: TimelineItem[] = [
+            { type: 'content', timestamp: new Date('2026-02-15T10:00:01.000Z'), content: 'Let me check...' },
+            { type: 'tool-start', timestamp: new Date('2026-02-15T10:00:02.000Z'), toolCall },
+            { type: 'tool-complete', timestamp: new Date('2026-02-15T10:00:04.000Z'), toolCall },
+            { type: 'content', timestamp: new Date('2026-02-15T10:00:05.000Z'), content: 'Found 2 files.' },
+        ];
+        const turn: ConversationTurn = {
+            role: 'assistant',
+            content: 'Let me check... Found 2 files.',
+            timestamp: new Date('2026-02-15T10:00:00.000Z'),
+            turnIndex: 0,
+            timeline,
+        };
+        const process = makeProcess({ conversationTurns: [turn] });
+
+        const deserialized = deserializeProcess(serializeProcess(process));
+        const dTimeline = deserialized.conversationTurns![0].timeline;
+        expect(dTimeline).toHaveLength(4);
+        expect(dTimeline[0].type).toBe('content');
+        expect(dTimeline[0].content).toBe('Let me check...');
+        expect(dTimeline[1].type).toBe('tool-start');
+        expect(dTimeline[1].toolCall!.name).toBe('bash');
+        expect(dTimeline[2].type).toBe('tool-complete');
+        expect(dTimeline[3].type).toBe('content');
+        expect(dTimeline[3].content).toBe('Found 2 files.');
+
+        // All timestamps are Date objects
+        for (const item of dTimeline) {
+            expect(item.timestamp).toBeInstanceOf(Date);
+        }
+    });
+
+    it('deserializes legacy turn without timeline field as empty array', () => {
+        const serialized: SerializedAIProcess = {
+            id: 'legacy-no-timeline',
+            type: 'clarification',
+            promptPreview: 'p',
+            fullPrompt: 'fp',
+            status: 'completed',
+            startTime: '2026-01-15T10:00:00.000Z',
+            conversationTurns: [
+                { role: 'user', content: 'hi', timestamp: '2026-01-15T10:00:00.000Z', turnIndex: 0, timeline: [] },
+            ],
+        };
+
+        const deserialized = deserializeProcess(serialized);
+        expect(deserialized.conversationTurns![0].timeline).toEqual([]);
+    });
+
+    it('round-trips tool-failed timeline event', () => {
+        const failedTool: ToolCall = {
+            id: 'tc-fail',
+            name: 'edit',
+            status: 'failed',
+            startTime: new Date('2026-02-15T10:00:01.000Z'),
+            endTime: new Date('2026-02-15T10:00:02.000Z'),
+            args: { path: '/missing.ts' },
+            error: 'File not found',
+        };
+        const turn: ConversationTurn = {
+            role: 'assistant',
+            content: 'Error editing file',
+            timestamp: new Date('2026-02-15T10:00:00.000Z'),
+            turnIndex: 0,
+            timeline: [
+                { type: 'tool-start', timestamp: new Date('2026-02-15T10:00:01.000Z'), toolCall: failedTool },
+                { type: 'tool-failed', timestamp: new Date('2026-02-15T10:00:02.000Z'), toolCall: failedTool },
+            ],
+        };
+        const process = makeProcess({ conversationTurns: [turn] });
+
+        const deserialized = deserializeProcess(serializeProcess(process));
+        const dTimeline = deserialized.conversationTurns![0].timeline;
+        expect(dTimeline).toHaveLength(2);
+        expect(dTimeline[1].type).toBe('tool-failed');
+        expect(dTimeline[1].toolCall!.status).toBe('failed');
+        expect(dTimeline[1].toolCall!.error).toBe('File not found');
     });
 });
