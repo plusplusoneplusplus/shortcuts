@@ -56,6 +56,16 @@ export interface CoCExportPayload {
     serverConfig?: CLIConfig;
 }
 
+/** Options passed to the data exporter. */
+export interface ExportOptions {
+    /** ProcessStore instance to read processes, workspaces, and wikis from. */
+    store: ProcessStore;
+    /** CoC data directory (e.g. ~/.coc). */
+    dataDir: string;
+    /** Server version string (informational, included in payload). */
+    serverVersion?: string;
+}
+
 /** Import strategy: replace all data or merge with existing. */
 export type ImportMode = 'replace' | 'merge';
 
