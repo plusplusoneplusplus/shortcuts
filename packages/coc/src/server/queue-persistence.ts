@@ -6,10 +6,14 @@
  * On startup, persisted state is restored — pending tasks are re-enqueued
  * and previously-running tasks are marked as failed.
  *
+ * Stores one file per repository: `~/.coc/queues/repo-<hash>.json`
+ * where <hash> is the first 16 chars of the SHA-256 of the repo root path.
+ *
  * Uses atomic writes (temp file + rename) consistent with FileProcessStore.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { TaskQueueManager } from '@plusplusoneplusplus/pipeline-core';
@@ -22,20 +26,53 @@ import type { QueuedTask, QueueChangeEvent } from '@plusplusoneplusplus/pipeline
 interface PersistedQueueState {
     version: number;
     savedAt: string;
+    repoRootPath: string;
+    repoId: string;
     pending: QueuedTask[];
     history: QueuedTask[];
 }
 
-const CURRENT_VERSION = 1;
+const CURRENT_VERSION = 2;
 const DEBOUNCE_MS = 300;
 const MAX_PERSISTED_HISTORY = 100;
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+/** Compute a deterministic 16-char hex repo ID from a root path. */
+export function computeRepoId(rootPath: string): string {
+    return crypto.createHash('sha256')
+        .update(rootPath)
+        .digest('hex')
+        .substring(0, 16);
+}
+
+/** Get the per-repo queue file path. */
+export function getRepoQueueFilePath(dataDir: string, rootPath: string): string {
+    const repoId = computeRepoId(rootPath);
+    return path.join(dataDir, 'queues', `repo-${repoId}.json`);
+}
+
+/**
+ * Extract repository root path from a task's payload.
+ * Falls back to process.cwd() if no workingDirectory is present.
+ */
+function getTaskRepoPath(task: QueuedTask): string {
+    const payload = task.payload as Record<string, unknown>;
+    if (payload && typeof payload.workingDirectory === 'string' && payload.workingDirectory) {
+        return payload.workingDirectory;
+    }
+    return process.cwd();
+}
 
 // ============================================================================
 // QueuePersistence
 // ============================================================================
 
 export class QueuePersistence {
-    private readonly filePath: string;
+    private readonly dataDir: string;
+    private readonly queuesDir: string;
     private readonly queueManager: TaskQueueManager;
     private debounceTimer: ReturnType<typeof setTimeout> | null = null;
     private dirty = false;
@@ -43,7 +80,16 @@ export class QueuePersistence {
 
     constructor(queueManager: TaskQueueManager, dataDir: string) {
         this.queueManager = queueManager;
-        this.filePath = path.join(dataDir, 'queue.json');
+        this.dataDir = dataDir;
+        this.queuesDir = path.join(dataDir, 'queues');
+
+        // Ensure queues directory exists
+        if (!fs.existsSync(this.queuesDir)) {
+            fs.mkdirSync(this.queuesDir, { recursive: true });
+        }
+
+        // Run migration if old format exists (idempotent)
+        this.migrateFromOldFormat();
 
         this.changeListener = () => {
             this.dirty = true;
@@ -53,79 +99,32 @@ export class QueuePersistence {
     }
 
     /**
-     * Restore persisted queue state. Called synchronously before executor starts.
+     * Restore persisted queue state from all per-repo files.
+     * Called synchronously before executor starts.
      */
     restore(): void {
-        if (!fs.existsSync(this.filePath)) {
+        if (!fs.existsSync(this.queuesDir)) {
             return;
         }
 
-        let raw: string;
-        try {
-            raw = fs.readFileSync(this.filePath, 'utf-8');
-        } catch (err) {
-            process.stderr.write(`[QueuePersistence] Failed to read ${this.filePath}: ${err}\n`);
-            return;
+        const files = fs.readdirSync(this.queuesDir)
+            .filter(f => f.startsWith('repo-') && f.endsWith('.json'));
+
+        let totalRestored = 0;
+        let totalHistory = 0;
+
+        for (const file of files) {
+            const filePath = path.join(this.queuesDir, file);
+            const { restored, historyCount } = this.restoreRepoQueue(filePath);
+            totalRestored += restored;
+            totalHistory += historyCount;
         }
 
-        let state: PersistedQueueState;
-        try {
-            state = JSON.parse(raw);
-        } catch {
-            process.stderr.write(`[QueuePersistence] Corrupt queue.json — skipping restore\n`);
-            return;
+        if (totalRestored > 0 || totalHistory > 0) {
+            process.stderr.write(
+                `[QueuePersistence] Restored ${totalRestored} pending task(s) across ${files.length} repo(s), ${totalHistory} history entry/entries\n`
+            );
         }
-
-        if (state.version !== CURRENT_VERSION) {
-            process.stderr.write(`[QueuePersistence] Unknown version ${state.version} — skipping restore\n`);
-            return;
-        }
-
-        let restoredPending = 0;
-        const failedFromRunning: QueuedTask[] = [];
-
-        // Process pending tasks
-        if (Array.isArray(state.pending)) {
-            for (const task of state.pending) {
-                if (task.status === 'running') {
-                    // Mark previously-running tasks as failed
-                    const failedTask: QueuedTask = {
-                        ...task,
-                        status: 'failed',
-                        error: 'Server restarted — task was running when server stopped',
-                        completedAt: Date.now(),
-                    };
-                    failedFromRunning.push(failedTask);
-                } else if (task.status === 'queued') {
-                    // Re-enqueue pending tasks
-                    this.queueManager.enqueue({
-                        type: task.type,
-                        priority: task.priority,
-                        payload: task.payload,
-                        config: task.config,
-                        displayName: task.displayName,
-                    });
-                    restoredPending++;
-                }
-            }
-        }
-
-        // Restore history (failed-from-running first, then persisted history)
-        const historyToRestore: QueuedTask[] = [];
-        if (failedFromRunning.length > 0) {
-            historyToRestore.push(...failedFromRunning);
-        }
-        if (Array.isArray(state.history)) {
-            historyToRestore.push(...state.history);
-        }
-        if (historyToRestore.length > 0) {
-            this.queueManager.restoreHistory(historyToRestore);
-        }
-
-        const historyCount = historyToRestore.length;
-        process.stderr.write(
-            `[QueuePersistence] Restored ${restoredPending} pending task(s), ${historyCount} history entry/entries\n`
-        );
     }
 
     /**
@@ -143,7 +142,75 @@ export class QueuePersistence {
     }
 
     // ========================================================================
-    // Private
+    // Private — restore helpers
+    // ========================================================================
+
+    private restoreRepoQueue(filePath: string): { restored: number; historyCount: number } {
+        let raw: string;
+        try {
+            raw = fs.readFileSync(filePath, 'utf-8');
+        } catch (err) {
+            process.stderr.write(`[QueuePersistence] Failed to read ${filePath}: ${err}\n`);
+            return { restored: 0, historyCount: 0 };
+        }
+
+        let state: PersistedQueueState;
+        try {
+            state = JSON.parse(raw);
+        } catch {
+            process.stderr.write(`[QueuePersistence] Corrupt file ${path.basename(filePath)} — skipping\n`);
+            return { restored: 0, historyCount: 0 };
+        }
+
+        if (state.version !== CURRENT_VERSION) {
+            process.stderr.write(
+                `[QueuePersistence] Unknown version ${state.version} in ${path.basename(filePath)} — skipping\n`
+            );
+            return { restored: 0, historyCount: 0 };
+        }
+
+        let restoredPending = 0;
+        const failedFromRunning: QueuedTask[] = [];
+
+        if (Array.isArray(state.pending)) {
+            for (const task of state.pending) {
+                if (task.status === 'running') {
+                    const failedTask: QueuedTask = {
+                        ...task,
+                        status: 'failed',
+                        error: 'Server restarted — task was running when server stopped',
+                        completedAt: Date.now(),
+                    };
+                    failedFromRunning.push(failedTask);
+                } else if (task.status === 'queued') {
+                    this.queueManager.enqueue({
+                        type: task.type,
+                        priority: task.priority,
+                        payload: task.payload,
+                        config: task.config,
+                        displayName: task.displayName,
+                    });
+                    restoredPending++;
+                }
+            }
+        }
+
+        const historyToRestore: QueuedTask[] = [];
+        if (failedFromRunning.length > 0) {
+            historyToRestore.push(...failedFromRunning);
+        }
+        if (Array.isArray(state.history)) {
+            historyToRestore.push(...state.history);
+        }
+        if (historyToRestore.length > 0) {
+            this.queueManager.restoreHistory(historyToRestore);
+        }
+
+        return { restored: restoredPending, historyCount: historyToRestore.length };
+    }
+
+    // ========================================================================
+    // Private — save helpers
     // ========================================================================
 
     private scheduleSave(): void {
@@ -163,21 +230,147 @@ export class QueuePersistence {
         const running = this.queueManager.getRunning();
         const history = this.queueManager.getHistory();
 
-        const state: PersistedQueueState = {
-            version: CURRENT_VERSION,
-            savedAt: new Date().toISOString(),
-            pending: [...queued, ...running],
-            history: history.slice(0, MAX_PERSISTED_HISTORY),
-        };
+        // Group all tasks by repo root path
+        const tasksByRepo = new Map<string, {
+            pending: QueuedTask[];
+            history: QueuedTask[];
+        }>();
 
-        const tmpPath = this.filePath + '.tmp';
+        for (const task of [...queued, ...running]) {
+            const rootPath = getTaskRepoPath(task);
+            const entry = tasksByRepo.get(rootPath) || { pending: [], history: [] };
+            entry.pending.push(task);
+            tasksByRepo.set(rootPath, entry);
+        }
+
+        for (const task of history) {
+            const rootPath = getTaskRepoPath(task);
+            const entry = tasksByRepo.get(rootPath) || { pending: [], history: [] };
+            entry.history.push(task);
+            tasksByRepo.set(rootPath, entry);
+        }
+
+        // Write a file for each repo with tasks
+        for (const [rootPath, { pending, history: hist }] of tasksByRepo) {
+            const state: PersistedQueueState = {
+                version: CURRENT_VERSION,
+                savedAt: new Date().toISOString(),
+                repoRootPath: rootPath,
+                repoId: computeRepoId(rootPath),
+                pending,
+                history: hist.slice(0, MAX_PERSISTED_HISTORY),
+            };
+            const filePath = getRepoQueueFilePath(this.dataDir, rootPath);
+            this.atomicWrite(filePath, state);
+        }
+
+        // Clean up files for repos that no longer have tasks
+        this.cleanupStaleFiles(tasksByRepo);
+    }
+
+    // ========================================================================
+    // Private — file operations
+    // ========================================================================
+
+    private atomicWrite(filePath: string, state: PersistedQueueState): void {
+        const tmpPath = filePath + '.tmp';
         try {
+            const dir = path.dirname(filePath);
+            if (!fs.existsSync(dir)) {
+                fs.mkdirSync(dir, { recursive: true });
+            }
             fs.writeFileSync(tmpPath, JSON.stringify(state, null, 2), 'utf-8');
-            fs.renameSync(tmpPath, this.filePath);
+            fs.renameSync(tmpPath, filePath);
         } catch (err) {
-            process.stderr.write(`[QueuePersistence] Failed to write ${this.filePath}: ${err}\n`);
-            // Clean up tmp file if rename failed
+            process.stderr.write(`[QueuePersistence] Failed to write ${filePath}: ${err}\n`);
             try { fs.unlinkSync(tmpPath); } catch { /* ignore */ }
+        }
+    }
+
+    private cleanupStaleFiles(activeRepos: Map<string, unknown>): void {
+        if (!fs.existsSync(this.queuesDir)) { return; }
+
+        // Build set of active repo file basenames
+        const activeFiles = new Set<string>();
+        for (const rootPath of activeRepos.keys()) {
+            const repoId = computeRepoId(rootPath);
+            activeFiles.add(`repo-${repoId}.json`);
+        }
+
+        const files = fs.readdirSync(this.queuesDir)
+            .filter(f => f.startsWith('repo-') && f.endsWith('.json'));
+
+        for (const file of files) {
+            if (!activeFiles.has(file)) {
+                const filePath = path.join(this.queuesDir, file);
+                try {
+                    fs.unlinkSync(filePath);
+                    process.stderr.write(
+                        `[QueuePersistence] Deleted empty queue file: ${file}\n`
+                    );
+                } catch {
+                    // Non-fatal
+                }
+            }
+        }
+    }
+
+    // ========================================================================
+    // Private — migration
+    // ========================================================================
+
+    private migrateFromOldFormat(): void {
+        const oldPath = path.join(this.dataDir, 'queue.json');
+        if (!fs.existsSync(oldPath)) { return; }
+
+        try {
+            const raw = fs.readFileSync(oldPath, 'utf-8');
+            const oldState = JSON.parse(raw);
+
+            if (oldState.version !== 1) { return; }
+
+            // Group tasks by workingDirectory, preserving original pending/history split
+            const tasksByRepo = new Map<string, { pending: QueuedTask[]; history: QueuedTask[] }>();
+
+            const oldPending: QueuedTask[] = Array.isArray(oldState.pending) ? oldState.pending : [];
+            const oldHistory: QueuedTask[] = Array.isArray(oldState.history) ? oldState.history : [];
+
+            for (const task of oldPending) {
+                const rootPath = getTaskRepoPath(task);
+                const entry = tasksByRepo.get(rootPath) || { pending: [], history: [] };
+                entry.pending.push(task);
+                tasksByRepo.set(rootPath, entry);
+            }
+            for (const task of oldHistory) {
+                const rootPath = getTaskRepoPath(task);
+                const entry = tasksByRepo.get(rootPath) || { pending: [], history: [] };
+                entry.history.push(task);
+                tasksByRepo.set(rootPath, entry);
+            }
+
+            // Write per-repo queue files
+            for (const [rootPath, { pending, history }] of tasksByRepo) {
+                const newState: PersistedQueueState = {
+                    version: CURRENT_VERSION,
+                    savedAt: new Date().toISOString(),
+                    repoRootPath: rootPath,
+                    repoId: computeRepoId(rootPath),
+                    pending,
+                    history: history.slice(0, MAX_PERSISTED_HISTORY),
+                };
+
+                const newPath = getRepoQueueFilePath(this.dataDir, rootPath);
+                this.atomicWrite(newPath, newState);
+            }
+
+            // Archive old file
+            fs.renameSync(oldPath, oldPath + '.migrated');
+
+            process.stderr.write(
+                `[QueuePersistence] Migrated queue.json to ${tasksByRepo.size} per-repo file(s)\n`
+            );
+        } catch (err) {
+            process.stderr.write(`[QueuePersistence] Migration failed: ${err}\n`);
         }
     }
 }

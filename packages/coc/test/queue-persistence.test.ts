@@ -10,7 +10,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { TaskQueueManager } from '@plusplusoneplusplus/pipeline-core';
 import type { QueuedTask, CreateTaskInput } from '@plusplusoneplusplus/pipeline-core';
-import { QueuePersistence } from '../src/server/queue-persistence';
+import { QueuePersistence, computeRepoId, getRepoQueueFilePath } from '../src/server/queue-persistence';
 
 // ============================================================================
 // Helpers
@@ -37,12 +37,16 @@ function createTestInput(overrides: Partial<CreateTaskInput> = {}): CreateTaskIn
     };
 }
 
-function readQueueFile(dir: string): any {
-    const filePath = path.join(dir, 'queue.json');
-    return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+/** Read the first per-repo queue file found (for tests using a single repo). */
+function readAnyRepoQueueFile(dir: string): any {
+    const queuesDir = path.join(dir, 'queues');
+    const files = fs.readdirSync(queuesDir).filter(f => f.startsWith('repo-') && f.endsWith('.json'));
+    if (files.length === 0) { throw new Error('No repo queue files found'); }
+    return JSON.parse(fs.readFileSync(path.join(queuesDir, files[0]), 'utf-8'));
 }
 
-function writeQueueFile(dir: string, data: any): void {
+/** Write old v1 format queue.json for migration-based restore tests. */
+function writeOldQueueFile(dir: string, data: any): void {
     const filePath = path.join(dir, 'queue.json');
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
 }
@@ -87,9 +91,11 @@ describe('QueuePersistence', () => {
             // Wait for debounce
             await wait(400);
 
-            const state = readQueueFile(dataDir);
-            expect(state.version).toBe(1);
+            const state = readAnyRepoQueueFile(dataDir);
+            expect(state.version).toBe(2);
             expect(state.savedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+            expect(state.repoRootPath).toBeTruthy();
+            expect(state.repoId).toBeTruthy();
             expect(state.pending).toHaveLength(3);
 
             // Verify fields
@@ -113,7 +119,7 @@ describe('QueuePersistence', () => {
 
     describe('restore pending tasks', () => {
         it('re-enqueues persisted queued tasks', () => {
-            writeQueueFile(dataDir, {
+            writeOldQueueFile(dataDir, {
                 version: 1,
                 savedAt: new Date().toISOString(),
                 pending: [
@@ -147,7 +153,7 @@ describe('QueuePersistence', () => {
 
     describe('running tasks marked as failed on restore', () => {
         it('marks previously-running tasks as failed with restart error', () => {
-            writeQueueFile(dataDir, {
+            writeOldQueueFile(dataDir, {
                 version: 1,
                 savedAt: new Date().toISOString(),
                 pending: [
@@ -184,7 +190,7 @@ describe('QueuePersistence', () => {
                 { id: 'h5', type: 'custom', priority: 'low', status: 'failed', createdAt: 900, completedAt: 1000, error: 'err', payload: { data: {} }, config: {}, displayName: 'failed-2' },
             ];
 
-            writeQueueFile(dataDir, {
+            writeOldQueueFile(dataDir, {
                 version: 1,
                 savedAt: new Date().toISOString(),
                 pending: [],
@@ -209,7 +215,7 @@ describe('QueuePersistence', () => {
     describe('debounce coalescing', () => {
         it('coalesces rapid changes into single write', async () => {
             const persistence = new QueuePersistence(queueManager, dataDir);
-            const filePath = path.join(dataDir, 'queue.json');
+            const queuesDir = path.join(dataDir, 'queues');
 
             // Enqueue 10 tasks rapidly
             for (let i = 0; i < 10; i++) {
@@ -219,12 +225,14 @@ describe('QueuePersistence', () => {
             // Wait for debounce to fire
             await wait(400);
 
-            // File should exist with all 10 tasks
-            expect(fs.existsSync(filePath)).toBe(true);
-            const state = readQueueFile(dataDir);
+            // Per-repo file should exist with all 10 tasks
+            const files = fs.readdirSync(queuesDir).filter(f => f.startsWith('repo-'));
+            expect(files.length).toBeGreaterThan(0);
+            const state = readAnyRepoQueueFile(dataDir);
             expect(state.pending).toHaveLength(10);
 
             // Get mtime after first write
+            const filePath = path.join(queuesDir, files[0]);
             const mtime1 = fs.statSync(filePath).mtimeMs;
 
             // Wait a bit to confirm no further writes
@@ -272,7 +280,7 @@ describe('QueuePersistence', () => {
         });
 
         it('handles unknown version gracefully', () => {
-            writeQueueFile(dataDir, {
+            writeOldQueueFile(dataDir, {
                 version: 99,
                 savedAt: new Date().toISOString(),
                 pending: [{ id: 'x', type: 'custom', priority: 'normal', status: 'queued', createdAt: 1000, payload: { data: {} }, config: {} }],
@@ -295,15 +303,13 @@ describe('QueuePersistence', () => {
     describe('dispose flushes pending write', () => {
         it('writes immediately on dispose before debounce fires', () => {
             const persistence = new QueuePersistence(queueManager, dataDir);
-            const filePath = path.join(dataDir, 'queue.json');
 
             queueManager.enqueue(createTestInput({ displayName: 'flush-me' }));
 
             // Dispose immediately — before the 300ms debounce fires
             persistence.dispose();
 
-            expect(fs.existsSync(filePath)).toBe(true);
-            const state = readQueueFile(dataDir);
+            const state = readAnyRepoQueueFile(dataDir);
             expect(state.pending).toHaveLength(1);
             expect(state.pending[0].displayName).toBe('flush-me');
         });
@@ -316,14 +322,16 @@ describe('QueuePersistence', () => {
     describe('atomic write safety', () => {
         it('leaves no .tmp file after save', async () => {
             const persistence = new QueuePersistence(queueManager, dataDir);
-            const tmpPath = path.join(dataDir, 'queue.json.tmp');
 
             queueManager.enqueue(createTestInput());
 
             await wait(400);
 
-            expect(fs.existsSync(tmpPath)).toBe(false);
-            expect(fs.existsSync(path.join(dataDir, 'queue.json'))).toBe(true);
+            const queuesDir = path.join(dataDir, 'queues');
+            const tmpFiles = fs.readdirSync(queuesDir).filter(f => f.endsWith('.tmp'));
+            expect(tmpFiles).toHaveLength(0);
+            const repoFiles = fs.readdirSync(queuesDir).filter(f => f.startsWith('repo-') && f.endsWith('.json'));
+            expect(repoFiles.length).toBeGreaterThan(0);
 
             persistence.dispose();
         });
@@ -342,7 +350,7 @@ describe('QueuePersistence', () => {
 
             await wait(400);
 
-            const state = readQueueFile(dataDir);
+            const state = readAnyRepoQueueFile(dataDir);
             expect(state.pending.some((t: any) => t.status === 'running')).toBe(true);
 
             persistence.dispose();
@@ -366,7 +374,7 @@ describe('QueuePersistence', () => {
 
             await wait(400);
 
-            const state = readQueueFile(dataDir);
+            const state = readAnyRepoQueueFile(dataDir);
             expect(state.history.length).toBeLessThanOrEqual(100);
 
             persistence.dispose();
@@ -387,10 +395,11 @@ describe('QueuePersistence', () => {
             queueManager.enqueue(createTestInput({ displayName: 'post-dispose' }));
             await wait(400);
 
-            // File should either not exist or not contain post-dispose task
-            const filePath = path.join(dataDir, 'queue.json');
-            if (fs.existsSync(filePath)) {
-                const state = readQueueFile(dataDir);
+            // queues/ should have no repo files (or none with post-dispose task)
+            const queuesDir = path.join(dataDir, 'queues');
+            const files = fs.readdirSync(queuesDir).filter(f => f.startsWith('repo-'));
+            if (files.length > 0) {
+                const state = JSON.parse(fs.readFileSync(path.join(queuesDir, files[0]), 'utf-8'));
                 const hasPostDispose = state.pending.some((t: any) => t.displayName === 'post-dispose');
                 expect(hasPostDispose).toBe(false);
             }
