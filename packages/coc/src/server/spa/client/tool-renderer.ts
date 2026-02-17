@@ -17,6 +17,8 @@ const TOOL_ICONS: Record<string, string> = {
     edit: '\u270F\uFE0F', // ✏️
     create: '\u{1F4DD}', // 📝
     glob: '\u{1F4C2}',   // 📂
+    skill: '\u{1F3AF}',  // 🎯
+    task: '\u{1F916}',   // 🤖
 };
 const DEFAULT_TOOL_ICON = '\u{1F527}'; // 🔧
 
@@ -140,9 +142,13 @@ function getToolSummary(toolName: string, args: any): string {
             return parts.join(' in ');
         }
         case 'view': {
-            if (args.path) return shortenPath(args.path);
-            if (args.filePath) return shortenPath(args.filePath);
-            return '';
+            let p = '';
+            if (args.path) p = shortenPath(args.path);
+            else if (args.filePath) p = shortenPath(args.filePath);
+            if (p && args.view_range && Array.isArray(args.view_range) && args.view_range.length >= 2) {
+                p += ' L' + args.view_range[0] + '-L' + args.view_range[1];
+            }
+            return p;
         }
         case 'edit': {
             if (args.path) return shortenPath(args.path);
@@ -166,6 +172,21 @@ function getToolSummary(toolName: string, args: any): string {
             if (args.pattern) parts.push(args.pattern);
             else if (args.glob_pattern) parts.push(args.glob_pattern);
             if (args.path) parts.push('in ' + shortenPath(args.path));
+            return parts.join(' ');
+        }
+        case 'skill': {
+            if (args.name) return args.name;
+            if (args.skill_name) return args.skill_name;
+            return '';
+        }
+        case 'task': {
+            const parts: string[] = [];
+            if (args.agent_type) parts.push('[' + args.agent_type + ']');
+            if (args.description) parts.push(args.description);
+            else if (args.prompt) {
+                const prompt = String(args.prompt).trim();
+                parts.push(prompt.length > 60 ? prompt.slice(0, 57) + '...' : prompt);
+            }
             return parts.join(' ');
         }
         default: {
