@@ -100,6 +100,16 @@ function attachAdminListeners(container: HTMLElement): void {
 
     // Wipe
     container.querySelector('#admin-wipe-btn')?.addEventListener('click', confirmAndWipe);
+
+    // Config save (form may not exist yet; loadConfig re-attaches after render)
+    attachConfigFormListener(container);
+}
+
+function attachConfigFormListener(container: HTMLElement): void {
+    container.querySelector('#admin-config-form')?.addEventListener('submit', (e) => {
+        e.preventDefault();
+        saveConfig();
+    });
 }
 
 // ================================================================
@@ -203,18 +213,28 @@ export async function loadConfig(): Promise<void> {
     }
 
     container.innerHTML = renderConfigSection(data);
+    attachConfigFormListener(container);
 }
+
+const VALID_OUTPUT_OPTIONS = ['table', 'json', 'csv', 'markdown'] as const;
 
 function renderConfigSection(data: any): string {
     const resolved = data.resolved ?? {};
     const sources: Record<string, string> = data.sources ?? {};
     const configFilePath: string = data.configFilePath ?? 'Unknown';
 
-    const fields: Array<{ key: string; label: string; value: string }> = [
-        { key: 'model', label: 'Model', value: String(resolved.model ?? '—') },
-        { key: 'parallel', label: 'Parallelism', value: String(resolved.parallel ?? '—') },
-        { key: 'timeout', label: 'Timeout', value: String(resolved.timeout ?? '—') },
-        { key: 'output', label: 'Output Format', value: String(resolved.output ?? '—') },
+    // Editable fields rendered as form inputs
+    const modelValue = resolved.model ?? '';
+    const parallelValue = resolved.parallel ?? 1;
+    const timeoutValue = resolved.timeout ?? 30;
+    const outputValue = resolved.output ?? 'table';
+
+    const outputOptions = VALID_OUTPUT_OPTIONS.map(o =>
+        `<option value="${o}"${o === outputValue ? ' selected' : ''}>${o}</option>`
+    ).join('');
+
+    // Read-only fields
+    const readOnlyFields: Array<{ key: string; label: string; value: string }> = [
         { key: 'approvePermissions', label: 'Approve Permissions', value: String(resolved.approvePermissions ?? '—') },
         { key: 'mcpConfig', label: 'MCP Config', value: String(resolved.mcpConfig ?? '—') },
         { key: 'persist', label: 'Persist', value: String(resolved.persist ?? '—') },
@@ -224,21 +244,149 @@ function renderConfigSection(data: any): string {
         { key: 'serve.theme', label: 'Serve Theme', value: String(resolved.serve?.theme ?? '—') },
     ];
 
-    const rows = fields.map(f => {
+    const readOnlyRows = readOnlyFields.map(f => {
         const src = sources[f.key] ?? 'default';
         const badge = `<span class="admin-config-source-badge admin-config-source-${src}">${src}</span>`;
         return `<tr><td class="admin-config-key">${f.label}</td><td class="admin-config-value">${f.value} ${badge}</td></tr>`;
     }).join('\n');
+
+    const srcBadge = (key: string) => {
+        const src = sources[key] ?? 'default';
+        return `<span class="admin-config-source-badge admin-config-source-${src}">${src}</span>`;
+    };
 
     return `
 <div class="admin-config-path">
     <span class="admin-config-path-label">Config file:</span>
     <code class="admin-config-path-value">${configFilePath}</code>
 </div>
-<table class="admin-config-table">
-    <thead><tr><th>Setting</th><th>Value</th></tr></thead>
-    <tbody>${rows}</tbody>
-</table>`;
+<form id="admin-config-form" class="admin-config-form">
+    <table class="admin-config-table">
+        <thead><tr><th>Setting</th><th>Value</th></tr></thead>
+        <tbody>
+            <tr>
+                <td class="admin-config-key"><label for="admin-cfg-model">Model</label></td>
+                <td class="admin-config-value">
+                    <input type="text" id="admin-cfg-model" name="model" class="admin-config-input" value="${modelValue}" />
+                    ${srcBadge('model')}
+                </td>
+            </tr>
+            <tr>
+                <td class="admin-config-key"><label for="admin-cfg-parallel">Parallelism</label></td>
+                <td class="admin-config-value">
+                    <input type="number" id="admin-cfg-parallel" name="parallel" class="admin-config-input" value="${parallelValue}" min="1" />
+                    ${srcBadge('parallel')}
+                </td>
+            </tr>
+            <tr>
+                <td class="admin-config-key"><label for="admin-cfg-timeout">Timeout</label></td>
+                <td class="admin-config-value">
+                    <input type="number" id="admin-cfg-timeout" name="timeout" class="admin-config-input" value="${timeoutValue}" min="1" />
+                    ${srcBadge('timeout')}
+                </td>
+            </tr>
+            <tr>
+                <td class="admin-config-key"><label for="admin-cfg-output">Output Format</label></td>
+                <td class="admin-config-value">
+                    <select id="admin-cfg-output" name="output" class="admin-config-input">${outputOptions}</select>
+                    ${srcBadge('output')}
+                </td>
+            </tr>
+            ${readOnlyRows}
+        </tbody>
+    </table>
+    <div class="admin-config-actions">
+        <button type="submit" class="admin-btn admin-save-btn" id="admin-config-save">Save</button>
+        <span class="admin-config-status" id="admin-config-status"></span>
+    </div>
+</form>`;
+}
+
+// ================================================================
+// Config save logic
+// ================================================================
+
+interface ConfigValidationError {
+    field: string;
+    message: string;
+}
+
+function validateConfigForm(): { valid: boolean; errors: ConfigValidationError[]; values: Record<string, unknown> } {
+    const errors: ConfigValidationError[] = [];
+
+    const modelEl = document.getElementById('admin-cfg-model') as HTMLInputElement | null;
+    const parallelEl = document.getElementById('admin-cfg-parallel') as HTMLInputElement | null;
+    const timeoutEl = document.getElementById('admin-cfg-timeout') as HTMLInputElement | null;
+    const outputEl = document.getElementById('admin-cfg-output') as HTMLSelectElement | null;
+
+    const model = modelEl?.value.trim() ?? '';
+    const parallel = Number(parallelEl?.value);
+    const timeout = Number(timeoutEl?.value);
+    const output = outputEl?.value ?? '';
+
+    if (!model) {
+        errors.push({ field: 'model', message: 'Model must be a non-empty string' });
+    }
+    if (isNaN(parallel) || parallel < 1) {
+        errors.push({ field: 'parallel', message: 'Parallelism must be at least 1' });
+    }
+    if (isNaN(timeout) || timeout < 1) {
+        errors.push({ field: 'timeout', message: 'Timeout must be at least 1' });
+    }
+    if (!(VALID_OUTPUT_OPTIONS as readonly string[]).includes(output)) {
+        errors.push({ field: 'output', message: `Output must be one of: ${VALID_OUTPUT_OPTIONS.join(', ')}` });
+    }
+
+    return {
+        valid: errors.length === 0,
+        errors,
+        values: { model, parallel, timeout, output },
+    };
+}
+
+async function saveConfig(): Promise<void> {
+    const statusEl = document.getElementById('admin-config-status');
+
+    const { valid, errors, values } = validateConfigForm();
+    if (!valid) {
+        if (statusEl) {
+            statusEl.textContent = errors.map(e => e.message).join('; ');
+            statusEl.className = 'admin-config-status admin-config-status-error';
+        }
+        return;
+    }
+
+    if (statusEl) {
+        statusEl.textContent = 'Saving…';
+        statusEl.className = 'admin-config-status';
+    }
+
+    try {
+        const res = await fetch(getApiBase() + '/admin/config', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(values),
+        });
+        if (res.ok) {
+            if (statusEl) {
+                statusEl.textContent = 'Saved';
+                statusEl.className = 'admin-config-status admin-config-status-success';
+            }
+            // Re-fetch and re-render to reflect updated sources
+            await loadConfig();
+        } else {
+            const body = await res.json().catch(() => null);
+            if (statusEl) {
+                statusEl.textContent = body?.error || 'Save failed';
+                statusEl.className = 'admin-config-status admin-config-status-error';
+            }
+        }
+    } catch (err: any) {
+        if (statusEl) {
+            statusEl.textContent = err.message || 'Network error';
+            statusEl.className = 'admin-config-status admin-config-status-error';
+        }
+    }
 }
 
 // ================================================================
@@ -261,3 +409,4 @@ export function formatBytes(bytes: number): string {
 (window as any).initAdminPage = initAdminPage;
 (window as any).loadAdminStats = loadStats;
 (window as any).loadAdminConfig = loadConfig;
+(window as any).saveAdminConfig = saveConfig;

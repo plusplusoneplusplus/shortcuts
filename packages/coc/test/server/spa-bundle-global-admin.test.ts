@@ -552,7 +552,12 @@ describe('global admin — config section HTML', () => {
     });
 
     it('displays all expected config fields', () => {
-        for (const field of ['model', 'parallel', 'timeout', 'output', 'approvePermissions', 'mcpConfig', 'persist']) {
+        // Editable fields are rendered as form inputs
+        for (const field of ['model', 'parallel', 'timeout', 'output']) {
+            expect(content).toContain(`name="${field}"`);
+        }
+        // Read-only fields still use key pattern
+        for (const field of ['approvePermissions', 'mcpConfig', 'persist']) {
             expect(content).toContain(`key: '${field}'`);
         }
     });
@@ -674,5 +679,274 @@ describe('global admin — independent of wiki admin', () => {
         const html = generateDashboardHtml();
         expect(html).toContain('id="admin-toggle"');
         expect(html).toContain('id="wiki-admin-toggle"');
+    });
+});
+
+// ============================================================================
+// admin.ts — Config editor form (editable fields)
+// ============================================================================
+
+describe('global admin — config editor form', () => {
+    let content: string;
+    beforeAll(() => { content = readClientFile('admin.ts'); });
+
+    it('renders a form element with id admin-config-form', () => {
+        expect(content).toContain('id="admin-config-form"');
+    });
+
+    it('renders model text input with id admin-cfg-model', () => {
+        expect(content).toContain('id="admin-cfg-model"');
+        expect(content).toContain('type="text"');
+        expect(content).toContain('name="model"');
+    });
+
+    it('renders parallel number input with id admin-cfg-parallel', () => {
+        expect(content).toContain('id="admin-cfg-parallel"');
+        expect(content).toContain('name="parallel"');
+        expect(content).toMatch(/type="number".*name="parallel"/s);
+    });
+
+    it('renders timeout number input with id admin-cfg-timeout', () => {
+        expect(content).toContain('id="admin-cfg-timeout"');
+        expect(content).toContain('name="timeout"');
+    });
+
+    it('renders output select with id admin-cfg-output', () => {
+        expect(content).toContain('id="admin-cfg-output"');
+        expect(content).toContain('<select');
+        expect(content).toContain('name="output"');
+    });
+
+    it('includes all valid output options (table, json, csv, markdown)', () => {
+        expect(content).toContain("'table'");
+        expect(content).toContain("'json'");
+        expect(content).toContain("'csv'");
+        expect(content).toContain("'markdown'");
+    });
+
+    it('renders Save button with id admin-config-save', () => {
+        expect(content).toContain('id="admin-config-save"');
+        expect(content).toContain('>Save<');
+    });
+
+    it('renders config status element', () => {
+        expect(content).toContain('id="admin-config-status"');
+        expect(content).toContain('admin-config-status');
+    });
+
+    it('all editable inputs have admin-config-input class', () => {
+        expect(content).toContain('class="admin-config-input"');
+    });
+
+    it('number inputs have min="1"', () => {
+        // Both parallel and timeout should have min=1
+        const matches = content.match(/min="1"/g);
+        expect(matches).not.toBeNull();
+        expect(matches!.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('form has admin-config-form class', () => {
+        expect(content).toContain('class="admin-config-form"');
+    });
+
+    it('renders admin-config-actions container', () => {
+        expect(content).toContain('admin-config-actions');
+    });
+});
+
+// ============================================================================
+// admin.ts — Config save/validation logic
+// ============================================================================
+
+describe('global admin — config save logic', () => {
+    let content: string;
+    beforeAll(() => { content = readClientFile('admin.ts'); });
+
+    it('defines saveConfig function', () => {
+        expect(content).toContain('async function saveConfig');
+    });
+
+    it('defines validateConfigForm function', () => {
+        expect(content).toContain('function validateConfigForm');
+    });
+
+    it('validates model is non-empty', () => {
+        expect(content).toContain('Model must be a non-empty string');
+    });
+
+    it('validates parallel is at least 1', () => {
+        expect(content).toContain('Parallelism must be at least 1');
+    });
+
+    it('validates timeout is at least 1', () => {
+        expect(content).toContain('Timeout must be at least 1');
+    });
+
+    it('validates output against allowed values', () => {
+        expect(content).toContain('VALID_OUTPUT_OPTIONS');
+        expect(content).toContain('Output must be one of');
+    });
+
+    it('sends PUT request to /admin/config', () => {
+        expect(content).toContain("method: 'PUT'");
+        expect(content).toContain("'/admin/config'");
+    });
+
+    it('sends JSON content type header', () => {
+        expect(content).toContain("'Content-Type': 'application/json'");
+    });
+
+    it('sends JSON body with config values', () => {
+        expect(content).toContain('JSON.stringify(values)');
+    });
+
+    it('shows success status on save', () => {
+        expect(content).toContain('admin-config-status-success');
+        expect(content).toContain("'Saved'");
+    });
+
+    it('shows error status on validation failure', () => {
+        expect(content).toContain('admin-config-status-error');
+    });
+
+    it('shows server error on 400 response', () => {
+        expect(content).toContain("body?.error || 'Save failed'");
+    });
+
+    it('handles network error', () => {
+        expect(content).toContain("err.message || 'Network error'");
+    });
+
+    it('re-fetches config after successful save', () => {
+        // After PUT succeeds, loadConfig is called to re-render
+        expect(content).toContain('await loadConfig()');
+    });
+
+    it('exposes saveAdminConfig on window', () => {
+        expect(content).toContain('(window as any).saveAdminConfig = saveConfig');
+    });
+});
+
+// ============================================================================
+// admin.ts — Form event handling
+// ============================================================================
+
+describe('global admin — form event handling', () => {
+    let content: string;
+    beforeAll(() => { content = readClientFile('admin.ts'); });
+
+    it('defines attachConfigFormListener function', () => {
+        expect(content).toContain('function attachConfigFormListener');
+    });
+
+    it('attaches submit handler to config form', () => {
+        expect(content).toContain("'#admin-config-form'");
+        expect(content).toContain("'submit'");
+    });
+
+    it('prevents default form submission', () => {
+        expect(content).toContain('e.preventDefault()');
+    });
+
+    it('calls saveConfig on form submit', () => {
+        expect(content).toContain('saveConfig()');
+    });
+
+    it('loadConfig re-attaches form listener after render', () => {
+        // loadConfig calls attachConfigFormListener after setting innerHTML
+        const loadConfigFn = content.substring(
+            content.indexOf('export async function loadConfig'),
+            content.indexOf('const VALID_OUTPUT_OPTIONS')
+        );
+        expect(loadConfigFn).toContain('attachConfigFormListener');
+    });
+});
+
+// ============================================================================
+// CSS — config editor form styles
+// ============================================================================
+
+describe('CSS — admin config editor styles', () => {
+    let css: string;
+    beforeAll(() => { css = readClientFile('styles.css'); });
+
+    it('defines .admin-config-form style', () => {
+        expect(css).toContain('.admin-config-form');
+    });
+
+    it('defines .admin-config-input style', () => {
+        expect(css).toContain('.admin-config-input');
+    });
+
+    it('defines .admin-config-input:focus style', () => {
+        expect(css).toContain('.admin-config-input:focus');
+    });
+
+    it('defines .admin-config-actions style', () => {
+        expect(css).toContain('.admin-config-actions');
+    });
+
+    it('defines .admin-save-btn style', () => {
+        expect(css).toContain('.admin-save-btn');
+    });
+
+    it('defines .admin-config-status style', () => {
+        expect(css).toContain('.admin-config-status');
+    });
+
+    it('defines .admin-config-status-success style', () => {
+        expect(css).toContain('.admin-config-status-success');
+    });
+
+    it('defines .admin-config-status-error style', () => {
+        expect(css).toContain('.admin-config-status-error');
+    });
+
+    it('input uses monospace font', () => {
+        const inputSection = css.substring(css.indexOf('.admin-config-input'));
+        expect(inputSection).toContain('monospace');
+    });
+
+    it('save button uses status-running color', () => {
+        const btnSection = css.substring(css.indexOf('.admin-save-btn'));
+        expect(btnSection).toContain('--status-running');
+    });
+});
+
+// ============================================================================
+// Client bundle — config editor module
+// ============================================================================
+
+describe('client bundle — admin config editor', () => {
+    let script: string;
+    beforeAll(() => { script = getClientBundle(); });
+
+    it('includes config form element IDs', () => {
+        expect(script).toContain('admin-config-form');
+        expect(script).toContain('admin-cfg-model');
+        expect(script).toContain('admin-cfg-parallel');
+        expect(script).toContain('admin-cfg-timeout');
+        expect(script).toContain('admin-cfg-output');
+    });
+
+    it('includes save button ID', () => {
+        expect(script).toContain('admin-config-save');
+    });
+
+    it('includes PUT method for config save', () => {
+        expect(script).toContain('PUT');
+    });
+
+    it('includes validation messages', () => {
+        expect(script).toContain('must be');
+    });
+
+    it('includes config status classes', () => {
+        expect(script).toContain('admin-config-status-success');
+        expect(script).toContain('admin-config-status-error');
+    });
+
+    it('includes saveAdminConfig window global', () => {
+        expect(script).toContain('saveAdminConfig');
     });
 });

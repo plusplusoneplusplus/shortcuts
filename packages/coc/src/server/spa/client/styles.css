@@ -3788,6 +3788,42 @@ html[data-theme="dark"] .tool-call-section code .bash-command {
     color: var(--text-secondary);
     font-size: 13px;
 }
+.admin-config-form { margin: 0; }
+.admin-config-input {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 12px;
+    font-family: monospace;
+    min-width: 140px;
+}
+.admin-config-input:focus {
+    outline: none;
+    border-color: var(--status-running);
+    box-shadow: 0 0 0 2px rgba(56,132,244,0.15);
+}
+.admin-config-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 12px;
+}
+.admin-save-btn {
+    background: var(--status-running);
+    color: #fff;
+    border: none;
+    padding: 6px 18px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+}
+.admin-save-btn:hover { opacity: 0.85; }
+.admin-config-status { font-size: 13px; color: var(--text-secondary); }
+.admin-config-status-success { color: var(--status-completed); }
+.admin-config-status-error { color: var(--status-failed); }
 
 /* ================================================================
    Task Preview: Mermaid diagram rendering
