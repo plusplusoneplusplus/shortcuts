@@ -86,19 +86,13 @@ export async function fetchApi(path: string): Promise<any> {
 // ================================================================
 
 export function showPage(page: 'dashboard'): void {
-    const dashboardEls = ['view-processes', 'view-repos', 'view-reports', 'view-wiki', 'tab-bar'];
+    const dashboardEls = ['view-processes', 'view-repos', 'view-reports', 'view-wiki'];
 
     // Toggle dashboard elements
     for (const id of dashboardEls) {
         const el = document.getElementById(id);
         if (el) el.classList.toggle('hidden', page !== 'dashboard');
     }
-
-    // Update nav link active state
-    document.querySelectorAll('.nav-link').forEach((el) => {
-        const link = el as HTMLAnchorElement;
-        link.classList.toggle('active', link.dataset.page === 'dashboard');
-    });
 }
 
 window.addEventListener('popstate', () => {
@@ -284,9 +278,9 @@ export function navigateToWikiComponent(wikiId: string, componentId: string): vo
 (window as any).__setHashSilent = setHashSilent;
 (window as any).appState = appState;
 
-// Intercept nav-link clicks for SPA navigation
+// Intercept back-link clicks for SPA navigation
 document.addEventListener('click', (e) => {
-    const link = (e.target as HTMLElement).closest('.nav-link, .back-link') as HTMLAnchorElement | null;
+    const link = (e.target as HTMLElement).closest('.back-link') as HTMLAnchorElement | null;
     if (link && link.href) {
         e.preventDefault();
         history.pushState(null, '', link.href);

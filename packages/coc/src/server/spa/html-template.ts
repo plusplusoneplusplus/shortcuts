@@ -61,20 +61,14 @@ ${bundleCss}
         <div class="top-bar-left">
             <button class="hamburger-btn" id="hamburger-btn" aria-label="Toggle sidebar">&#9776;</button>
             <span class="top-bar-logo">${escapeHtml(title)}</span>
-            <nav class="top-bar-nav">
-                <a href="/" class="nav-link" data-page="dashboard">Dashboard</a>
-            </nav>
         </div>
         <div class="top-bar-right">
-            <select id="workspace-select" class="workspace-select">
-                <option value="__all">All Repos</option>
-            </select>
             <button id="admin-toggle" class="top-bar-btn" aria-label="Admin" title="Admin">&#9881;</button>
             <button id="theme-toggle" class="top-bar-btn" aria-label="Toggle theme">&#127761;</button>
         </div>
     </header>
 
-    <nav class="tab-bar" id="tab-bar">
+    <nav class="tab-bar hidden" id="tab-bar" aria-hidden="true">
         <button class="tab-btn active" data-tab="repos">Repos</button>
         <button class="tab-btn" data-tab="processes">Processes</button>
         <button class="tab-btn" data-tab="wiki">Wiki</button>

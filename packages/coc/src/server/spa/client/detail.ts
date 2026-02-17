@@ -151,11 +151,6 @@ function renderProcessDetail(process: any, id: string): void {
 
     // Action buttons
     html += '<div class="action-buttons">';
-    if (process.result) {
-        html += '<button class="action-btn" onclick="copyToClipboard(appState.processes.find(function(p){return p.id===\'' +
-            escapeHtmlClient(id) + '\'}).result||\'\')">' +
-            '\u{1F4CB} Copy Result</button>';
-    }
     html += '<button class="action-btn" onclick="copyToClipboard(location.origin+\'/process/' +
         escapeHtmlClient(id) + '\')">' +
         '\u{1F517} Copy Link</button>';
@@ -573,10 +568,6 @@ function renderQueueTaskConversation(processId: string, taskId: string, proc: an
 
     // Action buttons
     html += '<div class="action-buttons">';
-    if (proc && proc.result) {
-        html += '<button class="action-btn" onclick="copyQueueTaskResult(\'' + escapeHtmlClient(processId) + '\')">' +
-            '\u{1F4CB} Copy Result</button>';
-    }
     // Apply Changes button for completed "Update Document" tasks
     if (originalTaskPath && originalWorkspaceId && proc && proc.result && !isRunning) {
         html += '<button class="action-btn action-btn-primary" ' +
