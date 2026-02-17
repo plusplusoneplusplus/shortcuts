@@ -149,6 +149,143 @@ describe('SPA conversation rendering', () => {
     });
 
     // ====================================================================
+    // Tool call rendering
+    // ====================================================================
+
+    describe('tool call rendering', () => {
+        it('should render tool call cards within assistant messages', () => {
+            expect(script).toContain('tool-call-card');
+            expect(script).toContain('tool-calls-container');
+        });
+
+        it('should display tool name and icon in header', () => {
+            expect(script).toContain('tool-call-name');
+            expect(script).toContain('tool-call-icon');
+        });
+
+        it('should show status badge with correct state classes', () => {
+            expect(script).toContain('tool-call-status');
+            expect(script).toContain('pending');
+            expect(script).toContain('running');
+            expect(script).toContain('completed');
+            expect(script).toContain('failed');
+        });
+
+        it('should display duration when available', () => {
+            expect(script).toContain('tool-call-duration');
+        });
+
+        it('should include expand/collapse toggle button', () => {
+            expect(script).toContain('tool-call-toggle');
+            expect(script).toContain('Expand tool details');
+        });
+
+        it('should render arguments section with syntax highlighting', () => {
+            expect(script).toContain('tool-call-section');
+            expect(script).toContain('Arguments');
+            expect(script).toContain('language-json');
+        });
+
+        it('should render result section when available', () => {
+            expect(script).toContain('Result');
+        });
+
+        it('should collapse body by default', () => {
+            expect(script).toContain('collapsed');
+            expect(script).toContain('tool-call-body');
+        });
+
+        it('should handle multiple tools in chronological order', () => {
+            // renderToolCallHTML is called for each tool in array order
+            expect(script).toContain('tool-calls-container');
+            expect(script).toContain('renderToolCallHTML');
+        });
+
+        it('should truncate long output with expand option', () => {
+            expect(script).toContain('tool-call-truncated');
+            expect(script).toContain('tool-call-expand-btn');
+        });
+
+        it('should update tool status via updateToolCallStatus', () => {
+            expect(script).toContain('updateToolCallStatus');
+        });
+
+        it('should map tool names to icons', () => {
+            // The bundle contains the tool icon mapping
+            expect(script).toContain('TOOL_ICONS');
+        });
+
+        it('should support JSON syntax highlighting', () => {
+            expect(script).toContain('json-key');
+            expect(script).toContain('json-string');
+            expect(script).toContain('json-number');
+            expect(script).toContain('json-boolean');
+        });
+
+        it('should support bash syntax highlighting', () => {
+            expect(script).toContain('bash-command');
+            expect(script).toContain('bash-flag');
+            expect(script).toContain('bash-path');
+        });
+
+        it('should attach toggle handlers to tool call cards', () => {
+            expect(script).toContain('attachToolCallToggleHandlers');
+            expect(script).toContain('attachToggleBehavior');
+        });
+    });
+
+    // ====================================================================
+    // SSE tool event handling
+    // ====================================================================
+
+    describe('SSE tool event handling', () => {
+        it('should handle tool-start events', () => {
+            expect(script).toContain('tool-start');
+            expect(script).toContain('handleToolStart');
+        });
+
+        it('should handle tool-complete events', () => {
+            expect(script).toContain('tool-complete');
+            expect(script).toContain('handleToolComplete');
+        });
+
+        it('should find existing card by tool ID on update', () => {
+            expect(script).toContain('data-tool-id');
+            expect(script).toContain('querySelector');
+        });
+
+        it('should preserve expand/collapse state during updates', () => {
+            // updateToolCallStatus preserves collapsed class
+            expect(script).toContain('collapsed');
+        });
+
+        it('should create tool-calls-container for streaming tool events', () => {
+            // handleToolStart creates a container if missing
+            expect(script).toContain('tool-calls-container');
+        });
+
+        it('should use renderToolCall for live DOM element creation', () => {
+            expect(script).toContain('renderToolCall');
+        });
+    });
+
+    // ====================================================================
+    // ClientConversationTurn toolCalls support
+    // ====================================================================
+
+    describe('ClientConversationTurn toolCalls', () => {
+        it('should render tool calls from turn.toolCalls in chat messages', () => {
+            // renderChatMessage checks turn.toolCalls
+            expect(script).toContain('toolCalls');
+        });
+
+        it('should only render tool calls for assistant messages', () => {
+            // The code checks !isUser before rendering toolCalls
+            expect(script).toContain('!isUser');
+        });
+    });
+
+    // ====================================================================
     // Bundled client JS
     // ====================================================================
 

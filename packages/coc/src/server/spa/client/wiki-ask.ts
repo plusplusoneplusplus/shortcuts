@@ -11,9 +11,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { appState } from './state';
+import type { ClientToolCall } from './state';
 import { getApiBase } from './config';
 import { escapeHtmlClient } from './utils';
 import { wikiState } from './wiki-content';
+import { renderToolCall, updateToolCallStatus } from './tool-renderer';
 
 let conversationHistory: Array<{ role: string; content: string }> = [];
 let askStreaming = false;
@@ -152,6 +154,10 @@ function askPanelSend(): void {
                         appendAskError(data.message);
                         finishStreaming('', typingEl);
                         return;
+                    } else if (data.type === 'tool-start') {
+                        handleToolStart(data, responseEl);
+                    } else if (data.type === 'tool-complete') {
+                        handleToolComplete(data, responseEl);
                     }
                 } catch (_e) { /* ignore */ }
             }
@@ -175,6 +181,49 @@ function finishStreaming(fullResponse: string, typingEl: HTMLElement | null): vo
     if (fullResponse) {
         conversationHistory.push({ role: 'assistant', content: fullResponse });
     }
+}
+
+function handleToolStart(data: any, responseEl: HTMLElement | null): void {
+    if (!responseEl) return;
+
+    // Find or create tool-calls-container
+    let container = responseEl.querySelector('.tool-calls-container') as HTMLElement | null;
+    if (!container) {
+        container = document.createElement('div');
+        container.className = 'tool-calls-container';
+        responseEl.appendChild(container);
+    }
+
+    const toolCall: ClientToolCall = {
+        id: data.toolId || data.id || '',
+        toolName: data.toolName || '',
+        args: data.args,
+        status: 'running',
+        startTime: data.timestamp || new Date().toISOString(),
+    };
+
+    const element = renderToolCall(toolCall);
+    container.appendChild(element);
+}
+
+function handleToolComplete(data: any, responseEl: HTMLElement | null): void {
+    if (!responseEl) return;
+
+    const toolId = data.toolId || data.id || '';
+    const card = responseEl.querySelector('.tool-call-card[data-tool-id="' + toolId + '"]') as HTMLElement | null;
+    if (!card) return;
+
+    const toolCall: ClientToolCall = {
+        id: toolId,
+        toolName: data.toolName || '',
+        args: data.args,
+        result: data.result,
+        status: data.error ? 'failed' : 'completed',
+        startTime: data.startTime,
+        endTime: data.timestamp || new Date().toISOString(),
+    };
+
+    updateToolCallStatus(card, toolCall);
 }
 
 function appendAskMessage(role: string, content: string): HTMLElement {

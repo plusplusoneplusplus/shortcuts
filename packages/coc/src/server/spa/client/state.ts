@@ -6,6 +6,17 @@
 export type DashboardTab = 'processes' | 'repos' | 'wiki' | 'reports';
 export type RepoSubTab = 'info' | 'pipelines' | 'tasks';
 
+/** Tool call status for the SPA client (timestamps are ISO strings) */
+export interface ClientToolCall {
+    id: string;
+    toolName: string;
+    args: any;
+    result?: string;
+    status: 'pending' | 'running' | 'completed' | 'failed';
+    startTime?: string;
+    endTime?: string;
+}
+
 /** Lightweight conversation turn for the SPA client (timestamps are strings) */
 export interface ClientConversationTurn {
     role: 'user' | 'assistant';
@@ -13,6 +24,7 @@ export interface ClientConversationTurn {
     timestamp?: string;
     turnIndex?: number;
     streaming?: boolean;
+    toolCalls?: ClientToolCall[];
 }
 
 /** Cached conversation data for a historical process. */

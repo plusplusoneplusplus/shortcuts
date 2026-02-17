@@ -11,6 +11,7 @@ import {
 } from './utils';
 import { navigateToProcess, setHashSilent, fetchApi } from './core';
 import { getCachedConversation, cacheConversation } from './sidebar';
+import { renderToolCallHTML, attachToolCallToggleHandlers } from './tool-renderer';
 
 export function renderDetail(id: string): void {
     // Queue processes (ID starts with 'queue_') should use the queue task conversation view
@@ -167,7 +168,7 @@ function renderProcessDetail(process: any, id: string): void {
             // Check client-side cache first
             const cached = getCachedConversation(id);
             if (cached && cached.length > 0) {
-                sectionEl.innerHTML = renderConversationBubbles(id, cached);
+                setConversationHTML(sectionEl, id, cached);
             } else {
                 // Show loading spinner
                 sectionEl.innerHTML = '<div class="history-loading"><div class="history-loading-spinner"></div> Loading conversation...</div>';
@@ -177,7 +178,7 @@ function renderProcessDetail(process: any, id: string): void {
                     const proc = data && data.process ? data.process : null;
                     if (proc && proc.conversationTurns && proc.conversationTurns.length > 0) {
                         cacheConversation(id, proc.conversationTurns);
-                        sectionEl.innerHTML = renderConversationBubbles(id, proc.conversationTurns);
+                        setConversationHTML(sectionEl, id, proc.conversationTurns);
                     } else {
                         // Fall back to /output endpoint and render as chat bubbles
                         return fetchApi('/processes/' + encodeURIComponent(id) + '/output')
@@ -197,7 +198,7 @@ function renderProcessDetail(process: any, id: string): void {
                                         timestamp: process.endTime || undefined,
                                     });
                                     cacheConversation(id, syntheticTurns);
-                                    sectionEl.innerHTML = renderConversationBubbles(id, syntheticTurns);
+                                    setConversationHTML(sectionEl, id, syntheticTurns);
                                 } else if (process.result) {
                                     const syntheticTurns: ClientConversationTurn[] = [];
                                     if (process.fullPrompt || process.promptPreview) {
@@ -213,7 +214,7 @@ function renderProcessDetail(process: any, id: string): void {
                                         timestamp: process.endTime || undefined,
                                     });
                                     cacheConversation(id, syntheticTurns);
-                                    sectionEl.innerHTML = renderConversationBubbles(id, syntheticTurns);
+                                    setConversationHTML(sectionEl, id, syntheticTurns);
                                 } else {
                                     sectionEl.innerHTML = '<div class="conversation-waiting">No conversation output saved.</div>';
                                 }
@@ -238,6 +239,12 @@ function renderConversationBubbles(processId: string, turns: ClientConversationT
         '<button class="action-btn" onclick="copyConversationOutput(\'' +
         escapeHtmlClient(processId) + '\')">\u{1F4CB} Copy Conversation</button></div>';
     return html;
+}
+
+/** Set innerHTML to conversation bubbles HTML and attach tool call toggle handlers. */
+function setConversationHTML(el: HTMLElement, processId: string, turns: ClientConversationTurn[]): void {
+    el.innerHTML = renderConversationBubbles(processId, turns);
+    attachToolCallToggleHandlers(el);
 }
 
 export function clearDetail(): void {
@@ -359,6 +366,15 @@ function renderChatMessage(turn: ClientConversationTurn): string {
 
     // Content
     html += '<div class="chat-message-content">' + renderMarkdown(turn.content || '') + '</div>';
+
+    // Tool calls (assistant only)
+    if (!isUser && turn.toolCalls && turn.toolCalls.length > 0) {
+        html += '<div class="tool-calls-container">';
+        for (let i = 0; i < turn.toolCalls.length; i++) {
+            html += renderToolCallHTML(turn.toolCalls[i]);
+        }
+        html += '</div>';
+    }
 
     // Per-message copy button (user and assistant)
     if (turn.content) {
@@ -556,6 +572,9 @@ function renderQueueTaskConversation(processId: string, taskId: string, proc: an
     html += '</div>';
 
     contentEl.innerHTML = html;
+
+    // Attach tool call toggle event handlers
+    attachToolCallToggleHandlers(contentEl);
 
     // Wire up Apply Changes button if present
     const applyBtn = document.getElementById('apply-changes-btn');
