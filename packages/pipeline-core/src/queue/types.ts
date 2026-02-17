@@ -422,6 +422,31 @@ export interface QueueStats {
 }
 
 // ============================================================================
+// Registry Types
+// ============================================================================
+
+/**
+ * Statistics for the registry (aggregated across all repos)
+ */
+export interface RegistryStats {
+    /** Number of repositories with queues */
+    repoCount: number;
+
+    /** Aggregated totals across all repositories */
+    totals: {
+        queued: number;
+        running: number;
+        completed: number;
+        failed: number;
+        cancelled: number;
+        total: number;
+    };
+
+    /** Per-repository statistics */
+    byRepo: Record<string, QueueStats>;
+}
+
+// ============================================================================
 // Priority Helpers
 // ============================================================================
 

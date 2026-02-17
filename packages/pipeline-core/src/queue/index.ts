@@ -97,6 +97,9 @@ export {
     DEFAULT_QUEUE_MANAGER_OPTIONS,
     QueueStats,
 
+    // Registry types
+    RegistryStats,
+
     // Priority helpers
     PRIORITY_VALUES,
     comparePriority,
@@ -131,3 +134,11 @@ export {
     SimpleTaskExecutor,
     createSimpleTaskExecutor,
 } from './queue-executor';
+
+// ============================================================================
+// Repo Queue Registry
+// ============================================================================
+
+export {
+    RepoQueueRegistry,
+} from './repo-queue-registry';
