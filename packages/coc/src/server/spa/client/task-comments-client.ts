@@ -16,6 +16,7 @@ import { getApiBase } from './config';
 import type {
     TaskComment,
     TaskCommentStatus,
+    TaskCommentReply,
     CommentAnchor,
     CommentSelection,
 } from './task-comments-types';
@@ -310,6 +311,86 @@ export async function unresolveComment(
     commentId: string
 ): Promise<TaskComment> {
     return updateComment(wsId, taskPath, commentId, { status: 'open' });
+}
+
+// ============================================================================
+// Reply API
+// ============================================================================
+
+/** Request payload for creating a reply. */
+export interface CreateReplyRequest {
+    text: string;
+    author?: string;
+}
+
+/**
+ * Add a reply to a comment.
+ */
+export async function createReply(
+    wsId: string,
+    taskPath: string,
+    commentId: string,
+    request: CreateReplyRequest
+): Promise<TaskCommentReply> {
+    try {
+        const url = commentUrl(wsId, taskPath, commentId) + '/replies';
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(request),
+        });
+        if (!res.ok) {
+            const msg = await parseErrorResponse(res);
+            throw new CommentApiError(res.status, getErrorMessage(res.status, msg));
+        }
+        const data = await res.json();
+        return data.reply;
+    } catch (err) {
+        if (err instanceof CommentApiError) throw err;
+        throw new Error('Network error, please try again');
+    }
+}
+
+// ============================================================================
+// AI Ask API
+// ============================================================================
+
+/** Request payload for AI clarification. */
+export interface AskAIRequest {
+    question?: string;
+}
+
+/** Response from AI clarification. */
+export interface AskAIResponse {
+    aiResponse: string;
+    reply: TaskCommentReply;
+}
+
+/**
+ * Ask AI for clarification on a comment.
+ */
+export async function askAI(
+    wsId: string,
+    taskPath: string,
+    commentId: string,
+    request: AskAIRequest = {}
+): Promise<AskAIResponse> {
+    try {
+        const url = commentUrl(wsId, taskPath, commentId) + '/ask-ai';
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(request),
+        });
+        if (!res.ok) {
+            const msg = await parseErrorResponse(res);
+            throw new CommentApiError(res.status, getErrorMessage(res.status, msg));
+        }
+        return await res.json();
+    } catch (err) {
+        if (err instanceof CommentApiError) throw err;
+        throw new Error('Network error, please try again');
+    }
 }
 
 // ============================================================================

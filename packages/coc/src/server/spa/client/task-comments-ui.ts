@@ -14,6 +14,7 @@
 import type {
     TaskComment,
     TaskCommentStatus,
+    TaskCommentReply,
 } from './task-comments-types';
 
 // ============================================================================
@@ -149,9 +150,34 @@ export function renderCommentCardHTML(options: CommentCardOptions): string {
             html += '<button class="comment-card__action" data-action="resolve" data-comment-id="' + escapeHtml(comment.id) + '" aria-label="Resolve">\u2705 Resolve</button>';
         }
         html += '<button class="comment-card__action" data-action="edit" data-comment-id="' + escapeHtml(comment.id) + '" aria-label="Edit">\u270F\uFE0F Edit</button>';
+        html += '<button class="comment-card__action" data-action="ask-ai" data-comment-id="' + escapeHtml(comment.id) + '" aria-label="Ask AI">\uD83E\uDD16 Ask AI</button>';
         html += '<button class="comment-card__action" data-action="delete" data-comment-id="' + escapeHtml(comment.id) + '" aria-label="Delete">\uD83D\uDDD1\uFE0F Delete</button>';
         html += '</div>';
     }
+
+    // Replies section
+    const replies = comment.replies || [];
+    if (replies.length > 0) {
+        html += renderRepliesHTML(replies, comment.id);
+    }
+
+    // Reply input (hidden by default)
+    html += '<div class="comment-reply-input" data-comment-id="' + escapeHtml(comment.id) + '" style="display:none">';
+    html += '<textarea class="comment-reply-textarea" placeholder="Reply…" rows="2"></textarea>';
+    html += '<div class="comment-reply-input__actions">';
+    html += '<button class="comment-reply-cancel-btn" type="button">Cancel</button>';
+    html += '<button class="comment-reply-send-btn" type="button">Send</button>';
+    html += '</div>';
+    html += '</div>';
+
+    // AI ask input (hidden by default)
+    html += '<div class="comment-ai-input" data-comment-id="' + escapeHtml(comment.id) + '" style="display:none">';
+    html += '<textarea class="comment-ai-textarea" placeholder="Ask AI a question about this comment…" rows="2"></textarea>';
+    html += '<div class="comment-ai-input__actions">';
+    html += '<button class="comment-ai-cancel-btn" type="button">Cancel</button>';
+    html += '<button class="comment-ai-send-btn" type="button">Ask</button>';
+    html += '</div>';
+    html += '</div>';
 
     html += '</div>';
     return html;
@@ -169,6 +195,7 @@ export function attachCommentCardHandlers(
         onEdit?: (commentId: string) => void;
         onDelete?: (commentId: string) => void;
         onClick?: (commentId: string) => void;
+        onAskAI?: (commentId: string) => void;
     }
 ): void {
     container.addEventListener('click', (e) => {
@@ -186,6 +213,7 @@ export function attachCommentCardHandlers(
                 case 'reopen': handlers.onReopen?.(commentId); break;
                 case 'edit': handlers.onEdit?.(commentId); break;
                 case 'delete': handlers.onDelete?.(commentId); break;
+                case 'ask-ai': handlers.onAskAI?.(commentId); break;
             }
             return;
         }
@@ -812,4 +840,75 @@ export function renderCommentToggleHTML(commentCount: number, isActive: boolean)
         'aria-expanded="' + isActive + '">' +
         '\uD83D\uDCAC ' + commentCount +
         '</button>';
+}
+
+// ============================================================================
+// Reply Rendering
+// ============================================================================
+
+/**
+ * Render replies HTML for a comment card.
+ * Replies are collapsible when there are more than 2.
+ */
+export function renderRepliesHTML(replies: TaskCommentReply[], commentId: string): string {
+    if (replies.length === 0) return '';
+
+    let html = '<div class="comment-card__replies" data-comment-id="' + escapeHtml(commentId) + '">';
+
+    // Collapse toggle when > 2 replies
+    if (replies.length > 2) {
+        html += '<button class="comment-card__reply-toggle" data-action="toggle-replies" data-comment-id="' + escapeHtml(commentId) + '">';
+        html += replies.length + ' replies';
+        html += '</button>';
+    }
+
+    for (let i = 0; i < replies.length; i++) {
+        const reply = replies[i];
+        const aiClass = reply.isAI ? ' comment-card__reply--ai' : '';
+        // Hide replies beyond the first 2 when collapsed (handled by CSS)
+        const hiddenClass = (replies.length > 2 && i < replies.length - 2) ? ' comment-card__reply--collapsed' : '';
+        html += '<div class="comment-card__reply' + aiClass + hiddenClass + '" data-reply-id="' + escapeHtml(reply.id) + '">';
+        html += '<div class="comment-card__reply-header">';
+        const authorDisplay = reply.isAI ? '\uD83E\uDD16 AI' : escapeHtml(reply.author);
+        html += '<span class="comment-card__reply-author">' + authorDisplay + '</span>';
+        html += '<span class="comment-card__time">' + escapeHtml(formatRelative(reply.createdAt)) + '</span>';
+        html += '</div>';
+        html += '<div class="comment-card__reply-text">' + escapeHtml(reply.text) + '</div>';
+        html += '</div>';
+    }
+
+    html += '</div>';
+    return html;
+}
+
+// ============================================================================
+// Edit Mode Rendering
+// ============================================================================
+
+/**
+ * Render inline edit mode HTML for a comment card body.
+ */
+export function renderEditModeHTML(commentId: string, currentText: string): string {
+    let html = '<div class="comment-edit-panel" data-comment-id="' + escapeHtml(commentId) + '">';
+    html += '<textarea class="comment-edit-textarea">' + escapeHtml(currentText) + '</textarea>';
+    html += '<div class="comment-edit-actions">';
+    html += '<button class="comment-edit-cancel-btn" type="button">Cancel</button>';
+    html += '<button class="comment-edit-save-btn" type="button">Save</button>';
+    html += '</div>';
+    html += '</div>';
+    return html;
+}
+
+// ============================================================================
+// AI Loading State
+// ============================================================================
+
+/**
+ * Render AI loading spinner HTML.
+ */
+export function renderAILoadingHTML(): string {
+    return '<div class="comment-ai-loading">' +
+        '<span class="comment-ai-spinner"></span>' +
+        '<span>AI is thinking…</span>' +
+        '</div>';
 }

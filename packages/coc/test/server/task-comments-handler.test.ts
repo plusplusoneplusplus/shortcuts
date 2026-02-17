@@ -371,6 +371,74 @@ describe('TaskCommentsManager', () => {
             expect(Object.keys(counts)).toHaveLength(0);
         });
     });
+
+    // -- Reply Operations --
+
+    describe('Reply Operations', () => {
+        it('adds a reply to a comment', async () => {
+            const comment = await manager.addComment('ws1', 'task.md', makeCommentData());
+            const reply = await manager.addReply('ws1', 'task.md', comment.id, {
+                author: 'Bob',
+                text: 'Good point!',
+            });
+            expect(reply).not.toBeNull();
+            expect(reply!.id).toMatch(/^[0-9a-f]{8}-/);
+            expect(reply!.author).toBe('Bob');
+            expect(reply!.text).toBe('Good point!');
+            expect(reply!.createdAt).toBeTruthy();
+        });
+
+        it('stores reply on the comment', async () => {
+            const comment = await manager.addComment('ws1', 'task.md', makeCommentData());
+            await manager.addReply('ws1', 'task.md', comment.id, {
+                author: 'Bob',
+                text: 'Reply 1',
+            });
+            const updated = await manager.getComment('ws1', 'task.md', comment.id);
+            expect(updated!.replies).toHaveLength(1);
+            expect(updated!.replies![0].text).toBe('Reply 1');
+        });
+
+        it('adds multiple replies in order', async () => {
+            const comment = await manager.addComment('ws1', 'task.md', makeCommentData());
+            await manager.addReply('ws1', 'task.md', comment.id, { author: 'A', text: 'First' });
+            await manager.addReply('ws1', 'task.md', comment.id, { author: 'B', text: 'Second' });
+            const updated = await manager.getComment('ws1', 'task.md', comment.id);
+            expect(updated!.replies).toHaveLength(2);
+            expect(updated!.replies![0].text).toBe('First');
+            expect(updated!.replies![1].text).toBe('Second');
+        });
+
+        it('returns null for non-existent comment', async () => {
+            const result = await manager.addReply('ws1', 'task.md', 'nonexistent', {
+                author: 'A',
+                text: 'Test',
+            });
+            expect(result).toBeNull();
+        });
+
+        it('marks AI replies', async () => {
+            const comment = await manager.addComment('ws1', 'task.md', makeCommentData());
+            const reply = await manager.addReply('ws1', 'task.md', comment.id, {
+                author: 'AI',
+                text: 'AI response',
+                isAI: true,
+            });
+            expect(reply!.isAI).toBe(true);
+        });
+
+        it('updates comment timestamp when adding reply', async () => {
+            const comment = await manager.addComment('ws1', 'task.md', makeCommentData());
+            const originalUpdatedAt = comment.updatedAt;
+            await new Promise(r => setTimeout(r, 10));
+            await manager.addReply('ws1', 'task.md', comment.id, {
+                author: 'Bob',
+                text: 'Reply',
+            });
+            const updated = await manager.getComment('ws1', 'task.md', comment.id);
+            expect(updated!.updatedAt).not.toBe(originalUpdatedAt);
+        });
+    });
 });
 
 // ============================================================================
@@ -692,6 +760,71 @@ describe('Task Comments REST API', () => {
             const body = JSON.parse(res.body);
             expect(body.comments).toHaveLength(1);
             expect(body.comments[0].comment).toBe('Persistent');
+        });
+    });
+
+    // -- Reply API --
+
+    describe('Reply API', () => {
+        it('POST /replies creates a reply on a comment', async () => {
+            const createRes = await postJSON(commentsUrl(), makeCommentData());
+            const commentId = JSON.parse(createRes.body).comment.id;
+
+            const replyRes = await postJSON(
+                `${baseUrl}/api/comments/${WS_ID}/${TASK_PATH}/${commentId}/replies`,
+                { text: 'My reply', author: 'Bob' }
+            );
+            expect(replyRes.status).toBe(201);
+            const replyBody = JSON.parse(replyRes.body);
+            expect(replyBody.reply.text).toBe('My reply');
+            expect(replyBody.reply.author).toBe('Bob');
+            expect(replyBody.reply.id).toBeTruthy();
+        });
+
+        it('reply appears on the comment when fetched', async () => {
+            const createRes = await postJSON(commentsUrl(), makeCommentData());
+            const commentId = JSON.parse(createRes.body).comment.id;
+
+            await postJSON(
+                `${baseUrl}/api/comments/${WS_ID}/${TASK_PATH}/${commentId}/replies`,
+                { text: 'Reply text', author: 'Carol' }
+            );
+
+            const getRes = await getJSON(`${baseUrl}/api/comments/${WS_ID}/${TASK_PATH}/${commentId}`);
+            const comment = JSON.parse(getRes.body).comment;
+            expect(comment.replies).toHaveLength(1);
+            expect(comment.replies[0].text).toBe('Reply text');
+        });
+
+        it('returns 404 for reply on non-existent comment', async () => {
+            const replyRes = await postJSON(
+                `${baseUrl}/api/comments/${WS_ID}/${TASK_PATH}/00000000-0000-0000-0000-000000000000/replies`,
+                { text: 'Reply' }
+            );
+            expect(replyRes.status).toBe(404);
+        });
+
+        it('returns 400 when text is missing', async () => {
+            const createRes = await postJSON(commentsUrl(), makeCommentData());
+            const commentId = JSON.parse(createRes.body).comment.id;
+
+            const replyRes = await postJSON(
+                `${baseUrl}/api/comments/${WS_ID}/${TASK_PATH}/${commentId}/replies`,
+                { author: 'Bob' }
+            );
+            expect(replyRes.status).toBe(400);
+        });
+
+        it('defaults author to Anonymous', async () => {
+            const createRes = await postJSON(commentsUrl(), makeCommentData());
+            const commentId = JSON.parse(createRes.body).comment.id;
+
+            const replyRes = await postJSON(
+                `${baseUrl}/api/comments/${WS_ID}/${TASK_PATH}/${commentId}/replies`,
+                { text: 'No author' }
+            );
+            const reply = JSON.parse(replyRes.body).reply;
+            expect(reply.author).toBe('Anonymous');
         });
     });
 });
