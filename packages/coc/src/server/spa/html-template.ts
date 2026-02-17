@@ -61,19 +61,17 @@ ${bundleCss}
         <div class="top-bar-left">
             <button class="hamburger-btn" id="hamburger-btn" aria-label="Toggle sidebar">&#9776;</button>
             <span class="top-bar-logo">${escapeHtml(title)}</span>
+            <nav class="top-bar-tabs" id="tab-bar">
+                <button class="top-bar-tab active" data-tab="repos">Repos</button>
+                <button class="top-bar-tab" data-tab="processes">Processes</button>
+                <button class="top-bar-tab" data-tab="wiki">Wiki</button>
+            </nav>
         </div>
         <div class="top-bar-right">
             <button id="admin-toggle" class="top-bar-btn" aria-label="Admin" title="Admin">&#9881;</button>
             <button id="theme-toggle" class="top-bar-btn" aria-label="Toggle theme">&#127761;</button>
         </div>
     </header>
-
-    <nav class="tab-bar hidden" id="tab-bar" aria-hidden="true">
-        <button class="tab-btn active" data-tab="repos">Repos</button>
-        <button class="tab-btn" data-tab="processes">Processes</button>
-        <button class="tab-btn" data-tab="wiki">Wiki</button>
-        <button class="tab-btn" data-tab="reports" disabled>Reports</button>
-    </nav>
 
     <div class="app-layout hidden" id="view-processes">
         <aside class="sidebar" id="sidebar">

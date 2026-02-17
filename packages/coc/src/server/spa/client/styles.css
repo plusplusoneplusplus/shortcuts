@@ -146,7 +146,7 @@ body {
     z-index: 100;
     position: relative;
 }
-.top-bar-left { display: flex; align-items: center; gap: 12px; }
+.top-bar-left { display: flex; align-items: center; gap: 16px; }
 .top-bar-logo { font-weight: 600; font-size: 14px; letter-spacing: 0.3px; }
 .top-bar-right { display: flex; align-items: center; gap: 8px; }
 .top-bar-btn {
@@ -1495,6 +1495,8 @@ body {
 /* ---- Responsive ---- */
 @media (max-width: 768px) {
     .hamburger-btn { display: block; }
+    .top-bar-logo { display: none; }
+    .top-bar-tab { padding: 14px 10px 12px; font-size: 12px; }
     .app-layout { grid-template-columns: 1fr; }
     .sidebar {
         position: fixed;
@@ -1524,33 +1526,29 @@ body {
     .chat-input-bar .send-btn { padding: 8px 12px; }
 }
 
-/* ---- Tab Bar ---- */
-.tab-bar {
+/* ---- Inline Top-Bar Tabs ---- */
+.top-bar-tabs {
     display: flex;
-    gap: 0;
-    background: var(--bg-secondary);
-    border-bottom: 1px solid var(--border-color);
-    padding: 0 16px;
+    align-items: center;
+    gap: 2px;
+    margin-left: 4px;
 }
-.tab-btn {
+.top-bar-tab {
     background: transparent;
     border: none;
     border-bottom: 2px solid transparent;
-    color: var(--text-secondary);
-    padding: 8px 16px;
+    color: var(--topbar-muted);
+    padding: 14px 14px 12px;
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;
     transition: color 0.15s, border-color 0.15s;
+    line-height: 1;
 }
-.tab-btn:hover:not(:disabled) { color: var(--text-primary); }
-.tab-btn.active {
-    color: var(--accent);
-    border-bottom-color: var(--accent);
-}
-.tab-btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
+.top-bar-tab:hover { color: var(--topbar-text); }
+.top-bar-tab.active {
+    color: var(--topbar-text);
+    border-bottom-color: var(--topbar-text);
 }
 
 /* ---- App View (tab content) ---- */

@@ -17,7 +17,7 @@ export function switchTab(tab: DashboardTab): void {
     appState.activeTab = tab;
 
     // Update tab bar active state
-    document.querySelectorAll('.tab-btn').forEach(btn => {
+    document.querySelectorAll('.top-bar-tab').forEach(btn => {
         btn.classList.toggle('active', btn.getAttribute('data-tab') === tab);
     });
 
@@ -45,7 +45,7 @@ export function switchTab(tab: DashboardTab): void {
 const tabBar = document.getElementById('tab-bar');
 if (tabBar) {
     tabBar.addEventListener('click', (e: Event) => {
-        const btn = (e.target as HTMLElement).closest('.tab-btn') as HTMLButtonElement | null;
+        const btn = (e.target as HTMLElement).closest('.top-bar-tab') as HTMLButtonElement | null;
         if (btn && !btn.disabled) {
             const tab = btn.getAttribute('data-tab') as DashboardTab;
             if (tab) {
