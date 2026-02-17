@@ -45,6 +45,8 @@ export type QueueStatus =
  * Payload for follow-prompt tasks
  */
 export interface FollowPromptPayload {
+    /** Repository identifier (for multi-repo workspaces) */
+    repoId?: string;
     /** Path to the prompt file (required for skill-based jobs; optional when promptContent is provided) */
     promptFilePath?: string;
     /** Direct prompt content (preferred over promptFilePath for freeform prompts) */
@@ -63,6 +65,8 @@ export interface FollowPromptPayload {
  * Payload for resolve-comments tasks
  */
 export interface ResolveCommentsPayload {
+    /** Repository identifier (for multi-repo workspaces) */
+    repoId?: string;
     /** URI of the document containing comments */
     documentUri: string;
     /** IDs of comments to resolve */
@@ -75,6 +79,8 @@ export interface ResolveCommentsPayload {
  * Payload for code-review tasks
  */
 export interface CodeReviewPayload {
+    /** Repository identifier (for multi-repo workspaces) */
+    repoId?: string;
     /** Commit SHA to review (optional) */
     commitSha?: string;
     /** Type of diff to review */
@@ -89,6 +95,8 @@ export interface CodeReviewPayload {
  * Payload for AI clarification tasks
  */
 export interface AIClarificationPayload {
+    /** Repository identifier (for multi-repo workspaces) */
+    repoId?: string;
     /** The prompt to send to AI (if pre-built) */
     prompt?: string;
     /** Working directory for execution */
@@ -121,6 +129,8 @@ export interface AIClarificationPayload {
  * Payload for custom tasks
  */
 export interface CustomTaskPayload {
+    /** Repository identifier (for multi-repo workspaces) */
+    repoId?: string;
     /** Custom data for the task */
     data: Record<string, unknown>;
 }
@@ -181,6 +191,8 @@ export const DEFAULT_TASK_CONFIG: TaskExecutionConfig = {
 export interface QueuedTask<TPayload extends TaskPayload = TaskPayload, TResult = unknown> {
     /** Unique identifier for the task */
     id: string;
+    /** Repository identifier (for multi-repo workspaces) */
+    repoId?: string;
     /** Type of task */
     type: TaskType;
     /** Priority level */

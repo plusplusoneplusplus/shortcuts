@@ -13,6 +13,9 @@ import {
     QueueChangeEvent,
     TaskPriority,
     generateTaskId,
+    FollowPromptPayload,
+    CodeReviewPayload,
+    AIClarificationPayload,
 } from '../../src/queue';
 
 describe('TaskQueueManager', () => {
@@ -1387,6 +1390,91 @@ describe('generateTaskId', () => {
         const id = generateTaskId();
         const processId = `queue_${id}`;
         expect(processId).toMatch(/^queue_\d+-[a-z0-9]+$/);
+    });
+});
+
+// ============================================================================
+// repoId Field Support
+// ============================================================================
+
+describe('repoId field support', () => {
+    let manager: TaskQueueManager;
+
+    beforeEach(() => {
+        manager = createTaskQueueManager();
+    });
+
+    it('stores repoId when provided on QueuedTask', () => {
+        const taskId = manager.enqueue(
+            createTestTask({ repoId: 'repo-123' })
+        );
+        const task = manager.getTask(taskId);
+        expect(task?.repoId).toBe('repo-123');
+    });
+
+    it('allows undefined repoId for backward compatibility', () => {
+        const taskId = manager.enqueue(createTestTask());
+        const task = manager.getTask(taskId);
+        expect(task?.repoId).toBeUndefined();
+    });
+
+    it('preserves repoId through CreateTaskInput', () => {
+        const input: CreateTaskInput = {
+            type: 'follow-prompt',
+            priority: 'normal',
+            payload: { promptFilePath: '/test/prompt.md' },
+            config: { timeoutMs: 60000 },
+            repoId: 'my-repo',
+        };
+        const taskId = manager.enqueue(input);
+        const task = manager.getTask(taskId);
+        expect(task?.repoId).toBe('my-repo');
+    });
+
+    it('supports repoId on FollowPromptPayload', () => {
+        const payload: FollowPromptPayload = {
+            promptFilePath: '/test/prompt.md',
+            repoId: 'frontend-repo',
+        };
+        const taskId = manager.enqueue(createTestTask({ payload }));
+        const task = manager.getTask(taskId);
+        expect((task?.payload as FollowPromptPayload).repoId).toBe('frontend-repo');
+    });
+
+    it('supports repoId on CodeReviewPayload', () => {
+        const payload: CodeReviewPayload = {
+            diffType: 'staged',
+            rulesFolder: '/rules',
+            repoId: 'backend-repo',
+        };
+        const taskId = manager.enqueue(createTestTask({
+            type: 'code-review',
+            payload,
+        }));
+        const task = manager.getTask(taskId);
+        expect((task?.payload as CodeReviewPayload).repoId).toBe('backend-repo');
+    });
+
+    it('supports repoId on AIClarificationPayload', () => {
+        const payload: AIClarificationPayload = {
+            prompt: 'explain this',
+            repoId: 'docs-repo',
+        };
+        const taskId = manager.enqueue(createTestTask({
+            type: 'ai-clarification',
+            payload,
+        }));
+        const task = manager.getTask(taskId);
+        expect((task?.payload as AIClarificationPayload).repoId).toBe('docs-repo');
+    });
+
+    it('allows payload without repoId for backward compatibility', () => {
+        const payload: FollowPromptPayload = {
+            promptFilePath: '/test/prompt.md',
+        };
+        const taskId = manager.enqueue(createTestTask({ payload }));
+        const task = manager.getTask(taskId);
+        expect((task?.payload as FollowPromptPayload).repoId).toBeUndefined();
     });
 });
 
