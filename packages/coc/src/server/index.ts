@@ -21,6 +21,7 @@ import { registerTaskGenerationRoutes } from './task-generation-handler';
 import { registerPromptRoutes } from './prompt-handler';
 import { registerPreferencesRoutes } from './preferences-handler';
 import { registerAdminRoutes } from './admin-handler';
+import { registerTaskCommentsRoutes } from './task-comments-handler';
 import { registerWikiRoutes } from './wiki';
 import { ProcessWebSocketServer, toProcessSummary } from './websocket';
 import { generateDashboardHtml } from './spa';
@@ -194,6 +195,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     registerTaskGenerationRoutes(routes, store);
     registerPromptRoutes(routes, store);
     registerPreferencesRoutes(routes, dataDir);
+    registerTaskCommentsRoutes(routes, dataDir);
     registerAdminRoutes(routes, { store, dataDir, getWsServer: () => wsServer });
 
     // Always register wiki routes (they are safe even with no wikis registered)
@@ -464,6 +466,8 @@ export { discoverPromptFiles, readPromptFileContent } from './prompt-utils';
 export type { PromptFileInfo } from './prompt-utils';
 export { registerPreferencesRoutes, readPreferences, writePreferences, validatePreferences } from './preferences-handler';
 export type { UserPreferences } from './preferences-handler';
+export { registerTaskCommentsRoutes, TaskCommentsManager } from './task-comments-handler';
+export type { TaskComment, CommentAnchor, CommentsStorage } from './task-comments-handler';
 export { registerAdminRoutes, resetWipeToken } from './admin-handler';
 export type { AdminRouteOptions } from './admin-handler';
 export { DataWiper } from './data-wiper';
