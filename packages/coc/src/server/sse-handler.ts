@@ -16,10 +16,14 @@ import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
  * Handle SSE streaming for a single process.
  *
  * Protocol:
- *   event: chunk    → { content: string }
- *   event: status   → { status, result?, error?, duration? }
- *   event: done     → { processId }
- *   event: heartbeat → {}
+ *   event: chunk              → { content: string }
+ *   event: tool-start         → { turnIndex, toolCallId, toolName, parameters }
+ *   event: tool-complete      → { turnIndex, toolCallId, result }
+ *   event: tool-failed        → { turnIndex, toolCallId, error }
+ *   event: permission-request → { turnIndex, permissionId, kind, description }
+ *   event: status             → { status, result?, error?, duration? }
+ *   event: done               → { processId }
+ *   event: heartbeat          → {}
  */
 export async function handleProcessStream(
     req: IncomingMessage,
@@ -68,6 +72,32 @@ export async function handleProcessStream(
     const unsubscribe = store.onProcessOutput(processId, (event) => {
         if (event.type === 'chunk') {
             sendEvent(res, 'chunk', { content: event.content });
+        } else if (event.type === 'tool-start') {
+            sendEvent(res, 'tool-start', {
+                turnIndex: event.turnIndex,
+                toolCallId: event.toolCallId,
+                toolName: event.toolName,
+                parameters: event.parameters,
+            });
+        } else if (event.type === 'tool-complete') {
+            sendEvent(res, 'tool-complete', {
+                turnIndex: event.turnIndex,
+                toolCallId: event.toolCallId,
+                result: event.result,
+            });
+        } else if (event.type === 'tool-failed') {
+            sendEvent(res, 'tool-failed', {
+                turnIndex: event.turnIndex,
+                toolCallId: event.toolCallId,
+                error: event.error,
+            });
+        } else if (event.type === 'permission-request') {
+            sendEvent(res, 'permission-request', {
+                turnIndex: event.turnIndex,
+                permissionId: event.permissionId,
+                kind: event.kind,
+                description: event.description,
+            });
         } else if (event.type === 'complete') {
             sendEvent(res, 'status', {
                 status: event.status,

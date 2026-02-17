@@ -14,13 +14,31 @@ import { AIProcess, AIProcessStatus, AIProcessType, ProcessEvent } from './ai/pr
  * Used by SSE streaming to push real-time output to clients.
  */
 export interface ProcessOutputEvent {
-    type: 'chunk' | 'complete';
+    type: 'chunk' | 'complete' | 'tool-start' | 'tool-complete' | 'tool-failed' | 'permission-request';
     /** Partial output text (for 'chunk' events). */
     content?: string;
     /** Final process status (for 'complete' events). */
     status?: AIProcessStatus;
     /** Human-readable duration string (for 'complete' events). */
     duration?: string;
+    /** Zero-based conversation turn index (for tool events). */
+    turnIndex?: number;
+    /** Unique tool call identifier (for tool events). */
+    toolCallId?: string;
+    /** Tool name (for 'tool-start' events). */
+    toolName?: string;
+    /** Tool input parameters (for 'tool-start' events). */
+    parameters?: Record<string, unknown>;
+    /** Tool output result (for 'tool-complete' events). */
+    result?: string;
+    /** Error message (for 'tool-failed' events). */
+    error?: string;
+    /** Permission request ID (for 'permission-request' events). */
+    permissionId?: string;
+    /** Permission kind: 'read' | 'write' | 'shell' | 'url' | 'mcp' (for 'permission-request'). */
+    kind?: string;
+    /** Human-readable permission description (for 'permission-request' events). */
+    description?: string;
 }
 
 /**
@@ -85,8 +103,10 @@ export interface ProcessFilter {
     offset?: number;
     /**
      * Fields to exclude from the response.
-     * Currently supported: 'conversation' — strips conversationTurns, fullPrompt, and result
-     * to reduce payload size for history/list views.
+     * Currently supported:
+     *   - 'conversation' — strips conversationTurns, fullPrompt, and result
+     *   - 'toolCalls' — strips toolCalls arrays from conversation turns (keeps turns intact)
+     * Combining both reduces payload size for history/list views.
      */
     exclude?: string[];
 }
@@ -147,4 +167,7 @@ export interface ProcessStore {
 
     /** Emit process completion (called by execution engine). */
     emitProcessComplete(id: string, status: AIProcessStatus, duration: string): void;
+
+    /** Emit an arbitrary process output event (tool events, etc.). */
+    emitProcessEvent(id: string, event: ProcessOutputEvent): void;
 }

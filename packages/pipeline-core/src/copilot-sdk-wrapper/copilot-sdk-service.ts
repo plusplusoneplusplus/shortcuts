@@ -1279,7 +1279,7 @@ export class CopilotSDKService {
                         name: toolName !== '(unknown)' ? toolName : 'unknown',
                         status: 'running',
                         startTime: new Date(),
-                        args: event.data?.arguments ?? {},
+                        args: (event.data?.arguments ?? {}) as Record<string, unknown>,
                     };
                     toolCallsMap!.set(toolCall.id, toolCall);
                 } else if (eventType === 'tool.execution_complete') {

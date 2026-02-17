@@ -47,6 +47,7 @@ function createMockStore(): ProcessStore {
         onProcessOutput: vi.fn(() => () => {}),
         emitProcessOutput: vi.fn(),
         emitProcessComplete: vi.fn(),
+        emitProcessEvent: vi.fn(),
     };
 }
 

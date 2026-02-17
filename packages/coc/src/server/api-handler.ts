@@ -67,7 +67,7 @@ const VALID_STATUSES: Set<string> = new Set(['queued', 'running', 'completed', '
 const TERMINAL_STATUSES: Set<string> = new Set(['completed', 'failed', 'cancelled']);
 
 /** Valid exclude field values for the `exclude` query parameter. */
-const VALID_EXCLUDE_FIELDS: Set<string> = new Set(['conversation']);
+const VALID_EXCLUDE_FIELDS: Set<string> = new Set(['conversation', 'toolCalls']);
 
 /**
  * Extract filter parameters from URL query string into a typed ProcessFilter.
@@ -139,10 +139,25 @@ export function parseQueryParams(reqUrl: string): ProcessFilter {
  */
 export function stripExcludedFields(process: any, exclude?: string[]): any {
     if (!exclude || exclude.length === 0) return process;
-    if (!exclude.includes('conversation')) return process;
 
-    const { conversationTurns, fullPrompt, result, structuredResult, ...lightweight } = process;
-    return lightweight;
+    // Strip entire conversation data
+    if (exclude.includes('conversation')) {
+        const { conversationTurns, fullPrompt, result, structuredResult, ...lightweight } = process;
+        return lightweight;
+    }
+
+    // Strip tool calls from conversation turns
+    if (exclude.includes('toolCalls')) {
+        if (process.conversationTurns) {
+            const turnsWithoutTools = process.conversationTurns.map((turn: any) => {
+                const { toolCalls, ...turnWithoutTools } = turn;
+                return turnWithoutTools;
+            });
+            return { ...process, conversationTurns: turnsWithoutTools };
+        }
+    }
+
+    return process;
 }
 
 // ============================================================================
@@ -495,13 +510,15 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
     routes.push({
         method: 'GET',
         pattern: /^\/api\/processes\/([^/]+)$/,
-        handler: async (_req, res, match) => {
+        handler: async (req, res, match) => {
             const id = decodeURIComponent(match![1]);
             const process = await store.getProcess(id);
             if (!process) {
                 return sendError(res, 404, 'Process not found');
             }
-            sendJSON(res, 200, { process });
+            const filter = parseQueryParams(req.url || '/');
+            const result = filter.exclude ? stripExcludedFields(process, filter.exclude) : process;
+            sendJSON(res, 200, { process: result });
         },
     });
 

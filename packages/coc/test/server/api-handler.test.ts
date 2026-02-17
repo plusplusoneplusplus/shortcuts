@@ -201,9 +201,19 @@ describe('API Handler', () => {
             expect(filter.exclude).toBeUndefined();
         });
 
+        it('should parse exclude=toolCalls param', () => {
+            const filter = parseQueryParams('/api/processes?exclude=toolCalls');
+            expect(filter.exclude).toEqual(['toolCalls']);
+        });
+
         it('should parse comma-separated exclude values', () => {
             const filter = parseQueryParams('/api/processes?exclude=conversation,invalid');
             expect(filter.exclude).toEqual(['conversation']);
+        });
+
+        it('should parse conversation and toolCalls together', () => {
+            const filter = parseQueryParams('/api/processes?exclude=conversation,toolCalls');
+            expect(filter.exclude).toEqual(['conversation', 'toolCalls']);
         });
 
         it('should not set exclude for empty string', () => {
@@ -261,6 +271,47 @@ describe('API Handler', () => {
             };
             const result = stripExcludedFields(process, ['other']);
             expect(result).toBe(process);
+        });
+
+        it('should strip toolCalls from conversation turns when exclude includes toolCalls', () => {
+            const process = {
+                id: 'p1',
+                conversationTurns: [
+                    {
+                        role: 'assistant',
+                        content: 'Checking...',
+                        turnIndex: 0,
+                        toolCalls: [{ id: 'call_1', name: 'view', parameters: {}, result: 'ok', status: 'completed' }],
+                    },
+                    { role: 'user', content: 'Thanks', turnIndex: 1 },
+                ],
+                fullPrompt: 'Full prompt',
+            };
+            const result = stripExcludedFields(process, ['toolCalls']);
+            expect(result.conversationTurns).toHaveLength(2);
+            expect(result.conversationTurns[0].toolCalls).toBeUndefined();
+            expect(result.conversationTurns[0].content).toBe('Checking...');
+            expect(result.conversationTurns[1].content).toBe('Thanks');
+            expect(result.fullPrompt).toBe('Full prompt');
+        });
+
+        it('should return process unchanged when exclude=toolCalls but no conversationTurns', () => {
+            const process = { id: 'p1', fullPrompt: 'test' };
+            const result = stripExcludedFields(process, ['toolCalls']);
+            expect(result).toEqual(process);
+        });
+
+        it('should give conversation precedence over toolCalls when both excluded', () => {
+            const process = {
+                id: 'p1',
+                conversationTurns: [{ role: 'assistant', toolCalls: [{ id: 'c1' }] }],
+                fullPrompt: 'prompt',
+                result: 'res',
+                structuredResult: '{}',
+            };
+            const result = stripExcludedFields(process, ['conversation', 'toolCalls']);
+            expect(result.conversationTurns).toBeUndefined();
+            expect(result.fullPrompt).toBeUndefined();
         });
     });
 
@@ -1317,6 +1368,130 @@ describe('API Handler', () => {
             expect(lightBody.length).toBeLessThan(fullBody.length);
             // The reduction should be substantial (at least 30% — fullPrompt + result stripped)
             expect(lightBody.length).toBeLessThan(fullBody.length * 0.7);
+        });
+    });
+
+    // ========================================================================
+    // Tool Call Serialization
+    // ========================================================================
+
+    describe('Tool Call Serialization', () => {
+        it('should include tool calls in conversation turns by default', async () => {
+            const srv = await startServer();
+            const proc = makeProcess({ id: 'tc-default' });
+            await postJSON(`${srv.url}/api/processes`, proc);
+
+            // Inject conversation turns with tool calls directly via store
+            await srv.store.updateProcess('tc-default', {
+                conversationTurns: [
+                    {
+                        role: 'assistant',
+                        content: 'Let me check that file.',
+                        timestamp: new Date(),
+                        turnIndex: 0,
+                        toolCalls: [
+                            {
+                                id: 'call_abc123',
+                                name: 'view',
+                                status: 'completed' as const,
+                                startTime: new Date(),
+                                args: { path: '/src/app.ts' },
+                                result: 'File contents...',
+                            },
+                        ],
+                    },
+                ],
+            });
+
+            const res = await request(`${srv.url}/api/processes/tc-default`);
+            expect(res.status).toBe(200);
+            const retrieved = JSON.parse(res.body).process;
+            expect(retrieved.conversationTurns[0].toolCalls).toBeDefined();
+            expect(retrieved.conversationTurns[0].toolCalls[0].name).toBe('view');
+        });
+
+        it('should exclude tool calls when ?exclude=toolCalls on single process', async () => {
+            const srv = await startServer();
+            const proc = makeProcess({ id: 'tc-exclude' });
+            await postJSON(`${srv.url}/api/processes`, proc);
+
+            await srv.store.updateProcess('tc-exclude', {
+                conversationTurns: [
+                    {
+                        role: 'assistant',
+                        content: 'Checking...',
+                        timestamp: new Date(),
+                        turnIndex: 0,
+                        toolCalls: [{ id: 'call_xyz', name: 'grep', status: 'completed' as const, startTime: new Date(), args: {}, result: '' }],
+                    },
+                ],
+            });
+
+            const res = await request(`${srv.url}/api/processes/tc-exclude?exclude=toolCalls`);
+            expect(res.status).toBe(200);
+            const retrieved = JSON.parse(res.body).process;
+            expect(retrieved.conversationTurns).toBeDefined();
+            expect(retrieved.conversationTurns[0].toolCalls).toBeUndefined();
+            expect(retrieved.conversationTurns[0].content).toBe('Checking...');
+        });
+
+        it('should exclude tool calls from list endpoint when ?exclude=toolCalls', async () => {
+            const srv = await startServer();
+            const proc = makeProcess({ id: 'tc-list-exclude' });
+            await postJSON(`${srv.url}/api/processes`, proc);
+
+            await srv.store.updateProcess('tc-list-exclude', {
+                conversationTurns: [
+                    {
+                        role: 'assistant',
+                        content: 'Working...',
+                        timestamp: new Date(),
+                        turnIndex: 0,
+                        toolCalls: [{ id: 'call_list', name: 'edit', status: 'completed' as const, startTime: new Date(), args: {} }],
+                    },
+                ],
+            });
+
+            const res = await request(`${srv.url}/api/processes?exclude=toolCalls`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            const found = body.processes.find((p: any) => p.id === 'tc-list-exclude');
+            expect(found).toBeDefined();
+            expect(found.conversationTurns[0].toolCalls).toBeUndefined();
+            expect(found.conversationTurns[0].content).toBe('Working...');
+        });
+
+        it('should preserve turn structure when excluding toolCalls', async () => {
+            const srv = await startServer();
+            const proc = makeProcess({ id: 'tc-preserve' });
+            await postJSON(`${srv.url}/api/processes`, proc);
+
+            await srv.store.updateProcess('tc-preserve', {
+                conversationTurns: [
+                    {
+                        role: 'assistant',
+                        content: 'Turn 0',
+                        timestamp: new Date(),
+                        turnIndex: 0,
+                        toolCalls: [{ id: 'c1', name: 'view', status: 'completed' as const, startTime: new Date(), args: {} }],
+                    },
+                    {
+                        role: 'user',
+                        content: 'Turn 1',
+                        timestamp: new Date(),
+                        turnIndex: 1,
+                    },
+                ],
+            });
+
+            const res = await request(`${srv.url}/api/processes/tc-preserve?exclude=toolCalls`);
+            expect(res.status).toBe(200);
+            const retrieved = JSON.parse(res.body).process;
+            expect(retrieved.conversationTurns).toHaveLength(2);
+            expect(retrieved.conversationTurns[0].role).toBe('assistant');
+            expect(retrieved.conversationTurns[0].content).toBe('Turn 0');
+            expect(retrieved.conversationTurns[1].role).toBe('user');
+            expect(retrieved.conversationTurns[1].content).toBe('Turn 1');
         });
     });
 });

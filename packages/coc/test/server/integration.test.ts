@@ -346,6 +346,129 @@ describe('Server Integration', () => {
 
             await store.removeProcess('sse-failed');
         });
+
+        it('should stream tool events for running process', async () => {
+            await request(`${baseUrl}/api/processes`, {
+                method: 'POST',
+                body: makeProcessBody('sse-tools', { status: 'running' }),
+            });
+
+            const events = await new Promise<Array<{ event: string; data: unknown }>>((resolve, reject) => {
+                const parsed = new URL(`${baseUrl}/api/processes/sse-tools/stream`);
+                const req = http.request({
+                    hostname: parsed.hostname,
+                    port: parsed.port,
+                    path: parsed.pathname,
+                    method: 'GET',
+                }, (res) => {
+                    let buffer = '';
+                    const collected: Array<{ event: string; data: unknown }> = [];
+
+                    res.on('data', (chunk: Buffer) => {
+                        buffer += chunk.toString();
+                        const parts = buffer.split('\n\n');
+                        buffer = parts.pop() || '';
+                        for (const part of parts) {
+                            if (!part.trim()) { continue; }
+                            const lines = part.split('\n');
+                            let event = '';
+                            let data = '';
+                            for (const line of lines) {
+                                if (line.startsWith('event: ')) { event = line.slice(7); }
+                                if (line.startsWith('data: ')) { data = line.slice(6); }
+                            }
+                            if (event && data) {
+                                collected.push({ event, data: JSON.parse(data) });
+                            }
+                            if (event === 'done') {
+                                resolve(collected);
+                            }
+                        }
+                    });
+
+                    res.on('end', () => resolve(collected));
+                    res.on('error', reject);
+                });
+
+                req.on('error', reject);
+                req.end();
+
+                // Emit tool events after a brief delay
+                setTimeout(() => {
+                    store.emitProcessEvent('sse-tools', {
+                        type: 'tool-start',
+                        turnIndex: 0,
+                        toolCallId: 'call_abc',
+                        toolName: 'view',
+                        parameters: { path: '/src/app.ts' },
+                    });
+                    store.emitProcessEvent('sse-tools', {
+                        type: 'tool-complete',
+                        turnIndex: 0,
+                        toolCallId: 'call_abc',
+                        result: 'File contents here',
+                    });
+                    store.emitProcessEvent('sse-tools', {
+                        type: 'tool-start',
+                        turnIndex: 0,
+                        toolCallId: 'call_def',
+                        toolName: 'edit',
+                        parameters: { path: '/src/app.ts' },
+                    });
+                    store.emitProcessEvent('sse-tools', {
+                        type: 'tool-failed',
+                        turnIndex: 0,
+                        toolCallId: 'call_def',
+                        error: 'Permission denied',
+                    });
+                    store.emitProcessEvent('sse-tools', {
+                        type: 'permission-request',
+                        turnIndex: 1,
+                        permissionId: 'perm_xyz',
+                        kind: 'write',
+                        description: 'Write to /src/app.ts',
+                    });
+                    store.emitProcessOutput('sse-tools', 'Done.');
+                    store.emitProcessComplete('sse-tools', 'completed', '2s');
+                }, 100);
+            });
+
+            // Verify tool events arrived
+            const toolStarts = events.filter(e => e.event === 'tool-start');
+            expect(toolStarts).toHaveLength(2);
+            expect((toolStarts[0].data as any).toolName).toBe('view');
+            expect((toolStarts[0].data as any).toolCallId).toBe('call_abc');
+            expect((toolStarts[0].data as any).turnIndex).toBe(0);
+            expect((toolStarts[0].data as any).parameters).toEqual({ path: '/src/app.ts' });
+
+            const toolCompletes = events.filter(e => e.event === 'tool-complete');
+            expect(toolCompletes).toHaveLength(1);
+            expect((toolCompletes[0].data as any).result).toBe('File contents here');
+
+            const toolFails = events.filter(e => e.event === 'tool-failed');
+            expect(toolFails).toHaveLength(1);
+            expect((toolFails[0].data as any).error).toBe('Permission denied');
+
+            const permReqs = events.filter(e => e.event === 'permission-request');
+            expect(permReqs).toHaveLength(1);
+            expect((permReqs[0].data as any).kind).toBe('write');
+            expect((permReqs[0].data as any).permissionId).toBe('perm_xyz');
+            expect((permReqs[0].data as any).description).toBe('Write to /src/app.ts');
+
+            // Verify ordering: tool events before done
+            const doneIdx = events.findIndex(e => e.event === 'done');
+            const lastToolIdx = Math.max(
+                ...events.map((e, i) => ['tool-start', 'tool-complete', 'tool-failed', 'permission-request'].includes(e.event) ? i : -1)
+            );
+            expect(lastToolIdx).toBeLessThan(doneIdx);
+
+            // Chunks still work
+            const chunks = events.filter(e => e.event === 'chunk');
+            expect(chunks).toHaveLength(1);
+            expect((chunks[0].data as any).content).toBe('Done.');
+
+            await store.removeProcess('sse-tools');
+        });
     });
 
     // ------------------------------------------------------------------

@@ -103,6 +103,10 @@ function createStubStore(): ProcessStore {
             emitter.emit('output', { type: 'complete', status, duration });
             emitters.delete(id);
         },
+        emitProcessEvent: (id, event) => {
+            const emitter = getOrCreateEmitter(id);
+            emitter.emit('output', event);
+        },
     };
 
     // Expose onProcessChange setter via defineProperty

@@ -456,6 +456,15 @@ export class FileProcessStore implements ProcessStore {
         this.emitters.delete(id);
     }
 
+    emitProcessEvent(id: string, event: ProcessOutputEvent): void {
+        let emitter = this.emitters.get(id);
+        if (!emitter) {
+            emitter = new EventEmitter();
+            this.emitters.set(id, emitter);
+        }
+        emitter.emit('output', event);
+    }
+
     // --- Internal helpers: index + per-process files ---
 
     private sanitizeId(id: string): string {

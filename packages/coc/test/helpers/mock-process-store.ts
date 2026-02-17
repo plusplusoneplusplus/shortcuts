@@ -99,6 +99,7 @@ export function createMockProcessStore(options?: MockProcessStoreOptions): MockP
         emitProcessComplete: vi.fn((id: string, status: string, duration: string) => {
             completions.set(id, { status, duration });
         }),
+        emitProcessEvent: vi.fn((_id: string, _event: any) => {}),
     } as MockProcessStore;
 }
 
