@@ -11,6 +11,24 @@ import { Task, TaskDocument, TaskDocumentGroup, TaskFolder } from './types';
 const archiveFolderName = 'archive';
 
 /**
+ * Set of common context/documentation files to exclude from task scanning.
+ * These are not actual task files and should not be counted or queued.
+ */
+const CONTEXT_FILES = new Set([
+    'readme', 'readme.md', 'claude.md', 'license', 'license.md',
+    'changelog.md', 'contributing.md', 'code_of_conduct.md', 'security.md',
+    'index', 'index.md', 'context', 'context.md',
+    '.gitignore', '.gitattributes'
+]);
+
+/**
+ * Check if a filename is a context/documentation file that should be excluded from task scanning.
+ */
+export function isContextFile(fileName: string): boolean {
+    return CONTEXT_FILES.has(fileName.toLowerCase());
+}
+
+/**
  * Recursively walk a directory and return flat Task[] for each .md file found.
  * Skips the 'archive' folder when isArchived is false.
  */
@@ -37,7 +55,7 @@ export function scanTasksRecursively(dirPath: string, relativePath: string, isAr
             const subRelativePath = relativePath ? path.join(relativePath, item) : item;
             const subTasks = scanTasksRecursively(itemPath, subRelativePath, isArchived);
             tasks.push(...subTasks);
-        } else if (statsResult.data.isFile() && item.endsWith('.md')) {
+        } else if (statsResult.data.isFile() && item.endsWith('.md') && !isContextFile(item)) {
             const status = parseTaskStatus(itemPath);
             tasks.push({
                 name: path.basename(item, '.md'),
@@ -81,7 +99,7 @@ export function scanDocumentsRecursively(dirPath: string, relativePath: string, 
             const subRelativePath = relativePath ? path.join(relativePath, item) : item;
             const subDocuments = scanDocumentsRecursively(itemPath, subRelativePath, isArchived);
             documents.push(...subDocuments);
-        } else if (statsResult.data.isFile() && item.endsWith('.md')) {
+        } else if (statsResult.data.isFile() && item.endsWith('.md') && !isContextFile(item)) {
             const { baseName, docType } = parseFileName(item);
             const status = parseTaskStatus(itemPath);
             documents.push({

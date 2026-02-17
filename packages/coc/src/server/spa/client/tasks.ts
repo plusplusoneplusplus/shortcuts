@@ -12,6 +12,28 @@ import { showAIActionDropdown, hideAIActionDropdown, showFollowPromptSubmenu } f
 import { showToast } from './ai-actions';
 
 // ================================================================
+// Context File Filtering
+// ================================================================
+
+/**
+ * Set of common context/documentation files to exclude from task counting and queuing.
+ * These are not actual task files and should not be counted or queued.
+ */
+const CONTEXT_FILES = new Set([
+    'readme', 'readme.md', 'claude.md', 'license', 'license.md',
+    'changelog.md', 'contributing.md', 'code_of_conduct.md', 'security.md',
+    'index', 'index.md', 'context', 'context.md',
+    '.gitignore', '.gitattributes'
+]);
+
+/**
+ * Check if a filename is a context/documentation file that should be excluded from task operations.
+ */
+function isContextFile(fileName: string): boolean {
+    return CONTEXT_FILES.has(fileName.toLowerCase());
+}
+
+// ================================================================
 // Types
 // ================================================================
 
@@ -380,7 +402,7 @@ function collectPlanFilesInFolder(folder: TaskFolder): string[] {
     if (folder.documentGroups) {
         for (const group of folder.documentGroups) {
             for (const doc of group.documents) {
-                if (doc.docType === 'plan') {
+                if (doc.docType === 'plan' && !isContextFile(doc.fileName)) {
                     const docPath = doc.relativePath ? doc.relativePath + '/' + doc.fileName : doc.fileName;
                     paths.push(docPath);
                 }
@@ -389,7 +411,7 @@ function collectPlanFilesInFolder(folder: TaskFolder): string[] {
     }
     if (folder.singleDocuments) {
         for (const doc of folder.singleDocuments) {
-            if (doc.fileName.endsWith('.plan.md')) {
+            if (doc.fileName.endsWith('.plan.md') && !isContextFile(doc.fileName)) {
                 const docPath = doc.relativePath ? doc.relativePath + '/' + doc.fileName : doc.fileName;
                 paths.push(docPath);
             }
@@ -413,11 +435,13 @@ function collectMarkdownFilesInFolder(folder: TaskFolder): string[] {
     // Add single documents
     if (folder.singleDocuments) {
         for (const doc of folder.singleDocuments) {
-            if (doc.relativePath && !doc.isArchived) {
-                const docPath = doc.relativePath + '/' + doc.fileName;
-                files.push(docPath);
-            } else if (!doc.isArchived && doc.fileName) {
-                files.push(doc.fileName);
+            if (!isContextFile(doc.fileName)) {
+                if (doc.relativePath && !doc.isArchived) {
+                    const docPath = doc.relativePath + '/' + doc.fileName;
+                    files.push(docPath);
+                } else if (!doc.isArchived && doc.fileName) {
+                    files.push(doc.fileName);
+                }
             }
         }
     }
@@ -427,10 +451,12 @@ function collectMarkdownFilesInFolder(folder: TaskFolder): string[] {
         for (const group of folder.documentGroups) {
             if (!group.isArchived) {
                 for (const doc of group.documents) {
-                    if (doc.relativePath) {
-                        files.push(doc.relativePath + '/' + doc.fileName);
-                    } else if (doc.fileName) {
-                        files.push(doc.fileName);
+                    if (!isContextFile(doc.fileName)) {
+                        if (doc.relativePath) {
+                            files.push(doc.relativePath + '/' + doc.fileName);
+                        } else if (doc.fileName) {
+                            files.push(doc.fileName);
+                        }
                     }
                 }
             }

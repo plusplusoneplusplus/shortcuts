@@ -12,6 +12,7 @@ import {
     scanFoldersRecursively,
     groupTaskDocuments,
     buildTaskFolderHierarchy,
+    isContextFile,
 } from '../../src/tasks/task-scanner';
 import { TaskDocument, TaskFolder } from '../../src/tasks/types';
 
@@ -44,6 +45,47 @@ beforeEach(() => {
 
 afterEach(() => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
+});
+
+// ============================================================================
+// isContextFile
+// ============================================================================
+
+describe('isContextFile', () => {
+    it('returns true for common context files', () => {
+        expect(isContextFile('README.md')).toBe(true);
+        expect(isContextFile('CLAUDE.md')).toBe(true);
+        expect(isContextFile('LICENSE.md')).toBe(true);
+        expect(isContextFile('CHANGELOG.md')).toBe(true);
+        expect(isContextFile('CONTRIBUTING.md')).toBe(true);
+        expect(isContextFile('CODE_OF_CONDUCT.md')).toBe(true);
+        expect(isContextFile('SECURITY.md')).toBe(true);
+        expect(isContextFile('index.md')).toBe(true);
+        expect(isContextFile('context.md')).toBe(true);
+    });
+
+    it('returns true case-insensitively', () => {
+        expect(isContextFile('readme.md')).toBe(true);
+        expect(isContextFile('README.MD')).toBe(true);
+        expect(isContextFile('Claude.md')).toBe(true);
+        expect(isContextFile('INDEX.md')).toBe(true);
+    });
+
+    it('returns false for actual task files', () => {
+        expect(isContextFile('task.md')).toBe(false);
+        expect(isContextFile('feature-plan.md')).toBe(false);
+        expect(isContextFile('my-readme.md')).toBe(false);
+        expect(isContextFile('claude-analysis.md')).toBe(false);
+    });
+
+    it('returns true for .gitignore and .gitattributes', () => {
+        expect(isContextFile('.gitignore')).toBe(true);
+        expect(isContextFile('.gitattributes')).toBe(true);
+    });
+
+    it('returns false for empty string', () => {
+        expect(isContextFile('')).toBe(false);
+    });
 });
 
 // ============================================================================
@@ -143,6 +185,42 @@ describe('scanTasksRecursively', () => {
         const result = scanTasksRecursively(tmpDir, '', false);
         expect(result[0].relativePath).toBeUndefined();
     });
+
+    it('excludes context files (README.md, CLAUDE.md, etc.)', () => {
+        createMd('task.md');
+        createMd('README.md');
+        createMd('CLAUDE.md');
+        createMd('LICENSE.md');
+        createMd('CHANGELOG.md');
+        createMd('index.md');
+        createMd('context.md');
+
+        const result = scanTasksRecursively(tmpDir, '', false);
+        expect(result).toHaveLength(1);
+        expect(result[0].name).toBe('task');
+    });
+
+    it('excludes context files case-insensitively', () => {
+        createMd('task.md');
+        createMd('readme.md');
+        createMd('README.MD');
+        createMd('Claude.md');
+
+        const result = scanTasksRecursively(tmpDir, '', false);
+        expect(result).toHaveLength(1);
+        expect(result[0].name).toBe('task');
+    });
+
+    it('excludes context files in nested directories', () => {
+        createMd('task.md', 'feature1');
+        createMd('README.md', 'feature1');
+        createMd('actual-task.md', path.join('feature1', 'sub'));
+        createMd('CLAUDE.md', path.join('feature1', 'sub'));
+
+        const result = scanTasksRecursively(tmpDir, '', false);
+        expect(result).toHaveLength(2);
+        expect(result.map(t => t.name).sort()).toEqual(['actual-task', 'task']);
+    });
 });
 
 // ============================================================================
@@ -226,6 +304,39 @@ describe('scanDocumentsRecursively', () => {
 
         expect(a.relativePath).toBe('feature1');
         expect(b.relativePath).toBe(path.join('feature1', 'backlog'));
+    });
+
+    it('excludes context files (README.md, CLAUDE.md, etc.)', () => {
+        createMd('task.plan.md');
+        createMd('README.md');
+        createMd('CLAUDE.md');
+        createMd('LICENSE.md');
+        createMd('index.md');
+
+        const result = scanDocumentsRecursively(tmpDir, '', false);
+        expect(result).toHaveLength(1);
+        expect(result[0].fileName).toBe('task.plan.md');
+    });
+
+    it('excludes context files case-insensitively', () => {
+        createMd('task.md');
+        createMd('readme.md');
+        createMd('Claude.md');
+
+        const result = scanDocumentsRecursively(tmpDir, '', false);
+        expect(result).toHaveLength(1);
+        expect(result[0].fileName).toBe('task.md');
+    });
+
+    it('excludes context files in nested directories', () => {
+        createMd('task.md', 'feature1');
+        createMd('README.md', 'feature1');
+        createMd('actual-task.spec.md', path.join('feature1', 'sub'));
+        createMd('CLAUDE.md', path.join('feature1', 'sub'));
+
+        const result = scanDocumentsRecursively(tmpDir, '', false);
+        expect(result).toHaveLength(2);
+        expect(result.map(d => d.fileName).sort()).toEqual(['actual-task.spec.md', 'task.md']);
     });
 });
 
