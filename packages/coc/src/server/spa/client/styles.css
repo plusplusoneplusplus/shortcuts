@@ -3409,6 +3409,100 @@ html[data-theme="dark"] .tool-call-section code .bash-command {
     outline-offset: 2px;
 }
 
+/* ---- Grouped tool calls ---- */
+.tool-call-group > .tool-call-body {
+    padding: 0;
+    background: transparent;
+    gap: 0;
+    max-height: 600px;
+}
+
+.tool-call-group > .tool-call-body.collapsed {
+    max-height: 0;
+    padding: 0;
+}
+
+.tool-call-group-count {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--accent);
+    background: rgba(0, 120, 212, 0.12);
+    padding: 1px 5px;
+    border-radius: 8px;
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+}
+
+.tool-call-ranges {
+    opacity: 0.7;
+}
+
+.tool-call-group-item {
+    border-top: 1px solid var(--border-color);
+    padding: 6px 12px;
+}
+
+.tool-call-group-item:last-child {
+    border-bottom: none;
+}
+
+.tool-call-group-item-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+}
+
+.tool-call-group-item-label {
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+    font-size: 12px;
+    color: var(--text-primary);
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tool-call-group-item-header .tool-call-status {
+    font-size: 10px;
+    padding: 1px 4px;
+}
+
+.tool-call-group-item-header .tool-call-duration {
+    font-size: 10px;
+    margin-left: 0;
+}
+
+.tool-call-group-item-detail {
+    margin-top: 4px;
+}
+
+.tool-call-group-item-detail summary {
+    font-size: 11px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+    padding: 2px 0;
+}
+
+.tool-call-group-item-detail summary:hover {
+    color: var(--accent);
+}
+
+.tool-call-group-item-detail[open] > summary {
+    margin-bottom: 4px;
+}
+
+.tool-call-group-item-detail .tool-call-section {
+    margin-bottom: 8px;
+}
+
+.tool-call-group-item-detail .tool-call-section pre {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
 /* ---- Global Admin Overlay ---- */
 .admin-overlay {
     position: fixed;

@@ -11,7 +11,7 @@ import {
 } from './utils';
 import { navigateToProcess, setHashSilent, fetchApi } from './core';
 import { getCachedConversation, cacheConversation, invalidateConversationCache } from './sidebar';
-import { renderToolCallHTML, attachToolCallToggleHandlers, normalizeToolCall, renderToolCall, updateToolCallStatus } from './tool-renderer';
+import { renderToolCallHTML, renderToolCallsHTML, attachToolCallToggleHandlers, normalizeToolCall, renderToolCall, updateToolCallStatus } from './tool-renderer';
 
 export function renderDetail(id: string): void {
     // Queue processes (ID starts with 'queue_') should use the queue task conversation view
@@ -378,12 +378,10 @@ function renderChatMessage(turn: ClientConversationTurn): string {
     // Content
     html += '<div class="chat-message-content">' + renderMarkdown(turn.content || '') + '</div>';
 
-    // Tool calls (assistant only)
+    // Tool calls (assistant only) — consecutive same-tool+file calls grouped
     if (!isUser && turn.toolCalls && turn.toolCalls.length > 0) {
         html += '<div class="tool-calls-container">';
-        for (let i = 0; i < turn.toolCalls.length; i++) {
-            html += renderToolCallHTML(turn.toolCalls[i]);
-        }
+        html += renderToolCallsHTML(turn.toolCalls);
         html += '</div>';
     }
 

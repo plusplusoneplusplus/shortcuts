@@ -203,6 +203,132 @@ function getToolSummary(toolName: string, args: any): string {
     }
 }
 
+/* ── Grouping ─────────────────────────────────────────────── */
+
+/** Tools eligible for grouping when they target the same file. */
+const GROUPABLE_TOOLS = new Set(['view', 'grep', 'edit']);
+
+/**
+ * Return a grouping key for consecutive tool calls.
+ * Calls with the same key are collapsed into one group card.
+ * Returns empty string for non-groupable tools.
+ */
+function getToolGroupKey(tc: ClientToolCall): string {
+    if (!GROUPABLE_TOOLS.has(tc.toolName)) return '';
+    const args = tc.args;
+    if (!args || typeof args !== 'object') return '';
+    const filePath = args.path || args.filePath || '';
+    if (!filePath) return '';
+    return tc.toolName + ':' + filePath;
+}
+
+/**
+ * Extract a short label for an individual item inside a group.
+ * For view: "L1-L100"; for grep: "/pattern/"; for edit: line info.
+ */
+function getGroupItemLabel(tc: ClientToolCall): string {
+    const args = tc.args;
+    if (!args) return '';
+    if (tc.toolName === 'view') {
+        if (args.view_range && Array.isArray(args.view_range) && args.view_range.length >= 2) {
+            return 'L' + args.view_range[0] + '-L' + args.view_range[1];
+        }
+        return 'full file';
+    }
+    if (tc.toolName === 'grep') {
+        return args.pattern ? '/' + args.pattern + '/' : '';
+    }
+    if (tc.toolName === 'edit') {
+        if (args.old_str || args.old_string) {
+            const snippet = String(args.old_str || args.old_string).trim();
+            return snippet.length > 40 ? snippet.slice(0, 37) + '...' : snippet;
+        }
+        return '';
+    }
+    return '';
+}
+
+/** Render a grouped tool call card containing multiple sub-items. */
+function renderGroupHTML(calls: ClientToolCall[]): string {
+    const first = calls[0];
+    const icon = TOOL_ICONS[first.toolName] || DEFAULT_TOOL_ICON;
+    const filePath = first.args?.path || first.args?.filePath || '';
+    const shortPath = shortenPath(filePath);
+
+    // Aggregate status: running if any running, failed if any failed, else completed
+    let groupStatus = 'completed';
+    for (const c of calls) {
+        if (c.status === 'running') { groupStatus = 'running'; break; }
+        if (c.status === 'failed') groupStatus = 'failed';
+    }
+    const sIcon = STATUS_ICONS[groupStatus] || '';
+
+    // Total duration: first start to last end
+    let totalDuration = '';
+    const starts = calls.filter(c => c.startTime).map(c => new Date(c.startTime!).getTime());
+    const ends = calls.filter(c => c.endTime).map(c => new Date(c.endTime!).getTime());
+    if (starts.length > 0) {
+        const start = Math.min(...starts);
+        const end = ends.length > 0 ? Math.max(...ends) : Date.now();
+        const ms = end - start;
+        totalDuration = ms < 1000 ? ms + 'ms' : (ms / 1000).toFixed(1) + 's';
+    }
+
+    // Build sub-item labels
+    const labels: string[] = [];
+    for (const c of calls) {
+        labels.push(getGroupItemLabel(c));
+    }
+    const rangesSummary = labels.filter(Boolean).join(', ');
+
+    let html = '<div class="tool-call-card tool-call-group" data-status="' + groupStatus + '">';
+
+    // Group header
+    html += '<div class="tool-call-header">';
+    html += '<span class="tool-call-icon">' + icon + '</span>';
+    html += '<span class="tool-call-name">' + escapeHtmlClient(first.toolName) + '</span>';
+    html += '<span class="tool-call-group-count">' + calls.length + '\u00D7</span>';
+    html += '<span class="tool-call-summary">' + escapeHtmlClient(shortPath);
+    if (rangesSummary) {
+        html += ' <span class="tool-call-ranges">' + escapeHtmlClient(rangesSummary) + '</span>';
+    }
+    html += '</span>';
+    html += '<span class="tool-call-status ' + groupStatus + '">' + sIcon + ' ' + groupStatus + '</span>';
+    if (totalDuration) {
+        html += '<span class="tool-call-duration">' + totalDuration + '</span>';
+    }
+    html += '<button class="tool-call-toggle" aria-label="Expand tool details">\u25BC</button>';
+    html += '</div>';
+
+    // Group body: individual cards inside
+    html += '<div class="tool-call-body collapsed">';
+    for (const c of calls) {
+        const label = getGroupItemLabel(c);
+        const dur = formatToolDuration(c.startTime, c.endTime);
+        const si = STATUS_ICONS[c.status] || '';
+
+        html += '<div class="tool-call-group-item" data-tool-id="' + escapeHtmlClient(c.id) + '">';
+        html += '<div class="tool-call-group-item-header">';
+        html += '<span class="tool-call-group-item-label">' + escapeHtmlClient(label || first.toolName) + '</span>';
+        html += '<span class="tool-call-status ' + c.status + '">' + si + '</span>';
+        if (dur) html += '<span class="tool-call-duration">' + dur + '</span>';
+        html += '</div>';
+
+        // Expandable detail for each sub-item
+        html += '<details class="tool-call-group-item-detail">';
+        html += '<summary>Details</summary>';
+        html += buildArgsHTML(c.args);
+        html += buildResultHTML(c.result, c.toolName);
+        html += '</details>';
+
+        html += '</div>';
+    }
+    html += '</div>';
+
+    html += '</div>';
+    return html;
+}
+
 /* ── Public API ────────────────────────────────────────────── */
 
 /**
@@ -259,6 +385,49 @@ export function renderToolCallHTML(toolCall: ClientToolCall | any): string {
     html += '</div>';
 
     html += '</div>';
+    return html;
+}
+
+/**
+ * Render an array of tool calls with grouping support.
+ * Consecutive calls of the same type targeting the same file are collapsed
+ * into a single group card. Non-groupable or singleton calls render normally.
+ */
+export function renderToolCallsHTML(toolCalls: Array<ClientToolCall | any>): string {
+    if (!toolCalls || toolCalls.length === 0) return '';
+
+    const normalized = toolCalls.map(normalizeToolCall);
+    let html = '';
+    let i = 0;
+
+    while (i < normalized.length) {
+        const tc = normalized[i];
+        const key = getToolGroupKey(tc);
+
+        if (!key) {
+            // Non-groupable: render individually
+            html += renderToolCallHTML(tc);
+            i++;
+            continue;
+        }
+
+        // Collect consecutive calls with the same group key
+        const group: ClientToolCall[] = [tc];
+        let j = i + 1;
+        while (j < normalized.length && getToolGroupKey(normalized[j]) === key) {
+            group.push(normalized[j]);
+            j++;
+        }
+
+        if (group.length === 1) {
+            // Only one in the group — render normally
+            html += renderToolCallHTML(tc);
+        } else {
+            html += renderGroupHTML(group);
+        }
+        i = j;
+    }
+
     return html;
 }
 
