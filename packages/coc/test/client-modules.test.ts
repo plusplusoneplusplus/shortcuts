@@ -298,16 +298,8 @@ describe('client/sidebar.ts', () => {
         expect(content).toContain("from './state'");
     });
 
-    it('imports from config', () => {
-        expect(content).toContain("from './config'");
-    });
-
     it('imports from utils', () => {
         expect(content).toContain("from './utils'");
-    });
-
-    it('imports from core', () => {
-        expect(content).toContain("from './core'");
     });
 
     it('imports from detail', () => {
@@ -326,8 +318,9 @@ describe('client/sidebar.ts', () => {
         expect(content).toContain('export function updateActiveItem');
     });
 
-    it('uses getApiBase() for clear completed', () => {
-        expect(content).toContain('getApiBase()');
+    it('delegates renderProcessList to renderQueuePanel via lazy import', () => {
+        expect(content).toContain("import('./queue')");
+        expect(content).toContain('renderQueuePanel');
     });
 });
 
@@ -529,10 +522,6 @@ describe('client/websocket.ts', () => {
 
     it('imports from core', () => {
         expect(content).toContain("from './core'");
-    });
-
-    it('imports from sidebar', () => {
-        expect(content).toContain("from './sidebar'");
     });
 
     it('imports from detail', () => {

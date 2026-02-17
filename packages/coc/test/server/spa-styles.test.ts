@@ -246,13 +246,9 @@ describe('SPA styles — history view', () => {
     let html: string;
     beforeAll(() => { html = generateDashboardHtml(); });
 
-    it('defines view mode toggle styles', () => {
-        expect(html).toContain('.view-mode-toggle');
-        expect(html).toContain('.view-mode-btn');
-    });
-
-    it('defines active state for view mode button', () => {
-        expect(html).toContain('.view-mode-btn.active');
+    it('defines queue history section styles', () => {
+        expect(html).toContain('.queue-history-toggle');
+        expect(html).toContain('.queue-history-task');
     });
 
     it('defines history item compact styles', () => {

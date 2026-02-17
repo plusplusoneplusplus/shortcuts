@@ -83,10 +83,6 @@ ${bundleCss}
     <div class="app-layout hidden" id="view-processes">
         <aside class="sidebar" id="sidebar">
             <div class="filter-bar">
-                <div class="view-mode-toggle">
-                    <button id="view-mode-active" class="view-mode-btn active" title="Show running and queued processes">Active</button>
-                    <button id="view-mode-history" class="view-mode-btn" title="Show completed, failed, and cancelled processes">History</button>
-                </div>
                 <input type="text" id="search-input" placeholder="Search processes..." />
                 <select id="status-filter">
                     <option value="__all">All Statuses</option>
@@ -96,29 +92,8 @@ ${bundleCss}
                     <option value="failed">&#10060; Failed</option>
                     <option value="cancelled">&#128683; Cancelled</option>
                 </select>
-                <select id="type-filter">
-                    <option value="__all">All Types</option>
-                    <option value="code-review">Code Review</option>
-                    <option value="code-review-group">CR Group</option>
-                    <option value="pipeline-execution">Pipeline</option>
-                    <option value="pipeline-item">Pipeline Item</option>
-                    <option value="clarification">Clarification</option>
-                    <option value="discovery">Discovery</option>
-                </select>
             </div>
             <div id="queue-panel" class="queue-panel"></div>
-            <nav id="process-list" class="process-list">
-                <div class="empty-state" id="empty-state">
-                    <div class="empty-state-icon">&#128203;</div>
-                    <div class="empty-state-title">No processes yet</div>
-                    <div class="empty-state-text">
-                        AI processes will appear here when started via the CLI or VS Code extension.
-                    </div>
-                </div>
-            </nav>
-            <div class="sidebar-footer">
-                <button id="clear-completed" class="sidebar-btn">Clear &#9989;&#10060;</button>
-            </div>
         </aside>
 
         <main class="detail-panel" id="detail-panel">

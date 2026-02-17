@@ -5,7 +5,6 @@
 import { getWsPath, getApiBase } from './config';
 import { appState, queueState, taskPanelState } from './state';
 import { fetchApi } from './core';
-import { renderProcessList } from './sidebar';
 import { renderDetail, clearDetail } from './detail';
 import { renderQueuePanel, startQueuePolling, stopQueuePolling } from './queue';
 import { fetchRepoTasks } from './tasks';
@@ -66,7 +65,7 @@ export function handleWsMessage(msg: any): void {
         const existing = appState.processes.find(function(p: any) { return p.id === msg.process.id; });
         if (!existing) {
             appState.processes.push(msg.process);
-            renderProcessList();
+            renderQueuePanel();
         }
         scheduleReposRefresh();
     } else if (msg.type === 'process-updated' && msg.process) {
@@ -82,7 +81,7 @@ export function handleWsMessage(msg: any): void {
                     prev[key] = msg.process[key];
                 }
             }
-            renderProcessList();
+            renderQueuePanel();
             if (appState.selectedId === msg.process.id) {
                 renderDetail(msg.process.id);
             }
@@ -96,7 +95,7 @@ export function handleWsMessage(msg: any): void {
             appState.selectedId = null;
             clearDetail();
         }
-        renderProcessList();
+        renderQueuePanel();
         scheduleReposRefresh();
     } else if (msg.type === 'processes-cleared') {
         appState.processes = appState.processes.filter(function(p: any) {
@@ -109,7 +108,7 @@ export function handleWsMessage(msg: any): void {
                 clearDetail();
             }
         }
-        renderProcessList();
+        renderQueuePanel();
     } else if (msg.type === 'queue-updated' && msg.queue) {
         const prevCompleted = queueState.stats ? (queueState.stats.completed || 0) : 0;
         const prevFailed = queueState.stats ? (queueState.stats.failed || 0) : 0;

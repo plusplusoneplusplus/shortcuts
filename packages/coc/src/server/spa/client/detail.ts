@@ -20,11 +20,7 @@ export function renderDetail(id: string): void {
         return;
     }
 
-    // Look up in both active processes and history
     let process = appState.processes.find(function(p: any) { return p.id === id; });
-    if (!process) {
-        process = appState.historyProcesses.find(function(p: any) { return p.id === id; });
-    }
     if (!process) {
         // Not found locally — try fetching from API
         fetchProcessAndRender(id);

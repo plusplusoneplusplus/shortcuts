@@ -33,7 +33,6 @@ describe('client bundle (getDashboardScript replacement)', () => {
     it('contains core state and init', () => {
         expect(script).toContain('appState');
         expect(script).toContain('init');
-        expect(script).toContain('getFilteredProcesses');
         expect(script).toContain('fetchApi');
     });
 
@@ -43,10 +42,9 @@ describe('client bundle (getDashboardScript replacement)', () => {
         expect(script).toContain('applyTheme');
     });
 
-    it('contains sidebar functions', () => {
+    it('contains sidebar and queue panel functions', () => {
         expect(script).toContain('renderProcessList');
-        expect(script).toContain('renderProcessItem');
-        expect(script).toContain('renderChildProcesses');
+        expect(script).toContain('renderQueuePanel');
         expect(script).toContain('selectProcess');
         expect(script).toContain('startLiveTimers');
         expect(script).toContain('stopLiveTimers');

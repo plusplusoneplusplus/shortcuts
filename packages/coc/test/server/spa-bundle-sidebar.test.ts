@@ -9,7 +9,7 @@ import { getClientBundle } from './spa-test-helpers';
 // Sidebar module
 // ============================================================================
 
-describe('client bundle — sidebar module', () => {
+describe('client bundle — sidebar and queue module', () => {
     let script: string;
     beforeAll(() => { script = getClientBundle(); });
 
@@ -21,20 +21,10 @@ describe('client bundle — sidebar module', () => {
         expect(script).toContain('cancelled');
     });
 
-    it('supports group expand/collapse', () => {
-        expect(script).toContain('toggleGroup');
-        expect(script).toContain('expandedGroups');
-    });
-
-    it('handles clear completed & failed button', () => {
-        expect(script).toContain('clear-completed');
-        expect(script).toContain('/processes?status=completed,failed');
-        expect(script).toContain('DELETE');
-    });
-
-    it('filters out both completed and failed from local state after clear', () => {
-        expect(script).toContain('completed');
-        expect(script).toContain('failed');
+    it('has queue panel with In Progress and Pending sections', () => {
+        expect(script).toContain('In Progress');
+        expect(script).toContain('Pending');
+        expect(script).toContain('renderQueuePanel');
     });
 
     it('has mobile hamburger handler', () => {
@@ -43,42 +33,21 @@ describe('client bundle — sidebar module', () => {
 });
 
 // ============================================================================
-// History view module
+// Queue history module
 // ============================================================================
 
-describe('client bundle — history view', () => {
+describe('client bundle — queue history', () => {
     let script: string;
     beforeAll(() => { script = getClientBundle(); });
 
-    it('defines view mode toggle functionality', () => {
-        expect(script).toContain('switchViewMode');
-        expect(script).toContain('viewMode');
+    it('defines queue history toggle', () => {
+        expect(script).toContain('toggleQueueHistory');
+        expect(script).toContain('showHistory');
     });
 
-    it('supports active and history view modes', () => {
-        expect(script).toContain('view-mode-active');
-        expect(script).toContain('view-mode-history');
-    });
-
-    it('groups history items by date', () => {
-        expect(script).toContain('Today');
-        expect(script).toContain('Yesterday');
-        expect(script).toContain('This Week');
-        expect(script).toContain('Older');
-    });
-
-    it('fetches history with exclude=conversation for lightweight payloads', () => {
-        expect(script).toContain('exclude=conversation');
-    });
-
-    it('renders history items in compact format', () => {
-        expect(script).toContain('history-item');
-        expect(script).toContain('history-status-icon');
-    });
-
-    it('supports load more for pagination', () => {
-        expect(script).toContain('Load More');
-        expect(script).toContain('loadMoreHistory');
+    it('renders queue history section with completed/failed tasks', () => {
+        expect(script).toContain('queue-history-task');
+        expect(script).toContain('queue-history-toggle');
     });
 
     it('caches conversations with TTL and max entries', () => {
@@ -87,23 +56,9 @@ describe('client bundle — history view', () => {
         expect(script).toContain('getCachedConversation');
     });
 
-    it('shows loading spinner for lazy conversation loading', () => {
-        expect(script).toContain('Loading conversation');
-        expect(script).toContain('history-loading');
-    });
-
-    it('stores history processes separately', () => {
-        expect(script).toContain('historyProcesses');
-        expect(script).toContain('historyTotal');
-        expect(script).toContain('historyLoaded');
-    });
-
-    it('fetches history processes on first mode switch', () => {
-        expect(script).toContain('fetchHistoryProcesses');
-    });
-
-    it('resets history when workspace changes', () => {
-        expect(script).toContain('historyLoaded');
+    it('supports queue clear history', () => {
+        expect(script).toContain('queueClearHistory');
+        expect(script).toContain('/queue/history');
     });
 });
 
@@ -128,11 +83,6 @@ describe('client bundle — filters module', () => {
     it('handles status filter', () => {
         expect(script).toContain('status-filter');
         expect(script).toContain('statusFilter');
-    });
-
-    it('handles type filter', () => {
-        expect(script).toContain('type-filter');
-        expect(script).toContain('typeFilter');
     });
 
     it('handles workspace filter with API call', () => {

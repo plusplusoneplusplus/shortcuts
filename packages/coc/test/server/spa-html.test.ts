@@ -121,21 +121,12 @@ describe('generateDashboardHtml', () => {
         expect(html).toContain('coming soon');
     });
 
-    it('contains sidebar with filter bar', () => {
+    it('contains sidebar with filter bar and queue panel', () => {
         const html = generateDashboardHtml();
         expect(html).toContain('id="sidebar"');
         expect(html).toContain('id="search-input"');
         expect(html).toContain('id="status-filter"');
-        expect(html).toContain('id="type-filter"');
-    });
-
-    it('contains view mode toggle buttons for Active/History', () => {
-        const html = generateDashboardHtml();
-        expect(html).toContain('id="view-mode-active"');
-        expect(html).toContain('id="view-mode-history"');
-        expect(html).toContain('class="view-mode-toggle"');
-        expect(html).toContain('>Active<');
-        expect(html).toContain('>History<');
+        expect(html).toContain('id="queue-panel"');
     });
 
     it('contains status filter options', () => {
@@ -148,31 +139,12 @@ describe('generateDashboardHtml', () => {
         expect(html).toContain('Cancelled');
     });
 
-    it('contains type filter options', () => {
-        const html = generateDashboardHtml();
-        expect(html).toContain('All Types');
-        expect(html).toContain('Code Review');
-        expect(html).toContain('Pipeline');
-    });
-
-    it('contains process list and empty state', () => {
-        const html = generateDashboardHtml();
-        expect(html).toContain('id="process-list"');
-        expect(html).toContain('id="empty-state"');
-        expect(html).toContain('No processes yet');
-    });
-
     it('contains detail panel', () => {
         const html = generateDashboardHtml();
         expect(html).toContain('id="detail-panel"');
         expect(html).toContain('id="detail-empty"');
         expect(html).toContain('id="detail-content"');
         expect(html).toContain('Select a process to view details');
-    });
-
-    it('contains clear completed button', () => {
-        const html = generateDashboardHtml();
-        expect(html).toContain('id="clear-completed"');
     });
 
     it('contains hamburger button for mobile', () => {

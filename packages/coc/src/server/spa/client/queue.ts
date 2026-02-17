@@ -1,12 +1,17 @@
 /**
- * Queue panel script: queue task rendering, controls, enqueue dialog.
+ * Queue panel script: unified sidebar rendering (queue + legacy processes),
+ * queue task rendering, controls, enqueue dialog.
  */
 
 import { getApiBase } from './config';
-import { queueState } from './state';
+import { appState, queueState } from './state';
 import { fetchApi } from './core';
-import { formatDuration, formatRelativeTime, escapeHtmlClient } from './utils';
+import {
+    formatDuration, formatRelativeTime, escapeHtmlClient,
+    statusIcon, typeLabel,
+} from './utils';
 import { showQueueTaskDetail } from './detail';
+import { selectProcess, startLiveTimers, stopLiveTimers } from './sidebar';
 import { saveModelPreference } from './preferences';
 
 export async function fetchQueue(): Promise<void> {
@@ -45,12 +50,102 @@ export async function fetchQueue(): Promise<void> {
     } catch(e) {}
 }
 
+/**
+ * Collect legacy (non-queue) processes from appState, filtered by workspace/status/search.
+ * Returns processes grouped by status category for the unified sidebar.
+ */
+function getLegacyProcesses(): { running: any[]; pending: any[]; history: any[] } {
+    const running: any[] = [];
+    const pending: any[] = [];
+    const history: any[] = [];
+
+    appState.processes.forEach(function(p: any) {
+        // Skip queue-managed processes (they're already in queueState)
+        if (p.id && p.id.startsWith('queue_')) return;
+        // Skip child processes
+        if (p.parentProcessId) return;
+        // Apply workspace filter
+        if (appState.workspace !== '__all' && p.workspaceId !== appState.workspace) return;
+        // Apply status filter
+        if (appState.statusFilter !== '__all' && p.status !== appState.statusFilter) return;
+        // Apply search query
+        if (appState.searchQuery) {
+            const q = appState.searchQuery.toLowerCase();
+            const title = (p.promptPreview || p.id || '').toLowerCase();
+            if (title.indexOf(q) === -1) return;
+        }
+
+        if (p.status === 'running') {
+            running.push(p);
+        } else if (p.status === 'queued') {
+            pending.push(p);
+        } else {
+            history.push(p);
+        }
+    });
+
+    return { running, pending, history };
+}
+
+/**
+ * Render a legacy process item in the queue panel style.
+ */
+function renderLegacyProcessItem(p: any): string {
+    let title = p.promptPreview || p.id || 'Untitled';
+    if (title.length > 35) title = title.substring(0, 35) + '...';
+
+    const statusIcn = p.status === 'running' ? '\u{1F504}'
+        : p.status === 'completed' ? '\u2705'
+        : p.status === 'failed' ? '\u274C'
+        : p.status === 'cancelled' ? '\u{1F6AB}'
+        : '\u23F3';
+
+    let elapsed = '';
+    if (p.status === 'running' && p.startTime) {
+        elapsed = formatDuration(Date.now() - new Date(p.startTime).getTime());
+    } else if (p.startTime) {
+        elapsed = formatRelativeTime(p.startTime);
+    }
+
+    // Workspace color dot
+    const wsId = p.workspaceId || (p.metadata && p.metadata.workspaceId) || '';
+    const ws = wsId ? appState.workspaces.find(function(w: any) { return w.id === wsId; }) : null;
+    const wsColor = ws && ws.color ? ws.color : '';
+    const wsColorHtml = wsColor
+        ? '<span class="repo-color-dot" style="background:' + escapeHtmlClient(wsColor) + ';width:6px;height:6px;display:inline-block;border-radius:50%;flex-shrink:0"></span>'
+        : '';
+
+    const isHistory = p.status === 'completed' || p.status === 'failed' || p.status === 'cancelled';
+    const historyClass = isHistory ? ' queue-history-task' : '';
+
+    let html = '<div class="queue-task legacy-process' + historyClass + ' ' + (p.status || 'queued') + '" data-process-id="' + escapeHtmlClient(p.id) + '"' +
+        ' onclick="navigateToProcess(\'' + escapeHtmlClient(p.id) + '\')" style="cursor:pointer">' +
+        '<div class="queue-task-row">' +
+            '<span class="queue-task-status">' + statusIcn + '</span>' +
+            wsColorHtml +
+            '<span class="queue-task-name">' + escapeHtmlClient(title) + '</span>' +
+            '<span class="queue-task-time" data-timer-id="' + escapeHtmlClient(p.id) + '">' + elapsed + '</span>' +
+        '</div>';
+
+    if (p.error && isHistory) {
+        html += '<div class="queue-task-error">' + escapeHtmlClient(p.error.length > 80 ? p.error.substring(0, 77) + '...' : p.error) + '</div>';
+    }
+
+    html += '</div>';
+    return html;
+}
+
 export function renderQueuePanel(): void {
     const panel = document.getElementById('queue-panel');
     if (!panel) return;
 
+    stopLiveTimers();
+
     const stats = queueState.stats;
     const totalActive = stats.queued + stats.running;
+
+    // Collect legacy processes
+    const legacy = getLegacyProcesses();
 
     // Drain banner (server shutting down)
     let html = '';
@@ -67,10 +162,14 @@ export function renderQueuePanel(): void {
     }
 
     // Queue header with count and controls
+    const totalInProgress = queueState.running.length + legacy.running.length;
+    const totalPending = queueState.queued.length + legacy.pending.length;
+    const totalActiveUnified = totalInProgress + totalPending;
+
     html += '<div class="queue-header">' +
         '<div class="queue-header-left">' +
             '<span class="queue-title">Queue</span>' +
-            (totalActive > 0 ? ' <span class="queue-count">' + totalActive + '</span>' : '') +
+            (totalActiveUnified > 0 ? ' <span class="queue-count">' + totalActiveUnified + '</span>' : '') +
             (stats.isPaused ? ' <span class="queue-paused-badge">Paused</span>' : '') +
         '</div>' +
         '<div class="queue-header-right">' +
@@ -82,48 +181,60 @@ export function renderQueuePanel(): void {
         '</div>' +
     '</div>';
 
-    // Running tasks
-    if (queueState.running.length > 0) {
-        html += '<div class="queue-section-label">Running <span class="queue-section-count">' + queueState.running.length + '</span>' +
-            '<button class="queue-action-btn queue-action-danger queue-history-clear" onclick="event.stopPropagation(); queueForceFailAll()" title="Force-fail all running (stale) tasks">&#9888;</button>' +
+    // In Progress section (running queue tasks + running legacy processes)
+    if (totalInProgress > 0) {
+        html += '<div class="queue-section-label">In Progress <span class="queue-section-count">' + totalInProgress + '</span>' +
+            (queueState.running.length > 0 ? '<button class="queue-action-btn queue-action-danger queue-history-clear" onclick="event.stopPropagation(); queueForceFailAll()" title="Force-fail all running (stale) tasks">&#9888;</button>' : '') +
         '</div>';
         queueState.running.forEach(function(task: any) {
             html += renderQueueTask(task, false);
         });
+        legacy.running.forEach(function(p: any) {
+            html += renderLegacyProcessItem(p);
+        });
     }
 
-    // Queued tasks
-    if (queueState.queued.length > 0) {
-        html += '<div class="queue-section-label">Waiting <span class="queue-section-count">' + queueState.queued.length + '</span></div>';
+    // Pending section (queued queue tasks + queued legacy processes)
+    if (totalPending > 0) {
+        html += '<div class="queue-section-label">Pending <span class="queue-section-count">' + totalPending + '</span></div>';
         queueState.queued.forEach(function(task: any, index: number) {
             html += renderQueueTask(task, true, index);
+        });
+        legacy.pending.forEach(function(p: any) {
+            html += renderLegacyProcessItem(p);
         });
     }
 
     // Empty state
-    if (totalActive === 0) {
+    if (totalInProgress === 0 && totalPending === 0 && totalActive === 0) {
         html += '<div class="queue-empty">' +
             '<div class="queue-empty-text">No tasks in queue</div>' +
             '<button class="queue-add-btn" onclick="showEnqueueDialog()">+ Add Task</button>' +
         '</div>';
     }
 
-    // History section (completed/failed/cancelled)
-    if (queueState.history.length > 0) {
-        const historyCount = queueState.history.length;
+    // History section (completed/failed/cancelled queue tasks + legacy history)
+    const allHistoryCount = queueState.history.length + legacy.history.length;
+    if (allHistoryCount > 0) {
         html += '<div class="queue-section-label queue-history-toggle" onclick="toggleQueueHistory()">' +
             (queueState.showHistory ? '&#9660;' : '&#9654;') +
-            ' History <span class="queue-section-count">' + historyCount + '</span>' +
+            ' History <span class="queue-section-count">' + allHistoryCount + '</span>' +
             '<button class="queue-action-btn queue-action-danger queue-history-clear" onclick="event.stopPropagation(); queueClearHistory()" title="Clear history">&#128465;</button>' +
         '</div>';
         if (queueState.showHistory) {
             queueState.history.forEach(function(task: any) {
                 html += renderQueueHistoryTask(task);
             });
+            legacy.history.forEach(function(p: any) {
+                html += renderLegacyProcessItem(p);
+            });
         }
     }
 
     panel.innerHTML = html;
+
+    // Restart live timers for running legacy processes
+    startLiveTimers();
 }
 
 export function renderQueueTask(task: any, isQueued: boolean, index?: number): string {

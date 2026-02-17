@@ -1,10 +1,10 @@
 /**
- * Filter script: search, status/type filter, workspace dropdown handlers.
+ * Filter script: search, status filter, workspace dropdown handlers.
  */
 
 import { appState } from './state';
 import { fetchApi } from './core';
-import { renderProcessList, fetchHistoryProcesses } from './sidebar';
+import { renderProcessList } from './sidebar';
 import { clearDetail } from './detail';
 
 export function debounce(fn: Function, ms: number): (...args: any[]) => void {
@@ -49,15 +49,6 @@ if (statusFilterEl) {
     });
 }
 
-// Type filter
-const typeFilterEl = document.getElementById('type-filter');
-if (typeFilterEl) {
-    typeFilterEl.addEventListener('change', function(e: Event) {
-        appState.typeFilter = (e.target as HTMLSelectElement).value;
-        renderProcessList();
-    });
-}
-
 // Workspace filter
 const wsSelect = document.getElementById('workspace-select');
 if (wsSelect) {
@@ -70,9 +61,6 @@ if (wsSelect) {
             } else if (data && Array.isArray(data)) {
                 appState.processes = data;
             }
-            // Reset history for new workspace
-            appState.historyLoaded = false;
-            appState.historyProcesses = [];
             appState.selectedId = null;
             clearDetail();
             renderProcessList();

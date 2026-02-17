@@ -205,36 +205,6 @@ body {
     border-bottom: 1px solid var(--border-color);
 }
 
-/* View Mode Toggle */
-.view-mode-toggle {
-    display: flex;
-    gap: 0;
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    overflow: hidden;
-}
-.view-mode-btn {
-    flex: 1;
-    padding: 5px 12px;
-    font-size: 12px;
-    font-weight: 500;
-    border: none;
-    background: var(--bg-primary);
-    color: var(--text-secondary);
-    cursor: pointer;
-    transition: background 0.15s, color 0.15s;
-}
-.view-mode-btn:first-child {
-    border-right: 1px solid var(--border-color);
-}
-.view-mode-btn:hover {
-    background: var(--hover-bg);
-}
-.view-mode-btn.active {
-    background: var(--accent);
-    color: #ffffff;
-}
-
 /* History Items */
 .history-item {
     padding: 6px 12px;
@@ -701,12 +671,10 @@ body {
     background: var(--text-secondary);
 }
 
-/* ---- Queue Panel ---- */
+/* ---- Queue Panel (unified sidebar) ---- */
 .queue-panel {
-    border-bottom: 1px solid var(--border-color);
-    max-height: 40vh;
+    flex: 1;
     overflow-y: auto;
-    flex-shrink: 0;
 }
 .queue-panel:empty {
     display: none;

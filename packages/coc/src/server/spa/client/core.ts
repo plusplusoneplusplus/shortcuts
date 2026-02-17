@@ -6,7 +6,8 @@ import { getApiBase } from './config';
 import { appState } from './state';
 import { initTheme } from './theme';
 import { populateWorkspaces } from './filters';
-import { renderProcessList, selectProcess, updateActiveItem } from './sidebar';
+import { selectProcess, updateActiveItem } from './sidebar';
+import { renderQueuePanel } from './queue';
 import { clearDetail } from './detail';
 
 export async function init(): Promise<void> {
@@ -30,7 +31,7 @@ export async function init(): Promise<void> {
         } else if (pRes && Array.isArray(pRes)) {
             appState.processes = pRes;
         }
-        renderProcessList();
+        renderQueuePanel();
 
         // Backward compat: redirect old /process/:id paths to hash route
         const pathMatch = location.pathname.match(/^\/process\/(.+)$/);
@@ -51,7 +52,6 @@ export function getFilteredProcesses(): any[] {
         if (p.parentProcessId) return false;
         if (appState.workspace !== '__all' && p.workspaceId !== appState.workspace) return false;
         if (appState.statusFilter !== '__all' && p.status !== appState.statusFilter) return false;
-        if (appState.typeFilter !== '__all' && p.type !== appState.typeFilter) return false;
         if (appState.searchQuery) {
             const q = appState.searchQuery.toLowerCase();
             const title = (p.promptPreview || p.id || '').toLowerCase();
