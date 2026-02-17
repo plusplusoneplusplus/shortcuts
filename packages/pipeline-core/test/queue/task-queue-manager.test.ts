@@ -1542,6 +1542,26 @@ describe('TaskQueueManager', () => {
             expect(repoManager.dequeue()!.displayName).toBe('A1');
             expect(repoManager.dequeue()!.displayName).toBe('A2');
         });
+
+        it('dequeue allows tasks with undefined repoId when repos are paused', () => {
+            // getTaskRepoId returns undefined for tasks without repoId
+            const undefinedRepoManager = new TaskQueueManager({
+                getTaskRepoId: (task) => (task.payload as any).repoId as string | undefined,
+            });
+
+            undefinedRepoManager.enqueue(createTestTask({ payload: { repoId: undefined } as any, displayName: 'no-repo' }));
+            undefinedRepoManager.enqueue(createTestTask({ payload: { repoId: 'repo-A' } as any, displayName: 'A1' }));
+
+            undefinedRepoManager.pauseRepo('repo-A');
+
+            // Task with undefined repoId should still be dequeued
+            const task = undefinedRepoManager.dequeue();
+            expect(task).toBeDefined();
+            expect(task!.displayName).toBe('no-repo');
+
+            // repo-A task should be skipped
+            expect(undefinedRepoManager.dequeue()).toBeUndefined();
+        });
     });
 });
 

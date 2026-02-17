@@ -390,8 +390,20 @@ export interface TaskQueueManagerOptions {
     keepHistory?: boolean;
     /** Maximum history size (default: 100) */
     maxHistorySize?: number;
-    /** Extract a repo ID from a task for per-repo pause support */
-    getTaskRepoId?: (task: QueuedTask) => string;
+    /**
+     * Optional callback to extract repository ID from a task.
+     * Required for per-repository pause/resume functionality.
+     * If not provided, queue operates in global pause mode (all tasks paused/resumed together).
+     * 
+     * @param task - The queued task to extract repo ID from
+     * @returns Repository identifier string, or undefined if task has no repo association
+     * 
+     * @example
+     * ```typescript
+     * getTaskRepoId: (task) => task.payload.repoId || task.repoId
+     * ```
+     */
+    getTaskRepoId?: (task: QueuedTask) => string | undefined;
 }
 
 /**
@@ -423,8 +435,8 @@ export interface QueueStats {
     isPaused: boolean;
     /** Whether the queue is in drain mode */
     isDraining: boolean;
-    /** Repository IDs that are currently paused */
-    pausedRepos: string[];
+    /** List of repository IDs that are currently paused (optional, for per-repo pause) */
+    pausedRepos?: string[];
 }
 
 // ============================================================================

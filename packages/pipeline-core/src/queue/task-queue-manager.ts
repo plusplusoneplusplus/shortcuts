@@ -46,7 +46,7 @@ export class TaskQueueManager extends EventEmitter {
     /** Set of paused repository IDs */
     private pausedRepos = new Set<string>();
     /** Function to extract repo ID from a task (injected) */
-    private readonly getTaskRepoId?: (task: QueuedTask) => string;
+    private readonly getTaskRepoId?: (task: QueuedTask) => string | undefined;
 
     constructor(options: TaskQueueManagerOptions = {}) {
         super();
@@ -109,7 +109,7 @@ export class TaskQueueManager extends EventEmitter {
             for (let i = 0; i < this.queue.length; i++) {
                 const task = this.queue[i];
                 const repoId = this.getTaskRepoId(task);
-                if (!this.pausedRepos.has(repoId)) {
+                if (!repoId || !this.pausedRepos.has(repoId)) {
                     this.queue.splice(i, 1);
                     return task;
                 }
