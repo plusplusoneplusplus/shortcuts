@@ -14,6 +14,7 @@ import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
 import { sendJSON, sendError, parseBody } from './api-handler';
 import type { Route } from './types';
 import { DataWiper } from './data-wiper';
+import { exportAllData } from './data-exporter';
 import type { ProcessWebSocketServer } from './websocket';
 import { getResolvedConfigWithSource, loadConfigFile, writeConfigFile, getConfigFilePath } from '../config';
 import type { CLIConfig } from '../config';
@@ -219,6 +220,29 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             }
 
             sendJSON(res, 200, result);
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // GET /api/admin/export — Download full export as JSON attachment
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'GET',
+        pattern: '/api/admin/export',
+        handler: async (_req, res) => {
+            const payload = await exportAllData({ store, dataDir });
+            const body = JSON.stringify(payload);
+
+            // Build filename with current timestamp (colons replaced for FS safety)
+            const ts = new Date().toISOString().replace(/:/g, '-').replace(/\.\d{3}Z$/, '');
+            const filename = `coc-export-${ts}.json`;
+
+            res.writeHead(200, {
+                'Content-Type': 'application/json; charset=utf-8',
+                'Content-Disposition': `attachment; filename="${filename}"`,
+                'Content-Length': Buffer.byteLength(body),
+            });
+            res.end(body);
         },
     });
 }

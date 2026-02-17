@@ -307,6 +307,77 @@ describe('Admin Handler', () => {
     });
 
     // ========================================================================
+    // GET /api/admin/export
+    // ========================================================================
+
+    describe('GET /api/admin/export', () => {
+        it('should return 200 with JSON body', async () => {
+            const srv = await startServer();
+            const res = await request(`${srv.url}/api/admin/export`);
+
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.version).toBeDefined();
+            expect(body.exportedAt).toBeDefined();
+            expect(body.metadata).toBeDefined();
+        });
+
+        it('should have Content-Disposition header with attachment and .json filename', async () => {
+            const srv = await startServer();
+            const res = await request(`${srv.url}/api/admin/export`);
+
+            expect(res.status).toBe(200);
+            const disposition = res.headers['content-disposition'];
+            expect(disposition).toBeDefined();
+            expect(disposition).toContain('attachment');
+            expect(disposition).toMatch(/filename="coc-export-.*\.json"/);
+        });
+
+        it('should return valid CoCExportPayload structure', async () => {
+            const srv = await startServer();
+            const res = await request(`${srv.url}/api/admin/export`);
+
+            const body = JSON.parse(res.body);
+            expect(typeof body.version).toBe('number');
+            expect(typeof body.exportedAt).toBe('string');
+            expect(typeof body.metadata).toBe('object');
+            expect(body.metadata.processCount).toBe(0);
+            expect(body.metadata.workspaceCount).toBe(0);
+            expect(Array.isArray(body.processes)).toBe(true);
+            expect(Array.isArray(body.workspaces)).toBe(true);
+            expect(Array.isArray(body.wikis)).toBe(true);
+            expect(Array.isArray(body.queueHistory)).toBe(true);
+            expect(typeof body.preferences).toBe('object');
+        });
+
+        it('should include seeded process in export response', async () => {
+            const srv = await startServer();
+
+            // Seed a process
+            await request(`${srv.url}/api/processes`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    id: 'export-p1',
+                    promptPreview: 'export test',
+                    fullPrompt: 'export test prompt',
+                    status: 'completed',
+                    startTime: new Date().toISOString(),
+                    type: 'clarification',
+                }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            const res = await request(`${srv.url}/api/admin/export`);
+            expect(res.status).toBe(200);
+
+            const body = JSON.parse(res.body);
+            expect(body.metadata.processCount).toBe(1);
+            expect(body.processes).toHaveLength(1);
+            expect(body.processes[0].id).toBe('export-p1');
+        });
+    });
+
+    // ========================================================================
     // GET /api/admin/config
     // ========================================================================
 
