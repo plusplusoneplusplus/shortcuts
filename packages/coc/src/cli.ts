@@ -158,6 +158,37 @@ export function createProgram(): Command {
             process.exit(exitCode);
         });
 
+    // ========================================================================
+    // coc admin wipe-data
+    // ========================================================================
+
+    const admin = program
+        .command('admin')
+        .description('Administrative commands');
+
+    admin
+        .command('wipe-data')
+        .description('Delete all runtime data (processes, workspaces, wikis, queues, preferences)')
+        .option('--confirm', 'Skip interactive confirmation', false)
+        .option('--include-wikis', 'Also delete generated wiki output directories', false)
+        .option('--dry-run', 'Preview what would be deleted without executing', false)
+        .option('-d, --data-dir <path>', 'Data directory for process storage')
+        .option('--no-color', 'Disable colored output')
+        .action(async (opts: Record<string, unknown>) => {
+            const config = resolveConfig();
+            applyGlobalOptions(opts, config);
+
+            const { executeWipeData } = await import('./commands/wipe-data');
+            const exitCode = await executeWipeData({
+                confirm: Boolean(opts.confirm),
+                includeWikis: Boolean(opts.includeWikis),
+                dryRun: Boolean(opts.dryRun),
+                dataDir: (opts.dataDir as string | undefined) ?? config.serve?.dataDir,
+                noColor: opts.color === false,
+            });
+            process.exit(exitCode);
+        });
+
     return program;
 }
 

@@ -62,6 +62,17 @@ export interface WikiInfo {
 }
 
 /**
+ * Aggregate storage statistics for admin/diagnostics.
+ */
+export interface StorageStats {
+    totalProcesses: number;
+    totalWorkspaces: number;
+    totalWikis: number;
+    /** Approximate total size of persisted data files in bytes. */
+    storageSize: number;
+}
+
+/**
  * Filter criteria for querying processes.
  * All fields are optional; omitted fields impose no constraint.
  */
@@ -120,6 +131,13 @@ export interface ProcessStore {
 
     /** Optional callback invoked on every process mutation. */
     onProcessChange?: ProcessChangeCallback;
+
+    /** Remove all workspaces. Returns count of removed items. */
+    clearAllWorkspaces(): Promise<number>;
+    /** Remove all wikis. Returns count of removed items. */
+    clearAllWikis(): Promise<number>;
+    /** Return aggregate storage statistics. */
+    getStorageStats(): Promise<StorageStats>;
 
     /** Subscribe to output events for a running process. Returns unsubscribe function. */
     onProcessOutput(id: string, callback: (event: ProcessOutputEvent) => void): () => void;

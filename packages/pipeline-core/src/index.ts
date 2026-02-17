@@ -339,7 +339,8 @@ export {
     WikiInfo,
     ProcessFilter,
     ProcessChangeCallback,
-    ProcessStore
+    ProcessStore,
+    StorageStats
 } from './process-store';
 
 export {

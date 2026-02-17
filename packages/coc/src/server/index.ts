@@ -20,6 +20,7 @@ import { registerTaskRoutes, registerTaskWriteRoutes } from './tasks-handler';
 import { registerTaskGenerationRoutes } from './task-generation-handler';
 import { registerPromptRoutes } from './prompt-handler';
 import { registerPreferencesRoutes } from './preferences-handler';
+import { registerAdminRoutes } from './admin-handler';
 import { registerWikiRoutes } from './wiki';
 import { ProcessWebSocketServer, toProcessSummary } from './websocket';
 import { generateDashboardHtml } from './spa';
@@ -83,6 +84,9 @@ function createStubStore(): ProcessStore {
         registerWiki: async () => {},
         removeWiki: async () => false,
         updateWiki: async () => undefined,
+        clearAllWorkspaces: async () => 0,
+        clearAllWikis: async () => 0,
+        getStorageStats: async () => ({ totalProcesses: 0, totalWorkspaces: 0, totalWikis: 0, storageSize: 0 }),
         onProcessOutput: (id, callback) => {
             const emitter = getOrCreateEmitter(id);
             const listener = (event: ProcessOutputEvent) => callback(event);
@@ -179,6 +183,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     registerTaskGenerationRoutes(routes, store);
     registerPromptRoutes(routes, store);
     registerPreferencesRoutes(routes, dataDir);
+    registerAdminRoutes(routes, { store, dataDir, getWsServer: () => wsServer });
 
     // Register wiki routes if enabled
     let wikiManager: import('./wiki').WikiManager | undefined;
@@ -446,3 +451,7 @@ export { discoverPromptFiles, readPromptFileContent } from './prompt-utils';
 export type { PromptFileInfo } from './prompt-utils';
 export { registerPreferencesRoutes, readPreferences, writePreferences, validatePreferences } from './preferences-handler';
 export type { UserPreferences } from './preferences-handler';
+export { registerAdminRoutes, resetWipeToken } from './admin-handler';
+export type { AdminRouteOptions } from './admin-handler';
+export { DataWiper } from './data-wiper';
+export type { WipeOptions, WipeResult } from './data-wiper';

@@ -724,3 +724,91 @@ describe('ensureDataDir', () => {
         expect(result).toBe(path.resolve(dir));
     });
 });
+
+// ============================================================================
+// clearAllWorkspaces / clearAllWikis / getStorageStats
+// ============================================================================
+
+describe('FileProcessStore - Admin Methods', () => {
+    let tmpDir: string;
+
+    beforeEach(async () => {
+        tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'fps-admin-test-'));
+    });
+
+    afterEach(async () => {
+        await fs.rm(tmpDir, { recursive: true, force: true });
+    });
+
+    // --- clearAllWorkspaces ---
+
+    it('clearAllWorkspaces should clear all workspaces and return count', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.registerWorkspace({ id: 'ws1', name: 'Workspace 1', rootPath: '/tmp/ws1' });
+        await store.registerWorkspace({ id: 'ws2', name: 'Workspace 2', rootPath: '/tmp/ws2' });
+
+        const removed = await store.clearAllWorkspaces();
+        expect(removed).toBe(2);
+
+        const remaining = await store.getWorkspaces();
+        expect(remaining).toEqual([]);
+    });
+
+    it('clearAllWorkspaces should return 0 for empty store', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        const removed = await store.clearAllWorkspaces();
+        expect(removed).toBe(0);
+    });
+
+    // --- clearAllWikis ---
+
+    it('clearAllWikis should clear all wikis and return count', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.registerWiki({
+            id: 'w1', name: 'Wiki 1', wikiDir: '/tmp/w1', aiEnabled: false, registeredAt: new Date().toISOString(),
+        });
+        await store.registerWiki({
+            id: 'w2', name: 'Wiki 2', wikiDir: '/tmp/w2', aiEnabled: true, registeredAt: new Date().toISOString(),
+        });
+
+        const removed = await store.clearAllWikis();
+        expect(removed).toBe(2);
+
+        const remaining = await store.getWikis();
+        expect(remaining).toEqual([]);
+    });
+
+    it('clearAllWikis should return 0 for empty store', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        const removed = await store.clearAllWikis();
+        expect(removed).toBe(0);
+    });
+
+    // --- getStorageStats ---
+
+    it('getStorageStats should return correct counts', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+
+        await store.addProcess(makeProcess('p1'));
+        await store.addProcess(makeProcess('p2'));
+        await store.registerWorkspace({ id: 'ws1', name: 'WS', rootPath: '/tmp/ws1' });
+        await store.registerWiki({
+            id: 'w1', name: 'Wiki', wikiDir: '/tmp/w1', aiEnabled: false, registeredAt: new Date().toISOString(),
+        });
+
+        const stats = await store.getStorageStats();
+        expect(stats.totalProcesses).toBe(2);
+        expect(stats.totalWorkspaces).toBe(1);
+        expect(stats.totalWikis).toBe(1);
+        expect(stats.storageSize).toBeGreaterThan(0);
+    });
+
+    it('getStorageStats should return zeros for empty store', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        const stats = await store.getStorageStats();
+        expect(stats.totalProcesses).toBe(0);
+        expect(stats.totalWorkspaces).toBe(0);
+        expect(stats.totalWikis).toBe(0);
+        expect(stats.storageSize).toBe(0);
+    });
+});

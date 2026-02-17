@@ -98,5 +98,25 @@ describe('CLI', () => {
             const listCmd = program.commands.find(c => c.name() === 'list')!;
             expect(listCmd).toBeDefined();
         });
+
+        it('should have admin command with wipe-data subcommand', () => {
+            const program = createProgram();
+            const adminCmd = program.commands.find(c => c.name() === 'admin');
+            expect(adminCmd).toBeDefined();
+
+            const wipeCmd = adminCmd!.commands.find(c => c.name() === 'wipe-data');
+            expect(wipeCmd).toBeDefined();
+        });
+
+        it('wipe-data command should have expected options', () => {
+            const program = createProgram();
+            const adminCmd = program.commands.find(c => c.name() === 'admin')!;
+            const wipeCmd = adminCmd.commands.find(c => c.name() === 'wipe-data')!;
+            const optionNames = wipeCmd.options.map(o => o.long || o.short);
+            expect(optionNames).toContain('--confirm');
+            expect(optionNames).toContain('--include-wikis');
+            expect(optionNames).toContain('--dry-run');
+            expect(optionNames).toContain('--data-dir');
+        });
     });
 });

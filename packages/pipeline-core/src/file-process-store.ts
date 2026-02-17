@@ -12,7 +12,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { EventEmitter } from 'events';
 
-import { ProcessStore, ProcessFilter, WorkspaceInfo, WikiInfo, ProcessChangeCallback, ProcessOutputEvent } from './process-store';
+import { ProcessStore, ProcessFilter, WorkspaceInfo, WikiInfo, ProcessChangeCallback, ProcessOutputEvent, StorageStats } from './process-store';
 import {
     AIProcess,
     AIProcessStatus,
@@ -304,6 +304,57 @@ export class FileProcessStore implements ProcessStore {
             }
         });
         return updated;
+    }
+
+    // --- Admin: bulk clear & stats ---
+
+    async clearAllWorkspaces(): Promise<number> {
+        let count = 0;
+        await this.enqueueWrite(async () => {
+            const workspaces = await this.readWorkspaces();
+            count = workspaces.length;
+            if (count > 0) {
+                await this.writeWorkspaces([]);
+            }
+        });
+        return count;
+    }
+
+    async clearAllWikis(): Promise<number> {
+        let count = 0;
+        await this.enqueueWrite(async () => {
+            const wikis = await this.readWikis();
+            count = wikis.length;
+            if (count > 0) {
+                await this.writeWikis([]);
+            }
+        });
+        return count;
+    }
+
+    async getStorageStats(): Promise<StorageStats> {
+        const [processes, workspaces, wikis] = await Promise.all([
+            this.getAllProcesses(),
+            this.getWorkspaces(),
+            this.getWikis(),
+        ]);
+
+        let storageSize = 0;
+        for (const filePath of [this.processesPath, this.workspacesPath, this.wikisPath]) {
+            try {
+                const stat = await fs.stat(filePath);
+                storageSize += stat.size;
+            } catch {
+                // File may not exist yet
+            }
+        }
+
+        return {
+            totalProcesses: processes.length,
+            totalWorkspaces: workspaces.length,
+            totalWikis: wikis.length,
+            storageSize,
+        };
     }
 
     // --- Streaming support (in-memory, not persisted) ---
