@@ -108,6 +108,36 @@ This is the "Markdown Review & Workspace Shortcuts" VSCode extension that provid
 5. **Global Notes** - Quick-access notes available from any workspace
 6. **Tasks Viewer** - Hierarchical task management with support for nested directories and document grouping
 
+### Monorepo Structure
+
+```
+shortcuts/
+├── packages/                          # Standalone Node.js packages (no VS Code deps)
+│   ├── pipeline-core/                 # Core AI/pipeline engine (used by coc & deep-wiki)
+│   ├── coc/                           # CoC CLI for running pipelines
+│   └── deep-wiki/                     # Wiki generator CLI
+│
+├── src/                               # VS Code extension source
+│   ├── extension.ts                   # Extension entry point
+│   └── shortcuts/                     # Feature modules (VS Code-specific)
+│       ├── ai-service/                # AI queue, process tracking, tree UI (VS Code)
+│       ├── markdown-comments/         # Markdown review editor
+│       ├── git-diff-comments/         # Git diff review
+│       ├── code-review/               # Code review against rules
+│       ├── yaml-pipeline/             # Pipeline management UI
+│       ├── tasks-viewer/              # Task management UI
+│       └── shared/                    # Shared utilities
+│
+└── out/                               # Compiled JavaScript (generated)
+```
+
+**Key Distinction:**
+- **`packages/pipeline-core/src/ai/`** - Pure Node.js AI SDK wrapper (reusable, no VS Code)
+- **`src/shortcuts/ai-service/`** - VS Code-specific AI features (queue UI, process manager, tree providers)
+  - Imports and wraps `pipeline-core` for VS Code integration
+  - Provides VS Code-specific UI (tree views, status bar, commands)
+  - Uses VS Code APIs (vscode.Event, vscode.TreeDataProvider, etc.)
+
 ## Development Commands
 
 ### Build and Compilation
@@ -153,14 +183,16 @@ Test files are in `src/test/suite/` and include:
 - `DiffCommentsManager` - Manages comments on git diffs
 - `DiffCommentsTreeDataProvider` - Shows diff comments organized by category/file
 
-**AI Service (`src/shortcuts/ai-service/`)**
-- `AIProcessManager` - Manages running AI clarification requests with persistence
-- `AIProcessTreeDataProvider` - Shows running/completed AI processes
+**AI Service (`src/shortcuts/ai-service/`)** - VS Code-specific AI features
+- `AIProcessManager` - Manages running AI clarification requests with persistence (VS Code Memento)
+- `AIProcessTreeDataProvider` - Tree view showing running/completed AI processes
+- `AIQueueService` - VS Code adapter wrapping `TaskQueueManager` from pipeline-core
 - `CopilotCLIInvoker` - Invokes GitHub Copilot CLI or copies to clipboard
-- Core AI functionality (CopilotSDKService, session pool, CLI utilities) now in `pipeline-core` package
+- **Core AI SDK** (CopilotSDKService, session pool) lives in `packages/pipeline-core/src/ai/` (pure Node.js)
 - Working directory defaults to `{workspaceFolder}/src` if the src directory exists, otherwise falls back to workspace root
 - AI processes are persisted using VSCode's Memento API (workspaceState) and restored on extension restart, keeping history isolated per workspace
 - Supports viewing full process details, removing individual processes, and clearing all history
+- **Queue System**: Single global `TaskQueueManager` instance (not repo-specific yet)
 
 **MCP Control & Permission Handling API**
 
