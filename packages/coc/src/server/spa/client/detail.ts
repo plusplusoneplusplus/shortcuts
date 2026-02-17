@@ -55,9 +55,11 @@ function renderProcessDetail(process: any, id: string): void {
 
     const emptyEl = document.getElementById('detail-empty');
     const contentEl = document.getElementById('detail-content');
+    const panelEl = document.getElementById('detail-panel');
     if (emptyEl) emptyEl.classList.add('hidden');
     if (!contentEl) return;
     contentEl.classList.remove('hidden');
+    if (panelEl) panelEl.classList.remove('chat-layout');
 
     let duration = '';
     if (process.startTime) {
@@ -252,8 +254,10 @@ export function clearDetail(): void {
     closeQueueTaskStream();
     const emptyEl = document.getElementById('detail-empty');
     const contentEl = document.getElementById('detail-content');
+    const panelEl = document.getElementById('detail-panel');
     if (emptyEl) emptyEl.classList.remove('hidden');
     if (contentEl) { contentEl.classList.add('hidden'); contentEl.innerHTML = ''; }
+    if (panelEl) panelEl.classList.remove('chat-layout');
 }
 
 // ================================================================
@@ -294,9 +298,11 @@ export function showQueueTaskDetail(taskId: string): void {
 
     const emptyEl = document.getElementById('detail-empty');
     const contentEl = document.getElementById('detail-content');
+    const panelEl = document.getElementById('detail-panel');
     if (emptyEl) emptyEl.classList.add('hidden');
     if (!contentEl) return;
     contentEl.classList.remove('hidden');
+    if (panelEl) panelEl.classList.add('chat-layout');
 
     queueTaskStreamContent = '';
     queueTaskStreamProcessId = processId;

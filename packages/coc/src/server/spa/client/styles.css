@@ -418,6 +418,12 @@ body {
     padding: 24px;
     background: var(--bg-primary);
 }
+.detail-panel.chat-layout {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 0;
+}
 .detail-empty {
     display: flex;
     flex-direction: column;
@@ -429,6 +435,42 @@ body {
 .detail-empty-icon { font-size: 48px; margin-bottom: 12px; }
 .detail-empty-text { font-size: 14px; }
 .detail-content { max-width: none; margin: 0; }
+.detail-panel.chat-layout > .detail-empty {
+    flex: 1;
+    padding: 24px;
+}
+.detail-panel.chat-layout > .detail-content {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* Chat-layout children: flex column with pinned input bar */
+.chat-layout .detail-content > .detail-header,
+.chat-layout .detail-content > .meta-section,
+.chat-layout .detail-content > .error-alert {
+    flex-shrink: 0;
+    padding: 0 24px;
+}
+.chat-layout .detail-content > .detail-header {
+    padding-top: 24px;
+}
+.chat-layout .detail-content > .conversation-section {
+    padding: 0 24px;
+}
+.chat-layout .detail-content > .chat-hint {
+    flex-shrink: 0;
+    padding: 0 24px;
+}
+.chat-layout .detail-content > .chat-input-bar {
+    flex-shrink: 0;
+}
+.chat-layout .detail-content > .action-buttons {
+    flex-shrink: 0;
+    padding: 0 24px 16px;
+}
 #repo-detail-panel { padding: 16px 12px; }
 #repo-detail-content { max-width: none; margin: 0; }
 .detail-header { margin-bottom: 20px; }
@@ -1081,6 +1123,13 @@ body {
 .conversation-section {
     margin-top: 16px;
 }
+.chat-layout .conversation-section {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
 .conversation-section h2 {
     font-size: 14px;
     font-weight: 600;
@@ -1108,12 +1157,16 @@ body {
     overflow-y: auto;
     font-size: 13px;
     line-height: 1.6;
-    /* Removed: white-space: pre-wrap — each message handles its own formatting */
     word-wrap: break-word;
     display: flex;
     flex-direction: column;
     gap: 12px;
     position: relative;  /* anchor for scroll-to-bottom button */
+}
+.chat-layout .conversation-body {
+    min-height: 0;
+    max-height: none;
+    flex: 1;
 }
 .conversation-body pre {
     background: var(--bg-primary);
@@ -1201,6 +1254,9 @@ body {
     padding: 12px 16px;
     border-top: 1px solid var(--border-color);
     background: var(--bg-primary);
+}
+.chat-layout .chat-input-bar {
+    padding: 12px 24px;
 }
 .chat-input-bar textarea {
     flex: 1;
