@@ -62,3 +62,6 @@ export {
 export {
     FileStateStore
 } from './file-state-store';
+
+// Rendering primitives
+export * from './rendering';
