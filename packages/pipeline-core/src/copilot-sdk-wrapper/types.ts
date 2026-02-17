@@ -208,11 +208,32 @@ export interface SendMessageOptions {
     onStreamingChunk?: (chunk: string) => void;
 
     /**
+     * Callback invoked for tool execution lifecycle events during streaming.
+     * Receives events when tools start, complete, or fail.
+     */
+    onToolEvent?: (event: ToolEvent) => void;
+
+    /**
      * When true, the session is NOT destroyed after the first message completes.
      * The returned `sessionId` can be passed to `sendFollowUp()` for multi-turn conversation.
      * @default false
      */
     keepAlive?: boolean;
+}
+
+/**
+ * Tool execution lifecycle event emitted during streaming.
+ */
+export interface ToolEvent {
+    type: 'tool-start' | 'tool-complete' | 'tool-failed';
+    toolCallId: string;
+    toolName?: string;
+    /** Tool input parameters (for 'tool-start' events). */
+    parameters?: Record<string, unknown>;
+    /** Tool output result (for 'tool-complete' events). */
+    result?: string;
+    /** Error message (for 'tool-failed' events). */
+    error?: string;
 }
 
 // ============================================================================

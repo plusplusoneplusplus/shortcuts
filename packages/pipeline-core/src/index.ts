@@ -319,6 +319,7 @@ export {
     PermissionHandler,
     approveAllPermissions,
     denyAllPermissions,
+    ToolEvent,
     // DEFAULT_AI_TIMEOUT_MS is exported from ./config
     // MCP Config Loader
     MCPConfigFile,

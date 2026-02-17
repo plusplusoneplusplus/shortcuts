@@ -11,7 +11,7 @@ import {
 } from './utils';
 import { navigateToProcess, setHashSilent, fetchApi } from './core';
 import { getCachedConversation, cacheConversation } from './sidebar';
-import { renderToolCallHTML, attachToolCallToggleHandlers } from './tool-renderer';
+import { renderToolCallHTML, attachToolCallToggleHandlers, normalizeToolCall, renderToolCall, updateToolCallStatus } from './tool-renderer';
 
 export function renderDetail(id: string): void {
     // Queue processes (ID starts with 'queue_') should use the queue task conversation view
@@ -771,6 +771,64 @@ function connectFollowUpSSE(processId: string): void {
         } catch(err) {}
     });
 
+    // Tool call events for follow-up streaming
+    eventSource.addEventListener('tool-start', function(e: MessageEvent) {
+        try {
+            const data = JSON.parse(e.data);
+            const bubble = document.getElementById('follow-up-assistant-bubble');
+            if (!bubble) return;
+            let toolContainer = bubble.querySelector('.tool-calls-container') as HTMLElement;
+            if (!toolContainer) {
+                toolContainer = document.createElement('div');
+                toolContainer.className = 'tool-calls-container';
+                bubble.appendChild(toolContainer);
+            }
+            const tc = normalizeToolCall({
+                id: data.toolCallId || '',
+                toolName: data.toolName || '',
+                args: data.parameters || {},
+                status: 'running',
+                startTime: new Date().toISOString(),
+            });
+            const card = renderToolCall(tc);
+            toolContainer.appendChild(card);
+            scrollConversationToBottom();
+        } catch(err) {}
+    });
+
+    eventSource.addEventListener('tool-complete', function(e: MessageEvent) {
+        try {
+            const data = JSON.parse(e.data);
+            const card = findToolCard(data.toolCallId);
+            if (card) {
+                updateToolCallStatus(card, {
+                    id: data.toolCallId,
+                    toolName: card.querySelector('.tool-call-name')?.textContent || '',
+                    args: {},
+                    result: typeof data.result === 'string' ? data.result : JSON.stringify(data.result),
+                    status: 'completed',
+                    endTime: new Date().toISOString(),
+                });
+            }
+        } catch(err) {}
+    });
+
+    eventSource.addEventListener('tool-failed', function(e: MessageEvent) {
+        try {
+            const data = JSON.parse(e.data);
+            const card = findToolCard(data.toolCallId);
+            if (card) {
+                updateToolCallStatus(card, {
+                    id: data.toolCallId,
+                    toolName: card.querySelector('.tool-call-name')?.textContent || '',
+                    args: {},
+                    status: 'failed',
+                    endTime: new Date().toISOString(),
+                });
+            }
+        } catch(err) {}
+    });
+
     eventSource.addEventListener('done', function() {
         eventSource.close();
         queueState.isFollowUpStreaming = false;
@@ -867,6 +925,61 @@ function connectQueueTaskSSE(processId: string, taskId: string, proc: any): void
                 }
 
                 updateConversationContent();
+            }
+        } catch(err) {}
+    });
+
+    // Tool call events — render tool cards in real-time during streaming
+    eventSource.addEventListener('tool-start', function(e: MessageEvent) {
+        if (queueTaskStreamProcessId !== processId) return;
+        try {
+            const data = JSON.parse(e.data);
+            const container = getOrCreateToolContainer();
+            if (!container) return;
+            const tc = normalizeToolCall({
+                id: data.toolCallId || '',
+                toolName: data.toolName || '',
+                args: data.parameters || {},
+                status: 'running',
+                startTime: new Date().toISOString(),
+            });
+            const card = renderToolCall(tc);
+            container.appendChild(card);
+            scrollConversationToBottom();
+        } catch(err) {}
+    });
+
+    eventSource.addEventListener('tool-complete', function(e: MessageEvent) {
+        if (queueTaskStreamProcessId !== processId) return;
+        try {
+            const data = JSON.parse(e.data);
+            const card = findToolCard(data.toolCallId);
+            if (card) {
+                updateToolCallStatus(card, {
+                    id: data.toolCallId,
+                    toolName: card.querySelector('.tool-call-name')?.textContent || '',
+                    args: {},
+                    result: typeof data.result === 'string' ? data.result : JSON.stringify(data.result),
+                    status: 'completed',
+                    endTime: new Date().toISOString(),
+                });
+            }
+        } catch(err) {}
+    });
+
+    eventSource.addEventListener('tool-failed', function(e: MessageEvent) {
+        if (queueTaskStreamProcessId !== processId) return;
+        try {
+            const data = JSON.parse(e.data);
+            const card = findToolCard(data.toolCallId);
+            if (card) {
+                updateToolCallStatus(card, {
+                    id: data.toolCallId,
+                    toolName: card.querySelector('.tool-call-name')?.textContent || '',
+                    args: {},
+                    status: 'failed',
+                    endTime: new Date().toISOString(),
+                });
             }
         } catch(err) {}
     });
@@ -1214,6 +1327,37 @@ function showToast(message: string, type: 'success' | 'error'): void {
         toast.classList.add('writeback-toast-hide');
         setTimeout(function() { toast.remove(); }, 300);
     }, 3000);
+}
+
+// ================================================================
+// Tool Call SSE Helpers
+// ================================================================
+
+/**
+ * Get or create a tool-calls-container inside the last assistant bubble
+ * in the queue task conversation view.
+ */
+function getOrCreateToolContainer(): HTMLElement | null {
+    const container = document.getElementById('queue-task-conversation');
+    if (!container) return null;
+    const bubbles = container.querySelectorAll('.chat-message.assistant');
+    const lastBubble = bubbles.length > 0 ? bubbles[bubbles.length - 1] as HTMLElement : null;
+    if (!lastBubble) return null;
+    let toolContainer = lastBubble.querySelector('.tool-calls-container') as HTMLElement;
+    if (!toolContainer) {
+        toolContainer = document.createElement('div');
+        toolContainer.className = 'tool-calls-container';
+        lastBubble.appendChild(toolContainer);
+    }
+    return toolContainer;
+}
+
+/**
+ * Find a tool-call card by its tool call ID across the entire detail panel.
+ */
+function findToolCard(toolCallId: string): HTMLElement | null {
+    if (!toolCallId) return null;
+    return document.querySelector('.tool-call-card[data-tool-id="' + toolCallId + '"]') as HTMLElement | null;
 }
 
 (window as any).clearDetail = clearDetail;

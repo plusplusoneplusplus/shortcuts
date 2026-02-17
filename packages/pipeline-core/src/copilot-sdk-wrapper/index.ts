@@ -25,6 +25,8 @@ export {
     // Permission helpers
     approveAllPermissions,
     denyAllPermissions,
+    // Tool event types
+    ToolEvent,
 } from './types';
 
 // Model Registry

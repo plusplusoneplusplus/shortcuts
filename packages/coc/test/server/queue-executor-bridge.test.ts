@@ -2306,3 +2306,250 @@ describe('Queue execution via HTTP API', () => {
         });
     });
 });
+
+// ============================================================================
+// Tool Event Emission Tests
+// ============================================================================
+
+describe('tool event emission via onToolEvent', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+
+    beforeEach(() => {
+        store = createMockProcessStore();
+        mockSendMessage.mockReset();
+        mockIsAvailable.mockReset();
+        mockSendFollowUp.mockReset();
+        mockIsAvailable.mockResolvedValue({ available: true });
+    });
+
+    it('should pass onToolEvent callback to sendMessage', async () => {
+        mockSendMessage.mockImplementation(async (opts: any) => {
+            // Verify onToolEvent is provided
+            expect(typeof opts.onToolEvent).toBe('function');
+            return { success: true, response: 'done', sessionId: 'sess-1' };
+        });
+
+        const executor = new CLITaskExecutor(store);
+        const task: QueuedTask = {
+            id: 'task-tool-event',
+            type: 'ai-clarification',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { prompt: 'test' },
+            config: {},
+        };
+
+        await executor.execute(task);
+        expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+            onToolEvent: expect.any(Function),
+        }));
+    });
+
+    it('should emit tool-start events to store.emitProcessEvent', async () => {
+        mockSendMessage.mockImplementation(async (opts: any) => {
+            if (opts.onToolEvent) {
+                opts.onToolEvent({
+                    type: 'tool-start',
+                    toolCallId: 'tc-1',
+                    toolName: 'view',
+                    parameters: { path: '/test.ts' },
+                });
+            }
+            return { success: true, response: 'done', sessionId: 'sess-2' };
+        });
+
+        const executor = new CLITaskExecutor(store);
+        const task: QueuedTask = {
+            id: 'task-tool-start',
+            type: 'ai-clarification',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { prompt: 'test' },
+            config: {},
+        };
+
+        await executor.execute(task);
+
+        expect(store.emitProcessEvent).toHaveBeenCalledWith('queue_task-tool-start', {
+            type: 'tool-start',
+            toolCallId: 'tc-1',
+            toolName: 'view',
+            parameters: { path: '/test.ts' },
+            result: undefined,
+            error: undefined,
+        });
+    });
+
+    it('should emit tool-complete events to store.emitProcessEvent', async () => {
+        mockSendMessage.mockImplementation(async (opts: any) => {
+            if (opts.onToolEvent) {
+                opts.onToolEvent({
+                    type: 'tool-complete',
+                    toolCallId: 'tc-2',
+                    toolName: 'bash',
+                    result: 'command output',
+                });
+            }
+            return { success: true, response: 'done', sessionId: 'sess-3' };
+        });
+
+        const executor = new CLITaskExecutor(store);
+        const task: QueuedTask = {
+            id: 'task-tool-complete',
+            type: 'ai-clarification',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { prompt: 'test' },
+            config: {},
+        };
+
+        await executor.execute(task);
+
+        expect(store.emitProcessEvent).toHaveBeenCalledWith('queue_task-tool-complete', {
+            type: 'tool-complete',
+            toolCallId: 'tc-2',
+            toolName: 'bash',
+            parameters: undefined,
+            result: 'command output',
+            error: undefined,
+        });
+    });
+
+    it('should emit tool-failed events to store.emitProcessEvent', async () => {
+        mockSendMessage.mockImplementation(async (opts: any) => {
+            if (opts.onToolEvent) {
+                opts.onToolEvent({
+                    type: 'tool-failed',
+                    toolCallId: 'tc-3',
+                    toolName: 'edit',
+                    error: 'Permission denied',
+                });
+            }
+            return { success: true, response: 'done', sessionId: 'sess-4' };
+        });
+
+        const executor = new CLITaskExecutor(store);
+        const task: QueuedTask = {
+            id: 'task-tool-failed',
+            type: 'ai-clarification',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { prompt: 'test' },
+            config: {},
+        };
+
+        await executor.execute(task);
+
+        expect(store.emitProcessEvent).toHaveBeenCalledWith('queue_task-tool-failed', {
+            type: 'tool-failed',
+            toolCallId: 'tc-3',
+            toolName: 'edit',
+            parameters: undefined,
+            result: undefined,
+            error: 'Permission denied',
+        });
+    });
+
+    it('should handle store.emitProcessEvent errors gracefully', async () => {
+        const failingStore = createMockProcessStore();
+        (failingStore.emitProcessEvent as any).mockImplementation(() => {
+            throw new Error('Event emit error');
+        });
+
+        mockSendMessage.mockImplementation(async (opts: any) => {
+            if (opts.onToolEvent) {
+                opts.onToolEvent({
+                    type: 'tool-start',
+                    toolCallId: 'tc-err',
+                    toolName: 'grep',
+                });
+            }
+            return { success: true, response: 'done', sessionId: 'sess-5' };
+        });
+
+        const executor = new CLITaskExecutor(failingStore);
+        const task: QueuedTask = {
+            id: 'task-tool-err',
+            type: 'ai-clarification',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { prompt: 'test' },
+            config: {},
+        };
+
+        // Should not throw despite emitProcessEvent failing
+        const result = await executor.execute(task);
+        expect(result.success).toBe(true);
+    });
+
+    it('should emit tool events for follow-up messages', async () => {
+        store = createMockProcessStore({
+            initialProcesses: [createCompletedProcessWithSession('proc-tool-follow', 'sess-follow')],
+        });
+
+        mockSendFollowUp.mockImplementation(async (_sessionId: string, _prompt: string, options?: any) => {
+            if (options?.onToolEvent) {
+                options.onToolEvent({
+                    type: 'tool-start',
+                    toolCallId: 'tc-follow-1',
+                    toolName: 'view',
+                    parameters: { path: '/file.ts' },
+                });
+                options.onToolEvent({
+                    type: 'tool-complete',
+                    toolCallId: 'tc-follow-1',
+                    toolName: 'view',
+                    result: 'file contents',
+                });
+            }
+            return { success: true, response: 'follow-up done', sessionId: 'sess-follow' };
+        });
+
+        const executor = new CLITaskExecutor(store);
+        await executor.executeFollowUp('proc-tool-follow', 'follow-up message');
+
+        expect(store.emitProcessEvent).toHaveBeenCalledTimes(2);
+        expect(store.emitProcessEvent).toHaveBeenCalledWith('proc-tool-follow', expect.objectContaining({
+            type: 'tool-start',
+            toolCallId: 'tc-follow-1',
+            toolName: 'view',
+        }));
+        expect(store.emitProcessEvent).toHaveBeenCalledWith('proc-tool-follow', expect.objectContaining({
+            type: 'tool-complete',
+            toolCallId: 'tc-follow-1',
+            result: 'file contents',
+        }));
+    });
+
+    it('should emit multiple tool events in sequence', async () => {
+        mockSendMessage.mockImplementation(async (opts: any) => {
+            if (opts.onToolEvent) {
+                opts.onToolEvent({ type: 'tool-start', toolCallId: 'tc-a', toolName: 'view' });
+                opts.onToolEvent({ type: 'tool-complete', toolCallId: 'tc-a', result: 'ok' });
+                opts.onToolEvent({ type: 'tool-start', toolCallId: 'tc-b', toolName: 'bash' });
+                opts.onToolEvent({ type: 'tool-failed', toolCallId: 'tc-b', error: 'timeout' });
+            }
+            return { success: true, response: 'done', sessionId: 'sess-multi' };
+        });
+
+        const executor = new CLITaskExecutor(store);
+        const task: QueuedTask = {
+            id: 'task-multi-tool',
+            type: 'ai-clarification',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { prompt: 'test' },
+            config: {},
+        };
+
+        await executor.execute(task);
+
+        expect(store.emitProcessEvent).toHaveBeenCalledTimes(4);
+    });
+});

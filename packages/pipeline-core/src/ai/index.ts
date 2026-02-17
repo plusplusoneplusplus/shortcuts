@@ -47,6 +47,8 @@ export {
     // Permission helpers
     approveAllPermissions,
     denyAllPermissions,
+    // Tool event types
+    ToolEvent,
     // Copilot SDK Service
     CopilotSDKService,
     getCopilotSDKService,

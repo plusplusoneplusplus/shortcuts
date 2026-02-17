@@ -44,6 +44,8 @@ import {
     isFolderTrusted,
     getCopilotConfigPath,
     setTrustedFolderHomeOverride,
+    // Tool Event types
+    ToolEvent,
 } from '../../src/copilot-sdk-wrapper';
 
 // Import from the ai/ barrel (backward compatibility)
@@ -118,6 +120,19 @@ describe('Copilot SDK Wrapper Module', () => {
             expect(typeof approveAllPermissions).toBe('function');
             expect(typeof denyAllPermissions).toBe('function');
         });
+
+        it('should export ToolEvent type (compile-time check)', () => {
+            // ToolEvent is a type — verify it can be used to type a variable
+            const event: ToolEvent = {
+                type: 'tool-start',
+                toolCallId: 'test-id',
+                toolName: 'view',
+                parameters: { path: '/test' },
+            };
+            expect(event.type).toBe('tool-start');
+            expect(event.toolCallId).toBe('test-id');
+            expect(event.toolName).toBe('view');
+        });
     });
 
     describe('permission helpers', () => {
@@ -135,6 +150,54 @@ describe('Copilot SDK Wrapper Module', () => {
                 { sessionId: 'test' }
             );
             expect(result).toEqual({ kind: 'denied-by-rules' });
+        });
+    });
+
+    describe('ToolEvent type', () => {
+        it('should support tool-start event', () => {
+            const event: ToolEvent = {
+                type: 'tool-start',
+                toolCallId: 'tc-123',
+                toolName: 'bash',
+                parameters: { command: 'ls -la' },
+            };
+            expect(event.type).toBe('tool-start');
+            expect(event.toolCallId).toBe('tc-123');
+            expect(event.toolName).toBe('bash');
+            expect(event.parameters).toEqual({ command: 'ls -la' });
+        });
+
+        it('should support tool-complete event', () => {
+            const event: ToolEvent = {
+                type: 'tool-complete',
+                toolCallId: 'tc-123',
+                toolName: 'view',
+                result: 'file contents here',
+            };
+            expect(event.type).toBe('tool-complete');
+            expect(event.result).toBe('file contents here');
+        });
+
+        it('should support tool-failed event', () => {
+            const event: ToolEvent = {
+                type: 'tool-failed',
+                toolCallId: 'tc-456',
+                toolName: 'edit',
+                error: 'Permission denied',
+            };
+            expect(event.type).toBe('tool-failed');
+            expect(event.error).toBe('Permission denied');
+        });
+
+        it('should allow optional fields', () => {
+            const event: ToolEvent = {
+                type: 'tool-start',
+                toolCallId: 'tc-789',
+            };
+            expect(event.toolName).toBeUndefined();
+            expect(event.parameters).toBeUndefined();
+            expect(event.result).toBeUndefined();
+            expect(event.error).toBeUndefined();
         });
     });
 

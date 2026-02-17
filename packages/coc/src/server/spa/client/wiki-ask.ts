@@ -15,7 +15,7 @@ import type { ClientToolCall } from './state';
 import { getApiBase } from './config';
 import { escapeHtmlClient } from './utils';
 import { wikiState } from './wiki-content';
-import { renderToolCall, updateToolCallStatus } from './tool-renderer';
+import { renderToolCall, updateToolCallStatus, normalizeToolCall } from './tool-renderer';
 
 let conversationHistory: Array<{ role: string; content: string }> = [];
 let askStreaming = false;
@@ -194,13 +194,13 @@ function handleToolStart(data: any, responseEl: HTMLElement | null): void {
         responseEl.appendChild(container);
     }
 
-    const toolCall: ClientToolCall = {
-        id: data.toolId || data.id || '',
-        toolName: data.toolName || '',
-        args: data.args,
+    const toolCall = normalizeToolCall({
+        id: data.toolCallId || data.toolId || data.id || '',
+        toolName: data.toolName || data.name || '',
+        args: data.parameters || data.args || {},
         status: 'running',
         startTime: data.timestamp || new Date().toISOString(),
-    };
+    });
 
     const element = renderToolCall(toolCall);
     container.appendChild(element);
@@ -209,21 +209,19 @@ function handleToolStart(data: any, responseEl: HTMLElement | null): void {
 function handleToolComplete(data: any, responseEl: HTMLElement | null): void {
     if (!responseEl) return;
 
-    const toolId = data.toolId || data.id || '';
+    const toolId = data.toolCallId || data.toolId || data.id || '';
     const card = responseEl.querySelector('.tool-call-card[data-tool-id="' + toolId + '"]') as HTMLElement | null;
     if (!card) return;
 
-    const toolCall: ClientToolCall = {
+    updateToolCallStatus(card, normalizeToolCall({
         id: toolId,
-        toolName: data.toolName || '',
-        args: data.args,
-        result: data.result,
+        toolName: data.toolName || data.name || '',
+        args: data.args || {},
+        result: typeof data.result === 'string' ? data.result : JSON.stringify(data.result),
         status: data.error ? 'failed' : 'completed',
         startTime: data.startTime,
         endTime: data.timestamp || new Date().toISOString(),
-    };
-
-    updateToolCallStatus(card, toolCall);
+    }));
 }
 
 function appendAskMessage(role: string, content: string): HTMLElement {

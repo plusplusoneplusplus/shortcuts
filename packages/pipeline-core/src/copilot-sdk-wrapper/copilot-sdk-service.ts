@@ -37,6 +37,7 @@ import {
     MCPRemoteServerConfig,
     approveAllPermissions,
     denyAllPermissions,
+    ToolEvent,
 } from './types';
 
 // Re-export types that were previously exported from this file
@@ -89,6 +90,8 @@ export interface SendFollowUpOptions {
     timeoutMs?: number;
     /** Callback for streaming chunks */
     onStreamingChunk?: (chunk: string) => void;
+    /** Callback for tool execution lifecycle events */
+    onToolEvent?: (event: ToolEvent) => void;
 }
 
 /**
@@ -535,7 +538,7 @@ export class CopilotSDKService {
             let turnCount = 0;
             let capturedToolCalls: ToolCall[] | undefined;
             if ((options.streaming || options.onStreamingChunk || timeoutMs > 120000) && session.on && session.send) {
-                const streamingResult = await this.sendWithStreaming(session, options.prompt, timeoutMs, options.onStreamingChunk, toolCallsMap);
+                const streamingResult = await this.sendWithStreaming(session, options.prompt, timeoutMs, options.onStreamingChunk, toolCallsMap, options.onToolEvent);
                 response = streamingResult.response;
                 tokenUsage = streamingResult.tokenUsage;
                 turnCount = streamingResult.turnCount;
@@ -661,7 +664,7 @@ export class CopilotSDKService {
 
             if ((options?.onStreamingChunk || timeoutMs > 120000) && session.on && session.send) {
                 const streamingResult = await this.sendWithStreaming(
-                    session, prompt, timeoutMs, options?.onStreamingChunk,
+                    session, prompt, timeoutMs, options?.onStreamingChunk, undefined, options?.onToolEvent,
                 );
                 response = streamingResult.response;
                 tokenUsage = streamingResult.tokenUsage;
@@ -1048,7 +1051,8 @@ export class CopilotSDKService {
         prompt: string,
         timeoutMs: number,
         onStreamingChunk?: (chunk: string) => void,
-        toolCallsMap?: Map<string, ToolCall>
+        toolCallsMap?: Map<string, ToolCall>,
+        onToolEvent?: (event: ToolEvent) => void
     ): Promise<StreamingResult> {
         return new Promise((resolve, reject) => {
             const logger = getLogger();
@@ -1282,6 +1286,17 @@ export class CopilotSDKService {
                         args: (event.data?.arguments ?? {}) as Record<string, unknown>,
                     };
                     toolCallsMap!.set(toolCall.id, toolCall);
+                    // Emit tool-start event for real-time UI updates
+                    if (onToolEvent) {
+                        try {
+                            onToolEvent({
+                                type: 'tool-start',
+                                toolCallId: toolCall.id,
+                                toolName: toolCall.name,
+                                parameters: toolCall.args,
+                            });
+                        } catch { /* non-fatal */ }
+                    }
                 } else if (eventType === 'tool.execution_complete') {
                     // Tool execution finished — remove from active tracking
                     const toolCallId = event.data?.toolCallId || '(unknown)';
@@ -1317,6 +1332,26 @@ export class CopilotSDKService {
                             args: {},
                             error: 'Started outside observation window',
                         });
+                    }
+                    // Emit tool-complete or tool-failed event for real-time UI updates
+                    if (onToolEvent) {
+                        try {
+                            if (toolSuccess) {
+                                onToolEvent({
+                                    type: 'tool-complete',
+                                    toolCallId,
+                                    toolName: tracked?.toolName,
+                                    result: event.data?.result?.content,
+                                });
+                            } else {
+                                onToolEvent({
+                                    type: 'tool-failed',
+                                    toolCallId,
+                                    toolName: tracked?.toolName,
+                                    error: event.data?.error?.message || 'Unknown error',
+                                });
+                            }
+                        } catch { /* non-fatal */ }
                     }
                 } else if (eventType === 'tool.execution_progress') {
                     const toolCallId = event.data?.toolCallId || '(unknown)';

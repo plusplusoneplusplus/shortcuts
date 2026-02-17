@@ -110,21 +110,42 @@ function buildResultHTML(result: string | undefined, toolName: string): string {
 /* ── Public API ────────────────────────────────────────────── */
 
 /**
+ * Normalize a server-side tool call (which uses `name`) to the client-side
+ * `ClientToolCall` shape (which uses `toolName`).  Accepts either format
+ * and always returns a well-formed `ClientToolCall`.
+ */
+export function normalizeToolCall(raw: any): ClientToolCall {
+    return {
+        id: raw.id || '',
+        toolName: raw.toolName || raw.name || 'unknown',
+        args: raw.args || raw.parameters || {},
+        result: raw.result,
+        status: raw.status || 'pending',
+        startTime: raw.startTime,
+        endTime: raw.endTime,
+    };
+}
+
+/**
  * Render a tool call as a collapsible card HTML string.
  * Returns the outer HTML so it can be embedded in chat bubbles.
+ *
+ * Accepts both server-side (`name`) and client-side (`toolName`) shapes —
+ * the input is normalised before rendering.
  */
-export function renderToolCallHTML(toolCall: ClientToolCall): string {
-    const icon = TOOL_ICONS[toolCall.toolName] || DEFAULT_TOOL_ICON;
-    const statusIcon = STATUS_ICONS[toolCall.status] || '';
-    const duration = formatToolDuration(toolCall.startTime, toolCall.endTime);
+export function renderToolCallHTML(toolCall: ClientToolCall | any): string {
+    const tc = normalizeToolCall(toolCall);
+    const icon = TOOL_ICONS[tc.toolName] || DEFAULT_TOOL_ICON;
+    const statusIcon = STATUS_ICONS[tc.status] || '';
+    const duration = formatToolDuration(tc.startTime, tc.endTime);
 
-    let html = '<div class="tool-call-card" data-tool-id="' + escapeHtmlClient(toolCall.id) + '" data-status="' + toolCall.status + '">';
+    let html = '<div class="tool-call-card" data-tool-id="' + escapeHtmlClient(tc.id) + '" data-status="' + tc.status + '">';
 
     // Header
     html += '<div class="tool-call-header">';
     html += '<span class="tool-call-icon">' + icon + '</span>';
-    html += '<span class="tool-call-name">' + escapeHtmlClient(toolCall.toolName) + '</span>';
-    html += '<span class="tool-call-status ' + toolCall.status + '">' + statusIcon + ' ' + toolCall.status + '</span>';
+    html += '<span class="tool-call-name">' + escapeHtmlClient(tc.toolName) + '</span>';
+    html += '<span class="tool-call-status ' + tc.status + '">' + statusIcon + ' ' + tc.status + '</span>';
     if (duration) {
         html += '<span class="tool-call-duration">' + duration + '</span>';
     }
@@ -133,8 +154,8 @@ export function renderToolCallHTML(toolCall: ClientToolCall): string {
 
     // Body (collapsed by default)
     html += '<div class="tool-call-body collapsed">';
-    html += buildArgsHTML(toolCall.args);
-    html += buildResultHTML(toolCall.result, toolCall.toolName);
+    html += buildArgsHTML(tc.args);
+    html += buildResultHTML(tc.result, tc.toolName);
     html += '</div>';
 
     html += '</div>';
@@ -144,7 +165,7 @@ export function renderToolCallHTML(toolCall: ClientToolCall): string {
 /**
  * Render a tool call and return a live DOM element with toggle behavior attached.
  */
-export function renderToolCall(toolCall: ClientToolCall): HTMLElement {
+export function renderToolCall(toolCall: ClientToolCall | any): HTMLElement {
     const wrapper = document.createElement('div');
     wrapper.innerHTML = renderToolCallHTML(toolCall);
     const card = wrapper.firstElementChild as HTMLElement;
@@ -156,21 +177,23 @@ export function renderToolCall(toolCall: ClientToolCall): HTMLElement {
  * Update an existing tool-call card element with new status/result data.
  * Preserves expanded/collapsed state.
  */
-export function updateToolCallStatus(element: HTMLElement, toolCall: ClientToolCall): void {
+export function updateToolCallStatus(element: HTMLElement, toolCall: ClientToolCall | any): void {
+    const tc = normalizeToolCall(toolCall);
+
     // Update data-status attribute
-    element.setAttribute('data-status', toolCall.status);
+    element.setAttribute('data-status', tc.status);
 
     // Update status badge
     const statusEl = element.querySelector('.tool-call-status');
     if (statusEl) {
-        statusEl.className = 'tool-call-status ' + toolCall.status;
-        const statusIcon = STATUS_ICONS[toolCall.status] || '';
-        statusEl.textContent = statusIcon + ' ' + toolCall.status;
+        statusEl.className = 'tool-call-status ' + tc.status;
+        const statusIcon = STATUS_ICONS[tc.status] || '';
+        statusEl.textContent = statusIcon + ' ' + tc.status;
     }
 
     // Update duration
     const durationEl = element.querySelector('.tool-call-duration');
-    const duration = formatToolDuration(toolCall.startTime, toolCall.endTime);
+    const duration = formatToolDuration(tc.startTime, tc.endTime);
     if (durationEl) {
         durationEl.textContent = duration;
     } else if (duration) {
@@ -186,20 +209,20 @@ export function updateToolCallStatus(element: HTMLElement, toolCall: ClientToolC
 
     // Update result in body (preserve collapse state)
     const body = element.querySelector('.tool-call-body');
-    if (body && toolCall.result != null) {
+    if (body && tc.result != null) {
         const existingResult = body.querySelector('.tool-call-section:last-child');
         const resultLabel = existingResult?.querySelector('.tool-call-section-label');
         if (resultLabel && resultLabel.textContent === 'Result') {
             // Replace existing result section
-            existingResult!.outerHTML = buildResultHTML(toolCall.result, toolCall.toolName);
+            existingResult!.outerHTML = buildResultHTML(tc.result, tc.toolName);
         } else {
             // Append new result section
             const temp = document.createElement('div');
-            temp.innerHTML = buildResultHTML(toolCall.result, toolCall.toolName);
+            temp.innerHTML = buildResultHTML(tc.result, tc.toolName);
             if (temp.firstElementChild) body.appendChild(temp.firstElementChild);
         }
         // Reattach truncation expand button if present
-        attachTruncationBehavior(element, toolCall.result);
+        attachTruncationBehavior(element, tc.result);
     }
 }
 

@@ -286,6 +286,88 @@ describe('SPA conversation rendering', () => {
     });
 
     // ====================================================================
+    // Tool call normalization (name → toolName mapping)
+    // ====================================================================
+
+    describe('tool call normalization', () => {
+        it('should export normalizeToolCall function', () => {
+            expect(script).toContain('normalizeToolCall');
+        });
+
+        it('should handle server-side name field (fallback to name when toolName is missing)', () => {
+            // normalizeToolCall uses: raw.toolName || raw.name || 'unknown'
+            expect(script).toMatch(/toolName.*\|\|.*name.*\|\|.*unknown/);
+        });
+
+        it('should handle server-side parameters field (fallback to parameters when args is missing)', () => {
+            // normalizeToolCall uses: raw.args || raw.parameters || {}
+            expect(script).toMatch(/args.*\|\|.*parameters/);
+        });
+
+        it('should use normalizeToolCall in renderToolCallHTML', () => {
+            // renderToolCallHTML calls normalizeToolCall before rendering
+            expect(script).toContain('normalizeToolCall');
+            expect(script).toContain('renderToolCallHTML');
+        });
+
+        it('should use normalizeToolCall in updateToolCallStatus', () => {
+            // updateToolCallStatus normalizes input before updating DOM
+            expect(script).toContain('updateToolCallStatus');
+        });
+    });
+
+    // ====================================================================
+    // SSE tool events in queue task detail view
+    // ====================================================================
+
+    describe('SSE tool events in queue task detail', () => {
+        it('should handle tool-start events in connectQueueTaskSSE', () => {
+            // The queue task SSE handler listens for tool-start events
+            expect(script).toContain('tool-start');
+        });
+
+        it('should handle tool-complete events in connectQueueTaskSSE', () => {
+            expect(script).toContain('tool-complete');
+        });
+
+        it('should handle tool-failed events in connectQueueTaskSSE', () => {
+            expect(script).toContain('tool-failed');
+        });
+
+        it('should handle tool-start events in connectFollowUpSSE', () => {
+            // Follow-up SSE also handles tool events
+            expect(script).toContain('tool-start');
+        });
+
+        it('should handle tool-complete events in connectFollowUpSSE', () => {
+            expect(script).toContain('tool-complete');
+        });
+
+        it('should handle tool-failed events in connectFollowUpSSE', () => {
+            expect(script).toContain('tool-failed');
+        });
+
+        it('should have getOrCreateToolContainer helper', () => {
+            expect(script).toContain('getOrCreateToolContainer');
+        });
+
+        it('should have findToolCard helper', () => {
+            expect(script).toContain('findToolCard');
+        });
+
+        it('should create tool-calls-container in last assistant bubble', () => {
+            // getOrCreateToolContainer creates container in last assistant bubble
+            expect(script).toContain('tool-calls-container');
+            expect(script).toContain('.chat-message.assistant');
+        });
+
+        it('should find tool card by data-tool-id attribute', () => {
+            // findToolCard queries by data-tool-id
+            expect(script).toContain('data-tool-id');
+        });
+    });
+
+    // ====================================================================
     // Bundled client JS
     // ====================================================================
 

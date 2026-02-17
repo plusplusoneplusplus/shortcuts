@@ -33,7 +33,7 @@ import {
     getLogger,
     LogCategory,
 } from '@plusplusoneplusplus/pipeline-core';
-import type { ProcessStore, AIProcess, ConversationTurn } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore, AIProcess, ConversationTurn, ToolEvent } from '@plusplusoneplusplus/pipeline-core';
 
 // ============================================================================
 // Types
@@ -270,6 +270,20 @@ export class CLITaskExecutor implements TaskExecutor {
                         // Non-fatal
                     }
                 },
+                onToolEvent: (event: ToolEvent) => {
+                    try {
+                        this.store.emitProcessEvent(processId, {
+                            type: event.type,
+                            toolCallId: event.toolCallId,
+                            toolName: event.toolName,
+                            parameters: event.parameters,
+                            result: event.result,
+                            error: event.error,
+                        });
+                    } catch {
+                        // Non-fatal
+                    }
+                },
             });
 
             const duration = Date.now() - startTime;
@@ -445,6 +459,21 @@ export class CLITaskExecutor implements TaskExecutor {
                 this.outputBuffers.set(processId, existing + chunk);
                 try {
                     this.store.emitProcessOutput(processId, chunk);
+                } catch {
+                    // Non-fatal: store may be a stub
+                }
+            },
+            // Emit tool lifecycle events for real-time tool card rendering in the SPA
+            onToolEvent: (event: ToolEvent) => {
+                try {
+                    this.store.emitProcessEvent(processId, {
+                        type: event.type,
+                        toolCallId: event.toolCallId,
+                        toolName: event.toolName,
+                        parameters: event.parameters,
+                        result: event.result,
+                        error: event.error,
+                    });
                 } catch {
                     // Non-fatal: store may be a stub
                 }
