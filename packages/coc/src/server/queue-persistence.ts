@@ -189,6 +189,7 @@ export class QueuePersistence {
                         payload: task.payload,
                         config: task.config,
                         displayName: task.displayName,
+                        repoId: task.repoId,
                     });
                     restoredPending++;
                 }

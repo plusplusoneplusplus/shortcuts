@@ -74,6 +74,7 @@ function generateDisplayName(type: string, payload: any): string {
 function serializeTask(task: QueuedTask): Record<string, unknown> {
     return {
         id: task.id,
+        repoId: task.repoId,
         type: task.type,
         priority: task.priority,
         status: task.status,
@@ -141,6 +142,11 @@ function validateAndParseTask(taskSpec: any): TaskValidationResult {
         },
         displayName,
     };
+
+    // Pass through repoId if provided
+    if (typeof taskSpec.repoId === 'string' && taskSpec.repoId.trim()) {
+        input.repoId = taskSpec.repoId.trim();
+    }
 
     return { valid: true, input };
 }

@@ -293,6 +293,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             queue: {
                 queued: queued.map(t => ({
                     id: t.id,
+                    repoId: t.repoId,
                     type: t.type,
                     priority: t.priority,
                     status: t.status,
@@ -301,6 +302,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                 })),
                 running: running.map(t => ({
                     id: t.id,
+                    repoId: t.repoId,
                     type: t.type,
                     priority: t.priority,
                     status: t.status,
@@ -310,6 +312,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                 })),
                 history: history.map(t => ({
                     id: t.id,
+                    repoId: t.repoId,
                     type: t.type,
                     priority: t.priority,
                     status: t.status,
