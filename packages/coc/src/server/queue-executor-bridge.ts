@@ -156,6 +156,7 @@ export class CLITaskExecutor implements TaskExecutor {
                     content: responseText,
                     timestamp: new Date(),
                     turnIndex: 1,
+                    toolCalls: (result as any)?.toolCalls || undefined,
                 },
             ];
 
@@ -286,6 +287,7 @@ export class CLITaskExecutor implements TaskExecutor {
                 content: result.response || '(No text response)',
                 timestamp: new Date(),
                 turnIndex: turns.length,
+                toolCalls: result.toolCalls || undefined,
             };
 
             await this.store.updateProcess(processId, {
@@ -456,6 +458,7 @@ export class CLITaskExecutor implements TaskExecutor {
         return {
             response: result.response || '(Task completed via tool execution — no text response produced)',
             sessionId: result.sessionId,
+            toolCalls: result.toolCalls,
         };
     }
 

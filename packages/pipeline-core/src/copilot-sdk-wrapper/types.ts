@@ -7,6 +7,7 @@
  */
 
 import { AIInvocationResult } from '../ai/types';
+import type { ToolCall } from '../ai/process-types';
 
 // Re-export model types for convenience
 export { AIModel, VALID_MODELS, DEFAULT_MODEL_ID, ModelDefinition, MODEL_REGISTRY,
@@ -228,6 +229,8 @@ export interface SDKInvocationResult extends AIInvocationResult {
     rawResponse?: unknown;
     /** Aggregated token usage data (undefined when no usage events were received) */
     tokenUsage?: TokenUsage;
+    /** Tool calls captured during this request (if any). Only populated for streaming sessions. */
+    toolCalls?: ToolCall[];
 }
 
 /**
