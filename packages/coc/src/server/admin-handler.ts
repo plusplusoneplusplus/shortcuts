@@ -15,6 +15,9 @@ import { sendJSON, sendError, parseBody } from './api-handler';
 import type { Route } from './types';
 import { DataWiper } from './data-wiper';
 import { exportAllData } from './data-exporter';
+import { importData } from './data-importer';
+import { validateExportPayload } from './export-import-types';
+import type { CoCExportPayload, ImportMode } from './export-import-types';
 import type { ProcessWebSocketServer } from './websocket';
 import type { QueuePersistence } from './queue-persistence';
 import { getResolvedConfigWithSource, loadConfigFile, writeConfigFile, getConfigFilePath } from '../config';
@@ -60,6 +63,46 @@ export { generateWipeToken, validateWipeToken, activeWipeToken, TOKEN_EXPIRY_MS 
 /** Reset token state (for tests). */
 export function resetWipeToken(): void {
     activeWipeToken = null;
+}
+
+// ============================================================================
+// Import Token Management
+// ============================================================================
+
+interface ImportToken {
+    token: string;
+    createdAt: number;
+}
+
+let activeImportToken: ImportToken | null = null;
+
+/** Generate a fresh import confirmation token. */
+function generateImportToken(): ImportToken {
+    const token = crypto.randomBytes(16).toString('hex');
+    const it: ImportToken = { token, createdAt: Date.now() };
+    activeImportToken = it;
+    return it;
+}
+
+/** Validate an import token string. Returns true if valid and not expired. */
+function validateImportToken(token: string): boolean {
+    if (!activeImportToken) { return false; }
+    if (activeImportToken.token !== token) { return false; }
+    if (Date.now() - activeImportToken.createdAt > TOKEN_EXPIRY_MS) {
+        activeImportToken = null;
+        return false;
+    }
+    // Consume the token (one-time use)
+    activeImportToken = null;
+    return true;
+}
+
+// Exported for testing
+export { generateImportToken, validateImportToken, activeImportToken };
+
+/** Reset import token state (for tests). */
+export function resetImportToken(): void {
+    activeImportToken = null;
 }
 
 // ============================================================================
@@ -248,6 +291,119 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
                 'Content-Length': Buffer.byteLength(body),
             });
             res.end(body);
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // GET /api/admin/import-token — Generate an import confirmation token
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'GET',
+        pattern: '/api/admin/import-token',
+        handler: async (_req, res) => {
+            const it = generateImportToken();
+            sendJSON(res, 200, {
+                token: it.token,
+                expiresIn: TOKEN_EXPIRY_MS / 1000,
+            });
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // POST /api/admin/import/preview — Validate payload and return preview
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'POST',
+        pattern: '/api/admin/import/preview',
+        handler: async (req, res) => {
+            let body: unknown;
+            try {
+                body = await parseBody(req);
+            } catch {
+                return sendError(res, 400, 'Invalid JSON body');
+            }
+
+            const validation = validateExportPayload(body);
+            if (!validation.valid) {
+                return sendJSON(res, 400, {
+                    valid: false,
+                    error: validation.error,
+                });
+            }
+
+            const payload = body as CoCExportPayload;
+            sendJSON(res, 200, {
+                valid: true,
+                preview: {
+                    processCount: payload.metadata.processCount,
+                    workspaceCount: payload.metadata.workspaceCount,
+                    wikiCount: payload.metadata.wikiCount,
+                    queueFileCount: payload.metadata.queueFileCount,
+                    sampleProcessIds: payload.processes.slice(0, 5).map(p => p.id),
+                },
+            });
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // POST /api/admin/import — Execute import with token confirmation
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'POST',
+        pattern: '/api/admin/import',
+        handler: async (req, res) => {
+            const parsed = url.parse(req.url || '/', true);
+            const confirmToken = typeof parsed.query.confirm === 'string' ? parsed.query.confirm : '';
+            const mode: ImportMode = parsed.query.mode === 'merge' ? 'merge' : 'replace';
+
+            if (!confirmToken) {
+                return sendError(res, 400, 'Missing confirmation token. GET /api/admin/import-token first.');
+            }
+
+            if (!validateImportToken(confirmToken)) {
+                return sendError(res, 403, 'Invalid or expired confirmation token');
+            }
+
+            let body: unknown;
+            try {
+                body = await parseBody(req);
+            } catch {
+                return sendError(res, 400, 'Invalid JSON body');
+            }
+
+            const validation = validateExportPayload(body);
+            if (!validation.valid) {
+                return sendError(res, 400, `Invalid payload: ${validation.error}`);
+            }
+
+            const payload = body as CoCExportPayload;
+
+            // Rehydrate Date fields lost during JSON round-trip
+            for (const proc of payload.processes) {
+                if (typeof proc.startTime === 'string') { proc.startTime = new Date(proc.startTime); }
+                if (typeof proc.endTime === 'string') { proc.endTime = new Date(proc.endTime); }
+            }
+
+            const result = await importData(payload, {
+                store,
+                dataDir,
+                mode,
+                wiper,
+                getQueueManager: options.getQueueManager,
+                getQueuePersistence: options.getQueuePersistence,
+            });
+
+            // Broadcast import event to all WebSocket clients
+            const wsServer = getWsServer?.();
+            if (wsServer) {
+                wsServer.broadcastProcessEvent({
+                    type: 'data-imported',
+                    timestamp: Date.now(),
+                    mode,
+                } as any);
+            }
+
+            sendJSON(res, 200, result);
         },
     });
 }

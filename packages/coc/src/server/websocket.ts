@@ -123,7 +123,8 @@ export type ServerMessage =
     | { type: 'comment-resolved'; filePath: string; commentId: string }
     | { type: 'comments-cleared'; filePath: string; count: number }
     | { type: 'document-updated'; filePath: string; content: string; comments: MarkdownCommentSummary[] }
-    | { type: 'data-wiped'; timestamp: number };
+    | { type: 'data-wiped'; timestamp: number }
+    | { type: 'data-imported'; timestamp: number; mode: 'replace' | 'merge' };
 
 /** Client → Server message types */
 export type ClientMessage =

@@ -11,7 +11,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { createExecutionServer } from '../../src/server/index';
-import { resetWipeToken } from '../../src/server/admin-handler';
+import { resetWipeToken, resetImportToken } from '../../src/server/admin-handler';
 import { FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
 import type { ExecutionServer } from '../../src/server/types';
 
@@ -62,6 +62,7 @@ describe('Admin Handler', () => {
     beforeEach(() => {
         dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'admin-handler-test-'));
         resetWipeToken();
+        resetImportToken();
     });
 
     afterEach(async () => {
@@ -71,6 +72,7 @@ describe('Admin Handler', () => {
         }
         fs.rmSync(dataDir, { recursive: true, force: true });
         resetWipeToken();
+        resetImportToken();
     });
 
     async function startServer(): Promise<ExecutionServer> {
@@ -732,6 +734,318 @@ describe('Admin Handler', () => {
             expect(body.resolved.model).toBe('first-model');
             expect(body.resolved.parallel).toBe(7);
             expect(body.resolved.timeout).toBe(180);
+        });
+    });
+
+    // ========================================================================
+    // GET /api/admin/import-token
+    // ========================================================================
+
+    describe('GET /api/admin/import-token', () => {
+        it('should return a token and expiry', async () => {
+            const srv = await startServer();
+            const res = await request(`${srv.url}/api/admin/import-token`);
+
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.token).toBeDefined();
+            expect(typeof body.token).toBe('string');
+            expect(body.token.length).toBeGreaterThan(0);
+            expect(body.expiresIn).toBe(300);
+        });
+
+        it('should return a different token each time', async () => {
+            const srv = await startServer();
+            const res1 = await request(`${srv.url}/api/admin/import-token`);
+            const res2 = await request(`${srv.url}/api/admin/import-token`);
+
+            const body1 = JSON.parse(res1.body);
+            const body2 = JSON.parse(res2.body);
+            expect(body1.token).not.toBe(body2.token);
+        });
+
+        it('should return a token different from wipe token', async () => {
+            const srv = await startServer();
+            const wipeRes = await request(`${srv.url}/api/admin/data/wipe-token`);
+            const importRes = await request(`${srv.url}/api/admin/import-token`);
+
+            const wipeBody = JSON.parse(wipeRes.body);
+            const importBody = JSON.parse(importRes.body);
+            expect(wipeBody.token).not.toBe(importBody.token);
+        });
+    });
+
+    // ========================================================================
+    // POST /api/admin/import/preview
+    // ========================================================================
+
+    describe('POST /api/admin/import/preview', () => {
+        function validPayload() {
+            return {
+                version: 1,
+                exportedAt: new Date().toISOString(),
+                metadata: { processCount: 2, workspaceCount: 1, wikiCount: 0, queueFileCount: 0 },
+                processes: [
+                    { id: 'p1', promptPreview: 'test1', fullPrompt: 'f1', status: 'completed', startTime: new Date().toISOString(), type: 'clarification' },
+                    { id: 'p2', promptPreview: 'test2', fullPrompt: 'f2', status: 'completed', startTime: new Date().toISOString(), type: 'clarification' },
+                ],
+                workspaces: [{ id: 'ws1', name: 'WS1', rootPath: '/tmp/ws1' }],
+                wikis: [],
+                queueHistory: [],
+                preferences: {},
+            };
+        }
+
+        it('should return 200 and preview for valid payload', async () => {
+            const srv = await startServer();
+            const res = await request(`${srv.url}/api/admin/import/preview`, {
+                method: 'POST',
+                body: JSON.stringify(validPayload()),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.valid).toBe(true);
+            expect(body.preview.processCount).toBe(2);
+            expect(body.preview.workspaceCount).toBe(1);
+            expect(body.preview.wikiCount).toBe(0);
+            expect(body.preview.queueFileCount).toBe(0);
+            expect(body.preview.sampleProcessIds).toEqual(['p1', 'p2']);
+        });
+
+        it('should return 400 and error for invalid payload', async () => {
+            const srv = await startServer();
+            const res = await request(`${srv.url}/api/admin/import/preview`, {
+                method: 'POST',
+                body: JSON.stringify({ version: 999 }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.valid).toBe(false);
+            expect(body.error).toBeDefined();
+        });
+
+        it('should return 400 for invalid JSON body', async () => {
+            const srv = await startServer();
+            const res = await request(`${srv.url}/api/admin/import/preview`, {
+                method: 'POST',
+                body: 'not json',
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(400);
+        });
+
+        it('should limit sampleProcessIds to 5', async () => {
+            const srv = await startServer();
+            const payload = validPayload();
+            payload.metadata.processCount = 7;
+            for (let i = 3; i <= 7; i++) {
+                payload.processes.push({
+                    id: `p${i}`, promptPreview: `test${i}`, fullPrompt: `f${i}`,
+                    status: 'completed', startTime: new Date().toISOString(), type: 'clarification',
+                } as any);
+            }
+            const res = await request(`${srv.url}/api/admin/import/preview`, {
+                method: 'POST',
+                body: JSON.stringify(payload),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.preview.sampleProcessIds).toHaveLength(5);
+        });
+    });
+
+    // ========================================================================
+    // POST /api/admin/import
+    // ========================================================================
+
+    describe('POST /api/admin/import', () => {
+        function validPayload() {
+            return {
+                version: 1,
+                exportedAt: new Date().toISOString(),
+                metadata: { processCount: 1, workspaceCount: 1, wikiCount: 0, queueFileCount: 0 },
+                processes: [
+                    { id: 'imported-p1', promptPreview: 'imported', fullPrompt: 'imported full', status: 'completed', startTime: new Date().toISOString(), type: 'clarification' },
+                ],
+                workspaces: [{ id: 'imported-ws1', name: 'Imported WS', rootPath: '/tmp/imported' }],
+                wikis: [],
+                queueHistory: [],
+                preferences: {},
+            };
+        }
+
+        it('should reject without confirmation token', async () => {
+            const srv = await startServer();
+            const res = await request(`${srv.url}/api/admin/import`, {
+                method: 'POST',
+                body: JSON.stringify(validPayload()),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('Missing confirmation token');
+        });
+
+        it('should reject with invalid token', async () => {
+            const srv = await startServer();
+            const res = await request(`${srv.url}/api/admin/import?confirm=invalid-token`, {
+                method: 'POST',
+                body: JSON.stringify(validPayload()),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(403);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('Invalid or expired');
+        });
+
+        it('should reject wipe token used for import', async () => {
+            const srv = await startServer();
+            // Get wipe token (not import token)
+            const wipeTokenRes = await request(`${srv.url}/api/admin/data/wipe-token`);
+            const { token } = JSON.parse(wipeTokenRes.body);
+
+            const res = await request(`${srv.url}/api/admin/import?confirm=${token}`, {
+                method: 'POST',
+                body: JSON.stringify(validPayload()),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(403);
+        });
+
+        it('should execute import with valid token (replace mode)', async () => {
+            const srv = await startServer();
+
+            // Seed existing process
+            await request(`${srv.url}/api/processes`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    id: 'existing-p1',
+                    promptPreview: 'existing',
+                    fullPrompt: 'existing full',
+                    status: 'completed',
+                    startTime: new Date().toISOString(),
+                    type: 'clarification',
+                }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            // Get import token
+            const tokenRes = await request(`${srv.url}/api/admin/import-token`);
+            const { token } = JSON.parse(tokenRes.body);
+
+            // Execute import (default mode = replace)
+            const importRes = await request(`${srv.url}/api/admin/import?confirm=${token}`, {
+                method: 'POST',
+                body: JSON.stringify(validPayload()),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(importRes.status).toBe(200);
+            const result = JSON.parse(importRes.body);
+            expect(result.importedProcesses).toBe(1);
+            expect(result.importedWorkspaces).toBe(1);
+            expect(result.errors).toEqual([]);
+
+            // Verify imported data exists and old data is gone
+            const processRes = await request(`${srv.url}/api/processes`);
+            const processBody = JSON.parse(processRes.body);
+            expect(processBody.processes).toHaveLength(1);
+            expect(processBody.processes[0].id).toBe('imported-p1');
+
+            const wsRes = await request(`${srv.url}/api/workspaces`);
+            const wsBody = JSON.parse(wsRes.body);
+            expect(wsBody.workspaces).toHaveLength(1);
+            expect(wsBody.workspaces[0].id).toBe('imported-ws1');
+        });
+
+        it('should execute import with merge mode', async () => {
+            const srv = await startServer();
+
+            // Seed existing process
+            await request(`${srv.url}/api/processes`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    id: 'existing-p1',
+                    promptPreview: 'existing',
+                    fullPrompt: 'existing full',
+                    status: 'completed',
+                    startTime: new Date().toISOString(),
+                    type: 'clarification',
+                }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            // Get import token
+            const tokenRes = await request(`${srv.url}/api/admin/import-token`);
+            const { token } = JSON.parse(tokenRes.body);
+
+            // Execute import (merge mode)
+            const importRes = await request(`${srv.url}/api/admin/import?confirm=${token}&mode=merge`, {
+                method: 'POST',
+                body: JSON.stringify(validPayload()),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(importRes.status).toBe(200);
+            const result = JSON.parse(importRes.body);
+            expect(result.importedProcesses).toBe(1);
+
+            // Verify both old and new data exist
+            const processRes = await request(`${srv.url}/api/processes`);
+            const processBody = JSON.parse(processRes.body);
+            expect(processBody.processes).toHaveLength(2);
+            const ids = processBody.processes.map((p: any) => p.id).sort();
+            expect(ids).toEqual(['existing-p1', 'imported-p1']);
+        });
+
+        it('should not allow import token reuse', async () => {
+            const srv = await startServer();
+
+            const tokenRes = await request(`${srv.url}/api/admin/import-token`);
+            const { token } = JSON.parse(tokenRes.body);
+
+            // First use — succeeds
+            const res1 = await request(`${srv.url}/api/admin/import?confirm=${token}`, {
+                method: 'POST',
+                body: JSON.stringify(validPayload()),
+                headers: { 'Content-Type': 'application/json' },
+            });
+            expect(res1.status).toBe(200);
+
+            // Second use — fails
+            const res2 = await request(`${srv.url}/api/admin/import?confirm=${token}`, {
+                method: 'POST',
+                body: JSON.stringify(validPayload()),
+                headers: { 'Content-Type': 'application/json' },
+            });
+            expect(res2.status).toBe(403);
+        });
+
+        it('should reject invalid payload even with valid token', async () => {
+            const srv = await startServer();
+
+            const tokenRes = await request(`${srv.url}/api/admin/import-token`);
+            const { token } = JSON.parse(tokenRes.body);
+
+            const res = await request(`${srv.url}/api/admin/import?confirm=${token}`, {
+                method: 'POST',
+                body: JSON.stringify({ version: 999 }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('Invalid payload');
         });
     });
 });
