@@ -60,6 +60,9 @@ import './ai-actions';
 // 14. Task Comments UI (comment cards, selection toolbar, sidebar)
 import './task-comments-ui';
 
+// 15. Task Comments Client (API integration, event system, state management)
+import './task-comments-client';
+
 // 15. WebSocket (calls connectWebSocket())
 import './websocket';
 

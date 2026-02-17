@@ -10,6 +10,36 @@ import { fetchApi } from './core';
 import { escapeHtmlClient } from './utils';
 import { showAIActionDropdown, hideAIActionDropdown, showFollowPromptSubmenu } from './ai-actions';
 import { showToast } from './ai-actions';
+import {
+    fetchComments,
+    createComment,
+    updateComment,
+    deleteComment,
+    resolveComment,
+    unresolveComment,
+    onCommentEvent,
+    initCommentState,
+    disposeCommentState,
+    captureSelectionWithAnchor,
+    type CommentEvent,
+    type CreateCommentRequest,
+} from './task-comments-client';
+import {
+    renderCommentCardHTML,
+    renderCommentToggleHTML,
+    renderCommentSidebarHTML,
+    attachCommentCardHandlers,
+    attachSidebarHandlers,
+    addCommentHighlight,
+    clearCommentHighlights,
+    scrollToCommentHighlight,
+    getCommentCategory,
+    type CommentCategory,
+    type CommentFilter,
+    type StatusFilter,
+} from './task-comments-ui';
+import type { TaskComment as ClientTaskComment } from './task-comments-types';
+import { createAnchor } from './task-comment-anchor';
 
 // Declare highlight.js global (loaded via CDN in html-template.ts)
 declare const hljs: {
@@ -75,6 +105,24 @@ interface TaskDocument {
 // ================================================================
 
 let currentTasks: TaskFolder | null = null;
+
+// ================================================================
+// Comment panel state
+// ================================================================
+
+/** Whether the comment sidebar is currently visible. */
+let commentSidebarOpen = false;
+/** Current comments for the open task file. */
+let previewComments: ClientTaskComment[] = [];
+/** Current filter state for the comment sidebar. */
+let commentCategoryFilter: CommentFilter = 'all';
+let commentStatusFilter: StatusFilter = 'all';
+/** Raw content of the currently previewed file (for anchor creation). */
+let previewRawContent: string = '';
+/** Unsubscribe from comment events for the current preview. */
+let commentEventUnsub: (() => void) | null = null;
+/** Keyboard shortcut handler reference for cleanup. */
+let commentKeyHandler: ((e: KeyboardEvent) => void) | null = null;
 
 /** Clear the checkbox selection state. */
 function clearSelection(): void {
@@ -1566,6 +1614,9 @@ async function loadPreviewContent(wsId: string, filePath: string): Promise<void>
     const previewCol = document.getElementById('miller-preview-column');
     if (!previewCol) return;
 
+    // Clean up previous comment state
+    cleanupCommentState();
+
     try {
         const data = await fetchApi(`/workspaces/${encodeURIComponent(wsId)}/tasks/content?path=${encodeURIComponent(filePath)}`);
         if (!data || data.error) {
@@ -1574,19 +1625,241 @@ async function loadPreviewContent(wsId: string, filePath: string): Promise<void>
         }
 
         const content: string = data.content || '';
+        previewRawContent = content;
         const fileName = filePath.split('/').pop() || filePath;
 
         previewCol.innerHTML =
             '<div class="task-preview-header">' +
                 '<span class="task-preview-title">' + escapeHtmlClient(fileName) + '</span>' +
+                '<span class="task-preview-header-actions">' +
+                    renderCommentToggleHTML(0, commentSidebarOpen) +
+                '</span>' +
                 '<button class="task-preview-close" id="task-preview-close" title="Close">&times;</button>' +
             '</div>' +
-            '<div class="task-preview-body">' + renderMarkdown(content) + '</div>';
+            '<div class="task-preview-content-wrapper">' +
+                '<div class="task-preview-body" id="task-preview-body">' + renderMarkdown(content) + '</div>' +
+                '<div class="task-preview-comments-sidebar" id="task-preview-comments-sidebar"></div>' +
+            '</div>';
 
         document.getElementById('task-preview-close')?.addEventListener('click', closeTaskPreview);
+
+        // Set up comment toggle button
+        const toggleBtn = document.getElementById('comment-toggle-btn');
+        if (toggleBtn) {
+            toggleBtn.addEventListener('click', () => {
+                commentSidebarOpen = !commentSidebarOpen;
+                toggleBtn.classList.toggle('comment-toggle-btn--active', commentSidebarOpen);
+                toggleBtn.setAttribute('aria-expanded', String(commentSidebarOpen));
+                renderCommentSidebar();
+            });
+        }
+
+        // Set up keyboard shortcut (Ctrl+Shift+M / Cmd+Shift+M)
+        setupCommentKeyboardShortcut(wsId, filePath);
+
+        // Load comments asynchronously
+        loadAndRenderComments(wsId, filePath);
     } catch {
         previewCol.innerHTML = '<div class="task-preview-error">Network error loading file</div>';
     }
+}
+
+/** Clean up comment-related state and event listeners. */
+function cleanupCommentState(): void {
+    if (commentEventUnsub) {
+        commentEventUnsub();
+        commentEventUnsub = null;
+    }
+    if (commentKeyHandler) {
+        document.removeEventListener('keydown', commentKeyHandler);
+        commentKeyHandler = null;
+    }
+    previewComments = [];
+    previewRawContent = '';
+    disposeCommentState();
+}
+
+/** Load comments and render them in the sidebar. */
+async function loadAndRenderComments(wsId: string, filePath: string): Promise<void> {
+    // Subscribe to comment events for live updates
+    commentEventUnsub = onCommentEvent((event: CommentEvent) => {
+        if (event.type === 'created' || event.type === 'updated' || event.type === 'deleted' || event.type === 'loaded') {
+            // Re-sync local state
+            if (event.type === 'created') {
+                previewComments.push(event.comment);
+            } else if (event.type === 'updated') {
+                const idx = previewComments.findIndex(c => c.id === event.comment.id);
+                if (idx >= 0) previewComments[idx] = event.comment;
+            } else if (event.type === 'deleted') {
+                previewComments = previewComments.filter(c => c.id !== event.commentId);
+            } else if (event.type === 'loaded') {
+                previewComments = event.comments;
+            }
+            updateCommentToggleCount();
+            renderCommentSidebar();
+            highlightPreviewComments();
+        } else if (event.type === 'error') {
+            showToast(event.error.message, 'error');
+        }
+    });
+
+    try {
+        previewComments = await fetchComments(wsId, filePath);
+        updateCommentToggleCount();
+        renderCommentSidebar();
+        highlightPreviewComments();
+    } catch {
+        // Error already shown via event system
+    }
+}
+
+/** Update the comment count on the toggle button. */
+function updateCommentToggleCount(): void {
+    const toggleBtn = document.getElementById('comment-toggle-btn');
+    if (toggleBtn) {
+        toggleBtn.innerHTML = '\uD83D\uDCAC ' + previewComments.length;
+    }
+}
+
+/** Render the comment sidebar panel. */
+function renderCommentSidebar(): void {
+    const sidebar = document.getElementById('task-preview-comments-sidebar');
+    if (!sidebar) return;
+
+    if (!commentSidebarOpen) {
+        sidebar.innerHTML = '';
+        sidebar.classList.remove('task-preview-comments-sidebar--open');
+        return;
+    }
+
+    sidebar.classList.add('task-preview-comments-sidebar--open');
+    sidebar.innerHTML = renderCommentSidebarHTML(
+        previewComments,
+        commentCategoryFilter,
+        commentStatusFilter
+    );
+
+    attachSidebarHandlers(sidebar, {
+        onCommentClick: (commentId: string) => {
+            const previewBody = document.getElementById('task-preview-body');
+            if (previewBody) {
+                scrollToCommentHighlight(previewBody, commentId);
+            }
+        },
+        onClose: () => {
+            commentSidebarOpen = false;
+            const toggleBtn = document.getElementById('comment-toggle-btn');
+            if (toggleBtn) {
+                toggleBtn.classList.remove('comment-toggle-btn--active');
+                toggleBtn.setAttribute('aria-expanded', 'false');
+            }
+            renderCommentSidebar();
+        },
+        onFilterChange: (category: CommentFilter, status: StatusFilter) => {
+            commentCategoryFilter = category;
+            commentStatusFilter = status;
+            renderCommentSidebar();
+        },
+    });
+
+    // Attach card action handlers
+    attachCommentCardHandlers(sidebar, {
+        onResolve: (commentId: string) => {
+            const wsId = taskPanelState.selectedWorkspaceId;
+            const filePath = taskPanelState.openFilePath;
+            if (wsId && filePath) {
+                resolveComment(wsId, filePath, commentId).catch(() => {});
+            }
+        },
+        onReopen: (commentId: string) => {
+            const wsId = taskPanelState.selectedWorkspaceId;
+            const filePath = taskPanelState.openFilePath;
+            if (wsId && filePath) {
+                unresolveComment(wsId, filePath, commentId).catch(() => {});
+            }
+        },
+        onDelete: (commentId: string) => {
+            const wsId = taskPanelState.selectedWorkspaceId;
+            const filePath = taskPanelState.openFilePath;
+            if (wsId && filePath) {
+                deleteComment(wsId, filePath, commentId).catch(() => {});
+            }
+        },
+        onClick: (commentId: string) => {
+            const previewBody = document.getElementById('task-preview-body');
+            if (previewBody) {
+                scrollToCommentHighlight(previewBody, commentId);
+            }
+        },
+    });
+}
+
+/** Highlight all unresolved comment anchors in the preview body. */
+function highlightPreviewComments(): void {
+    const previewBody = document.getElementById('task-preview-body');
+    if (!previewBody) return;
+
+    clearCommentHighlights(previewBody);
+    for (const comment of previewComments) {
+        if (comment.status !== 'resolved') {
+            addCommentHighlight(previewBody, comment.id, comment.selectedText);
+        }
+    }
+}
+
+/** Set up Ctrl+Shift+M / Cmd+Shift+M keyboard shortcut for adding comments. */
+function setupCommentKeyboardShortcut(wsId: string, filePath: string): void {
+    if (commentKeyHandler) {
+        document.removeEventListener('keydown', commentKeyHandler);
+    }
+
+    commentKeyHandler = (e: KeyboardEvent) => {
+        if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'M') {
+            e.preventDefault();
+            const previewBody = document.getElementById('task-preview-body');
+            if (!previewBody) return;
+
+            const captured = captureSelectionWithAnchor(previewBody, previewRawContent);
+            if (!captured) {
+                showToast('Please select text before creating a comment', 'error');
+                return;
+            }
+
+            showCreateCommentPrompt(wsId, filePath, captured.selection.text, {
+                startLine: captured.selection.startLine,
+                startColumn: captured.selection.startColumn,
+                endLine: captured.selection.endLine,
+                endColumn: captured.selection.endColumn,
+            }, captured.anchor);
+        }
+    };
+
+    document.addEventListener('keydown', commentKeyHandler);
+}
+
+/** Show a simple prompt to create a comment. */
+function showCreateCommentPrompt(
+    wsId: string,
+    filePath: string,
+    selectedText: string,
+    selection: { startLine: number; startColumn: number; endLine: number; endColumn: number },
+    anchor: import('./task-comments-types').CommentAnchor
+): void {
+    const commentText = prompt('Add a comment on the selected text:');
+    if (!commentText || !commentText.trim()) return;
+
+    const request: CreateCommentRequest = {
+        filePath,
+        selection,
+        selectedText,
+        comment: commentText.trim(),
+        status: 'open',
+        anchor,
+    };
+
+    createComment(wsId, filePath, request).catch(() => {
+        // Error already handled via event system
+    });
 }
 
 /**
@@ -1609,6 +1882,8 @@ async function openTaskFileFromHash(wsId: string, filePath: string): Promise<voi
 }
 
 function closeTaskPreview(): void {
+    cleanupCommentState();
+    commentSidebarOpen = false;
     taskPanelState.openFilePath = null;
     const wsId = taskPanelState.selectedWorkspaceId;
     if (wsId) {
