@@ -80,12 +80,15 @@ export class CLITaskExecutor implements TaskExecutor {
     private readonly outputBuffers: Map<string, string> = new Map();
     /** SDK session IDs this executor has created (for session liveness checks). */
     private readonly knownSessionIds: Set<string> = new Set();
-    /** Debounce timers for periodic conversation flush during streaming */
-    private readonly flushTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
-    /** Minimum interval between conversation flushes (ms) */
-    private static readonly FLUSH_INTERVAL_MS = 3000;
-    /** Tracks last flush time per process to avoid excessive writes */
-    private readonly lastFlushTime: Map<string, number> = new Map();
+    /** Per-process throttle state for streaming conversation flushes */
+    private readonly throttleState: Map<string, {
+        chunksSinceLastFlush: number;
+        lastFlushTime: number;
+    }> = new Map();
+    /** Time-based throttle: flush every N milliseconds */
+    private static readonly THROTTLE_TIME_MS = 5000;
+    /** Count-based throttle: flush every N chunks */
+    private static readonly THROTTLE_CHUNK_COUNT = 50;
 
     constructor(store: ProcessStore, options: { approvePermissions?: boolean; workingDirectory?: string; dataDir?: string } = {}) {
         this.store = store;
@@ -160,8 +163,8 @@ export class CLITaskExecutor implements TaskExecutor {
             // Track session ID for liveness checks
             if (sessionId) this.knownSessionIds.add(sessionId);
 
-            // Cancel any pending flush timer
-            this.cancelFlushTimer(processId);
+            // Clean up throttle state
+            this.throttleState.delete(processId);
 
             // Build final conversation turns (re-read from store to include any flushed streaming data)
             const currentProcess = await this.store.getProcess(processId);
@@ -203,8 +206,8 @@ export class CLITaskExecutor implements TaskExecutor {
             const duration = Date.now() - startTime;
             logger.debug(LogCategory.AI, `[QueueExecutor] Task ${task.id} failed in ${duration}ms: ${errorMsg}`);
 
-            // Cancel any pending flush timer
-            this.cancelFlushTimer(processId);
+            // Clean up throttle state
+            this.throttleState.delete(processId);
 
             // Update process as failed — include conversation turns so far
             try {
@@ -294,8 +297,8 @@ export class CLITaskExecutor implements TaskExecutor {
                     } catch {
                         // Non-fatal
                     }
-                    // Schedule periodic flush of streaming content to store
-                    this.scheduleStreamingFlush(processId);
+                    // Check throttle conditions and flush if necessary
+                    this.checkThrottleAndFlush(processId);
                 },
                 onToolEvent: (event: ToolEvent) => {
                     try {
@@ -316,8 +319,8 @@ export class CLITaskExecutor implements TaskExecutor {
             const duration = Date.now() - startTime;
             logger.debug(LogCategory.AI, `[FollowUp] Completed for ${processId} in ${duration}ms`);
 
-            // Cancel any pending flush timer
-            this.cancelFlushTimer(processId);
+            // Clean up throttle state
+            this.throttleState.delete(processId);
 
             if (!result.success) {
                 throw new Error(result.error || 'Follow-up execution failed');
@@ -350,8 +353,8 @@ export class CLITaskExecutor implements TaskExecutor {
             const duration = Date.now() - startTime;
             logger.debug(LogCategory.AI, `[FollowUp] Failed for ${processId} in ${duration}ms: ${errorMsg}`);
 
-            // Cancel any pending flush timer
-            this.cancelFlushTimer(processId);
+            // Clean up throttle state
+            this.throttleState.delete(processId);
 
             // Append error turn and mark failed
             const refreshed = await this.store.getProcess(processId);
@@ -500,8 +503,8 @@ export class CLITaskExecutor implements TaskExecutor {
                 } catch {
                     // Non-fatal: store may be a stub
                 }
-                // Schedule periodic flush of streaming content to store
-                this.scheduleStreamingFlush(processId);
+                // Check throttle conditions and flush if necessary
+                this.checkThrottleAndFlush(processId);
             },
             // Emit tool lifecycle events for real-time tool card rendering in the SPA
             onToolEvent: (event: ToolEvent) => {
@@ -576,38 +579,38 @@ export class CLITaskExecutor implements TaskExecutor {
     }
 
     /**
-     * Schedule a debounced flush of streaming assistant content to the store.
-     * This ensures conversation turns are periodically persisted during streaming
-     * so that page refreshes don't lose the conversation history.
+     * Check throttle conditions and flush conversation turn if necessary.
+     * Called on every streaming chunk. Flushes when either:
+     * - Time since last flush >= THROTTLE_TIME_MS (5 seconds)
+     * - Chunks since last flush >= THROTTLE_CHUNK_COUNT (50 chunks)
      */
-    private scheduleStreamingFlush(processId: string): void {
-        // Skip if a flush is already scheduled
-        if (this.flushTimers.has(processId)) return;
+    private checkThrottleAndFlush(processId: string): void {
+        if (!this.throttleState.has(processId)) {
+            this.throttleState.set(processId, { chunksSinceLastFlush: 0, lastFlushTime: 0 });
+        }
+        const state = this.throttleState.get(processId)!;
+        state.chunksSinceLastFlush++;
 
-        // Check if enough time has passed since last flush
-        const lastFlush = this.lastFlushTime.get(processId) ?? 0;
-        const elapsed = Date.now() - lastFlush;
-        const delay = Math.max(0, CLITaskExecutor.FLUSH_INTERVAL_MS - elapsed);
-
-        const timer = setTimeout(() => {
-            this.flushTimers.delete(processId);
-            this.flushStreamingContent(processId).catch(() => {
+        const timeSinceFlush = Date.now() - state.lastFlushTime;
+        if (state.chunksSinceLastFlush >= CLITaskExecutor.THROTTLE_CHUNK_COUNT ||
+            timeSinceFlush >= CLITaskExecutor.THROTTLE_TIME_MS) {
+            // Reset counters synchronously to prevent duplicate flushes
+            state.chunksSinceLastFlush = 0;
+            state.lastFlushTime = Date.now();
+            this.flushConversationTurn(processId, true).catch(() => {
                 // Non-fatal: don't fail the task because of flush
             });
-        }, delay);
-
-        this.flushTimers.set(processId, timer);
+        }
     }
 
     /**
-     * Flush current streaming content to the store as an in-progress assistant turn.
-     * This allows page refreshes to recover the conversation so far.
+     * Flush current streaming content to the store as a conversation turn.
+     * When `streaming` is true, marks the turn as in-progress so the UI
+     * can show a streaming indicator. On completion, call with `streaming: false`.
      */
-    private async flushStreamingContent(processId: string): Promise<void> {
+    private async flushConversationTurn(processId: string, streaming: boolean): Promise<void> {
         const buffer = this.outputBuffers.get(processId);
         if (!buffer) return;
-
-        this.lastFlushTime.set(processId, Date.now());
 
         try {
             const currentProcess = await this.store.getProcess(processId);
@@ -621,11 +624,11 @@ export class CLITaskExecutor implements TaskExecutor {
                 // Update existing streaming assistant turn
                 updatedTurns = existingTurns.map((turn, i) =>
                     i === existingTurns.length - 1
-                        ? { ...turn, content: buffer, streaming: true }
+                        ? { ...turn, content: buffer, streaming: streaming || undefined }
                         : turn
                 );
             } else {
-                // Append new streaming assistant turn
+                // Append new assistant turn
                 updatedTurns = [
                     ...existingTurns,
                     {
@@ -633,7 +636,7 @@ export class CLITaskExecutor implements TaskExecutor {
                         content: buffer,
                         timestamp: new Date(),
                         turnIndex: existingTurns.length,
-                        streaming: true,
+                        streaming: streaming || undefined,
                     },
                 ];
             }
@@ -644,18 +647,6 @@ export class CLITaskExecutor implements TaskExecutor {
         } catch {
             // Non-fatal: don't fail the task because of flush
         }
-    }
-
-    /**
-     * Cancel a pending flush timer for a process.
-     */
-    private cancelFlushTimer(processId: string): void {
-        const timer = this.flushTimers.get(processId);
-        if (timer) {
-            clearTimeout(timer);
-            this.flushTimers.delete(processId);
-        }
-        this.lastFlushTime.delete(processId);
     }
 
     /**

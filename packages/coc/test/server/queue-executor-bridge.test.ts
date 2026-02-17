@@ -1739,172 +1739,254 @@ describe('conversation history persistence during streaming', () => {
         expect(process!.conversationTurns![0].content).toBe('Analyze this');
     });
 
-    it('should schedule streaming flush when chunks arrive', async () => {
-        vi.useFakeTimers();
+    it('should create assistant turn with streaming=true on first chunk', async () => {
+        const process = createCompletedProcessWithSession('proc-first-chunk', 'sess-first-chunk');
+        await store.addProcess(process);
 
-        mockSendMessage.mockImplementation(async (opts: any) => {
-            if (opts.onStreamingChunk) {
-                opts.onStreamingChunk('Hello ');
-                opts.onStreamingChunk('world');
+        mockSendFollowUp.mockImplementation(async (_sid: string, _prompt: string, options?: any) => {
+            if (options?.onStreamingChunk) {
+                options.onStreamingChunk('first chunk');
             }
-            // Advance timer to trigger flush
-            await vi.advanceTimersByTimeAsync(4000);
-            return { success: true, response: 'Hello world', sessionId: 'sess-flush' };
+            return { success: true, response: 'first chunk' };
         });
 
         const executor = new CLITaskExecutor(store);
-        const task: QueuedTask = {
-            id: 'task-flush',
-            type: 'ai-clarification',
-            priority: 'normal',
-            status: 'running',
-            createdAt: Date.now(),
-            payload: { prompt: 'Stream test' },
-            config: {},
-        };
+        await executor.executeFollowUp('proc-first-chunk', 'test');
 
-        await executor.execute(task);
-
-        // After flush, the store should have been updated with streaming content
-        // The updateProcess calls should include one with streaming assistant turn
+        // Verify updateProcess was called with a streaming assistant turn
         const updateCalls = (store.updateProcess as any).mock.calls;
-        const flushCalls = updateCalls.filter((call: any[]) => {
+        const streamingFlushCalls = updateCalls.filter((call: any[]) => {
             const updates = call[1];
             return updates.conversationTurns?.some(
                 (t: any) => t.role === 'assistant' && t.streaming === true
             );
         });
-        // At least one flush should have occurred
-        expect(flushCalls.length).toBeGreaterThanOrEqual(1);
-
-        vi.useRealTimers();
+        expect(streamingFlushCalls.length).toBeGreaterThanOrEqual(1);
+        const firstFlush = streamingFlushCalls[0][1];
+        const assistantTurn = firstFlush.conversationTurns.find(
+            (t: any) => t.role === 'assistant' && t.streaming === true
+        );
+        expect(assistantTurn.content).toBe('first chunk');
     });
 
-    it('should replace streaming assistant turn with final turn on completion', async () => {
-        vi.useFakeTimers();
-
-        mockSendMessage.mockImplementation(async (opts: any) => {
-            if (opts.onStreamingChunk) {
-                opts.onStreamingChunk('partial');
-            }
-            // Trigger flush
-            await vi.advanceTimersByTimeAsync(4000);
-            return { success: true, response: 'complete response', sessionId: 'sess-replace' };
-        });
-
-        const executor = new CLITaskExecutor(store);
-        const task: QueuedTask = {
-            id: 'task-replace',
-            type: 'ai-clarification',
-            priority: 'normal',
-            status: 'running',
-            createdAt: Date.now(),
-            payload: { prompt: 'Test' },
-            config: {},
-        };
-
-        await executor.execute(task);
-
-        const process = await store.getProcess('queue_task-replace');
-        expect(process).toBeDefined();
-        // Final turns should not have streaming flag
-        const assistantTurn = process!.conversationTurns!.find(t => t.role === 'assistant');
-        expect(assistantTurn).toBeDefined();
-        expect(assistantTurn!.streaming).toBeUndefined();
-        expect(assistantTurn!.content).toBe('complete response');
-
-        vi.useRealTimers();
-    });
-
-    it('should flush streaming content during follow-up execution', async () => {
-        vi.useFakeTimers();
-
-        const process = createCompletedProcessWithSession('proc-followup-flush', 'sess-followup-flush');
+    it('should flush every 50 chunks', async () => {
+        const process = createCompletedProcessWithSession('proc-50chunks', 'sess-50chunks');
         await store.addProcess(process);
 
         mockSendFollowUp.mockImplementation(async (_sid: string, _prompt: string, options?: any) => {
             if (options?.onStreamingChunk) {
-                options.onStreamingChunk('follow-up chunk');
+                for (let i = 0; i < 150; i++) {
+                    options.onStreamingChunk(`c${i} `);
+                }
             }
-            await vi.advanceTimersByTimeAsync(4000);
-            return { success: true, response: 'follow-up complete' };
+            return { success: true, response: 'all chunks' };
         });
 
         const executor = new CLITaskExecutor(store);
-        await executor.executeFollowUp('proc-followup-flush', 'continue');
+        await executor.executeFollowUp('proc-50chunks', 'test');
 
-        // Verify final state has no streaming turns
-        const updated = await store.getProcess('proc-followup-flush');
+        // Count streaming flushes (updateProcess calls with streaming: true turns)
+        const updateCalls = (store.updateProcess as any).mock.calls;
+        const streamingFlushCalls = updateCalls.filter((call: any[]) => {
+            const updates = call[1];
+            return updates.conversationTurns?.some(
+                (t: any) => t.role === 'assistant' && t.streaming === true
+            );
+        });
+        // 3 streaming flushes: first chunk (time-based), chunk 51 (count), chunk 101 (count)
+        expect(streamingFlushCalls.length).toBe(3);
+
+        // Final completion call should have streaming=undefined
+        const completionCalls = updateCalls.filter((call: any[]) => {
+            const updates = call[1];
+            return updates.status === 'completed';
+        });
+        expect(completionCalls.length).toBeGreaterThanOrEqual(1);
+        const finalTurns = completionCalls[completionCalls.length - 1][1].conversationTurns;
+        const finalAssistant = finalTurns?.find((t: any) => t.role === 'assistant');
+        expect(finalAssistant?.streaming).toBeUndefined();
+    });
+
+    it('should flush every 5 seconds', async () => {
+        vi.useFakeTimers();
+
+        const process = createCompletedProcessWithSession('proc-5sec', 'sess-5sec');
+        await store.addProcess(process);
+
+        mockSendFollowUp.mockImplementation(async (_sid: string, _prompt: string, options?: any) => {
+            if (options?.onStreamingChunk) {
+                for (let i = 0; i < 10; i++) {
+                    options.onStreamingChunk(`c${i} `);
+                    await vi.advanceTimersByTimeAsync(1000);
+                }
+            }
+            return { success: true, response: 'all 10' };
+        });
+
+        const executor = new CLITaskExecutor(store);
+        await executor.executeFollowUp('proc-5sec', 'test');
+
+        const updateCalls = (store.updateProcess as any).mock.calls;
+        const streamingFlushCalls = updateCalls.filter((call: any[]) => {
+            const updates = call[1];
+            return updates.conversationTurns?.some(
+                (t: any) => t.role === 'assistant' && t.streaming === true
+            );
+        });
+        // First chunk triggers time-based flush (lastFlushTime=0),
+        // then ~5 seconds later another time-based flush
+        expect(streamingFlushCalls.length).toBeGreaterThanOrEqual(2);
+
+        // Verify content grows between flushes
+        const firstContent = streamingFlushCalls[0][1].conversationTurns.find(
+            (t: any) => t.role === 'assistant' && t.streaming
+        ).content;
+        const lastContent = streamingFlushCalls[streamingFlushCalls.length - 1][1].conversationTurns.find(
+            (t: any) => t.role === 'assistant' && t.streaming
+        ).content;
+        expect(lastContent.length).toBeGreaterThan(firstContent.length);
+
+        vi.useRealTimers();
+    });
+
+    it('should update existing streaming turn on subsequent flushes', async () => {
+        const process = createCompletedProcessWithSession('proc-update-turn', 'sess-update-turn');
+        await store.addProcess(process);
+
+        mockSendFollowUp.mockImplementation(async (_sid: string, _prompt: string, options?: any) => {
+            if (options?.onStreamingChunk) {
+                for (let i = 0; i < 100; i++) {
+                    options.onStreamingChunk(`c${i} `);
+                }
+            }
+            return { success: true, response: 'done' };
+        });
+
+        const executor = new CLITaskExecutor(store);
+        await executor.executeFollowUp('proc-update-turn', 'test');
+
+        const updateCalls = (store.updateProcess as any).mock.calls;
+        const streamingFlushCalls = updateCalls.filter((call: any[]) => {
+            const updates = call[1];
+            return updates.conversationTurns?.some(
+                (t: any) => t.role === 'assistant' && t.streaming === true
+            );
+        });
+        // At least 2 streaming flushes (first chunk + count-based at 51)
+        expect(streamingFlushCalls.length).toBeGreaterThanOrEqual(2);
+
+        // Verify later flushes have more content than earlier ones
+        const firstContent = streamingFlushCalls[0][1].conversationTurns.find(
+            (t: any) => t.role === 'assistant' && t.streaming
+        ).content;
+        const lastContent = streamingFlushCalls[streamingFlushCalls.length - 1][1].conversationTurns.find(
+            (t: any) => t.role === 'assistant' && t.streaming
+        ).content;
+        expect(lastContent.length).toBeGreaterThan(firstContent.length);
+    });
+
+    it('should set streaming=false on completion', async () => {
+        const process = createCompletedProcessWithSession('proc-complete-flag', 'sess-complete-flag');
+        await store.addProcess(process);
+
+        mockSendFollowUp.mockImplementation(async (_sid: string, _prompt: string, options?: any) => {
+            if (options?.onStreamingChunk) {
+                for (let i = 0; i < 30; i++) {
+                    options.onStreamingChunk(`c${i} `);
+                }
+            }
+            return { success: true, response: 'final response' };
+        });
+
+        const executor = new CLITaskExecutor(store);
+        await executor.executeFollowUp('proc-complete-flag', 'test');
+
+        const updated = await store.getProcess('proc-complete-flag');
         const lastTurn = updated!.conversationTurns![updated!.conversationTurns!.length - 1];
         expect(lastTurn.role).toBe('assistant');
         expect(lastTurn.streaming).toBeUndefined();
-        expect(lastTurn.content).toBe('follow-up complete');
-
-        vi.useRealTimers();
+        expect(lastTurn.content).toBe('final response');
     });
 
-    it('should clean up flush timer on task completion', async () => {
-        vi.useFakeTimers();
+    it('should handle store.updateProcess errors gracefully during flush', async () => {
+        const process = createCompletedProcessWithSession('proc-flush-error', 'sess-flush-error');
+        await store.addProcess(process);
 
-        mockSendMessage.mockImplementation(async (opts: any) => {
-            if (opts.onStreamingChunk) {
-                opts.onStreamingChunk('chunk');
+        (store.updateProcess as any).mockImplementation(async (id: string, updates: any) => {
+            // Fail streaming flushes, succeed for completion updates
+            if (updates.conversationTurns?.some((t: any) => t.streaming === true)) {
+                throw new Error('Store write failed');
             }
-            // Don't advance timer — completion should cancel it
-            return { success: true, response: 'done', sessionId: 'sess-cleanup' };
+            const existing = store.processes.get(id);
+            if (existing) {
+                store.processes.set(id, { ...existing, ...updates });
+            }
+        });
+
+        mockSendFollowUp.mockImplementation(async (_sid: string, _prompt: string, options?: any) => {
+            if (options?.onStreamingChunk) {
+                for (let i = 0; i < 150; i++) {
+                    options.onStreamingChunk(`c${i} `);
+                }
+            }
+            return { success: true, response: 'completed despite errors' };
         });
 
         const executor = new CLITaskExecutor(store);
-        const task: QueuedTask = {
-            id: 'task-cleanup-timer',
-            type: 'ai-clarification',
-            priority: 'normal',
-            status: 'running',
-            createdAt: Date.now(),
-            payload: { prompt: 'test' },
-            config: {},
-        };
+        // Should not throw despite flush errors
+        await executor.executeFollowUp('proc-flush-error', 'test');
 
-        await executor.execute(task);
-
-        // Advance timer well past flush interval — no additional flushes should occur
-        const updateCountBefore = (store.updateProcess as any).mock.calls.length;
-        await vi.advanceTimersByTimeAsync(10000);
-        const updateCountAfter = (store.updateProcess as any).mock.calls.length;
-        expect(updateCountAfter).toBe(updateCountBefore);
-
-        vi.useRealTimers();
+        const updated = await store.getProcess('proc-flush-error');
+        expect(updated).toBeDefined();
+        expect(updated!.status).toBe('completed');
     });
 
-    it('should clean up flush timer on task failure', async () => {
-        vi.useFakeTimers();
+    it('should clean up throttle state after completion', async () => {
+        const process = createCompletedProcessWithSession('proc-cleanup', 'sess-cleanup');
+        await store.addProcess(process);
 
-        mockSendMessage.mockImplementation(async (opts: any) => {
-            if (opts.onStreamingChunk) {
-                opts.onStreamingChunk('partial');
+        mockSendFollowUp.mockImplementation(async (_sid: string, _prompt: string, options?: any) => {
+            if (options?.onStreamingChunk) {
+                options.onStreamingChunk('chunk');
             }
-            throw new Error('AI failed');
+            return { success: true, response: 'done' };
         });
 
         const executor = new CLITaskExecutor(store);
-        const task: QueuedTask = {
-            id: 'task-cleanup-fail',
-            type: 'ai-clarification',
-            priority: 'normal',
-            status: 'running',
-            createdAt: Date.now(),
-            payload: { prompt: 'test' },
-            config: {},
-        };
+        await executor.executeFollowUp('proc-cleanup', 'first');
 
-        await executor.execute(task);
+        // Execute a second follow-up — should work cleanly with no stale throttle state
+        await executor.executeFollowUp('proc-cleanup', 'second');
 
-        const updateCountBefore = (store.updateProcess as any).mock.calls.length;
-        await vi.advanceTimersByTimeAsync(10000);
-        const updateCountAfter = (store.updateProcess as any).mock.calls.length;
-        expect(updateCountAfter).toBe(updateCountBefore);
+        const updated = await store.getProcess('proc-cleanup');
+        expect(updated!.status).toBe('completed');
+    });
 
-        vi.useRealTimers();
+    it('should clean up throttle state after error', async () => {
+        const process = createCompletedProcessWithSession('proc-cleanup-err', 'sess-cleanup-err');
+        await store.addProcess(process);
+
+        let callCount = 0;
+        mockSendFollowUp.mockImplementation(async (_sid: string, _prompt: string, options?: any) => {
+            callCount++;
+            if (options?.onStreamingChunk) {
+                options.onStreamingChunk('chunk');
+            }
+            if (callCount === 1) {
+                return { success: false, error: 'AI failed' };
+            }
+            return { success: true, response: 'recovered' };
+        });
+
+        const executor = new CLITaskExecutor(store);
+        // First call fails
+        await executor.executeFollowUp('proc-cleanup-err', 'fail');
+
+        // Second call should work (throttle state cleaned up after error)
+        await executor.executeFollowUp('proc-cleanup-err', 'succeed');
+
+        const updated = await store.getProcess('proc-cleanup-err');
+        expect(updated!.status).toBe('completed');
     });
 });
 
@@ -2852,5 +2934,76 @@ describe('tool event emission via onToolEvent', () => {
         await executor.execute(task);
 
         expect(store.emitProcessEvent).toHaveBeenCalledTimes(4);
+    });
+});
+
+// ============================================================================
+// Conversation Persistence Mid-Stream (Integration-style)
+// ============================================================================
+
+describe('conversation persistence mid-stream', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+
+    beforeEach(() => {
+        store = createMockProcessStore();
+        mockSendMessage.mockReset();
+        mockIsAvailable.mockReset();
+        mockSendFollowUp.mockReset();
+        mockIsAvailable.mockResolvedValue({ available: true });
+    });
+
+    it('should persist conversation state mid-stream and restore on server restart', async () => {
+        vi.useFakeTimers();
+
+        const process = createCompletedProcessWithSession('proc-restart', 'sess-restart');
+        await store.addProcess(process);
+
+        let chunksSent = 0;
+        mockSendFollowUp.mockImplementation(async (_sid: string, _prompt: string, options?: any) => {
+            if (options?.onStreamingChunk) {
+                // Emit 6 chunks with 500ms gaps (3 seconds total)
+                for (let i = 0; i < 6; i++) {
+                    options.onStreamingChunk(`chunk${i} `);
+                    chunksSent++;
+                    await vi.advanceTimersByTimeAsync(500);
+                }
+            }
+            return { success: true, response: 'chunk0 chunk1 chunk2 chunk3 chunk4 chunk5 ' };
+        });
+
+        const executor1 = new CLITaskExecutor(store);
+        await executor1.executeFollowUp('proc-restart', 'start streaming');
+
+        // Verify that streaming content was flushed to the store during streaming
+        const updateCalls = (store.updateProcess as any).mock.calls;
+        const streamingFlushCalls = updateCalls.filter((call: any[]) => {
+            const updates = call[1];
+            return updates.conversationTurns?.some(
+                (t: any) => t.role === 'assistant' && t.streaming === true
+            );
+        });
+        // At least one streaming flush should have occurred during the 3 seconds
+        expect(streamingFlushCalls.length).toBeGreaterThanOrEqual(1);
+
+        // The flushed content should include chunk data
+        const flushedTurns = streamingFlushCalls[0][1].conversationTurns;
+        const streamingTurn = flushedTurns.find((t: any) => t.role === 'assistant' && t.streaming);
+        expect(streamingTurn.content).toContain('chunk0');
+
+        // Simulate "server restart": read persisted state from same store with new executor
+        const executor2 = new CLITaskExecutor(store);
+        const persisted = await store.getProcess('proc-restart');
+        expect(persisted).toBeDefined();
+        expect(persisted!.conversationTurns).toBeDefined();
+
+        // Final state should have the complete response (first executor completed)
+        const finalAssistant = persisted!.conversationTurns!.find(t => t.role === 'assistant');
+        expect(finalAssistant).toBeDefined();
+        expect(finalAssistant!.streaming).toBeUndefined();
+
+        // New executor should be functional
+        expect(await executor2.isSessionAlive('proc-restart')).toBeDefined();
+
+        vi.useRealTimers();
     });
 });
