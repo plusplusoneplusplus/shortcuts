@@ -513,11 +513,11 @@ function renderMillerColumns(container: HTMLElement): void {
     html += '</div>';
     container.innerHTML = html;
 
-    // Scroll to the rightmost column
-    setTimeout(() => {
+    // Scroll to the rightmost column after layout is computed
+    requestAnimationFrame(() => {
         const cols = document.getElementById('miller-columns');
         if (cols) cols.scrollLeft = cols.scrollWidth;
-    }, 0);
+    });
 
     // If a file is open, load its content
     if (taskPanelState.openFilePath) {
@@ -1496,14 +1496,33 @@ function findDocStatus(folder: TaskFolder, filePath: string): string | undefined
 // ================================================================
 
 async function openTaskFile(wsId: string, filePath: string): Promise<void> {
+    const previousFilePath = taskPanelState.openFilePath;
     taskPanelState.openFilePath = filePath;
     updateTaskHash(wsId, filePath);
 
-    // Re-render columns (adds preview column, highlights active file)
     const container = document.getElementById('repo-tasks-tree');
-    if (container && currentTasks) {
-        renderMillerColumns(container);
+    if (!container || !currentTasks) return;
+
+    // If a preview column already exists, do an incremental update to avoid
+    // full DOM replacement which causes visible UI tremble/flicker.
+    const existingPreview = document.getElementById('miller-preview-column');
+    if (previousFilePath && existingPreview) {
+        // Update selected-row highlights: deselect old, select new
+        const millerCols = document.getElementById('miller-columns');
+        if (millerCols) {
+            const oldSelected = millerCols.querySelectorAll('.miller-file-row.miller-row-selected');
+            oldSelected.forEach(el => el.classList.remove('miller-row-selected'));
+            const newRow = millerCols.querySelector('[data-file-path="' + CSS.escape(filePath) + '"]');
+            if (newRow) newRow.classList.add('miller-row-selected');
+        }
+        // Show loading state and reload preview content in-place
+        existingPreview.innerHTML = '<div class="task-preview-loading">Loading...</div>';
+        loadPreviewContent(wsId, filePath);
+        return;
     }
+
+    // No preview column yet — full re-render to add it
+    renderMillerColumns(container);
 }
 
 /** Load and render file content into the preview column. */
