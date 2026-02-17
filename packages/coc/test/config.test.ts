@@ -28,6 +28,7 @@ import {
     resolveConfig,
     mergeConfig,
     getResolvedConfigWithSource,
+    writeConfigFile,
 } from '../src/config';
 import type { CLIConfig, ResolvedCLIConfig, ConfigSourceKey } from '../src/config';
 
@@ -509,6 +510,85 @@ timeout: 300
             for (const key of CONFIG_SOURCE_KEYS) {
                 expect(result.sources[key]).toBe('file');
             }
+        });
+    });
+
+    // ========================================================================
+    // writeConfigFile
+    // ========================================================================
+
+    describe('writeConfigFile', () => {
+        let tmpDir: string;
+
+        beforeEach(() => {
+            tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-write-'));
+        });
+
+        afterEach(() => {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        });
+
+        it('should write config as valid YAML that can be read back', () => {
+            const configPath = path.join(tmpDir, 'config.yaml');
+            const config: CLIConfig = { model: 'gpt-4', parallel: 10, output: 'json' };
+            writeConfigFile(configPath, config);
+
+            const loaded = loadConfigFile(configPath);
+            expect(loaded).toBeDefined();
+            expect(loaded!.model).toBe('gpt-4');
+            expect(loaded!.parallel).toBe(10);
+            expect(loaded!.output).toBe('json');
+        });
+
+        it('should overwrite an existing config file', () => {
+            const configPath = path.join(tmpDir, 'config.yaml');
+            writeConfigFile(configPath, { model: 'old-model' });
+            writeConfigFile(configPath, { model: 'new-model', parallel: 3 });
+
+            const loaded = loadConfigFile(configPath);
+            expect(loaded).toBeDefined();
+            expect(loaded!.model).toBe('new-model');
+            expect(loaded!.parallel).toBe(3);
+        });
+
+        it('should create parent directories when missing', () => {
+            const configPath = path.join(tmpDir, 'deep', 'nested', 'config.yaml');
+            writeConfigFile(configPath, { timeout: 120 });
+
+            expect(fs.existsSync(configPath)).toBe(true);
+            const loaded = loadConfigFile(configPath);
+            expect(loaded).toBeDefined();
+            expect(loaded!.timeout).toBe(120);
+        });
+
+        it('should not leave .tmp file after successful write', () => {
+            const configPath = path.join(tmpDir, 'config.yaml');
+            writeConfigFile(configPath, { model: 'test' });
+
+            expect(fs.existsSync(configPath + '.tmp')).toBe(false);
+            expect(fs.existsSync(configPath)).toBe(true);
+        });
+
+        it('should handle empty config object', () => {
+            const configPath = path.join(tmpDir, 'empty.yaml');
+            writeConfigFile(configPath, {});
+
+            expect(fs.existsSync(configPath)).toBe(true);
+        });
+
+        it('should persist serve sub-object correctly', () => {
+            const configPath = path.join(tmpDir, 'serve.yaml');
+            const config: CLIConfig = {
+                serve: { port: 9000, host: '0.0.0.0', dataDir: '/tmp/coc', theme: 'dark' },
+            };
+            writeConfigFile(configPath, config);
+
+            const loaded = loadConfigFile(configPath);
+            expect(loaded).toBeDefined();
+            expect(loaded!.serve?.port).toBe(9000);
+            expect(loaded!.serve?.host).toBe('0.0.0.0');
+            expect(loaded!.serve?.dataDir).toBe('/tmp/coc');
+            expect(loaded!.serve?.theme).toBe('dark');
         });
     });
 });

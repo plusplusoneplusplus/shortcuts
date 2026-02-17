@@ -259,6 +259,20 @@ function validateConfig(config: unknown): CLIConfig | undefined {
 }
 
 /**
+ * Write a CLIConfig to disk using atomic write (write-then-rename).
+ * Creates parent directory if it does not exist.
+ */
+export function writeConfigFile(configPath: string, config: CLIConfig): void {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const yaml = require('js-yaml');
+    const dir = path.dirname(configPath);
+    fs.mkdirSync(dir, { recursive: true });
+    const tmpPath = configPath + '.tmp';
+    fs.writeFileSync(tmpPath, yaml.dump(config, { lineWidth: -1 }), 'utf-8');
+    fs.renameSync(tmpPath, configPath);
+}
+
+/**
  * Resolve CLI configuration by merging config file with defaults.
  * Command-line options should be applied on top of the result.
  */
