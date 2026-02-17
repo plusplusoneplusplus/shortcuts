@@ -58,6 +58,8 @@ export interface ExecutionServerOptions {
     wiki?: WikiServerOptions;
     /** Optional AI service injection (for testing). If not provided, uses getCopilotSDKService(). */
     aiService?: CopilotSDKService;
+    /** Optional config file path override (for tests). When absent, uses getConfigFilePath(). */
+    configPath?: string;
 }
 
 /** Options for graceful shutdown with queue draining. */

@@ -79,6 +79,12 @@ describe('Admin Handler', () => {
         return server;
     }
 
+    async function startServerWithConfig(configPath: string): Promise<ExecutionServer> {
+        const store = new FileProcessStore({ dataDir });
+        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir, configPath });
+        return server;
+    }
+
     // ========================================================================
     // GET /api/admin/data/wipe-token
     // ========================================================================
@@ -297,6 +303,194 @@ describe('Admin Handler', () => {
             await request(`${srv.url}/api/admin/data?confirm=${token}`, { method: 'DELETE' });
 
             expect(fs.existsSync(configPath)).toBe(true);
+        });
+    });
+
+    // ========================================================================
+    // GET /api/admin/config
+    // ========================================================================
+
+    describe('GET /api/admin/config', () => {
+        it('should return resolved config with sources and configFilePath', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            fs.writeFileSync(configPath, 'model: gpt-4\nparallel: 10\n', 'utf-8');
+            const srv = await startServerWithConfig(configPath);
+
+            const res = await request(`${srv.url}/api/admin/config`);
+            expect(res.status).toBe(200);
+
+            const body = JSON.parse(res.body);
+            expect(body.resolved).toBeDefined();
+            expect(body.sources).toBeDefined();
+            expect(body.configFilePath).toBeDefined();
+            expect(body.resolved.model).toBe('gpt-4');
+            expect(body.resolved.parallel).toBe(10);
+            expect(body.sources.model).toBe('file');
+            expect(body.sources.parallel).toBe('file');
+            expect(body.sources.output).toBe('default');
+        });
+
+        it('should return defaults when no config file exists', async () => {
+            const configPath = path.join(dataDir, 'nonexistent.yaml');
+            const srv = await startServerWithConfig(configPath);
+
+            const res = await request(`${srv.url}/api/admin/config`);
+            expect(res.status).toBe(200);
+
+            const body = JSON.parse(res.body);
+            expect(body.resolved.parallel).toBe(5);
+            expect(body.resolved.output).toBe('table');
+            expect(body.sources.parallel).toBe('default');
+        });
+    });
+
+    // ========================================================================
+    // PUT /api/admin/config
+    // ========================================================================
+
+    describe('PUT /api/admin/config', () => {
+        it('should update config and return resolved result', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ model: 'gpt-4', parallel: 8 }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.model).toBe('gpt-4');
+            expect(body.resolved.parallel).toBe(8);
+            expect(body.sources.model).toBe('file');
+            expect(body.sources.parallel).toBe('file');
+        });
+
+        it('should merge with existing config without wiping other keys', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            fs.writeFileSync(configPath, 'model: gpt-3\ntimeout: 120\n', 'utf-8');
+            const srv = await startServerWithConfig(configPath);
+
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ parallel: 3 }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            // New value applied
+            expect(body.resolved.parallel).toBe(3);
+            // Existing values preserved
+            expect(body.resolved.model).toBe('gpt-3');
+            expect(body.resolved.timeout).toBe(120);
+        });
+
+        it('should accept all editable fields', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ model: 'claude', parallel: 2, timeout: 60, output: 'json' }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.model).toBe('claude');
+            expect(body.resolved.parallel).toBe(2);
+            expect(body.resolved.timeout).toBe(60);
+            expect(body.resolved.output).toBe('json');
+        });
+
+        it('should reject invalid parallel (non-positive)', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ parallel: -1 }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('parallel');
+        });
+
+        it('should reject invalid timeout (zero)', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ timeout: 0 }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('timeout');
+        });
+
+        it('should reject invalid output format', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ output: 'xml' }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('output');
+        });
+
+        it('should reject empty model string', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ model: '' }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('model');
+        });
+
+        it('should reject invalid JSON body', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: 'not json',
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(400);
+        });
+
+        it('should persist changes to disk', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+
+            await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ model: 'persisted-model' }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            // Read file directly to confirm persistence
+            const content = fs.readFileSync(configPath, 'utf-8');
+            expect(content).toContain('persisted-model');
         });
     });
 });
