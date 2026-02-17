@@ -11,6 +11,7 @@
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
+import type { AIProcess } from '@plusplusoneplusplus/pipeline-core';
 
 /**
  * Handle SSE streaming for a single process.
@@ -48,7 +49,10 @@ export async function handleProcessStream(
     });
     res.flushHeaders();
 
-    // 3. If already completed/failed/cancelled, send final status + close
+    // 3. Replay persisted conversation history as chunk events
+    replayConversationTurns(res, process);
+
+    // 4. If already completed/failed/cancelled, send final status + close
     if (process.status !== 'running' && process.status !== 'queued') {
         sendEvent(res, 'status', {
             status: process.status,
@@ -60,7 +64,7 @@ export async function handleProcessStream(
         return;
     }
 
-    // 4. Subscribe to output chunks via store.onProcessOutput
+    // 5. Subscribe to output chunks via store.onProcessOutput
     let cleaned = false;
     const cleanup = () => {
         if (cleaned) { return; }
@@ -109,16 +113,31 @@ export async function handleProcessStream(
         }
     });
 
-    // 5. Heartbeat to detect stale connections (every 15s)
+    // 6. Heartbeat to detect stale connections (every 15s)
     const heartbeat = setInterval(() => {
         sendEvent(res, 'heartbeat', {});
     }, 15_000);
 
-    // 6. Cleanup on client disconnect
+    // 7. Cleanup on client disconnect
     req.on('close', cleanup);
 }
 
 /** Write a single SSE event frame. */
 function sendEvent(res: ServerResponse, event: string, data: unknown): void {
     res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+}
+
+/**
+ * Replay persisted conversation turns as chunk events.
+ * Only assistant turns are emitted (user turns are prompts, not streamed output).
+ */
+function replayConversationTurns(res: ServerResponse, process: AIProcess): void {
+    const turns = process.conversationTurns;
+    if (!turns || turns.length === 0) { return; }
+
+    for (const turn of turns) {
+        if (turn.role === 'assistant' && turn.content) {
+            sendEvent(res, 'chunk', { content: turn.content });
+        }
+    }
 }
