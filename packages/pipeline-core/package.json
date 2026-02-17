@@ -4,6 +4,21 @@
   "description": "AI pipeline execution engine with map-reduce framework",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "ai": ["dist/ai/index.d.ts"],
+      "map-reduce": ["dist/map-reduce/index.d.ts"],
+      "pipeline": ["dist/pipeline/index.d.ts"],
+      "utils": ["dist/utils/index.d.ts"],
+      "tasks": ["dist/tasks/index.d.ts"],
+      "discovery": ["dist/discovery/index.d.ts"],
+      "editor/rendering": ["dist/editor/rendering/index.d.ts"],
+      "editor/parsing": ["dist/editor/parsing/index.d.ts"],
+      "editor/anchor": ["dist/editor/anchor.d.ts"],
+      "editor/anchor-types": ["dist/editor/anchor-types.d.ts"],
+      "editor/types": ["dist/editor/types.d.ts"]
+    }
+  },
   "exports": {
     ".": "./dist/index.js",
     "./ai": "./dist/ai/index.js",

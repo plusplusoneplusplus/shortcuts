@@ -1,10 +1,8 @@
 /**
  * Webview logic module exports
- * 
- * This module exports all testable business logic for the webview.
- * These functions can be:
- * 1. Unit tested in Node.js
- * 2. Imported into the webview bundle for browser use
+ *
+ * Re-exports all testable business logic for the webview.
+ * Individual modules delegate to pipeline-core (extracted in commits 001-003).
  */
 
 // Comment state management
@@ -38,7 +36,7 @@ export {
     isLineRowElement, offsetToPosition, positionToOffset, processNode, processTextNode, shouldSkipElement
 } from './content-extraction';
 
-// Re-export line mapping utilities from webview-utils
+// Re-export line mapping utilities from webview-utils (local, not in pipeline-core)
 export {
     MockTableRow, ParsedTable,
     SelectionPosition, calculateCodeBlockLineNumber, calculateColumnIndices as calculateColumnIndicesForLine, calculateTableCellLineNumber, findTableRowAtLine, getLineFromTableCellLogic, getSelectionCoverageForLine as getSelectionCoverageForLineFromUtils, getTableRowLineNumbers, getWebviewCodeBlockLineFunction, getWebviewTableCellLineFunction, isTableSeparatorLine,

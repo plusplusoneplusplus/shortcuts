@@ -1,5 +1,8 @@
 /**
  * Types and interfaces for the Markdown Comments feature
+ *
+ * Core domain types are re-exported from pipeline-core.
+ * Extension-specific types (AI, prompts, events) remain local.
  */
 
 // Import generic AI types from ai-service
@@ -8,49 +11,25 @@ import { AIProcessStatus, AIToolType } from '../ai-service';
 // Re-export for backward compatibility
 export type { AIProcessStatus, AIToolType };
 
-/**
- * Comment status
- */
-export type CommentStatus = 'open' | 'resolved' | 'pending';
+// Re-export core domain types from pipeline-core (subpath for browser-safe webview bundling)
+export {
+    CommentStatus,
+    CommentType,
+    CommentSelection,
+    CommentAnchor,
+    MermaidContext,
+    MarkdownComment,
+    isUserComment,
+    CommentsSettings,
+    CommentsConfig,
+    DEFAULT_COMMENTS_SETTINGS,
+    DEFAULT_COMMENTS_CONFIG
+} from '@plusplusoneplusplus/pipeline-core/editor/types';
+
+import type { CommentSelection, MarkdownComment } from '@plusplusoneplusplus/pipeline-core/editor/types';
 
 /**
- * Comment type - distinguishes between user comments and different AI response types
- */
-export type CommentType = 'user' | 'ai-suggestion' | 'ai-clarification' | 'ai-critique' | 'ai-question';
-
-/**
- * Selection range within a markdown file
- */
-export interface CommentSelection {
-    /** 1-based line number where selection starts */
-    startLine: number;
-    /** 1-based column number where selection starts */
-    startColumn: number;
-    /** 1-based line number where selection ends */
-    endLine: number;
-    /** 1-based column number where selection ends */
-    endColumn: number;
-}
-
-/**
- * Anchor context for robust comment location tracking
- * Stores surrounding context to enable fuzzy matching after content changes
- */
-export interface CommentAnchor {
-    /** The exact selected/commented text */
-    selectedText: string;
-    /** Text appearing before the selection (up to N lines/characters) */
-    contextBefore: string;
-    /** Text appearing after the selection (up to N lines/characters) */
-    contextAfter: string;
-    /** Original line number when the comment was created (for fallback) */
-    originalLine: number;
-    /** Hash/fingerprint of the selected text for quick comparison */
-    textHash: string;
-}
-
-/**
- * Result of anchor relocation attempt
+ * Result of anchor relocation attempt (extension-specific format with nested selection)
  */
 export interface AnchorRelocationResult {
     /** Whether the anchor was successfully relocated */
@@ -62,127 +41,6 @@ export interface AnchorRelocationResult {
     /** Reason for the result */
     reason: 'exact_match' | 'fuzzy_match' | 'context_match' | 'line_fallback' | 'not_found';
 }
-
-/**
- * Mermaid diagram context for comments on diagrams
- */
-export interface MermaidContext {
-    /** The mermaid block identifier */
-    diagramId: string;
-    /** Specific node ID if commenting on a node */
-    nodeId?: string;
-    /** Display label of the node */
-    nodeLabel?: string;
-    /** Edge ID if commenting on an edge/link */
-    edgeId?: string;
-    /** Display label of the edge */
-    edgeLabel?: string;
-    /** Source node ID for the edge */
-    edgeSourceNode?: string;
-    /** Target node ID for the edge */
-    edgeTargetNode?: string;
-    /** Type of diagram (flowchart, sequence, etc.) */
-    diagramType?: string;
-    /** Element type discriminator */
-    elementType?: 'node' | 'edge';
-}
-
-/**
- * A single markdown comment
- */
-export interface MarkdownComment {
-    /** Unique identifier (UUID) */
-    id: string;
-    /** Relative path to .md file */
-    filePath: string;
-    /** Selection range in the file */
-    selection: CommentSelection;
-    /** The actual selected text (for reference) */
-    selectedText: string;
-    /** User's comment content */
-    comment: string;
-    /** Current status of the comment */
-    status: CommentStatus;
-    /** Type of the comment (user or ai) - defaults to 'user' */
-    type?: CommentType;
-    /** ISO timestamp when created */
-    createdAt: string;
-    /** ISO timestamp when last updated */
-    updatedAt: string;
-    /** Optional author name */
-    author?: string;
-    /** Optional tags for categorization */
-    tags?: string[];
-    /** Optional mermaid diagram context */
-    mermaidContext?: MermaidContext;
-    /** Optional anchor for robust location tracking after content changes */
-    anchor?: CommentAnchor;
-}
-
-/**
- * Check if a comment is a user comment (not an AI-generated comment).
- * Used for filtering prompts to only include human-added comments.
- * 
- * @param comment - The comment to check
- * @returns true if the comment is a user comment (type is undefined or 'user')
- */
-export function isUserComment(comment: MarkdownComment): boolean {
-    return !comment.type || comment.type === 'user';
-}
-
-/**
- * Settings for comments display
- */
-export interface CommentsSettings {
-    /** Whether to show resolved comments */
-    showResolved: boolean;
-    /** Highlight color for user comments (CSS color) */
-    highlightColor: string;
-    /** Highlight color for resolved comments (CSS color) */
-    resolvedHighlightColor: string;
-    /** Highlight color for AI suggestion comments (CSS color) */
-    aiSuggestionHighlightColor: string;
-    /** Highlight color for AI clarification comments (CSS color) */
-    aiClarificationHighlightColor: string;
-    /** Highlight color for AI critique comments (CSS color) */
-    aiCritiqueHighlightColor: string;
-    /** Highlight color for AI question comments (CSS color) */
-    aiQuestionHighlightColor: string;
-}
-
-/**
- * Configuration structure for markdown comments
- */
-export interface CommentsConfig {
-    /** Configuration version number */
-    version: number;
-    /** Array of all comments */
-    comments: MarkdownComment[];
-    /** Display settings */
-    settings?: CommentsSettings;
-}
-
-/**
- * Default settings for comments
- */
-export const DEFAULT_COMMENTS_SETTINGS: CommentsSettings = {
-    showResolved: true,
-    highlightColor: 'rgba(255, 235, 59, 0.3)',           // Yellow for user comments
-    resolvedHighlightColor: 'rgba(76, 175, 80, 0.2)',   // Green for resolved
-    aiSuggestionHighlightColor: 'rgba(33, 150, 243, 0.3)',    // Blue for AI suggestions
-    aiClarificationHighlightColor: 'rgba(156, 39, 176, 0.3)', // Purple for AI clarifications
-    aiCritiqueHighlightColor: 'rgba(255, 152, 0, 0.3)',       // Orange for AI critiques
-    aiQuestionHighlightColor: 'rgba(0, 188, 212, 0.3)'        // Cyan for AI questions
-};
-
-/**
- * Default empty configuration
- */
-export const DEFAULT_COMMENTS_CONFIG: CommentsConfig = {
-    version: 1,
-    comments: [],
-    settings: DEFAULT_COMMENTS_SETTINGS
-};
 
 /**
  * Comments configuration file name
