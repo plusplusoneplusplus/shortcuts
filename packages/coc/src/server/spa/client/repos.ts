@@ -474,6 +474,7 @@ function renderRepoDetail(wsId: string): void {
         '<button class="repo-sub-tab' + (activeSubTab === 'tasks' ? ' active' : '') + '" data-subtab="tasks">Tasks' +
             (taskCount > 0 ? ' <span class="repo-sub-tab-badge">' + taskCount + '</span>' : '') +
         '</button>' +
+        '<button class="repo-sub-tab' + (activeSubTab === 'queue' ? ' active' : '') + '" data-subtab="queue">Queue</button>' +
     '</div>';
 
     // Sub-tab content
@@ -524,8 +525,15 @@ function renderSubTabContent(repo: RepoData, subTab: RepoSubTab): string {
         case 'info': return renderInfoTab(repo);
         case 'pipelines': return renderPipelinesTab(repo);
         case 'tasks': return renderTasksTab(repo);
+        case 'queue': return renderQueueTab(repo.workspace.id);
         default: return renderInfoTab(repo);
     }
+}
+
+function renderQueueTab(repoId: string): string {
+    return '<div class="queue-tab-content">' +
+        '<p>Queue tab - Coming soon</p>' +
+    '</div>';
 }
 
 // ================================================================

@@ -300,3 +300,37 @@ describe('Repos sidebar HTML structure', () => {
         expect(html).not.toContain('id="repo-group-toggle-btn"');
     });
 });
+
+// ============================================================================
+// Queue sub-tab (client bundle)
+// ============================================================================
+
+describe('client bundle — queue sub-tab', () => {
+    let script: string;
+    beforeAll(() => { script = getClientBundle(); });
+
+    it('defines renderQueueTab function', () => {
+        expect(script).toContain('renderQueueTab');
+    });
+
+    it('renders Queue button in sub-tab bar with data-subtab="queue"', () => {
+        expect(script).toContain('data-subtab="queue"');
+        expect(script).toContain('>Queue<');
+    });
+
+    it('includes queue case in renderSubTabContent switch', () => {
+        // The switch statement should route 'queue' to renderQueueTab
+        expect(script).toContain('case "queue"');
+        expect(script).toContain('renderQueueTab');
+    });
+
+    it('renderQueueTab returns placeholder HTML with queue-tab-content class', () => {
+        expect(script).toContain('queue-tab-content');
+        expect(script).toContain('Coming soon');
+    });
+
+    it('RepoSubTab type includes queue (state module)', () => {
+        // The compiled bundle should reference 'queue' as a valid sub-tab value
+        expect(script).toContain('queue');
+    });
+});

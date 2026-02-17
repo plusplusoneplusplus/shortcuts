@@ -4,7 +4,7 @@
  */
 
 export type DashboardTab = 'processes' | 'repos' | 'wiki' | 'reports' | 'admin';
-export type RepoSubTab = 'info' | 'pipelines' | 'tasks';
+export type RepoSubTab = 'info' | 'pipelines' | 'tasks' | 'queue';
 
 /** Tool call status for the SPA client (timestamps are ISO strings) */
 export interface ClientToolCall {
