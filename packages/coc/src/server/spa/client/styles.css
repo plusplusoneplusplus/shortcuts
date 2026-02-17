@@ -450,12 +450,13 @@ body {
 /* Chat-layout children: flex column with pinned input bar */
 .chat-layout .detail-content > .detail-header,
 .chat-layout .detail-content > .meta-section,
+.chat-layout .detail-content > .meta-popover,
 .chat-layout .detail-content > .error-alert {
     flex-shrink: 0;
     padding: 0 24px;
 }
 .chat-layout .detail-content > .detail-header {
-    padding-top: 24px;
+    padding-top: 16px;
 }
 .chat-layout .detail-content > .conversation-section {
     padding: 0 24px;
@@ -469,7 +470,10 @@ body {
 }
 .chat-layout .detail-content > .action-buttons {
     flex-shrink: 0;
-    padding: 0 24px 16px;
+    padding: 0 24px;
+}
+.chat-layout .detail-content > .action-buttons:empty {
+    display: none;
 }
 #repo-detail-panel { padding: 16px 12px; }
 #repo-detail-content { max-width: none; margin: 0; }
@@ -1358,6 +1362,72 @@ body {
 .meta-section .meta-grid {
     padding: 6px 10px 10px;
 }
+
+/* ---- Compact Header (queue task detail) ---- */
+.compact-header {
+    margin-bottom: 8px !important;
+}
+.detail-header-meta-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 6px;
+}
+.meta-chip {
+    font-size: 11px;
+    color: var(--text-secondary);
+    background: var(--bg-secondary);
+    padding: 2px 8px;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    white-space: nowrap;
+}
+.meta-info-btn {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+    color: var(--text-secondary);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.15s, color 0.15s;
+    flex-shrink: 0;
+}
+.meta-info-btn:hover {
+    background: var(--hover-bg);
+    color: var(--text-primary);
+}
+.meta-info-btn.active {
+    background: var(--active-bg);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+.meta-popover {
+    margin: 0 24px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-secondary);
+    animation: popover-in 0.15s ease;
+}
+.chat-layout .meta-popover {
+    margin: 0;
+    padding: 0 24px;
+}
+.meta-popover .meta-grid {
+    padding: 10px 12px;
+    margin-bottom: 0;
+}
+@keyframes popover-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
 /* ---- Chat Bubble Copy Button ---- */
 .chat-message {
     position: relative;

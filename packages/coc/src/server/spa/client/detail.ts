@@ -455,27 +455,34 @@ function renderQueueTaskConversation(processId: string, taskId: string, proc: an
     const isRunning = (status === 'running' || status === 'queued');
     const statusClass = status || 'running';
 
-    let html = '<div class="detail-header">' +
+    // Compact header: back button, title, status badge, info toggle
+    let html = '<div class="detail-header compact-header">' +
         '<div class="detail-header-top">' +
             '<button class="detail-back-btn" onclick="clearDetail()" title="Back">\u2190</button>' +
             '<h1>' + escapeHtmlClient(name) + '</h1>' +
         '</div>' +
-        '<span class="status-badge ' + statusClass + '">' +
-            statusIcon(status) + ' ' + statusLabel(status) +
-        '</span>' +
-    '</div>';
+        '<div class="detail-header-meta-row">' +
+            '<span class="status-badge ' + statusClass + '">' +
+                statusIcon(status) + ' ' + statusLabel(status) +
+            '</span>';
 
-    // Metadata — collapsed by default
-    html += '<details class="meta-section">';
-    html += '<summary class="meta-summary">';
-    html += escapeHtmlClient(processId);
+    // Inline meta chips
     if (proc && proc.metadata && proc.metadata.model) {
-        html += ' \u00B7 ' + escapeHtmlClient(proc.metadata.model);
+        html += '<span class="meta-chip">' + escapeHtmlClient(proc.metadata.model) + '</span>';
     }
     if (startTime) {
-        html += ' \u00B7 ' + startTime;
+        html += '<span class="meta-chip">' + startTime + '</span>';
     }
-    html += '</summary>';
+
+    // Info toggle button — opens popover with full metadata
+    html += '<button class="meta-info-btn" id="meta-info-toggle" title="Show details">' +
+        '\u{2139}\uFE0F</button>';
+
+    html += '</div>' +
+    '</div>';
+
+    // Hidden metadata popover (toggled by info button)
+    html += '<div class="meta-popover hidden" id="meta-popover">';
     html += '<div class="meta-grid">';
     html += '<div class="meta-item"><label>ID</label><span>' + escapeHtmlClient(processId) + '</span></div>';
     if (proc && proc.metadata && proc.metadata.model) {
@@ -490,8 +497,7 @@ function renderQueueTaskConversation(processId: string, taskId: string, proc: an
     if (endTime) {
         html += '<div class="meta-item"><label>Ended</label><span>' + endTime + '</span></div>';
     }
-    html += '</div>';
-    html += '</details>';
+    html += '</div></div>';
 
     // Error
     if (error) {
@@ -500,7 +506,6 @@ function renderQueueTaskConversation(processId: string, taskId: string, proc: an
 
     // Conversation area — chat bubbles
     html += '<div class="conversation-section">' +
-        '<h2>Conversation</h2>' +
         '<div id="queue-task-conversation" class="conversation-body">';
 
     const turns = queueTaskConversationTurns;
@@ -566,22 +571,31 @@ function renderQueueTaskConversation(processId: string, taskId: string, proc: an
         (inputDisabled ? ' disabled' : '') + '>\u27A4</button>' +
         '</div>';
 
-    // Action buttons
-    html += '<div class="action-buttons">';
-    // Apply Changes button for completed "Update Document" tasks
+    // Action buttons — only render if there's content
     if (originalTaskPath && originalWorkspaceId && proc && proc.result && !isRunning) {
-        html += '<button class="action-btn action-btn-primary" ' +
+        html += '<div class="action-buttons">' +
+            '<button class="action-btn action-btn-primary" ' +
             'id="apply-changes-btn" ' +
             'data-task-path="' + escapeHtmlClient(originalTaskPath) + '" ' +
             'data-workspace-id="' + escapeHtmlClient(originalWorkspaceId) + '">' +
-            '\u{1F4DD} Apply Changes</button>';
+            '\u{1F4DD} Apply Changes</button>' +
+            '</div>';
     }
-    html += '</div>';
 
     contentEl.innerHTML = html;
 
     // Attach tool call toggle event handlers
     attachToolCallToggleHandlers(contentEl);
+
+    // Wire up info toggle button
+    const infoBtn = document.getElementById('meta-info-toggle');
+    const infoPopover = document.getElementById('meta-popover');
+    if (infoBtn && infoPopover) {
+        infoBtn.addEventListener('click', function() {
+            infoPopover.classList.toggle('hidden');
+            infoBtn.classList.toggle('active');
+        });
+    }
 
     // Wire up Apply Changes button if present
     const applyBtn = document.getElementById('apply-changes-btn');
