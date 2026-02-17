@@ -70,16 +70,16 @@ vi.mock('../../../../src/server/spa/client/config', () => ({
     getApiBase: () => '/api',
 }));
 
-// Stub task-comment-anchor since it's pure logic (no DOM)
-vi.mock('../../../../src/server/spa/client/task-comment-anchor', () => ({
-    createAnchor: vi.fn(() => ({
+// Stub pipeline-core anchor functions (no DOM)
+vi.mock('@plusplusoneplusplus/pipeline-core', () => ({
+    createAnchorData: vi.fn(() => ({
         selectedText: 'test',
         contextBefore: 'before',
         contextAfter: 'after',
         originalLine: 1,
         textHash: 'abc123',
     })),
-    DEFAULT_ANCHOR_CONFIG: {
+    DEFAULT_ANCHOR_MATCH_CONFIG: {
         contextCharsBefore: 100,
         contextCharsAfter: 100,
         minSimilarityThreshold: 0.6,

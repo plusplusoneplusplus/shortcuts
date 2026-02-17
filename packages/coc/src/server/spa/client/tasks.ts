@@ -41,7 +41,6 @@ import {
     type StatusFilter,
 } from './task-comments-ui';
 import type { TaskComment as ClientTaskComment } from './task-comments-types';
-import { createAnchor } from './task-comment-anchor';
 
 // ================================================================
 // Context File Filtering

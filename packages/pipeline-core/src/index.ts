@@ -924,5 +924,15 @@ export {
     CodeBlockRenderOptions,
     renderTable,
     renderCodeBlock,
-    renderMermaidContainer
+    renderMermaidContainer,
+    // Anchor types
+    BaseAnchorData,
+    AnchorRelocationStrategy,
+    AnchorRelocationResult,
+    // Anchor functions
+    extractTextFromSelection,
+    createAnchorData,
+    relocateAnchorPosition,
+    needsRelocationCheck,
+    batchRelocateAnchors
 } from './editor';

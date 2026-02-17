@@ -13,7 +13,10 @@
     "./tasks": "./dist/tasks/index.js",
     "./discovery": "./dist/discovery/index.js",
     "./editor/rendering": "./dist/editor/rendering/index.js",
-    "./editor/parsing": "./dist/editor/parsing/index.js"
+    "./editor/parsing": "./dist/editor/parsing/index.js",
+    "./editor/anchor": "./dist/editor/anchor.js",
+    "./editor/anchor-types": "./dist/editor/anchor-types.js",
+    "./editor/types": "./dist/editor/types.js"
   },
   "files": [
     "dist"

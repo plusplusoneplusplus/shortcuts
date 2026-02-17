@@ -20,10 +20,10 @@ import type {
     CommentSelection,
 } from './task-comments-types';
 import {
-    createAnchor,
+    createAnchorData,
     type AnchorMatchConfig,
-    DEFAULT_ANCHOR_CONFIG,
-} from './task-comment-anchor';
+    DEFAULT_ANCHOR_MATCH_CONFIG,
+} from '@plusplusoneplusplus/pipeline-core/editor/anchor';
 import {
     getPreviewSelection,
     type SelectionInfo,
@@ -324,17 +324,17 @@ export async function unresolveComment(
 export function captureSelectionWithAnchor(
     previewBody: HTMLElement,
     documentContent: string,
-    config: AnchorMatchConfig = DEFAULT_ANCHOR_CONFIG
+    config: AnchorMatchConfig = DEFAULT_ANCHOR_MATCH_CONFIG
 ): { selection: SelectionInfo; anchor: CommentAnchor } | null {
     const selectionInfo = getPreviewSelection(previewBody);
     if (!selectionInfo) return null;
 
-    const anchor = createAnchor(documentContent, {
-        startLine: selectionInfo.startLine,
-        startColumn: selectionInfo.startColumn,
-        endLine: selectionInfo.endLine,
-        endColumn: selectionInfo.endColumn,
-    }, config);
+    const anchor = createAnchorData(documentContent,
+        selectionInfo.startLine,
+        selectionInfo.endLine,
+        selectionInfo.startColumn,
+        selectionInfo.endColumn,
+        config) as CommentAnchor;
 
     return { selection: selectionInfo, anchor };
 }

@@ -26,7 +26,11 @@ import {
     splitIntoLines
 } from '../utils/text-matching';
 
+// Re-export config types for consumers that use anchor as a browser-safe entry point
+export { AnchorMatchConfig, DEFAULT_ANCHOR_MATCH_CONFIG } from '../utils/text-matching';
+
 import type { BaseAnchorData, AnchorRelocationResult } from './anchor-types';
+export type { BaseAnchorData, AnchorRelocationResult } from './anchor-types';
 
 /**
  * Extract text from document content given line and column positions (1-based).

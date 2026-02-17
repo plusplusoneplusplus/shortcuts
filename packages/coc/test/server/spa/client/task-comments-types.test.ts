@@ -9,7 +9,6 @@ import { describe, it, expect } from 'vitest';
 import type {
     CommentSelection,
     CommentAnchor,
-    AnchorRelocationResult,
     TaskComment,
     TaskCommentsData,
     TaskCommentStatus,
@@ -69,43 +68,6 @@ describe('CommentAnchor', () => {
         };
         expect(anchor.contextBefore).toBe('');
         expect(anchor.contextAfter).toBe('');
-    });
-});
-
-// ============================================================================
-// AnchorRelocationResult
-// ============================================================================
-
-describe('AnchorRelocationResult', () => {
-    it('represents a successful exact match', () => {
-        const result: AnchorRelocationResult = {
-            found: true,
-            selection: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 5 },
-            confidence: 1.0,
-            reason: 'exact_match',
-        };
-        expect(result.found).toBe(true);
-        expect(result.confidence).toBe(1.0);
-    });
-
-    it('represents a not_found result without selection', () => {
-        const result: AnchorRelocationResult = {
-            found: false,
-            confidence: 0,
-            reason: 'not_found',
-        };
-        expect(result.found).toBe(false);
-        expect(result.selection).toBeUndefined();
-    });
-
-    it('accepts all reason values', () => {
-        const reasons: AnchorRelocationResult['reason'][] = [
-            'exact_match', 'fuzzy_match', 'context_match', 'line_fallback', 'not_found',
-        ];
-        for (const reason of reasons) {
-            const r: AnchorRelocationResult = { found: false, confidence: 0, reason };
-            expect(r.reason).toBe(reason);
-        }
     });
 });
 
