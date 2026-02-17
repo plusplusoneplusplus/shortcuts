@@ -115,7 +115,41 @@ status: pending
 
 ---
 
-## Phase 5: Validation
+## Phase 5: Context File Generation
+
+Write a `CONTEXT.md` file to `.vscode/tasks/<feature>/<work>/CONTEXT.md` that captures the high-level context of this commit group.
+
+**Purpose:** A compact reference that can be attached to future AI chat sessions to quickly re-establish context without re-reading all plan files.
+
+**Requirements:**
+- Keep it **compact** — no implementation details, no file lists, no code snippets
+- Include: feature name, goal (1-2 sentences), commit sequence (number + title only), key architectural decisions, and any important constraints or conventions
+- Should be understandable in isolation by someone (or an AI) with no prior context
+- Target length: **15-30 lines**
+
+**Format:**
+
+```markdown
+# Context: <Feature Name>
+
+## Goal
+<1-2 sentence description of what this commit group achieves>
+
+## Commit Sequence
+1. <title>
+2. <title>
+...
+
+## Key Decisions
+- <Decision or constraint that shapes the implementation>
+
+## Conventions
+- <Any patterns, naming conventions, or architectural choices adopted>
+```
+
+---
+
+## Phase 6: Validation
 
 Verify the full plan:
 1. **Coverage** — all aspects of the feature addressed
