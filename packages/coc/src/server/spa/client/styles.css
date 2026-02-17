@@ -1,5 +1,6 @@
 @import './wiki-ask.css';
 @import './wiki-styles.css';
+@import './task-comments-styles.css';
 
 :root {
     --bg-primary: #ffffff;

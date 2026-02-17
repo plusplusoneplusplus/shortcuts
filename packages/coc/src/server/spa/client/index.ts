@@ -57,7 +57,10 @@ initModelPersistence();
 // 13. AI Actions (dropdown for task AI operations)
 import './ai-actions';
 
-// 14. WebSocket (calls connectWebSocket())
+// 14. Task Comments UI (comment cards, selection toolbar, sidebar)
+import './task-comments-ui';
+
+// 15. WebSocket (calls connectWebSocket())
 import './websocket';
 
 // Bootstrap the app
