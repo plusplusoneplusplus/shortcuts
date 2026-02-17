@@ -455,18 +455,13 @@ function renderQueueTaskConversation(processId: string, taskId: string, proc: an
     const isRunning = (status === 'running' || status === 'queued');
     const statusClass = status || 'running';
 
-    // Compact header: back button, title, status badge, info toggle
-    let html = '<div class="detail-header compact-header">' +
-        '<div class="detail-header-top">' +
-            '<button class="detail-back-btn" onclick="clearDetail()" title="Back">\u2190</button>' +
-            '<h1>' + escapeHtmlClient(name) + '</h1>' +
-        '</div>' +
-        '<div class="detail-header-meta-row">' +
-            '<span class="status-badge ' + statusClass + '">' +
-                statusIcon(status) + ' ' + statusLabel(status) +
-            '</span>';
+    // Single-line compact header: back | status | model | date | title | info
+    let html = '<div class="detail-header-inline">' +
+        '<button class="detail-back-btn" onclick="clearDetail()" title="Back">\u2190</button>' +
+        '<span class="status-badge ' + statusClass + '">' +
+            statusIcon(status) + ' ' + statusLabel(status) +
+        '</span>';
 
-    // Inline meta chips
     if (proc && proc.metadata && proc.metadata.model) {
         html += '<span class="meta-chip">' + escapeHtmlClient(proc.metadata.model) + '</span>';
     }
@@ -474,12 +469,13 @@ function renderQueueTaskConversation(processId: string, taskId: string, proc: an
         html += '<span class="meta-chip">' + startTime + '</span>';
     }
 
-    // Info toggle button — opens popover with full metadata
+    html += '<span class="detail-inline-title" title="' + escapeHtmlClient(name) + '">' +
+        escapeHtmlClient(name) + '</span>';
+
     html += '<button class="meta-info-btn" id="meta-info-toggle" title="Show details">' +
         '\u{2139}\uFE0F</button>';
 
-    html += '</div>' +
-    '</div>';
+    html += '</div>';
 
     // Hidden metadata popover (toggled by info button)
     html += '<div class="meta-popover hidden" id="meta-popover">';
