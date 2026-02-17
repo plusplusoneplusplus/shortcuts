@@ -196,35 +196,34 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     registerPreferencesRoutes(routes, dataDir);
     registerAdminRoutes(routes, { store, dataDir, getWsServer: () => wsServer });
 
-    // Register wiki routes if enabled
-    let wikiManager: import('./wiki').WikiManager | undefined;
-    if (options.wiki?.enabled) {
-        wikiManager = registerWikiRoutes(routes, {
-            wikis: options.wiki.wikis,
-            aiEnabled: options.wiki.aiEnabled,
-            onWikiRebuilding: (wikiId, affectedComponentIds) => {
-                wsServer.broadcastWikiEvent({
-                    type: 'wiki-rebuilding',
-                    wikiId,
-                    components: affectedComponentIds,
-                });
-            },
-            onWikiReloaded: (wikiId, affectedComponentIds) => {
-                wsServer.broadcastWikiEvent({
-                    type: 'wiki-reload',
-                    wikiId,
-                    components: affectedComponentIds,
-                });
-            },
-            onWikiError: (wikiId, error) => {
-                wsServer.broadcastWikiEvent({
-                    type: 'wiki-error',
-                    wikiId,
-                    message: error.message,
-                });
-            },
-        });
-    }
+    // Always register wiki routes (they are safe even with no wikis registered)
+    const wikiManager = registerWikiRoutes(routes, {
+        wikis: options.wiki?.wikis,
+        aiEnabled: options.wiki?.aiEnabled,
+        dataDir,
+        store,
+        onWikiRebuilding: (wikiId, affectedComponentIds) => {
+            wsServer.broadcastWikiEvent({
+                type: 'wiki-rebuilding',
+                wikiId,
+                components: affectedComponentIds,
+            });
+        },
+        onWikiReloaded: (wikiId, affectedComponentIds) => {
+            wsServer.broadcastWikiEvent({
+                type: 'wiki-reload',
+                wikiId,
+                components: affectedComponentIds,
+            });
+        },
+        onWikiError: (wikiId, error) => {
+            wsServer.broadcastWikiEvent({
+                type: 'wiki-error',
+                wikiId,
+                message: error.message,
+            });
+        },
+    });
 
     // Build request handler (health route is prepended automatically)
     const handler = createRequestHandler({

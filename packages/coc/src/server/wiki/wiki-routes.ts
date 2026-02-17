@@ -7,10 +7,14 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
+import * as path from 'path';
+import * as os from 'os';
+import * as fs from 'fs';
 import type { Route } from '../types';
 import type { WikiServerOptions } from '../types';
 import { WikiManager } from './wiki-manager';
 import type { AskAIFunction } from './types';
+import type { ProcessStore, WikiInfo } from '@plusplusoneplusplus/pipeline-core';
 import { sendJson, send404, send500 } from '../router';
 import { handleWikiAskRequest } from './ask-handler';
 import { handleWikiExploreRequest } from './explore-handler';
@@ -37,6 +41,10 @@ export interface WikiRouteOptions {
     aiModel?: string;
     /** AI working directory override. */
     aiWorkingDirectory?: string;
+    /** Data directory for storing wiki output (default: ~/.coc). Used to derive wikiDir from repoPath. */
+    dataDir?: string;
+    /** Process store for persisting wiki registrations across server restarts. */
+    store?: ProcessStore;
     /** Callback fired before wiki data reload starts (rebuild in progress). */
     onWikiRebuilding?: (wikiId: string, affectedComponentIds: string[]) => void;
     /** Callback fired when wiki data is reloaded after file changes. */
@@ -64,7 +72,9 @@ export function registerWikiRoutes(
         onWikiError: options.onWikiError,
     });
 
-    // Register initial wikis
+    const store = options.store;
+
+    // Register initial wikis from explicit options
     if (options.wikis) {
         for (const [wikiId, config] of Object.entries(options.wikis)) {
             try {
@@ -78,6 +88,31 @@ export function registerWikiRoutes(
                 // Skip invalid wikis at startup — they can be re-registered later
             }
         }
+    }
+
+    // Restore persisted wikis from the store (async, best-effort)
+    if (store) {
+        store.getWikis().then((persistedWikis) => {
+            for (const wiki of persistedWikis) {
+                if (wikiManager.get(wiki.id)) continue; // already registered from options
+                try {
+                    const graphPath = path.join(wiki.wikiDir, 'component-graph.json');
+                    if (fs.existsSync(graphPath)) {
+                        wikiManager.register({
+                            wikiId: wiki.id,
+                            wikiDir: wiki.wikiDir,
+                            repoPath: wiki.repoPath,
+                            aiEnabled: wiki.aiEnabled ?? options.aiEnabled ?? false,
+                            title: wiki.name,
+                        });
+                    }
+                } catch {
+                    // Skip invalid persisted wikis
+                }
+            }
+        }).catch(() => {
+            // Ignore store read errors at startup
+        });
     }
 
     const askOptions = {
@@ -97,22 +132,49 @@ export function registerWikiRoutes(
     // Wiki CRUD endpoints (manage the registry — not per-wiki scoped)
     // ========================================================================
 
-    // GET /api/wikis — List all registered wikis
+    // GET /api/wikis — List all registered wikis (merges manager + store)
     routes.push({
         method: 'GET',
         pattern: '/api/wikis',
         handler: async (_req, res) => {
-            const ids = wikiManager.getRegisteredIds();
-            const wikis = ids.map(id => {
+            // Start with wikis loaded in the manager
+            const seen = new Set<string>();
+            const wikis: Array<Record<string, unknown>> = [];
+
+            for (const id of wikiManager.getRegisteredIds()) {
                 const runtime = wikiManager.get(id)!;
-                return {
+                seen.add(id);
+                wikis.push({
                     id,
                     wikiDir: runtime.registration.wikiDir,
                     repoPath: runtime.registration.repoPath,
                     aiEnabled: runtime.registration.aiEnabled,
                     title: runtime.registration.title,
-                };
-            });
+                    loaded: true,
+                });
+            }
+
+            // Add persisted wikis that aren't loaded (e.g., pending generation)
+            if (store) {
+                try {
+                    const persisted = await store.getWikis();
+                    for (const wiki of persisted) {
+                        if (seen.has(wiki.id)) continue;
+                        wikis.push({
+                            id: wiki.id,
+                            name: wiki.name,
+                            wikiDir: wiki.wikiDir,
+                            repoPath: wiki.repoPath,
+                            aiEnabled: wiki.aiEnabled,
+                            color: wiki.color,
+                            loaded: false,
+                        });
+                    }
+                } catch {
+                    // Ignore store read errors
+                }
+            }
+
             sendJson(res, wikis);
         },
     });
@@ -124,19 +186,74 @@ export function registerWikiRoutes(
         handler: async (req, res) => {
             try {
                 const { readJsonBody } = await import('../router');
-                const body = await readJsonBody<{ id: string; wikiDir: string; repoPath?: string; aiEnabled?: boolean; title?: string }>(req);
-                if (!body.id || !body.wikiDir) {
-                    sendJson(res, { error: 'Missing required fields: id, wikiDir' }, 400);
+                const body = await readJsonBody<{
+                    id: string;
+                    wikiDir?: string;
+                    repoPath?: string;
+                    name?: string;
+                    color?: string;
+                    generateWithAI?: boolean;
+                    aiEnabled?: boolean;
+                    title?: string;
+                }>(req);
+                if (!body.id) {
+                    sendJson(res, { error: 'Missing required field: id' }, 400);
                     return;
                 }
-                wikiManager.register({
-                    wikiId: body.id,
-                    wikiDir: body.wikiDir,
+
+                // Derive wikiDir from repoPath if not explicitly provided
+                let wikiDir = body.wikiDir;
+                if (!wikiDir && body.repoPath) {
+                    const baseDir = options.dataDir ?? path.join(os.homedir(), '.coc');
+                    wikiDir = path.join(baseDir, 'wikis', body.id);
+                }
+                if (!wikiDir) {
+                    sendJson(res, { error: 'Missing required field: wikiDir or repoPath' }, 400);
+                    return;
+                }
+
+                // Ensure the wiki output directory exists
+                fs.mkdirSync(wikiDir, { recursive: true });
+
+                // Check if wiki data already exists (component-graph.json)
+                const graphPath = path.join(wikiDir, 'component-graph.json');
+                const hasExistingData = fs.existsSync(graphPath);
+
+                if (hasExistingData) {
+                    // Register immediately — wiki data is available
+                    wikiManager.register({
+                        wikiId: body.id,
+                        wikiDir,
+                        repoPath: body.repoPath,
+                        aiEnabled: body.aiEnabled ?? options.aiEnabled ?? false,
+                        title: body.title ?? body.name,
+                    });
+                }
+
+                // Persist wiki registration to the store
+                if (store) {
+                    const wikiInfo: WikiInfo = {
+                        id: body.id,
+                        name: body.name ?? body.id,
+                        wikiDir,
+                        repoPath: body.repoPath,
+                        color: body.color,
+                        aiEnabled: body.aiEnabled ?? options.aiEnabled ?? false,
+                        registeredAt: new Date().toISOString(),
+                    };
+                    await store.registerWiki(wikiInfo);
+                }
+
+                sendJson(res, {
+                    success: true,
+                    id: body.id,
+                    wikiDir,
                     repoPath: body.repoPath,
-                    aiEnabled: body.aiEnabled ?? options.aiEnabled ?? false,
-                    title: body.title,
-                });
-                sendJson(res, { success: true, id: body.id }, 201);
+                    hasExistingData,
+                    generateWithAI: body.generateWithAI ?? false,
+                    name: body.name,
+                    color: body.color,
+                }, 201);
             } catch (err) {
                 sendJson(res, { error: err instanceof Error ? err.message : String(err) }, 400);
             }
@@ -171,8 +288,12 @@ export function registerWikiRoutes(
         pattern: /^\/api\/wikis\/([^/]+)$/,
         handler: async (_req, res, match) => {
             const wikiId = decodeURIComponent(match![1]);
-            const removed = wikiManager.unregister(wikiId);
-            if (!removed) {
+            const removedFromManager = wikiManager.unregister(wikiId);
+            let removedFromStore = false;
+            if (store) {
+                try { removedFromStore = await store.removeWiki(wikiId); } catch { /* ignore */ }
+            }
+            if (!removedFromManager && !removedFromStore) {
                 send404(res, `Wiki not found: ${wikiId}`);
                 return;
             }

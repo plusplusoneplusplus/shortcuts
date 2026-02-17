@@ -801,3 +801,328 @@ describe('Admin handlers with repoPath', () => {
         expect(body.phases).toBeDefined();
     });
 });
+
+// ============================================================================
+// Wiki Routes Always Registered (no wiki.enabled required)
+// ============================================================================
+
+describe('Wiki Routes Always Available', () => {
+    let server: ExecutionServer;
+    let tempDirs: string[] = [];
+
+    function makeTempWikiDir(graph?: ComponentGraph): string {
+        const dir = createTempWikiDir(graph);
+        tempDirs.push(dir);
+        return dir;
+    }
+
+    beforeEach(async () => {
+        // Create server WITHOUT wiki options — routes should still be registered
+        server = await createExecutionServer({
+            port: 0,
+        });
+    });
+
+    afterEach(async () => {
+        await server.close();
+        for (const dir of tempDirs) removeTempDir(dir);
+        tempDirs = [];
+    });
+
+    it('GET /api/wikis returns empty list when no wikis configured', async () => {
+        const res = await getJSON(`${server.url}/api/wikis`);
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(Array.isArray(body)).toBe(true);
+        expect(body).toHaveLength(0);
+    });
+
+    it('POST /api/wikis can register a wiki with wikiDir', async () => {
+        const dir = makeTempWikiDir();
+        const res = await postJSON(`${server.url}/api/wikis`, {
+            id: 'dynamic-wiki',
+            wikiDir: dir,
+        });
+        expect(res.status).toBe(201);
+        const body = JSON.parse(res.body);
+        expect(body.success).toBe(true);
+        expect(body.hasExistingData).toBe(true);
+
+        // Verify it appears in the list
+        const list = await getJSON(`${server.url}/api/wikis`);
+        const wikis = JSON.parse(list.body);
+        expect(wikis.some((w: any) => w.id === 'dynamic-wiki')).toBe(true);
+    });
+
+    it('GET /api/health still works alongside wiki routes', async () => {
+        const res = await getJSON(`${server.url}/api/health`);
+        expect(res.status).toBe(200);
+    });
+
+    it('GET /api/processes still works alongside wiki routes', async () => {
+        const res = await getJSON(`${server.url}/api/processes`);
+        expect(res.status).toBe(200);
+    });
+});
+
+// ============================================================================
+// POST /api/wikis with repoPath (derives wikiDir automatically)
+// ============================================================================
+
+describe('Wiki Registration with repoPath', () => {
+    let server: ExecutionServer;
+    let tempDirs: string[] = [];
+    let dataDir: string;
+
+    beforeEach(async () => {
+        dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-wiki-datadir-'));
+        tempDirs.push(dataDir);
+
+        server = await createExecutionServer({
+            port: 0,
+            dataDir,
+        });
+    });
+
+    afterEach(async () => {
+        await server.close();
+        for (const dir of tempDirs) removeTempDir(dir);
+        tempDirs = [];
+    });
+
+    it('POST /api/wikis with repoPath derives wikiDir under dataDir/wikis/', async () => {
+        const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-wiki-repo-'));
+        tempDirs.push(repoDir);
+
+        const res = await postJSON(`${server.url}/api/wikis`, {
+            id: 'repo-wiki',
+            repoPath: repoDir,
+            name: 'My Repo Wiki',
+            color: '#ff0000',
+        });
+        expect(res.status).toBe(201);
+        const body = JSON.parse(res.body);
+        expect(body.success).toBe(true);
+        expect(body.wikiDir).toBe(path.join(dataDir, 'wikis', 'repo-wiki'));
+        expect(body.hasExistingData).toBe(false);
+        expect(body.name).toBe('My Repo Wiki');
+        expect(body.color).toBe('#ff0000');
+
+        // The wiki directory should have been created
+        expect(fs.existsSync(body.wikiDir)).toBe(true);
+    });
+
+    it('POST /api/wikis with repoPath and existing wiki data registers immediately', async () => {
+        const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-wiki-repo-'));
+        tempDirs.push(repoDir);
+
+        // Pre-create wiki data in the derived directory
+        const wikiDir = path.join(dataDir, 'wikis', 'prebuilt-wiki');
+        fs.mkdirSync(wikiDir, { recursive: true });
+        fs.writeFileSync(
+            path.join(wikiDir, 'component-graph.json'),
+            JSON.stringify(makeComponentGraph(), null, 2),
+        );
+        const componentsDir = path.join(wikiDir, 'components');
+        fs.mkdirSync(componentsDir, { recursive: true });
+        for (const mod of makeComponentGraph().components) {
+            fs.writeFileSync(
+                path.join(componentsDir, `${mod.id}.md`),
+                `# ${mod.name}\n\n${mod.purpose}`,
+            );
+        }
+
+        const res = await postJSON(`${server.url}/api/wikis`, {
+            id: 'prebuilt-wiki',
+            repoPath: repoDir,
+            name: 'Prebuilt Wiki',
+        });
+        expect(res.status).toBe(201);
+        const body = JSON.parse(res.body);
+        expect(body.hasExistingData).toBe(true);
+
+        // Should be fully loaded and accessible
+        const graph = await getJSON(`${server.url}/api/wikis/prebuilt-wiki/graph`);
+        expect(graph.status).toBe(200);
+        const graphBody = JSON.parse(graph.body);
+        expect(graphBody.project.name).toBe('test-project');
+    });
+
+    it('POST /api/wikis rejects when neither wikiDir nor repoPath provided', async () => {
+        const res = await postJSON(`${server.url}/api/wikis`, {
+            id: 'orphan-wiki',
+        });
+        expect(res.status).toBe(400);
+        const body = JSON.parse(res.body);
+        expect(body.error).toContain('wikiDir or repoPath');
+    });
+
+    it('POST /api/wikis rejects when id is missing', async () => {
+        const res = await postJSON(`${server.url}/api/wikis`, {
+            repoPath: '/some/path',
+        });
+        expect(res.status).toBe(400);
+        const body = JSON.parse(res.body);
+        expect(body.error).toContain('id');
+    });
+
+    it('POST /api/wikis with name and color passes them through in response', async () => {
+        const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-wiki-repo-'));
+        tempDirs.push(repoDir);
+
+        const res = await postJSON(`${server.url}/api/wikis`, {
+            id: 'styled-wiki',
+            repoPath: repoDir,
+            name: 'Styled Wiki',
+            color: '#0078d4',
+            generateWithAI: true,
+        });
+        expect(res.status).toBe(201);
+        const body = JSON.parse(res.body);
+        expect(body.name).toBe('Styled Wiki');
+        expect(body.color).toBe('#0078d4');
+        expect(body.generateWithAI).toBe(true);
+    });
+});
+
+// ============================================================================
+// Wiki Store Persistence
+// ============================================================================
+
+describe('Wiki Store Persistence', () => {
+    let tempDirs: string[] = [];
+    let dataDir: string;
+
+    function makeTempWikiDir(graph?: ComponentGraph): string {
+        const dir = createTempWikiDir(graph);
+        tempDirs.push(dir);
+        return dir;
+    }
+
+    beforeEach(() => {
+        dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-wiki-persist-'));
+        tempDirs.push(dataDir);
+    });
+
+    afterEach(() => {
+        for (const dir of tempDirs) removeTempDir(dir);
+        tempDirs = [];
+    });
+
+    it('persisted wikis survive server restart', async () => {
+        const { FileProcessStore } = await import('@plusplusoneplusplus/pipeline-core');
+        const store = new FileProcessStore({ dataDir });
+
+        // Start first server, register a wiki
+        const wikiDir = makeTempWikiDir();
+        const server1 = await createExecutionServer({
+            port: 0,
+            dataDir,
+            store,
+        });
+
+        const reg = await postJSON(`${server1.url}/api/wikis`, {
+            id: 'persist-wiki',
+            wikiDir,
+            name: 'Persisted Wiki',
+            color: '#00ff00',
+        });
+        expect(reg.status).toBe(201);
+
+        await server1.close();
+
+        // Start second server with same store — wiki should be restored
+        const store2 = new FileProcessStore({ dataDir });
+        const server2 = await createExecutionServer({
+            port: 0,
+            dataDir,
+            store: store2,
+        });
+
+        // Wait a tick for async store restoration
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        const list = await getJSON(`${server2.url}/api/wikis`);
+        expect(list.status).toBe(200);
+        const wikis = JSON.parse(list.body);
+        expect(wikis.some((w: any) => w.id === 'persist-wiki')).toBe(true);
+
+        await server2.close();
+    });
+
+    it('DELETE removes wiki from both manager and store', async () => {
+        const { FileProcessStore } = await import('@plusplusoneplusplus/pipeline-core');
+        const store = new FileProcessStore({ dataDir });
+
+        const wikiDir = makeTempWikiDir();
+        const server = await createExecutionServer({
+            port: 0,
+            dataDir,
+            store,
+        });
+
+        // Register
+        await postJSON(`${server.url}/api/wikis`, {
+            id: 'del-wiki',
+            wikiDir,
+        });
+
+        // Delete
+        const del = await deleteRequest(`${server.url}/api/wikis/del-wiki`);
+        expect(del.status).toBe(200);
+
+        // Verify removed from store
+        const storedWikis = await store.getWikis();
+        expect(storedWikis.some(w => w.id === 'del-wiki')).toBe(false);
+
+        await server.close();
+    });
+
+    it('GET /api/wikis merges manager and store entries', async () => {
+        const { FileProcessStore } = await import('@plusplusoneplusplus/pipeline-core');
+        const store = new FileProcessStore({ dataDir });
+
+        // Pre-populate store with a wiki that has no actual data (pending generation)
+        await store.registerWiki({
+            id: 'pending-wiki',
+            name: 'Pending Wiki',
+            wikiDir: path.join(dataDir, 'wikis', 'pending-wiki'),
+            repoPath: '/some/repo',
+            color: '#ff0000',
+            aiEnabled: false,
+            registeredAt: new Date().toISOString(),
+        });
+
+        // Also create a wiki with actual data
+        const wikiDir = makeTempWikiDir();
+
+        const server = await createExecutionServer({
+            port: 0,
+            dataDir,
+            store,
+            wiki: {
+                wikis: {
+                    'loaded-wiki': { wikiDir },
+                },
+            },
+        });
+
+        const list = await getJSON(`${server.url}/api/wikis`);
+        expect(list.status).toBe(200);
+        const wikis = JSON.parse(list.body);
+
+        // Should have both: loaded-wiki (from manager) and pending-wiki (from store)
+        const loadedWiki = wikis.find((w: any) => w.id === 'loaded-wiki');
+        const pendingWiki = wikis.find((w: any) => w.id === 'pending-wiki');
+
+        expect(loadedWiki).toBeDefined();
+        expect(loadedWiki.loaded).toBe(true);
+
+        expect(pendingWiki).toBeDefined();
+        expect(pendingWiki.loaded).toBe(false);
+        expect(pendingWiki.name).toBe('Pending Wiki');
+        expect(pendingWiki.color).toBe('#ff0000');
+
+        await server.close();
+    });
+});
