@@ -107,6 +107,81 @@ function buildResultHTML(result: string | undefined, toolName: string): string {
     return html;
 }
 
+/* ── Tool summary extraction ─────────────────────────────── */
+
+/**
+ * Convert an absolute path to a short relative-looking path.
+ * Strips common home-dir and project prefixes so
+ * `/Users/foo/Documents/Projects/bar/src/file.ts` becomes `bar/src/file.ts`.
+ */
+function shortenPath(p: string): string {
+    if (!p) return '';
+    // Strip /Users/<user>/Documents/Projects/ or /home/<user>/
+    const shortened = p
+        .replace(/^\/Users\/[^/]+\/Documents\/Projects\//, '')
+        .replace(/^\/Users\/[^/]+\//, '~/')
+        .replace(/^\/home\/[^/]+\//, '~/');
+    return shortened;
+}
+
+/**
+ * Extract a one-line summary string from tool args for display in the header.
+ * Returns empty string if no meaningful summary can be produced.
+ */
+function getToolSummary(toolName: string, args: any): string {
+    if (!args || typeof args !== 'object') return '';
+
+    switch (toolName) {
+        case 'grep': {
+            const parts: string[] = [];
+            if (args.pattern) parts.push('/' + args.pattern + '/');
+            if (args.path) parts.push(shortenPath(args.path));
+            else if (args.glob) parts.push(args.glob);
+            return parts.join(' in ');
+        }
+        case 'view': {
+            if (args.path) return shortenPath(args.path);
+            if (args.filePath) return shortenPath(args.filePath);
+            return '';
+        }
+        case 'edit': {
+            if (args.path) return shortenPath(args.path);
+            if (args.filePath) return shortenPath(args.filePath);
+            return '';
+        }
+        case 'create': {
+            if (args.path) return shortenPath(args.path);
+            if (args.filePath) return shortenPath(args.filePath);
+            return '';
+        }
+        case 'bash': {
+            if (args.command) {
+                const cmd = String(args.command).trim();
+                return cmd.length > 80 ? cmd.slice(0, 77) + '...' : cmd;
+            }
+            return '';
+        }
+        case 'glob': {
+            const parts: string[] = [];
+            if (args.pattern) parts.push(args.pattern);
+            else if (args.glob_pattern) parts.push(args.glob_pattern);
+            if (args.path) parts.push('in ' + shortenPath(args.path));
+            return parts.join(' ');
+        }
+        default: {
+            // Generic: show first string arg that looks like a path or pattern
+            for (const key of ['path', 'filePath', 'file', 'pattern', 'query', 'command', 'url']) {
+                if (typeof args[key] === 'string' && args[key]) {
+                    const val = args[key];
+                    if (val.startsWith('/')) return shortenPath(val);
+                    return val.length > 60 ? val.slice(0, 57) + '...' : val;
+                }
+            }
+            return '';
+        }
+    }
+}
+
 /* ── Public API ────────────────────────────────────────────── */
 
 /**
@@ -141,10 +216,14 @@ export function renderToolCallHTML(toolCall: ClientToolCall | any): string {
 
     let html = '<div class="tool-call-card" data-tool-id="' + escapeHtmlClient(tc.id) + '" data-status="' + tc.status + '">';
 
-    // Header
+    // Header — tool name + inline summary
+    const summary = getToolSummary(tc.toolName, tc.args);
     html += '<div class="tool-call-header">';
     html += '<span class="tool-call-icon">' + icon + '</span>';
     html += '<span class="tool-call-name">' + escapeHtmlClient(tc.toolName) + '</span>';
+    if (summary) {
+        html += '<span class="tool-call-summary">' + escapeHtmlClient(summary) + '</span>';
+    }
     html += '<span class="tool-call-status ' + tc.status + '">' + statusIcon + ' ' + tc.status + '</span>';
     if (duration) {
         html += '<span class="tool-call-duration">' + duration + '</span>';
