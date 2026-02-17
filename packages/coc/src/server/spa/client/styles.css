@@ -3825,6 +3825,43 @@ html[data-theme="dark"] .tool-call-section code .bash-command {
 .admin-config-status-success { color: var(--status-completed); }
 .admin-config-status-error { color: var(--status-failed); }
 
+/* Export / Import sections */
+.admin-section-desc { color: var(--text-secondary); font-size: 13px; margin: 0 0 12px 0; }
+.admin-export-btn { margin-right: 8px; }
+.admin-export-status { font-size: 13px; color: var(--text-secondary); margin-top: 8px; min-height: 18px; }
+.admin-import-controls { display: flex; flex-direction: column; gap: 10px; }
+.admin-import-file {
+    font-size: 13px;
+    color: var(--text-primary);
+    padding: 4px 0;
+}
+.admin-import-mode { display: flex; gap: 16px; }
+.admin-radio-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
+    color: var(--text-primary);
+    cursor: pointer;
+}
+.admin-import-actions { display: flex; gap: 8px; }
+.admin-import-btn {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+}
+.admin-import-btn:hover { opacity: 0.85; }
+.admin-import-preview {
+    margin-top: 10px;
+    padding: 10px;
+    background: var(--bg-secondary);
+    border-radius: 6px;
+    font-size: 13px;
+    white-space: pre-wrap;
+    color: var(--text-primary);
+}
+.admin-import-status { font-size: 13px; color: var(--text-secondary); margin-top: 8px; min-height: 18px; }
+
 /* ================================================================
    Task Preview: Mermaid diagram rendering
    ================================================================ */

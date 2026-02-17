@@ -253,4 +253,246 @@ test.describe('Admin Panel (008)', () => {
         await expect(page.locator('#admin-stat-wikis')).toHaveText('Error');
         await expect(page.locator('#admin-stat-disk')).toHaveText('Error');
     });
+
+    // ----------------------------------------------------------------
+    // TC9: Export Button
+    // ----------------------------------------------------------------
+
+    test('8.11 export button triggers download', async ({ page, serverUrl }) => {
+        await seedProcess(serverUrl, 'export-ui-1', { status: 'completed' });
+        await navigateToAdmin(page, serverUrl);
+
+        // Intercept download
+        const downloadPromise = page.waitForEvent('download');
+        await page.click('#admin-export-btn');
+        const download = await downloadPromise;
+
+        expect(download.suggestedFilename()).toMatch(/^coc-export-.*\.json$/);
+
+        // Status should show success
+        await expect(page.locator('#admin-export-status')).toContainText('Exported successfully', { timeout: 5000 });
+    });
+
+    test('8.12 export shows error on network failure', async ({ page, serverUrl }) => {
+        await page.goto(serverUrl);
+
+        // Intercept export API to return error
+        await page.route('**/api/admin/export', route =>
+            route.fulfill({
+                status: 500,
+                contentType: 'application/json',
+                body: JSON.stringify({ error: 'Internal Server Error' }),
+            }),
+        );
+
+        await page.click('#admin-toggle');
+        await expect(page.locator('#view-admin')).not.toHaveClass(/hidden/, { timeout: 5000 });
+        await expect(page.locator('#admin-page-content')).not.toBeEmpty({ timeout: 5000 });
+
+        await page.click('#admin-export-btn');
+        await expect(page.locator('#admin-export-status')).toContainText('Export failed', { timeout: 5000 });
+    });
+
+    // ----------------------------------------------------------------
+    // TC10: Import — File Picker
+    // ----------------------------------------------------------------
+
+    test('8.13 import file input accepts .json', async ({ page, serverUrl }) => {
+        await navigateToAdmin(page, serverUrl);
+
+        const fileInput = page.locator('#admin-import-file');
+        await expect(fileInput).toBeVisible();
+        expect(await fileInput.getAttribute('accept')).toContain('.json');
+    });
+
+    // ----------------------------------------------------------------
+    // TC11: Import — Preview
+    // ----------------------------------------------------------------
+
+    test('8.14 import preview shows counts', async ({ page, serverUrl }) => {
+        await navigateToAdmin(page, serverUrl);
+
+        // Create a valid export payload file
+        const exportPayload = {
+            version: 1,
+            exportedAt: new Date().toISOString(),
+            metadata: { processCount: 2, workspaceCount: 1, wikiCount: 0, queueFileCount: 0 },
+            processes: [
+                { id: 'p1', promptPreview: 'test', fullPrompt: 'test', status: 'completed', startTime: new Date().toISOString(), type: 'clarification' },
+                { id: 'p2', promptPreview: 'test2', fullPrompt: 'test2', status: 'running', startTime: new Date().toISOString(), type: 'clarification' },
+            ],
+            workspaces: [{ id: 'ws1', name: 'WS1', rootPath: '/tmp/ws1' }],
+            wikis: [],
+            queueFiles: [],
+        };
+
+        // Use file chooser to set the file
+        const fileChooserPromise = page.waitForEvent('filechooser');
+        await page.click('#admin-import-file');
+        const fileChooser = await fileChooserPromise;
+        await fileChooser.setFiles({
+            name: 'test-export.json',
+            mimeType: 'application/json',
+            buffer: Buffer.from(JSON.stringify(exportPayload)),
+        });
+
+        // Click preview
+        await page.click('#admin-import-preview-btn');
+
+        // Preview should become visible with counts
+        await expect(page.locator('#admin-import-preview')).not.toHaveClass(/hidden/, { timeout: 5000 });
+        await expect(page.locator('#admin-import-preview')).not.toContainText('Loading preview…', { timeout: 5000 });
+
+        const previewText = await page.locator('#admin-import-preview').textContent();
+        expect(previewText).toContain('Processes: 2');
+        expect(previewText).toContain('Workspaces: 1');
+
+        await expect(page.locator('#admin-import-status')).toContainText('Preview loaded', { timeout: 5000 });
+    });
+
+    test('8.15 import preview shows error for no file selected', async ({ page, serverUrl }) => {
+        await navigateToAdmin(page, serverUrl);
+
+        await page.click('#admin-import-preview-btn');
+        await expect(page.locator('#admin-import-status')).toContainText('select a JSON file', { timeout: 5000 });
+    });
+
+    // ----------------------------------------------------------------
+    // TC12: Import — Replace with Confirmation
+    // ----------------------------------------------------------------
+
+    test('8.16 import replace requires confirmation and executes', async ({ page, serverUrl }) => {
+        await seedProcess(serverUrl, 'existing-1', { status: 'completed' });
+        await navigateToAdmin(page, serverUrl);
+
+        const exportPayload = {
+            version: 1,
+            exportedAt: new Date().toISOString(),
+            metadata: { processCount: 1, workspaceCount: 0, wikiCount: 0, queueFileCount: 0 },
+            processes: [
+                { id: 'imported-1', promptPreview: 'imported', fullPrompt: 'imported full', status: 'completed', startTime: new Date().toISOString(), type: 'clarification' },
+            ],
+            workspaces: [],
+            wikis: [],
+            queueFiles: [],
+        };
+
+        // Select file
+        const fileChooserPromise = page.waitForEvent('filechooser');
+        await page.click('#admin-import-file');
+        const fileChooser = await fileChooserPromise;
+        await fileChooser.setFiles({
+            name: 'test-import.json',
+            mimeType: 'application/json',
+            buffer: Buffer.from(JSON.stringify(exportPayload)),
+        });
+
+        // Ensure replace is selected (default)
+        await page.check('input[name="import-mode"][value="replace"]');
+
+        // Accept confirmation dialog
+        page.on('dialog', dialog => dialog.accept());
+
+        await page.click('#admin-import-btn');
+
+        // Status should show success
+        await expect(page.locator('#admin-import-status')).toContainText('Import complete', { timeout: 10000 });
+
+        // Verify data via API
+        const res = await request(`${serverUrl}/api/processes`);
+        const data = JSON.parse(res.body);
+        const processes = data.processes ?? data;
+        const ids = processes.map((p: any) => p.id);
+        expect(ids).toContain('imported-1');
+    });
+
+    // ----------------------------------------------------------------
+    // TC13: Import — Merge with Confirmation
+    // ----------------------------------------------------------------
+
+    test('8.17 import merge requires confirmation and executes', async ({ page, serverUrl }) => {
+        await seedProcess(serverUrl, 'existing-merge-1', { status: 'completed' });
+        await navigateToAdmin(page, serverUrl);
+
+        const exportPayload = {
+            version: 1,
+            exportedAt: new Date().toISOString(),
+            metadata: { processCount: 1, workspaceCount: 0, wikiCount: 0, queueFileCount: 0 },
+            processes: [
+                { id: 'merged-1', promptPreview: 'merged', fullPrompt: 'merged full', status: 'completed', startTime: new Date().toISOString(), type: 'clarification' },
+            ],
+            workspaces: [],
+            wikis: [],
+            queueFiles: [],
+        };
+
+        const fileChooserPromise = page.waitForEvent('filechooser');
+        await page.click('#admin-import-file');
+        const fileChooser = await fileChooserPromise;
+        await fileChooser.setFiles({
+            name: 'test-merge.json',
+            mimeType: 'application/json',
+            buffer: Buffer.from(JSON.stringify(exportPayload)),
+        });
+
+        // Select merge mode
+        await page.check('input[name="import-mode"][value="merge"]');
+
+        // Accept confirmation
+        page.on('dialog', dialog => dialog.accept());
+
+        await page.click('#admin-import-btn');
+
+        await expect(page.locator('#admin-import-status')).toContainText('Import complete', { timeout: 10000 });
+    });
+
+    // ----------------------------------------------------------------
+    // TC14: Import — Cancel Confirmation
+    // ----------------------------------------------------------------
+
+    test('8.18 import cancelled on dismiss', async ({ page, serverUrl }) => {
+        await navigateToAdmin(page, serverUrl);
+
+        const exportPayload = {
+            version: 1,
+            exportedAt: new Date().toISOString(),
+            metadata: { processCount: 0, workspaceCount: 0, wikiCount: 0, queueFileCount: 0 },
+            processes: [],
+            workspaces: [],
+            wikis: [],
+            queueFiles: [],
+        };
+
+        const fileChooserPromise = page.waitForEvent('filechooser');
+        await page.click('#admin-import-file');
+        const fileChooser = await fileChooserPromise;
+        await fileChooser.setFiles({
+            name: 'test-cancel.json',
+            mimeType: 'application/json',
+            buffer: Buffer.from(JSON.stringify(exportPayload)),
+        });
+
+        // Dismiss confirmation dialog
+        page.on('dialog', dialog => dialog.dismiss());
+
+        await page.click('#admin-import-btn');
+
+        await expect(page.locator('#admin-import-status')).toContainText('Cancelled', { timeout: 5000 });
+    });
+
+    // ----------------------------------------------------------------
+    // TC15: Import — Mode Radio Buttons
+    // ----------------------------------------------------------------
+
+    test('8.19 import mode radios are present and default to replace', async ({ page, serverUrl }) => {
+        await navigateToAdmin(page, serverUrl);
+
+        const replaceRadio = page.locator('input[name="import-mode"][value="replace"]');
+        const mergeRadio = page.locator('input[name="import-mode"][value="merge"]');
+
+        await expect(replaceRadio).toBeVisible();
+        await expect(mergeRadio).toBeVisible();
+        expect(await replaceRadio.isChecked()).toBe(true);
+        expect(await mergeRadio.isChecked()).toBe(false);
+    });
 });

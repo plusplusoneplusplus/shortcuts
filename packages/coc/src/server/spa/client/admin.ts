@@ -70,6 +70,35 @@ function renderAdminPage(): string {
         </div>
     </section>
 
+    <section class="admin-section">
+        <h3>Export Data</h3>
+        <p class="admin-section-desc">Download all server data as a JSON file.</p>
+        <button class="admin-btn admin-export-btn" id="admin-export-btn">Export</button>
+        <div class="admin-export-status" id="admin-export-status"></div>
+    </section>
+
+    <section class="admin-section">
+        <h3>Import Data</h3>
+        <p class="admin-section-desc">Restore data from a previously exported JSON file.</p>
+        <div class="admin-import-controls">
+            <input type="file" accept=".json,application/json" id="admin-import-file" class="admin-import-file" />
+            <div class="admin-import-mode">
+                <label class="admin-radio-label">
+                    <input type="radio" name="import-mode" value="replace" checked /> Replace
+                </label>
+                <label class="admin-radio-label">
+                    <input type="radio" name="import-mode" value="merge" /> Merge
+                </label>
+            </div>
+            <div class="admin-import-actions">
+                <button class="admin-btn admin-preview-btn" id="admin-import-preview-btn">Preview</button>
+                <button class="admin-btn admin-import-btn" id="admin-import-btn">Import</button>
+            </div>
+        </div>
+        <div class="admin-import-preview hidden" id="admin-import-preview"></div>
+        <div class="admin-import-status" id="admin-import-status"></div>
+    </section>
+
     <section class="admin-section admin-danger-zone">
         <h3>Danger Zone</h3>
         <p class="admin-danger-desc">Permanently delete all stored data. This cannot be undone.</p>
@@ -100,6 +129,15 @@ function attachAdminListeners(container: HTMLElement): void {
 
     // Wipe
     container.querySelector('#admin-wipe-btn')?.addEventListener('click', confirmAndWipe);
+
+    // Export
+    container.querySelector('#admin-export-btn')?.addEventListener('click', exportData);
+
+    // Import preview
+    container.querySelector('#admin-import-preview-btn')?.addEventListener('click', previewImport);
+
+    // Import
+    container.querySelector('#admin-import-btn')?.addEventListener('click', confirmAndImport);
 
     // Config save (form may not exist yet; loadConfig re-attaches after render)
     attachConfigFormListener(container);
@@ -390,6 +428,180 @@ async function saveConfig(): Promise<void> {
 }
 
 // ================================================================
+// Export
+// ================================================================
+
+export async function exportData(): Promise<void> {
+    const statusEl = document.getElementById('admin-export-status');
+    if (statusEl) statusEl.textContent = 'Exporting…';
+
+    try {
+        const res = await fetch(getApiBase() + '/admin/export');
+        if (!res.ok) {
+            const body = await res.json().catch(() => null);
+            if (statusEl) statusEl.textContent = 'Export failed: ' + (body?.error || res.statusText);
+            return;
+        }
+
+        // Extract filename from Content-Disposition header or use default
+        const disposition = res.headers.get('Content-Disposition') || '';
+        const match = disposition.match(/filename="([^"]+)"/);
+        const filename = match ? match[1] : `coc-export-${new Date().toISOString().replace(/:/g, '-')}.json`;
+
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        if (statusEl) statusEl.textContent = 'Exported successfully.';
+    } catch (err: any) {
+        if (statusEl) statusEl.textContent = 'Export failed: ' + (err.message || 'Network error');
+    }
+}
+
+// ================================================================
+// Import
+// ================================================================
+
+function getImportFile(): File | null {
+    const input = document.getElementById('admin-import-file') as HTMLInputElement | null;
+    return input?.files?.[0] ?? null;
+}
+
+function getImportMode(): string {
+    const radios = document.querySelectorAll<HTMLInputElement>('input[name="import-mode"]');
+    for (const r of radios) {
+        if (r.checked) return r.value;
+    }
+    return 'replace';
+}
+
+async function readFileAsJSON(file: File): Promise<unknown> {
+    const text = await file.text();
+    return JSON.parse(text);
+}
+
+export async function previewImport(): Promise<void> {
+    const statusEl = document.getElementById('admin-import-status');
+    const previewEl = document.getElementById('admin-import-preview');
+
+    const file = getImportFile();
+    if (!file) {
+        if (statusEl) statusEl.textContent = 'Please select a JSON file first.';
+        return;
+    }
+
+    if (statusEl) statusEl.textContent = 'Loading preview…';
+    if (previewEl) {
+        previewEl.classList.remove('hidden');
+        previewEl.textContent = 'Loading preview…';
+    }
+
+    let payload: unknown;
+    try {
+        payload = await readFileAsJSON(file);
+    } catch {
+        if (statusEl) statusEl.textContent = 'Invalid JSON file.';
+        if (previewEl) previewEl.textContent = 'Invalid JSON file.';
+        return;
+    }
+
+    try {
+        const res = await fetch(getApiBase() + '/admin/import/preview', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        const data = await res.json().catch(() => null);
+
+        if (!res.ok || !data?.valid) {
+            const msg = data?.error || 'Invalid export file.';
+            if (statusEl) statusEl.textContent = 'Preview failed: ' + msg;
+            if (previewEl) previewEl.textContent = 'Preview failed: ' + msg;
+            return;
+        }
+
+        const p = data.preview;
+        const lines: string[] = [];
+        if (p.processCount != null) lines.push('Processes: ' + p.processCount);
+        if (p.workspaceCount != null) lines.push('Workspaces: ' + p.workspaceCount);
+        if (p.wikiCount != null) lines.push('Wikis: ' + p.wikiCount);
+        if (p.queueFileCount != null) lines.push('Queue files: ' + p.queueFileCount);
+        if (p.sampleProcessIds?.length) lines.push('Sample IDs: ' + p.sampleProcessIds.join(', '));
+
+        if (previewEl) previewEl.textContent = lines.length ? lines.join('\n') : JSON.stringify(p, null, 2);
+        if (statusEl) statusEl.textContent = 'Preview loaded.';
+    } catch (err: any) {
+        if (statusEl) statusEl.textContent = 'Preview failed: ' + (err.message || 'Network error');
+        if (previewEl) previewEl.textContent = 'Preview failed.';
+    }
+}
+
+export async function confirmAndImport(): Promise<void> {
+    const statusEl = document.getElementById('admin-import-status');
+
+    const file = getImportFile();
+    if (!file) {
+        if (statusEl) statusEl.textContent = 'Please select a JSON file first.';
+        return;
+    }
+
+    const mode = getImportMode();
+
+    let payload: unknown;
+    try {
+        payload = await readFileAsJSON(file);
+    } catch {
+        if (statusEl) statusEl.textContent = 'Invalid JSON file.';
+        return;
+    }
+
+    // Step 1: Get import token
+    if (statusEl) statusEl.textContent = 'Requesting confirmation token…';
+    const tokenData = await fetchApi('/admin/import-token');
+    if (!tokenData || !tokenData.token) {
+        if (statusEl) statusEl.textContent = 'Failed to get import token.';
+        return;
+    }
+
+    // Step 2: Confirm
+    const action = mode === 'merge' ? 'merge into' : 'replace';
+    const confirmed = confirm(`Import will ${action} your data. This may overwrite existing data. Continue?`);
+    if (!confirmed) {
+        if (statusEl) statusEl.textContent = 'Cancelled.';
+        return;
+    }
+
+    // Step 3: Execute import
+    if (statusEl) statusEl.textContent = 'Importing…';
+    try {
+        const res = await fetch(
+            getApiBase() + '/admin/import?confirm=' + encodeURIComponent(tokenData.token) +
+            '&mode=' + encodeURIComponent(mode),
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            },
+        );
+        if (res.ok) {
+            if (statusEl) statusEl.textContent = 'Import complete.';
+            loadStats();
+        } else {
+            const body = await res.json().catch(() => null);
+            if (statusEl) statusEl.textContent = 'Import failed: ' + (body?.error || res.statusText);
+        }
+    } catch (err: any) {
+        if (statusEl) statusEl.textContent = 'Import failed: ' + (err.message || 'Network error');
+    }
+}
+
+// ================================================================
 // Utilities
 // ================================================================
 
@@ -410,3 +622,6 @@ export function formatBytes(bytes: number): string {
 (window as any).loadAdminStats = loadStats;
 (window as any).loadAdminConfig = loadConfig;
 (window as any).saveAdminConfig = saveConfig;
+(window as any).exportAdminData = exportData;
+(window as any).previewAdminImport = previewImport;
+(window as any).confirmAdminImport = confirmAndImport;
