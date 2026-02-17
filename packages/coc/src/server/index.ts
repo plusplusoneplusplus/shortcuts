@@ -184,7 +184,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     outputPruner.cleanupStaleQueueEntries().catch(() => {});
 
     // Generate SPA dashboard HTML (cached — it's static)
-    const spaHtml = generateDashboardHtml();
+    const spaHtml = generateDashboardHtml({ enableWiki: true });
 
     // Build API routes
     const routes: Route[] = [];

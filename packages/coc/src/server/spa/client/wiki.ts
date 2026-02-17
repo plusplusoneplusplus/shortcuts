@@ -23,15 +23,21 @@ import type { WikiData, ComponentGraph } from './wiki-types';
 let wikisData: WikiData[] = [];
 
 export async function fetchWikisData(): Promise<void> {
-    const data = await fetchApi('/wikis');
-    if (data && Array.isArray(data)) {
-        wikisData = data;
-    } else if (data && data.wikis && Array.isArray(data.wikis)) {
-        wikisData = data.wikis;
-    } else {
+    try {
+        const data = await fetchApi('/wikis');
+        if (data && Array.isArray(data)) {
+            wikisData = data;
+        } else if (data && data.wikis && Array.isArray(data.wikis)) {
+            wikisData = data.wikis;
+        } else {
+            wikisData = [];
+        }
+        populateWikiSelect();
+    } catch (err) {
+        console.error('[wiki] fetchWikisData failed:', err);
         wikisData = [];
+        populateWikiSelect();
     }
-    populateWikiSelect();
 }
 
 function populateWikiSelect(): void {

@@ -41,6 +41,18 @@ describe('generateDashboardHtml', () => {
         expect(markedMatch).toBeNull();
     });
 
+    it('includes mermaid and marked CDN scripts when enableWiki is true', () => {
+        const html = generateDashboardHtml({ enableWiki: true });
+        expect(html).toContain('highlight.min.js');
+        // With enableWiki, mermaid and marked CDN scripts should be present
+        const mermaidMatch = html.match(/<script\s+src="[^"]*mermaid[^"]*"/gi);
+        expect(mermaidMatch).not.toBeNull();
+        expect(mermaidMatch!.length).toBeGreaterThanOrEqual(1);
+        const markedMatch = html.match(/<script\s+src="[^"]*marked[^"]*"/gi);
+        expect(markedMatch).not.toBeNull();
+        expect(markedMatch!.length).toBeGreaterThanOrEqual(1);
+    });
+
     it('contains inlined style block', () => {
         const html = generateDashboardHtml();
         expect(html).toContain('<style>');

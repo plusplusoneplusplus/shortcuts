@@ -352,6 +352,105 @@ describe('index.ts — wiki imports', () => {
 });
 
 // ============================================================================
+// Server index.ts — enableWiki should be true
+// ============================================================================
+
+describe('server/index.ts — enableWiki set to true', () => {
+    let content: string;
+    beforeAll(() => {
+        content = fs.readFileSync(
+            path.resolve(__dirname, '..', '..', 'src', 'server', 'index.ts'),
+            'utf8'
+        );
+    });
+
+    it('passes enableWiki: true to generateDashboardHtml', () => {
+        expect(content).toContain('enableWiki: true');
+    });
+
+    it('generateDashboardHtml is called with options object', () => {
+        expect(content).toContain('generateDashboardHtml({');
+    });
+});
+
+// ============================================================================
+// HTML template — enableWiki true generates mermaid/marked CDN scripts
+// ============================================================================
+
+describe('HTML template — enableWiki true CDN scripts', () => {
+    const html = generateDashboardHtml({ enableWiki: true });
+
+    it('includes mermaid CDN script when enableWiki is true', () => {
+        expect(html).toContain('mermaid');
+    });
+
+    it('includes marked CDN script when enableWiki is true', () => {
+        expect(html).toContain('marked.min.js');
+    });
+
+    it('still includes highlight.js regardless of enableWiki', () => {
+        expect(html).toContain('highlight.min.js');
+    });
+});
+
+// ============================================================================
+// Client bundle — wiki list fetch and populate robustness
+// ============================================================================
+
+describe('client bundle — wiki list fetch robustness', () => {
+    let script: string;
+    beforeAll(() => { script = getClientBundle(); });
+
+    it('fetchWikisData handles array response', () => {
+        expect(script).toContain('Array.isArray(data)');
+    });
+
+    it('fetchWikisData handles object with wikis property', () => {
+        expect(script).toContain('data.wikis');
+    });
+
+    it('fetchWikisData has error handling with try-catch', () => {
+        expect(script).toContain('fetchWikisData failed');
+    });
+
+    it('populateWikiSelect clears previous options before populating', () => {
+        expect(script).toContain('Select wiki...');
+    });
+
+    it('populateWikiSelect uses wiki.name with fallback to wiki.id', () => {
+        expect(script).toContain('wiki.name || wiki.id');
+    });
+
+    it('populateWikiSelect preserves current selection if still valid', () => {
+        expect(script).toContain('currentValue');
+    });
+});
+
+// ============================================================================
+// wiki.ts source — fetchWikisData error handling
+// ============================================================================
+
+describe('wiki.ts — fetchWikisData error handling', () => {
+    let content: string;
+    beforeAll(() => { content = readClientFile('wiki.ts'); });
+
+    it('wraps fetch in try-catch block', () => {
+        expect(content).toContain('try {');
+        expect(content).toContain('} catch (err) {');
+    });
+
+    it('logs errors to console', () => {
+        expect(content).toContain('console.error');
+        expect(content).toContain('fetchWikisData failed');
+    });
+
+    it('still populates select on error (with empty list)', () => {
+        // After catch, wikisData should be set to [] and populateWikiSelect called
+        expect(content).toContain('wikisData = [];');
+    });
+});
+
+// ============================================================================
 // CSS — wiki styles
 // ============================================================================
 
