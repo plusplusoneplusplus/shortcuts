@@ -102,15 +102,14 @@ describe('client bundle — chat bubble rendering', () => {
 
     // ---- Collapsible metadata ----
 
-    it('wraps metadata in details element with meta-section class', () => {
-        expect(script).toContain('meta-section');
-        expect(script).toContain('meta-summary');
-        expect(script).toContain('<details');
-        expect(script).toContain('</details>');
+    it('wraps metadata in popover toggled by info button', () => {
+        expect(script).toContain('meta-popover');
+        expect(script).toContain('meta-info-btn');
+        expect(script).toContain('meta-info-toggle');
     });
 
-    it('metadata summary shows process ID and model', () => {
-        expect(script).toContain('meta-summary');
+    it('metadata popover shows process ID and model', () => {
+        expect(script).toContain('meta-popover');
         expect(script).toContain('.metadata.model');
     });
 

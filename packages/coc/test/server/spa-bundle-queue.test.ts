@@ -390,9 +390,9 @@ describe('Queue task conversation view', () => {
             expect(script).toContain('clearDetail');
         });
 
-        it('renders copy result button for completed tasks', () => {
-            expect(script).toContain('Copy Result');
-            expect(script).toContain('copyQueueTaskResult');
+        it('renders copy conversation button for completed tasks', () => {
+            expect(script).toContain('Copy Conversation');
+            expect(script).toContain('copyConversationOutput');
         });
 
         it('does not render a separate prompt section (prompt shown in conversation bubbles)', () => {

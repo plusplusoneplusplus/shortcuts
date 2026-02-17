@@ -59,17 +59,17 @@ describe('generateDashboardHtml', () => {
         expect(html).toContain('class="top-bar-logo"');
     });
 
-    it('top-bar-nav contains Dashboard link but not Review link', () => {
+    it('top-bar contains tab navigation', () => {
         const html = generateDashboardHtml();
-        expect(html).toContain('class="top-bar-nav"');
-        expect(html).toContain('data-page="dashboard">Dashboard</a>');
-        expect(html).not.toContain('data-page="review">Review</a>');
+        expect(html).toContain('class="top-bar-tabs"');
+        expect(html).toContain('data-tab="repos"');
+        expect(html).toContain('data-tab="processes"');
     });
 
-    it('contains workspace dropdown with All Repos option', () => {
+    it('top-bar does not contain legacy nav or workspace select', () => {
         const html = generateDashboardHtml();
-        expect(html).toContain('id="workspace-select"');
-        expect(html).toContain('All Repos');
+        expect(html).not.toContain('class="top-bar-nav"');
+        expect(html).not.toContain('id="workspace-select"');
     });
 
     it('contains theme toggle button', () => {
@@ -77,17 +77,15 @@ describe('generateDashboardHtml', () => {
         expect(html).toContain('id="theme-toggle"');
     });
 
-    it('contains tab bar with Processes, Repos, Wiki, and Reports tabs', () => {
+    it('contains tab bar with Repos, Processes, and Wiki tabs', () => {
         const html = generateDashboardHtml();
         expect(html).toContain('id="tab-bar"');
         expect(html).toContain('data-tab="processes"');
         expect(html).toContain('data-tab="repos"');
         expect(html).toContain('data-tab="wiki"');
-        expect(html).toContain('data-tab="reports"');
         expect(html).toContain('>Processes<');
         expect(html).toContain('>Repos<');
         expect(html).toContain('>Wiki<');
-        expect(html).toContain('>Reports<');
     });
 
     it('contains repos view with sidebar list and add repo button', () => {

@@ -55,7 +55,7 @@ describe('client bundle — detail module', () => {
     });
 
     it('renders action buttons', () => {
-        expect(script).toContain('Copy Result');
+        expect(script).toContain('Copy Conversation');
         expect(script).toContain('Copy Link');
     });
 

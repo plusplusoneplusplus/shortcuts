@@ -30,10 +30,10 @@ describe('Tasks as repo sub-page — HTML structure', () => {
         expect(html).not.toContain('id="tasks-ai-generate-btn"');
     });
 
-    it('has exactly 4 tab buttons (Processes, Repos, Wiki, Reports)', () => {
-        const tabBtnMatches = html.match(/class="tab-btn[^"]*"/g);
+    it('has exactly 3 tab buttons (Repos, Processes, Wiki)', () => {
+        const tabBtnMatches = html.match(/<button[^>]*class="top-bar-tab[^"]*"/g);
         expect(tabBtnMatches).toBeTruthy();
-        expect(tabBtnMatches!.length).toBe(4);
+        expect(tabBtnMatches!.length).toBe(3);
     });
 });
 

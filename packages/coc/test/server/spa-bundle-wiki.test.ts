@@ -170,12 +170,12 @@ describe('HTML template — wiki tab', () => {
         expect(html).toContain('>Wiki<');
     });
 
-    it('wiki tab button is between repos and reports', () => {
+    it('wiki tab button is after repos and processes', () => {
         const reposIdx = html.indexOf('data-tab="repos"');
+        const processesIdx = html.indexOf('data-tab="processes"');
         const wikiIdx = html.indexOf('data-tab="wiki"');
-        const reportsIdx = html.indexOf('data-tab="reports"');
-        expect(wikiIdx).toBeGreaterThan(reposIdx);
-        expect(wikiIdx).toBeLessThan(reportsIdx);
+        expect(processesIdx).toBeGreaterThan(reposIdx);
+        expect(wikiIdx).toBeGreaterThan(processesIdx);
     });
 });
 
