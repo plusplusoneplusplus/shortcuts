@@ -7,7 +7,8 @@
 import { appState, DashboardTab, RepoSubTab } from './state';
 import { getApiBase } from './config';
 import { fetchApi, setHashSilent } from './core';
-import { escapeHtmlClient, formatRelativeTime } from './utils';
+import { escapeHtmlClient, formatRelativeTime, formatDuration } from './utils';
+import { showQueueTaskDetail } from './detail';
 
 // ================================================================
 // Tab switching
@@ -530,11 +531,180 @@ function renderSubTabContent(repo: RepoData, subTab: RepoSubTab): string {
     }
 }
 
-function renderQueueTab(repoId: string): string {
-    return '<div class="queue-tab-content">' +
-        '<p>Queue tab - Coming soon</p>' +
-    '</div>';
+// ================================================================
+// Queue sub-tab
+// ================================================================
+
+let showRepoQueueHistory = false;
+
+async function fetchRepoQueue(repoId: string): Promise<{
+    queued: any[];
+    running: any[];
+    history: any[];
+} | null> {
+    const data = await fetchApi('/queue?repoId=' + encodeURIComponent(repoId));
+    if (!data) return null;
+    return {
+        queued: data.queued || [],
+        running: data.running || [],
+        history: data.history || [],
+    };
 }
+
+function renderQueueTab(repoId: string): string {
+    let html = '<div class="queue-tab-content" id="repo-queue-content">' +
+        '<div class="empty-state"><div class="empty-state-icon">&#9203;</div>' +
+        '<div class="empty-state-title">Loading queue...</div></div>' +
+    '</div>';
+
+    // Trigger async fetch
+    setTimeout(() => {
+        fetchRepoQueue(repoId).then(data => {
+            renderRepoQueueContent(data);
+        });
+    }, 0);
+
+    return html;
+}
+
+function renderRepoQueueContent(data: { queued: any[]; running: any[]; history: any[] } | null): void {
+    const el = document.getElementById('repo-queue-content');
+    if (!el) return;
+
+    if (!data || (data.running.length === 0 && data.queued.length === 0 && data.history.length === 0)) {
+        el.innerHTML = '<div class="queue-empty">' +
+            '<div class="queue-empty-text">No tasks in queue for this repository</div>' +
+        '</div>';
+        return;
+    }
+
+    let html = '';
+
+    // Running Tasks section
+    if (data.running.length > 0) {
+        html += '<div class="queue-section-label">Running Tasks <span class="queue-section-count">' + data.running.length + '</span></div>';
+        data.running.forEach(function(task: any) {
+            html += renderRepoQueueTask(task, 'running');
+        });
+    }
+
+    // Queued Tasks section
+    if (data.queued.length > 0) {
+        html += '<div class="queue-section-label">Queued Tasks <span class="queue-section-count">' + data.queued.length + '</span></div>';
+        data.queued.forEach(function(task: any, index: number) {
+            html += renderRepoQueueTask(task, 'queued', index);
+        });
+    }
+
+    // Completed Tasks section (collapsible)
+    if (data.history.length > 0) {
+        html += '<div class="queue-section-label queue-history-toggle" onclick="toggleRepoQueueHistory()">' +
+            (showRepoQueueHistory ? '&#9660;' : '&#9654;') +
+            ' Completed Tasks <span class="queue-section-count">' + data.history.length + '</span>' +
+        '</div>';
+        if (showRepoQueueHistory) {
+            data.history.forEach(function(task: any) {
+                html += renderRepoQueueHistoryTask(task);
+            });
+        }
+    }
+
+    el.innerHTML = html;
+}
+
+function renderRepoQueueTask(task: any, status: 'running' | 'queued', index?: number): string {
+    let name = task.displayName || task.type || 'Task';
+    if (name.length > 35) name = name.substring(0, 35) + '...';
+
+    const priorityIcon: Record<string, string> = { high: '\u{1F525}', normal: '', low: '\u{1F53D}' };
+    const statusIcn = status === 'running' ? '\u{1F504}' : '\u23F3';
+    let elapsed = '';
+    if (status === 'running' && task.startedAt) {
+        elapsed = formatDuration(Date.now() - task.startedAt);
+    } else if (task.createdAt) {
+        elapsed = formatRelativeTime(new Date(task.createdAt).toISOString());
+    }
+
+    const clickAttr = status === 'running'
+        ? ' onclick="showQueueTaskDetail(\'' + escapeHtmlClient(task.id) + '\')" style="cursor:pointer"'
+        : '';
+
+    let html = '<div class="queue-task ' + status + '" data-task-id="' + escapeHtmlClient(task.id) + '"' + clickAttr + '>' +
+        '<div class="queue-task-row">' +
+            '<span class="queue-task-status">' + statusIcn + '</span>' +
+            (priorityIcon[task.priority] ? '<span class="queue-task-priority">' + priorityIcon[task.priority] + '</span>' : '') +
+            '<span class="queue-task-name">' + escapeHtmlClient(name) + '</span>' +
+            '<span class="queue-task-time">' + elapsed + '</span>' +
+        '</div>';
+
+    if (status === 'queued') {
+        html += '<div class="queue-task-actions">' +
+            (index !== undefined && index > 0 ? '<button class="queue-action-btn" onclick="event.stopPropagation(); queueMoveUp(\'' + escapeHtmlClient(task.id) + '\')" title="Move up">&#9650;</button>' : '') +
+            '<button class="queue-action-btn" onclick="event.stopPropagation(); queueMoveToTop(\'' + escapeHtmlClient(task.id) + '\')" title="Move to top">&#9196;</button>' +
+            '<button class="queue-action-btn queue-action-danger" onclick="event.stopPropagation(); queueCancelTask(\'' + escapeHtmlClient(task.id) + '\')" title="Cancel">&#10005;</button>' +
+        '</div>';
+    } else {
+        html += '<div class="queue-task-actions">' +
+            '<button class="queue-action-btn queue-action-danger" onclick="event.stopPropagation(); queueForceFailTask(\'' + escapeHtmlClient(task.id) + '\')" title="Force-fail (mark as stale)">&#9888;</button>' +
+            '<button class="queue-action-btn queue-action-danger" onclick="event.stopPropagation(); queueCancelTask(\'' + escapeHtmlClient(task.id) + '\')" title="Cancel">&#10005;</button>' +
+        '</div>';
+    }
+
+    html += '</div>';
+    return html;
+}
+
+function renderRepoQueueHistoryTask(task: any): string {
+    let name = task.displayName || task.type || 'Task';
+    if (name.length > 35) name = name.substring(0, 35) + '...';
+
+    const statusIcn = task.status === 'completed' ? '\u2705'
+        : task.status === 'failed' ? '\u274C'
+        : '\u{1F6AB}';
+    let elapsed = '';
+    if (task.completedAt) {
+        elapsed = formatRelativeTime(new Date(task.completedAt).toISOString());
+    }
+    let duration = '';
+    if (task.startedAt && task.completedAt) {
+        duration = ' (' + formatDuration(task.completedAt - task.startedAt) + ')';
+    }
+
+    let html = '<div class="queue-task queue-history-task ' + task.status + '" data-task-id="' + escapeHtmlClient(task.id) + '"' +
+        ' onclick="showQueueTaskDetail(\'' + escapeHtmlClient(task.id) + '\')" style="cursor:pointer">' +
+        '<div class="queue-task-row">' +
+            '<span class="queue-task-status">' + statusIcn + '</span>' +
+            '<span class="queue-task-name">' + escapeHtmlClient(name) + '</span>' +
+            '<span class="queue-task-time">' + elapsed + duration + '</span>' +
+        '</div>';
+
+    if (task.error) {
+        html += '<div class="queue-task-error">' + escapeHtmlClient(task.error.length > 80 ? task.error.substring(0, 77) + '...' : task.error) + '</div>';
+    }
+
+    html += '</div>';
+    return html;
+}
+
+function toggleRepoQueueHistory(): void {
+    showRepoQueueHistory = !showRepoQueueHistory;
+    // Re-render the queue tab if a repo is selected
+    if (appState.selectedRepoId && appState.activeRepoSubTab === 'queue') {
+        fetchRepoQueue(appState.selectedRepoId).then(data => {
+            renderRepoQueueContent(data);
+        });
+    }
+}
+
+/** Refresh the repo queue tab if it is currently active. Called from websocket handler. */
+export function refreshRepoQueueTab(): void {
+    if (appState.activeRepoSubTab !== 'queue' || !appState.selectedRepoId) return;
+    fetchRepoQueue(appState.selectedRepoId).then(data => {
+        renderRepoQueueContent(data);
+    });
+}
+
+(window as any).toggleRepoQueueHistory = toggleRepoQueueHistory;
 
 // ================================================================
 // Info sub-tab

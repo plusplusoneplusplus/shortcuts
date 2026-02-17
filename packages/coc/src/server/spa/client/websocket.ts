@@ -8,7 +8,7 @@ import { fetchApi } from './core';
 import { renderDetail, clearDetail } from './detail';
 import { renderQueuePanel, startQueuePolling, stopQueuePolling } from './queue';
 import { fetchRepoTasks } from './tasks';
-import { fetchReposData } from './repos';
+import { fetchReposData, refreshRepoQueueTab } from './repos';
 
 let wsReconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let wsReconnectDelay = 1000;
@@ -151,6 +151,9 @@ export function handleWsMessage(msg: any): void {
                 // Already rendered above
             });
         }
+
+        // Refresh repo-specific queue tab if active
+        refreshRepoQueueTab();
     } else if (msg.type === 'drain-start') {
         queueState.draining = true;
         queueState.drainQueued = msg.queued || 0;

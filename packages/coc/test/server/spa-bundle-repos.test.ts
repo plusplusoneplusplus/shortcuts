@@ -319,18 +319,151 @@ describe('client bundle — queue sub-tab', () => {
     });
 
     it('includes queue case in renderSubTabContent switch', () => {
-        // The switch statement should route 'queue' to renderQueueTab
         expect(script).toContain('case "queue"');
         expect(script).toContain('renderQueueTab');
     });
 
-    it('renderQueueTab returns placeholder HTML with queue-tab-content class', () => {
+    it('renderQueueTab returns HTML with queue-tab-content class', () => {
         expect(script).toContain('queue-tab-content');
-        expect(script).toContain('Coming soon');
+        expect(script).toContain('repo-queue-content');
     });
 
     it('RepoSubTab type includes queue (state module)', () => {
-        // The compiled bundle should reference 'queue' as a valid sub-tab value
         expect(script).toContain('queue');
+    });
+
+    it('defines fetchRepoQueue function', () => {
+        expect(script).toContain('fetchRepoQueue');
+    });
+
+    it('fetchRepoQueue calls /api/queue with repoId parameter', () => {
+        expect(script).toContain('/queue?repoId=');
+    });
+
+    it('defines renderRepoQueueContent function', () => {
+        expect(script).toContain('renderRepoQueueContent');
+    });
+
+    it('renders empty state for repo queue', () => {
+        expect(script).toContain('No tasks in queue for this repository');
+    });
+
+    it('renders Running Tasks section label', () => {
+        expect(script).toContain('Running Tasks');
+    });
+
+    it('renders Queued Tasks section label', () => {
+        expect(script).toContain('Queued Tasks');
+    });
+
+    it('renders Completed Tasks section label with collapsible toggle', () => {
+        expect(script).toContain('Completed Tasks');
+        expect(script).toContain('toggleRepoQueueHistory');
+    });
+
+    it('defines renderRepoQueueTask function for task cards', () => {
+        expect(script).toContain('renderRepoQueueTask');
+    });
+
+    it('defines renderRepoQueueHistoryTask function for completed tasks', () => {
+        expect(script).toContain('renderRepoQueueHistoryTask');
+    });
+
+    it('truncates task names at 35 characters', () => {
+        // The substring(0, 35) pattern should be in the repo queue rendering
+        expect(script).toContain('substring(0, 35)');
+    });
+
+    it('truncates error messages at 80 characters', () => {
+        expect(script).toContain('substring(0, 77)');
+    });
+
+    it('displays priority icons for high and low priority', () => {
+        expect(script).toContain('priorityIcon');
+    });
+
+    it('uses formatDuration for elapsed time on running tasks', () => {
+        expect(script).toContain('formatDuration');
+    });
+
+    it('uses formatRelativeTime for timestamps', () => {
+        expect(script).toContain('formatRelativeTime');
+    });
+
+    it('makes running tasks clickable with showQueueTaskDetail', () => {
+        expect(script).toContain('showQueueTaskDetail');
+    });
+
+    it('makes completed tasks clickable with showQueueTaskDetail', () => {
+        expect(script).toContain('showQueueTaskDetail');
+    });
+
+    it('renders action buttons for queued tasks (move up, move to top, cancel)', () => {
+        expect(script).toContain('queueMoveUp');
+        expect(script).toContain('queueMoveToTop');
+        expect(script).toContain('queueCancelTask');
+    });
+
+    it('renders force-fail button for running tasks', () => {
+        expect(script).toContain('queueForceFailTask');
+    });
+
+    it('shows error messages for failed history tasks', () => {
+        expect(script).toContain('queue-task-error');
+    });
+
+    it('shows duration for completed history tasks', () => {
+        expect(script).toContain('formatDuration');
+    });
+
+    it('defines showRepoQueueHistory toggle state', () => {
+        expect(script).toContain('showRepoQueueHistory');
+    });
+
+    it('defines toggleRepoQueueHistory function', () => {
+        expect(script).toContain('toggleRepoQueueHistory');
+    });
+
+    it('exposes toggleRepoQueueHistory on window', () => {
+        expect(script).toContain('toggleRepoQueueHistory');
+    });
+
+    it('defines refreshRepoQueueTab for WebSocket integration', () => {
+        expect(script).toContain('refreshRepoQueueTab');
+    });
+
+    it('refreshRepoQueueTab checks activeRepoSubTab is queue', () => {
+        expect(script).toContain('activeRepoSubTab');
+    });
+
+    it('uses escapeHtmlClient for all user-facing strings', () => {
+        expect(script).toContain('escapeHtmlClient');
+    });
+
+    it('displays section counts in queue section labels', () => {
+        expect(script).toContain('queue-section-count');
+    });
+});
+
+// ============================================================================
+// Queue sub-tab WebSocket integration (client bundle)
+// ============================================================================
+
+describe('client bundle — queue sub-tab WebSocket integration', () => {
+    let script: string;
+    beforeAll(() => { script = getClientBundle(); });
+
+    it('imports refreshRepoQueueTab in websocket module', () => {
+        expect(script).toContain('refreshRepoQueueTab');
+    });
+
+    it('calls refreshRepoQueueTab in queue-updated handler', () => {
+        // The websocket handler should invoke refreshRepoQueueTab after queue-updated
+        expect(script).toContain('refreshRepoQueueTab');
+    });
+
+    it('refreshRepoQueueTab checks selectedRepoId before fetching', () => {
+        expect(script).toContain('selectedRepoId');
+        expect(script).toContain('refreshRepoQueueTab');
     });
 });
