@@ -3338,3 +3338,158 @@ describe('timeline population during execution', () => {
         ]);
     });
 });
+
+// ============================================================================
+// AI Service Injection Tests
+// ============================================================================
+
+describe('AI service injection', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+
+    beforeEach(() => {
+        store = createMockProcessStore();
+        // Reset global mocks
+        mockSendMessage.mockReset();
+        mockIsAvailable.mockReset();
+        mockIsAvailable.mockResolvedValue({ available: true });
+        mockSendMessage.mockResolvedValue({
+            success: true,
+            response: 'AI response text',
+            sessionId: 'session-123',
+        });
+    });
+
+    it('should use injected aiService when provided', async () => {
+        const injectedMock = createMockSDKService({
+            sendMessageResponse: {
+                success: true,
+                response: 'Injected mock response',
+                sessionId: 'injected-session-456',
+            },
+        });
+
+        const executor = new CLITaskExecutor(store, {
+            aiService: injectedMock.service as any,
+        });
+
+        const task: QueuedTask = {
+            id: 'task-injection-1',
+            type: 'ai-clarification',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { prompt: 'Test injection' },
+            config: { timeoutMs: 30000 },
+            displayName: 'Test injection',
+        };
+
+        const result = await executor.execute(task);
+
+        // Verify the injected mock was called (not the global mock)
+        expect(injectedMock.mockIsAvailable).toHaveBeenCalledTimes(1);
+        expect(injectedMock.mockSendMessage).toHaveBeenCalledTimes(1);
+        expect(injectedMock.mockSendMessage).toHaveBeenCalledWith(
+            expect.objectContaining({
+                prompt: 'Test injection',
+            })
+        );
+
+        // Verify global mock was NOT called
+        expect(mockIsAvailable).not.toHaveBeenCalled();
+        expect(mockSendMessage).not.toHaveBeenCalled();
+
+        // Verify result contains injected mock's response
+        expect(result.success).toBe(true);
+        expect((result.result as any).response).toBe('Injected mock response');
+        expect((result.result as any).sessionId).toBe('injected-session-456');
+    });
+
+    it('should fallback to getCopilotSDKService() when no aiService provided', async () => {
+        mockIsAvailable.mockReset().mockResolvedValue({ available: true });
+        mockSendMessage.mockReset().mockResolvedValue({
+            success: true,
+            response: 'Global mock response',
+            sessionId: 'global-session-789',
+        });
+
+        const executor = new CLITaskExecutor(store);
+
+        const task: QueuedTask = {
+            id: 'task-fallback-1',
+            type: 'ai-clarification',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { prompt: 'Test fallback' },
+            config: { timeoutMs: 30000 },
+            displayName: 'Test fallback',
+        };
+
+        const result = await executor.execute(task);
+
+        // Verify the global mock from getCopilotSDKService() was called
+        expect(mockIsAvailable).toHaveBeenCalledTimes(1);
+        expect(mockSendMessage).toHaveBeenCalledTimes(1);
+        expect(mockSendMessage).toHaveBeenCalledWith(
+            expect.objectContaining({
+                prompt: 'Test fallback',
+            })
+        );
+
+        // Verify result contains global mock's response
+        expect(result.success).toBe(true);
+        expect((result.result as any).response).toBe('Global mock response');
+        expect((result.result as any).sessionId).toBe('global-session-789');
+    });
+});
+
+describe('createQueueExecutorBridge', () => {
+    describe('AI service injection', () => {
+        it('should pass aiService through createQueueExecutorBridge factory', async () => {
+            const queueManager = new TaskQueueManager();
+            const store = createMockProcessStore();
+
+            const bridgeMock = createMockSDKService({
+                sendMessageResponse: {
+                    success: true,
+                    response: 'Bridge integration response',
+                    sessionId: 'bridge-session-999',
+                },
+            });
+
+            const { executor, bridge } = createQueueExecutorBridge(queueManager, store, {
+                maxConcurrency: 1,
+                autoStart: false,
+                aiService: bridgeMock.service as any,
+            });
+
+            queueManager.enqueue({
+                type: 'ai-clarification',
+                priority: 'normal',
+                payload: { prompt: 'Bridge integration test' },
+                config: {},
+                displayName: 'Bridge test',
+            });
+
+            executor.start();
+            await delay(100);
+
+            // Verify the injected service was used
+            expect(bridgeMock.mockIsAvailable).toHaveBeenCalledTimes(1);
+            expect(bridgeMock.mockSendMessage).toHaveBeenCalledTimes(1);
+            expect(bridgeMock.mockSendMessage).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    prompt: 'Bridge integration test',
+                })
+            );
+
+            // Verify task completed successfully
+            await delay(100);
+            const history = queueManager.getHistory();
+            expect(history).toHaveLength(1);
+            expect(history[0].status).toBe('completed');
+
+            executor.dispose();
+        });
+    });
+});

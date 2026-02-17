@@ -8,7 +8,7 @@
  */
 
 import type * as http from 'http';
-import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore, CopilotSDKService } from '@plusplusoneplusplus/pipeline-core';
 
 /** Options for the `coc serve` CLI command. */
 export interface ServeCommandOptions {
@@ -56,6 +56,8 @@ export interface ExecutionServerOptions {
     theme?: 'auto' | 'light' | 'dark';
     /** Options for the wiki module. */
     wiki?: WikiServerOptions;
+    /** Optional AI service injection (for testing). If not provided, uses getCopilotSDKService(). */
+    aiService?: CopilotSDKService;
 }
 
 /** Options for graceful shutdown with queue draining. */

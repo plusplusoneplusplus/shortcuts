@@ -33,7 +33,7 @@ import {
     getLogger,
     LogCategory,
 } from '@plusplusoneplusplus/pipeline-core';
-import type { ProcessStore, AIProcess, ConversationTurn, ToolEvent, TimelineItem } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore, AIProcess, ConversationTurn, ToolEvent, TimelineItem, CopilotSDKService } from '@plusplusoneplusplus/pipeline-core';
 
 // ============================================================================
 // Types
@@ -50,6 +50,8 @@ export interface QueueExecutorBridgeOptions {
     workingDirectory?: string;
     /** Directory for persisted data (output files, etc.). Default: ~/.coc */
     dataDir?: string;
+    /** Optional AI service injection (for testing). If not provided, uses getCopilotSDKService(). */
+    aiService?: CopilotSDKService;
 }
 
 /**
@@ -76,6 +78,8 @@ export class CLITaskExecutor implements TaskExecutor {
     private readonly approvePermissions: boolean;
     private readonly defaultWorkingDirectory?: string;
     private readonly dataDir?: string;
+    /** AI service instance (injected or default from getCopilotSDKService()) */
+    private readonly aiService: CopilotSDKService;
     /** Per-process output accumulator for persisting conversation output */
     private readonly outputBuffers: Map<string, string> = new Map();
     /** Per-process timeline accumulator for chronological execution events */
@@ -92,11 +96,12 @@ export class CLITaskExecutor implements TaskExecutor {
     /** Count-based throttle: flush every N chunks */
     private static readonly THROTTLE_CHUNK_COUNT = 50;
 
-    constructor(store: ProcessStore, options: { approvePermissions?: boolean; workingDirectory?: string; dataDir?: string } = {}) {
+    constructor(store: ProcessStore, options: { approvePermissions?: boolean; workingDirectory?: string; dataDir?: string; aiService?: CopilotSDKService } = {}) {
         this.store = store;
         this.approvePermissions = options.approvePermissions !== false;
         this.defaultWorkingDirectory = options.workingDirectory;
         this.dataDir = options.dataDir;
+        this.aiService = options.aiService ?? getCopilotSDKService();
     }
 
     async execute(task: QueuedTask): Promise<TaskExecutionResult> {
@@ -258,8 +263,7 @@ export class CLITaskExecutor implements TaskExecutor {
         // Only report dead for sessions this executor actually created
         if (!this.knownSessionIds.has(process.sdkSessionId)) return true;
         try {
-            const sdkService = getCopilotSDKService();
-            return sdkService.hasKeptAliveSession(process.sdkSessionId);
+            return this.aiService.hasKeptAliveSession(process.sdkSessionId);
         } catch {
             return true; // Can't verify — assume alive
         }
@@ -293,8 +297,7 @@ export class CLITaskExecutor implements TaskExecutor {
         this.outputBuffers.set(processId, '');
 
         try {
-            const sdkService = getCopilotSDKService();
-            const result = await sdkService.sendFollowUp(process.sdkSessionId, message, {
+            const result = await this.aiService.sendFollowUp(process.sdkSessionId, message, {
                 onStreamingChunk: (chunk: string) => {
                     // Accumulate for persistence
                     const existing = this.outputBuffers.get(processId) ?? '';
@@ -504,13 +507,12 @@ export class CLITaskExecutor implements TaskExecutor {
     }
 
     private async executeWithAI(task: QueuedTask, prompt: string): Promise<unknown> {
-        const sdkService = getCopilotSDKService();
         const processId = `queue_${task.id}`;
 
         // Initialize output accumulator for this process
         this.outputBuffers.set(processId, '');
 
-        const availability = await sdkService.isAvailable();
+        const availability = await this.aiService.isAvailable();
         if (!availability.available) {
             throw new Error(`Copilot SDK not available: ${availability.error || 'unknown reason'}`);
         }
@@ -518,7 +520,7 @@ export class CLITaskExecutor implements TaskExecutor {
         const workingDirectory = this.getWorkingDirectory(task);
         const timeoutMs = task.config.timeoutMs || DEFAULT_AI_TIMEOUT_MS;
 
-        const result = await sdkService.sendMessage({
+        const result = await this.aiService.sendMessage({
             prompt,
             model: task.config.model,
             workingDirectory,
@@ -751,6 +753,7 @@ export function createQueueExecutorBridge(
         approvePermissions: options.approvePermissions !== false,
         workingDirectory: options.workingDirectory,
         dataDir: options.dataDir,
+        aiService: options.aiService,
     });
 
     const executor = createQueueExecutor(queueManager, taskExecutor, {

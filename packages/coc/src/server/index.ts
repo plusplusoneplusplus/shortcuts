@@ -172,6 +172,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         autoStart: true,
         approvePermissions: true,
         dataDir,
+        aiService: options.aiService,
     });
 
     // Start periodic stale task detection (checks every 60s, grace 5min after timeout)
