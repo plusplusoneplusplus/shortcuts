@@ -280,6 +280,8 @@ export {
     TrackedProcessFields,
     ConversationTurn,
     SerializedConversationTurn,
+    TimelineItem,
+    SerializedTimelineItem,
     ToolCall,
     ToolCallStatus,
     ToolCallPermissionRequest,

@@ -33,7 +33,7 @@ import {
     getLogger,
     LogCategory,
 } from '@plusplusoneplusplus/pipeline-core';
-import type { ProcessStore, AIProcess, ConversationTurn, ToolEvent } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore, AIProcess, ConversationTurn, ToolEvent, TimelineItem } from '@plusplusoneplusplus/pipeline-core';
 
 // ============================================================================
 // Types
@@ -78,6 +78,8 @@ export class CLITaskExecutor implements TaskExecutor {
     private readonly dataDir?: string;
     /** Per-process output accumulator for persisting conversation output */
     private readonly outputBuffers: Map<string, string> = new Map();
+    /** Per-process timeline accumulator for chronological execution events */
+    private readonly timelineBuffers: Map<string, TimelineItem[]> = new Map();
     /** SDK session IDs this executor has created (for session liveness checks). */
     private readonly knownSessionIds: Set<string> = new Set();
     /** Per-process throttle state for streaming conversation flushes */
@@ -167,6 +169,10 @@ export class CLITaskExecutor implements TaskExecutor {
             // Clean up throttle state
             this.throttleState.delete(processId);
 
+            // Drain accumulated timeline items for the final assistant turn
+            const finalTimeline = this.timelineBuffers.get(processId) || [];
+            this.timelineBuffers.delete(processId);
+
             // Build final conversation turns (re-read from store to include any flushed streaming data)
             const currentProcess = await this.store.getProcess(processId);
             const existingTurns = currentProcess?.conversationTurns || initialTurns;
@@ -180,7 +186,7 @@ export class CLITaskExecutor implements TaskExecutor {
                     timestamp: new Date(),
                     turnIndex: 1,
                     toolCalls: (result as any)?.toolCalls || undefined,
-                    timeline: [],
+                    timeline: finalTimeline,
                 },
             ];
 
@@ -210,8 +216,7 @@ export class CLITaskExecutor implements TaskExecutor {
 
             // Clean up throttle state
             this.throttleState.delete(processId);
-
-            // Update process as failed — include conversation turns so far
+            this.timelineBuffers.delete(processId);
             try {
                 const currentProcess = await this.store.getProcess(processId);
                 const existingTurns = currentProcess?.conversationTurns || initialTurns;
@@ -294,6 +299,8 @@ export class CLITaskExecutor implements TaskExecutor {
                     // Accumulate for persistence
                     const existing = this.outputBuffers.get(processId) ?? '';
                     this.outputBuffers.set(processId, existing + chunk);
+                    // Append content timeline item
+                    this.appendTimelineItem(processId, { type: 'content', timestamp: new Date(), content: chunk });
                     try {
                         this.store.emitProcessOutput(processId, chunk);
                     } catch {
@@ -303,6 +310,24 @@ export class CLITaskExecutor implements TaskExecutor {
                     this.checkThrottleAndFlush(processId);
                 },
                 onToolEvent: (event: ToolEvent) => {
+                    // Append tool timeline item
+                    const timelineType = event.type === 'tool-start' ? 'tool-start'
+                        : event.type === 'tool-complete' ? 'tool-complete'
+                        : 'tool-failed';
+                    this.appendTimelineItem(processId, {
+                        type: timelineType,
+                        timestamp: new Date(),
+                        toolCall: {
+                            id: event.toolCallId,
+                            name: event.toolName || 'unknown',
+                            status: event.type === 'tool-start' ? 'running'
+                                : event.type === 'tool-complete' ? 'completed' : 'failed',
+                            startTime: new Date(),
+                            args: event.parameters || {},
+                            result: event.result,
+                            error: event.error,
+                        },
+                    });
                     try {
                         this.store.emitProcessEvent(processId, {
                             type: event.type,
@@ -324,6 +349,10 @@ export class CLITaskExecutor implements TaskExecutor {
             // Clean up throttle state
             this.throttleState.delete(processId);
 
+            // Drain accumulated timeline items for the final assistant turn
+            const followUpTimeline = this.timelineBuffers.get(processId) || [];
+            this.timelineBuffers.delete(processId);
+
             if (!result.success) {
                 throw new Error(result.error || 'Follow-up execution failed');
             }
@@ -340,7 +369,7 @@ export class CLITaskExecutor implements TaskExecutor {
                 timestamp: new Date(),
                 turnIndex: cleanTurns.length,
                 toolCalls: result.toolCalls || undefined,
-                timeline: [],
+                timeline: followUpTimeline,
             };
 
             await this.store.updateProcess(processId, {
@@ -358,8 +387,7 @@ export class CLITaskExecutor implements TaskExecutor {
 
             // Clean up throttle state
             this.throttleState.delete(processId);
-
-            // Append error turn and mark failed
+            this.timelineBuffers.delete(processId);
             const refreshed = await this.store.getProcess(processId);
             const turns = refreshed?.conversationTurns || [];
             // Remove any in-progress streaming assistant turn
@@ -502,6 +530,8 @@ export class CLITaskExecutor implements TaskExecutor {
                 // Accumulate output for disk persistence
                 const existing = this.outputBuffers.get(processId) ?? '';
                 this.outputBuffers.set(processId, existing + chunk);
+                // Append content timeline item
+                this.appendTimelineItem(processId, { type: 'content', timestamp: new Date(), content: chunk });
                 try {
                     this.store.emitProcessOutput(processId, chunk);
                 } catch {
@@ -512,6 +542,24 @@ export class CLITaskExecutor implements TaskExecutor {
             },
             // Emit tool lifecycle events for real-time tool card rendering in the SPA
             onToolEvent: (event: ToolEvent) => {
+                // Append tool timeline item
+                const timelineType = event.type === 'tool-start' ? 'tool-start'
+                    : event.type === 'tool-complete' ? 'tool-complete'
+                    : 'tool-failed';
+                this.appendTimelineItem(processId, {
+                    type: timelineType,
+                    timestamp: new Date(),
+                    toolCall: {
+                        id: event.toolCallId,
+                        name: event.toolName || 'unknown',
+                        status: event.type === 'tool-start' ? 'running'
+                            : event.type === 'tool-complete' ? 'completed' : 'failed',
+                        startTime: new Date(),
+                        args: event.parameters || {},
+                        result: event.result,
+                        error: event.error,
+                    },
+                });
                 try {
                     this.store.emitProcessEvent(processId, {
                         type: event.type,
@@ -583,6 +631,16 @@ export class CLITaskExecutor implements TaskExecutor {
     }
 
     /**
+     * Append a timeline item to the in-memory buffer for a process.
+     */
+    private appendTimelineItem(processId: string, item: TimelineItem): void {
+        if (!this.timelineBuffers.has(processId)) {
+            this.timelineBuffers.set(processId, []);
+        }
+        this.timelineBuffers.get(processId)!.push(item);
+    }
+
+    /**
      * Check throttle conditions and flush conversation turn if necessary.
      * Called on every streaming chunk. Flushes when either:
      * - Time since last flush >= THROTTLE_TIME_MS (5 seconds)
@@ -616,6 +674,9 @@ export class CLITaskExecutor implements TaskExecutor {
         const buffer = this.outputBuffers.get(processId);
         if (!buffer) return;
 
+        // Snapshot current timeline for this flush
+        const timelineSnapshot = [...(this.timelineBuffers.get(processId) || [])];
+
         try {
             const currentProcess = await this.store.getProcess(processId);
             if (!currentProcess) return;
@@ -628,7 +689,7 @@ export class CLITaskExecutor implements TaskExecutor {
                 // Update existing streaming assistant turn
                 updatedTurns = existingTurns.map((turn, i) =>
                     i === existingTurns.length - 1
-                        ? { ...turn, content: buffer, streaming: streaming || undefined }
+                        ? { ...turn, content: buffer, streaming: streaming || undefined, timeline: timelineSnapshot }
                         : turn
                 );
             } else {
@@ -641,7 +702,7 @@ export class CLITaskExecutor implements TaskExecutor {
                         timestamp: new Date(),
                         turnIndex: existingTurns.length,
                         streaming: streaming || undefined,
-                        timeline: [],
+                        timeline: timelineSnapshot,
                     },
                 ];
             }
