@@ -89,6 +89,33 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     },
 };
 
+/**
+ * Source indicator for each config field
+ */
+export type ConfigFieldSource = 'default' | 'file';
+
+/**
+ * All tracked config field keys (flat, with dot notation for nested serve fields)
+ */
+export const CONFIG_SOURCE_KEYS = [
+    'model', 'parallel', 'output', 'approvePermissions', 'mcpConfig',
+    'timeout', 'persist', 'serve.port', 'serve.host', 'serve.dataDir', 'serve.theme',
+] as const;
+
+export type ConfigSourceKey = typeof CONFIG_SOURCE_KEYS[number];
+
+/**
+ * Resolved config with per-field source indicators
+ */
+export interface AdminConfigWithSource {
+    /** Fully resolved config with defaults applied */
+    resolved: ResolvedCLIConfig;
+    /** Per-field source indicator: 'default' or 'file' */
+    sources: Record<ConfigSourceKey, ConfigFieldSource>;
+    /** Canonical config file path */
+    configFilePath: string;
+}
+
 // ============================================================================
 // Config Resolution
 // ============================================================================
@@ -263,4 +290,40 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
             theme: override.serve?.theme ?? base.serve?.theme ?? 'auto',
         },
     };
+}
+
+/**
+ * Get resolved config with per-field source indicators.
+ * For each field, reports whether the value comes from the config file or defaults.
+ */
+export function getResolvedConfigWithSource(configPath?: string): AdminConfigWithSource {
+    const fileConfig = loadConfigFile(configPath);
+    const resolved = mergeConfig(DEFAULT_CONFIG, fileConfig);
+
+    const sources = {} as Record<ConfigSourceKey, ConfigFieldSource>;
+    for (const key of CONFIG_SOURCE_KEYS) {
+        sources[key] = getFieldSource(key, fileConfig);
+    }
+
+    return {
+        resolved,
+        sources,
+        configFilePath: getConfigFilePath(),
+    };
+}
+
+/**
+ * Determine whether a config field value comes from file or default
+ */
+function getFieldSource(key: ConfigSourceKey, fileConfig: CLIConfig | undefined): ConfigFieldSource {
+    if (!fileConfig) {
+        return 'default';
+    }
+
+    if (key.startsWith('serve.')) {
+        const subKey = key.slice('serve.'.length) as keyof NonNullable<CLIConfig['serve']>;
+        return fileConfig.serve?.[subKey] !== undefined ? 'file' : 'default';
+    }
+
+    return (fileConfig as Record<string, unknown>)[key] !== undefined ? 'file' : 'default';
 }

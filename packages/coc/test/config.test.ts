@@ -20,14 +20,16 @@ import {
     COC_DIR,
     LEGACY_CONFIG_FILE_NAME,
     DEFAULT_CONFIG,
+    CONFIG_SOURCE_KEYS,
     getConfigFilePath,
     getLegacyConfigFilePath,
     loadConfigFile,
     migrateConfigIfNeeded,
     resolveConfig,
     mergeConfig,
+    getResolvedConfigWithSource,
 } from '../src/config';
-import type { CLIConfig, ResolvedCLIConfig } from '../src/config';
+import type { CLIConfig, ResolvedCLIConfig, ConfigSourceKey } from '../src/config';
 
 describe('Config', () => {
     // ========================================================================
@@ -412,6 +414,101 @@ timeout: 300
             expect(result.model).toBe('gpt-4');
             expect(result.output).toBe('csv');
             expect(result.parallel).toBe(5); // Default
+        });
+    });
+
+    // ========================================================================
+    // getResolvedConfigWithSource
+    // ========================================================================
+
+    describe('getResolvedConfigWithSource', () => {
+        let tmpDir: string;
+        let fakeHome: string;
+
+        beforeEach(() => {
+            tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-source-'));
+            fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-home-src-'));
+            vi.mocked(os.homedir).mockReturnValue(fakeHome);
+        });
+
+        afterEach(() => {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+            fs.rmSync(fakeHome, { recursive: true, force: true });
+        });
+
+        it('should mark all sources as default when no config file exists', () => {
+            const result = getResolvedConfigWithSource(path.join(tmpDir, 'nonexistent.yaml'));
+            expect(result.resolved.parallel).toBe(DEFAULT_CONFIG.parallel);
+            expect(result.resolved.output).toBe(DEFAULT_CONFIG.output);
+            expect(result.resolved.approvePermissions).toBe(DEFAULT_CONFIG.approvePermissions);
+            expect(result.resolved.persist).toBe(DEFAULT_CONFIG.persist);
+            for (const key of CONFIG_SOURCE_KEYS) {
+                expect(result.sources[key]).toBe('default');
+            }
+        });
+
+        it('should mark overridden top-level fields as file', () => {
+            const configPath = path.join(tmpDir, 'config.yaml');
+            fs.writeFileSync(configPath, 'model: gpt-4\nparallel: 10\noutput: json\n');
+            const result = getResolvedConfigWithSource(configPath);
+
+            expect(result.sources['model']).toBe('file');
+            expect(result.sources['parallel']).toBe('file');
+            expect(result.sources['output']).toBe('file');
+            expect(result.sources['approvePermissions']).toBe('default');
+            expect(result.sources['mcpConfig']).toBe('default');
+            expect(result.sources['timeout']).toBe('default');
+            expect(result.sources['persist']).toBe('default');
+        });
+
+        it('should mark overridden serve sub-fields as file', () => {
+            const configPath = path.join(tmpDir, 'config.yaml');
+            fs.writeFileSync(configPath, 'serve:\n  port: 8080\n  theme: dark\n');
+            const result = getResolvedConfigWithSource(configPath);
+
+            expect(result.sources['serve.port']).toBe('file');
+            expect(result.sources['serve.theme']).toBe('file');
+            expect(result.sources['serve.host']).toBe('default');
+            expect(result.sources['serve.dataDir']).toBe('default');
+        });
+
+        it('should return resolved config with defaults applied', () => {
+            const configPath = path.join(tmpDir, 'config.yaml');
+            fs.writeFileSync(configPath, 'model: claude\n');
+            const result = getResolvedConfigWithSource(configPath);
+
+            expect(result.resolved.model).toBe('claude');
+            expect(result.resolved.parallel).toBe(5);
+            expect(result.resolved.output).toBe('table');
+            expect(result.resolved.persist).toBe(true);
+        });
+
+        it('should return configFilePath matching getConfigFilePath()', () => {
+            const result = getResolvedConfigWithSource(path.join(tmpDir, 'nonexistent.yaml'));
+            expect(result.configFilePath).toBe(path.join(fakeHome, '.coc', 'config.yaml'));
+        });
+
+        it('should handle config with all fields overridden', () => {
+            const configPath = path.join(tmpDir, 'full.yaml');
+            fs.writeFileSync(configPath, [
+                'model: gpt-4',
+                'parallel: 20',
+                'output: csv',
+                'approvePermissions: true',
+                'mcpConfig: /tmp/mcp.json',
+                'timeout: 600',
+                'persist: false',
+                'serve:',
+                '  port: 9000',
+                '  host: 0.0.0.0',
+                '  dataDir: /tmp/coc',
+                '  theme: light',
+            ].join('\n'));
+            const result = getResolvedConfigWithSource(configPath);
+
+            for (const key of CONFIG_SOURCE_KEYS) {
+                expect(result.sources[key]).toBe('file');
+            }
         });
     });
 });
