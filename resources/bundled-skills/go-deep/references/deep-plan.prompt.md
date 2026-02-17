@@ -1,94 +1,78 @@
 # Deep Plan Prompt
 
-You are a planning orchestrator AI tasked with decomposing a complex feature or task into a sequence of small, atomic commits. Each commit should be independently reviewable, testable, and mergeable.
+You are a planning orchestrator that decomposes a feature/task into 3-8 small, atomic commits — each independently reviewable, testable, and mergeable.
 
 ## Feature / Task
 MUST BE PROVIDED BY USER
 
 ## Output Location
-All plan files are written to: `.vscode/tasks/<feature>/<work>/`
-- `<feature>`: The high-level feature area (e.g., `auth`, `pipeline-refactor`)
-- `<work>`: A short slug for this specific body of work (e.g., `add-oauth`, `extract-core`)
-- check existing .vscode/tasks folders to see if relavant feature already exists
+`.vscode/tasks/<feature>/<work>/` — check existing `.vscode/tasks/` folders and reuse `<feature>` when possible.
 
 ---
 
 ## Phase 1: Scope Analysis
 
-Analyze the feature/task to understand the full scope of work.
+Explore the codebase to understand current state, then:
+1. Identify all components, files, and systems affected
+2. Map change dependencies (what must come before what)
+3. Find natural seams for splitting into independent commits
 
-**Instructions:**
-1. Read and explore the codebase to understand current state
-2. Identify all components, files, and systems that will be touched
-3. Map dependencies between changes (what must come before what)
-4. Identify risks, unknowns, and areas needing investigation
-5. Determine the natural "seams" where work can be split into independent commits
-
-**Output:** A dependency graph of changes with natural split points identified.
+**Output:** Dependency graph with split points.
 
 ---
 
 ## Phase 2: Commit Decomposition
 
-Break the work into a sequence of atomic commits, ordered by dependency.
+Break work into ordered atomic commits. Each commit must:
+- Represent **one logical change**, reviewable in isolation
+- Build on previous commits (no forward dependencies)
+- Leave the codebase **buildable and testable**
+- Include tests alongside the code they verify
 
-**Instructions:**
-1. Each commit should represent **one logical change** — small enough to review in isolation
-2. Order commits so each builds on the previous (no forward dependencies)
-3. Every commit should leave the codebase in a **valid, buildable, testable state**
-4. Include test updates in the same commit as the code they test
-5. Prefer this ordering pattern:
-   - Infrastructure / types / interfaces first
-   - Core logic next
-   - Integration and wiring
-   - Tests and documentation last (if not co-located)
+**Preferred ordering:** types/interfaces → core logic → integration/wiring → docs (if separate)
 
-**Per-Commit Plan:**
-- **Title**: Short imperative description (e.g., "Add user session types")
-- **Why**: Why this commit exists as a separate unit
-- **Files**: List of files to create, modify, or delete
-- **Changes**: Bullet points describing each change
-- **Tests**: What tests to add or update
-- **Acceptance Criteria**: How to verify this commit is correct
-- **Dependencies**: Which previous commits this depends on (by number)
+**Per commit, define:** title, motivation, files (create/modify/delete), changes, tests, acceptance criteria, dependencies (by commit number).
 
 ---
 
-## Phase 3: Plan File Generation (Parallel Sub-Agents)
+## Phase 3: User Review Gate
 
-For each commit identified in Phase 2, dispatch an independent sub-agent to generate the plan file.
+**STOP and present the Phase 2 output to the user before proceeding.**
 
-**Output Directory:** `.vscode/tasks/<feature>/<work>/`
+Display a concise summary of the proposed commit sequence:
+- Number of commits
+- For each commit: number, title, one-line description, key files affected
+- Overall dependency flow (e.g., "1 → 2 → 3, 4 depends on 2")
 
-**File Naming Convention:**
-```
-001-<short-slug>.md
-002-<short-slug>.md
-003-<short-slug>.md
-...
-```
+Ask the user to confirm, adjust, or reject the approach. **Do not proceed to Phase 4 until the user approves.** If the user requests changes (reorder, merge, split, add, or remove commits), revise the Phase 2 output and re-present for approval.
 
-### Sub-Agent Dispatch
+---
 
-For each commit from Phase 2, launch a **general-purpose sub-agent** with the following context:
-1. The commit's title, motivation, file list, changes, tests, and acceptance criteria from Phase 2
-2. The output file path (e.g., `.vscode/tasks/<feature>/<work>/001-<slug>.md`)
+## Phase 4: Plan File Generation (Parallel Sub-Agents)
+
+Dispatch a sub-agent per commit to write its plan file to `.vscode/tasks/<feature>/<work>/NNN-<slug>.md` (3-digit zero-padded, kebab-case slug).
+
+### Sub-Agent Context
+
+Each sub-agent receives:
+1. Its commit plan from Phase 2 (title, files, changes, tests, acceptance criteria)
+2. Output file path
 3. The plan file template (below)
-4. Relevant codebase context (key files the commit touches, existing patterns, conventions)
+4. Relevant codebase context (files it touches, existing patterns)
+5. **Prior commit plans (commits 1..N-1)** — titles, file lists, and change descriptions so the sub-agent knows what will already exist when its commit is applied
 
-Sub-agents run **in parallel** since each writes to its own file. The orchestrator should wait for all sub-agents to complete before proceeding to Phase 4.
+Sub-agents run in parallel (each writes its own file). Since they cannot see each other's output, the orchestrator must supply prior commit context so each can reason about the post-prior-commits codebase state.
 
-### Per Sub-Agent Instructions
+### Sub-Agent Instructions
 
-Each sub-agent:
-1. **Explore** the codebase areas relevant to the assigned commit (read the actual files to be modified/created)
-2. **Enrich** the commit plan with concrete implementation details based on what it finds in the code
-3. **Write** the plan file using the template below
-4. **Self-validate** that the plan is specific enough to implement without ambiguity
+1. **Explore** relevant codebase areas (read actual files)
+2. **Assume prior commits are applied** — do not re-create types, interfaces, or infrastructure from earlier commits
+3. **Enrich** the plan with concrete implementation details from the code and prior commit context
+4. **Write** the plan file using the template below
+5. **Validate** the plan is unambiguous and conflict-free with prior commits
 
 ### Plan File Template
 
-Each sub-agent writes its plan file in this format:
 ```markdown
 ---
 status: pending
@@ -97,62 +81,56 @@ status: pending
 # <NNN>: <Commit Title>
 
 ## Summary
-<1-2 sentence description of what this commit accomplishes>
+<1-2 sentences>
 
 ## Motivation
-<Why this is a separate commit; what logical unit of work it represents>
+<Why this is a separate commit>
 
 ## Changes
 
 ### Files to Create
-- `path/to/new-file.ts` — <description>
+- `path/to/file.ts` — <description>
 
 ### Files to Modify
-- `path/to/existing-file.ts` — <what changes and why>
+- `path/to/file.ts` — <what and why>
 
 ### Files to Delete
-- `path/to/obsolete-file.ts` — <why it's being removed>
+- `path/to/file.ts` — <why>
 
 ## Implementation Notes
-<Key decisions, patterns to follow, gotchas to watch for>
+<Key decisions, patterns, gotchas>
 
 ## Tests
-- <Test 1 description>
-- <Test 2 description>
+- <Test descriptions>
 
 ## Acceptance Criteria
-- [ ] <Criterion 1>
-- [ ] <Criterion 2>
-- [ ] <Criterion 3>
+- [ ] <Criteria>
 
 ## Dependencies
-- Depends on: <list of prerequisite commit numbers, or "None">
+- Depends on: <commit numbers, or "None">
+
+## Assumed Prior State
+<Types, interfaces, files, or infrastructure from earlier commits this assumes exist. "None" for first commit.>
 ```
 
 ---
 
-## Phase 4: Validation
+## Phase 5: Validation
 
-Review the full plan for completeness and correctness.
-
-**Checklist:**
-1. **Coverage**: Every aspect of the original feature/task is addressed across the commits
-2. **Ordering**: Commits are in valid dependency order — no commit references work from a later commit
-3. **Atomicity**: Each commit is independently reviewable and leaves the codebase valid
-4. **Testability**: Each commit includes or references tests that verify the change
-5. **No gaps**: There are no missing steps between commits
-6. **No overlaps**: Each change appears in exactly one commit
-7. **Reasonable size**: No commit is too large (if so, split further)
-
-**Output:** Confirmation that the plan is valid, or adjustments needed.
+Verify the full plan:
+1. **Coverage** — all aspects of the feature addressed
+2. **Ordering** — valid dependency order, no forward references
+3. **Atomicity** — each commit independently reviewable and buildable
+4. **Testability** — each commit has tests
+5. **No gaps or overlaps** — every change in exactly one commit
+6. **Size** — no commit too large (split further if needed)
 
 ---
 
 ## Constraints
-- Commits must be **ordered by dependency** — never reference future work
-- Each commit must leave the project in a **buildable and testable** state
-- Prefer **many small commits** over few large ones
-- File names use **3-digit zero-padded numbers** (001, 002, ... 999)
-- Slugs in file names should be **lowercase kebab-case**
-- Plan files use **YAML frontmatter** with `status: pending` for integration with the Tasks Viewer
-- Keep plan files **concise but actionable** — enough detail to implement without ambiguity
+- Commits ordered by dependency — never reference future work
+- Each commit leaves the project buildable and testable
+- Prefer many small commits over few large ones
+- File names: `NNN-<kebab-slug>.md` (zero-padded 3 digits)
+- YAML frontmatter with `status: pending` (Tasks Viewer integration)
+- Plans: concise but actionable — enough detail to implement without ambiguity
