@@ -722,8 +722,11 @@ function attachMillerEventListeners(container: HTMLElement): void {
     });
 
     // Right-click context menu on file rows and folder rows
+    // Hold Shift+right-click to show the native browser context menu instead
     container.addEventListener('contextmenu', (e: Event) => {
         const me = e as MouseEvent;
+        if (me.shiftKey) return; // let native browser menu through
+
         const target = me.target as HTMLElement;
 
         // Check for folder row first
