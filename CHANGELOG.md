@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### CoC CLI Package (1.1.0)
+
+#### Breaking Changes
+- Removed review page feature — see [`packages/coc/CHANGELOG.md`](packages/coc/CHANGELOG.md) for details
+
+#### Added
+- Task commenting feature with inline comments on task results
+- Comment categories (Bug, Question, Suggestion, Praise, Nitpick, General), filtering, and anchor tracking
+- AI prompt generation from comments
+- See [`packages/coc/CHANGELOG.md`](packages/coc/CHANGELOG.md) for full details
+
 ## [3.4.0] - 2026-02-12
 
 ### Added
