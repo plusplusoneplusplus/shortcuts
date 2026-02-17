@@ -102,6 +102,8 @@ export interface ConversationTurn {
     turnIndex: number;
     /** True while the assistant response is still being streamed (ephemeral UI hint) */
     streaming?: boolean;
+    /** Tool calls executed during this turn (typically assistant turns only) */
+    toolCalls?: ToolCall[];
 }
 
 /**
@@ -113,6 +115,89 @@ export interface SerializedConversationTurn {
     timestamp: string;  // ISO string
     turnIndex: number;
     streaming?: boolean;
+    toolCalls?: SerializedToolCall[];
+}
+
+/**
+ * Status of a single tool call execution
+ */
+export type ToolCallStatus = 'pending' | 'running' | 'completed' | 'failed';
+
+/**
+ * Permission request details for a tool call (if the tool required user approval)
+ */
+export interface ToolCallPermissionRequest {
+    /** Permission type: 'file', 'shell', 'url', 'read', 'write', 'mcp' */
+    kind: string;
+    /** When permission was requested */
+    timestamp: Date;
+    /** Optional: specific resource being accessed (e.g., file path) */
+    resource?: string;
+    /** Optional: operation description */
+    operation?: string;
+}
+
+/**
+ * Permission approval/denial result for a tool call
+ */
+export interface ToolCallPermissionResult {
+    /** Whether permission was granted */
+    approved: boolean;
+    /** When permission was decided */
+    timestamp: Date;
+    /** Optional: denial reason */
+    reason?: string;
+}
+
+/**
+ * A single tool call executed during a conversation turn
+ */
+export interface ToolCall {
+    /** Unique ID for this tool call */
+    id: string;
+    /** Tool name (e.g., 'bash', 'view', 'edit', 'grep') */
+    name: string;
+    /** Current execution status */
+    status: ToolCallStatus;
+    /** When the tool call started */
+    startTime: Date;
+    /** When the tool call finished (if completed/failed) */
+    endTime?: Date;
+    /** Tool arguments (as JSON object) */
+    args: Record<string, unknown>;
+    /** Tool execution result (if completed) */
+    result?: string;
+    /** Error message (if failed) */
+    error?: string;
+    /** Permission request details (if applicable) */
+    permissionRequest?: ToolCallPermissionRequest;
+    /** Permission decision (if applicable) */
+    permissionResult?: ToolCallPermissionResult;
+}
+
+/**
+ * Serialized format of ToolCall for persistence (Date → ISO string)
+ */
+export interface SerializedToolCall {
+    id: string;
+    name: string;
+    status: ToolCallStatus;
+    startTime: string;  // ISO string
+    endTime?: string;   // ISO string
+    args: Record<string, unknown>;
+    result?: string;
+    error?: string;
+    permissionRequest?: {
+        kind: string;
+        timestamp: string;  // ISO string
+        resource?: string;
+        operation?: string;
+    };
+    permissionResult?: {
+        approved: boolean;
+        timestamp: string;  // ISO string
+        reason?: string;
+    };
 }
 
 // ============================================================================
@@ -359,7 +444,28 @@ export function serializeProcess(process: AIProcess & Partial<TrackedProcessFiel
             content: turn.content,
             timestamp: turn.timestamp.toISOString(),
             turnIndex: turn.turnIndex,
-            streaming: turn.streaming
+            streaming: turn.streaming,
+            toolCalls: turn.toolCalls?.map(tc => ({
+                id: tc.id,
+                name: tc.name,
+                status: tc.status,
+                startTime: tc.startTime.toISOString(),
+                endTime: tc.endTime?.toISOString(),
+                args: tc.args,
+                result: tc.result,
+                error: tc.error,
+                permissionRequest: tc.permissionRequest ? {
+                    kind: tc.permissionRequest.kind,
+                    timestamp: tc.permissionRequest.timestamp.toISOString(),
+                    resource: tc.permissionRequest.resource,
+                    operation: tc.permissionRequest.operation
+                } : undefined,
+                permissionResult: tc.permissionResult ? {
+                    approved: tc.permissionResult.approved,
+                    timestamp: tc.permissionResult.timestamp.toISOString(),
+                    reason: tc.permissionResult.reason
+                } : undefined
+            }))
         }))
     };
 }
@@ -397,7 +503,28 @@ export function deserializeProcess(serialized: SerializedAIProcess): AIProcess {
             content: turn.content,
             timestamp: new Date(turn.timestamp),
             turnIndex: turn.turnIndex,
-            streaming: turn.streaming
+            streaming: turn.streaming,
+            toolCalls: turn.toolCalls?.map(tc => ({
+                id: tc.id,
+                name: tc.name,
+                status: tc.status,
+                startTime: new Date(tc.startTime),
+                endTime: tc.endTime ? new Date(tc.endTime) : undefined,
+                args: tc.args,
+                result: tc.result,
+                error: tc.error,
+                permissionRequest: tc.permissionRequest ? {
+                    kind: tc.permissionRequest.kind,
+                    timestamp: new Date(tc.permissionRequest.timestamp),
+                    resource: tc.permissionRequest.resource,
+                    operation: tc.permissionRequest.operation
+                } : undefined,
+                permissionResult: tc.permissionResult ? {
+                    approved: tc.permissionResult.approved,
+                    timestamp: new Date(tc.permissionResult.timestamp),
+                    reason: tc.permissionResult.reason
+                } : undefined
+            }))
         }))
     };
 }
