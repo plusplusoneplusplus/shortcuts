@@ -254,7 +254,7 @@ describe('Repos sidebar HTML structure', () => {
     const html = generateDashboardHtml();
 
     it('uses app-layout class for repos view (sidebar+detail)', () => {
-        expect(html).toContain('class="app-layout hidden" id="view-repos"');
+        expect(html).toContain('class="app-layout" id="view-repos"');
     });
 
     it('contains repos sidebar with correct class', () => {

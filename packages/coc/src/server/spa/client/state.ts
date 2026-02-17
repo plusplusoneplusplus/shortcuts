@@ -59,7 +59,7 @@ export const appState: AppState = {
     searchQuery: '',
     expandedGroups: {},
     liveTimers: {},
-    activeTab: 'processes',
+    activeTab: 'repos',
     workspaces: [],
     selectedRepoId: null,
     activeRepoSubTab: 'info',

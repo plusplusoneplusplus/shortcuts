@@ -704,6 +704,9 @@ body {
 /* ---- Queue Panel ---- */
 .queue-panel {
     border-bottom: 1px solid var(--border-color);
+    max-height: 40vh;
+    overflow-y: auto;
+    flex-shrink: 0;
 }
 .queue-panel:empty {
     display: none;

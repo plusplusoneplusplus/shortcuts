@@ -220,14 +220,20 @@ export function handleHashChange(): void {
         return;
     }
 
-    // #processes or default
-    if (hash !== 'processes') {
-        setHashSilent('#processes');
+    // #processes
+    if (hash === 'processes') {
+        (window as any).switchTab?.('processes');
+        appState.selectedId = null;
+        clearDetail();
+        updateActiveItem();
+        return;
     }
-    (window as any).switchTab?.('processes');
-    appState.selectedId = null;
-    clearDetail();
-    updateActiveItem();
+
+    // Default: repos tab
+    if (hash !== 'repos') {
+        setHashSilent('#repos');
+    }
+    (window as any).switchTab?.('repos');
 }
 
 window.addEventListener('hashchange', function() {

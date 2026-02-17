@@ -74,13 +74,13 @@ ${bundleCss}
     </header>
 
     <nav class="tab-bar" id="tab-bar">
-        <button class="tab-btn active" data-tab="processes">Processes</button>
-        <button class="tab-btn" data-tab="repos">Repos</button>
+        <button class="tab-btn active" data-tab="repos">Repos</button>
+        <button class="tab-btn" data-tab="processes">Processes</button>
         <button class="tab-btn" data-tab="wiki">Wiki</button>
         <button class="tab-btn" data-tab="reports" disabled>Reports</button>
     </nav>
 
-    <div class="app-layout" id="view-processes">
+    <div class="app-layout hidden" id="view-processes">
         <aside class="sidebar" id="sidebar">
             <div class="filter-bar">
                 <div class="view-mode-toggle">
@@ -131,7 +131,7 @@ ${bundleCss}
         </main>
     </div>
 
-    <div class="app-layout hidden" id="view-repos">
+    <div class="app-layout" id="view-repos">
         <aside class="sidebar repos-sidebar" id="repos-sidebar">
             <div class="repos-sidebar-header">
                 <h2>Repos</h2>
