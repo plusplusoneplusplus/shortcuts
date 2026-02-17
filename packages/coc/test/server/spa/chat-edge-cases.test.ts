@@ -276,12 +276,8 @@ describe('client bundle — chat edge cases', () => {
             expect(script).toContain('escapeHtmlClient(typeLabel(');
         });
 
-        it('inlineFormat escapes content inside inline code spans', () => {
-            expect(script).toContain('escapeHtmlClient(c)');
-        });
-
-        it('renderMarkdown escapes code block content via escapeHtmlClient', () => {
-            expect(script).toContain('escapeHtmlClient(codeContent)');
+        it('HTML content is escaped via escapeHtml from pipeline-core', () => {
+            expect(script).toContain('escapeHtml');
         });
     });
 
@@ -363,8 +359,8 @@ describe('client bundle — chat edge cases', () => {
             expect(script).toContain('conversation-waiting');
         });
 
-        it('renderMarkdown returns empty string for empty/falsy input', () => {
-            expect(script).toContain('if (!text) return ""');
+        it('renderMarkdownToHtml returns empty string for empty/falsy input', () => {
+            expect(script).toContain('if (!content) return ""');
         });
 
         it('renderChatMessage handles empty content gracefully', () => {
@@ -413,17 +409,17 @@ describe('client bundle — chat edge cases', () => {
             expect(script).toContain('accumulatedContent +=');
         });
 
-        it('chunk handler calls renderMarkdown on accumulated content', () => {
-            expect(script).toContain('renderMarkdown(accumulatedContent)');
+        it('chunk handler calls renderMarkdownToHtml on accumulated content', () => {
+            expect(script).toContain('renderMarkdownToHtml(accumulatedContent)');
         });
 
-        it('updateConversationContent calls renderMarkdown on queueTaskStreamContent', () => {
-            expect(script).toContain('renderMarkdown(queueTaskStreamContent)');
+        it('updateConversationContent calls renderMarkdownToHtml on queueTaskStreamContent', () => {
+            expect(script).toContain('renderMarkdownToHtml(queueTaskStreamContent)');
         });
 
         it('streaming bubble content div is updated via innerHTML with rendered markdown', () => {
             expect(script).toContain('.innerHTML');
-            expect(script).toContain('renderMarkdown');
+            expect(script).toContain('renderMarkdownToHtml');
         });
 
         it('chunk handler removes streaming class after first content arrives', () => {

@@ -356,12 +356,8 @@ describe('client/detail.ts', () => {
         expect(content).toContain('export function clearDetail');
     });
 
-    it('exports renderMarkdown', () => {
-        expect(content).toContain('export function renderMarkdown');
-    });
-
-    it('exports inlineFormat', () => {
-        expect(content).toContain('export function inlineFormat');
+    it('imports renderMarkdownToHtml from markdown-renderer', () => {
+        expect(content).toContain("import { renderMarkdownToHtml } from './markdown-renderer'");
     });
 
     it('exports showQueueTaskDetail', () => {
@@ -395,10 +391,6 @@ describe('client/detail.ts', () => {
     it('uses getApiBase() instead of API_BASE', () => {
         expect(content).toContain('getApiBase()');
         expect(content).not.toContain("var API_BASE");
-    });
-
-    it('uses real backtick regex (not escaped)', () => {
-        expect(content).toContain('/^```/');
     });
 
     it('uses real unicode for middle dot', () => {
@@ -824,8 +816,8 @@ describe('client/tasks.ts', () => {
         expect(content).toContain('columnsListenerContainer');
     });
 
-    it('has renderMarkdown function for file preview', () => {
-        expect(content).toContain('function renderMarkdown');
+    it('imports renderMarkdownToHtml from markdown-renderer', () => {
+        expect(content).toContain("import { renderMarkdownToHtml } from './markdown-renderer'");
     });
 
     it('has openTaskFile function for click-to-open', () => {
@@ -913,28 +905,8 @@ describe('client/tasks.ts', () => {
         expect(content).toContain('/tasks/content?path=');
     });
 
-    it('renderMarkdown strips YAML frontmatter', () => {
-        expect(content).toContain('Strip YAML frontmatter');
-    });
-
-    it('renderMarkdown handles headings', () => {
-        expect(content).toContain('<h1>');
-        expect(content).toContain('<h2>');
-        expect(content).toContain('<h3>');
-        expect(content).toContain('<h4>');
-    });
-
-    it('renderMarkdown handles code blocks', () => {
-        expect(content).toContain('<pre><code');
-    });
-
-    it('renderMarkdown handles checkboxes', () => {
-        expect(content).toContain('task-checkbox');
-    });
-
-    it('renderMarkdown handles bold and italic', () => {
-        expect(content).toContain('<strong>');
-        expect(content).toContain('<em>');
+    it('uses renderMarkdownToHtml with stripFrontmatter', () => {
+        expect(content).toContain('renderMarkdownToHtml(content, { stripFrontmatter: true })');
     });
 
     it('imports showAIActionDropdown from ai-actions', () => {

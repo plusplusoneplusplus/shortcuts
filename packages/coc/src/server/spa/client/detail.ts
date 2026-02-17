@@ -12,6 +12,7 @@ import {
 import { navigateToProcess, setHashSilent, fetchApi } from './core';
 import { getCachedConversation, cacheConversation, invalidateConversationCache } from './sidebar';
 import { renderToolCallHTML, renderToolCallsHTML, attachToolCallToggleHandlers, normalizeToolCall, renderToolCall, updateToolCallStatus } from './tool-renderer';
+import { renderMarkdownToHtml } from './markdown-renderer';
 
 export function renderDetail(id: string): void {
     // Queue processes (ID starts with 'queue_') should use the queue task conversation view
@@ -133,7 +134,7 @@ function renderProcessDetail(process: any, id: string): void {
     // Result section
     if (process.result) {
         html += '<div class="result-section"><h2>Result</h2>' +
-            '<div class="result-body">' + renderMarkdown(process.result) + '</div></div>';
+            '<div class="result-body">' + renderMarkdownToHtml(process.result) + '</div></div>';
     }
 
     if (process.structuredResult) {
@@ -385,7 +386,7 @@ function renderChatMessage(turn: ClientConversationTurn): string {
     if (turn.timeline && turn.timeline.length > 0) {
         for (const item of turn.timeline) {
             if (item.type === 'content') {
-                html += '<div class="chat-message-content">' + renderMarkdown(item.content || '') + '</div>';
+                html += '<div class="chat-message-content">' + renderMarkdownToHtml(item.content || '') + '</div>';
             } else if (item.type.startsWith('tool-')) {
                 html += '<div class="tool-calls-container">';
                 html += renderToolCallHTML(item.toolCall);
@@ -394,7 +395,7 @@ function renderChatMessage(turn: ClientConversationTurn): string {
         }
     } else {
         // Empty timeline: streaming/optimistic/backward-compat turns
-        html += '<div class="chat-message-content">' + renderMarkdown(turn.content || '') + '</div>';
+        html += '<div class="chat-message-content">' + renderMarkdownToHtml(turn.content || '') + '</div>';
         if (!isUser && turn.toolCalls && turn.toolCalls.length > 0) {
             html += '<div class="tool-calls-container">';
             html += renderToolCallsHTML(turn.toolCalls);
@@ -799,7 +800,7 @@ function connectFollowUpSSE(processId: string): void {
                     bubble.classList.remove('streaming');
                     const contentDiv = bubble.querySelector('.chat-message-content');
                     if (contentDiv) {
-                        contentDiv.innerHTML = renderMarkdown(accumulatedContent);
+                        contentDiv.innerHTML = renderMarkdownToHtml(accumulatedContent);
                     }
                 }
                 scrollConversationToBottom();
@@ -1105,7 +1106,7 @@ function updateConversationContent(): void {
         // Update only the content div inside the last assistant bubble
         const contentDiv = lastBubble.querySelector('.chat-message-content');
         if (contentDiv) {
-            contentDiv.innerHTML = renderMarkdown(queueTaskStreamContent);
+            contentDiv.innerHTML = renderMarkdownToHtml(queueTaskStreamContent);
         }
     } else {
         // No assistant bubble yet — append one (streaming just started)
@@ -1172,128 +1173,6 @@ export function copyQueueTaskResult(processId: string): void {
             copyToClipboard(data.process.result);
         }
     });
-}
-
-// ================================================================
-// Lightweight Markdown Renderer
-// ================================================================
-
-export function renderMarkdown(text: string): string {
-    if (!text) return '';
-    const lines = text.split('\n');
-    let html = '';
-    let inCodeBlock = false;
-    let codeLang = '';
-    let codeContent = '';
-    let inList = false;
-    let listType = '';
-    let inBlockquote = false;
-
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-
-        // Fenced code blocks
-        if (line.match(/^```/)) {
-            if (inCodeBlock) {
-                html += '<pre><code' + (codeLang ? ' class="language-' + codeLang + '"' : '') + '>' +
-                    escapeHtmlClient(codeContent) + '</code></pre>';
-                inCodeBlock = false;
-                codeContent = '';
-                codeLang = '';
-            } else {
-                if (inList) { html += '</' + listType + '>'; inList = false; }
-                if (inBlockquote) { html += '</blockquote>'; inBlockquote = false; }
-                inCodeBlock = true;
-                codeLang = line.replace(/^```/, '').trim();
-            }
-            continue;
-        }
-        if (inCodeBlock) {
-            codeContent += (codeContent ? '\n' : '') + line;
-            continue;
-        }
-
-        // Horizontal rule
-        if (line.match(/^---+$/)) {
-            if (inList) { html += '</' + listType + '>'; inList = false; }
-            if (inBlockquote) { html += '</blockquote>'; inBlockquote = false; }
-            html += '<hr>';
-            continue;
-        }
-
-        // Headers
-        const headerMatch = line.match(/^(#{1,4})\s+(.+)$/);
-        if (headerMatch) {
-            if (inList) { html += '</' + listType + '>'; inList = false; }
-            if (inBlockquote) { html += '</blockquote>'; inBlockquote = false; }
-            const level = headerMatch[1].length;
-            html += '<h' + level + '>' + inlineFormat(headerMatch[2]) + '</h' + level + '>';
-            continue;
-        }
-
-        // Blockquote
-        if (line.match(/^>\s?/)) {
-            if (inList) { html += '</' + listType + '>'; inList = false; }
-            if (!inBlockquote) { html += '<blockquote>'; inBlockquote = true; }
-            html += inlineFormat(line.replace(/^>\s?/, '')) + '<br>';
-            continue;
-        } else if (inBlockquote) {
-            html += '</blockquote>';
-            inBlockquote = false;
-        }
-
-        // Unordered list
-        if (line.match(/^[-*]\s+/)) {
-            if (inList && listType !== 'ul') { html += '</' + listType + '>'; inList = false; }
-            if (!inList) { html += '<ul>'; inList = true; listType = 'ul'; }
-            html += '<li>' + inlineFormat(line.replace(/^[-*]\s+/, '')) + '</li>';
-            continue;
-        }
-
-        // Ordered list
-        const olMatch = line.match(/^\d+\.\s+(.+)$/);
-        if (olMatch) {
-            if (inList && listType !== 'ol') { html += '</' + listType + '>'; inList = false; }
-            if (!inList) { html += '<ol>'; inList = true; listType = 'ol'; }
-            html += '<li>' + inlineFormat(olMatch[1]) + '</li>';
-            continue;
-        }
-
-        // End list if line doesn't match
-        if (inList) { html += '</' + listType + '>'; inList = false; }
-
-        // Blank line = paragraph break
-        if (line.trim() === '') {
-            html += '<br>';
-            continue;
-        }
-
-        // Normal paragraph text
-        html += '<p>' + inlineFormat(line) + '</p>';
-    }
-
-    // Close any open blocks
-    if (inCodeBlock) {
-        html += '<pre><code>' + escapeHtmlClient(codeContent) + '</code></pre>';
-    }
-    if (inList) html += '</' + listType + '>';
-    if (inBlockquote) html += '</blockquote>';
-
-    return html;
-}
-
-export function inlineFormat(text: string): string {
-    // Inline code (before other formatting)
-    text = text.replace(/`([^`]+)`/g, function(m: string, c: string) {
-        return '<code>' + escapeHtmlClient(c) + '</code>';
-    });
-    // Bold
-    text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-    // Italic
-    text = text.replace(/\*(.+?)\*/g, '<em>$1</em>');
-    // Links
-    text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
-    return text;
 }
 
 export function copyConversationOutput(processId: string): void {

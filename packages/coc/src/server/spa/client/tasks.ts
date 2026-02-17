@@ -10,6 +10,7 @@ import { fetchApi } from './core';
 import { escapeHtmlClient } from './utils';
 import { showAIActionDropdown, hideAIActionDropdown, showFollowPromptSubmenu } from './ai-actions';
 import { showToast } from './ai-actions';
+import { renderMarkdownToHtml } from './markdown-renderer';
 import {
     fetchComments,
     fetchCommentCounts,
@@ -41,13 +42,6 @@ import {
 } from './task-comments-ui';
 import type { TaskComment as ClientTaskComment } from './task-comments-types';
 import { createAnchor } from './task-comment-anchor';
-
-// Declare highlight.js global (loaded via CDN in html-template.ts)
-declare const hljs: {
-    highlight: (code: string, options: { language: string }) => { value: string };
-    highlightAuto: (code: string, languages?: string[]) => { value: string; language: string };
-    highlightElement: (element: HTMLElement) => void;
-};
 
 // ================================================================
 // Context File Filtering
@@ -1655,7 +1649,7 @@ async function loadPreviewContent(wsId: string, filePath: string): Promise<void>
                 '<button class="task-preview-close" id="task-preview-close" title="Close">&times;</button>' +
             '</div>' +
             '<div class="task-preview-content-wrapper">' +
-                '<div class="task-preview-body" id="task-preview-body">' + renderMarkdown(content) + '</div>' +
+                '<div class="task-preview-body" id="task-preview-body">' + renderMarkdownToHtml(content, { stripFrontmatter: true }) + '</div>' +
                 '<div class="task-preview-comments-sidebar" id="task-preview-comments-sidebar"></div>' +
             '</div>';
 
@@ -1963,84 +1957,6 @@ function updateTaskHash(wsId: string, filePath: string | null): void {
 /** Lazy import of setHashSilent to avoid circular dependency. */
 function await_setHashSilent(): { setHashSilent: (hash: string) => void } {
     return { setHashSilent: (window as any).__setHashSilent || (() => {}) };
-}
-
-// ================================================================
-// Simple markdown renderer (no external deps)
-// ================================================================
-
-export function renderMarkdown(md: string): string {
-    // Strip YAML frontmatter
-    let text = md.replace(/^---\n[\s\S]*?\n---\n*/, '');
-
-    // Escape HTML first
-    text = escapeHtmlClient(text);
-
-    // Code blocks (``` ... ```) — apply highlight.js syntax highlighting
-    text = text.replace(/```(\w*)\n([\s\S]*?)```/g, (_m, lang, code) => {
-        const trimmedCode = code.trimEnd();
-        const language = lang || 'plaintext';
-
-        let highlighted: string;
-        try {
-            if (typeof hljs !== 'undefined') {
-                if (lang) {
-                    highlighted = hljs.highlight(trimmedCode, { language }).value;
-                } else {
-                    highlighted = hljs.highlightAuto(trimmedCode).value;
-                }
-            } else {
-                highlighted = trimmedCode;
-            }
-        } catch {
-            // Fallback to plain (already escaped) text on error
-            highlighted = trimmedCode;
-        }
-
-        return '<pre><code class="hljs language-' + language + '">' + highlighted + '</code></pre>';
-    });
-
-    // Inline code
-    text = text.replace(/`([^`\n]+)`/g, '<code>$1</code>');
-
-    // Headings (must be done after escaping)
-    text = text.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
-    text = text.replace(/^### (.+)$/gm, '<h3>$1</h3>');
-    text = text.replace(/^## (.+)$/gm, '<h2>$1</h2>');
-    text = text.replace(/^# (.+)$/gm, '<h1>$1</h1>');
-
-    // Horizontal rule
-    text = text.replace(/^---$/gm, '<hr>');
-
-    // Bold and italic
-    text = text.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
-    text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-    text = text.replace(/\*(.+?)\*/g, '<em>$1</em>');
-
-    // Checkboxes
-    text = text.replace(/^(\s*)- \[x\] (.+)$/gm, '$1<div class="task-checkbox checked">&#9745; $2</div>');
-    text = text.replace(/^(\s*)- \[ \] (.+)$/gm, '$1<div class="task-checkbox">&#9744; $2</div>');
-
-    // Unordered lists
-    text = text.replace(/^- (.+)$/gm, '<li>$1</li>');
-    text = text.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
-
-    // Ordered lists
-    text = text.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
-
-    // Blockquotes
-    text = text.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
-
-    // Links
-    text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
-
-    // Paragraphs: wrap remaining text lines that aren't already wrapped
-    text = text.replace(/^(?!<[a-z])((?!<\/)[^\n]+)$/gm, '<p>$1</p>');
-
-    // Clean up empty paragraphs
-    text = text.replace(/<p>\s*<\/p>/g, '');
-
-    return text;
 }
 
 // ================================================================

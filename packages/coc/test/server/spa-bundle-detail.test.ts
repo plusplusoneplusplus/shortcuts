@@ -60,33 +60,29 @@ describe('client bundle — detail module', () => {
     });
 
     it('markdown renderer handles headers', () => {
-        expect(script).toContain('headerMatch');
+        // Pipeline-core uses template literal: md-h${level}
+        expect(script).toContain('md-h${level}');
     });
 
     it('markdown renderer handles code blocks', () => {
-        expect(script).toContain('inCodeBlock');
+        expect(script).toContain('code-block');
         expect(script).toContain('language-');
     });
 
     it('markdown renderer handles lists', () => {
-        expect(script).toContain('inList');
-        expect(script).toContain('<ul>');
-        expect(script).toContain('<ol>');
+        expect(script).toContain('md-list-item');
     });
 
     it('markdown renderer handles blockquotes', () => {
-        expect(script).toContain('inBlockquote');
-        expect(script).toContain('<blockquote>');
+        expect(script).toContain('md-blockquote');
     });
 
     it('markdown renderer handles inline formatting', () => {
-        expect(script).toContain('inlineFormat');
-        expect(script).toContain('<strong>');
-        expect(script).toContain('<em>');
+        expect(script).toContain('md-bold');
+        expect(script).toContain('md-italic');
     });
 
     it('markdown renderer handles links', () => {
-        expect(script).toContain('target="_blank"');
-        expect(script).toContain('rel="noopener"');
+        expect(script).toContain('md-link');
     });
 });

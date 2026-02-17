@@ -53,8 +53,7 @@ describe('client bundle (getDashboardScript replacement)', () => {
     it('contains detail functions', () => {
         expect(script).toContain('renderDetail');
         expect(script).toContain('clearDetail');
-        expect(script).toContain('renderMarkdown');
-        expect(script).toContain('inlineFormat');
+        expect(script).toContain('renderMarkdownToHtml');
     });
 
     it('contains filter functions', () => {

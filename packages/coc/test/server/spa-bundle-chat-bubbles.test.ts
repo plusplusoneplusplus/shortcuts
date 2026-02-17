@@ -89,7 +89,7 @@ describe('client bundle — chat bubble rendering', () => {
 
     it('renderChatMessage falls back to content+tools when timeline is empty', () => {
         // Empty timeline: streaming/optimistic/backward-compat turns use turn.content
-        expect(script).toContain('renderMarkdown(turn.content');
+        expect(script).toContain('renderMarkdownToHtml(turn.content');
     });
 
     // ---- Conversation turn iteration ----
@@ -205,7 +205,7 @@ describe('client bundle — chat bubble rendering', () => {
 // Markdown rendering in chat bubbles
 // ================================================================
 
-describe('renderMarkdown in chat bubbles', () => {
+describe('renderMarkdownToHtml in chat bubbles', () => {
     let script: string;
     let styles: string;
     beforeAll(() => {
@@ -213,73 +213,55 @@ describe('renderMarkdown in chat bubbles', () => {
         styles = getStylesContent();
     });
 
-    it('renderMarkdown function is defined in bundle', () => {
-        expect(script).toContain('renderMarkdown');
+    it('renderMarkdownToHtml function is defined in bundle', () => {
+        expect(script).toContain('renderMarkdownToHtml');
     });
 
-    it('renders fenced code blocks with pre and code tags', () => {
-        expect(script).toContain('<pre><code');
+    it('renders fenced code blocks with code-block class', () => {
+        expect(script).toContain('code-block');
     });
 
     it('renders language class on code blocks', () => {
         expect(script).toContain('language-');
     });
 
-    it('renders headings h1 through h4', () => {
-        expect(script).toContain('<h1');
-        expect(script).toContain('<h2');
-        expect(script).toContain('<h3');
-        expect(script).toContain('<h4');
+    it('renders headings via pipeline-core md-h classes', () => {
+        // Pipeline-core uses template literal: md-h${level}
+        expect(script).toContain('md-h${level}');
     });
 
-    it('renders unordered lists with ul and li tags', () => {
-        expect(script).toContain('<ul>');
-        expect(script).toContain('<li>');
+    it('renders list items with md-list-item class', () => {
+        expect(script).toContain('md-list-item');
+        expect(script).toContain('md-list-marker');
     });
 
-    it('renders ordered lists with ol tag', () => {
-        expect(script).toContain('<ol>');
+    it('renders blockquotes with md-blockquote class', () => {
+        expect(script).toContain('md-blockquote');
     });
 
-    it('renders blockquotes with blockquote tag', () => {
-        expect(script).toContain('<blockquote>');
-        expect(script).toContain('</blockquote>');
+    it('renders horizontal rules with md-hr class', () => {
+        expect(script).toContain('md-hr');
     });
 
-    it('renders horizontal rules with hr tag', () => {
-        expect(script).toContain('<hr>');
+    it('renders inline code with md-inline-code class', () => {
+        expect(script).toContain('md-inline-code');
     });
 
-    it('renders inline code with code tag via inlineFormat', () => {
-        expect(script).toContain('<code>');
-        expect(script).toContain('</code>');
+    it('renders bold text with md-bold class', () => {
+        expect(script).toContain('md-bold');
     });
 
-    it('renders bold text with strong tag', () => {
-        expect(script).toContain('<strong>');
-        expect(script).toContain('</strong>');
+    it('renders italic text with md-italic class', () => {
+        expect(script).toContain('md-italic');
     });
 
-    it('renders italic text with em tag', () => {
-        expect(script).toContain('<em>');
-        expect(script).toContain('</em>');
+    it('renders links with md-link class', () => {
+        expect(script).toContain('md-link');
+        expect(script).toContain('md-link-url');
     });
 
-    it('renders links with a tag and target="_blank"', () => {
-        expect(script).toContain('<a href=');
-        expect(script).toContain('target="_blank"');
-    });
-
-    it('links include rel="noopener" for security', () => {
-        expect(script).toContain('rel="noopener"');
-    });
-
-    it('code block content is escaped via escapeHtmlClient', () => {
-        expect(script).toContain('escapeHtmlClient(codeContent)');
-    });
-
-    it('inline code content is escaped via escapeHtmlClient', () => {
-        expect(script).toContain('escapeHtmlClient(c)');
+    it('content is HTML-escaped via escapeHtml', () => {
+        expect(script).toContain('escapeHtml');
     });
 
     it('conversation-body has overflow-y auto for scrolling', () => {
