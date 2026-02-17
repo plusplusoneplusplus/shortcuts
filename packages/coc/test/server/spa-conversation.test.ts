@@ -232,6 +232,25 @@ describe('SPA conversation rendering', () => {
             expect(script).toContain('attachToolCallToggleHandlers');
             expect(script).toContain('attachToggleBehavior');
         });
+
+        it('should render bash tool with description and command sections', () => {
+            expect(script).toContain('buildBashArgsHTML');
+            expect(script).toContain('tool-call-description');
+            expect(script).toContain('Description');
+            expect(script).toContain('Command');
+            expect(script).toContain('language-bash');
+        });
+
+        it('should pass toolName to buildArgsHTML for tool-specific rendering', () => {
+            // buildArgsHTML accepts optional toolName parameter
+            expect(script).toContain('buildArgsHTML');
+            // Bash tool calls route through buildBashArgsHTML
+            expect(script).toContain('bash');
+        });
+
+        it('should show remaining bash args as Options when extra fields exist', () => {
+            expect(script).toContain('Options');
+        });
     });
 
     // ====================================================================

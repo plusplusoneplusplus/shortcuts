@@ -84,7 +84,42 @@ function formatArgsString(args: any): string {
     }
 }
 
-function buildArgsHTML(args: any): string {
+function buildBashArgsHTML(args: any): string {
+    if (!args || typeof args !== 'object') return '';
+    let html = '';
+    // Show description as a readable label if present
+    if (args.description) {
+        html += '<div class="tool-call-section">' +
+            '<div class="tool-call-section-label">Description</div>' +
+            '<div class="tool-call-description">' + escapeHtmlClient(String(args.description)) + '</div>' +
+            '</div>';
+    }
+    // Show command in a bash-highlighted code block
+    if (args.command) {
+        html += '<div class="tool-call-section">' +
+            '<div class="tool-call-section-label">Command</div>' +
+            '<pre><code class="language-bash">' + highlightBash('$ ' + String(args.command)) + '</code></pre>' +
+            '</div>';
+    }
+    // Show remaining args (excluding command/description) as JSON if any
+    const rest: Record<string, any> = {};
+    for (const key of Object.keys(args)) {
+        if (key !== 'command' && key !== 'description') {
+            rest[key] = args[key];
+        }
+    }
+    if (Object.keys(rest).length > 0) {
+        const restStr = JSON.stringify(rest, null, 2);
+        html += '<div class="tool-call-section">' +
+            '<div class="tool-call-section-label">Options</div>' +
+            '<pre><code class="language-json">' + highlightJSON(restStr) + '</code></pre>' +
+            '</div>';
+    }
+    return html;
+}
+
+function buildArgsHTML(args: any, toolName?: string): string {
+    if (toolName === 'bash') return buildBashArgsHTML(args);
     const argsStr = formatArgsString(args);
     if (!argsStr) return '';
     return '<div class="tool-call-section">' +
@@ -317,7 +352,7 @@ function renderGroupHTML(calls: ClientToolCall[]): string {
         // Expandable detail for each sub-item
         html += '<details class="tool-call-group-item-detail">';
         html += '<summary>Details</summary>';
-        html += buildArgsHTML(c.args);
+        html += buildArgsHTML(c.args, c.toolName);
         html += buildResultHTML(c.result, c.toolName);
         html += '</details>';
 
@@ -380,7 +415,7 @@ export function renderToolCallHTML(toolCall: ClientToolCall | any): string {
 
     // Body (collapsed by default)
     html += '<div class="tool-call-body collapsed">';
-    html += buildArgsHTML(tc.args);
+    html += buildArgsHTML(tc.args, tc.toolName);
     html += buildResultHTML(tc.result, tc.toolName);
     html += '</div>';
 

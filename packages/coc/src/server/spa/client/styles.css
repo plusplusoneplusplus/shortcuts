@@ -3332,6 +3332,16 @@ html[data-theme="dark"] .ai-action-dropdown {
     margin-bottom: 4px;
 }
 
+.tool-call-description {
+    font-size: 13px;
+    color: var(--text-primary);
+    padding: 6px 10px;
+    background: var(--code-bg);
+    border: 1px solid var(--code-border);
+    border-radius: 4px;
+    line-height: 1.4;
+}
+
 .tool-call-section pre {
     margin: 0;
     padding: 8px 10px;
