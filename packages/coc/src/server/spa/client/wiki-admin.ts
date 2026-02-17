@@ -151,22 +151,20 @@ export function showWikiAdmin(wikiId: string): void {
         currentAdminWikiId = wikiId;
     }
 
-    // Inject admin panel HTML if not yet in DOM
+    // Inject admin panel HTML into #view-wiki (top-level) for full-width layout
     let panel = document.getElementById('wiki-admin-panel');
     if (!panel) {
-        const wikiContent = document.getElementById('wiki-content');
-        if (!wikiContent) return;
-        wikiContent.insertAdjacentHTML('beforeend', renderAdminPanel());
+        const viewWiki = document.getElementById('view-wiki');
+        if (!viewWiki) return;
+        viewWiki.insertAdjacentHTML('beforeend', renderAdminPanel());
         panel = document.getElementById('wiki-admin-panel');
     }
 
-    // Hide wiki content, show admin
-    const detail = document.getElementById('wiki-component-detail');
-    const empty = document.getElementById('wiki-empty');
-    const contentScroll = document.getElementById('wiki-content-scroll');
-    if (detail) detail.classList.add('hidden');
-    if (empty) empty.classList.add('hidden');
-    if (contentScroll) contentScroll.classList.add('hidden');
+    // Hide the entire wiki grid layout and ask widget, show admin full-width
+    const wikiLayout = document.querySelector('#view-wiki .wiki-layout') as HTMLElement | null;
+    const askWidget = document.getElementById('wiki-ask-widget');
+    if (wikiLayout) wikiLayout.classList.add('hidden');
+    if (askWidget) askWidget.classList.add('hidden');
     if (panel) panel.classList.remove('hidden');
 
     if (!adminInitialized) {
@@ -185,9 +183,11 @@ export function hideWikiAdmin(): void {
     const panel = document.getElementById('wiki-admin-panel');
     if (panel) panel.classList.add('hidden');
 
-    // Restore wiki content visibility
-    const detail = document.getElementById('wiki-component-detail');
-    if (detail) detail.classList.remove('hidden');
+    // Restore wiki layout and ask widget visibility
+    const wikiLayout = document.querySelector('#view-wiki .wiki-layout') as HTMLElement | null;
+    const askWidget = document.getElementById('wiki-ask-widget');
+    if (wikiLayout) wikiLayout.classList.remove('hidden');
+    if (askWidget) askWidget.classList.remove('hidden');
 }
 
 // ================================================================

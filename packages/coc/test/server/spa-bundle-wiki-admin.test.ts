@@ -653,3 +653,69 @@ describe('wiki-admin — uses CoC patterns', () => {
         expect(content).toContain('wikiState.graph');
     });
 });
+
+// ============================================================================
+// wiki-admin — full-width layout (injected into #view-wiki, not #wiki-content)
+// ============================================================================
+
+describe('wiki-admin — full-width admin layout', () => {
+    let content: string;
+    beforeAll(() => { content = readClientFile('wiki-admin.ts'); });
+
+    it('injects admin panel into #view-wiki (top-level container)', () => {
+        expect(content).toContain("document.getElementById('view-wiki')");
+    });
+
+    it('does not inject admin panel into #wiki-content', () => {
+        // showWikiAdmin should not reference wiki-content for injection
+        const showFn = content.substring(
+            content.indexOf('export function showWikiAdmin'),
+            content.indexOf('export function hideWikiAdmin')
+        );
+        expect(showFn).not.toContain("getElementById('wiki-content')");
+    });
+
+    it('hides .wiki-layout when showing admin', () => {
+        expect(content).toContain("#view-wiki .wiki-layout");
+        expect(content).toContain("wikiLayout.classList.add('hidden')");
+    });
+
+    it('hides wiki-ask-widget when showing admin', () => {
+        expect(content).toContain("getElementById('wiki-ask-widget')");
+        expect(content).toContain("askWidget.classList.add('hidden')");
+    });
+
+    it('restores .wiki-layout when hiding admin', () => {
+        expect(content).toContain("wikiLayout.classList.remove('hidden')");
+    });
+
+    it('restores wiki-ask-widget when hiding admin', () => {
+        expect(content).toContain("askWidget.classList.remove('hidden')");
+    });
+});
+
+// ============================================================================
+// CSS — full-width admin layout styles
+// ============================================================================
+
+describe('CSS — wiki admin full-width layout', () => {
+    const css = readClientFile('wiki-styles.css');
+
+    it('defines .wiki-layout.hidden to hide the grid', () => {
+        expect(css).toContain('.wiki-layout.hidden');
+    });
+
+    it('admin-section uses full width (no max-width: 900px)', () => {
+        // Ensure admin-section is not constrained to 900px
+        const sectionRule = css.match(/\.admin-section\s*\{[^}]*\}/);
+        expect(sectionRule).toBeTruthy();
+        expect(sectionRule![0]).not.toContain('900px');
+        expect(sectionRule![0]).toContain('max-width: 100%');
+    });
+
+    it('admin-page uses full viewport height', () => {
+        const pageRule = css.match(/\.admin-page\s*\{[^}]*\}/);
+        expect(pageRule).toBeTruthy();
+        expect(pageRule![0]).toContain('calc(100vh');
+    });
+});

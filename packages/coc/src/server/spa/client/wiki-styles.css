@@ -6,6 +6,7 @@
     height: calc(100vh - 48px - 37px);
     overflow: hidden;
 }
+.wiki-layout.hidden { display: none; }
 
 .wiki-sidebar {
     background: var(--bg-sidebar);
@@ -556,7 +557,7 @@
 .wiki-admin-toggle-btn.hidden { display: none; }
 
 .admin-page {
-    height: 100%; display: flex; flex-direction: column;
+    height: calc(100vh - 48px - 37px); display: flex; flex-direction: column;
     overflow: auto;
 }
 .admin-page.hidden { display: none; }
@@ -597,7 +598,7 @@
 .admin-body { flex: 1; overflow: auto; padding: 24px 32px; }
 .admin-tab-content { display: none; flex-direction: column; }
 .admin-tab-content.active { display: flex; }
-.admin-section { max-width: 900px; }
+.admin-section { max-width: 100%; }
 .admin-file-info {
     display: flex; align-items: center; justify-content: space-between;
     margin-bottom: 10px; font-size: 12px;
