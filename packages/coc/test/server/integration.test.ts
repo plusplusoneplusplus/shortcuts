@@ -717,15 +717,22 @@ describe('Server Integration', () => {
                 });
                 expect(createRes.status).toBe(201);
 
-                // Verify processes.json exists on disk
-                const processesFile = path.join(persistDir, 'processes.json');
+                // Verify processes/index.json exists on disk (directory-based format)
+                const indexFile = path.join(persistDir, 'processes', 'index.json');
                 // FileProcessStore writes asynchronously — wait briefly
                 await new Promise(r => setTimeout(r, 200));
-                expect(fs.existsSync(processesFile)).toBe(true);
+                expect(fs.existsSync(indexFile)).toBe(true);
 
-                const raw = fs.readFileSync(processesFile, 'utf-8');
-                const data = JSON.parse(raw);
-                expect(data.some((e: any) => e.process.id === 'persist-1')).toBe(true);
+                const indexRaw = fs.readFileSync(indexFile, 'utf-8');
+                const index = JSON.parse(indexRaw) as Array<{ id: string }>;
+                expect(index.some((e: any) => e.id === 'persist-1')).toBe(true);
+
+                // Verify individual process file exists
+                const processFile = path.join(persistDir, 'processes', 'persist-1.json');
+                expect(fs.existsSync(processFile)).toBe(true);
+                const processRaw = fs.readFileSync(processFile, 'utf-8');
+                const processData = JSON.parse(processRaw);
+                expect(processData.process.id).toBe('persist-1');
             } finally {
                 await persistServer.close();
                 fs.rmSync(persistDir, { recursive: true, force: true });

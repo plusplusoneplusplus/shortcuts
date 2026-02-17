@@ -53,11 +53,17 @@ reduce:
     }
 
     function readProcesses(): unknown[] {
-        const processesFile = path.join(tmpDir, 'store', 'processes.json');
-        if (!fs.existsSync(processesFile)) {
+        // FileProcessStore uses directory-based format: processes/index.json + processes/<id>.json
+        const indexFile = path.join(tmpDir, 'store', 'processes', 'index.json');
+        if (!fs.existsSync(indexFile)) {
             return [];
         }
-        return JSON.parse(fs.readFileSync(processesFile, 'utf-8'));
+        const index = JSON.parse(fs.readFileSync(indexFile, 'utf-8')) as Array<{ id: string }>;
+        // Load each individual process file to match the old flat-array shape
+        return index.map(entry => {
+            const processFile = path.join(tmpDir, 'store', 'processes', `${entry.id}.json`);
+            return JSON.parse(fs.readFileSync(processFile, 'utf-8'));
+        });
     }
 
     beforeEach(() => {
@@ -154,8 +160,8 @@ reduce:
         const exitCode = await executeRun(yamlPath, makeOptions({ persist: false }));
         expect(exitCode).toBe(0);
 
-        const processesFile = path.join(tmpDir, 'store', 'processes.json');
-        expect(fs.existsSync(processesFile)).toBe(false);
+        const indexFile = path.join(tmpDir, 'store', 'processes', 'index.json');
+        expect(fs.existsSync(indexFile)).toBe(false);
     });
 
     // ========================================================================

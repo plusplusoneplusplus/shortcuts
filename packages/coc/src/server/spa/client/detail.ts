@@ -311,6 +311,13 @@ export function showQueueTaskDetail(taskId: string): void {
         // Populate conversation turns from process data
         if (proc && proc.conversationTurns && proc.conversationTurns.length > 0) {
             setQueueTaskConversationTurns(proc.conversationTurns);
+
+            // If the last turn is a streaming assistant turn, seed the stream content
+            // so SSE can continue appending to it seamlessly after page refresh
+            const lastTurn = proc.conversationTurns[proc.conversationTurns.length - 1];
+            if (lastTurn && lastTurn.role === 'assistant' && lastTurn.streaming) {
+                queueTaskStreamContent = lastTurn.content || '';
+            }
         } else if (proc) {
             // Build synthetic turns from legacy fields — prefer full prompt over truncated preview
             const syntheticTurns: ClientConversationTurn[] = [];
@@ -917,11 +924,18 @@ function connectQueueTaskSSE(processId: string, taskId: string, proc: any): void
             if (data.content) {
                 queueTaskStreamContent += data.content;
 
-                // Update the last assistant turn's content in state
+                // Update or create the assistant turn in state
                 const turns = queueTaskConversationTurns;
                 if (turns.length > 0 && turns[turns.length - 1].role === 'assistant') {
                     turns[turns.length - 1].content = queueTaskStreamContent;
                     turns[turns.length - 1].streaming = true;
+                } else {
+                    // No assistant turn yet — add one to keep state in sync
+                    turns.push({
+                        role: 'assistant',
+                        content: queueTaskStreamContent,
+                        streaming: true,
+                    });
                 }
 
                 updateConversationContent();

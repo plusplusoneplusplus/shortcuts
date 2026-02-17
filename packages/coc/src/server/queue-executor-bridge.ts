@@ -80,6 +80,12 @@ export class CLITaskExecutor implements TaskExecutor {
     private readonly outputBuffers: Map<string, string> = new Map();
     /** SDK session IDs this executor has created (for session liveness checks). */
     private readonly knownSessionIds: Set<string> = new Set();
+    /** Debounce timers for periodic conversation flush during streaming */
+    private readonly flushTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+    /** Minimum interval between conversation flushes (ms) */
+    private static readonly FLUSH_INTERVAL_MS = 3000;
+    /** Tracks last flush time per process to avoid excessive writes */
+    private readonly lastFlushTime: Map<string, number> = new Map();
 
     constructor(store: ProcessStore, options: { approvePermissions?: boolean; workingDirectory?: string; dataDir?: string } = {}) {
         this.store = store;
@@ -121,6 +127,17 @@ export class CLITaskExecutor implements TaskExecutor {
             },
         };
 
+        // Store initial user turn immediately so it survives page refresh
+        const initialTurns: ConversationTurn[] = [
+            {
+                role: 'user',
+                content: prompt,
+                timestamp: process.startTime,
+                turnIndex: 0,
+            },
+        ];
+        process.conversationTurns = initialTurns;
+
         try {
             await this.store.addProcess(process);
         } catch {
@@ -143,14 +160,16 @@ export class CLITaskExecutor implements TaskExecutor {
             // Track session ID for liveness checks
             if (sessionId) this.knownSessionIds.add(sessionId);
 
-            // Build initial conversation turns
-            const conversationTurns: ConversationTurn[] = [
-                {
-                    role: 'user',
-                    content: prompt,
-                    timestamp: process.startTime,
-                    turnIndex: 0,
-                },
+            // Cancel any pending flush timer
+            this.cancelFlushTimer(processId);
+
+            // Build final conversation turns (re-read from store to include any flushed streaming data)
+            const currentProcess = await this.store.getProcess(processId);
+            const existingTurns = currentProcess?.conversationTurns || initialTurns;
+
+            // Replace or append the assistant turn with the final complete response
+            const finalTurns: ConversationTurn[] = [
+                existingTurns[0], // user turn
                 {
                     role: 'assistant',
                     content: responseText,
@@ -167,7 +186,7 @@ export class CLITaskExecutor implements TaskExecutor {
                     endTime: new Date(),
                     result: typeof result === 'string' ? result : JSON.stringify(result),
                     sdkSessionId: sessionId,
-                    conversationTurns,
+                    conversationTurns: finalTurns,
                 });
                 this.store.emitProcessComplete(processId, 'completed', `${duration}ms`);
             } catch {
@@ -184,12 +203,18 @@ export class CLITaskExecutor implements TaskExecutor {
             const duration = Date.now() - startTime;
             logger.debug(LogCategory.AI, `[QueueExecutor] Task ${task.id} failed in ${duration}ms: ${errorMsg}`);
 
-            // Update process as failed
+            // Cancel any pending flush timer
+            this.cancelFlushTimer(processId);
+
+            // Update process as failed — include conversation turns so far
             try {
+                const currentProcess = await this.store.getProcess(processId);
+                const existingTurns = currentProcess?.conversationTurns || initialTurns;
                 await this.store.updateProcess(processId, {
                     status: 'failed',
                     endTime: new Date(),
                     error: errorMsg,
+                    conversationTurns: existingTurns,
                 });
                 this.store.emitProcessComplete(processId, 'failed', `${duration}ms`);
             } catch {
@@ -269,6 +294,8 @@ export class CLITaskExecutor implements TaskExecutor {
                     } catch {
                         // Non-fatal
                     }
+                    // Schedule periodic flush of streaming content to store
+                    this.scheduleStreamingFlush(processId);
                 },
                 onToolEvent: (event: ToolEvent) => {
                     try {
@@ -289,23 +316,29 @@ export class CLITaskExecutor implements TaskExecutor {
             const duration = Date.now() - startTime;
             logger.debug(LogCategory.AI, `[FollowUp] Completed for ${processId} in ${duration}ms`);
 
+            // Cancel any pending flush timer
+            this.cancelFlushTimer(processId);
+
             if (!result.success) {
                 throw new Error(result.error || 'Follow-up execution failed');
             }
 
-            // Append assistant turn to conversationTurns
+            // Append or replace the assistant turn in conversationTurns
             const refreshed = await this.store.getProcess(processId);
             const turns = refreshed?.conversationTurns || [];
+
+            // Remove any in-progress streaming assistant turn (will be replaced with final)
+            const cleanTurns = turns.filter(t => !(t.role === 'assistant' && t.streaming));
             const assistantTurn: ConversationTurn = {
                 role: 'assistant',
                 content: result.response || '(No text response)',
                 timestamp: new Date(),
-                turnIndex: turns.length,
+                turnIndex: cleanTurns.length,
                 toolCalls: result.toolCalls || undefined,
             };
 
             await this.store.updateProcess(processId, {
-                conversationTurns: [...turns, assistantTurn],
+                conversationTurns: [...cleanTurns, assistantTurn],
                 status: 'completed',
                 endTime: new Date(),
                 result: result.response || undefined,
@@ -317,18 +350,23 @@ export class CLITaskExecutor implements TaskExecutor {
             const duration = Date.now() - startTime;
             logger.debug(LogCategory.AI, `[FollowUp] Failed for ${processId} in ${duration}ms: ${errorMsg}`);
 
+            // Cancel any pending flush timer
+            this.cancelFlushTimer(processId);
+
             // Append error turn and mark failed
             const refreshed = await this.store.getProcess(processId);
             const turns = refreshed?.conversationTurns || [];
+            // Remove any in-progress streaming assistant turn
+            const cleanTurns = turns.filter(t => !(t.role === 'assistant' && t.streaming));
             const errorTurn: ConversationTurn = {
                 role: 'assistant',
                 content: `Error: ${errorMsg}`,
                 timestamp: new Date(),
-                turnIndex: turns.length,
+                turnIndex: cleanTurns.length,
             };
 
             await this.store.updateProcess(processId, {
-                conversationTurns: [...turns, errorTurn],
+                conversationTurns: [...cleanTurns, errorTurn],
                 status: 'failed',
                 endTime: new Date(),
                 error: errorMsg,
@@ -462,6 +500,8 @@ export class CLITaskExecutor implements TaskExecutor {
                 } catch {
                     // Non-fatal: store may be a stub
                 }
+                // Schedule periodic flush of streaming content to store
+                this.scheduleStreamingFlush(processId);
             },
             // Emit tool lifecycle events for real-time tool card rendering in the SPA
             onToolEvent: (event: ToolEvent) => {
@@ -533,6 +573,89 @@ export class CLITaskExecutor implements TaskExecutor {
         }
 
         return parts.join('\n\n');
+    }
+
+    /**
+     * Schedule a debounced flush of streaming assistant content to the store.
+     * This ensures conversation turns are periodically persisted during streaming
+     * so that page refreshes don't lose the conversation history.
+     */
+    private scheduleStreamingFlush(processId: string): void {
+        // Skip if a flush is already scheduled
+        if (this.flushTimers.has(processId)) return;
+
+        // Check if enough time has passed since last flush
+        const lastFlush = this.lastFlushTime.get(processId) ?? 0;
+        const elapsed = Date.now() - lastFlush;
+        const delay = Math.max(0, CLITaskExecutor.FLUSH_INTERVAL_MS - elapsed);
+
+        const timer = setTimeout(() => {
+            this.flushTimers.delete(processId);
+            this.flushStreamingContent(processId).catch(() => {
+                // Non-fatal: don't fail the task because of flush
+            });
+        }, delay);
+
+        this.flushTimers.set(processId, timer);
+    }
+
+    /**
+     * Flush current streaming content to the store as an in-progress assistant turn.
+     * This allows page refreshes to recover the conversation so far.
+     */
+    private async flushStreamingContent(processId: string): Promise<void> {
+        const buffer = this.outputBuffers.get(processId);
+        if (!buffer) return;
+
+        this.lastFlushTime.set(processId, Date.now());
+
+        try {
+            const currentProcess = await this.store.getProcess(processId);
+            if (!currentProcess) return;
+
+            const existingTurns = currentProcess.conversationTurns || [];
+            const lastTurn = existingTurns.length > 0 ? existingTurns[existingTurns.length - 1] : null;
+
+            let updatedTurns: ConversationTurn[];
+            if (lastTurn && lastTurn.role === 'assistant' && lastTurn.streaming) {
+                // Update existing streaming assistant turn
+                updatedTurns = existingTurns.map((turn, i) =>
+                    i === existingTurns.length - 1
+                        ? { ...turn, content: buffer, streaming: true }
+                        : turn
+                );
+            } else {
+                // Append new streaming assistant turn
+                updatedTurns = [
+                    ...existingTurns,
+                    {
+                        role: 'assistant' as const,
+                        content: buffer,
+                        timestamp: new Date(),
+                        turnIndex: existingTurns.length,
+                        streaming: true,
+                    },
+                ];
+            }
+
+            await this.store.updateProcess(processId, {
+                conversationTurns: updatedTurns,
+            });
+        } catch {
+            // Non-fatal: don't fail the task because of flush
+        }
+    }
+
+    /**
+     * Cancel a pending flush timer for a process.
+     */
+    private cancelFlushTimer(processId: string): void {
+        const timer = this.flushTimers.get(processId);
+        if (timer) {
+            clearTimeout(timer);
+            this.flushTimers.delete(processId);
+        }
+        this.lastFlushTime.delete(processId);
     }
 
     /**

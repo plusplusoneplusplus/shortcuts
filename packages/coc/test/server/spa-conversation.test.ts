@@ -368,6 +368,35 @@ describe('SPA conversation rendering', () => {
     });
 
     // ====================================================================
+    // Conversation history persistence on page refresh
+    // ====================================================================
+
+    describe('conversation history persistence on page refresh', () => {
+        it('should seed queueTaskStreamContent from stored streaming turn on page load', () => {
+            // showQueueTaskDetail checks for streaming assistant turn and seeds stream content
+            expect(script).toContain('lastTurn.streaming');
+            expect(script).toContain('queueTaskStreamContent');
+        });
+
+        it('should load conversation turns from API on showQueueTaskDetail', () => {
+            // showQueueTaskDetail fetches /processes/:id and sets conversation turns
+            expect(script).toContain('setQueueTaskConversationTurns');
+            expect(script).toContain('proc.conversationTurns');
+        });
+
+        it('should add assistant turn to state when SSE chunk arrives without existing assistant turn', () => {
+            // The chunk handler should push a new assistant turn when none exists
+            expect(script).toContain('turns.push');
+            expect(script).toContain('assistant');
+        });
+
+        it('should update existing assistant turn content when SSE chunk arrives', () => {
+            // The chunk handler updates the last assistant turn's content
+            expect(script).toContain('turns[turns.length - 1].content = queueTaskStreamContent');
+        });
+    });
+
+    // ====================================================================
     // Bundled client JS
     // ====================================================================
 
