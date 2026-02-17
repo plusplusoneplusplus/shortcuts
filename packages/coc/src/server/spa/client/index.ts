@@ -35,6 +35,9 @@ import './repos';
 // 9. Tasks (workspace task CRUD, tree rendering)
 import './tasks';
 
+// 9a. Task Mermaid (mermaid diagram rendering in task preview)
+import './task-mermaid';
+
 // 10. Wiki (wiki list, component browser, add wiki dialog, ask AI, graph, admin)
 import './wiki';
 import './wiki-components';

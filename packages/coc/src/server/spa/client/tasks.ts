@@ -11,6 +11,7 @@ import { escapeHtmlClient, copyToClipboard } from './utils';
 import { showAIActionDropdown, hideAIActionDropdown, showFollowPromptSubmenu } from './ai-actions';
 import { showToast } from './ai-actions';
 import { renderMarkdownToHtml } from './markdown-renderer';
+import { initTaskMermaid } from './task-mermaid';
 import {
     fetchComments,
     fetchCommentCounts,
@@ -1656,6 +1657,9 @@ async function loadPreviewContent(wsId: string, filePath: string): Promise<void>
 
         // Set up table copy-as-markdown buttons (event delegation)
         setupTableCopyHandlers();
+
+        // Render mermaid diagrams (lazy-loads mermaid.js if needed)
+        initTaskMermaid();
 
         // Set up comment toggle button
         const toggleBtn = document.getElementById('comment-toggle-btn');
