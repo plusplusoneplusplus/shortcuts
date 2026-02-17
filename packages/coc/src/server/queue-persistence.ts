@@ -30,7 +30,7 @@ interface PersistedQueueState {
     repoId: string;
     pending: QueuedTask[];
     history: QueuedTask[];
-    isPaused?: boolean;
+    isPaused: boolean;
 }
 
 const CURRENT_VERSION = 3;
@@ -371,6 +371,7 @@ export class QueuePersistence {
                     repoId: computeRepoId(rootPath),
                     pending,
                     history: history.slice(0, MAX_PERSISTED_HISTORY),
+                    isPaused: false,
                 };
 
                 const newPath = getRepoQueueFilePath(this.dataDir, rootPath);

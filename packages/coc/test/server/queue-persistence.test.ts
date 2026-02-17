@@ -783,6 +783,33 @@ describe('QueuePersistence', () => {
             expect(queueManager.isRepoPaused(repoId)).toBe(false);
         });
 
+        it('skips files with future versions', () => {
+            const queuesDir = path.join(dataDir, 'queues');
+            fs.mkdirSync(queuesDir, { recursive: true });
+
+            const rootPath = '/future/repo';
+            const repoId = computeRepoId(rootPath);
+            const futureState = {
+                version: 999,
+                savedAt: new Date().toISOString(),
+                repoRootPath: rootPath,
+                repoId,
+                pending: [makeTask('t1', 'queued', rootPath)],
+                history: [],
+                isPaused: false,
+            };
+            fs.writeFileSync(
+                path.join(queuesDir, `repo-${repoId}.json`),
+                JSON.stringify(futureState),
+            );
+
+            persistence = new QueuePersistence(queueManager, dataDir);
+            persistence.restore();
+
+            // Should skip the file — no tasks restored
+            expect(queueManager.getQueued()).toHaveLength(0);
+        });
+
         it('round-trip: save paused state and restore across instances', () => {
             persistence = new QueuePersistence(queueManager, dataDir);
 
