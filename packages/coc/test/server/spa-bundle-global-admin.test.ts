@@ -1,8 +1,8 @@
 /**
- * SPA Dashboard Tests — Global Admin Panel
+ * SPA Dashboard Tests — Global Admin Page
  *
- * Tests for the global admin overlay: HTML structure, source code patterns,
- * bundle integration, styling, and top-bar gear icon.
+ * Tests for the global admin dedicated page (#admin): HTML structure, source code
+ * patterns, bundle integration, styling, routing, and top-bar gear icon.
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -25,19 +25,19 @@ describe('global admin client source file', () => {
         expect(fs.existsSync(path.join(CLIENT_DIR, 'admin.ts'))).toBe(true);
     });
 
-    it('exports showAdmin function', () => {
+    it('exports initAdminPage function', () => {
         const content = readClientFile('admin.ts');
-        expect(content).toContain('export function showAdmin');
+        expect(content).toContain('export function initAdminPage');
     });
 
-    it('exports hideAdmin function', () => {
+    it('exports navigateToAdmin function', () => {
         const content = readClientFile('admin.ts');
-        expect(content).toContain('export function hideAdmin');
+        expect(content).toContain('export function navigateToAdmin');
     });
 
-    it('exports toggleAdmin function', () => {
+    it('exports loadStats function', () => {
         const content = readClientFile('admin.ts');
-        expect(content).toContain('export function toggleAdmin');
+        expect(content).toContain('export async function loadStats');
     });
 
     it('exports formatBytes function', () => {
@@ -47,19 +47,23 @@ describe('global admin client source file', () => {
 });
 
 // ============================================================================
-// admin.ts — overlay HTML structure
+// admin.ts — page HTML structure
 // ============================================================================
 
-describe('global admin — overlay HTML structure', () => {
+describe('global admin — page HTML structure', () => {
     let content: string;
     beforeAll(() => { content = readClientFile('admin.ts'); });
 
-    it('generates overlay with id admin-overlay', () => {
-        expect(content).toContain("id = 'admin-overlay'");
+    it('renders page header with h1', () => {
+        expect(content).toContain('<h1>Admin</h1>');
     });
 
-    it('generates close button with id admin-close-btn', () => {
-        expect(content).toContain('id="admin-close-btn"');
+    it('renders page subtitle', () => {
+        expect(content).toContain('admin-page-subtitle');
+    });
+
+    it('renders page sections container', () => {
+        expect(content).toContain('admin-page-sections');
     });
 
     it('generates stats grid with id admin-stats-grid', () => {
@@ -148,16 +152,16 @@ describe('global admin — uses CoC patterns', () => {
         expect(content).toContain("import { getApiBase } from './config'");
     });
 
-    it('exposes showAdmin on window', () => {
-        expect(content).toContain('(window as any).showAdmin = showAdmin');
+    it('exposes navigateToAdmin on window', () => {
+        expect(content).toContain('(window as any).navigateToAdmin = navigateToAdmin');
     });
 
-    it('exposes hideAdmin on window', () => {
-        expect(content).toContain('(window as any).hideAdmin = hideAdmin');
+    it('exposes initAdminPage on window', () => {
+        expect(content).toContain('(window as any).initAdminPage = initAdminPage');
     });
 
-    it('exposes toggleAdmin on window', () => {
-        expect(content).toContain('(window as any).toggleAdmin = toggleAdmin');
+    it('exposes loadAdminStats on window', () => {
+        expect(content).toContain('(window as any).loadAdminStats = loadStats');
     });
 });
 
@@ -188,35 +192,142 @@ describe('global admin — two-step wipe confirmation', () => {
 });
 
 // ============================================================================
-// admin.ts — no browser history manipulation
+// admin.ts — hash-based navigation (page, not overlay)
 // ============================================================================
 
-describe('global admin — no browser history', () => {
+describe('global admin — hash-based navigation', () => {
     let content: string;
     beforeAll(() => { content = readClientFile('admin.ts'); });
 
-    it('does not push to browser history', () => {
-        expect(content).not.toContain('history.pushState');
+    it('navigateToAdmin sets location.hash to #admin', () => {
+        expect(content).toContain("location.hash = '#admin'");
     });
 
-    it('does not use location.hash for admin navigation', () => {
-        expect(content).not.toContain('location.hash');
+    it('does not use overlay show/hide pattern', () => {
+        expect(content).not.toContain('showAdmin');
+        expect(content).not.toContain('hideAdmin');
+        expect(content).not.toContain('toggleAdmin');
+    });
+
+    it('does not create overlay dynamically', () => {
+        expect(content).not.toContain('admin-overlay');
+    });
+
+    it('uses admin-page-content container from HTML template', () => {
+        expect(content).toContain("getElementById('admin-page-content')");
     });
 });
 
 // ============================================================================
-// HTML template — admin toggle button in top bar
+// core.ts — hash router includes #admin
 // ============================================================================
 
-describe('HTML template — global admin toggle', () => {
+describe('core.ts — hash router includes #admin', () => {
+    let content: string;
+    beforeAll(() => { content = readClientFile('core.ts'); });
+
+    it('handles #admin hash route', () => {
+        expect(content).toContain("hash === 'admin'");
+    });
+
+    it('switches to admin tab on #admin', () => {
+        expect(content).toContain("switchTab?.('admin')");
+    });
+
+    it('includes view-admin in dashboardEls', () => {
+        expect(content).toContain('view-admin');
+    });
+});
+
+// ============================================================================
+// state.ts — DashboardTab includes admin
+// ============================================================================
+
+describe('state.ts — DashboardTab includes admin', () => {
+    let content: string;
+    beforeAll(() => { content = readClientFile('state.ts'); });
+
+    it('DashboardTab type includes admin', () => {
+        expect(content).toContain("'admin'");
+        const match = content.match(/DashboardTab\s*=\s*([^;]+)/);
+        expect(match).not.toBeNull();
+        expect(match![1]).toContain('admin');
+    });
+});
+
+// ============================================================================
+// repos.ts — switchTab includes view-admin
+// ============================================================================
+
+describe('repos.ts — switchTab includes view-admin', () => {
+    let content: string;
+    beforeAll(() => { content = readClientFile('repos.ts'); });
+
+    it('view-admin is in the viewIds list', () => {
+        expect(content).toContain("'view-admin'");
+    });
+
+    it('calls initAdminPage when switching to admin', () => {
+        expect(content).toContain('initAdminPage');
+    });
+
+    it('highlights admin toggle when admin tab is active', () => {
+        expect(content).toContain("admin-toggle");
+        expect(content).toContain("tab === 'admin'");
+    });
+});
+
+// ============================================================================
+// HTML template — admin page view
+// ============================================================================
+
+describe('HTML template — admin page view', () => {
     const html = generateDashboardHtml();
 
-    it('contains admin toggle button in top-bar-right', () => {
+    it('contains view-admin div', () => {
+        expect(html).toContain('id="view-admin"');
+    });
+
+    it('view-admin has hidden class by default', () => {
+        const idx = html.indexOf('id="view-admin"');
+        const surrounding = html.substring(idx - 100, idx + 50);
+        expect(surrounding).toContain('hidden');
+    });
+
+    it('contains admin-page container', () => {
+        expect(html).toContain('class="admin-page"');
+    });
+
+    it('contains admin-page-content container', () => {
+        expect(html).toContain('id="admin-page-content"');
+    });
+
+    it('view-admin uses app-view class', () => {
+        const idx = html.indexOf('id="view-admin"');
+        const surrounding = html.substring(idx - 50, idx + 50);
+        expect(surrounding).toContain('app-view');
+    });
+});
+
+// ============================================================================
+// HTML template — admin toggle as link
+// ============================================================================
+
+describe('HTML template — admin toggle link', () => {
+    const html = generateDashboardHtml();
+
+    it('contains admin toggle element in top-bar-right', () => {
         expect(html).toContain('id="admin-toggle"');
     });
 
+    it('admin toggle is an anchor tag with href="#admin"', () => {
+        const idx = html.indexOf('id="admin-toggle"');
+        const surrounding = html.substring(idx - 150, idx + 200);
+        expect(surrounding).toContain('href="#admin"');
+        expect(surrounding).toContain('<a ');
+    });
+
     it('admin toggle has gear icon', () => {
-        // &#9881; is the gear symbol (⚙)
         const idx = html.indexOf('id="admin-toggle"');
         const surrounding = html.substring(idx - 100, idx + 200);
         expect(surrounding).toContain('&#9881;');
@@ -236,43 +347,49 @@ describe('HTML template — global admin toggle', () => {
         expect(surrounding).toContain('top-bar-btn');
     });
 
-    it('admin toggle appears between workspace-select and theme-toggle', () => {
-        const wsIdx = html.indexOf('id="workspace-select"');
+    it('admin toggle appears before theme-toggle', () => {
         const adminIdx = html.indexOf('id="admin-toggle"');
         const themeIdx = html.indexOf('id="theme-toggle"');
-        expect(adminIdx).toBeGreaterThan(wsIdx);
         expect(adminIdx).toBeLessThan(themeIdx);
     });
 });
 
 // ============================================================================
-// CSS — global admin overlay styles
+// CSS — admin page styles
 // ============================================================================
 
-describe('CSS — global admin overlay styles', () => {
+describe('CSS — admin page styles', () => {
     let css: string;
     beforeAll(() => { css = readClientFile('styles.css'); });
 
-    it('defines .admin-overlay style', () => {
-        expect(css).toContain('.admin-overlay');
+    it('defines .admin-page style', () => {
+        expect(css).toContain('.admin-page');
     });
 
-    it('admin overlay uses fixed positioning', () => {
-        expect(css).toContain('position: fixed');
+    it('defines .admin-page-header style', () => {
+        expect(css).toContain('.admin-page-header');
     });
 
-    it('admin overlay has z-index above content', () => {
-        const match = css.match(/\.admin-overlay\s*\{[^}]*z-index:\s*(\d+)/);
+    it('defines .admin-page-subtitle style', () => {
+        expect(css).toContain('.admin-page-subtitle');
+    });
+
+    it('defines .admin-page-sections style', () => {
+        expect(css).toContain('.admin-page-sections');
+    });
+
+    it('admin page uses max-width for content', () => {
+        const match = css.match(/\.admin-page\s*\{[^}]*max-width/);
         expect(match).not.toBeNull();
-        expect(Number(match![1])).toBeGreaterThanOrEqual(1000);
     });
 
-    it('defines .admin-overlay.hidden style', () => {
-        expect(css).toContain('.admin-overlay.hidden');
+    it('admin page uses auto margin for centering', () => {
+        const match = css.match(/\.admin-page\s*\{[^}]*margin:\s*0\s+auto/);
+        expect(match).not.toBeNull();
     });
 
-    it('defines .admin-overlay-content style', () => {
-        expect(css).toContain('.admin-overlay-content');
+    it('does not have overlay styles', () => {
+        expect(css).not.toContain('.admin-overlay');
     });
 
     it('defines .admin-stat-card style', () => {
@@ -300,10 +417,6 @@ describe('CSS — global admin overlay styles', () => {
         expect(dangerSection).toContain('--status-failed');
     });
 
-    it('defines .admin-close-btn style', () => {
-        expect(css).toContain('.admin-close-btn');
-    });
-
     it('defines .admin-wipe-btn style', () => {
         expect(css).toContain('.admin-wipe-btn');
     });
@@ -322,6 +435,14 @@ describe('CSS — global admin overlay styles', () => {
 
     it('defines .admin-checkbox-label style', () => {
         expect(css).toContain('.admin-checkbox-label');
+    });
+
+    it('defines a.top-bar-btn style for anchor buttons', () => {
+        expect(css).toContain('a.top-bar-btn');
+    });
+
+    it('defines .top-bar-btn.active style', () => {
+        expect(css).toContain('.top-bar-btn.active');
     });
 });
 
@@ -358,25 +479,20 @@ describe('client bundle — global admin module', () => {
     let script: string;
     beforeAll(() => { script = getClientBundle(); });
 
-    it('defines showAdmin function', () => {
-        expect(script).toContain('showAdmin');
+    it('defines initAdminPage function', () => {
+        expect(script).toContain('initAdminPage');
     });
 
-    it('defines hideAdmin function', () => {
-        expect(script).toContain('hideAdmin');
-    });
-
-    it('defines toggleAdmin function', () => {
-        expect(script).toContain('toggleAdmin');
+    it('defines navigateToAdmin function', () => {
+        expect(script).toContain('navigateToAdmin');
     });
 
     it('defines formatBytes function', () => {
         expect(script).toContain('formatBytes');
     });
 
-    it('includes admin overlay element IDs', () => {
-        expect(script).toContain('admin-overlay');
-        expect(script).toContain('admin-close-btn');
+    it('includes admin page element IDs', () => {
+        expect(script).toContain('admin-page-content');
         expect(script).toContain('admin-stats-grid');
         expect(script).toContain('admin-wipe-btn');
     });
@@ -384,10 +500,6 @@ describe('client bundle — global admin module', () => {
     it('includes admin API endpoint patterns', () => {
         expect(script).toContain('/admin/data/stats');
         expect(script).toContain('/admin/data/wipe-token');
-    });
-
-    it('registers click handler on admin-toggle', () => {
-        expect(script).toContain('admin-toggle');
     });
 });
 

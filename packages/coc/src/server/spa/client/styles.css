@@ -162,6 +162,8 @@ body {
     transition: background-color 0.15s;
 }
 .top-bar-btn:hover { background: rgba(255,255,255,0.1); }
+a.top-bar-btn { text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }
+.top-bar-btn.active { background: rgba(255,255,255,0.18); border-color: rgba(255,255,255,0.3); }
 .workspace-select {
     background: rgba(255,255,255,0.1);
     color: var(--topbar-text);
@@ -3529,54 +3531,34 @@ html[data-theme="dark"] .tool-call-section code .bash-command {
     overflow-y: auto;
 }
 
-/* ---- Global Admin Overlay ---- */
-.admin-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    background: rgba(0, 0, 0, 0.5);
-    z-index: 1000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+/* ---- Global Admin Page ---- */
+.admin-page {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 32px 24px;
     overflow-y: auto;
+    height: 100%;
+    box-sizing: border-box;
 }
-.admin-overlay.hidden { display: none !important; }
-.admin-overlay-content {
-    background: var(--bg-primary);
-    border-radius: 12px;
-    border: 1px solid var(--border-color);
-    width: 520px;
-    max-width: 95vw;
-    max-height: 90vh;
-    overflow-y: auto;
-    padding: 24px;
-    position: relative;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+.admin-page-header {
+    margin-bottom: 32px;
 }
-.admin-overlay-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 20px;
-}
-.admin-overlay-header h2 {
-    font-size: 18px;
-    font-weight: 600;
-}
-.admin-close-btn {
-    background: transparent;
-    border: none;
-    color: var(--text-secondary);
+.admin-page-header h1 {
     font-size: 24px;
-    cursor: pointer;
-    padding: 0 4px;
-    line-height: 1;
-    border-radius: 4px;
+    font-weight: 700;
+    margin: 0 0 6px 0;
+    color: var(--text-primary);
 }
-.admin-close-btn:hover { color: var(--text-primary); background: var(--hover-bg); }
+.admin-page-subtitle {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin: 0;
+}
+.admin-page-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
 .admin-section {
     margin-bottom: 24px;
 }

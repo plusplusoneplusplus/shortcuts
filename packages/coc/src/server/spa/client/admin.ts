@@ -1,7 +1,7 @@
 /**
- * Global Admin Panel — storage stats and data wipe overlay.
+ * Global Admin Page — storage stats and data wipe.
  *
- * Renders a full-page overlay accessible from the top-bar gear icon.
+ * Renders as a dedicated page at #admin, accessible from the top-bar gear icon.
  * Uses the existing admin REST API:
  *   GET  /api/admin/data/stats
  *   GET  /api/admin/data/wipe-token
@@ -12,58 +12,37 @@ import { getApiBase } from './config';
 import { fetchApi } from './core';
 
 // ================================================================
-// State
+// Page initialization
 // ================================================================
 
-let adminVisible = false;
-
-// ================================================================
-// Show / Hide
-// ================================================================
-
-export function showAdmin(): void {
-    let overlay = document.getElementById('admin-overlay');
-    if (!overlay) {
-        overlay = document.createElement('div');
-        overlay.id = 'admin-overlay';
-        overlay.className = 'admin-overlay';
-        overlay.innerHTML = renderAdminOverlay();
-        document.body.appendChild(overlay);
-        attachAdminListeners(overlay);
-    }
-    overlay.classList.remove('hidden');
-    adminVisible = true;
+export function initAdminPage(): void {
+    const container = document.getElementById('admin-page-content');
+    if (!container) return;
+    container.innerHTML = renderAdminPage();
+    attachAdminListeners(container);
     loadStats();
 }
 
-export function hideAdmin(): void {
-    const overlay = document.getElementById('admin-overlay');
-    if (overlay) {
-        overlay.classList.add('hidden');
-    }
-    adminVisible = false;
-}
+// ================================================================
+// Navigation
+// ================================================================
 
-export function toggleAdmin(): void {
-    if (adminVisible) {
-        hideAdmin();
-    } else {
-        showAdmin();
-    }
+export function navigateToAdmin(): void {
+    location.hash = '#admin';
 }
 
 // ================================================================
 // HTML
 // ================================================================
 
-function renderAdminOverlay(): string {
+function renderAdminPage(): string {
     return `
-<div class="admin-overlay-content">
-    <div class="admin-overlay-header">
-        <h2>Admin</h2>
-        <button class="admin-close-btn" id="admin-close-btn" aria-label="Close">&times;</button>
-    </div>
+<div class="admin-page-header">
+    <h1>Admin</h1>
+    <p class="admin-page-subtitle">Server management and data administration</p>
+</div>
 
+<div class="admin-page-sections">
     <section class="admin-section">
         <h3>Storage Stats</h3>
         <div class="admin-stats-grid" id="admin-stats-grid">
@@ -104,32 +83,22 @@ function renderAdminOverlay(): string {
 // Event listeners
 // ================================================================
 
-function attachAdminListeners(overlay: HTMLElement): void {
-    // Close button
-    overlay.querySelector('#admin-close-btn')?.addEventListener('click', hideAdmin);
-
-    // Click outside to close
-    overlay.addEventListener('click', (e) => {
-        if ((e.target as HTMLElement) === overlay) {
-            hideAdmin();
-        }
-    });
-
+function attachAdminListeners(container: HTMLElement): void {
     // Refresh stats
-    overlay.querySelector('#admin-refresh-stats')?.addEventListener('click', loadStats);
+    container.querySelector('#admin-refresh-stats')?.addEventListener('click', loadStats);
 
     // Preview wipe
-    overlay.querySelector('#admin-preview-wipe')?.addEventListener('click', previewWipe);
+    container.querySelector('#admin-preview-wipe')?.addEventListener('click', previewWipe);
 
     // Wipe
-    overlay.querySelector('#admin-wipe-btn')?.addEventListener('click', confirmAndWipe);
+    container.querySelector('#admin-wipe-btn')?.addEventListener('click', confirmAndWipe);
 }
 
 // ================================================================
 // Data fetching
 // ================================================================
 
-async function loadStats(): Promise<void> {
+export async function loadStats(): Promise<void> {
     const procs = document.getElementById('admin-stat-processes');
     const wikis = document.getElementById('admin-stat-wikis');
     const disk = document.getElementById('admin-stat-disk');
@@ -224,15 +193,9 @@ export function formatBytes(bytes: number): string {
 }
 
 // ================================================================
-// Top-bar button handler
+// Expose for window globals
 // ================================================================
 
-const adminToggle = document.getElementById('admin-toggle');
-if (adminToggle) {
-    adminToggle.addEventListener('click', toggleAdmin);
-}
-
-// Expose for window globals
-(window as any).showAdmin = showAdmin;
-(window as any).hideAdmin = hideAdmin;
-(window as any).toggleAdmin = toggleAdmin;
+(window as any).navigateToAdmin = navigateToAdmin;
+(window as any).initAdminPage = initAdminPage;
+(window as any).loadAdminStats = loadStats;

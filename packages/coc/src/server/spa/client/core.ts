@@ -86,7 +86,7 @@ export async function fetchApi(path: string): Promise<any> {
 // ================================================================
 
 export function showPage(page: 'dashboard'): void {
-    const dashboardEls = ['view-processes', 'view-repos', 'view-reports', 'view-wiki'];
+    const dashboardEls = ['view-processes', 'view-repos', 'view-reports', 'view-wiki', 'view-admin'];
 
     // Toggle dashboard elements
     for (const id of dashboardEls) {
@@ -220,6 +220,12 @@ export function handleHashChange(): void {
         appState.selectedId = null;
         clearDetail();
         updateActiveItem();
+        return;
+    }
+
+    // #admin
+    if (hash === 'admin') {
+        (window as any).switchTab?.('admin');
         return;
     }
 

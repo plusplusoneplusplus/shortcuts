@@ -68,7 +68,7 @@ ${bundleCss}
             </nav>
         </div>
         <div class="top-bar-right">
-            <button id="admin-toggle" class="top-bar-btn" aria-label="Admin" title="Admin">&#9881;</button>
+            <a id="admin-toggle" class="top-bar-btn" href="#admin" aria-label="Admin" title="Admin">&#9881;</a>
             <button id="theme-toggle" class="top-bar-btn" aria-label="Toggle theme">&#127761;</button>
         </div>
     </header>
@@ -190,6 +190,11 @@ ${bundleCss}
                     <button class="wiki-ask-widget-send" id="wiki-ask-widget-send" aria-label="Send question">&#10148;</button>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <div class="app-view hidden" id="view-admin">
+        <div class="admin-page" id="admin-page-content">
         </div>
     </div>
 

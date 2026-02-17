@@ -21,8 +21,14 @@ export function switchTab(tab: DashboardTab): void {
         btn.classList.toggle('active', btn.getAttribute('data-tab') === tab);
     });
 
+    // Highlight admin gear icon when admin page is active
+    const adminToggle = document.getElementById('admin-toggle');
+    if (adminToggle) {
+        adminToggle.classList.toggle('active', tab === 'admin');
+    }
+
     // Show/hide views
-    const viewIds = ['view-processes', 'view-repos', 'view-wiki', 'view-reports'];
+    const viewIds = ['view-processes', 'view-repos', 'view-wiki', 'view-reports', 'view-admin'];
     viewIds.forEach(id => {
         const el = document.getElementById(id);
         if (el) {
@@ -38,6 +44,11 @@ export function switchTab(tab: DashboardTab): void {
     // Refresh data when switching to wiki
     if (tab === 'wiki') {
         (window as any).fetchWikisData?.();
+    }
+
+    // Initialize and refresh stats when switching to admin
+    if (tab === 'admin') {
+        (window as any).initAdminPage?.();
     }
 }
 

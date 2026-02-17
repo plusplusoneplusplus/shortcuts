@@ -3,7 +3,7 @@
  * to break circular dependency chains between modules.
  */
 
-export type DashboardTab = 'processes' | 'repos' | 'wiki' | 'reports';
+export type DashboardTab = 'processes' | 'repos' | 'wiki' | 'reports' | 'admin';
 export type RepoSubTab = 'info' | 'pipelines' | 'tasks';
 
 /** Tool call status for the SPA client (timestamps are ISO strings) */
