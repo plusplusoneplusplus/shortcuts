@@ -68,3 +68,18 @@ export * from './rendering';
 
 // Parsing & block renderers
 export * from './parsing';
+
+// Anchor utilities
+export {
+    BaseAnchorData,
+    AnchorRelocationStrategy,
+    AnchorRelocationResult
+} from './anchor-types';
+
+export {
+    extractTextFromSelection,
+    createAnchorData,
+    relocateAnchorPosition,
+    needsRelocationCheck,
+    batchRelocateAnchors
+} from './anchor';
