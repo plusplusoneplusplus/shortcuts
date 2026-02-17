@@ -404,6 +404,83 @@ describe('client/detail.ts', () => {
     it('uses real unicode for middle dot', () => {
         expect(content).toContain('\\u00B7');
     });
+
+    // ========================================================================
+    // Tool container positioning fix (turnIndex support)
+    // ========================================================================
+    describe('getOrCreateToolContainer with turnIndex', () => {
+        it('defines getOrCreateToolContainer function', () => {
+            expect(content).toContain('function getOrCreateToolContainer');
+        });
+
+        it('accepts optional turnIndex parameter', () => {
+            expect(content).toMatch(/function getOrCreateToolContainer\s*\(\s*turnIndex\?:\s*number\s*\)/);
+        });
+
+        it('uses turnIndex from SSE tool-start events', () => {
+            // Verify the function is called with data.turnIndex
+            expect(content).toContain('getOrCreateToolContainer(data.turnIndex)');
+        });
+
+        it('finds specific bubble when turnIndex is provided', () => {
+            // Should query all chat messages and index by turnIndex
+            expect(content).toContain("querySelectorAll('.chat-message')");
+        });
+
+        it('checks if bubble is assistant before adding tool container', () => {
+            // Should verify the bubble is an assistant message
+            expect(content).toContain("classList.contains('assistant')");
+        });
+
+        it('falls back to last assistant bubble when turnIndex is undefined', () => {
+            // Should still support the old behavior as fallback
+            const lines = content.split('\n');
+            const funcStartIdx = lines.findIndex(l => l.includes('function getOrCreateToolContainer'));
+            const funcEndIdx = lines.findIndex((l, i) => i > funcStartIdx && l.match(/^}\s*$/));
+            const funcBody = lines.slice(funcStartIdx, funcEndIdx + 1).join('\n');
+            
+            // Should have fallback logic for when turnIndex is undefined
+            expect(funcBody).toContain('turnIndex !== undefined');
+            expect(funcBody).toContain("querySelectorAll('.chat-message.assistant')");
+        });
+
+        it('creates tool-calls-container div when not present', () => {
+            // Should dynamically create the container
+            expect(content).toContain("className = 'tool-calls-container'");
+        });
+
+        it('appends tool container to target bubble', () => {
+            // Should append the container to the correct bubble
+            const lines = content.split('\n');
+            const funcStartIdx = lines.findIndex(l => l.includes('function getOrCreateToolContainer'));
+            const funcEndIdx = lines.findIndex((l, i) => i > funcStartIdx && l.match(/^}\s*$/));
+            const funcBody = lines.slice(funcStartIdx, funcEndIdx + 1).join('\n');
+            
+            expect(funcBody).toContain('appendChild(toolContainer)');
+        });
+
+        it('has proper JSDoc describing turnIndex support', () => {
+            const lines = content.split('\n');
+            const funcIdx = lines.findIndex(l => l.includes('function getOrCreateToolContainer'));
+            const docLines = [];
+            
+            // Collect JSDoc lines above the function
+            for (let i = funcIdx - 1; i >= 0; i--) {
+                const line = lines[i].trim();
+                if (line.startsWith('*') || line.startsWith('/**')) {
+                    docLines.unshift(line);
+                    if (line.startsWith('/**')) break;
+                } else if (line === '') {
+                    continue;
+                } else {
+                    break;
+                }
+            }
+            
+            const docText = docLines.join('\n');
+            expect(docText).toContain('turnIndex');
+        });
+    });
 });
 
 // ============================================================================

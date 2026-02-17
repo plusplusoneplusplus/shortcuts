@@ -958,7 +958,7 @@ function connectQueueTaskSSE(processId: string, taskId: string, proc: any): void
         if (queueTaskStreamProcessId !== processId) return;
         try {
             const data = JSON.parse(e.data);
-            const container = getOrCreateToolContainer();
+            const container = getOrCreateToolContainer(data.turnIndex);
             if (!container) return;
             const tc = normalizeToolCall({
                 id: data.toolCallId || '',
@@ -1361,20 +1361,38 @@ function showToast(message: string, type: 'success' | 'error'): void {
 // ================================================================
 
 /**
- * Get or create a tool-calls-container inside the last assistant bubble
- * in the queue task conversation view.
+ * Get or create a tool-calls-container inside the assistant bubble for a specific turn.
+ * If turnIndex is undefined, falls back to the last assistant bubble (for backward compat).
  */
-function getOrCreateToolContainer(): HTMLElement | null {
+function getOrCreateToolContainer(turnIndex?: number): HTMLElement | null {
     const container = document.getElementById('queue-task-conversation');
     if (!container) return null;
-    const bubbles = container.querySelectorAll('.chat-message.assistant');
-    const lastBubble = bubbles.length > 0 ? bubbles[bubbles.length - 1] as HTMLElement : null;
-    if (!lastBubble) return null;
-    let toolContainer = lastBubble.querySelector('.tool-calls-container') as HTMLElement;
+    
+    let targetBubble: HTMLElement | null = null;
+    if (turnIndex !== undefined && turnIndex >= 0) {
+        // turnIndex refers to the position in the conversation turns array
+        // Find the bubble at that exact position (both user and assistant bubbles count)
+        const allBubbles = container.querySelectorAll('.chat-message');
+        if (turnIndex < allBubbles.length) {
+            const bubble = allBubbles[turnIndex] as HTMLElement;
+            // Only add tool container to assistant bubbles
+            if (bubble.classList.contains('assistant')) {
+                targetBubble = bubble;
+            }
+        }
+    } else {
+        // Fallback: use the last assistant bubble
+        const assistantBubbles = container.querySelectorAll('.chat-message.assistant');
+        targetBubble = assistantBubbles.length > 0 ? assistantBubbles[assistantBubbles.length - 1] as HTMLElement : null;
+    }
+    
+    if (!targetBubble) return null;
+    
+    let toolContainer = targetBubble.querySelector('.tool-calls-container') as HTMLElement;
     if (!toolContainer) {
         toolContainer = document.createElement('div');
         toolContainer.className = 'tool-calls-container';
-        lastBubble.appendChild(toolContainer);
+        targetBubble.appendChild(toolContainer);
     }
     return toolContainer;
 }
