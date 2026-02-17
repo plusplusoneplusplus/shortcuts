@@ -11,6 +11,13 @@ import { escapeHtmlClient } from './utils';
 import { showAIActionDropdown, hideAIActionDropdown, showFollowPromptSubmenu } from './ai-actions';
 import { showToast } from './ai-actions';
 
+// Declare highlight.js global (loaded via CDN in html-template.ts)
+declare const hljs: {
+    highlight: (code: string, options: { language: string }) => { value: string };
+    highlightAuto: (code: string, languages?: string[]) => { value: string; language: string };
+    highlightElement: (element: HTMLElement) => void;
+};
+
 // ================================================================
 // Context File Filtering
 // ================================================================
@@ -1633,16 +1640,35 @@ function await_setHashSilent(): { setHashSilent: (hash: string) => void } {
 // Simple markdown renderer (no external deps)
 // ================================================================
 
-function renderMarkdown(md: string): string {
+export function renderMarkdown(md: string): string {
     // Strip YAML frontmatter
     let text = md.replace(/^---\n[\s\S]*?\n---\n*/, '');
 
     // Escape HTML first
     text = escapeHtmlClient(text);
 
-    // Code blocks (``` ... ```)
+    // Code blocks (``` ... ```) — apply highlight.js syntax highlighting
     text = text.replace(/```(\w*)\n([\s\S]*?)```/g, (_m, lang, code) => {
-        return '<pre><code class="lang-' + (lang || 'text') + '">' + code.trimEnd() + '</code></pre>';
+        const trimmedCode = code.trimEnd();
+        const language = lang || 'plaintext';
+
+        let highlighted: string;
+        try {
+            if (typeof hljs !== 'undefined') {
+                if (lang) {
+                    highlighted = hljs.highlight(trimmedCode, { language }).value;
+                } else {
+                    highlighted = hljs.highlightAuto(trimmedCode).value;
+                }
+            } else {
+                highlighted = trimmedCode;
+            }
+        } catch {
+            // Fallback to plain (already escaped) text on error
+            highlighted = trimmedCode;
+        }
+
+        return '<pre><code class="hljs language-' + language + '">' + highlighted + '</code></pre>';
     });
 
     // Inline code

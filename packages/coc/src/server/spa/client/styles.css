@@ -2431,6 +2431,21 @@ html[data-theme="dark"] .miller-row-drop-target {
     padding: 0;
 }
 
+.task-preview-body pre code.hljs {
+    background: transparent;
+    padding: 0;
+}
+
+.task-preview-body pre code.hljs.with-line-numbers .line-number {
+    display: inline-block;
+    width: 3em;
+    margin-right: 1em;
+    text-align: right;
+    color: #999;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
 .task-preview-body a {
     color: var(--accent);
     text-decoration: none;
