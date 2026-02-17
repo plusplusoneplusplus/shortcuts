@@ -7,9 +7,11 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { AIProcess, WorkspaceInfo, WikiInfo, QueuedTask } from '@plusplusoneplusplus/pipeline-core';
+import type { AIProcess, WorkspaceInfo, WikiInfo, QueuedTask, ProcessStore, TaskQueueManager } from '@plusplusoneplusplus/pipeline-core';
 import type { UserPreferences } from './preferences-handler';
 import type { CLIConfig } from '../config';
+import type { DataWiper } from './data-wiper';
+import type { QueuePersistence } from './queue-persistence';
 
 // ============================================================================
 // Constants
@@ -68,6 +70,31 @@ export interface ExportOptions {
 
 /** Import strategy: replace all data or merge with existing. */
 export type ImportMode = 'replace' | 'merge';
+
+/** Options passed to the data importer. */
+export interface ImportOptions {
+    /** ProcessStore instance to write processes, workspaces, and wikis to. */
+    store: ProcessStore;
+    /** CoC data directory (e.g. ~/.coc). */
+    dataDir: string;
+    /** Import strategy. */
+    mode: ImportMode;
+    /** DataWiper instance used to clear data in replace mode. */
+    wiper: DataWiper;
+    /** Optional: factory returning the TaskQueueManager (for queue reset in replace mode). */
+    getQueueManager?: () => TaskQueueManager;
+    /** Optional: factory returning the QueuePersistence (for queue restore after import). */
+    getQueuePersistence?: () => QueuePersistence;
+}
+
+/** Result summary returned after an import operation. */
+export interface ImportResult {
+    importedProcesses: number;
+    importedWorkspaces: number;
+    importedWikis: number;
+    importedQueueFiles: number;
+    errors: string[];
+}
 
 // ============================================================================
 // Validation
