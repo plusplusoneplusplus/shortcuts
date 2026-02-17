@@ -247,6 +247,38 @@ export class TaskCommentsManager {
             await fs.promises.unlink(file);
         }
     }
+
+    /**
+     * Get comment counts for all task files in a workspace.
+     * Returns a map of filePath → comment count.
+     */
+    async getCommentCounts(workspaceId: string): Promise<Record<string, number>> {
+        const wsDir = this.getWorkspaceDir(workspaceId);
+        if (!fs.existsSync(wsDir)) {
+            return {};
+        }
+        const counts: Record<string, number> = {};
+        let entries: string[];
+        try {
+            entries = await fs.promises.readdir(wsDir);
+        } catch {
+            return {};
+        }
+        for (const entry of entries) {
+            if (!entry.endsWith('.json')) continue;
+            try {
+                const content = await fs.promises.readFile(path.join(wsDir, entry), 'utf8');
+                const storage: CommentsStorage = JSON.parse(content);
+                const comments = storage.comments || [];
+                if (comments.length > 0 && comments[0].filePath) {
+                    counts[comments[0].filePath] = comments.length;
+                }
+            } catch {
+                // Skip corrupted files
+            }
+        }
+        return counts;
+    }
 }
 
 // ============================================================================
@@ -280,6 +312,7 @@ function isValidWorkspaceId(wsId: string): boolean {
  * Mutates the `routes` array in-place.
  *
  * Endpoints:
+ *   GET    /api/comment-counts/:wsId                   — comment counts per file
  *   GET    /api/comments/:wsId/:taskPath(*)           — list comments
  *   POST   /api/comments/:wsId/:taskPath(*)           — create comment
  *   GET    /api/comments/:wsId/:taskPath(*)/:id       — get single comment
@@ -292,6 +325,9 @@ function isValidWorkspaceId(wsId: string): boolean {
 export function registerTaskCommentsRoutes(routes: Route[], dataDir: string): void {
     const manager = new TaskCommentsManager(dataDir);
 
+    // Pattern for comment counts endpoint: /api/comment-counts/{wsId}
+    const countsPattern = /^\/api\/comment-counts\/([a-zA-Z0-9_-]+)$/;
+
     // Pattern for collection endpoints: /api/comments/{wsId}/{taskPath...}
     // taskPath is everything after the wsId segment, captured greedily.
     const collectionPattern = /^\/api\/comments\/([a-zA-Z0-9_-]+)\/(.+)$/;
@@ -299,6 +335,26 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string): vo
     // Pattern for item endpoints: /api/comments/{wsId}/{taskPath...}/{uuid}
     // UUID is a standard v4 UUID at the end of the path.
     const itemPattern = /^\/api\/comments\/([a-zA-Z0-9_-]+)\/(.+)\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
+
+    // ------------------------------------------------------------------
+    // GET /api/comment-counts/:wsId — comment counts per file
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'GET',
+        pattern: countsPattern,
+        handler: async (_req, res, match) => {
+            const [, wsId] = match!;
+            if (!isValidWorkspaceId(wsId)) {
+                return sendError(res, 400, 'Invalid workspace ID');
+            }
+            try {
+                const counts = await manager.getCommentCounts(wsId);
+                sendJSON(res, 200, { counts });
+            } catch {
+                sendError(res, 500, 'Failed to retrieve comment counts');
+            }
+        },
+    });
 
     // ------------------------------------------------------------------
     // GET /api/comments/:wsId/:taskPath(*)/:id — single comment

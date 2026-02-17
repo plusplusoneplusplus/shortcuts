@@ -178,6 +178,23 @@ export async function fetchComments(wsId: string, taskPath: string): Promise<Tas
 }
 
 /**
+ * Fetch comment counts for all task files in a workspace.
+ * Returns a map of filePath → comment count.
+ */
+export async function fetchCommentCounts(wsId: string): Promise<Record<string, number>> {
+    try {
+        const res = await fetch(getApiBase() + '/comment-counts/' + encodeURIComponent(wsId));
+        if (!res.ok) {
+            return {};
+        }
+        const data = await res.json();
+        return data.counts || {};
+    } catch {
+        return {};
+    }
+}
+
+/**
  * Create a new comment on a task file.
  */
 export async function createComment(

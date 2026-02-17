@@ -326,6 +326,51 @@ describe('TaskCommentsManager', () => {
             await manager.deleteAllComments('ws1', 'nonexistent.md');
         });
     });
+
+    // -- getCommentCounts --
+
+    describe('getCommentCounts', () => {
+        it('returns empty object for workspace with no comments', async () => {
+            const counts = await manager.getCommentCounts('ws1');
+            expect(counts).toEqual({});
+        });
+
+        it('returns counts for multiple files', async () => {
+            await manager.addComment('ws1', 'task1.md', makeCommentData({ filePath: 'task1.md', comment: 'A' }));
+            await manager.addComment('ws1', 'task1.md', makeCommentData({ filePath: 'task1.md', comment: 'B' }));
+            await manager.addComment('ws1', 'task2.md', makeCommentData({ filePath: 'task2.md', comment: 'C' }));
+            const counts = await manager.getCommentCounts('ws1');
+            expect(counts['task1.md']).toBe(2);
+            expect(counts['task2.md']).toBe(1);
+        });
+
+        it('isolates counts per workspace', async () => {
+            await manager.addComment('ws1', 'task.md', makeCommentData({ filePath: 'task.md', comment: 'WS1' }));
+            await manager.addComment('ws2', 'task.md', makeCommentData({ filePath: 'task.md', comment: 'WS2' }));
+            await manager.addComment('ws2', 'task.md', makeCommentData({ filePath: 'task.md', comment: 'WS2b' }));
+            const counts1 = await manager.getCommentCounts('ws1');
+            const counts2 = await manager.getCommentCounts('ws2');
+            expect(counts1['task.md']).toBe(1);
+            expect(counts2['task.md']).toBe(2);
+        });
+
+        it('skips corrupted JSON files', async () => {
+            await manager.addComment('ws1', 'good.md', makeCommentData({ filePath: 'good.md' }));
+            const wsDir = path.join(tmpDir, 'tasks-comments', 'ws1');
+            fs.writeFileSync(path.join(wsDir, 'bad.json'), '{{broken', 'utf8');
+            const counts = await manager.getCommentCounts('ws1');
+            expect(counts['good.md']).toBe(1);
+            expect(Object.keys(counts)).toHaveLength(1);
+        });
+
+        it('skips files with empty comments array', async () => {
+            const wsDir = path.join(tmpDir, 'tasks-comments', 'ws1');
+            fs.mkdirSync(wsDir, { recursive: true });
+            fs.writeFileSync(path.join(wsDir, 'empty.json'), JSON.stringify({ comments: [], settings: {} }), 'utf8');
+            const counts = await manager.getCommentCounts('ws1');
+            expect(Object.keys(counts)).toHaveLength(0);
+        });
+    });
 });
 
 // ============================================================================
@@ -588,6 +633,38 @@ describe('Task Comments REST API', () => {
         it('accepts valid workspace IDs with hyphens and underscores', async () => {
             const res = await getJSON(`${baseUrl}/api/comments/my-workspace_01/task.md`);
             expect(res.status).toBe(200);
+        });
+    });
+
+    // -- GET /api/comment-counts/:wsId --
+
+    describe('GET /api/comment-counts/:wsId', () => {
+        function countsUrl(wsId = WS_ID) {
+            return `${baseUrl}/api/comment-counts/${wsId}`;
+        }
+
+        it('returns empty counts for workspace with no comments', async () => {
+            const res = await getJSON(countsUrl());
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.counts).toEqual({});
+        });
+
+        it('returns counts across multiple files', async () => {
+            await postJSON(commentsUrl('task1.md'), makeCommentData({ filePath: 'task1.md' }));
+            await postJSON(commentsUrl('task1.md'), makeCommentData({ filePath: 'task1.md', comment: 'Second' }));
+            await postJSON(commentsUrl('task2.md'), makeCommentData({ filePath: 'task2.md' }));
+            const res = await getJSON(countsUrl());
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.counts['task1.md']).toBe(2);
+            expect(body.counts['task2.md']).toBe(1);
+        });
+
+        it('rejects invalid workspace ID', async () => {
+            const res = await getJSON(`${baseUrl}/api/comment-counts/bad..id`);
+            // Pattern doesn't match dots, so route won't match (404)
+            expect([400, 404]).toContain(res.status);
         });
     });
 

@@ -12,6 +12,7 @@ import { showAIActionDropdown, hideAIActionDropdown, showFollowPromptSubmenu } f
 import { showToast } from './ai-actions';
 import {
     fetchComments,
+    fetchCommentCounts,
     createComment,
     updateComment,
     deleteComment,
@@ -123,6 +124,8 @@ let previewRawContent: string = '';
 let commentEventUnsub: (() => void) | null = null;
 /** Keyboard shortcut handler reference for cleanup. */
 let commentKeyHandler: ((e: KeyboardEvent) => void) | null = null;
+/** Comment counts per file path for tree badges. */
+let treeCommentCounts: Record<string, number> = {};
 
 /** Clear the checkbox selection state. */
 function clearSelection(): void {
@@ -150,6 +153,15 @@ export async function fetchRepoTasks(wsId: string): Promise<void> {
 
     const data = await fetchApi(`/workspaces/${encodeURIComponent(wsId)}/tasks?showArchived=true`);
     currentTasks = data || null;
+
+    // Fetch comment counts in parallel (non-blocking)
+    fetchCommentCounts(wsId).then(counts => {
+        treeCommentCounts = counts;
+        // Re-render to show badges if tree is already visible
+        const container = document.getElementById('repo-tasks-tree');
+        if (container && currentTasks) renderMillerColumns(container);
+    }).catch(() => { /* ignore */ });
+
     renderTasksInRepo();
 }
 
@@ -645,10 +657,13 @@ function renderColumn(folder: TaskFolder, folderPath: string, selectedChild: str
                 const isActive = taskPanelState.openFilePath === docPath;
                 const isChecked = taskPanelState.selectedFilePaths.has(docPath);
                 const displayName = doc.docType ? group.baseName + '.' + doc.docType : doc.fileName;
+                const cc = treeCommentCounts[docPath];
+                const commentBadge = cc > 0 ? '<span class="task-comment-count-badge" title="' + cc + ' comment' + (cc > 1 ? 's' : '') + '">💬 ' + cc + '</span>' : '';
                 html += '<div class="miller-row miller-file-row' + (isActive ? ' miller-row-selected' : '') + '" data-file-path="' + escapeHtmlClient(docPath) + '">' +
                     '<input type="checkbox" class="task-checkbox" data-check-path="' + escapeHtmlClient(docPath) + '"' + (isChecked ? ' checked' : '') + '>' +
                     '<span class="task-tree-icon">📄</span>' +
                     '<span class="miller-row-name">' + escapeHtmlClient(displayName) + '</span>' +
+                    commentBadge +
                     (doc.status ? '<span class="miller-status task-status-' + escapeHtmlClient(doc.status) + '">' + (STATUS_ICONS[doc.status] || '') + '</span>' : '') +
                     '<span class="task-tree-actions"><button class="task-action-btn" data-action="ai-action" data-path="' + escapeHtmlClient(docPath) + '" title="AI Actions">🤖</button></span>' +
                 '</div>';
@@ -662,10 +677,13 @@ function renderColumn(folder: TaskFolder, folderPath: string, selectedChild: str
             const docPath = doc.relativePath ? doc.relativePath + '/' + doc.fileName : doc.fileName;
             const isActive = taskPanelState.openFilePath === docPath;
             const isChecked = taskPanelState.selectedFilePaths.has(docPath);
+            const cc = treeCommentCounts[docPath];
+            const commentBadge = cc > 0 ? '<span class="task-comment-count-badge" title="' + cc + ' comment' + (cc > 1 ? 's' : '') + '">💬 ' + cc + '</span>' : '';
             html += '<div class="miller-row miller-file-row' + (isActive ? ' miller-row-selected' : '') + '" data-file-path="' + escapeHtmlClient(docPath) + '">' +
                 '<input type="checkbox" class="task-checkbox" data-check-path="' + escapeHtmlClient(docPath) + '"' + (isChecked ? ' checked' : '') + '>' +
                 '<span class="task-tree-icon">📄</span>' +
                 '<span class="miller-row-name">' + escapeHtmlClient(doc.baseName) + '</span>' +
+                commentBadge +
                 (doc.status ? '<span class="miller-status task-status-' + escapeHtmlClient(doc.status) + '">' + (STATUS_ICONS[doc.status] || '') + '</span>' : '') +
                 '<span class="task-tree-actions"><button class="task-action-btn" data-action="ai-action" data-path="' + escapeHtmlClient(docPath) + '" title="AI Actions">🤖</button></span>' +
             '</div>';
@@ -1687,11 +1705,15 @@ async function loadAndRenderComments(wsId: string, filePath: string): Promise<vo
             // Re-sync local state
             if (event.type === 'created') {
                 previewComments.push(event.comment);
+                treeCommentCounts[filePath] = (treeCommentCounts[filePath] || 0) + 1;
+                refreshTreeCommentBadges();
             } else if (event.type === 'updated') {
                 const idx = previewComments.findIndex(c => c.id === event.comment.id);
                 if (idx >= 0) previewComments[idx] = event.comment;
             } else if (event.type === 'deleted') {
                 previewComments = previewComments.filter(c => c.id !== event.commentId);
+                treeCommentCounts[filePath] = Math.max(0, (treeCommentCounts[filePath] || 0) - 1);
+                refreshTreeCommentBadges();
             } else if (event.type === 'loaded') {
                 previewComments = event.comments;
             }
@@ -1719,6 +1741,38 @@ function updateCommentToggleCount(): void {
     if (toggleBtn) {
         toggleBtn.innerHTML = '\uD83D\uDCAC ' + previewComments.length;
     }
+}
+
+/** Refresh comment count badges in the task tree without full re-render. */
+function refreshTreeCommentBadges(): void {
+    const rows = document.querySelectorAll('.miller-file-row[data-file-path]');
+    rows.forEach(row => {
+        const fp = row.getAttribute('data-file-path');
+        if (!fp) return;
+        const existing = row.querySelector('.task-comment-count-badge');
+        const cc = treeCommentCounts[fp] || 0;
+        if (cc > 0) {
+            const badgeHTML = '💬 ' + cc;
+            const title = cc + ' comment' + (cc > 1 ? 's' : '');
+            if (existing) {
+                existing.textContent = badgeHTML;
+                existing.setAttribute('title', title);
+            } else {
+                const badge = document.createElement('span');
+                badge.className = 'task-comment-count-badge';
+                badge.textContent = badgeHTML;
+                badge.title = title;
+                const name = row.querySelector('.miller-row-name');
+                if (name && name.nextSibling) {
+                    row.insertBefore(badge, name.nextSibling);
+                } else {
+                    row.appendChild(badge);
+                }
+            }
+        } else if (existing) {
+            existing.remove();
+        }
+    });
 }
 
 /** Render the comment sidebar panel. */

@@ -14,6 +14,7 @@ import {
     removeAllCommentListeners,
     // API functions
     fetchComments,
+    fetchCommentCounts,
     createComment,
     updateComment,
     deleteComment,
@@ -567,5 +568,51 @@ describe('URL construction', () => {
             '/api/comments/ws1/task.md/abc-123-def',
             expect.anything()
         );
+    });
+});
+
+// ============================================================================
+// fetchCommentCounts
+// ============================================================================
+
+describe('fetchCommentCounts', () => {
+    beforeEach(() => {
+        removeAllCommentListeners();
+    });
+
+    afterEach(() => {
+        delete (globalThis as any).fetch;
+    });
+
+    it('returns counts from API response', async () => {
+        mockFetchResponse(200, { counts: { 'task1.md': 3, 'task2.md': 1 } });
+        const counts = await fetchCommentCounts('ws1');
+        expect(counts).toEqual({ 'task1.md': 3, 'task2.md': 1 });
+    });
+
+    it('calls correct API URL', async () => {
+        mockFetchResponse(200, { counts: {} });
+        await fetchCommentCounts('my-workspace');
+        expect((globalThis as any).fetch).toHaveBeenCalledWith(
+            '/api/comment-counts/my-workspace'
+        );
+    });
+
+    it('returns empty object on API error', async () => {
+        mockFetchResponse(500, { error: 'Server error' });
+        const counts = await fetchCommentCounts('ws1');
+        expect(counts).toEqual({});
+    });
+
+    it('returns empty object on network error', async () => {
+        mockFetchNetworkError();
+        const counts = await fetchCommentCounts('ws1');
+        expect(counts).toEqual({});
+    });
+
+    it('returns empty object when counts field is missing', async () => {
+        mockFetchResponse(200, {});
+        const counts = await fetchCommentCounts('ws1');
+        expect(counts).toEqual({});
     });
 });

@@ -541,3 +541,27 @@ html[data-theme="dark"] {
         flex-wrap: wrap;
     }
 }
+
+/* ============================================================================
+   Comment Count Badge (Task Tree)
+   ============================================================================ */
+
+.task-comment-count-badge {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 6px;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 16px;
+    border-radius: 8px;
+    background: var(--comment-question, #0078d4);
+    color: #fff;
+    vertical-align: middle;
+    white-space: nowrap;
+    opacity: 0.85;
+    transition: opacity 0.15s ease;
+}
+
+.miller-file-row:hover .task-comment-count-badge {
+    opacity: 1;
+}
