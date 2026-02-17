@@ -141,7 +141,7 @@ describe('renderCodeBlock', () => {
         const block = makeCodeBlock();
         const html = renderCodeBlock(block);
 
-        expect(html).toContain('<div class="code-block"');
+        expect(html).toContain('<div class="code-block-container"');
         expect(html).toContain('<pre class="code-block-content">');
         expect(html).toContain('<code class="hljs language-js">');
     });
@@ -200,6 +200,14 @@ describe('renderCodeBlock', () => {
 
         expect(html).toContain('(3 lines)');
         expect(html).not.toContain('\r');
+    });
+
+    it('wraps each line in a code-line span', () => {
+        const block = makeCodeBlock({ code: 'line1\nline2' });
+        const html = renderCodeBlock(block);
+
+        expect(html).toContain('class="code-line" data-line="1"');
+        expect(html).toContain('class="code-line" data-line="2"');
     });
 });
 

@@ -1658,6 +1658,9 @@ async function loadPreviewContent(wsId: string, filePath: string): Promise<void>
         // Set up table copy-as-markdown buttons (event delegation)
         setupTableCopyHandlers();
 
+        // Set up code block interaction handlers (copy, collapse/expand)
+        setupCodeBlockHandlers();
+
         // Render mermaid diagrams (lazy-loads mermaid.js if needed)
         initTaskMermaid();
 
@@ -1878,6 +1881,45 @@ function setupTableCopyHandlers(): void {
             const originalText = target.textContent;
             target.textContent = '✓ Copied';
             setTimeout(() => { target.textContent = originalText; }, 1500);
+        }
+    });
+}
+
+/** Set up click handlers for code block copy buttons and collapse/expand toggles. */
+function setupCodeBlockHandlers(): void {
+    const previewBody = document.getElementById('task-preview-body');
+    if (!previewBody) return;
+
+    previewBody.addEventListener('click', (e: MouseEvent) => {
+        const target = e.target as HTMLElement;
+
+        // Copy button
+        if (target.classList.contains('code-block-copy')) {
+            e.preventDefault();
+            e.stopPropagation();
+            const container = target.closest('.code-block-container') as HTMLElement;
+            if (!container) return;
+            const raw = container.getAttribute('data-raw');
+            if (raw) {
+                copyToClipboard(raw);
+                const original = target.textContent;
+                target.textContent = '✓ Copied!';
+                setTimeout(() => { target.textContent = original; }, 1500);
+            }
+            return;
+        }
+
+        // Collapse/expand toggle
+        if (target.classList.contains('code-block-collapse')) {
+            e.preventDefault();
+            e.stopPropagation();
+            const container = target.closest('.code-block-container') as HTMLElement;
+            if (!container) return;
+            const isCollapsed = container.getAttribute('data-collapsed') === 'true';
+            container.setAttribute('data-collapsed', String(!isCollapsed));
+            target.textContent = isCollapsed ? '\u25BC' : '\u25B6';
+            target.title = isCollapsed ? 'Collapse' : 'Expand';
+            return;
         }
     });
 }

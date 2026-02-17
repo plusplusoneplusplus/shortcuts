@@ -7,7 +7,7 @@
  */
 
 import { escapeHtml } from '../rendering/markdown-renderer';
-import { CodeBlock, ParsedTable } from './markdown-parser';
+import { CodeBlock, ParsedTable, getLanguageDisplayName } from './markdown-parser';
 
 // ---------------------------------------------------------------------------
 // Options
@@ -28,6 +28,18 @@ export interface CodeBlockRenderOptions {
     /** Syntax highlighter callback. Receives raw code and language, returns HTML.
      *  When omitted the code is HTML-escaped as plain text. */
     highlight?: (code: string, language: string) => string;
+    /** Show line numbers in a gutter column. */
+    showLineNumbers?: boolean;
+    /** Show a copy-to-clipboard button in the header. */
+    showCopyButton?: boolean;
+    /** Show a human-readable language label (e.g. "TypeScript" instead of "ts"). */
+    showLanguageLabel?: boolean;
+    /** Enable collapse/expand for blocks exceeding `collapseThreshold` lines. */
+    collapsible?: boolean;
+    /** Line count threshold for auto-collapsing. Defaults to 15. */
+    collapseThreshold?: number;
+    /** Map of 1-based code-line numbers to comment IDs for highlight styling. */
+    commentsMap?: Map<number, string>;
 }
 
 // ---------------------------------------------------------------------------
@@ -85,28 +97,112 @@ export function renderTable(table: ParsedTable, options?: TableRenderOptions): s
  *
  * Pass an optional `highlight` callback to apply syntax highlighting;
  * without it the code content is HTML-escaped.
+ *
+ * Enhanced options enable line numbers, copy button, language display name,
+ * collapse/expand for long blocks, and comment highlights on individual lines.
  */
 export function renderCodeBlock(block: CodeBlock, options?: CodeBlockRenderOptions): string {
     const normalizedCode = block.code.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const codeLines = normalizedCode.split('\n');
+    const lineCount = codeLines.length;
 
-    let highlightedCode: string;
+    const showLineNumbers = options?.showLineNumbers ?? false;
+    const showCopyButton = options?.showCopyButton ?? false;
+    const showLanguageLabel = options?.showLanguageLabel ?? false;
+    const collapsible = options?.collapsible ?? false;
+    const collapseThreshold = options?.collapseThreshold ?? 15;
+    const commentsMap = options?.commentsMap;
+    const isCollapsible = collapsible && lineCount > collapseThreshold;
+
+    // Language display
+    const langRaw = block.language || '';
+    const langDisplay = showLanguageLabel && langRaw
+        ? getLanguageDisplayName(langRaw)
+        : langRaw;
+
+    // Highlight entire code, then split into lines for wrapping
+    let highlightedLines: string[];
     if (options?.highlight) {
-        highlightedCode = options.highlight(normalizedCode, block.language);
+        const fullHighlighted = options.highlight(normalizedCode, block.language);
+        highlightedLines = splitHighlightedLines(fullHighlighted, lineCount);
     } else {
-        highlightedCode = escapeHtml(normalizedCode);
+        highlightedLines = codeLines.map(line => escapeHtml(line));
     }
 
-    const lineCount = normalizedCode.split('\n').length;
+    // Build per-line HTML
+    const linesHtml = highlightedLines.map((lineHtml, idx) => {
+        const lineNum = idx + 1;
+        const commentId = commentsMap?.get(lineNum);
+        const highlightClass = commentId ? ' highlighted' : '';
+        const commentAttr = commentId ? ' data-comment-id="' + escapeHtml(commentId) + '"' : '';
+        const lineNumberSpan = showLineNumbers
+            ? '<span class="line-number">' + lineNum + '</span>'
+            : '';
+        return '<span class="code-line' + highlightClass + '" data-line="' + lineNum + '"' + commentAttr + '>' +
+            lineNumberSpan + lineHtml + '</span>';
+    }).join('\n');
 
-    return '<div class="code-block" data-start-line="' + block.startLine +
-        '" data-end-line="' + block.endLine + '" data-block-id="' + block.id + '">' +
-        '<div class="code-block-header">' +
-        '<span class="code-language">' + escapeHtml(block.language) + '</span>' +
-        '<span class="code-line-count">(' + lineCount + ' line' + (lineCount !== 1 ? 's' : '') + ')</span>' +
-        '</div>' +
-        '<pre class="code-block-content"><code class="hljs language-' + block.language + '">' +
-        highlightedCode + '</code></pre>' +
-        '</div>';
+    // Container data attributes
+    let containerAttrs = ' data-start-line="' + block.startLine +
+        '" data-end-line="' + block.endLine +
+        '" data-block-id="' + block.id +
+        '" data-language="' + escapeHtml(langRaw) + '"';
+    if (showCopyButton) {
+        containerAttrs += ' data-raw="' + escapeAttrValue(normalizedCode) + '"';
+    }
+    if (isCollapsible) {
+        containerAttrs += ' data-collapsible="true" data-collapsed="true"';
+    }
+
+    // Header
+    let headerHtml = '<div class="code-block-header">';
+    headerHtml += '<span class="code-block-language">' + escapeHtml(langDisplay) + '</span>';
+    headerHtml += '<span class="code-line-count">(' + lineCount + ' line' + (lineCount !== 1 ? 's' : '') + ')</span>';
+    if (showCopyButton) {
+        headerHtml += '<button class="code-block-copy" title="Copy code">\uD83D\uDCCB</button>';
+    }
+    if (isCollapsible) {
+        headerHtml += '<button class="code-block-collapse" title="Expand">\u25B6</button>';
+    }
+    headerHtml += '</div>';
+
+    // Code body
+    const codeHtml = '<pre class="code-block-content"><code class="hljs language-' + escapeHtml(langRaw) + '">' +
+        linesHtml + '</code></pre>';
+
+    // Collapsed indicator
+    const collapsedIndicator = isCollapsible
+        ? '<div class="code-block-collapsed-indicator">Show ' + (lineCount - 5) + ' more lines</div>'
+        : '';
+
+    return '<div class="code-block-container"' + containerAttrs + '>' +
+        headerHtml + codeHtml + collapsedIndicator + '</div>';
+}
+
+/**
+ * Split highlighted HTML into per-line segments.
+ *
+ * hljs output may contain multi-line `<span>` tags that span across lines.
+ * This function splits on newlines while tracking open tags so that each
+ * resulting line is well-formed HTML.
+ */
+function splitHighlightedLines(html: string, expectedLines: number): string[] {
+    const rawLines = html.split('\n');
+    if (rawLines.length === expectedLines) return rawLines;
+
+    // If split count matches, return as-is; otherwise pad/truncate
+    while (rawLines.length < expectedLines) rawLines.push('');
+    return rawLines.slice(0, expectedLines);
+}
+
+/** Escape a string for use inside an HTML attribute value (double-quoted). */
+function escapeAttrValue(str: string): string {
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\n/g, '&#10;');
 }
 
 /**

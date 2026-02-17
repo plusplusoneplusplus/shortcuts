@@ -15,6 +15,8 @@ import {
     renderCodeBlock,
     renderTable,
     renderMermaidContainer,
+    // Utilities
+    getLanguageDisplayName,
     // Types
     type CodeBlock,
     type ParsedTable,
@@ -72,7 +74,13 @@ export function renderMarkdownToHtml(content: string, options?: RenderOptions): 
     const codeBlockHtml = new Map<number, string>();
     for (const block of codeBlocks) {
         if (!mermaidStartLines.has(block.startLine)) {
-            codeBlockHtml.set(block.startLine, renderCodeBlock(block, { highlight: highlightFn }));
+            codeBlockHtml.set(block.startLine, renderCodeBlock(block, {
+                highlight: highlightFn,
+                showLineNumbers: true,
+                showCopyButton: true,
+                showLanguageLabel: true,
+                collapsible: true,
+            }));
         }
     }
 
