@@ -1,0 +1,158 @@
+/**
+ * Playwright-Compatible Mock AI Service for E2E Tests
+ *
+ * Provides a lightweight mock of CopilotSDKService that works in
+ * Playwright tests (no Vitest dependency).  Exposes call tracking
+ * and per-test override helpers (`mockResolvedValueOnce`, etc.).
+ */
+
+// ---------------------------------------------------------------------------
+// Lightweight mock-function utility (Vitest-free)
+// ---------------------------------------------------------------------------
+
+export interface MockFn<TReturn = unknown> {
+    (...args: unknown[]): TReturn;
+    /** Accumulated call arguments */
+    calls: unknown[][];
+    /** Set the default resolved value (async functions) */
+    mockResolvedValue(value: unknown): MockFn<TReturn>;
+    /** Queue a one-shot resolved value */
+    mockResolvedValueOnce(value: unknown): MockFn<TReturn>;
+    /** Set the default implementation */
+    mockImplementation(fn: (...args: unknown[]) => unknown): MockFn<TReturn>;
+    /** Queue a one-shot implementation */
+    mockImplementationOnce(fn: (...args: unknown[]) => unknown): MockFn<TReturn>;
+    /** Reset to the initial configured state */
+    mockReset(): MockFn<TReturn>;
+}
+
+function createMockFn<TReturn = unknown>(defaultImpl: (...args: unknown[]) => TReturn): MockFn<TReturn> {
+    const initialImpl = defaultImpl;
+    let currentImpl = defaultImpl;
+    const onceQueue: Array<(...args: unknown[]) => unknown> = [];
+
+    const fn = ((...args: unknown[]) => {
+        fn.calls.push(args);
+        if (onceQueue.length > 0) {
+            return onceQueue.shift()!(...args);
+        }
+        return currentImpl(...args);
+    }) as MockFn<TReturn>;
+
+    fn.calls = [];
+
+    fn.mockResolvedValue = (value: unknown) => {
+        currentImpl = (() => Promise.resolve(value)) as () => TReturn;
+        return fn;
+    };
+
+    fn.mockResolvedValueOnce = (value: unknown) => {
+        onceQueue.push(() => Promise.resolve(value));
+        return fn;
+    };
+
+    fn.mockImplementation = (impl: (...args: unknown[]) => unknown) => {
+        currentImpl = impl as (...args: unknown[]) => TReturn;
+        return fn;
+    };
+
+    fn.mockImplementationOnce = (impl: (...args: unknown[]) => unknown) => {
+        onceQueue.push(impl);
+        return fn;
+    };
+
+    fn.mockReset = () => {
+        fn.calls = [];
+        onceQueue.length = 0;
+        currentImpl = initialImpl;
+        return fn;
+    };
+
+    return fn;
+}
+
+// ---------------------------------------------------------------------------
+// Mock AI Service
+// ---------------------------------------------------------------------------
+
+export interface E2EMockAIControls {
+    /** The mock service object injected into the server */
+    service: Record<string, unknown>;
+    /** Mock for sendMessage */
+    mockSendMessage: MockFn;
+    /** Mock for isAvailable */
+    mockIsAvailable: MockFn;
+    /** Mock for sendFollowUp */
+    mockSendFollowUp: MockFn;
+    /** Mock for hasKeptAliveSession */
+    mockHasKeptAliveSession: MockFn;
+    /** Reset all mocks to their default state */
+    resetAll: () => void;
+}
+
+export interface E2EMockAIOptions {
+    available?: boolean;
+    sendMessageResponse?: Record<string, unknown>;
+    sendFollowUpResponse?: Record<string, unknown>;
+    hasKeptAliveSession?: boolean;
+}
+
+/**
+ * Creates a mock CopilotSDKService suitable for Playwright E2E tests.
+ *
+ * Defaults (no options):
+ * - isAvailable → { available: true }
+ * - sendMessage → { success: true, response: 'AI response text', sessionId: 'session-123' }
+ * - sendFollowUp → { success: true, response: 'Follow-up response', sessionId: 'sess-follow' }
+ * - hasKeptAliveSession → true
+ */
+export function createE2EMockSDKService(options?: E2EMockAIOptions): E2EMockAIControls {
+    const defaultAvailability = { available: options?.available ?? true };
+    const defaultSendMessage = options?.sendMessageResponse ?? {
+        success: true,
+        response: 'AI response text',
+        sessionId: 'session-123',
+    };
+    const defaultSendFollowUp = options?.sendFollowUpResponse ?? {
+        success: true,
+        response: 'Follow-up response',
+        sessionId: 'sess-follow',
+    };
+    const defaultHasKeptAlive = options?.hasKeptAliveSession ?? true;
+
+    const mockIsAvailable = createMockFn(() => Promise.resolve(defaultAvailability));
+    const mockSendMessage = createMockFn(() => Promise.resolve(defaultSendMessage));
+    const mockSendFollowUp = createMockFn(() => Promise.resolve(defaultSendFollowUp));
+    const mockHasKeptAliveSession = createMockFn(() => defaultHasKeptAlive);
+
+    const service = {
+        isAvailable: mockIsAvailable,
+        sendMessage: mockSendMessage,
+        sendFollowUp: mockSendFollowUp,
+        hasKeptAliveSession: mockHasKeptAliveSession,
+        // Stubs for methods the executor may reference but doesn't critically need
+        ensureClient: () => Promise.resolve(),
+        destroyKeptAliveSession: () => Promise.resolve(),
+        abortSession: () => {},
+        hasActiveSession: () => false,
+        getActiveSessionCount: () => 0,
+        cleanup: () => Promise.resolve(),
+        dispose: () => Promise.resolve(),
+    };
+
+    const resetAll = () => {
+        mockIsAvailable.mockReset();
+        mockSendMessage.mockReset();
+        mockSendFollowUp.mockReset();
+        mockHasKeptAliveSession.mockReset();
+    };
+
+    return {
+        service,
+        mockSendMessage,
+        mockIsAvailable,
+        mockSendFollowUp,
+        mockHasKeptAliveSession,
+        resetAll,
+    };
+}

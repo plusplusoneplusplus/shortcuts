@@ -18,6 +18,7 @@ import { test as base, expect, type Page } from '@playwright/test';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { createE2EMockSDKService, type E2EMockAIControls } from './mock-ai';
 
 // Import from compiled dist — Playwright doesn't transpile source TS
 const { createExecutionServer } = require('../../../dist/server/index');
@@ -25,9 +26,17 @@ const { FileProcessStore } = require('@plusplusoneplusplus/pipeline-core');
 
 type ExecutionServer = Awaited<ReturnType<typeof createExecutionServer>>;
 
+/** Internal context that groups resources with a shared lifecycle. */
+interface ServerContext {
+    server: ExecutionServer;
+    mockAI: E2EMockAIControls;
+    tmpDir: string;
+}
+
 export interface ServerFixture {
     server: ExecutionServer;
     serverUrl: string;
+    mockAI: E2EMockAIControls;
 }
 
 /**
@@ -63,25 +72,38 @@ async function patchApiResponses(page: Page): Promise<void> {
     });
 }
 
-export const test = base.extend<ServerFixture>({
-    server: async ({}, use) => {
+export const test = base.extend<ServerFixture & { _context: ServerContext }>({
+    _context: async ({}, use) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-e2e-'));
         const store = new FileProcessStore({ dataDir: tmpDir });
+        const mockAI = createE2EMockSDKService();
+
         const server = await createExecutionServer({
             store,
             port: 0,
             host: '127.0.0.1',
             dataDir: tmpDir,
+            aiService: mockAI.service,
         });
 
-        await use(server);
+        await use({ server, mockAI, tmpDir });
 
         await server.close();
         fs.rmSync(tmpDir, { recursive: true, force: true });
     },
 
+    server: async ({ _context }, use) => {
+        await use(_context.server);
+    },
+
     serverUrl: async ({ server }, use) => {
         await use(server.url);
+    },
+
+    mockAI: async ({ _context }, use) => {
+        await use(_context.mockAI);
+        // Reset mocks after each test for isolation
+        _context.mockAI.resetAll();
     },
 
     // Automatically patch API responses for every page

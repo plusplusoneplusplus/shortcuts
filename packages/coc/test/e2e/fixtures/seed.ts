@@ -86,6 +86,119 @@ export async function seedProcesses(
     return results;
 }
 
+// ---------------------------------------------------------------------------
+// Queue Task Helpers
+// ---------------------------------------------------------------------------
+
+export interface QueueTaskOverrides {
+    type?: string;
+    priority?: string;
+    status?: string;
+    displayName?: string;
+    payload?: Record<string, unknown>;
+    config?: {
+        model?: string;
+        timeoutMs?: number;
+        retryOnFailure?: boolean;
+        retryAttempts?: number;
+    };
+    repoId?: string;
+    [key: string]: unknown;
+}
+
+/** Seed a single queue task via POST /api/queue.  Returns the created task. */
+export async function seedQueueTask(
+    baseURL: string,
+    overrides: QueueTaskOverrides = {},
+): Promise<Record<string, unknown>> {
+    const taskSpec = {
+        type: overrides.type ?? 'ai-clarification',
+        priority: overrides.priority ?? 'normal',
+        displayName: overrides.displayName,
+        payload: overrides.payload ?? { prompt: 'Test task prompt' },
+        config: overrides.config,
+        repoId: overrides.repoId,
+        ...overrides,
+    };
+
+    const body = JSON.stringify(taskSpec);
+    const res = await request(`${baseURL}/api/queue`, { method: 'POST', body });
+
+    if (res.status !== 201) {
+        throw new Error(`Failed to seed queue task: ${res.status} ${res.body}`);
+    }
+
+    const json = JSON.parse(res.body);
+    return json.task ?? json;
+}
+
+/** Seed multiple queue tasks via POST /api/queue/bulk.  Returns created tasks. */
+export async function seedQueueTasks(
+    baseURL: string,
+    tasks: QueueTaskOverrides[],
+): Promise<Record<string, unknown>[]> {
+    const taskSpecs = tasks.map((t) => ({
+        type: t.type ?? 'ai-clarification',
+        priority: t.priority ?? 'normal',
+        displayName: t.displayName,
+        payload: t.payload ?? { prompt: 'Bulk task prompt' },
+        config: t.config,
+        repoId: t.repoId,
+        ...t,
+    }));
+
+    const body = JSON.stringify({ tasks: taskSpecs });
+    const res = await request(`${baseURL}/api/queue/bulk`, { method: 'POST', body });
+
+    if (res.status !== 201 && res.status !== 207) {
+        throw new Error(`Failed to seed bulk queue tasks: ${res.status} ${res.body}`);
+    }
+
+    const json = JSON.parse(res.body);
+    return (json.success ?? json.tasks ?? []).map((s: Record<string, unknown>) => s.task ?? s);
+}
+
+/** Seed conversation turns for an existing process via PATCH /api/processes/:id. */
+export async function seedConversationTurns(
+    baseURL: string,
+    processId: string,
+    turns: Array<{
+        type: 'user' | 'assistant' | 'tool';
+        content: string;
+        timestamp?: string;
+        tool?: string;
+        toolInput?: string;
+        toolOutput?: string;
+    }>,
+): Promise<void> {
+    const getRes = await request(`${baseURL}/api/processes/${processId}`);
+    if (getRes.status !== 200) {
+        throw new Error(`Process ${processId} not found: ${getRes.status}`);
+    }
+
+    const process = JSON.parse(getRes.body);
+    const updatedConversation = [
+        ...(process.conversation ?? []),
+        ...turns.map((turn) => ({
+            ...turn,
+            timestamp: turn.timestamp ?? new Date().toISOString(),
+        })),
+    ];
+
+    const updateRes = await request(`${baseURL}/api/processes/${processId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ conversation: updatedConversation }),
+    });
+
+    if (updateRes.status !== 200) {
+        throw new Error(`Failed to update conversation: ${updateRes.status} ${updateRes.body}`);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Workspace Helpers
+// ---------------------------------------------------------------------------
+
 /** Seed a workspace via POST /api/workspaces. */
 export async function seedWorkspace(
     baseURL: string,
