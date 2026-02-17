@@ -199,6 +199,27 @@ export async function seedConversationTurns(
 // Workspace Helpers
 // ---------------------------------------------------------------------------
 
+/** Seed a wiki via POST /api/wikis. Returns the created wiki registration. */
+export async function seedWiki(
+    baseURL: string,
+    id: string,
+    wikiDir: string,
+    repoPath?: string,
+    name?: string,
+    color?: string,
+): Promise<Record<string, unknown>> {
+    const payload: Record<string, string> = {
+        id,
+        wikiDir,
+    };
+    if (repoPath) payload.repoPath = repoPath;
+    if (name) payload.name = name;
+    if (color) payload.color = color;
+    const body = JSON.stringify(payload);
+    const res = await request(`${baseURL}/api/wikis`, { method: 'POST', body });
+    return JSON.parse(res.body);
+}
+
 /** Seed a workspace via POST /api/workspaces. */
 export async function seedWorkspace(
     baseURL: string,
