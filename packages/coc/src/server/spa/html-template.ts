@@ -154,20 +154,7 @@ ${bundleCss}
                     <div class="empty-state-text">Choose a wiki from the sidebar to browse its documentation.</div>
                 </div>
                 <div class="wiki-component-detail hidden" id="wiki-component-detail">
-                    <div id="wiki-content-scroll" class="wiki-content-scroll">
-                        <div class="wiki-content-layout">
-                            <article class="wiki-article">
-                                <div id="wiki-article-content">
-                                </div>
-                            </article>
-                            <aside class="wiki-toc-sidebar" id="wiki-toc-sidebar">
-                                <div class="toc-container">
-                                    <h4 class="toc-title">On this page</h4>
-                                    <nav id="wiki-toc-nav" class="toc-nav"></nav>
-                                </div>
-                            </aside>
-                        </div>
-                    </div>
+                    <div class="wiki-miller-columns" id="wiki-miller-columns"></div>
                 </div>
             </main>
         </div>

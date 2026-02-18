@@ -509,34 +509,47 @@ describe('html-template.ts — wiki content area structure', () => {
     let templateContent: string;
     beforeAll(() => { templateContent = readSpaFile('html-template.ts'); });
 
-    it('contains wiki-content-scroll wrapper', () => {
-        expect(templateContent).toContain('wiki-content-scroll');
+    it('contains wiki-miller-columns container', () => {
+        expect(templateContent).toContain('wiki-miller-columns');
     });
 
-    it('contains wiki-content-layout flex container', () => {
-        expect(templateContent).toContain('wiki-content-layout');
+    it('contains wiki-component-detail wrapper', () => {
+        expect(templateContent).toContain('wiki-component-detail');
+    });
+});
+
+describe('wiki-content.ts — Miller columns render content area elements', () => {
+    let contentSource: string;
+    beforeAll(() => { contentSource = readClientFile('wiki-content.ts'); });
+
+    it('renders wiki-content-scroll wrapper in Miller preview', () => {
+        expect(contentSource).toContain('wiki-content-scroll');
     });
 
-    it('contains wiki-article element', () => {
-        expect(templateContent).toContain('wiki-article');
+    it('renders wiki-content-layout flex container in Miller preview', () => {
+        expect(contentSource).toContain('wiki-content-layout');
     });
 
-    it('contains wiki-article-content for rendered content', () => {
-        expect(templateContent).toContain('wiki-article-content');
+    it('renders wiki-article element in Miller preview', () => {
+        expect(contentSource).toContain('wiki-article');
     });
 
-    it('contains wiki-toc-sidebar aside', () => {
-        expect(templateContent).toContain('wiki-toc-sidebar');
+    it('renders wiki-article-content in Miller preview', () => {
+        expect(contentSource).toContain('wiki-article-content');
     });
 
-    it('contains toc-container with toc-title and wiki-toc-nav', () => {
-        expect(templateContent).toContain('toc-container');
-        expect(templateContent).toContain('toc-title');
-        expect(templateContent).toContain('wiki-toc-nav');
+    it('renders wiki-toc-sidebar in Miller preview', () => {
+        expect(contentSource).toContain('wiki-toc-sidebar');
+    });
+
+    it('renders toc-container with toc-title and wiki-toc-nav', () => {
+        expect(contentSource).toContain('toc-container');
+        expect(contentSource).toContain('toc-title');
+        expect(contentSource).toContain('wiki-toc-nav');
     });
 
     it('ToC title reads "On this page"', () => {
-        expect(templateContent).toContain('On this page');
+        expect(contentSource).toContain('On this page');
     });
 });
 
