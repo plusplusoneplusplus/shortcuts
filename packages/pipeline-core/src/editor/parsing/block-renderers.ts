@@ -140,7 +140,7 @@ export function renderCodeBlock(block: CodeBlock, options?: CodeBlockRenderOptio
             : '';
         return '<span class="code-line' + highlightClass + '" data-line="' + lineNum + '"' + commentAttr + '>' +
             lineNumberSpan + lineHtml + '</span>';
-    }).join('\n');
+    }).join('');
 
     // Container data attributes
     let containerAttrs = ' data-start-line="' + block.startLine +
