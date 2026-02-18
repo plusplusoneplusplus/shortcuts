@@ -883,6 +883,108 @@ describe('Queue Handler', () => {
             const body = JSON.parse(historyRes.body);
             expect(body.history).toHaveLength(0);
         });
+
+        describe('GET /api/queue/history?repoId — Filter history by repo', () => {
+            it('should return all history when no repoId param is provided', async () => {
+                const srv = await startServer();
+                const r1 = await postJSON(`${srv.url}/api/queue`, makeTask({ repoId: 'repo-1' }));
+                const r2 = await postJSON(`${srv.url}/api/queue`, makeTask({ repoId: 'repo-2' }));
+                const id1 = JSON.parse(r1.body).task.id;
+                const id2 = JSON.parse(r2.body).task.id;
+                await request(`${srv.url}/api/queue/${id1}`, { method: 'DELETE' });
+                await request(`${srv.url}/api/queue/${id2}`, { method: 'DELETE' });
+
+                const res = await request(`${srv.url}/api/queue/history`);
+                expect(res.status).toBe(200);
+                const body = JSON.parse(res.body);
+                expect(body.history).toHaveLength(2);
+            });
+
+            it('should filter history by explicit task.repoId', async () => {
+                const srv = await startServer();
+                const r1 = await postJSON(`${srv.url}/api/queue`, makeTask({ repoId: 'repo-1' }));
+                const r2 = await postJSON(`${srv.url}/api/queue`, makeTask({ repoId: 'repo-2' }));
+                const r3 = await postJSON(`${srv.url}/api/queue`, makeTask({ repoId: 'repo-1' }));
+                for (const r of [r1, r2, r3]) {
+                    const id = JSON.parse(r.body).task.id;
+                    await request(`${srv.url}/api/queue/${id}`, { method: 'DELETE' });
+                }
+
+                const res = await request(`${srv.url}/api/queue/history?repoId=repo-1`);
+                expect(res.status).toBe(200);
+                const body = JSON.parse(res.body);
+                expect(body.history).toHaveLength(2);
+                expect(body.history.every((t: any) => t.repoId === 'repo-1')).toBe(true);
+            });
+
+            it('should return empty array when no history matches the repoId', async () => {
+                const srv = await startServer();
+                const r = await postJSON(`${srv.url}/api/queue`, makeTask({ repoId: 'repo-1' }));
+                const id = JSON.parse(r.body).task.id;
+                await request(`${srv.url}/api/queue/${id}`, { method: 'DELETE' });
+
+                const res = await request(`${srv.url}/api/queue/history?repoId=nonexistent`);
+                expect(res.status).toBe(200);
+                const body = JSON.parse(res.body);
+                expect(body.history).toHaveLength(0);
+            });
+
+            it('should treat empty repoId param as no filter', async () => {
+                const srv = await startServer();
+                const r1 = await postJSON(`${srv.url}/api/queue`, makeTask({ repoId: 'repo-1' }));
+                const r2 = await postJSON(`${srv.url}/api/queue`, makeTask({ repoId: 'repo-2' }));
+                for (const r of [r1, r2]) {
+                    const id = JSON.parse(r.body).task.id;
+                    await request(`${srv.url}/api/queue/${id}`, { method: 'DELETE' });
+                }
+
+                const res = await request(`${srv.url}/api/queue/history?repoId=`);
+                expect(res.status).toBe(200);
+                const body = JSON.parse(res.body);
+                expect(body.history).toHaveLength(2);
+            });
+
+            it('should match history tasks via extractRepoId fallback when task.repoId is absent', async () => {
+                const srv = await startServer();
+                // Enqueue a task without explicit repoId but with a workingDirectory
+                // that extractRepoId can resolve (current repo root)
+                const cwd = process.cwd();
+                const r = await postJSON(`${srv.url}/api/queue`, makeTask({
+                    payload: { data: { prompt: 'test' }, workingDirectory: cwd },
+                }));
+                const id = JSON.parse(r.body).task.id;
+                await request(`${srv.url}/api/queue/${id}`, { method: 'DELETE' });
+
+                // Verify the task has no top-level repoId
+                const historyAll = await request(`${srv.url}/api/queue/history`);
+                const allTasks = JSON.parse(historyAll.body).history;
+                const task = allTasks.find((t: any) => t.id === id);
+                expect(task.repoId).toBeUndefined();
+
+                // Compute the expected repoId using the same logic as extractRepoId:
+                // git rev-parse --show-toplevel → normalizeRepoPath
+                const { execSync } = await import('child_process');
+                let gitRoot: string;
+                try {
+                    gitRoot = execSync('git rev-parse --show-toplevel', { cwd, encoding: 'utf-8' }).trim();
+                } catch {
+                    // Skip if not in a git repo
+                    return;
+                }
+                // normalizeRepoPath: resolve → realpathSync → forward slashes
+                const pathMod = await import('path');
+                const fsMod = await import('fs');
+                let normalized = pathMod.resolve(gitRoot);
+                try { normalized = fsMod.realpathSync(normalized); } catch { /* ignore */ }
+                normalized = normalized.split(pathMod.sep).join('/');
+                const expectedRepoId = normalized;
+
+                const res = await request(`${srv.url}/api/queue/history?repoId=${encodeURIComponent(expectedRepoId)}`);
+                expect(res.status).toBe(200);
+                const body = JSON.parse(res.body);
+                expect(body.history.some((t: any) => t.id === id)).toBe(true);
+            });
+        });
     });
 
     // ========================================================================

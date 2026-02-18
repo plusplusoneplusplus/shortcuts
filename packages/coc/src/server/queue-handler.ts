@@ -345,8 +345,21 @@ export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueMana
     routes.push({
         method: 'GET',
         pattern: '/api/queue/history',
-        handler: async (_req, res) => {
-            const history = queueManager.getHistory().map(serializeTask);
+        handler: async (req, res) => {
+            const parsed = url.parse(req.url || '/', true);
+            const repoId = typeof parsed.query.repoId === 'string' && parsed.query.repoId
+                ? parsed.query.repoId
+                : undefined;
+
+            let history: Record<string, unknown>[];
+            if (repoId) {
+                const matchesRepo = (task: QueuedTask): boolean =>
+                    task.repoId === repoId || extractRepoId(task.payload) === repoId;
+                history = queueManager.getHistory().filter(matchesRepo).map(serializeTask);
+            } else {
+                history = queueManager.getHistory().map(serializeTask);
+            }
+
             sendJSON(res, 200, { history });
         },
     });
