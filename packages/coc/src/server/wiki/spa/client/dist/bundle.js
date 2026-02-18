@@ -1531,11 +1531,35 @@
     }
   }
 
+  // src/server/wiki/spa/client/sse-utils.ts
+  async function readSSEStream(reader, onEvent) {
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const result = await reader.read();
+      if (result.done) break;
+      buffer += decoder.decode(result.value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+      for (let li = 0; li < lines.length; li++) {
+        const line = lines[li];
+        if (!line.startsWith("data: ")) continue;
+        try {
+          const event = JSON.parse(line.substring(6));
+          onEvent(event);
+        } catch (_e) {
+        }
+      }
+    }
+  }
+
   // src/server/wiki/spa/client/admin.ts
   var adminSeedsOriginal = "";
   var adminConfigOriginal = "";
   var adminInitialized = false;
   var generateRunning = false;
+  var wizardInitialized = false;
+  var wizardSeeds = [];
   function showAdmin(skipHistory) {
     setCurrentComponentId(null);
     showAdminContent();
@@ -1551,6 +1575,7 @@
     loadAdminSeeds();
     loadAdminConfig();
     loadGenerateStatus();
+    checkAndShowWizard();
   }
   function setupAdminListeners() {
     const adminToggle = document.getElementById("admin-toggle");
@@ -1902,24 +1927,9 @@
         return;
       }
       const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      while (true) {
-        const result = await reader.read();
-        if (result.done) break;
-        buffer += decoder.decode(result.value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-        for (let li = 0; li < lines.length; li++) {
-          const line = lines[li];
-          if (!line.startsWith("data: ")) continue;
-          try {
-            const event = JSON.parse(line.substring(6));
-            handleGenerateEvent(event, statusBar);
-          } catch (_e) {
-          }
-        }
-      }
+      await readSSEStream(reader, function(event) {
+        handleGenerateEvent(event, statusBar);
+      });
     } catch (err) {
       if (statusBar) {
         statusBar.textContent = "Connection error: " + err.message;
@@ -2065,36 +2075,21 @@
         return;
       }
       const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      while (true) {
-        const result = await reader.read();
-        if (result.done) break;
-        buffer += decoder.decode(result.value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-        for (let li = 0; li < lines.length; li++) {
-          const line = lines[li];
-          if (!line.startsWith("data: ")) continue;
-          try {
-            const event = JSON.parse(line.substring(6));
-            if (logEl) {
-              if (event.type === "log" || event.type === "status") {
-                logEl.textContent += "\n" + event.message;
-                logEl.scrollTop = logEl.scrollHeight;
-              }
-              if (event.type === "done") {
-                const dur = event.duration ? " (" + formatDuration(event.duration) + ")" : "";
-                logEl.textContent += "\n" + (event.success ? "Done" + dur : "Failed: " + (event.error || "Unknown"));
-              }
-              if (event.type === "error") {
-                logEl.textContent += "\nError: " + event.message;
-              }
-            }
-          } catch (_e) {
+      await readSSEStream(reader, function(event) {
+        if (logEl) {
+          if (event.type === "log" || event.type === "status") {
+            logEl.textContent += "\n" + event.message;
+            logEl.scrollTop = logEl.scrollHeight;
+          }
+          if (event.type === "done") {
+            const dur = event.duration ? " (" + formatDuration(event.duration) + ")" : "";
+            logEl.textContent += "\n" + (event.success ? "Done" + dur : "Failed: " + (event.error || "Unknown"));
+          }
+          if (event.type === "error") {
+            logEl.textContent += "\nError: " + event.message;
           }
         }
-      }
+      });
     } catch (err) {
       if (logEl) logEl.textContent += "\nConnection error: " + err.message;
     } finally {
@@ -2106,6 +2101,176 @@
       }
       loadGenerateStatus();
     }
+  }
+  async function checkAndShowWizard() {
+    try {
+      const wikiId = window.__WIKI_CONFIG__?.wikiId;
+      if (!wikiId) return;
+      const res = await fetch("/api/wikis/" + encodeURIComponent(wikiId));
+      const data = await res.json();
+      if (data.wiki?.loaded === false) {
+        showWizard();
+      }
+    } catch (_e) {
+    }
+  }
+  function showWizard() {
+    const wizard = document.getElementById("bootstrap-wizard");
+    if (wizard) wizard.classList.remove("hidden");
+    const stepSeeds = document.getElementById("wizard-step-seeds");
+    if (stepSeeds) stepSeeds.classList.remove("hidden");
+    const stepConfig = document.getElementById("wizard-step-config");
+    if (stepConfig) stepConfig.classList.add("hidden");
+    const indicators = document.querySelectorAll("#wizard-stepper .wizard-step-indicator");
+    indicators.forEach(function(el, i) {
+      if (i === 0) el.classList.add("active");
+      else el.classList.remove("active");
+    });
+    if (!wizardInitialized) {
+      initWizardEvents();
+      wizardInitialized = true;
+    }
+    startWizardSeedsGenerate();
+  }
+  function initWizardEvents() {
+    const generateBtn = document.getElementById("wizard-seeds-generate-btn");
+    if (generateBtn) {
+      generateBtn.addEventListener("click", function() {
+        startWizardSeedsGenerate();
+      });
+    }
+    const saveBtn = document.getElementById("wizard-seeds-save-btn");
+    if (saveBtn) {
+      saveBtn.addEventListener("click", function() {
+        saveWizardSeedsAndAdvance();
+      });
+    }
+    const skipBtn = document.getElementById("wizard-seeds-skip-btn");
+    if (skipBtn) {
+      skipBtn.addEventListener("click", function() {
+        advanceWizardToStep2();
+      });
+    }
+  }
+  async function startWizardSeedsGenerate() {
+    const btn = document.getElementById("wizard-seeds-generate-btn");
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Generating\u2026";
+    }
+    const logEl = document.getElementById("wizard-seeds-log");
+    if (logEl) {
+      logEl.textContent = "";
+      logEl.classList.remove("hidden");
+    }
+    const reviewEl = document.getElementById("wizard-seeds-review");
+    if (reviewEl) {
+      reviewEl.innerHTML = "";
+      reviewEl.classList.add("hidden");
+    }
+    try {
+      const response = await fetch("/api/admin/seeds/generate", { method: "POST" });
+      if (!response.ok) {
+        if (logEl) logEl.textContent = "Error: HTTP " + response.status;
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = "Re-generate";
+        }
+        return;
+      }
+      const reader = response.body.getReader();
+      await readSSEStream(reader, function(event) {
+        if (event.type === "status" || event.type === "log") {
+          if (logEl) {
+            logEl.textContent += (logEl.textContent ? "\n" : "") + event.message;
+            logEl.scrollTop = logEl.scrollHeight;
+          }
+        }
+        if (event.type === "done") {
+          if (event.success && event.seeds) {
+            wizardSeeds = event.seeds;
+            renderWizardSeedChips(wizardSeeds);
+            populateWizardSeedsEditor(wizardSeeds);
+            if (reviewEl) reviewEl.classList.remove("hidden");
+          } else {
+            if (logEl) {
+              logEl.textContent += "\nError: " + (event.error || "Unknown error");
+            }
+          }
+        }
+      });
+    } catch (err) {
+      if (logEl) logEl.textContent += "\nConnection error: " + err.message;
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "Re-generate";
+      }
+    }
+  }
+  function renderWizardSeedChips(seeds) {
+    const container = document.getElementById("wizard-seeds-review");
+    if (!container) return;
+    container.innerHTML = "";
+    seeds.forEach(function(seed) {
+      const chip = document.createElement("div");
+      chip.className = "wizard-seed-chip";
+      chip.textContent = seed.theme;
+      chip.title = seed.description;
+      container.appendChild(chip);
+    });
+  }
+  function populateWizardSeedsEditor(seeds) {
+    const editor = document.getElementById("wizard-seeds-editor");
+    if (!editor) return;
+    const yaml = window.jsyaml.dump({ themes: seeds });
+    editor.value = yaml;
+  }
+  async function saveWizardSeedsAndAdvance() {
+    const editor = document.getElementById("wizard-seeds-editor");
+    if (!editor) return;
+    const text = editor.value;
+    let parsed;
+    try {
+      parsed = window.jsyaml.load(text);
+    } catch (_e) {
+      const btn = document.getElementById("wizard-seeds-save-btn");
+      if (btn) {
+        const original = btn.textContent;
+        btn.textContent = "Invalid YAML";
+        setTimeout(function() {
+          btn.textContent = original;
+        }, 2e3);
+      }
+      return;
+    }
+    const logEl = document.getElementById("wizard-seeds-log");
+    try {
+      const res = await fetch("/api/admin/seeds", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: parsed })
+      });
+      const data = await res.json();
+      if (data.success) {
+        advanceWizardToStep2();
+      } else {
+        if (logEl) logEl.textContent += "\n" + (data.error || "Save failed");
+      }
+    } catch (err) {
+      if (logEl) logEl.textContent += "\nError: " + err.message;
+    }
+  }
+  function advanceWizardToStep2() {
+    const stepSeeds = document.getElementById("wizard-step-seeds");
+    if (stepSeeds) stepSeeds.classList.add("hidden");
+    const stepConfig = document.getElementById("wizard-step-config");
+    if (stepConfig) stepConfig.classList.remove("hidden");
+    const indicators = document.querySelectorAll("#wizard-stepper .wizard-step-indicator");
+    indicators.forEach(function(el, i) {
+      if (i === 0) el.classList.remove("active");
+      if (i === 1) el.classList.add("active");
+    });
   }
 
   // src/server/wiki/spa/client/index.ts
