@@ -900,6 +900,150 @@ export function renderEditModeHTML(commentId: string, currentText: string): stri
 }
 
 // ============================================================================
+// Inline Comment Popup (shown when clicking a highlighted comment)
+// ============================================================================
+
+/**
+ * Render an inline comment popup that appears near a highlighted comment in the preview.
+ * Shows the comment card with actions, positioned near the highlight element.
+ */
+export function renderInlineCommentPopupHTML(comment: TaskComment, readonly?: boolean): string {
+    const cat = getCommentCategory(comment);
+    const cardHTML = renderCommentCardHTML({ comment, category: cat, readonly });
+    return '<div class="comment-inline-popup" data-popup-comment-id="' + escapeHtml(comment.id) + '">' +
+        '<div class="comment-inline-popup__arrow"></div>' +
+        cardHTML +
+        '</div>';
+}
+
+/**
+ * Show an inline comment popup near a highlight element.
+ * Removes any existing popup first. Returns the popup element.
+ */
+export function showInlineCommentPopup(
+    comment: TaskComment,
+    highlightEl: HTMLElement,
+    container: HTMLElement,
+    readonly?: boolean
+): HTMLElement {
+    dismissInlineCommentPopup();
+
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = renderInlineCommentPopupHTML(comment, readonly);
+    const popup = wrapper.firstElementChild as HTMLElement;
+    document.body.appendChild(popup);
+
+    const highlightRect = highlightEl.getBoundingClientRect();
+    const popupRect = popup.getBoundingClientRect();
+    const MARGIN = 8;
+
+    let top = highlightRect.bottom + MARGIN;
+    if (top + popupRect.height > window.innerHeight - MARGIN) {
+        top = highlightRect.top - popupRect.height - MARGIN;
+        popup.classList.add('comment-inline-popup--above');
+    }
+
+    let left = highlightRect.left + highlightRect.width / 2 - popupRect.width / 2;
+    left = Math.max(MARGIN, Math.min(left, window.innerWidth - popupRect.width - MARGIN));
+
+    popup.style.top = top + 'px';
+    popup.style.left = left + 'px';
+
+    return popup;
+}
+
+/**
+ * Dismiss any visible inline comment popup.
+ */
+export function dismissInlineCommentPopup(): void {
+    const existing = document.querySelector('.comment-inline-popup');
+    if (existing) existing.remove();
+}
+
+// ============================================================================
+// Comment Dropdown (shown when clicking the comment count badge)
+// ============================================================================
+
+/**
+ * Render a dropdown list of all comments, for display under the toggle button.
+ * Each item shows category icon, short preview, and line number.
+ */
+export function renderCommentDropdownHTML(comments: TaskComment[]): string {
+    if (comments.length === 0) {
+        return '<div class="comment-dropdown">' +
+            '<div class="comment-dropdown__empty">No comments yet</div>' +
+            '</div>';
+    }
+
+    let html = '<div class="comment-dropdown" role="listbox" aria-label="Comments list">';
+    for (const c of comments) {
+        const cat = getCommentCategory(c);
+        const info = CATEGORY_INFO[cat];
+        const isResolved = c.status === 'resolved';
+        const resolvedClass = isResolved ? ' comment-dropdown__item--resolved' : '';
+        const preview = c.comment.length > 60 ? c.comment.substring(0, 60) + '…' : c.comment;
+        const lineLabel = c.selection ? 'L' + c.selection.startLine : '';
+
+        html += '<div class="comment-dropdown__item' + resolvedClass + '" ' +
+            'data-comment-id="' + escapeHtml(c.id) + '" ' +
+            'role="option" tabindex="0">';
+        html += '<span class="comment-dropdown__icon comment-card__category-badge--' + cat + '">' + info.icon + '</span>';
+        html += '<span class="comment-dropdown__text">' + escapeHtml(preview) + '</span>';
+        if (lineLabel) {
+            html += '<span class="comment-dropdown__line">' + escapeHtml(lineLabel) + '</span>';
+        }
+        if (isResolved) {
+            html += '<span class="comment-dropdown__resolved" title="Resolved">\u2705</span>';
+        }
+        html += '</div>';
+    }
+    html += '</div>';
+    return html;
+}
+
+/**
+ * Show the comment dropdown under the toggle button.
+ * Returns the dropdown element.
+ */
+export function showCommentDropdown(
+    comments: TaskComment[],
+    anchorEl: HTMLElement
+): HTMLElement {
+    dismissCommentDropdown();
+
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = renderCommentDropdownHTML(comments);
+    const dropdown = wrapper.firstElementChild as HTMLElement;
+    document.body.appendChild(dropdown);
+
+    const anchorRect = anchorEl.getBoundingClientRect();
+    const dropdownRect = dropdown.getBoundingClientRect();
+    const MARGIN = 4;
+
+    let top = anchorRect.bottom + MARGIN;
+    if (top + dropdownRect.height > window.innerHeight - MARGIN) {
+        top = anchorRect.top - dropdownRect.height - MARGIN;
+    }
+
+    let left = anchorRect.right - dropdownRect.width;
+    if (left < MARGIN) left = anchorRect.left;
+    left = Math.max(MARGIN, Math.min(left, window.innerWidth - dropdownRect.width - MARGIN));
+
+    dropdown.style.top = top + 'px';
+    dropdown.style.left = left + 'px';
+
+    return dropdown;
+}
+
+/**
+ * Dismiss any visible comment dropdown.
+ */
+export function dismissCommentDropdown(): void {
+    const existing = document.querySelector('.comment-dropdown');
+    if (existing) existing.remove();
+}
+
+// ============================================================================
 // AI Loading State
 // ============================================================================
 

@@ -860,3 +860,157 @@ html[data-theme="dark"] {
 @keyframes ai-spin {
     to { transform: rotate(360deg); }
 }
+
+/* ============================================================================
+   Inline Comment Popup (shown on highlight click)
+   ============================================================================ */
+
+.comment-inline-popup {
+    position: fixed;
+    z-index: 10001;
+    min-width: 300px;
+    max-width: 420px;
+    background: var(--card-bg, #fff);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+    animation: comment-popup-in 0.15s ease;
+}
+
+.comment-inline-popup .comment-card {
+    border: none;
+    border-radius: 8px;
+    margin-bottom: 0;
+}
+
+.comment-inline-popup__arrow {
+    position: absolute;
+    top: -6px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 12px;
+    height: 6px;
+    overflow: hidden;
+}
+
+.comment-inline-popup__arrow::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%) rotate(45deg);
+    width: 8px;
+    height: 8px;
+    background: var(--card-bg, #fff);
+    border: 1px solid var(--border-color);
+    border-bottom: 0;
+    border-right: 0;
+}
+
+.comment-inline-popup--above .comment-inline-popup__arrow {
+    top: auto;
+    bottom: -6px;
+}
+
+.comment-inline-popup--above .comment-inline-popup__arrow::after {
+    bottom: auto;
+    top: 0;
+    border: 1px solid var(--border-color);
+    border-top: 0;
+    border-left: 0;
+}
+
+@keyframes comment-popup-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ============================================================================
+   Comment Dropdown (shown on toggle button click)
+   ============================================================================ */
+
+.comment-dropdown {
+    position: fixed;
+    z-index: 10002;
+    min-width: 260px;
+    max-width: 380px;
+    max-height: 360px;
+    overflow-y: auto;
+    background: var(--card-bg, #fff);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+    animation: comment-dropdown-in 0.12s ease;
+    padding: 4px 0;
+}
+
+.comment-dropdown__empty {
+    padding: 16px;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-style: italic;
+}
+
+.comment-dropdown__item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: background 0.12s ease;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.comment-dropdown__item:hover,
+.comment-dropdown__item:focus {
+    background: var(--hover-bg);
+    outline: none;
+}
+
+.comment-dropdown__item--resolved {
+    opacity: 0.6;
+}
+
+.comment-dropdown__icon {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 4px;
+    font-size: 12px;
+    color: #fff;
+}
+
+.comment-dropdown__text {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-primary);
+}
+
+.comment-dropdown__line {
+    flex-shrink: 0;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+}
+
+.comment-dropdown__resolved {
+    flex-shrink: 0;
+    font-size: 12px;
+}
+
+@keyframes comment-dropdown-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}

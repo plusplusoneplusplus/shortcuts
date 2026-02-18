@@ -32,6 +32,10 @@ import {
     offsetToPosition,
     // Toggle button
     renderCommentToggleHTML,
+    // Inline popup
+    renderInlineCommentPopupHTML,
+    // Comment dropdown
+    renderCommentDropdownHTML,
 } from '../../../../src/server/spa/client/task-comments-ui';
 import type { TaskComment } from '../../../../src/server/spa/client/task-comments-types';
 
@@ -877,5 +881,239 @@ describe('renderSelectionToolbarHTML (input panel)', () => {
         // Only general should have the active class
         const matches = html.match(/selection-toolbar__btn--active/g);
         expect(matches).toHaveLength(1);
+    });
+});
+
+// ============================================================================
+// Inline Comment Popup
+// ============================================================================
+
+describe('renderInlineCommentPopupHTML', () => {
+    it('renders popup wrapper with comment id', () => {
+        const comment = makeComment({ id: 'popup-1' });
+        const html = renderInlineCommentPopupHTML(comment);
+        expect(html).toContain('class="comment-inline-popup"');
+        expect(html).toContain('data-popup-comment-id="popup-1"');
+    });
+
+    it('contains the comment card inside', () => {
+        const comment = makeComment({ comment: 'Great work here' });
+        const html = renderInlineCommentPopupHTML(comment);
+        expect(html).toContain('class="comment-card');
+        expect(html).toContain('Great work here');
+    });
+
+    it('includes arrow element', () => {
+        const html = renderInlineCommentPopupHTML(makeComment());
+        expect(html).toContain('comment-inline-popup__arrow');
+    });
+
+    it('detects category from comment', () => {
+        const comment = makeComment({ category: 'bug' as any, comment: 'Found a bug' });
+        const html = renderInlineCommentPopupHTML(comment);
+        expect(html).toContain('comment-card__category-badge--bug');
+    });
+
+    it('renders action buttons by default', () => {
+        const html = renderInlineCommentPopupHTML(makeComment());
+        expect(html).toContain('data-action="reply"');
+        expect(html).toContain('data-action="resolve"');
+        expect(html).toContain('data-action="delete"');
+    });
+
+    it('hides action buttons in readonly mode', () => {
+        const html = renderInlineCommentPopupHTML(makeComment(), true);
+        expect(html).not.toContain('data-action="reply"');
+        expect(html).not.toContain('comment-card__footer');
+    });
+
+    it('shows resolved state correctly', () => {
+        const comment = makeComment({ status: 'resolved' });
+        const html = renderInlineCommentPopupHTML(comment);
+        expect(html).toContain('comment-card--resolved');
+        expect(html).toContain('data-action="reopen"');
+    });
+
+    it('escapes HTML in comment id', () => {
+        const comment = makeComment({ id: '<script>xss</script>' });
+        const html = renderInlineCommentPopupHTML(comment);
+        expect(html).not.toContain('<script>xss</script>');
+        expect(html).toContain('&lt;script&gt;');
+    });
+
+    it('includes selected text when present', () => {
+        const comment = makeComment({ selectedText: 'some code snippet' });
+        const html = renderInlineCommentPopupHTML(comment);
+        expect(html).toContain('some code snippet');
+        expect(html).toContain('comment-selected-text');
+    });
+
+    it('shows author name', () => {
+        const comment = makeComment({ author: 'Bob' });
+        const html = renderInlineCommentPopupHTML(comment);
+        expect(html).toContain('Bob');
+    });
+});
+
+// ============================================================================
+// Comment Dropdown
+// ============================================================================
+
+describe('renderCommentDropdownHTML', () => {
+    it('renders empty state when no comments', () => {
+        const html = renderCommentDropdownHTML([]);
+        expect(html).toContain('comment-dropdown');
+        expect(html).toContain('comment-dropdown__empty');
+        expect(html).toContain('No comments yet');
+    });
+
+    it('renders items for each comment', () => {
+        const comments = [
+            makeComment({ id: 'd1', comment: 'First comment' }),
+            makeComment({ id: 'd2', comment: 'Second comment' }),
+        ];
+        const html = renderCommentDropdownHTML(comments);
+        expect(html).toContain('data-comment-id="d1"');
+        expect(html).toContain('data-comment-id="d2"');
+        expect(html).toContain('First comment');
+        expect(html).toContain('Second comment');
+    });
+
+    it('shows category icon for each item', () => {
+        const comments = [
+            makeCommentWithCategory('bug', { id: 'd1' }),
+            makeCommentWithCategory('question', { id: 'd2' }),
+        ];
+        const html = renderCommentDropdownHTML(comments);
+        expect(html).toContain(CATEGORY_INFO.bug.icon);
+        expect(html).toContain(CATEGORY_INFO.question.icon);
+    });
+
+    it('shows line number label', () => {
+        const comment = makeComment({
+            id: 'd1',
+            selection: { startLine: 42, startColumn: 1, endLine: 42, endColumn: 10 },
+        });
+        const html = renderCommentDropdownHTML([comment]);
+        expect(html).toContain('L42');
+        expect(html).toContain('comment-dropdown__line');
+    });
+
+    it('marks resolved items', () => {
+        const comment = makeComment({ id: 'd1', status: 'resolved' });
+        const html = renderCommentDropdownHTML([comment]);
+        expect(html).toContain('comment-dropdown__item--resolved');
+        expect(html).toContain('\u2705');
+    });
+
+    it('does not mark open items as resolved', () => {
+        const comment = makeComment({ id: 'd1', status: 'open' });
+        const html = renderCommentDropdownHTML([comment]);
+        expect(html).not.toContain('comment-dropdown__item--resolved');
+    });
+
+    it('truncates long comment text at 60 chars', () => {
+        const longComment = 'x'.repeat(100);
+        const html = renderCommentDropdownHTML([makeComment({ comment: longComment })]);
+        expect(html).toContain('…');
+        expect(html).not.toContain(longComment);
+    });
+
+    it('does not truncate short comment text', () => {
+        const shortComment = 'Short text';
+        const html = renderCommentDropdownHTML([makeComment({ comment: shortComment })]);
+        expect(html).toContain('Short text');
+        expect(html).not.toContain('…');
+    });
+
+    it('has listbox role and accessible label', () => {
+        const html = renderCommentDropdownHTML([makeComment()]);
+        expect(html).toContain('role="listbox"');
+        expect(html).toContain('aria-label="Comments list"');
+    });
+
+    it('items have option role and tabindex', () => {
+        const html = renderCommentDropdownHTML([makeComment()]);
+        expect(html).toContain('role="option"');
+        expect(html).toContain('tabindex="0"');
+    });
+
+    it('escapes HTML in comment text', () => {
+        const comment = makeComment({ comment: '<img src=x onerror=alert(1)>' });
+        const html = renderCommentDropdownHTML([comment]);
+        expect(html).not.toContain('<img');
+        expect(html).toContain('&lt;img');
+    });
+
+    it('handles comment without selection', () => {
+        const comment = makeComment({ id: 'd1' });
+        delete (comment as any).selection;
+        const html = renderCommentDropdownHTML([comment]);
+        expect(html).toContain('data-comment-id="d1"');
+        expect(html).not.toContain('comment-dropdown__line');
+    });
+
+    it('renders many comments without error', () => {
+        const comments: TaskComment[] = [];
+        for (let i = 0; i < 50; i++) {
+            comments.push(makeComment({ id: 'dd' + i, comment: 'Comment ' + i }));
+        }
+        const html = renderCommentDropdownHTML(comments);
+        expect(html).toContain('data-comment-id="dd0"');
+        expect(html).toContain('data-comment-id="dd49"');
+    });
+
+    it('uses category-specific badge class for icon', () => {
+        const comment = makeCommentWithCategory('suggestion', { id: 'd1' });
+        const html = renderCommentDropdownHTML([comment]);
+        expect(html).toContain('comment-card__category-badge--suggestion');
+    });
+
+    it('renders mixed resolved and open items', () => {
+        const comments = [
+            makeComment({ id: 'd1', status: 'open' }),
+            makeComment({ id: 'd2', status: 'resolved' }),
+            makeComment({ id: 'd3', status: 'open' }),
+        ];
+        const html = renderCommentDropdownHTML(comments);
+        const resolvedMatches = html.match(/comment-dropdown__item--resolved/g);
+        expect(resolvedMatches).toHaveLength(1);
+    });
+});
+
+// ============================================================================
+// Inline Popup + Dropdown Integration
+// ============================================================================
+
+describe('Inline popup and dropdown integration', () => {
+    it('popup renders with correct category from field', () => {
+        for (const cat of ALL_CATEGORIES) {
+            const comment = makeComment({ category: cat as any, comment: 'test' });
+            const html = renderInlineCommentPopupHTML(comment);
+            expect(html).toContain('comment-card__category-badge--' + cat);
+        }
+    });
+
+    it('dropdown shows all comments from a mixed set', () => {
+        const comments = [
+            makeCommentWithCategory('bug', { id: 'i1', status: 'open' }),
+            makeCommentWithCategory('suggestion', { id: 'i2', status: 'resolved' }),
+            makeComment({ id: 'i3', status: 'open' }),
+        ];
+        const html = renderCommentDropdownHTML(comments);
+        expect(html).toContain('data-comment-id="i1"');
+        expect(html).toContain('data-comment-id="i2"');
+        expect(html).toContain('data-comment-id="i3"');
+    });
+
+    it('popup and dropdown render independently', () => {
+        const comment = makeComment({ id: 'dual-1', comment: 'Test comment' });
+        const popupHtml = renderInlineCommentPopupHTML(comment);
+        const dropdownHtml = renderCommentDropdownHTML([comment]);
+
+        expect(popupHtml).toContain('comment-inline-popup');
+        expect(popupHtml).not.toContain('comment-dropdown');
+        expect(dropdownHtml).toContain('comment-dropdown');
+        expect(dropdownHtml).not.toContain('comment-inline-popup');
     });
 });

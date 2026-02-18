@@ -40,6 +40,10 @@ import {
     getPreviewSelection,
     SelectionToolbar,
     MIN_SELECTION_LENGTH,
+    showInlineCommentPopup,
+    dismissInlineCommentPopup,
+    showCommentDropdown,
+    dismissCommentDropdown,
     type CommentCategory,
     type CommentFilter,
     type StatusFilter,
@@ -1672,10 +1676,21 @@ async function loadPreviewContent(wsId: string, filePath: string): Promise<void>
         // Render mermaid diagrams (lazy-loads mermaid.js if needed)
         initTaskMermaid();
 
-        // Set up comment toggle button
+        // Set up comment toggle button — click shows dropdown, right-click toggles sidebar
         const toggleBtn = document.getElementById('comment-toggle-btn');
         if (toggleBtn) {
-            toggleBtn.addEventListener('click', () => {
+            toggleBtn.addEventListener('click', (e: MouseEvent) => {
+                e.stopPropagation();
+                const existingDropdown = document.querySelector('.comment-dropdown');
+                if (existingDropdown) {
+                    dismissCommentDropdown();
+                    return;
+                }
+                const dropdown = showCommentDropdown(previewComments, toggleBtn);
+                setupCommentDropdownHandlers(dropdown);
+            });
+            toggleBtn.addEventListener('contextmenu', (e: MouseEvent) => {
+                e.preventDefault();
                 commentSidebarOpen = !commentSidebarOpen;
                 toggleBtn.classList.toggle('comment-toggle-btn--active', commentSidebarOpen);
                 toggleBtn.setAttribute('aria-expanded', String(commentSidebarOpen));
@@ -1698,6 +1713,8 @@ async function loadPreviewContent(wsId: string, filePath: string): Promise<void>
 
 /** Clean up comment-related state and event listeners. */
 function cleanupCommentState(): void {
+    dismissInlineCommentPopup();
+    dismissCommentDropdown();
     if (commentEventUnsub) {
         commentEventUnsub();
         commentEventUnsub = null;
@@ -1884,6 +1901,139 @@ function highlightPreviewComments(): void {
             addCommentHighlight(previewBody, comment.id, comment.selectedText);
         }
     }
+
+    setupHighlightClickHandlers(previewBody);
+}
+
+/** Attach click handlers to comment highlights so clicking shows the inline popup. */
+function setupHighlightClickHandlers(previewBody: HTMLElement): void {
+    const highlights = previewBody.querySelectorAll('.comment-highlight');
+    highlights.forEach(el => {
+        el.addEventListener('click', (e: Event) => {
+            e.stopPropagation();
+            const commentId = (el as HTMLElement).getAttribute('data-comment-id');
+            if (!commentId) return;
+
+            const comment = previewComments.find(c => c.id === commentId);
+            if (!comment) return;
+
+            scrollToCommentHighlight(previewBody, commentId);
+            const popup = showInlineCommentPopup(comment, el as HTMLElement, previewBody);
+            attachInlinePopupHandlers(popup, commentId);
+        });
+    });
+}
+
+/** Attach action handlers and outside-click dismiss to an inline comment popup. */
+function attachInlinePopupHandlers(popup: HTMLElement, commentId: string): void {
+    attachCommentCardHandlers(popup, {
+        onResolve: (cid: string) => {
+            const wsId = taskPanelState.selectedWorkspaceId;
+            const filePath = taskPanelState.openFilePath;
+            if (wsId && filePath) {
+                resolveComment(wsId, filePath, cid).catch(() => {});
+                dismissInlineCommentPopup();
+            }
+        },
+        onReopen: (cid: string) => {
+            const wsId = taskPanelState.selectedWorkspaceId;
+            const filePath = taskPanelState.openFilePath;
+            if (wsId && filePath) {
+                unresolveComment(wsId, filePath, cid).catch(() => {});
+                dismissInlineCommentPopup();
+            }
+        },
+        onDelete: (cid: string) => {
+            const wsId = taskPanelState.selectedWorkspaceId;
+            const filePath = taskPanelState.openFilePath;
+            if (wsId && filePath) {
+                deleteComment(wsId, filePath, cid).catch(() => {});
+                dismissInlineCommentPopup();
+            }
+        },
+    });
+
+    const onClickOutside = (e: MouseEvent) => {
+        if (!popup.contains(e.target as Node)) {
+            dismissInlineCommentPopup();
+            document.removeEventListener('mousedown', onClickOutside, true);
+            document.removeEventListener('keydown', onEscDismiss, true);
+        }
+    };
+    const onEscDismiss = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+            dismissInlineCommentPopup();
+            document.removeEventListener('mousedown', onClickOutside, true);
+            document.removeEventListener('keydown', onEscDismiss, true);
+        }
+    };
+    setTimeout(() => {
+        document.addEventListener('mousedown', onClickOutside, true);
+        document.addEventListener('keydown', onEscDismiss, true);
+    }, 0);
+}
+
+/** Set up click and dismiss handlers for the comment dropdown. */
+function setupCommentDropdownHandlers(dropdown: HTMLElement): void {
+    dropdown.addEventListener('click', (e: Event) => {
+        const target = e.target as HTMLElement;
+        const item = target.closest('.comment-dropdown__item') as HTMLElement | null;
+        if (!item) return;
+
+        const commentId = item.getAttribute('data-comment-id');
+        if (!commentId) return;
+
+        dismissCommentDropdown();
+
+        const previewBody = document.getElementById('task-preview-body');
+        if (!previewBody) return;
+
+        scrollToCommentHighlight(previewBody, commentId);
+
+        const highlight = previewBody.querySelector('[data-comment-id="' + commentId + '"].comment-highlight') as HTMLElement | null;
+        const comment = previewComments.find(c => c.id === commentId);
+        if (highlight && comment) {
+            const popup = showInlineCommentPopup(comment, highlight, previewBody);
+            attachInlinePopupHandlers(popup, commentId);
+        }
+    });
+
+    dropdown.addEventListener('keydown', (e: KeyboardEvent) => {
+        const items = Array.from(dropdown.querySelectorAll('.comment-dropdown__item'));
+        const focused = document.activeElement as HTMLElement;
+        const idx = items.indexOf(focused);
+
+        if (e.key === 'ArrowDown' && idx < items.length - 1) {
+            e.preventDefault();
+            (items[idx + 1] as HTMLElement).focus();
+        } else if (e.key === 'ArrowUp' && idx > 0) {
+            e.preventDefault();
+            (items[idx - 1] as HTMLElement).focus();
+        } else if (e.key === 'Enter' && idx >= 0) {
+            focused.click();
+        } else if (e.key === 'Escape') {
+            dismissCommentDropdown();
+        }
+    });
+
+    const onClickOutside = (e: MouseEvent) => {
+        if (!dropdown.contains(e.target as Node)) {
+            dismissCommentDropdown();
+            document.removeEventListener('mousedown', onClickOutside, true);
+            document.removeEventListener('keydown', onEscKey, true);
+        }
+    };
+    const onEscKey = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+            dismissCommentDropdown();
+            document.removeEventListener('mousedown', onClickOutside, true);
+            document.removeEventListener('keydown', onEscKey, true);
+        }
+    };
+    setTimeout(() => {
+        document.addEventListener('mousedown', onClickOutside, true);
+        document.addEventListener('keydown', onEscKey, true);
+    }, 0);
 }
 
 /** Set up click handlers for table copy-as-markdown buttons. */
