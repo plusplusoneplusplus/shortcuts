@@ -1,7 +1,7 @@
 /**
  * Seed File Parser Tests
  *
- * Tests for parsing seed files in JSON and CSV formats.
+ * Tests for parsing seed files in YAML and CSV formats.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -22,43 +22,137 @@ describe('Seed File Parser', () => {
     });
 
     describe('parseSeedFile', () => {
-        it('should parse valid JSON seeds file', () => {
-            const filePath = path.join(tmpDir, 'seeds.json');
-            const content = JSON.stringify({
-                version: '1.0.0',
-                timestamp: 1234567890,
-                repoPath: '/path/to/repo',
-                themes: [
-                    {
-                        theme: 'authentication',
-                        description: 'User authentication',
-                        hints: ['auth', 'login'],
-                    },
-                    {
-                        theme: 'database',
-                        description: 'Database layer',
-                        hints: ['db', 'sql'],
-                    },
-                ],
-            });
+        it('should parse valid YAML seeds file', () => {
+            const filePath = path.join(tmpDir, 'seeds.yaml');
+            const content = `version: "1.0.0"
+timestamp: 1234567890
+repoPath: /path/to/repo
+themes:
+  - theme: authentication
+    description: User authentication
+    hints:
+      - auth
+      - login
+  - theme: database
+    description: Database layer
+    hints:
+      - db
+      - sql
+`;
 
             fs.writeFileSync(filePath, content, 'utf-8');
 
             const seeds = parseSeedFile(filePath);
             expect(seeds).toHaveLength(2);
             expect(seeds[0].theme).toBe('authentication');
+            expect(seeds[0].description).toBe('User authentication');
+            expect(seeds[0].hints).toEqual(['auth', 'login']);
             expect(seeds[1].theme).toBe('database');
+            expect(seeds[1].description).toBe('Database layer');
+            expect(seeds[1].hints).toEqual(['db', 'sql']);
         });
 
-        it('should parse JSON file with direct themes array', () => {
+        it('should normalize theme IDs to kebab-case', () => {
+            const filePath = path.join(tmpDir, 'seeds.yaml');
+            const content = `themes:
+  - theme: API Gateway
+    description: API gateway
+    hints:
+      - api
+`;
+
+            fs.writeFileSync(filePath, content, 'utf-8');
+
+            const seeds = parseSeedFile(filePath);
+            expect(seeds[0].theme).toBe('api-gateway');
+        });
+
+        it('should throw error on invalid YAML', () => {
+            const filePath = path.join(tmpDir, 'invalid.yaml');
+            fs.writeFileSync(filePath, 'key: [unclosed', 'utf-8');
+
+            expect(() => parseSeedFile(filePath)).toThrow('Invalid YAML');
+        });
+
+        it('should throw error on empty file', () => {
+            const filePath = path.join(tmpDir, 'empty.yaml');
+            fs.writeFileSync(filePath, '', 'utf-8');
+
+            expect(() => parseSeedFile(filePath)).toThrow('empty');
+        });
+
+        it('should throw error on missing theme field in YAML', () => {
+            const filePath = path.join(tmpDir, 'seeds.yaml');
+            const content = `themes:
+  - description: Missing theme field
+    hints:
+      - hint
+`;
+
+            fs.writeFileSync(filePath, content, 'utf-8');
+
+            expect(() => parseSeedFile(filePath)).toThrow("missing or invalid 'theme' field");
+        });
+
+        it('should throw error on missing description field in YAML', () => {
+            const filePath = path.join(tmpDir, 'seeds.yaml');
+            const content = `themes:
+  - theme: auth
+    hints:
+      - hint
+`;
+
+            fs.writeFileSync(filePath, content, 'utf-8');
+
+            expect(() => parseSeedFile(filePath)).toThrow("missing or invalid 'description' field");
+        });
+
+        it('should handle hints as comma-separated string in YAML', () => {
+            const filePath = path.join(tmpDir, 'seeds.yaml');
+            const content = `themes:
+  - theme: auth
+    description: Auth
+    hints: "login,password,token"
+`;
+
+            fs.writeFileSync(filePath, content, 'utf-8');
+
+            const seeds = parseSeedFile(filePath);
+            expect(seeds[0].hints).toEqual(['login', 'password', 'token']);
+        });
+
+        it('should default hints to theme name if missing in YAML', () => {
+            const filePath = path.join(tmpDir, 'seeds.yaml');
+            const content = `themes:
+  - theme: auth
+    description: Auth
+`;
+
+            fs.writeFileSync(filePath, content, 'utf-8');
+
+            const seeds = parseSeedFile(filePath);
+            expect(seeds[0].hints).toEqual(['auth']);
+        });
+
+        it('should throw error on non-existent file', () => {
+            expect(() => parseSeedFile(path.join(tmpDir, 'nonexistent.yaml'))).toThrow('does not exist');
+        });
+
+        it('should throw error on unsupported file extension', () => {
             const filePath = path.join(tmpDir, 'seeds.json');
-            const content = JSON.stringify([
-                {
-                    theme: 'auth',
-                    description: 'Auth',
-                    hints: ['hint'],
-                },
-            ]);
+            fs.writeFileSync(filePath, '{}', 'utf-8');
+
+            expect(() => parseSeedFile(filePath)).toThrow("Unsupported seed file extension");
+        });
+
+        it('should parse .yml extension', () => {
+            const filePath = path.join(tmpDir, 'seeds.yml');
+            const content = `themes:
+  - theme: auth
+    description: Auth
+    hints:
+      - login
+`;
 
             fs.writeFileSync(filePath, content, 'utf-8');
 
@@ -91,109 +185,6 @@ auth,Authentication,"login,password,token"`;
 
             const seeds = parseSeedFile(filePath);
             expect(seeds[0].hints).toEqual(['login', 'password', 'token']);
-        });
-
-        it('should normalize theme IDs to kebab-case', () => {
-            const filePath = path.join(tmpDir, 'seeds.json');
-            const content = JSON.stringify({
-                themes: [
-                    {
-                        theme: 'API Gateway',
-                        description: 'API gateway',
-                        hints: ['api'],
-                    },
-                ],
-            });
-
-            fs.writeFileSync(filePath, content, 'utf-8');
-
-            const seeds = parseSeedFile(filePath);
-            expect(seeds[0].theme).toBe('api-gateway');
-        });
-
-        it('should throw error on non-existent file', () => {
-            expect(() => parseSeedFile(path.join(tmpDir, 'nonexistent.json'))).toThrow('does not exist');
-        });
-
-        it('should throw error on invalid JSON', () => {
-            const filePath = path.join(tmpDir, 'invalid.json');
-            fs.writeFileSync(filePath, '{ invalid json }', 'utf-8');
-
-            expect(() => parseSeedFile(filePath)).toThrow('Invalid JSON');
-        });
-
-        it('should throw error on empty file', () => {
-            const filePath = path.join(tmpDir, 'empty.json');
-            fs.writeFileSync(filePath, '', 'utf-8');
-
-            expect(() => parseSeedFile(filePath)).toThrow('empty');
-        });
-
-        it('should throw error on missing theme field in JSON', () => {
-            const filePath = path.join(tmpDir, 'seeds.json');
-            const content = JSON.stringify({
-                themes: [
-                    {
-                        description: 'Missing theme field',
-                        hints: ['hint'],
-                    },
-                ],
-            });
-
-            fs.writeFileSync(filePath, content, 'utf-8');
-
-            expect(() => parseSeedFile(filePath)).toThrow("missing or invalid 'theme' field");
-        });
-
-        it('should throw error on missing description field in JSON', () => {
-            const filePath = path.join(tmpDir, 'seeds.json');
-            const content = JSON.stringify({
-                themes: [
-                    {
-                        theme: 'auth',
-                        hints: ['hint'],
-                    },
-                ],
-            });
-
-            fs.writeFileSync(filePath, content, 'utf-8');
-
-            expect(() => parseSeedFile(filePath)).toThrow("missing or invalid 'description' field");
-        });
-
-        it('should handle hints as comma-separated string in JSON', () => {
-            const filePath = path.join(tmpDir, 'seeds.json');
-            const content = JSON.stringify({
-                themes: [
-                    {
-                        theme: 'auth',
-                        description: 'Auth',
-                        hints: 'login,password,token',
-                    },
-                ],
-            });
-
-            fs.writeFileSync(filePath, content, 'utf-8');
-
-            const seeds = parseSeedFile(filePath);
-            expect(seeds[0].hints).toEqual(['login', 'password', 'token']);
-        });
-
-        it('should default hints to theme name if missing in JSON', () => {
-            const filePath = path.join(tmpDir, 'seeds.json');
-            const content = JSON.stringify({
-                themes: [
-                    {
-                        theme: 'auth',
-                        description: 'Auth',
-                    },
-                ],
-            });
-
-            fs.writeFileSync(filePath, content, 'utf-8');
-
-            const seeds = parseSeedFile(filePath);
-            expect(seeds[0].hints).toEqual(['auth']);
         });
 
         it('should throw error on CSV missing theme column', () => {

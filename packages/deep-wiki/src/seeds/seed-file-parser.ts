@@ -1,15 +1,16 @@
 /**
  * Seeds Phase — Seed File Parser
  *
- * Parses seed files in JSON or CSV format into ThemeSeed arrays.
- * Supports both SeedsOutput JSON format and CSV with theme,description,hints columns.
+ * Parses seed files in YAML or CSV format into ThemeSeed arrays.
+ * Supports YAML format with a 'themes' array and CSV with theme,description,hints columns.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
-import type { ThemeSeed, SeedsOutput } from '../types';
+import * as yaml from 'js-yaml';
+import type { ThemeSeed } from '../types';
 import { normalizeComponentId } from '../schemas';
 import { getErrorMessage } from '../utils/error-utils';
 
@@ -18,7 +19,7 @@ import { getErrorMessage } from '../utils/error-utils';
 // ============================================================================
 
 /**
- * Parse a seed file (JSON or CSV) into an array of ThemeSeed objects.
+ * Parse a seed file (YAML or CSV) into an array of ThemeSeed objects.
  *
  * @param filePath - Path to the seed file
  * @returns Array of ThemeSeed objects
@@ -43,54 +44,43 @@ export function parseSeedFile(filePath: string): ThemeSeed[] {
         throw new Error(`Seed file is empty: ${absolutePath}`);
     }
 
-    // Detect format by extension or content
+    // Detect format by extension
     const ext = path.extname(absolutePath).toLowerCase();
-    if (ext === '.json' || content.trim().startsWith('{')) {
-        return parseJsonSeedFile(content, absolutePath);
-    } else if (ext === '.csv' || content.includes(',')) {
+    if (ext === '.yaml' || ext === '.yml') {
+        return parseYamlSeedFile(content, absolutePath);
+    } else if (ext === '.csv') {
         return parseCsvSeedFile(content, absolutePath);
     } else {
-        // Try JSON first, fall back to CSV
-        try {
-            return parseJsonSeedFile(content, absolutePath);
-        } catch {
-            return parseCsvSeedFile(content, absolutePath);
-        }
+        throw new Error(`Unsupported seed file extension '${ext}': ${absolutePath}. Use .yaml, .yml, or .csv`);
     }
 }
 
 // ============================================================================
-// JSON Parsing
+// YAML Parsing
 // ============================================================================
 
 /**
- * Parse a JSON seed file (SeedsOutput format).
+ * Parse a YAML seed file.
  */
-function parseJsonSeedFile(content: string, filePath: string): ThemeSeed[] {
+function parseYamlSeedFile(content: string, filePath: string): ThemeSeed[] {
     let parsed: unknown;
     try {
-        parsed = JSON.parse(content);
+        parsed = yaml.load(content);
     } catch (error) {
-        throw new Error(`Invalid JSON in seed file ${filePath}: ${getErrorMessage(error)}`);
+        throw new Error(`Invalid YAML in seed file ${filePath}: ${getErrorMessage(error)}`);
     }
 
-    if (typeof parsed !== 'object' || parsed === null) {
-        throw new Error(`Seed file ${filePath} does not contain a JSON object`);
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        throw new Error(`Seed file ${filePath} does not contain a YAML mapping`);
     }
 
     const obj = parsed as Record<string, unknown>;
 
-    // Check if it's a SeedsOutput format (has themes array)
-    if ('themes' in obj && Array.isArray(obj.themes)) {
-        return parseThemesArray(obj.themes, filePath);
+    if (!('themes' in obj) || !Array.isArray(obj.themes)) {
+        throw new Error(`Seed file ${filePath} must contain a 'themes' array`);
     }
 
-    // Otherwise, assume it's a direct array of themes
-    if (Array.isArray(parsed)) {
-        return parseThemesArray(parsed, filePath);
-    }
-
-    throw new Error(`Seed file ${filePath} must contain a 'themes' array or be an array of themes`);
+    return parseThemesArray(obj.themes, filePath);
 }
 
 /**
