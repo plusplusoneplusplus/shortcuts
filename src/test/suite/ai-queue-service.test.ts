@@ -13,6 +13,7 @@ import {
     getAIQueueService
 } from '../../shortcuts/ai-service';
 import { buildFollowPromptText } from '../../shortcuts/ai-service/ai-queue-service';
+import * as workspaceIdentity from '../../shortcuts/ai-service/workspace-identity';
 
 /**
  * Mock ExtensionContext for testing
@@ -454,6 +455,114 @@ suite('AIQueueService Tests', () => {
             const history = service.getHistory();
             assert.strictEqual(history.length, 1);
             assert.strictEqual(history[0].status, 'cancelled');
+        });
+    });
+
+    suite('repoId stamping', () => {
+        let originalGetWorkspaceInfo: typeof workspaceIdentity.getWorkspaceInfo;
+
+        setup(() => {
+            originalGetWorkspaceInfo = workspaceIdentity.getWorkspaceInfo;
+        });
+
+        teardown(() => {
+            (workspaceIdentity as any).getWorkspaceInfo = originalGetWorkspaceInfo;
+        });
+
+        test('should auto-stamp repoId when workspace is present', () => {
+            (workspaceIdentity as any).getWorkspaceInfo = () => ({
+                id: 'abc123',
+                name: 'test',
+                rootPath: '/test'
+            });
+
+            const service = initializeAIQueueService(processManager as unknown as AIProcessManager);
+            service.queueTask({
+                type: 'follow-prompt',
+                payload: { promptFilePath: '/test/prompt.md' }
+            });
+
+            const task = service.getQueuedTasks()[0];
+            assert.strictEqual(task.repoId, 'abc123');
+        });
+
+        test('should omit repoId when workspace is absent', () => {
+            (workspaceIdentity as any).getWorkspaceInfo = () => undefined;
+
+            const service = initializeAIQueueService(processManager as unknown as AIProcessManager);
+            service.queueTask({
+                type: 'follow-prompt',
+                payload: { promptFilePath: '/test/prompt.md' }
+            });
+
+            const task = service.getQueuedTasks()[0];
+            assert.strictEqual(task.repoId, undefined);
+            assert.ok(!('repoId' in task) || task.repoId === undefined);
+        });
+
+        test('should use explicit repoId override', () => {
+            (workspaceIdentity as any).getWorkspaceInfo = () => ({
+                id: 'workspace-id',
+                name: 'test',
+                rootPath: '/test'
+            });
+
+            const service = initializeAIQueueService(processManager as unknown as AIProcessManager);
+            service.queueTask({
+                type: 'follow-prompt',
+                payload: { promptFilePath: '/test/prompt.md' },
+                repoId: 'explicit-id'
+            });
+
+            const task = service.getQueuedTasks()[0];
+            assert.strictEqual(task.repoId, 'explicit-id');
+        });
+
+        test('should stamp repoId for all task types', () => {
+            (workspaceIdentity as any).getWorkspaceInfo = () => ({
+                id: 'repo-abc',
+                name: 'test',
+                rootPath: '/test'
+            });
+
+            const service = initializeAIQueueService(processManager as unknown as AIProcessManager);
+
+            const taskTypes: Array<'follow-prompt' | 'ai-clarification' | 'code-review' | 'custom'> =
+                ['follow-prompt', 'ai-clarification', 'code-review', 'custom'];
+
+            for (const type of taskTypes) {
+                service.queueTask({
+                    type,
+                    payload: { promptFilePath: '/test/prompt.md' },
+                    displayName: `Task ${type}`
+                });
+            }
+
+            const tasks = service.getQueuedTasks();
+            assert.strictEqual(tasks.length, taskTypes.length);
+            for (const task of tasks) {
+                assert.strictEqual(task.repoId, 'repo-abc', `repoId missing for task type ${task.type}`);
+            }
+        });
+
+        test('should stamp repoId via queueBatch', () => {
+            (workspaceIdentity as any).getWorkspaceInfo = () => ({
+                id: 'batch-repo',
+                name: 'test',
+                rootPath: '/test'
+            });
+
+            const service = initializeAIQueueService(processManager as unknown as AIProcessManager);
+            service.queueBatch([
+                { type: 'follow-prompt', payload: { promptFilePath: '/test/p1.md' } },
+                { type: 'follow-prompt', payload: { promptFilePath: '/test/p2.md' } },
+            ]);
+
+            const tasks = service.getQueuedTasks();
+            assert.strictEqual(tasks.length, 2);
+            for (const task of tasks) {
+                assert.strictEqual(task.repoId, 'batch-repo');
+            }
         });
     });
 });

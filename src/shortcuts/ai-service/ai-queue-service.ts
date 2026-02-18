@@ -35,6 +35,7 @@ import {
 import { DEFAULT_AI_TIMEOUT_MS } from '../shared/ai-timeouts';
 import { AIProcessManager } from './ai-process-manager';
 import { getExtensionLogger, LogCategory } from './ai-service-logger';
+import { getWorkspaceInfo } from './workspace-identity';
 
 // ============================================================================
 // Configuration Keys
@@ -64,6 +65,8 @@ export interface QueueTaskOptions {
     displayName?: string;
     /** Execution configuration */
     config?: CreateTaskInput['config'];
+    /** Optional explicit repo ID; falls back to current workspace ID when omitted. */
+    repoId?: string;
 }
 
 /**
@@ -455,6 +458,7 @@ export class AIQueueService implements vscode.Disposable {
      */
     queueTask(options: QueueTaskOptions): QueueTaskResult {
         const priority = options.priority || this.getDefaultPriority();
+        const repoId = options.repoId ?? getWorkspaceInfo()?.id;
 
         const taskId = this.queueManager.enqueue({
             type: options.type,
@@ -464,6 +468,7 @@ export class AIQueueService implements vscode.Disposable {
             config: options.config || {
                 timeoutMs: DEFAULT_AI_TIMEOUT_MS,
             },
+            ...(repoId !== undefined && { repoId }),
         });
 
         const position = this.queueManager.getPosition(taskId);
