@@ -256,24 +256,19 @@ describe('state.ts — DashboardTab includes admin', () => {
 });
 
 // ============================================================================
-// repos.ts — switchTab includes view-admin
+// React Router — handles admin tab (repos.ts switchTab removed)
 // ============================================================================
 
-describe('repos.ts — switchTab includes view-admin', () => {
+describe('React Router — handles admin tab', () => {
     let content: string;
-    beforeAll(() => { content = readClientFile('repos.ts'); });
+    beforeAll(() => { content = readClientFile('react/layout/Router.tsx'); });
 
-    it('view-admin is in the viewIds list', () => {
-        expect(content).toContain("'view-admin'");
+    it('handles admin tab in switch statement', () => {
+        expect(content).toContain("'admin'");
     });
 
-    it('calls initAdminPage when switching to admin', () => {
-        expect(content).toContain('initAdminPage');
-    });
-
-    it('highlights admin toggle when admin tab is active', () => {
-        expect(content).toContain("admin-toggle");
-        expect(content).toContain("tab === 'admin'");
+    it('renders admin stub view', () => {
+        expect(content).toContain('view-admin');
     });
 });
 

@@ -32,7 +32,7 @@ describe('client source file existence', () => {
         'config.ts', 'state.ts', 'utils.ts', 'theme.ts',
         'core.ts', 'sidebar.ts', 'detail.ts', 'filters.ts',
         'queue.ts', 'websocket.ts', 'index.tsx',
-        'tasks.ts', 'repos.ts', 'ai-actions.ts',
+        'tasks.ts', 'ai-actions.ts',
         'wiki.ts', 'wiki-components.ts', 'wiki-types.ts',
         'wiki-content.ts', 'wiki-markdown.ts', 'wiki-toc.ts', 'wiki-mermaid-zoom.ts',
         'wiki-ask.ts', 'wiki-ask.css',
@@ -697,10 +697,10 @@ describe('old scripts files removed', () => {
 // ============================================================================
 
 describe('window global assignments', () => {
-    it('should have all 23 required window globals across client modules', () => {
+    it('should have all required window globals across client modules', () => {
         const allContent = [
             'state.ts', 'utils.ts', 'core.ts', 'detail.ts', 'queue.ts',
-            'tasks.ts', 'repos.ts',
+            'tasks.ts',
         ].map(f => readClientFile(f)).join('\n');
 
         const expectedGlobals = [
@@ -1010,69 +1010,8 @@ describe('client/ai-actions.ts', () => {
 // Repos module
 // ============================================================================
 
-describe('client/repos.ts', () => {
-    let content: string;
-    beforeAll(() => { content = readClientFile('repos.ts'); });
-
-    it('imports from state', () => {
-        expect(content).toContain("from './state'");
-    });
-
-    it('imports from config', () => {
-        expect(content).toContain("from './config'");
-    });
-
-    it('imports from core', () => {
-        expect(content).toContain("from './core'");
-    });
-
-    it('imports from utils', () => {
-        expect(content).toContain("from './utils'");
-    });
-
-    it('exports switchTab', () => {
-        expect(content).toContain('export function switchTab');
-    });
-
-    it('exports fetchReposData', () => {
-        expect(content).toContain('export async function fetchReposData');
-    });
-
-    it('exports showRepoDetail', () => {
-        expect(content).toContain('export function showRepoDetail');
-    });
-
-    it('exports showAddRepoDialog', () => {
-        expect(content).toContain('export function showAddRepoDialog');
-    });
-
-    it('assigns required window globals', () => {
-        expect(content).toContain('(window as any).switchTab = switchTab');
-        expect(content).toContain('(window as any).showAddRepoDialog = showAddRepoDialog');
-        expect(content).toContain('(window as any).showRepoDetail = showRepoDetail');
-    });
-
-    it('renders tasks sub-tab with toolbar (AI Generate moved to folder context menu)', () => {
-        expect(content).toContain('repo-tasks-new-btn');
-        expect(content).toContain('repo-tasks-folder-btn');
-        expect(content).not.toContain('repo-tasks-ai-btn');
-    });
-
-    it('renders tasks container for Miller columns', () => {
-        expect(content).toContain('repo-tasks-tree');
-    });
-
-    it('showRepoDetail accepts optional taskFile parameter', () => {
-        expect(content).toContain('taskFile?: string');
-    });
-
-    it('includes task file path in URL hash', () => {
-        expect(content).toContain("encodeURIComponent(taskFile)");
-    });
-});
-
 // ============================================================================
-// State module — TaskPanelState
+// State module — TaskPanelState (repos.ts removed — now React components)
 // ============================================================================
 
 describe('client/state.ts — TaskPanelState', () => {

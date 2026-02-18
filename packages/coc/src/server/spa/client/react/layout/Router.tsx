@@ -7,7 +7,8 @@ import { useEffect, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { ProcessesView } from '../processes/ProcessesView';
 import { QueueView } from '../queue/QueueView';
-import type { DashboardTab } from '../types/dashboard';
+import { ReposView } from '../repos';
+import type { DashboardTab, RepoSubTab } from '../types/dashboard';
 
 function StubView({ id, label }: { id: string; label: string }) {
     return <div id={id}>{label}</div>;
@@ -23,6 +24,8 @@ function tabFromHash(hash: string): DashboardTab | null {
     return null;
 }
 
+const VALID_REPO_SUB_TABS: Set<string> = new Set(['info', 'pipelines', 'tasks', 'queue']);
+
 export function Router() {
     const { state, dispatch } = useApp();
 
@@ -36,13 +39,25 @@ export function Router() {
         return () => { delete (window as any).switchTab; };
     }, [switchTab]);
 
-    // Handle hash changes
+    // Handle hash changes — parse #repos/:id/:subTab
     useEffect(() => {
         const handleHash = () => {
-            const tab = tabFromHash(location.hash);
+            const hash = location.hash.replace(/^#/, '');
+            const tab = tabFromHash('#' + hash);
             if (tab) dispatch({ type: 'SET_ACTIVE_TAB', tab });
+
+            // Parse repo deep links: #repos/:id or #repos/:id/:subTab
+            if (tab === 'repos') {
+                const parts = hash.split('/');
+                if (parts.length >= 2 && parts[0] === 'repos' && parts[1]) {
+                    const repoId = decodeURIComponent(parts[1]);
+                    dispatch({ type: 'SET_SELECTED_REPO', id: repoId });
+                    if (parts.length >= 3 && VALID_REPO_SUB_TABS.has(parts[2])) {
+                        dispatch({ type: 'SET_REPO_SUB_TAB', tab: parts[2] as RepoSubTab });
+                    }
+                }
+            }
         };
-        // Initial hash parse
         handleHash();
         window.addEventListener('hashchange', handleHash);
         return () => window.removeEventListener('hashchange', handleHash);
@@ -57,7 +72,7 @@ export function Router() {
                 </>
             );
         case 'repos':
-            return <StubView id="view-repos" label="Repos" />;
+            return <ReposView />;
         case 'wiki':
             return <StubView id="view-wiki" label="Wiki" />;
         case 'admin':
@@ -65,6 +80,6 @@ export function Router() {
         case 'reports':
             return <StubView id="view-reports" label="Reports" />;
         default:
-            return <StubView id="view-repos" label="Repos" />;
+            return <ReposView />;
     }
 }

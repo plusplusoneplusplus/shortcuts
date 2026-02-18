@@ -1,469 +1,293 @@
 /**
- * SPA Dashboard Tests — client bundle repos module + repos HTML structure
+ * SPA Dashboard Tests — React repos components + repos HTML structure.
+ * repos.ts has been replaced by React components in react/repos/.
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
 import { getClientBundle, generateDashboardHtml } from './spa-test-helpers';
+import * as fs from 'fs';
+import * as path from 'path';
+
+const CLIENT_DIR = path.resolve(__dirname, '..', '..', 'src', 'server', 'spa', 'client');
+
+function readClientFile(name: string): string {
+    return fs.readFileSync(path.join(CLIENT_DIR, name), 'utf8');
+}
 
 // ============================================================================
-// Repos module (client bundle)
+// React repos components exist
 // ============================================================================
 
-describe('client bundle — repos module', () => {
-    let script: string;
-    beforeAll(() => { script = getClientBundle(); });
+describe('React repos component files', () => {
+    const reposDir = path.join(CLIENT_DIR, 'react', 'repos');
 
-    it('defines renderReposList function', () => {
-        expect(script).toContain('renderReposList');
-    });
+    const expectedFiles = [
+        'repoGrouping.ts',
+        'RepoCard.tsx',
+        'AddRepoDialog.tsx',
+        'RepoInfoTab.tsx',
+        'PipelinesTab.tsx',
+        'RepoQueueTab.tsx',
+        'TasksStub.tsx',
+        'RepoDetail.tsx',
+        'ReposGrid.tsx',
+        'ReposView.tsx',
+        'index.ts',
+    ];
 
-    it('defines renderRepoItem function', () => {
-        expect(script).toContain('renderRepoItem');
-    });
-
-    it('defines renderRepoDetail function', () => {
-        expect(script).toContain('renderRepoDetail');
-    });
-
-    it('defines clearRepoDetail function', () => {
-        expect(script).toContain('clearRepoDetail');
-    });
-
-    it('defines fetchReposData function', () => {
-        expect(script).toContain('fetchReposData');
-    });
-
-    it('defines showRepoDetail function', () => {
-        expect(script).toContain('showRepoDetail');
-    });
-
-    it('defines showAddRepoDialog function', () => {
-        expect(script).toContain('showAddRepoDialog');
-    });
-
-    it('defines hideAddRepoDialog function', () => {
-        expect(script).toContain('hideAddRepoDialog');
-    });
-
-    it('renders repo items with color dot', () => {
-        expect(script).toContain('repo-color-dot');
-    });
-
-    it('renders repo items with name', () => {
-        expect(script).toContain('repo-item-name');
-    });
-
-    it('renders repo items with path', () => {
-        expect(script).toContain('repo-item-path');
-    });
-
-    it('renders repo items with stats', () => {
-        expect(script).toContain('repo-item-stats');
-    });
-
-    it('uses repo-item active class for selected repo', () => {
-        expect(script).toContain('repo-item');
-        expect(script).toContain('active');
-    });
-
-    it('updates active repo item on selection', () => {
-        expect(script).toContain('updateActiveRepoItem');
-    });
-
-    it('renders repo detail with metadata grid', () => {
-        expect(script).toContain('meta-grid');
-        expect(script).toContain('meta-item');
-    });
-
-    it('renders repo detail with pipeline list', () => {
-        expect(script).toContain('repo-pipeline-list');
-        expect(script).toContain('repo-pipeline-item');
-    });
-
-    it('renders repo detail with recent processes', () => {
-        expect(script).toContain('repo-processes-list');
-    });
-
-    it('supports repo removal with confirmation', () => {
-        expect(script).toContain('confirmRemoveRepo');
-        expect(script).toContain('confirm(');
-    });
-
-    it('supports repo editing', () => {
-        expect(script).toContain('showEditRepoDialog');
-        expect(script).toContain('repo-edit-btn');
-    });
-
-    it('exposes switchTab on window', () => {
-        expect(script).toContain('switchTab');
-    });
-
-    it('exposes showRepoDetail on window', () => {
-        expect(script).toContain('showRepoDetail');
-    });
-
-    it('renders footer with repo count and stats', () => {
-        expect(script).toContain('repos-footer');
-    });
-
-    it('handles empty repos state', () => {
-        expect(script).toContain('repos-empty');
-    });
-
-    it('supports directory browser for add repo', () => {
-        expect(script).toContain('path-browser');
-        expect(script).toContain('openPathBrowser');
-    });
-
-    it('showRepoDetail calls setHashSilent (not location.hash)', () => {
-        // showRepoDetail must use setHashSilent to update the hash
-        // without triggering hashchange, preventing navigation away from repos.
-        expect(script).toContain('setHashSilent');
-        expect(script).toContain('showRepoDetail');
-    });
-
-    it('showRepoDetail updates selectedRepoId in appState', () => {
-        expect(script).toContain('selectedRepoId');
-    });
-
-    it('showRepoDetail updates activeRepoSubTab in appState', () => {
-        expect(script).toContain('activeRepoSubTab');
-    });
-
-    it('setHashSilent uses replaceState to avoid hashchange race', () => {
-        // The fix: replaceState does not fire hashchange, so clicking a
-        // repo item won't accidentally navigate back to the processes tab.
-        expect(script).toContain('replaceState');
-        expect(script).not.toContain('_hashChangeGuard');
-    });
-
-    it('clearRepoDetail resets selectedRepoId and hash', () => {
-        expect(script).toContain('clearRepoDetail');
-        expect(script).toContain('selectedRepoId');
-    });
+    for (const file of expectedFiles) {
+        it(`should have react/repos/${file}`, () => {
+            expect(fs.existsSync(path.join(reposDir, file))).toBe(true);
+        });
+    }
 });
 
 // ============================================================================
-// Clone grouping (client bundle)
+// React repos — repoGrouping.ts source structure
 // ============================================================================
 
-describe('client bundle — clone grouping', () => {
-    let script: string;
-    beforeAll(() => { script = getClientBundle(); });
+describe('react/repos/repoGrouping.ts', () => {
+    let content: string;
+    beforeAll(() => { content = readClientFile('react/repos/repoGrouping.ts'); });
 
-    it('defines normalizeRemoteUrl function', () => {
-        expect(script).toContain('normalizeRemoteUrl');
+    it('exports normalizeRemoteUrl', () => {
+        expect(content).toContain('export function normalizeRemoteUrl');
     });
 
-    it('defines groupReposByRemote function', () => {
-        expect(script).toContain('groupReposByRemote');
+    it('exports remoteUrlLabel', () => {
+        expect(content).toContain('export function remoteUrlLabel');
     });
 
-    it('defines remoteUrlLabel function', () => {
-        expect(script).toContain('remoteUrlLabel');
+    it('exports groupReposByRemote', () => {
+        expect(content).toContain('export function groupReposByRemote');
     });
 
-    it('defines renderRepoGroup function', () => {
-        expect(script).toContain('renderRepoGroup');
+    it('exports hashString', () => {
+        expect(content).toContain('export function hashString');
     });
 
-    it('defines repoGroupExpandedState for expand/collapse tracking', () => {
-        expect(script).toContain('repoGroupExpandedState');
+    it('exports countTasks', () => {
+        expect(content).toContain('export function countTasks');
     });
 
-    it('tracks repoGroupingEnabled as always-on constant', () => {
-        expect(script).toContain('repoGroupingEnabled');
+    it('exports truncatePath', () => {
+        expect(content).toContain('export function truncatePath');
     });
 
-    it('renders repo groups with header containing toggle and label', () => {
-        expect(script).toContain('repo-group-header');
-        expect(script).toContain('repo-group-toggle');
-        expect(script).toContain('repo-group-label');
+    it('exports RepoData interface', () => {
+        expect(content).toContain('export interface RepoData');
     });
 
-    it('renders repo group badge with clone count', () => {
-        expect(script).toContain('repo-group-badge');
+    it('exports RepoGroup interface', () => {
+        expect(content).toContain('export interface RepoGroup');
     });
 
-    it('renders repo group children container', () => {
-        expect(script).toContain('repo-group-children');
-    });
-
-    it('renders grouped repo items with indentation class', () => {
-        expect(script).toContain('repo-item-grouped');
-    });
-
-    it('renders branch badges for grouped repo items', () => {
-        expect(script).toContain('repo-branch-badge');
-    });
-
-    it('shows remote URL in repo detail info tab', () => {
-        // The info tab should display the remote URL field
-        expect(script).toContain('Remote');
-        expect(script).toContain('remoteUrl');
-    });
-
-    it('normalizes SSH shorthand URLs (git@host:user/repo)', () => {
-        // Verify the SSH regex pattern is in the bundle
-        expect(script).toContain('sshMatch');
+    it('normalizes SSH shorthand URLs', () => {
+        expect(content).toContain('sshMatch');
     });
 
     it('strips .git suffix during normalization', () => {
-        expect(script).toContain('.git');
+        expect(content).toContain('.git');
     });
 
-    it('strips protocol during normalization', () => {
-        // The regex pattern in the bundle strips protocol prefixes
-        expect(script).toContain('https?');
-        expect(script).toContain('ssh');
-    });
-
-    it('handles expand/collapse of repo groups', () => {
-        // Verify toggle arrows are present (may be escaped in bundle)
-        expect(script).toContain('repo-group-toggle');
-        expect(script).toContain('expanded');
-    });
-
-    it('footer includes group count when grouping is enabled', () => {
-        expect(script).toContain('group');
-        expect(script).toContain('repos-footer');
-    });
-
-    it('always renders groups for repos with remote URL (even single repos)', () => {
-        // The renderReposList logic now checks normalizedUrl rather than repos.length >= 2
-        expect(script).toContain('normalizedUrl');
-        expect(script).toContain('renderRepoGroup');
-    });
-
-    it('does not contain clone-siblings-list (Related Clones section removed)', () => {
-        expect(script).not.toContain('clone-siblings-list');
-        expect(script).not.toContain('clone-sibling-item');
-        expect(script).not.toContain('clone-sibling-name');
-    });
-
-    it('does not contain setRepoGroupingEnabled (toggle removed)', () => {
-        expect(script).not.toContain('setRepoGroupingEnabled');
+    it('sorts multi-clone groups first', () => {
+        expect(content).toContain('multiClone');
     });
 });
 
 // ============================================================================
-// Repos sidebar HTML structure
+// React repos — Router imports ReposView
 // ============================================================================
 
-describe('Repos sidebar HTML structure', () => {
-    const html = generateDashboardHtml();
+describe('React Router — repos routing', () => {
+    let content: string;
+    beforeAll(() => { content = readClientFile('react/layout/Router.tsx'); });
 
-    it('uses app-layout class for repos view (sidebar+detail)', () => {
-        expect(html).toContain('class="app-layout" id="view-repos"');
+    it('imports ReposView from repos module', () => {
+        expect(content).toContain("from '../repos'");
     });
 
-    it('contains repos sidebar with correct class', () => {
-        expect(html).toContain('class="sidebar repos-sidebar"');
-        expect(html).toContain('id="repos-sidebar"');
+    it('renders ReposView for repos tab', () => {
+        expect(content).toContain('<ReposView');
     });
 
-    it('contains repos sidebar header with title', () => {
-        expect(html).toContain('class="repos-sidebar-header"');
-        expect(html).toContain('>Repos<');
+    it('no longer has repos stub', () => {
+        expect(content).not.toContain("label=\"Repos\"");
     });
 
-    it('contains repos list nav element', () => {
-        expect(html).toContain('id="repos-list"');
-        expect(html).toContain('class="repos-list"');
-    });
-
-    it('contains repos empty state', () => {
-        expect(html).toContain('id="repos-empty"');
-        expect(html).toContain('No repos registered');
-    });
-
-    it('contains repos sidebar footer', () => {
-        expect(html).toContain('id="repos-footer"');
-        expect(html).toContain('class="repos-sidebar-footer"');
-    });
-
-    it('contains repo detail panel as main element', () => {
-        expect(html).toContain('id="repo-detail-panel"');
-        expect(html).toContain('class="detail-panel"');
-    });
-
-    it('contains repo detail empty state', () => {
-        expect(html).toContain('id="repo-detail-empty"');
-        expect(html).toContain('Select a repo to view details');
-    });
-
-    it('contains repo detail content area', () => {
-        expect(html).toContain('id="repo-detail-content"');
-    });
-
-    it('does not contain clone grouping toggle button (grouping is always on)', () => {
-        expect(html).not.toContain('id="repo-group-toggle-btn"');
+    it('parses repo deep links from hash', () => {
+        expect(content).toContain('SET_SELECTED_REPO');
+        expect(content).toContain('SET_REPO_SUB_TAB');
     });
 });
 
 // ============================================================================
-// Queue sub-tab (client bundle)
+// React repos — ReposView source structure
 // ============================================================================
 
-describe('client bundle — queue sub-tab', () => {
+describe('react/repos/ReposView.tsx', () => {
+    let content: string;
+    beforeAll(() => { content = readClientFile('react/repos/ReposView.tsx'); });
+
+    it('renders a two-pane layout', () => {
+        expect(content).toContain('view-repos');
+        expect(content).toContain('<aside');
+        expect(content).toContain('<main');
+    });
+
+    it('uses ReposGrid and RepoDetail', () => {
+        expect(content).toContain('<ReposGrid');
+        expect(content).toContain('<RepoDetail');
+    });
+
+    it('fetches workspaces and enriches data', () => {
+        expect(content).toContain('/workspaces');
+        expect(content).toContain('git-info');
+        expect(content).toContain('/processes');
+    });
+});
+
+// ============================================================================
+// React repos — RepoDetail source structure
+// ============================================================================
+
+describe('react/repos/RepoDetail.tsx', () => {
+    let content: string;
+    beforeAll(() => { content = readClientFile('react/repos/RepoDetail.tsx'); });
+
+    it('renders sub-tab bar with all four tabs', () => {
+        expect(content).toContain("'info'");
+        expect(content).toContain("'pipelines'");
+        expect(content).toContain("'tasks'");
+        expect(content).toContain("'queue'");
+    });
+
+    it('renders Edit and Remove buttons', () => {
+        expect(content).toContain('Edit');
+        expect(content).toContain('Remove');
+    });
+
+    it('handles repo removal with confirmation', () => {
+        expect(content).toContain('confirm(');
+        expect(content).toContain('DELETE');
+    });
+});
+
+// ============================================================================
+// React repos — AddRepoDialog source structure
+// ============================================================================
+
+describe('react/repos/AddRepoDialog.tsx', () => {
+    let content: string;
+    beforeAll(() => { content = readClientFile('react/repos/AddRepoDialog.tsx'); });
+
+    it('supports add and edit modes', () => {
+        expect(content).toContain('Add Repository');
+        expect(content).toContain('Edit Repository');
+    });
+
+    it('includes filesystem browser', () => {
+        expect(content).toContain('/fs/browse');
+        expect(content).toContain('Browse');
+    });
+
+    it('validates path input', () => {
+        expect(content).toContain('Path is required');
+    });
+
+    it('detects clone siblings', () => {
+        expect(content).toContain('Clone detected');
+    });
+
+    it('renders color palette', () => {
+        expect(content).toContain('#0078d4');
+        expect(content).toContain('#107c10');
+        expect(content).toContain('#848484');
+    });
+});
+
+// ============================================================================
+// React repos — RepoQueueTab source structure
+// ============================================================================
+
+describe('react/repos/RepoQueueTab.tsx', () => {
+    let content: string;
+    beforeAll(() => { content = readClientFile('react/repos/RepoQueueTab.tsx'); });
+
+    it('fetches workspace-scoped queue', () => {
+        expect(content).toContain('/queue?repoId=');
+    });
+
+    it('renders queue sections', () => {
+        expect(content).toContain('Running Tasks');
+        expect(content).toContain('Queued Tasks');
+        expect(content).toContain('Completed Tasks');
+    });
+
+    it('supports cancel, move-up, move-to-top actions', () => {
+        expect(content).toContain('/cancel');
+        expect(content).toContain('/move-up');
+        expect(content).toContain('/move-to-top');
+    });
+
+    it('renders empty state when no queue tasks', () => {
+        expect(content).toContain('No tasks in queue for this repository');
+    });
+});
+
+// ============================================================================
+// Legacy repos.ts is deleted
+// ============================================================================
+
+describe('legacy repos.ts removal', () => {
+    it('repos.ts no longer exists', () => {
+        expect(fs.existsSync(path.join(CLIENT_DIR, 'repos.ts'))).toBe(false);
+    });
+
+    it('index.tsx does not import repos.ts', () => {
+        const indexContent = readClientFile('index.tsx');
+        expect(indexContent).not.toContain("import './repos'");
+    });
+
+    it('websocket.ts does not import from repos.ts', () => {
+        const wsContent = readClientFile('websocket.ts');
+        expect(wsContent).not.toContain("from './repos'");
+    });
+});
+
+// ============================================================================
+// Client bundle includes React repos components
+// ============================================================================
+
+describe('client bundle — React repos components', () => {
     let script: string;
     beforeAll(() => { script = getClientBundle(); });
 
-    it('defines renderQueueTab function', () => {
-        expect(script).toContain('renderQueueTab');
+    it('bundle contains normalizeRemoteUrl logic', () => {
+        expect(script).toContain('normalizeRemoteUrl');
     });
 
-    it('renders Queue button in sub-tab bar with data-subtab="queue"', () => {
-        expect(script).toContain('data-subtab="queue"');
-        expect(script).toContain('>Queue<');
+    it('bundle contains groupReposByRemote logic', () => {
+        expect(script).toContain('groupReposByRemote');
     });
 
-    it('includes queue case in renderSubTabContent switch', () => {
-        expect(script).toContain('case "queue"');
-        expect(script).toContain('renderQueueTab');
+    it('bundle contains hashString logic', () => {
+        expect(script).toContain('hashString');
     });
 
-    it('renderQueueTab returns HTML with queue-tab-content class', () => {
-        expect(script).toContain('queue-tab-content');
-        expect(script).toContain('repo-queue-content');
+    it('bundle contains ReposView component', () => {
+        expect(script).toContain('view-repos');
     });
 
-    it('RepoSubTab type includes queue (state module)', () => {
-        expect(script).toContain('queue');
-    });
-
-    it('defines fetchRepoQueue function', () => {
-        expect(script).toContain('fetchRepoQueue');
-    });
-
-    it('fetchRepoQueue calls /api/queue with repoId parameter', () => {
-        expect(script).toContain('/queue?repoId=');
-    });
-
-    it('defines renderRepoQueueContent function', () => {
-        expect(script).toContain('renderRepoQueueContent');
-    });
-
-    it('renders empty state for repo queue', () => {
+    it('bundle contains queue tab functionality', () => {
         expect(script).toContain('No tasks in queue for this repository');
     });
 
-    it('renders Running Tasks section label', () => {
-        expect(script).toContain('Running Tasks');
+    it('bundle contains add repo dialog', () => {
+        expect(script).toContain('Add Repository');
     });
 
-    it('renders Queued Tasks section label', () => {
-        expect(script).toContain('Queued Tasks');
-    });
-
-    it('renders Completed Tasks section label with collapsible toggle', () => {
-        expect(script).toContain('Completed Tasks');
-        expect(script).toContain('toggleRepoQueueHistory');
-    });
-
-    it('defines renderRepoQueueTask function for task cards', () => {
-        expect(script).toContain('renderRepoQueueTask');
-    });
-
-    it('defines renderRepoQueueHistoryTask function for completed tasks', () => {
-        expect(script).toContain('renderRepoQueueHistoryTask');
-    });
-
-    it('truncates task names at 35 characters', () => {
-        // The substring(0, 35) pattern should be in the repo queue rendering
-        expect(script).toContain('substring(0, 35)');
-    });
-
-    it('truncates error messages at 80 characters', () => {
-        expect(script).toContain('substring(0, 77)');
-    });
-
-    it('displays priority icons for high and low priority', () => {
-        expect(script).toContain('priorityIcon');
-    });
-
-    it('uses formatDuration for elapsed time on running tasks', () => {
-        expect(script).toContain('formatDuration');
-    });
-
-    it('uses formatRelativeTime for timestamps', () => {
-        expect(script).toContain('formatRelativeTime');
-    });
-
-    it('makes running tasks clickable with showQueueTaskDetail', () => {
-        expect(script).toContain('showQueueTaskDetail');
-    });
-
-    it('makes completed tasks clickable with showQueueTaskDetail', () => {
-        expect(script).toContain('showQueueTaskDetail');
-    });
-
-    it('renders action buttons for queued tasks (move up, move to top, cancel)', () => {
-        expect(script).toContain('queueMoveUp');
-        expect(script).toContain('queueMoveToTop');
-        expect(script).toContain('queueCancelTask');
-    });
-
-    it('renders force-fail button for running tasks', () => {
-        expect(script).toContain('queueForceFailTask');
-    });
-
-    it('shows error messages for failed history tasks', () => {
-        expect(script).toContain('queue-task-error');
-    });
-
-    it('shows duration for completed history tasks', () => {
-        expect(script).toContain('formatDuration');
-    });
-
-    it('defines showRepoQueueHistory toggle state', () => {
-        expect(script).toContain('showRepoQueueHistory');
-    });
-
-    it('defines toggleRepoQueueHistory function', () => {
-        expect(script).toContain('toggleRepoQueueHistory');
-    });
-
-    it('exposes toggleRepoQueueHistory on window', () => {
-        expect(script).toContain('toggleRepoQueueHistory');
-    });
-
-    it('defines refreshRepoQueueTab for WebSocket integration', () => {
-        expect(script).toContain('refreshRepoQueueTab');
-    });
-
-    it('refreshRepoQueueTab checks activeRepoSubTab is queue', () => {
-        expect(script).toContain('activeRepoSubTab');
-    });
-
-    it('uses escapeHtmlClient for all user-facing strings', () => {
-        expect(script).toContain('escapeHtmlClient');
-    });
-
-    it('displays section counts in queue section labels', () => {
-        expect(script).toContain('queue-section-count');
-    });
-});
-
-// ============================================================================
-// Queue sub-tab WebSocket integration (client bundle)
-// ============================================================================
-
-describe('client bundle — queue sub-tab WebSocket integration', () => {
-    let script: string;
-    beforeAll(() => { script = getClientBundle(); });
-
-    it('imports refreshRepoQueueTab in websocket module', () => {
-        expect(script).toContain('refreshRepoQueueTab');
-    });
-
-    it('calls refreshRepoQueueTab in queue-updated handler', () => {
-        // The websocket handler should invoke refreshRepoQueueTab after queue-updated
-        expect(script).toContain('refreshRepoQueueTab');
-    });
-
-    it('refreshRepoQueueTab checks selectedRepoId before fetching', () => {
-        expect(script).toContain('selectedRepoId');
-        expect(script).toContain('refreshRepoQueueTab');
+    it('bundle contains tasks stub', () => {
+        expect(script).toContain('Tasks coming in commit 007');
     });
 });

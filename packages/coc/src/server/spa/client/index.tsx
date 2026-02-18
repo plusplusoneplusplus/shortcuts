@@ -32,10 +32,7 @@ import './filters';
 // 7. Queue (still used by legacy modules)
 import './queue';
 
-// 8. Repos (tab switching, repos grid, add repo dialog, detail)
-import './repos';
-
-// 9. Tasks (workspace task CRUD, tree rendering)
+// 8. Tasks (workspace task CRUD, tree rendering — repos now handled by React)
 import './tasks';
 
 // 9a. Task Mermaid (mermaid diagram rendering in task preview)

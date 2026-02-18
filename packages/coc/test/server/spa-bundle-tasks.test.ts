@@ -38,19 +38,12 @@ describe('Tasks as repo sub-page — HTML structure', () => {
 });
 
 // ============================================================================
-// Tasks as Repo Sub-Page — client bundle repos module
+// Tasks as Repo Sub-Page — React repos components
 // ============================================================================
 
-describe('Tasks as repo sub-page — client bundle repos module', () => {
+describe('Tasks as repo sub-page — React repos components', () => {
     let script: string;
     beforeAll(() => { script = getClientBundle(); });
-
-    it('defines repo sub-tab bar with Info, Pipelines, Tasks', () => {
-        expect(script).toContain('repo-sub-tab-bar');
-        expect(script).toContain('data-subtab="info"');
-        expect(script).toContain('data-subtab="pipelines"');
-        expect(script).toContain('data-subtab="tasks"');
-    });
 
     it('defines activeRepoSubTab state', () => {
         expect(script).toContain('activeRepoSubTab');
@@ -62,29 +55,8 @@ describe('Tasks as repo sub-page — client bundle repos module', () => {
         expect(script).toContain('"tasks"');
     });
 
-    it('renders sub-tab content based on active tab', () => {
-        expect(script).toContain('renderSubTabContent');
-        expect(script).toContain('renderInfoTab');
-        expect(script).toContain('renderPipelinesTab');
-        expect(script).toContain('renderTasksTab');
-    });
-
-    it('renders task count badge on Tasks sub-tab', () => {
-        expect(script).toContain('repo-sub-tab-badge');
-    });
-
-    it('renders tasks toolbar in tasks sub-tab', () => {
-        expect(script).toContain('repo-tasks-toolbar');
-        expect(script).toContain('repo-tasks-new-btn');
-        expect(script).toContain('repo-tasks-folder-btn');
-    });
-
     it('does not render AI generate button in toolbar (moved to folder context menu)', () => {
         expect(script).not.toContain('repo-tasks-ai-btn');
-    });
-
-    it('renders tasks tree container in tasks sub-tab', () => {
-        expect(script).toContain('repo-tasks-tree');
     });
 
     it('fetches task count for each workspace', () => {
@@ -92,29 +64,21 @@ describe('Tasks as repo sub-page — client bundle repos module', () => {
         expect(script).toContain('taskCount');
     });
 
-    it('shows task count in repo sidebar items', () => {
-        expect(script).toContain('taskBadge');
+    it('renders tasks stub placeholder', () => {
+        expect(script).toContain('Tasks coming in commit 007');
     });
 
-    it('renders pipelines in dedicated sub-tab', () => {
-        expect(script).toContain('renderPipelinesTab');
-        expect(script).toContain('repo-pipeline-list');
+    it('renders pipelines empty state', () => {
+        expect(script).toContain('No pipelines found');
     });
 
-    it('renders info tab with metadata grid and recent processes', () => {
-        expect(script).toContain('renderInfoTab');
-        expect(script).toContain('meta-grid');
-        expect(script).toContain('repo-processes-list');
+    it('renders Recent Processes section in info tab', () => {
+        expect(script).toContain('Recent Processes');
     });
 
-    it('wires tasks toolbar buttons to task functions', () => {
-        expect(script).toContain('wireTasksToolbar');
+    it('wires to createRepoTask and createRepoFolder via tasks module', () => {
         expect(script).toContain('createRepoTask');
         expect(script).toContain('createRepoFolder');
-    });
-
-    it('updates hash with sub-tab suffix', () => {
-        expect(script).toContain('hashSuffix');
     });
 
     it('only shows 3 top-level view IDs (no view-tasks)', () => {

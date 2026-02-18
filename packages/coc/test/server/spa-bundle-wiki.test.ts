@@ -380,20 +380,19 @@ describe('core.ts — wiki hash routing', () => {
 });
 
 // ============================================================================
-// repos.ts — wiki support in switchTab
+// React Router — handles wiki tab (repos.ts switchTab removed)
 // ============================================================================
 
-describe('repos.ts — wiki in switchTab', () => {
+describe('React Router — handles wiki tab', () => {
     let content: string;
-    beforeAll(() => { content = readClientFile('repos.ts'); });
+    beforeAll(() => { content = readClientFile('react/layout/Router.tsx'); });
 
-    it('viewIds includes view-wiki', () => {
-        expect(content).toContain('view-wiki');
+    it('handles wiki tab in switch statement', () => {
+        expect(content).toContain("'wiki'");
     });
 
-    it('triggers fetchWikisData when switching to wiki tab', () => {
-        expect(content).toContain("tab === 'wiki'");
-        expect(content).toContain('fetchWikisData');
+    it('renders wiki stub view', () => {
+        expect(content).toContain('view-wiki');
     });
 });
 

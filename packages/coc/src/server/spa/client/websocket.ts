@@ -8,22 +8,10 @@ import { fetchApi } from './core';
 import { renderDetail, clearDetail } from './detail';
 import { renderQueuePanel, startQueuePolling, stopQueuePolling } from './queue';
 import { fetchRepoTasks } from './tasks';
-import { fetchReposData, refreshRepoQueueTab } from './repos';
 
 let wsReconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let wsReconnectDelay = 1000;
 let wsPingInterval: ReturnType<typeof setInterval> | null = null;
-let reposRefreshTimer: ReturnType<typeof setTimeout> | null = null;
-
-/** Debounced refresh of repos data when process events arrive while on repos tab. */
-function scheduleReposRefresh(): void {
-    if (appState.activeTab !== 'repos') return;
-    if (reposRefreshTimer) clearTimeout(reposRefreshTimer);
-    reposRefreshTimer = setTimeout(() => {
-        reposRefreshTimer = null;
-        fetchReposData();
-    }, 500);
-}
 
 export function connectWebSocket(): void {
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -67,7 +55,6 @@ export function handleWsMessage(msg: any): void {
             appState.processes.push(msg.process);
             renderQueuePanel();
         }
-        scheduleReposRefresh();
     } else if (msg.type === 'process-updated' && msg.process) {
         let idx = -1;
         for (let i = 0; i < appState.processes.length; i++) {
@@ -86,7 +73,6 @@ export function handleWsMessage(msg: any): void {
                 renderDetail(msg.process.id);
             }
         }
-        scheduleReposRefresh();
     } else if (msg.type === 'process-removed' && msg.processId) {
         appState.processes = appState.processes.filter(function(p: any) {
             return p.id !== msg.processId;
@@ -96,7 +82,6 @@ export function handleWsMessage(msg: any): void {
             clearDetail();
         }
         renderQueuePanel();
-        scheduleReposRefresh();
     } else if (msg.type === 'processes-cleared') {
         appState.processes = appState.processes.filter(function(p: any) {
             return p.status !== 'completed';
@@ -151,9 +136,6 @@ export function handleWsMessage(msg: any): void {
                 // Already rendered above
             });
         }
-
-        // Refresh repo-specific queue tab if active
-        refreshRepoQueueTab();
     } else if (msg.type === 'drain-start') {
         queueState.draining = true;
         queueState.drainQueued = msg.queued || 0;
