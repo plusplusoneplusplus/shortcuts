@@ -45,8 +45,8 @@ describe('Queue panel HTML', () => {
         // Should have a default empty option
         expect(html).toContain('<option value="">Default</option>');
         // Should contain model options from the registry
-        expect(html).toContain('claude-sonnet-4.5');
-        expect(html).toContain('Claude Sonnet 4.5');
+        expect(html).toContain('claude-sonnet-4.6');
+        expect(html).toContain('Claude Sonnet 4.6');
     });
 
     it('model selector is not a text input', () => {

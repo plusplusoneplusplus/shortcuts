@@ -187,7 +187,7 @@ suite('Model Registry - Extension Integration', () => {
     suite('Known models snapshot (update when registry changes)', () => {
         test('registry contains expected models', () => {
             const expectedModels = [
-                'claude-sonnet-4.5',
+                'claude-sonnet-4.6',
                 'claude-haiku-4.5',
                 'claude-opus-4.6',
                 'gpt-5.2',

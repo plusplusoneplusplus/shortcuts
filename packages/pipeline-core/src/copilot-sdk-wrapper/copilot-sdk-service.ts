@@ -107,7 +107,7 @@ interface ICopilotClientOptions {
  * Maps to the SDK's SessionConfig interface.
  */
 interface ISessionOptions {
-    /** AI model to use (e.g., 'gpt-5', 'claude-sonnet-4.5') */
+    /** AI model to use (e.g., 'gpt-5', 'claude-sonnet-4.6') */
     model?: string;
     /** Enable streaming for real-time response chunks */
     streaming?: boolean;

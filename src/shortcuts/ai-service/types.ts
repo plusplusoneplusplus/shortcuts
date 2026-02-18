@@ -449,9 +449,9 @@ export interface FollowPromptProcessMetadata {
  * Configuration for available AI models with display labels
  */
 export interface AIModelConfig {
-    /** Model identifier (e.g., "claude-sonnet-4.5") */
+    /** Model identifier (e.g., "claude-sonnet-4.6") */
     id: string;
-    /** Display label for UI (e.g., "Claude Sonnet 4.5") */
+    /** Display label for UI (e.g., "Claude Sonnet 4.6") */
     label: string;
     /** Optional description (e.g., "(Recommended for coding)") */
     description?: string;

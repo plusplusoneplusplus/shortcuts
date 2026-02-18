@@ -171,7 +171,7 @@ map:
   timeoutMs: 600000
 
   # Use Claude Sonnet for subagents (cost-effective, high quality)
-  model: "claude-sonnet-4.5"
+  model: "claude-sonnet-4.6"
 
 reduce:
   type: ai

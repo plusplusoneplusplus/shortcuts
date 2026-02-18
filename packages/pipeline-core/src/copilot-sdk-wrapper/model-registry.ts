@@ -20,7 +20,7 @@
  * Complete definition of an AI model.
  */
 export interface ModelDefinition {
-    /** Unique model identifier sent to the API (e.g., 'claude-sonnet-4.5') */
+    /** Unique model identifier sent to the API (e.g., 'claude-sonnet-4.6') */
     readonly id: string;
     /** Human-readable display label (e.g., 'Claude Sonnet 4.5') */
     readonly label: string;
@@ -47,8 +47,8 @@ export interface ModelDefinition {
  */
 const MODEL_DEFINITIONS: readonly ModelDefinition[] = [
     {
-        id: 'claude-sonnet-4.5',
-        label: 'Claude Sonnet 4.5',
+        id: 'claude-sonnet-4.6',
+        label: 'Claude Sonnet 4.6',
         description: '(Recommended)',
         tier: 'standard',
     },
@@ -100,7 +100,7 @@ export const MODEL_REGISTRY: ReadonlyMap<string, ModelDefinition> = new Map(
  * This replaces the previously hand-maintained VALID_MODELS array.
  */
 export const VALID_MODELS = MODEL_DEFINITIONS.map(m => m.id) as unknown as readonly [
-    'claude-sonnet-4.5',
+    'claude-sonnet-4.6',
     'claude-haiku-4.5',
     'claude-opus-4.6',
     'gpt-5.2',

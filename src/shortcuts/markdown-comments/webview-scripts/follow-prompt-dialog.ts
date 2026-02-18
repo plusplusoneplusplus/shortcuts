@@ -198,7 +198,7 @@ function getDialogOptions(): FollowPromptDialogOptions {
 
     const options: FollowPromptDialogOptions = {
         mode,
-        model: modelSelect?.value || 'claude-sonnet-4.5',
+        model: modelSelect?.value || 'claude-sonnet-4.6',
         additionalContext: contextInput?.value?.trim() || undefined
     };
 

@@ -275,7 +275,7 @@ const queueManager = new TaskQueueManager({
 const taskId1 = queueManager.enqueue({
     type: TaskType.AI_REQUEST,
     priority: TaskPriority.HIGH,
-    payload: { prompt: 'Analyze code', model: 'claude-sonnet-4.5' }
+    payload: { prompt: 'Analyze code', model: 'claude-sonnet-4.6' }
 });
 
 const taskId2 = queueManager.enqueue({
@@ -384,8 +384,8 @@ const { command, deliveryMethod } = buildCliCommand('copilot', {
 });
 
 // Model registry utilities
-if (isValidModel('claude-sonnet-4.5')) {
-    const label = getModelLabel('claude-sonnet-4.5');
+if (isValidModel('claude-sonnet-4.6')) {
+    const label = getModelLabel('claude-sonnet-4.6');
     console.log(`Using model: ${label}`);
 }
 ```

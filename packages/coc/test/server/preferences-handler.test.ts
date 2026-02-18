@@ -103,7 +103,7 @@ describe('readPreferences / writePreferences', () => {
     });
 
     it('round-trips preferences through write and read', () => {
-        const original = { lastModel: 'claude-sonnet-4.5' };
+        const original = { lastModel: 'claude-sonnet-4.6' };
         writePreferences(tmpDir, original);
         const loaded = readPreferences(tmpDir);
         expect(loaded).toEqual(original);
@@ -174,7 +174,7 @@ describe('validatePreferences', () => {
     });
 
     it('accepts valid lastModel string', () => {
-        expect(validatePreferences({ lastModel: 'claude-sonnet-4.5' })).toEqual({ lastModel: 'claude-sonnet-4.5' });
+        expect(validatePreferences({ lastModel: 'claude-sonnet-4.6' })).toEqual({ lastModel: 'claude-sonnet-4.6' });
     });
 
     it('accepts empty lastModel string (means "Default")', () => {
@@ -232,13 +232,13 @@ describe('Preferences REST API', () => {
     // -- PUT /api/preferences --
 
     it('PUT replaces preferences and returns result', async () => {
-        const res = await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'claude-sonnet-4.5' });
+        const res = await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'claude-sonnet-4.6' });
         expect(res.status).toBe(200);
-        expect(JSON.parse(res.body)).toEqual({ lastModel: 'claude-sonnet-4.5' });
+        expect(JSON.parse(res.body)).toEqual({ lastModel: 'claude-sonnet-4.6' });
 
         // Verify persisted
         const get = await getJSON(`${baseUrl}/api/preferences`);
-        expect(JSON.parse(get.body)).toEqual({ lastModel: 'claude-sonnet-4.5' });
+        expect(JSON.parse(get.body)).toEqual({ lastModel: 'claude-sonnet-4.6' });
     });
 
     it('PUT replaces all fields (not merge)', async () => {

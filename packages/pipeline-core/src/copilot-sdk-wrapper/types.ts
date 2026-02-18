@@ -172,7 +172,7 @@ export interface TokenUsage {
 export interface SendMessageOptions {
     /** The prompt to send */
     prompt: string;
-    /** Optional model override (e.g., 'gpt-5', 'claude-sonnet-4.5') */
+    /** Optional model override (e.g., 'gpt-5', 'claude-sonnet-4.6') */
     model?: string;
     /** Optional working directory for context (set at client level) */
     workingDirectory?: string;

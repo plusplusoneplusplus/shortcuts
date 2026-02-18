@@ -113,7 +113,7 @@ describe('Model Registry', () => {
 
         it('should contain known models', () => {
             // These are the currently expected models - update when registry changes
-            expect(VALID_MODELS).toContain('claude-sonnet-4.5');
+            expect(VALID_MODELS).toContain('claude-sonnet-4.6');
             expect(VALID_MODELS).toContain('claude-haiku-4.5');
             expect(VALID_MODELS).toContain('claude-opus-4.6');
             expect(VALID_MODELS).toContain('gpt-5.2');
@@ -143,8 +143,8 @@ describe('Model Registry', () => {
             expect(MODEL_REGISTRY.has(DEFAULT_MODEL_ID)).toBe(true);
         });
 
-        it('should be claude-sonnet-4.5 (current default)', () => {
-            expect(DEFAULT_MODEL_ID).toBe('claude-sonnet-4.5');
+        it('should be claude-sonnet-4.6 (current default)', () => {
+            expect(DEFAULT_MODEL_ID).toBe('claude-sonnet-4.6');
         });
     });
 
@@ -154,7 +154,7 @@ describe('Model Registry', () => {
 
     describe('getModelLabel()', () => {
         it('should return the label for known models', () => {
-            expect(getModelLabel('claude-sonnet-4.5')).toBe('Claude Sonnet 4.5');
+            expect(getModelLabel('claude-sonnet-4.6')).toBe('Claude Sonnet 4.6');
             expect(getModelLabel('claude-haiku-4.5')).toBe('Claude Haiku 4.5');
             expect(getModelLabel('claude-opus-4.6')).toBe('Claude Opus 4.6');
             expect(getModelLabel('gpt-5.2')).toBe('GPT-5.2');
@@ -170,7 +170,7 @@ describe('Model Registry', () => {
 
     describe('getModelDescription()', () => {
         it('should return description for known models', () => {
-            expect(getModelDescription('claude-sonnet-4.5')).toBe('(Recommended)');
+            expect(getModelDescription('claude-sonnet-4.6')).toBe('(Recommended)');
             expect(getModelDescription('claude-haiku-4.5')).toBe('(Fast)');
             expect(getModelDescription('claude-opus-4.6')).toBe('(Premium)');
             expect(getModelDescription('gemini-3-pro-preview')).toBe('(Preview)');
@@ -188,10 +188,10 @@ describe('Model Registry', () => {
 
     describe('getModelDefinition()', () => {
         it('should return the full definition for known models', () => {
-            const def = getModelDefinition('claude-sonnet-4.5');
+            const def = getModelDefinition('claude-sonnet-4.6');
             expect(def).toBeDefined();
-            expect(def!.id).toBe('claude-sonnet-4.5');
-            expect(def!.label).toBe('Claude Sonnet 4.5');
+            expect(def!.id).toBe('claude-sonnet-4.6');
+            expect(def!.label).toBe('Claude Sonnet 4.6');
             expect(def!.description).toBe('(Recommended)');
             expect(def!.tier).toBe('standard');
         });
@@ -202,7 +202,7 @@ describe('Model Registry', () => {
 
         it('should return correct tier for each model', () => {
             expect(getModelDefinition('claude-haiku-4.5')?.tier).toBe('fast');
-            expect(getModelDefinition('claude-sonnet-4.5')?.tier).toBe('standard');
+            expect(getModelDefinition('claude-sonnet-4.6')?.tier).toBe('standard');
             expect(getModelDefinition('claude-opus-4.6')?.tier).toBe('premium');
             expect(getModelDefinition('gpt-5.2')?.tier).toBe('standard');
             expect(getModelDefinition('gpt-5.1-codex-max')?.tier).toBe('premium');
@@ -256,7 +256,7 @@ describe('Model Registry', () => {
             expect(isValidModelId('gpt-4')).toBe(false);
             expect(isValidModelId('unknown')).toBe(false);
             expect(isValidModelId('')).toBe(false);
-            expect(isValidModelId('Claude Sonnet 4.5')).toBe(false); // label, not ID
+            expect(isValidModelId('Claude Sonnet 4.6')).toBe(false); // label, not ID
         });
 
         it('should be case sensitive', () => {

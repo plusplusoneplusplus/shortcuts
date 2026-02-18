@@ -29,7 +29,7 @@ Dispatch the same verification task to three independent sub-agents.
 ### Sub-Agent Configuration
 | Agent | Model | Role |
 |-------|-------|------|
-| Agent A | `claude-sonnet-4.5` | Independent verifier |
+| Agent A | `claude-sonnet-4.6` | Independent verifier |
 | Agent B | `gpt-5.2` | Independent verifier |
 | Agent C | `gemini-pro-3` | Independent verifier |
 

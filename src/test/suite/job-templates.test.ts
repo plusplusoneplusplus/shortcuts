@@ -311,7 +311,7 @@ suite('Job Templates', () => {
                 prompt: 'Analyze {{file}}',
                 type: 'skill',
                 skillName: 'code-review',
-                model: 'claude-sonnet-4.5',
+                model: 'claude-sonnet-4.6',
                 workingDirectory: '/workspace/src',
                 createdAt: new Date().toISOString(),
                 lastUsedAt: new Date().toISOString(),
@@ -403,13 +403,13 @@ suite('Job Templates', () => {
                 prompt: 'Review {{file}}',
                 type: 'skill',
                 skillName: 'code-review',
-                model: 'claude-sonnet-4.5',
+                model: 'claude-sonnet-4.6',
                 workingDirectory: '/workspace/src',
             });
             assert.ok(template);
             assert.strictEqual(template!.type, 'skill');
             assert.strictEqual(template!.skillName, 'code-review');
-            assert.strictEqual(template!.model, 'claude-sonnet-4.5');
+            assert.strictEqual(template!.model, 'claude-sonnet-4.6');
             assert.strictEqual(template!.workingDirectory, '/workspace/src');
         });
 
