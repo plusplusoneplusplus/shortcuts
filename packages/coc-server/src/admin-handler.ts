@@ -11,18 +11,17 @@
 import * as crypto from 'crypto';
 import * as url from 'url';
 import type { ProcessStore, TaskQueueManager } from '@plusplusoneplusplus/pipeline-core';
-import { sendJSON, sendError, parseBody } from '@plusplusoneplusplus/coc-server';
-import { handleAPIError, invalidJSON, badRequest, forbidden } from '@plusplusoneplusplus/coc-server';
-import type { Route } from '@plusplusoneplusplus/coc-server';
+import { sendJSON, sendError, parseBody } from './api-handler';
+import { handleAPIError, invalidJSON, badRequest, forbidden } from './errors';
+import type { Route } from './types';
 import { DataWiper } from './data-wiper';
 import { exportAllData } from './data-exporter';
 import { importData } from './data-importer';
-import { validateExportPayload } from '@plusplusoneplusplus/coc-server';
-import type { CoCExportPayload, ImportMode } from '@plusplusoneplusplus/coc-server';
-import type { ProcessWebSocketServer } from '@plusplusoneplusplus/coc-server';
-import type { QueuePersistence } from './queue-persistence';
-import { getResolvedConfigWithSource, loadConfigFile, writeConfigFile, getConfigFilePath } from '../config';
-import type { CLIConfig } from '../config';
+import { validateExportPayload } from './export-import-types';
+import type { CoCExportPayload, ImportMode } from './export-import-types';
+import type { ProcessWebSocketServer } from './websocket';
+import type { QueuePersistence } from './queue/queue-persistence';
+import type { CLIConfig } from './export-import-types';
 
 // ============================================================================
 // Token Management
@@ -110,6 +109,15 @@ export function resetImportToken(): void {
 // Route Registration
 // ============================================================================
 
+/** Functions for reading/writing the CLIConfig file. Injected by the caller so coc-server stays decoupled from the CLI config module. */
+export interface AdminConfigFunctions {
+    getConfigFilePath: () => string;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    getResolvedConfigWithSource: (configPath?: string) => any;
+    loadConfigFile: (configPath?: string) => CLIConfig | undefined;
+    writeConfigFile: (configPath: string, config: CLIConfig) => void;
+}
+
 export interface AdminRouteOptions {
     store: ProcessStore;
     dataDir: string;
@@ -121,6 +129,8 @@ export interface AdminRouteOptions {
     getQueueManager?: () => TaskQueueManager | undefined;
     /** Lazy getter for queue persistence (for import restore). */
     getQueuePersistence?: () => QueuePersistence | undefined;
+    /** Config file functions (injected from CLI layer). */
+    configFunctions?: AdminConfigFunctions;
 }
 
 /**
@@ -131,9 +141,9 @@ export interface AdminRouteOptions {
 const VALID_OUTPUT_VALUES = ['table', 'json', 'csv', 'markdown'] as const;
 
 export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions): void {
-    const { store, dataDir, getWsServer, configPath } = options;
+    const { store, dataDir, getWsServer, configPath, configFunctions } = options;
     const wiper = new DataWiper(dataDir, store);
-    const resolvedConfigPath = configPath ?? getConfigFilePath();
+    const resolvedConfigPath = configPath ?? configFunctions?.getConfigFilePath?.() ?? '';
 
     // ------------------------------------------------------------------
     // GET /api/admin/data/wipe-token — Generate a wipe confirmation token
@@ -172,7 +182,7 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
         method: 'GET',
         pattern: '/api/admin/config',
         handler: async (_req, res) => {
-            const result = getResolvedConfigWithSource(configPath);
+            const result = configFunctions?.getResolvedConfigWithSource?.(configPath) ?? { config: {}, sources: {} };
             sendJSON(res, 200, result);
         },
     });
@@ -224,16 +234,16 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             }
 
             // Merge with existing config
-            const existing: CLIConfig = loadConfigFile(configPath) ?? {};
+            const existing: CLIConfig = configFunctions?.loadConfigFile?.(configPath) ?? {};
             if ('model' in body) { existing.model = body.model as string; }
             if ('parallel' in body) { existing.parallel = body.parallel as number; }
             if ('timeout' in body) { existing.timeout = body.timeout as number; }
             if ('output' in body) { existing.output = body.output as CLIConfig['output']; }
 
-            writeConfigFile(resolvedConfigPath, existing);
+            configFunctions?.writeConfigFile?.(resolvedConfigPath, existing);
 
             // Return updated resolved config (same shape as GET)
-            const result = getResolvedConfigWithSource(configPath);
+            const result = configFunctions?.getResolvedConfigWithSource?.(configPath) ?? { config: {}, sources: {} };
             sendJSON(res, 200, result);
         },
     });
@@ -279,7 +289,7 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
         method: 'GET',
         pattern: '/api/admin/export',
         handler: async (_req, res) => {
-            const payload = await exportAllData({ store, dataDir });
+            const payload = await exportAllData({ store, dataDir, loadConfigFile: configFunctions?.loadConfigFile });
             const body = JSON.stringify(payload);
 
             // Build filename with current timestamp (colons replaced for FS safety)

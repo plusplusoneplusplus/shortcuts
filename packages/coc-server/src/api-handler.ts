@@ -18,6 +18,7 @@ import type { ProcessStore, ProcessFilter, AIProcess, AIProcessStatus, AIProcess
 import { deserializeProcess } from '@plusplusoneplusplus/pipeline-core';
 import type { Route } from './types';
 import { handleProcessStream } from './sse-handler';
+import { handleAPIError, invalidJSON, missingFields, notFound, badRequest, forbidden, internalError, APIError } from './errors';
 
 /**
  * Bridge interface for executing follow-up messages on existing AI sessions.
@@ -191,11 +192,11 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             try {
                 body = await parseBody(req);
             } catch {
-                return sendError(res, 400, 'Invalid JSON');
+                return handleAPIError(res, invalidJSON());
             }
 
             if (!body.id || !body.name || !body.rootPath) {
-                return sendError(res, 400, 'Missing required fields: id, name, rootPath');
+                return handleAPIError(res, missingFields(['id', 'name', 'rootPath']));
             }
 
             // Auto-detect git remote URL if not explicitly provided
@@ -235,7 +236,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             const id = decodeURIComponent(match![1]);
             const removed = await store.removeWorkspace(id);
             if (!removed) {
-                return sendError(res, 404, 'Workspace not found');
+                return handleAPIError(res, notFound('Workspace'));
             }
             res.writeHead(204);
             res.end();
@@ -252,7 +253,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             try {
                 body = await parseBody(req);
             } catch {
-                return sendError(res, 400, 'Invalid JSON');
+                return handleAPIError(res, invalidJSON());
             }
 
             const updates: Partial<Omit<WorkspaceInfo, 'id'>> = {};
@@ -263,7 +264,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
 
             const updated = await store.updateWorkspace(id, updates);
             if (!updated) {
-                return sendError(res, 404, 'Workspace not found');
+                return handleAPIError(res, notFound('Workspace'));
             }
             sendJSON(res, 200, { workspace: updated });
         },
@@ -278,7 +279,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             const workspaces = await store.getWorkspaces();
             const ws = workspaces.find(w => w.id === id);
             if (!ws) {
-                return sendError(res, 404, 'Workspace not found');
+                return handleAPIError(res, notFound('Workspace'));
             }
 
             try {
@@ -308,7 +309,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             const workspaces = await store.getWorkspaces();
             const ws = workspaces.find(w => w.id === id);
             if (!ws) {
-                return sendError(res, 404, 'Workspace not found');
+                return handleAPIError(res, notFound('Workspace'));
             }
 
             const parsed = url.parse(req.url || '/', true);
@@ -342,12 +343,12 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             const home = os.homedir();
             const tmpDir = os.tmpdir();
             if (!resolved.startsWith(home) && !resolved.startsWith(tmpDir) && !resolved.startsWith('/tmp') && resolved !== '/') {
-                return sendError(res, 403, 'Access denied: path is outside allowed directories');
+                return handleAPIError(res, forbidden('Access denied: path is outside allowed directories'));
             }
 
             const result = browseDirectory(resolved, showHidden);
             if (!result) {
-                return sendError(res, 404, 'Directory not found or not accessible');
+                return handleAPIError(res, notFound('Directory'));
             }
             sendJSON(res, 200, result);
         },
@@ -371,7 +372,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                 const all = await store.getAllProcesses();
                 const match = all.find(p => p.sdkSessionId === sdkSessionId);
                 if (!match) {
-                    return sendError(res, 404, 'No process found with sdkSessionId: ' + sdkSessionId);
+                    return handleAPIError(res, notFound('Process with sdkSessionId: ' + sdkSessionId));
                 }
                 return sendJSON(res, 200, { process: match });
             }
@@ -409,7 +410,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             const statusParam = parsed.query.status;
 
             if (typeof statusParam !== 'string' || !statusParam) {
-                return sendError(res, 400, 'Query parameter "status" is required for bulk delete');
+                return handleAPIError(res, badRequest('Query parameter "status" is required for bulk delete'));
             }
 
             const statuses = statusParam
@@ -418,7 +419,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                 .filter(s => VALID_STATUSES.has(s)) as AIProcessStatus[];
 
             if (statuses.length === 0) {
-                return sendError(res, 400, 'No valid status values provided');
+                return handleAPIError(res, badRequest('No valid status values provided'));
             }
 
             const removed = await store.clearProcesses({ status: statuses });
@@ -435,11 +436,11 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             try {
                 body = await parseBody(req);
             } catch {
-                return sendError(res, 400, 'Invalid JSON');
+                return handleAPIError(res, invalidJSON());
             }
 
             if (!body.id || !body.promptPreview || !body.status || !body.startTime) {
-                return sendError(res, 400, 'Missing required fields: id, promptPreview, status, startTime');
+                return handleAPIError(res, missingFields(['id', 'promptPreview', 'status', 'startTime']));
             }
 
             // Hydrate date strings via deserializeProcess
@@ -496,11 +497,11 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             const id = decodeURIComponent(match![1]);
             const process = await store.getProcess(id);
             if (!process) {
-                return sendError(res, 404, 'Process not found');
+                return handleAPIError(res, notFound('Process'));
             }
             const filePath = process.rawStdoutFilePath;
             if (!filePath) {
-                return sendError(res, 404, 'No conversation output saved');
+                return handleAPIError(res, notFound('Conversation output'));
             }
             try {
                 await fs.promises.access(filePath);
@@ -508,9 +509,9 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                 sendJSON(res, 200, { content, format: 'markdown' });
             } catch (err: any) {
                 if (err.code === 'ENOENT') {
-                    return sendError(res, 404, 'No conversation output saved');
+                    return handleAPIError(res, notFound('Conversation output'));
                 }
-                return sendError(res, 500, 'Failed to read conversation output');
+                return handleAPIError(res, internalError('Failed to read conversation output'));
             }
         },
     });
@@ -523,7 +524,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             const id = decodeURIComponent(match![1]);
             const process = await store.getProcess(id);
             if (!process) {
-                return sendError(res, 404, 'Process not found');
+                return handleAPIError(res, notFound('Process'));
             }
             const filter = parseQueryParams(req.url || '/');
             const result = filter.exclude ? stripExcludedFields(process, filter.exclude) : process;
@@ -539,14 +540,14 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             const id = decodeURIComponent(match![1]);
             const existing = await store.getProcess(id);
             if (!existing) {
-                return sendError(res, 404, 'Process not found');
+                return handleAPIError(res, notFound('Process'));
             }
 
             let body: any;
             try {
                 body = await parseBody(req);
             } catch {
-                return sendError(res, 400, 'Invalid JSON');
+                return handleAPIError(res, invalidJSON());
             }
 
             const updates: Partial<AIProcess> = {};
@@ -573,7 +574,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             const id = decodeURIComponent(match![1]);
             const existing = await store.getProcess(id);
             if (!existing) {
-                return sendError(res, 404, 'Process not found');
+                return handleAPIError(res, notFound('Process'));
             }
             await store.removeProcess(id);
             res.writeHead(204);
@@ -589,11 +590,11 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             const id = decodeURIComponent(match![1]);
             const existing = await store.getProcess(id);
             if (!existing) {
-                return sendError(res, 404, 'Process not found');
+                return handleAPIError(res, notFound('Process'));
             }
 
             if (TERMINAL_STATUSES.has(existing.status)) {
-                return sendError(res, 409, `Process is already in terminal state: ${existing.status}`);
+                return handleAPIError(res, new APIError(409, `Process is already in terminal state: ${existing.status}`, 'CONFLICT'));
             }
 
             await store.updateProcess(id, {
@@ -614,35 +615,32 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             const id = decodeURIComponent(match![1]);
             const process = await store.getProcess(id);
             if (!process) {
-                return sendError(res, 404, 'Process not found');
+                return handleAPIError(res, notFound('Process'));
             }
 
             // Validate the process has an SDK session to follow up on
             if (!process.sdkSessionId) {
-                return sendError(res, 409, 'Process has no SDK session — follow-up not supported');
+                return handleAPIError(res, new APIError(409, 'Process has no SDK session — follow-up not supported', 'CONFLICT'));
             }
 
             // Check session liveness before forwarding the prompt
             if (bridge && !(await bridge.isSessionAlive(id))) {
-                return sendJSON(res, 410, {
-                    error: 'session_expired',
-                    message: 'The AI session has ended. Please start a new task.',
-                });
+                return handleAPIError(res, new APIError(410, 'The AI session has ended. Please start a new task.', 'SESSION_EXPIRED'));
             }
 
             if (!bridge) {
-                return sendError(res, 501, 'Follow-up execution not available');
+                return handleAPIError(res, new APIError(501, 'Follow-up execution not available', 'NOT_IMPLEMENTED'));
             }
 
             let body: any;
             try {
                 body = await parseBody(req);
             } catch {
-                return sendError(res, 400, 'Invalid JSON');
+                return handleAPIError(res, invalidJSON());
             }
 
             if (!body.content || typeof body.content !== 'string') {
-                return sendError(res, 400, 'Missing required field: content (string)');
+                return handleAPIError(res, missingFields(['content']));
             }
 
             // Append user turn to conversationTurns

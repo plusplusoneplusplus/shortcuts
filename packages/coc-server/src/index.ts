@@ -87,3 +87,15 @@ export type {
 
 // SSE streaming
 export { handleProcessStream } from './sse-handler';
+
+// Centralized error handling
+export {
+    APIError,
+    handleAPIError,
+    badRequest,
+    notFound,
+    forbidden,
+    invalidJSON,
+    missingFields,
+    internalError,
+} from './errors';
