@@ -582,6 +582,12 @@ function resolveFolderByPath(root: TaskFolder, folderPath: string): TaskFolder |
     return current;
 }
 
+/** Return the parent folder portion of a file path, or '' for root-level files. */
+function parentFolderPath(filePath: string): string {
+    const idx = filePath.lastIndexOf('/');
+    return idx > 0 ? filePath.substring(0, idx) : '';
+}
+
 /** Render the full Miller columns view into the container. */
 function renderMillerColumns(container: HTMLElement): void {
     const navPath = taskPanelState.expandedFolders['__navPath'] as any as string || '';
@@ -794,6 +800,12 @@ function attachMillerEventListeners(container: HTMLElement): void {
             const filePath = fileRow.getAttribute('data-file-path');
             if (filePath) {
                 clearSelection();
+                // Set navPath to the file's parent folder so columns match the file's location.
+                // Without this, clicking a root-level file while a subfolder is expanded
+                // leaves the stale subfolder column visible.
+                const parts = filePath.split('/');
+                const parentPath = parts.length > 1 ? parts.slice(0, -1).join('/') : '';
+                taskPanelState.expandedFolders['__navPath'] = parentPath as any;
                 openTaskFile(wsId, filePath);
             }
             return;
@@ -1611,25 +1623,29 @@ async function openTaskFile(wsId: string, filePath: string): Promise<void> {
     const container = document.getElementById('repo-tasks-tree');
     if (!container || !currentTasks) return;
 
-    // If a preview column already exists, do an incremental update to avoid
-    // full DOM replacement which causes visible UI tremble/flicker.
+    // If a preview column already exists AND the column structure hasn't changed,
+    // do an incremental update to avoid full DOM replacement (prevents flicker).
+    // When the file's parent folder differs from the previous file's parent,
+    // the column set has changed and we must do a full re-render.
     const existingPreview = document.getElementById('miller-preview-column');
     if (previousFilePath && existingPreview) {
-        // Update selected-row highlights: deselect old, select new
-        const millerCols = document.getElementById('miller-columns');
-        if (millerCols) {
-            const oldSelected = millerCols.querySelectorAll('.miller-file-row.miller-row-selected');
-            oldSelected.forEach(el => el.classList.remove('miller-row-selected'));
-            const newRow = millerCols.querySelector('[data-file-path="' + CSS.escape(filePath) + '"]');
-            if (newRow) newRow.classList.add('miller-row-selected');
+        const prevParent = parentFolderPath(previousFilePath);
+        const newParent = parentFolderPath(filePath);
+        if (prevParent === newParent) {
+            const millerCols = document.getElementById('miller-columns');
+            if (millerCols) {
+                const oldSelected = millerCols.querySelectorAll('.miller-file-row.miller-row-selected');
+                oldSelected.forEach(el => el.classList.remove('miller-row-selected'));
+                const newRow = millerCols.querySelector('[data-file-path="' + CSS.escape(filePath) + '"]');
+                if (newRow) newRow.classList.add('miller-row-selected');
+            }
+            existingPreview.innerHTML = '<div class="task-preview-loading">Loading...</div>';
+            loadPreviewContent(wsId, filePath);
+            return;
         }
-        // Show loading state and reload preview content in-place
-        existingPreview.innerHTML = '<div class="task-preview-loading">Loading...</div>';
-        loadPreviewContent(wsId, filePath);
-        return;
     }
 
-    // No preview column yet — full re-render to add it
+    // Column structure changed or no preview yet — full re-render
     renderMillerColumns(container);
 }
 
@@ -2293,10 +2309,8 @@ async function openTaskFileFromHash(wsId: string, filePath: string): Promise<voi
     }
     // Auto-expand the navigation path to the file's parent folder
     const parts = filePath.split('/');
-    if (parts.length > 1) {
-        const parentPath = parts.slice(0, -1).join('/');
-        taskPanelState.expandedFolders['__navPath'] = parentPath as any;
-    }
+    const parentPath = parts.length > 1 ? parts.slice(0, -1).join('/') : '';
+    taskPanelState.expandedFolders['__navPath'] = parentPath as any;
     openTaskFile(wsId, filePath);
 }
 
