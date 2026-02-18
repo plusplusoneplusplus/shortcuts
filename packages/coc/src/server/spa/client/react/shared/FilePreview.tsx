@@ -1,12 +1,16 @@
 /**
  * FilePreview — hover tooltip that shows file content on mouse enter.
  * Wraps children and renders a portal tooltip with cached file preview.
+ *
+ * For markdown files, renders using the shared markdown pipeline.
+ * For other files, uses row-based line rendering with word wrap.
  */
 
-import { useState, useRef, useCallback, type ReactNode } from 'react';
+import { useState, useRef, useCallback, useEffect, type ReactNode } from 'react';
 import ReactDOM from 'react-dom';
 import { useApp } from '../context/AppContext';
 import { getApiBase } from '../utils/config';
+import { renderMarkdownToHtml } from '../../markdown-renderer';
 import { Spinner } from './Spinner';
 import { cn } from './cn';
 
@@ -28,6 +32,22 @@ interface CacheEntry {
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const MAX_CACHE_ENTRIES = 50;
 
+const MARKDOWN_EXTENSIONS = new Set(['md', 'markdown', 'mdx']);
+
+function isMarkdownFile(fileName: string, language: string): boolean {
+    if (MARKDOWN_EXTENSIONS.has(language)) return true;
+    const ext = fileName.split('.').pop()?.toLowerCase() || '';
+    return MARKDOWN_EXTENSIONS.has(ext);
+}
+
+function escapeHtml(text: string): string {
+    return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
 export interface FilePreviewProps {
     filePath: string;
     wsId?: string;
@@ -43,6 +63,7 @@ export function FilePreview({ filePath, wsId, children }: FilePreviewProps) {
     const [pos, setPos] = useState({ top: 0, left: 0 });
 
     const triggerRef = useRef<HTMLSpanElement>(null);
+    const contentRef = useRef<HTMLDivElement>(null);
     const cacheRef = useRef<Map<string, CacheEntry>>(new Map());
     const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -140,6 +161,57 @@ export function FilePreview({ filePath, wsId, children }: FilePreviewProps) {
         hideTimerRef.current = setTimeout(() => setVisible(false), 200);
     }, []);
 
+    // Apply hljs highlighting for markdown preview
+    useEffect(() => {
+        if (!preview || !contentRef.current) return;
+        if (!isMarkdownFile(preview.fileName, preview.language)) return;
+        const hljs = (window as any).hljs;
+        if (hljs) {
+            contentRef.current.querySelectorAll('pre code').forEach((block: Element) => {
+                hljs.highlightElement(block);
+            });
+        }
+    }, [preview]);
+
+    const renderContent = () => {
+        if (!preview) return null;
+
+        if (isMarkdownFile(preview.fileName, preview.language)) {
+            const mdContent = preview.lines.join('\n');
+            const html = renderMarkdownToHtml(mdContent, { stripFrontmatter: true });
+            return (
+                <div
+                    ref={contentRef}
+                    className="markdown-body text-xs p-3 text-[#1e1e1e] dark:text-[#cccccc]"
+                    dangerouslySetInnerHTML={{ __html: html }}
+                />
+            );
+        }
+
+        const gutterWidth = String(preview.lines.length).length;
+        return (
+            <div className="file-preview-lines p-1" role="table">
+                {preview.lines.map((line, i) => (
+                    <div key={i} className="file-preview-line flex" role="row">
+                        <span
+                            className="file-preview-line-number select-none text-right pr-3 text-[#848484] text-xs font-mono"
+                            style={{ minWidth: `${gutterWidth + 1}ch` }}
+                            role="rowheader"
+                        >
+                            {i + 1}
+                        </span>
+                        <span
+                            className="file-preview-line-content text-xs font-mono text-[#1e1e1e] dark:text-[#d4d4d4]"
+                            style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', flex: 1, minWidth: 0 }}
+                        >
+                            {line || '\u200B'}
+                        </span>
+                    </div>
+                ))}
+            </div>
+        );
+    };
+
     return (
         <>
             <span
@@ -172,9 +244,7 @@ export function FilePreview({ filePath, wsId, children }: FilePreviewProps) {
                                     {preview.lines.length} lines{preview.truncated ? ` (${preview.totalLines} total)` : ''}
                                 </span>
                             </div>
-                            <pre className="p-2 text-xs font-mono text-[#1e1e1e] dark:text-[#d4d4d4] overflow-x-auto whitespace-pre">
-                                {preview.lines.join('\n')}
-                            </pre>
+                            {renderContent()}
                         </>
                     )}
                 </div>,

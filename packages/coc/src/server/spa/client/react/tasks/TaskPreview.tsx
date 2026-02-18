@@ -4,9 +4,8 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { fetchApi } from '../hooks/useApi';
-import { useMermaid } from '../hooks/useMermaid';
+import { useMarkdownPreview } from '../hooks/useMarkdownPreview';
 import { useTaskComments } from '../hooks/useTaskComments';
-import { renderMarkdownToHtml } from '../../markdown-renderer';
 import { Spinner } from '../shared';
 import { CommentSidebar } from './comments/CommentSidebar';
 import { SelectionToolbar } from './comments/SelectionToolbar';
@@ -27,7 +26,6 @@ interface TaskPreviewProps {
 const MIN_SELECTION_LENGTH = 3;
 
 export function TaskPreview({ wsId, filePath }: TaskPreviewProps) {
-    const [html, setHtml] = useState('');
     const [rawContent, setRawContent] = useState('');
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -58,7 +56,13 @@ export function TaskPreview({ wsId, filePath }: TaskPreviewProps) {
         askAI,
     } = useTaskComments(wsId, filePath);
 
-    useMermaid(previewRef);
+    // Shared markdown rendering (render + hljs + mermaid)
+    const { html } = useMarkdownPreview({
+        content: rawContent,
+        containerRef: previewRef,
+        loading,
+        stripFrontmatter: true,
+    });
 
     useEffect(() => {
         setLoading(true);
@@ -68,8 +72,6 @@ export function TaskPreview({ wsId, filePath }: TaskPreviewProps) {
             .then((data) => {
                 const content = typeof data === 'string' ? data : (data?.content || '');
                 setRawContent(content);
-                const rendered = renderMarkdownToHtml(content, { stripFrontmatter: true });
-                setHtml(rendered);
                 setLoading(false);
             })
             .catch((err) => {
@@ -77,18 +79,6 @@ export function TaskPreview({ wsId, filePath }: TaskPreviewProps) {
                 setLoading(false);
             });
     }, [wsId, filePath]);
-
-    // Trigger hljs after render
-    useEffect(() => {
-        if (html && previewRef.current) {
-            const hljs = (window as any).hljs;
-            if (hljs) {
-                previewRef.current.querySelectorAll('pre code').forEach((block: Element) => {
-                    hljs.highlightElement(block);
-                });
-            }
-        }
-    }, [html]);
 
     // Selection change listener
     useEffect(() => {
