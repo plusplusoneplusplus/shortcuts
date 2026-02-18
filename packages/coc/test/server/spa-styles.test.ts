@@ -358,6 +358,134 @@ describe('SPA styles — task preview scrolling', () => {
     });
 });
 
+// ============================================================================
+// Markdown span-based rendering styles (md-h*, md-blockquote, etc.)
+// ============================================================================
+
+describe('Bundled CSS — markdown span-based rendering styles', () => {
+    const html = generateDashboardHtml();
+
+    it('defines heading styles for md-h1 through md-h6', () => {
+        expect(html).toContain('.md-h1');
+        expect(html).toContain('.md-h2');
+        expect(html).toContain('.md-h3');
+        expect(html).toContain('.md-h4');
+        expect(html).toContain('.md-h5');
+        expect(html).toContain('.md-h6');
+    });
+
+    it('md-h1 renders as block with large font and bottom border', () => {
+        const start = html.indexOf('.task-preview-body .md-h1,');
+        expect(start).toBeGreaterThan(-1);
+        const end = html.indexOf('}', start);
+        const rule = html.substring(start, end + 1);
+        expect(rule).toContain('display: block');
+        expect(rule).toContain('font-weight: 700');
+        expect(rule).toContain('border-bottom:');
+    });
+
+    it('md-h2 renders as block with border-bottom', () => {
+        const start = html.indexOf('.task-preview-body .md-h2,');
+        expect(start).toBeGreaterThan(-1);
+        const end = html.indexOf('}', start);
+        const rule = html.substring(start, end + 1);
+        expect(rule).toContain('display: block');
+        expect(rule).toContain('font-weight: 700');
+        expect(rule).toContain('border-bottom:');
+    });
+
+    it('md-h3 renders as block without border', () => {
+        const start = html.indexOf('.task-preview-body .md-h3,');
+        expect(start).toBeGreaterThan(-1);
+        const end = html.indexOf('}', start);
+        const rule = html.substring(start, end + 1);
+        expect(rule).toContain('display: block');
+        expect(rule).toContain('font-weight: 600');
+        expect(rule).not.toContain('border-bottom');
+    });
+
+    it('defines md-hash style for heading markers', () => {
+        expect(html).toContain('.md-hash');
+        const start = html.indexOf('.task-preview-body .md-hash,');
+        expect(start).toBeGreaterThan(-1);
+        const end = html.indexOf('}', start);
+        const rule = html.substring(start, end + 1);
+        expect(rule).toContain('opacity:');
+    });
+
+    it('defines md-blockquote style', () => {
+        expect(html).toContain('.md-blockquote');
+        const start = html.indexOf('.task-preview-body .md-blockquote,');
+        expect(start).toBeGreaterThan(-1);
+        const end = html.indexOf('}', start);
+        const rule = html.substring(start, end + 1);
+        expect(rule).toContain('border-left:');
+        expect(rule).toContain('font-style: italic');
+    });
+
+    it('defines md-hr style', () => {
+        expect(html).toContain('.md-hr');
+        const start = html.indexOf('.task-preview-body .md-hr,');
+        expect(start).toBeGreaterThan(-1);
+        const end = html.indexOf('}', start);
+        const rule = html.substring(start, end + 1);
+        expect(rule).toContain('display: block');
+    });
+
+    it('defines md-bold and md-italic styles', () => {
+        expect(html).toContain('.md-bold');
+        expect(html).toContain('.md-italic');
+        expect(html).toContain('.md-bold-italic');
+    });
+
+    it('defines md-marker style with reduced opacity', () => {
+        const start = html.indexOf('.task-preview-body .md-marker,');
+        expect(start).toBeGreaterThan(-1);
+        const end = html.indexOf('}', start);
+        const rule = html.substring(start, end + 1);
+        expect(rule).toContain('opacity:');
+    });
+
+    it('defines md-strike style', () => {
+        expect(html).toContain('.md-strike');
+    });
+
+    it('defines md-inline-code style', () => {
+        const start = html.indexOf('.task-preview-body .md-inline-code,');
+        expect(start).toBeGreaterThan(-1);
+        const end = html.indexOf('}', start);
+        const rule = html.substring(start, end + 1);
+        expect(rule).toContain('font-family:');
+        expect(rule).toContain('border-radius:');
+    });
+
+    it('defines md-link and md-link-text styles', () => {
+        expect(html).toContain('.md-link');
+        expect(html).toContain('.md-link-text');
+        expect(html).toContain('.md-link-url');
+    });
+
+    it('defines md-list-marker style', () => {
+        expect(html).toContain('.md-list-marker');
+    });
+
+    it('defines md-code-fence style', () => {
+        expect(html).toContain('.md-code-fence');
+    });
+
+    it('styles apply to both task-preview-body and result-body', () => {
+        expect(html).toContain('.task-preview-body .md-h1,');
+        expect(html).toContain('.result-body .md-h1');
+        expect(html).toContain('.task-preview-body .md-blockquote,');
+        expect(html).toContain('.result-body .md-blockquote');
+    });
+
+    it('removes top margin from first heading in preview', () => {
+        expect(html).toContain('.md-line:first-child .md-h1');
+        expect(html).toContain('margin-top: 0');
+    });
+});
+
 describe('Bundled CSS — context menu shortcut label', () => {
     const html = generateDashboardHtml();
 

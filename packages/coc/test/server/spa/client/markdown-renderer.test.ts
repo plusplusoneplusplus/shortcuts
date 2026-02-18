@@ -49,6 +49,36 @@ describe('renderMarkdownToHtml', () => {
             const html = renderMarkdownToHtml('# My Heading');
             expect(html).toContain('data-anchor-id="my-heading"');
         });
+
+        it('renders headings as span elements with md-h* classes', () => {
+            const html = renderMarkdownToHtml('# Title');
+            expect(html).toMatch(/<span class="md-h1"/);
+        });
+
+        it('renders h5 and h6 headings', () => {
+            const md = '##### H5 Heading\n###### H6 Heading';
+            const html = renderMarkdownToHtml(md);
+            expect(html).toContain('md-h5');
+            expect(html).toContain('md-h6');
+        });
+
+        it('renders hash markers inside headings', () => {
+            const html = renderMarkdownToHtml('## Sub Title');
+            expect(html).toContain('md-hash');
+            expect(html).toContain('##');
+        });
+
+        it('renders inline formatting inside headings', () => {
+            const html = renderMarkdownToHtml('# Title with **bold** text');
+            expect(html).toContain('md-h1');
+            expect(html).toContain('md-bold');
+        });
+
+        it('wraps heading line in div with anchor id', () => {
+            const html = renderMarkdownToHtml('# Hello World');
+            expect(html).toContain('id="hello-world"');
+            expect(html).toMatch(/<div class="md-line" data-line="1" id="hello-world">/);
+        });
     });
 
     // ----------------------------------------------------------------

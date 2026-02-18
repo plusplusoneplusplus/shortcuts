@@ -2474,6 +2474,206 @@ html[data-theme="dark"] .miller-row-drop-target {
 
 .task-preview-body strong { font-weight: 600; }
 
+/* ---- Markdown Span-Based Rendering (md-h*, md-blockquote, etc.) ---- */
+/* The pipeline-core renderer emits <span class="md-h1">, not <h1>, so we
+   style those span classes here for both task-preview-body and result-body. */
+
+.task-preview-body .md-h1,
+.result-body .md-h1 {
+    display: block;
+    font-size: 1.75em;
+    font-weight: 700;
+    color: var(--text-primary);
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 0.3em;
+    margin-top: 20px;
+    margin-bottom: 10px;
+    line-height: 1.3;
+}
+
+.task-preview-body .md-h2,
+.result-body .md-h2 {
+    display: block;
+    font-size: 1.4em;
+    font-weight: 700;
+    color: var(--text-primary);
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 0.25em;
+    margin-top: 18px;
+    margin-bottom: 8px;
+    line-height: 1.3;
+}
+
+.task-preview-body .md-h3,
+.result-body .md-h3 {
+    display: block;
+    font-size: 1.2em;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-top: 16px;
+    margin-bottom: 6px;
+    line-height: 1.3;
+}
+
+.task-preview-body .md-h4,
+.result-body .md-h4 {
+    display: block;
+    font-size: 1.05em;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-top: 14px;
+    margin-bottom: 4px;
+    line-height: 1.3;
+}
+
+.task-preview-body .md-h5,
+.task-preview-body .md-h6,
+.result-body .md-h5,
+.result-body .md-h6 {
+    display: block;
+    font-size: 1em;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-top: 12px;
+    margin-bottom: 4px;
+    line-height: 1.3;
+}
+
+.task-preview-body .md-hash,
+.result-body .md-hash {
+    color: var(--text-secondary);
+    opacity: 0.5;
+    margin-right: 2px;
+}
+
+.task-preview-body .md-blockquote,
+.result-body .md-blockquote {
+    display: block;
+    border-left: 3px solid var(--accent);
+    padding-left: 12px;
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+.task-preview-body .md-blockquote-marker,
+.result-body .md-blockquote-marker {
+    color: var(--accent);
+    opacity: 0.6;
+}
+
+.task-preview-body .md-hr,
+.result-body .md-hr {
+    display: block;
+    height: 2px;
+    background: var(--border-color);
+    border: none;
+    margin: 16px 0;
+    font-size: 0;
+    line-height: 0;
+    overflow: hidden;
+}
+
+.task-preview-body .md-bold,
+.result-body .md-bold {
+    font-weight: 600;
+}
+
+.task-preview-body .md-italic,
+.result-body .md-italic {
+    font-style: italic;
+}
+
+.task-preview-body .md-bold-italic,
+.result-body .md-bold-italic {
+    font-weight: 600;
+    font-style: italic;
+}
+
+.task-preview-body .md-marker,
+.result-body .md-marker {
+    color: var(--text-secondary);
+    opacity: 0.4;
+    font-size: 0.85em;
+}
+
+.task-preview-body .md-strike,
+.result-body .md-strike {
+    text-decoration: line-through;
+    color: var(--text-secondary);
+}
+
+.task-preview-body .md-inline-code,
+.result-body .md-inline-code {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    padding: 0.15em 0.4em;
+    border-radius: 3px;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+    font-size: 0.9em;
+}
+
+.task-preview-body .md-link,
+.result-body .md-link {
+    color: var(--accent);
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.task-preview-body .md-link:hover,
+.result-body .md-link:hover {
+    text-decoration: underline;
+}
+
+.task-preview-body .md-link-text,
+.result-body .md-link-text {
+    color: var(--accent);
+}
+
+.task-preview-body .md-link-url,
+.result-body .md-link-url {
+    color: var(--text-secondary);
+    opacity: 0.7;
+    font-size: 0.9em;
+}
+
+.task-preview-body .md-list-marker,
+.result-body .md-list-marker {
+    color: var(--accent);
+    font-weight: 600;
+}
+
+.task-preview-body .md-code-fence,
+.result-body .md-code-fence {
+    color: var(--text-secondary);
+    opacity: 0.7;
+}
+
+.task-preview-body .md-image-preview,
+.result-body .md-image-preview {
+    max-width: 100%;
+    max-height: 400px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    display: block;
+    margin: 8px 0;
+}
+
+.task-preview-body .md-image-syntax,
+.result-body .md-image-syntax {
+    color: var(--text-secondary);
+    font-size: 0.9em;
+}
+
+/* First heading in the preview should have no top margin */
+.task-preview-body .md-line:first-child .md-h1,
+.task-preview-body .md-line:first-child .md-h2,
+.task-preview-body .md-line:first-child .md-h3,
+.result-body .md-line:first-child .md-h1,
+.result-body .md-line:first-child .md-h2,
+.result-body .md-line:first-child .md-h3 {
+    margin-top: 0;
+}
+
 /* ---- Markdown Table Styles ---- */
 
 .task-preview-body .md-table-container {
