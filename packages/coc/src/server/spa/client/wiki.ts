@@ -190,11 +190,7 @@ function getStatusBadge(status: WikiStatus): string {
 // ================================================================
 
 export function renderWikiSidebar(): void {
-    if (appState.wikiView === 'detail' && appState.selectedWikiId) {
-        renderWikiDetailSidebar();
-    } else {
-        renderWikiListSidebar();
-    }
+    renderWikiListSidebar();
 }
 
 function renderWikiListSidebar(): void {
@@ -362,14 +358,13 @@ async function onWikiCardClicked(wikiId: string): Promise<void> {
     if (!wiki) return;
 
     appState.selectedWikiId = wikiId;
-    appState.wikiView = 'detail';
     setHashSilent(`#wiki/${encodeURIComponent(wikiId)}`);
 
     hideWikiAdmin();
     resetAdminState();
 
-    // Transition sidebar to detail view
-    renderWikiDetailSidebar();
+    // Re-render list sidebar to highlight the active card (no view transition)
+    renderWikiListSidebar();
 
     const status = getWikiStatus(wiki);
 
@@ -408,7 +403,7 @@ async function loadWikiGraph(wikiId: string): Promise<void> {
 }
 
 export function navigateToWikiList(): void {
-    appState.wikiView = 'list';
+    appState.selectedWikiId = null;
     setHashSilent('#wiki');
 
     hideWikiAdmin();
@@ -532,7 +527,7 @@ export function handleWikiReload(wikiId: string): void {
     }
     renderWikiSidebar();
 
-    if (appState.selectedWikiId === wikiId && appState.wikiView === 'detail') {
+    if (appState.selectedWikiId === wikiId) {
         loadWikiGraph(wikiId);
     }
 }
@@ -544,7 +539,7 @@ export function handleWikiRebuilding(wikiId: string): void {
     }
     renderWikiSidebar();
 
-    if (appState.selectedWikiId === wikiId && appState.wikiView === 'detail') {
+    if (appState.selectedWikiId === wikiId) {
         showWikiGeneratingState();
     }
 }
@@ -557,7 +552,7 @@ export function handleWikiError(wikiId: string, message?: string): void {
     }
     renderWikiSidebar();
 
-    if (appState.selectedWikiId === wikiId && appState.wikiView === 'detail') {
+    if (appState.selectedWikiId === wikiId) {
         showWikiErrorState(message);
     }
 }

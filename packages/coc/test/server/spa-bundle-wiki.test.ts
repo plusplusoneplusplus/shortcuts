@@ -561,12 +561,12 @@ describe('wiki.ts — sidebar list/detail views', () => {
         expect(content).toContain('function navigateToWikiList');
     });
 
-    it('sets wikiView to list on back navigation', () => {
-        expect(content).toContain("appState.wikiView = 'list'");
+    it('sidebar stays as list when wiki is selected (no view transition)', () => {
+        expect(content).toContain('renderWikiListSidebar()');
     });
 
-    it('sets wikiView to detail on card click', () => {
-        expect(content).toContain("appState.wikiView = 'detail'");
+    it('deselects wiki on navigateToWikiList', () => {
+        expect(content).toContain('appState.selectedWikiId = null');
     });
 });
 
