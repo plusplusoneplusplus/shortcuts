@@ -221,6 +221,46 @@ describe('AppContext reducer', () => {
         });
     });
 
+    // ── Repo selection and sub-tabs ────────────────────────────────
+    describe('repo selection and sub-tabs', () => {
+        it('SET_SELECTED_REPO updates selectedRepoId', () => {
+            const result = appReducer(makeState(), { type: 'SET_SELECTED_REPO', id: 'repo-123' });
+            expect(result.selectedRepoId).toBe('repo-123');
+        });
+
+        it('SET_SELECTED_REPO clears selectedRepoId with null', () => {
+            const state = makeState({ selectedRepoId: 'repo-123' });
+            const result = appReducer(state, { type: 'SET_SELECTED_REPO', id: null });
+            expect(result.selectedRepoId).toBeNull();
+        });
+
+        it('SET_REPO_SUB_TAB switches to queue', () => {
+            const result = appReducer(makeState(), { type: 'SET_REPO_SUB_TAB', tab: 'queue' });
+            expect(result.activeRepoSubTab).toBe('queue');
+        });
+
+        it('SET_REPO_SUB_TAB switches to tasks', () => {
+            const result = appReducer(makeState(), { type: 'SET_REPO_SUB_TAB', tab: 'tasks' });
+            expect(result.activeRepoSubTab).toBe('tasks');
+        });
+
+        it('SET_REPO_SUB_TAB switches to pipelines', () => {
+            const result = appReducer(makeState(), { type: 'SET_REPO_SUB_TAB', tab: 'pipelines' });
+            expect(result.activeRepoSubTab).toBe('pipelines');
+        });
+
+        it('SET_REPO_SUB_TAB switches to info', () => {
+            const state = makeState({ activeRepoSubTab: 'queue' });
+            const result = appReducer(state, { type: 'SET_REPO_SUB_TAB', tab: 'info' });
+            expect(result.activeRepoSubTab).toBe('info');
+        });
+
+        it('SET_REPO_SUB_TAB switches to schedules', () => {
+            const result = appReducer(makeState(), { type: 'SET_REPO_SUB_TAB', tab: 'schedules' });
+            expect(result.activeRepoSubTab).toBe('schedules');
+        });
+    });
+
     // ── Tabs and misc ──────────────────────────────────────────────
     describe('tabs and misc', () => {
         it('SET_ACTIVE_TAB changes active tab', () => {

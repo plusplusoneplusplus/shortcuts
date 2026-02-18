@@ -16,7 +16,7 @@ function StubView({ id, label }: { id: string; label: string }) {
     return <div id={id}>{label}</div>;
 }
 
-function tabFromHash(hash: string): DashboardTab | null {
+export function tabFromHash(hash: string): DashboardTab | null {
     const h = hash.replace(/^#/, '').split('/')[0];
     if (h === 'processes' || h === 'process' || h === 'session') return 'processes';
     if (h === 'repos' || h === 'tasks') return 'repos';
@@ -26,7 +26,7 @@ function tabFromHash(hash: string): DashboardTab | null {
     return null;
 }
 
-const VALID_REPO_SUB_TABS: Set<string> = new Set(['info', 'pipelines', 'tasks', 'queue', 'schedules']);
+export const VALID_REPO_SUB_TABS: Set<string> = new Set(['info', 'pipelines', 'tasks', 'queue', 'schedules']);
 
 export function Router() {
     const { state, dispatch } = useApp();
