@@ -191,8 +191,8 @@ describe('Tasks React components — bundle content', () => {
         expect(script).toContain('task-checkbox');
     });
 
-    it('renders comment-sidebar-stub placeholder', () => {
-        expect(script).toContain('comment-sidebar-stub');
+    it('renders comment-sidebar component', () => {
+        expect(script).toContain('comment-sidebar');
     });
 
     it('renders ai-actions-stub placeholder', () => {

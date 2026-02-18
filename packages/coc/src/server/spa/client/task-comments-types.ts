@@ -21,6 +21,36 @@ export type TaskCommentStatus = 'open' | 'resolved';
 /** Comment categories. */
 export type TaskCommentCategory = 'bug' | 'question' | 'suggestion' | 'praise' | 'nitpick' | 'general';
 
+// ============================================================================
+// Category Constants
+// ============================================================================
+
+export interface CategoryInfo {
+    label: string;
+    icon: string;
+}
+
+export const CATEGORY_INFO: Record<TaskCommentCategory, CategoryInfo> = {
+    bug:        { label: 'Bug',        icon: '🐛' },
+    question:   { label: 'Question',   icon: '❓' },
+    suggestion: { label: 'Suggestion', icon: '💡' },
+    praise:     { label: 'Praise',     icon: '🌟' },
+    nitpick:    { label: 'Nitpick',    icon: '🔍' },
+    general:    { label: 'General',    icon: '💬' },
+};
+
+export const ALL_CATEGORIES: TaskCommentCategory[] = ['bug', 'question', 'suggestion', 'praise', 'nitpick', 'general'];
+
+/** Get category from a TaskComment (field first, then text prefix fallback). */
+export function getCommentCategory(comment: TaskComment): TaskCommentCategory {
+    if (comment.category && ALL_CATEGORIES.includes(comment.category)) {
+        return comment.category;
+    }
+    const match = comment.comment.match(/^\[(bug|question|suggestion|praise|nitpick|general)\]\s*/i);
+    if (match) return match[1].toLowerCase() as TaskCommentCategory;
+    return 'general';
+}
+
 /**
  * A single comment on a task document in the web UI.
  */

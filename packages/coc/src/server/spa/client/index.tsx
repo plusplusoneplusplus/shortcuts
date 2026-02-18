@@ -58,11 +58,7 @@ initModelPersistence();
 // 13. AI Actions (dropdown for task AI operations)
 import './ai-actions';
 
-// 14. Task Comments UI (comment cards, selection toolbar, sidebar)
-import './task-comments-ui';
-
-// 15. Task Comments Client (API integration, event system, state management)
-import './task-comments-client';
+// 14-15. Task Comments — now handled by React components (react/tasks/comments/)
 
 // 15. WebSocket (calls connectWebSocket())
 import './websocket';

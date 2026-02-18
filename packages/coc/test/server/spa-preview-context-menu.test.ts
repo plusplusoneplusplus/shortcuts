@@ -1,10 +1,10 @@
 /**
  * SPA Dashboard Tests — preview body context menu for comment creation.
  *
- * After React migration, context menu functions from tasks.ts are removed.
- * These tests verify the underlying source modules still contain the logic
- * (task-comments-ui.ts and task-comments-client.ts), to be wired in a
- * future React component (commit 008).
+ * After React migration (commit 008), the task-comments-ui.ts and
+ * task-comments-client.ts vanilla modules are replaced by React components.
+ * These tests verify the React component source files exist and contain
+ * the expected functionality.
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -12,51 +12,63 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { generateDashboardHtml } from './spa-test-helpers';
 
-const CLIENT_DIR = path.resolve(__dirname, '..', '..', 'src', 'server', 'spa', 'client');
+const REACT_COMMENTS_DIR = path.resolve(
+    __dirname, '..', '..', 'src', 'server', 'spa', 'client', 'react', 'tasks', 'comments'
+);
 
-function readClientFile(name: string): string {
-    return fs.readFileSync(path.join(CLIENT_DIR, name), 'utf8');
+const HOOKS_DIR = path.resolve(
+    __dirname, '..', '..', 'src', 'server', 'spa', 'client', 'react', 'hooks'
+);
+
+function readReactFile(name: string): string {
+    return fs.readFileSync(path.join(REACT_COMMENTS_DIR, name), 'utf8');
 }
 
 // ============================================================================
-// Preview context menu — source module functions
+// Comment React components exist and contain expected patterns
 // ============================================================================
 
-describe('Preview context menu — task-comments-ui source', () => {
+describe('Comment React components — SelectionToolbar', () => {
     let source: string;
-    beforeAll(() => { source = readClientFile('task-comments-ui.ts'); });
+    beforeAll(() => { source = readReactFile('SelectionToolbar.tsx'); });
 
-    it('defines SelectionToolbar class', () => {
-        expect(source).toContain('class SelectionToolbar');
+    it('exports SelectionToolbar component', () => {
+        expect(source).toContain('export function SelectionToolbar');
     });
 
-    it('toolbar has onSubmitComment callback', () => {
-        expect(source).toContain('onSubmitComment');
+    it('has onAddComment prop', () => {
+        expect(source).toContain('onAddComment');
     });
 
-    it('renders selection toolbar HTML', () => {
-        expect(source).toContain('renderSelectionToolbarHTML');
-    });
-
-    it('toolbar creates dispose method', () => {
-        expect(source).toContain('dispose');
+    it('renders via createPortal', () => {
+        expect(source).toContain('createPortal');
     });
 });
 
-// ============================================================================
-// Preview context menu — task-comments-client source
-// ============================================================================
-
-describe('Preview context menu — task-comments-client source', () => {
+describe('Comment React components — InlineCommentPopup', () => {
     let source: string;
-    beforeAll(() => { source = readClientFile('task-comments-client.ts'); });
+    beforeAll(() => { source = readReactFile('InlineCommentPopup.tsx'); });
 
-    it('defines captureSelectionWithAnchor function', () => {
-        expect(source).toContain('captureSelectionWithAnchor');
+    it('exports InlineCommentPopup component', () => {
+        expect(source).toContain('export function InlineCommentPopup');
     });
 
-    it('defines createComment function', () => {
-        expect(source).toContain('createComment');
+    it('has onSubmit and onCancel props', () => {
+        expect(source).toContain('onSubmit');
+        expect(source).toContain('onCancel');
+    });
+});
+
+describe('Comment React components — useTaskComments hook', () => {
+    let source: string;
+    beforeAll(() => { source = fs.readFileSync(path.join(HOOKS_DIR, 'useTaskComments.ts'), 'utf8'); });
+
+    it('exports useTaskComments hook', () => {
+        expect(source).toContain('export function useTaskComments');
+    });
+
+    it('defines addComment function', () => {
+        expect(source).toContain('addComment');
     });
 });
 

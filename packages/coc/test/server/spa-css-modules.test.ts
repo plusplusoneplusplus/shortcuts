@@ -74,10 +74,9 @@ describe('styles.css entry point', () => {
 
     it('imports external dependencies first', () => {
         const imports = entryContent.match(/@import\s+'[^']+'/g) || [];
-        expect(imports.length).toBeGreaterThanOrEqual(3);
+        expect(imports.length).toBeGreaterThanOrEqual(2);
         expect(imports[0]).toContain('wiki-ask.css');
         expect(imports[1]).toContain('wiki-styles.css');
-        expect(imports[2]).toContain('task-comments-styles.css');
     });
 
     it('imports foundation modules before feature modules', () => {
@@ -537,8 +536,9 @@ describe('bundle.css integrity', () => {
         expect(bundle).toContain('.wiki-article');
     });
 
-    it('contains task-comments-styles.css styles', () => {
-        expect(bundle).toContain('.task-comment-count-badge');
+    it('task-comments-styles.css removed (migrated to Tailwind)', () => {
+        // task-comments-styles.css was replaced by Tailwind classes in React components
+        expect(bundle).not.toContain('.task-comment-count-badge');
     });
 });
 
