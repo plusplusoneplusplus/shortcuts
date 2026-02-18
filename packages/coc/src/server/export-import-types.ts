@@ -82,9 +82,9 @@ export interface ImportOptions {
     /** DataWiper instance used to clear data in replace mode. */
     wiper: DataWiper;
     /** Optional: factory returning the TaskQueueManager (for queue reset in replace mode). */
-    getQueueManager?: () => TaskQueueManager;
+    getQueueManager?: () => TaskQueueManager | undefined;
     /** Optional: factory returning the QueuePersistence (for queue restore after import). */
-    getQueuePersistence?: () => QueuePersistence;
+    getQueuePersistence?: () => QueuePersistence | undefined;
 }
 
 /** Result summary returned after an import operation. */
