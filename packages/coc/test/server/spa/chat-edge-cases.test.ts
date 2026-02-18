@@ -409,11 +409,11 @@ describe('client bundle — chat edge cases', () => {
             expect(script).toContain('accumulatedContent +=');
         });
 
-        it('chunk handler calls renderMarkdownToHtml on accumulated content', () => {
-            expect(script).toContain('renderMarkdownToHtml(accumulatedContent)');
+        it('chunk handler calls renderMarkdownToHtml on current segment content', () => {
+            expect(script).toContain('renderMarkdownToHtml(followUpCurrentSegment)');
         });
 
-        it('updateConversationContent calls renderMarkdownToHtml on queueTaskStreamContent', () => {
+        it('updateStreamingContent calls renderMarkdownToHtml on queueTaskStreamContent', () => {
             expect(script).toContain('renderMarkdownToHtml(queueTaskStreamContent)');
         });
 

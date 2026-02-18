@@ -366,16 +366,15 @@ describe('SPA conversation rendering', () => {
             expect(script).toContain('tool-failed');
         });
 
-        it('should have getOrCreateToolContainer helper', () => {
-            expect(script).toContain('getOrCreateToolContainer');
+        it('should have getStreamingAssistantBubble helper', () => {
+            expect(script).toContain('getStreamingAssistantBubble');
         });
 
         it('should have findToolCard helper', () => {
             expect(script).toContain('findToolCard');
         });
 
-        it('should create tool-calls-container in last assistant bubble', () => {
-            // getOrCreateToolContainer creates container in last assistant bubble
+        it('should create inline tool-calls-container during streaming', () => {
             expect(script).toContain('tool-calls-container');
             expect(script).toContain('.chat-message.assistant');
         });
@@ -410,8 +409,8 @@ describe('SPA conversation rendering', () => {
         });
 
         it('should update existing assistant turn content when SSE chunk arrives', () => {
-            // The chunk handler updates the last assistant turn's content
-            expect(script).toContain('turns[turns.length - 1].content = queueTaskStreamContent');
+            // The chunk handler updates the last assistant turn with full content (all segments combined)
+            expect(script).toContain('turns[turns.length - 1].content = fullContent');
         });
     });
 
@@ -448,10 +447,10 @@ describe('SPA conversation rendering', () => {
 
     describe('cache synchronization during SSE streaming', () => {
         it('should update cache after each SSE chunk via cacheConversation', () => {
-            // The chunk handler calls cacheConversation after updateConversationContent
+            // The chunk handler calls cacheConversation after updateStreamingContent
             // to keep cache in sync with live streaming state
             expect(script).toContain('cacheConversation');
-            expect(script).toContain('updateConversationContent');
+            expect(script).toContain('updateStreamingContent');
         });
 
         it('should invalidate cache in status handler before refetching', () => {

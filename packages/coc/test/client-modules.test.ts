@@ -398,79 +398,50 @@ describe('client/detail.ts', () => {
     });
 
     // ========================================================================
-    // Tool container positioning fix (turnIndex support)
+    // Chronological streaming: inline tool calls between content segments
     // ========================================================================
-    describe('getOrCreateToolContainer with turnIndex', () => {
-        it('defines getOrCreateToolContainer function', () => {
-            expect(content).toContain('function getOrCreateToolContainer');
+    describe('chronological streaming with inline tool calls', () => {
+        it('defines getStreamingAssistantBubble helper', () => {
+            expect(content).toContain('function getStreamingAssistantBubble');
         });
 
-        it('accepts optional turnIndex parameter', () => {
-            expect(content).toMatch(/function getOrCreateToolContainer\s*\(\s*turnIndex\?:\s*number\s*\)/);
+        it('defines updateStreamingContent for segment-based rendering', () => {
+            expect(content).toContain('function updateStreamingContent');
         });
 
-        it('uses turnIndex from SSE tool-start events', () => {
-            // Verify the function is called with data.turnIndex
-            expect(content).toContain('getOrCreateToolContainer(data.turnIndex)');
+        it('tracks content before last tool call for segment splitting', () => {
+            expect(content).toContain('streamContentBeforeLastTool');
         });
 
-        it('finds specific bubble when turnIndex is provided', () => {
-            // Should query all chat messages and index by turnIndex
-            expect(content).toContain("querySelectorAll('.chat-message')");
+        it('resets streamContentBeforeLastTool in showQueueTaskDetail', () => {
+            const fnStart = content.indexOf('function showQueueTaskDetail(');
+            expect(fnStart).toBeGreaterThan(-1);
+            const fnBody = content.substring(fnStart, fnStart + 1000);
+            expect(fnBody).toContain("streamContentBeforeLastTool = ''");
         });
 
-        it('checks if bubble is assistant before adding tool container', () => {
-            // Should verify the bubble is an assistant message
-            expect(content).toContain("classList.contains('assistant')");
+        it('tool-start handler snapshots current content and resets segment', () => {
+            // In connectQueueTaskSSE, tool-start should snapshot before resetting
+            expect(content).toContain('streamContentBeforeLastTool += queueTaskStreamContent');
+            expect(content).toContain("queueTaskStreamContent = ''");
         });
 
-        it('falls back to last assistant bubble when turnIndex is undefined', () => {
-            // Should still support the old behavior as fallback
-            const lines = content.split('\n');
-            const funcStartIdx = lines.findIndex(l => l.includes('function getOrCreateToolContainer'));
-            const funcEndIdx = lines.findIndex((l, i) => i > funcStartIdx && l.match(/^}\s*$/));
-            const funcBody = lines.slice(funcStartIdx, funcEndIdx + 1).join('\n');
-            
-            // Should have fallback logic for when turnIndex is undefined
-            expect(funcBody).toContain('turnIndex !== undefined');
-            expect(funcBody).toContain("querySelectorAll('.chat-message.assistant')");
-        });
-
-        it('creates tool-calls-container div when not present', () => {
-            // Should dynamically create the container
+        it('creates inline tool-calls-container on tool-start', () => {
             expect(content).toContain("className = 'tool-calls-container'");
         });
 
-        it('appends tool container to target bubble', () => {
-            // Should append the container to the correct bubble
-            const lines = content.split('\n');
-            const funcStartIdx = lines.findIndex(l => l.includes('function getOrCreateToolContainer'));
-            const funcEndIdx = lines.findIndex((l, i) => i > funcStartIdx && l.match(/^}\s*$/));
-            const funcBody = lines.slice(funcStartIdx, funcEndIdx + 1).join('\n');
-            
-            expect(funcBody).toContain('appendChild(toolContainer)');
+        it('updateStreamingContent finds last chat-message-content div', () => {
+            const fnStart = content.indexOf('function updateStreamingContent');
+            expect(fnStart).toBeGreaterThan(-1);
+            const fnBody = content.substring(fnStart, fnStart + 600);
+            expect(fnBody).toContain("querySelectorAll('.chat-message-content')");
         });
 
-        it('has proper JSDoc describing turnIndex support', () => {
-            const lines = content.split('\n');
-            const funcIdx = lines.findIndex(l => l.includes('function getOrCreateToolContainer'));
-            const docLines = [];
-            
-            // Collect JSDoc lines above the function
-            for (let i = funcIdx - 1; i >= 0; i--) {
-                const line = lines[i].trim();
-                if (line.startsWith('*') || line.startsWith('/**')) {
-                    docLines.unshift(line);
-                    if (line.startsWith('/**')) break;
-                } else if (line === '') {
-                    continue;
-                } else {
-                    break;
-                }
-            }
-            
-            const docText = docLines.join('\n');
-            expect(docText).toContain('turnIndex');
+        it('updateStreamingContent renders only current segment content', () => {
+            const fnStart = content.indexOf('function updateStreamingContent');
+            expect(fnStart).toBeGreaterThan(-1);
+            const fnBody = content.substring(fnStart, fnStart + 1000);
+            expect(fnBody).toContain('renderMarkdownToHtml(queueTaskStreamContent)');
         });
     });
 });
@@ -1292,19 +1263,19 @@ describe('conversation cache integration in detail.ts', () => {
     });
 
     it('should update cache during SSE chunk streaming', () => {
-        // The chunk handler in connectQueueTaskSSE should call cacheConversation after updateConversationContent
+        // The chunk handler in connectQueueTaskSSE should call cacheConversation after updateStreamingContent
         const fnStart = detailContent.indexOf('function connectQueueTaskSSE(');
         expect(fnStart).toBeGreaterThan(-1);
         const fnBody = detailContent.substring(fnStart, fnStart + 2000);
-        expect(fnBody).toContain('updateConversationContent()');
+        expect(fnBody).toContain('updateStreamingContent()');
         expect(fnBody).toContain('cacheConversation(processId, queueTaskConversationTurns)');
     });
 
-    it('should cache after updateConversationContent, not before', () => {
-        // cacheConversation must appear after updateConversationContent in chunk handler
+    it('should cache after updateStreamingContent, not before', () => {
+        // cacheConversation must appear after updateStreamingContent in chunk handler
         const fnStart = detailContent.indexOf('function connectQueueTaskSSE(');
         const fnBody = detailContent.substring(fnStart, fnStart + 2000);
-        const updateIdx = fnBody.indexOf('updateConversationContent()');
+        const updateIdx = fnBody.indexOf('updateStreamingContent()');
         const cacheIdx = fnBody.indexOf('cacheConversation(processId, queueTaskConversationTurns)');
         expect(updateIdx).toBeGreaterThan(-1);
         expect(cacheIdx).toBeGreaterThan(updateIdx);

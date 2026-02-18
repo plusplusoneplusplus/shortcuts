@@ -118,7 +118,7 @@ describe('client bundle — chat bubble rendering', () => {
 
     // ---- Streaming update targets correct bubble ----
 
-    it('updateConversationContent targets last assistant bubble', () => {
+    it('updateStreamingContent targets last content segment in assistant bubble', () => {
         expect(script).toContain('.chat-message.assistant');
         expect(script).toContain('.chat-message-content');
         expect(script).toContain('insertAdjacentHTML');

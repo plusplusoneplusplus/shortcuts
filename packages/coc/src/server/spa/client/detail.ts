@@ -268,6 +268,14 @@ let activeQueueTaskStream: EventSource | null = null;
 let queueTaskStreamContent = '';
 let queueTaskStreamProcessId: string | null = null;
 
+/**
+ * Tracks content accumulated *before* the most recent tool call in the stream.
+ * When a tool-start arrives we snapshot the current content here and reset
+ * `queueTaskStreamContent` so subsequent chunks only go into the latest segment.
+ * This lets us render content and tool calls in chronological order during streaming.
+ */
+let streamContentBeforeLastTool = '';
+
 /** Tracks whether the user has manually scrolled up in the conversation. */
 let userHasScrolledUp = false;
 
@@ -305,6 +313,7 @@ export function showQueueTaskDetail(taskId: string): void {
     if (panelEl) panelEl.classList.add('chat-layout');
 
     queueTaskStreamContent = '';
+    streamContentBeforeLastTool = '';
     queueTaskStreamProcessId = processId;
 
     // Restore from cache if available (eliminates flicker on tab switch)
@@ -789,37 +798,47 @@ function connectFollowUpSSE(processId: string): void {
     const sseUrl = getApiBase() + '/processes/' + encodeURIComponent(processId) + '/stream';
     const eventSource = new EventSource(sseUrl);
     let accumulatedContent = '';
+    let followUpCurrentSegment = '';
 
     eventSource.addEventListener('chunk', function(e: MessageEvent) {
         try {
             const data = JSON.parse(e.data);
             if (data.content) {
                 accumulatedContent += data.content;
+                followUpCurrentSegment += data.content;
                 const bubble = document.getElementById('follow-up-assistant-bubble');
                 if (bubble) {
                     bubble.classList.remove('streaming');
-                    const contentDiv = bubble.querySelector('.chat-message-content');
-                    if (contentDiv) {
-                        contentDiv.innerHTML = renderMarkdownToHtml(accumulatedContent);
+                    // Find the last content div (current segment after last tool call)
+                    const contentDivs = bubble.querySelectorAll('.chat-message-content');
+                    let lastContentDiv = contentDivs.length > 0 ? contentDivs[contentDivs.length - 1] : null;
+                    if (!lastContentDiv) {
+                        lastContentDiv = document.createElement('div');
+                        lastContentDiv.className = 'chat-message-content';
+                        bubble.appendChild(lastContentDiv);
                     }
+                    lastContentDiv.innerHTML = renderMarkdownToHtml(followUpCurrentSegment);
                 }
                 scrollConversationToBottom();
             }
         } catch(err) {}
     });
 
-    // Tool call events for follow-up streaming
+    // Tool call events for follow-up streaming — inline chronologically
     eventSource.addEventListener('tool-start', function(e: MessageEvent) {
         try {
             const data = JSON.parse(e.data);
             const bubble = document.getElementById('follow-up-assistant-bubble');
             if (!bubble) return;
-            let toolContainer = bubble.querySelector('.tool-calls-container') as HTMLElement;
-            if (!toolContainer) {
-                toolContainer = document.createElement('div');
-                toolContainer.className = 'tool-calls-container';
-                bubble.appendChild(toolContainer);
-            }
+
+            // Reset current segment so subsequent chunks go into a new content div
+            followUpCurrentSegment = '';
+
+            // Create a new inline tool container after the current content
+            const toolContainer = document.createElement('div');
+            toolContainer.className = 'tool-calls-container';
+            bubble.appendChild(toolContainer);
+
             const tc = normalizeToolCall({
                 id: data.toolCallId || '',
                 toolName: data.toolName || '',
@@ -954,33 +973,43 @@ function connectQueueTaskSSE(processId: string, taskId: string, proc: any): void
             if (data.content) {
                 queueTaskStreamContent += data.content;
 
-                // Update or create the assistant turn in state
+                // Update or create the assistant turn in state (full content for caching)
                 const turns = queueTaskConversationTurns;
+                const fullContent = streamContentBeforeLastTool + queueTaskStreamContent;
                 if (turns.length > 0 && turns[turns.length - 1].role === 'assistant') {
-                    turns[turns.length - 1].content = queueTaskStreamContent;
+                    turns[turns.length - 1].content = fullContent;
                     turns[turns.length - 1].streaming = true;
                 } else {
-                    // No assistant turn yet — add one to keep state in sync
                     turns.push({
                         role: 'assistant',
-                        content: queueTaskStreamContent,
+                        content: fullContent,
                         streaming: true,
                     });
                 }
 
-                updateConversationContent();
+                updateStreamingContent();
                 cacheConversation(processId, queueTaskConversationTurns);
             }
         } catch(err) {}
     });
 
-    // Tool call events — render tool cards in real-time during streaming
+    // Tool call events — render tool cards inline chronologically during streaming
     eventSource.addEventListener('tool-start', function(e: MessageEvent) {
         if (queueTaskStreamProcessId !== processId) return;
         try {
             const data = JSON.parse(e.data);
-            const container = getOrCreateToolContainer(data.turnIndex);
-            if (!container) return;
+            const bubble = getStreamingAssistantBubble();
+            if (!bubble) return;
+
+            // Snapshot current content so later chunks go into a new segment
+            streamContentBeforeLastTool += queueTaskStreamContent;
+            queueTaskStreamContent = '';
+
+            // Create an inline tool-calls-container directly after the current content
+            const toolContainer = document.createElement('div');
+            toolContainer.className = 'tool-calls-container';
+            bubble.appendChild(toolContainer);
+
             const tc = normalizeToolCall({
                 id: data.toolCallId || '',
                 toolName: data.toolName || '',
@@ -989,7 +1018,7 @@ function connectQueueTaskSSE(processId: string, taskId: string, proc: any): void
                 startTime: new Date().toISOString(),
             });
             const card = renderToolCall(tc);
-            container.appendChild(card);
+            toolContainer.appendChild(card);
             scrollConversationToBottom();
         } catch(err) {}
     });
@@ -1094,29 +1123,53 @@ function connectQueueTaskSSE(processId: string, taskId: string, proc: any): void
     };
 }
 
-function updateConversationContent(): void {
+/**
+ * Get (or create) the streaming assistant bubble in the conversation container.
+ */
+function getStreamingAssistantBubble(): HTMLElement | null {
     const container = document.getElementById('queue-task-conversation');
-    if (!container) return;
+    if (!container) return null;
 
-    // Find the last assistant bubble (the streaming one)
     const bubbles = container.querySelectorAll('.chat-message.assistant');
-    const lastBubble = bubbles.length > 0 ? bubbles[bubbles.length - 1] : null;
+    const lastBubble = bubbles.length > 0 ? (bubbles[bubbles.length - 1] as HTMLElement) : null;
 
-    if (lastBubble) {
-        // Update only the content div inside the last assistant bubble
-        const contentDiv = lastBubble.querySelector('.chat-message-content');
-        if (contentDiv) {
-            contentDiv.innerHTML = renderMarkdownToHtml(queueTaskStreamContent);
-        }
-    } else {
-        // No assistant bubble yet — append one (streaming just started)
-        const streamingTurn: ClientConversationTurn = {
-            role: 'assistant',
-            content: queueTaskStreamContent,
-            streaming: true,
-            timeline: [],
-        };
-        container.insertAdjacentHTML('beforeend', renderChatMessage(streamingTurn));
+    if (lastBubble) return lastBubble;
+
+    // No assistant bubble yet — create one
+    const streamingTurn: ClientConversationTurn = {
+        role: 'assistant',
+        content: '',
+        streaming: true,
+        timeline: [],
+    };
+    container.insertAdjacentHTML('beforeend', renderChatMessage(streamingTurn));
+    const newBubbles = container.querySelectorAll('.chat-message.assistant');
+    return newBubbles.length > 0 ? (newBubbles[newBubbles.length - 1] as HTMLElement) : null;
+}
+
+/**
+ * Update the streaming content in the current (latest) content segment.
+ * After a tool-start, a new content div is appended so subsequent text
+ * appears *after* the tool call card — preserving chronological order.
+ */
+function updateStreamingContent(): void {
+    const bubble = getStreamingAssistantBubble();
+    if (!bubble) return;
+
+    // Find the last .chat-message-content div in the bubble (the active segment)
+    const contentDivs = bubble.querySelectorAll('.chat-message-content');
+    let lastContentDiv = contentDivs.length > 0 ? contentDivs[contentDivs.length - 1] : null;
+
+    if (!lastContentDiv) {
+        // First content segment — create it
+        lastContentDiv = document.createElement('div');
+        lastContentDiv.className = 'chat-message-content';
+        bubble.appendChild(lastContentDiv);
+    }
+
+    // Render only the current segment (queueTaskStreamContent) into the last div
+    if (queueTaskStreamContent) {
+        lastContentDiv.innerHTML = renderMarkdownToHtml(queueTaskStreamContent);
     }
 
     scrollConversationToBottom();
@@ -1259,43 +1312,6 @@ function showToast(message: string, type: 'success' | 'error'): void {
 // ================================================================
 // Tool Call SSE Helpers
 // ================================================================
-
-/**
- * Get or create a tool-calls-container inside the assistant bubble for a specific turn.
- * If turnIndex is undefined, falls back to the last assistant bubble (for backward compat).
- */
-function getOrCreateToolContainer(turnIndex?: number): HTMLElement | null {
-    const container = document.getElementById('queue-task-conversation');
-    if (!container) return null;
-    
-    let targetBubble: HTMLElement | null = null;
-    if (turnIndex !== undefined && turnIndex >= 0) {
-        // turnIndex refers to the position in the conversation turns array
-        // Find the bubble at that exact position (both user and assistant bubbles count)
-        const allBubbles = container.querySelectorAll('.chat-message');
-        if (turnIndex < allBubbles.length) {
-            const bubble = allBubbles[turnIndex] as HTMLElement;
-            // Only add tool container to assistant bubbles
-            if (bubble.classList.contains('assistant')) {
-                targetBubble = bubble;
-            }
-        }
-    } else {
-        // Fallback: use the last assistant bubble
-        const assistantBubbles = container.querySelectorAll('.chat-message.assistant');
-        targetBubble = assistantBubbles.length > 0 ? assistantBubbles[assistantBubbles.length - 1] as HTMLElement : null;
-    }
-    
-    if (!targetBubble) return null;
-    
-    let toolContainer = targetBubble.querySelector('.tool-calls-container') as HTMLElement;
-    if (!toolContainer) {
-        toolContainer = document.createElement('div');
-        toolContainer.className = 'tool-calls-container';
-        targetBubble.appendChild(toolContainer);
-    }
-    return toolContainer;
-}
 
 /**
  * Find a tool-call card by its tool call ID across the entire detail panel.

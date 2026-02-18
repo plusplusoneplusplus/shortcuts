@@ -305,8 +305,8 @@ describe('Queue task conversation view', () => {
             expect(script).toContain('closeQueueTaskStream');
         });
 
-        it('defines updateConversationContent function', () => {
-            expect(script).toContain('updateConversationContent');
+        it('defines updateStreamingContent function', () => {
+            expect(script).toContain('updateStreamingContent');
         });
 
         it('defines scrollConversationToBottom function', () => {
