@@ -130,7 +130,7 @@ suite('Follow Prompt Dialog - Model Configuration', () => {
         // Check that labels are user-friendly (not just the ID)
         const claudeSonnet = models.find(m => m.id === DEFAULT_MODEL_ID);
         assert.ok(claudeSonnet);
-        assert.strictEqual(claudeSonnet.label, 'Claude Sonnet 4.5');
+        assert.strictEqual(claudeSonnet.label, 'Claude Sonnet 4.6');
         assert.strictEqual(claudeSonnet.description, '(Recommended)');
     });
 

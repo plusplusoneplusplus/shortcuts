@@ -386,7 +386,7 @@
           ],
           "enumDescriptions": [
             "Use default model (no --model flag)",
-            "Claude Sonnet 4.5 - Balanced performance",
+            "Claude Sonnet 4.6 - Balanced performance",
             "Claude Haiku 4.5 - Fast and efficient",
             "Claude Opus 4.6 - Most capable",
             "GPT-5.2 - OpenAI model",

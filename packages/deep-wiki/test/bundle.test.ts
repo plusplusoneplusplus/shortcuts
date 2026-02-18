@@ -182,19 +182,16 @@ describe('Bundle Configuration', () => {
         let bundleContent: string;
 
         beforeAll(() => {
-            // Build the bundle if it doesn't exist
-            bundleExists = fs.existsSync(BUNDLE_PATH);
-            if (!bundleExists) {
-                try {
-                    execSync('npm run build:bundle', {
-                        cwd: PKG_ROOT,
-                        stdio: 'pipe',
-                        timeout: 30000,
-                    });
-                    bundleExists = fs.existsSync(BUNDLE_PATH);
-                } catch {
-                    // Bundle build failed — tests will report it
-                }
+            // Always rebuild the bundle since `tsc` may have overwritten dist/index.js
+            try {
+                execSync('npm run build:bundle', {
+                    cwd: PKG_ROOT,
+                    stdio: 'pipe',
+                    timeout: 30000,
+                });
+                bundleExists = fs.existsSync(BUNDLE_PATH);
+            } catch {
+                bundleExists = false;
             }
             if (bundleExists) {
                 bundleContent = fs.readFileSync(BUNDLE_PATH, 'utf8');

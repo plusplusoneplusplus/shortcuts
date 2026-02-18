@@ -475,7 +475,7 @@ describe('api-handler — session expiry 410', () => {
             'utf8'
         );
         expect(apiSource).toContain('410');
-        expect(apiSource).toContain('session_expired');
+        expect(apiSource).toContain('SESSION_EXPIRED');
         expect(apiSource).toContain('The AI session has ended');
     });
 

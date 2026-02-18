@@ -284,7 +284,8 @@ describe('POST /api/processes/:id/message', () => {
 
             expect(res.status).toBe(410);
             const body = JSON.parse(res.body);
-            expect(body.error).toBe('session_expired');
+            expect(body.error).toBe('The AI session has ended. Please start a new task.');
+            expect(body.code).toBe('SESSION_EXPIRED');
         });
     });
 
@@ -668,9 +669,8 @@ describe('POST /api/processes/:id/message', () => {
             expect(res.status).toBe(410);
             expect(res.headers['content-type']).toContain('application/json');
             const body = JSON.parse(res.body);
-            expect(body).toHaveProperty('error', 'session_expired');
-            expect(body).toHaveProperty('message');
-            expect(typeof body.message).toBe('string');
+            expect(body).toHaveProperty('error', 'The AI session has ended. Please start a new task.');
+            expect(body).toHaveProperty('code', 'SESSION_EXPIRED');
         });
     });
 

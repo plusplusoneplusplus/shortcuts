@@ -1051,7 +1051,7 @@ describe('API Handler', () => {
             const res = await request(`${srv.url}/api/processes/${encodeURIComponent(proc.id)}/output`);
             expect(res.status).toBe(404);
             const body = JSON.parse(res.body);
-            expect(body.error).toBe('No conversation output saved');
+            expect(body.error).toBe('Conversation output not found');
         });
 
         it('should return 404 when file path set but file missing', async () => {
@@ -1065,7 +1065,7 @@ describe('API Handler', () => {
             const res = await request(`${srv.url}/api/processes/${encodeURIComponent(proc.id)}/output`);
             expect(res.status).toBe(404);
             const body = JSON.parse(res.body);
-            expect(body.error).toBe('No conversation output saved');
+            expect(body.error).toBe('Conversation output not found');
         });
 
         it('should handle large output files', async () => {
@@ -1160,7 +1160,7 @@ describe('API Handler', () => {
             const res = await postJSON(`${srv.url}/api/processes/${proc.id}/message`, {});
             expect(res.status).toBe(400);
             const body = JSON.parse(res.body);
-            expect(body.error).toBe('Missing required field: content (string)');
+            expect(body.error).toBe('Missing required fields: content');
         });
 
         it('should return 400 for non-string content', async () => {
@@ -1171,7 +1171,7 @@ describe('API Handler', () => {
             const res = await postJSON(`${srv.url}/api/processes/${proc.id}/message`, { content: 123 });
             expect(res.status).toBe(400);
             const body = JSON.parse(res.body);
-            expect(body.error).toBe('Missing required field: content (string)');
+            expect(body.error).toBe('Missing required fields: content');
         });
 
         it('should return 400 for invalid JSON', async () => {
@@ -1186,7 +1186,7 @@ describe('API Handler', () => {
             });
             expect(res.status).toBe(400);
             const body = JSON.parse(res.body);
-            expect(body.error).toBe('Invalid JSON');
+            expect(body.error).toBe('Invalid JSON body');
         });
 
         it('should return 409 for process without sdkSessionId', async () => {
