@@ -970,12 +970,19 @@ describe('CSS — wiki pages use full width', () => {
         expect(contentRule).toContain('flex: 1');
     });
 
-    it('embedded admin page overrides global max-width constraint', () => {
-        const embeddedRule = wikiCss.match(
-            /\.admin-page\.wiki-admin-embedded\s*\{[^}]*\}/s
+    it('wiki admin-page base has no max-width constraint', () => {
+        const baseRule = wikiCss.match(
+            /\.admin-page\s*\{[^}]*\}/s
         )?.[0] ?? '';
-        expect(embeddedRule).toContain('max-width: none');
-        expect(embeddedRule).toContain('margin: 0');
+        expect(baseRule).not.toMatch(/max-width/);
+        expect(baseRule).toContain('display: flex');
+        expect(baseRule).toContain('flex-direction: column');
+    });
+
+    it('global admin max-width is scoped to #view-admin, not leaking into wiki', () => {
+        const globalAdminCss = readClientFile('styles/admin.css');
+        expect(globalAdminCss).toContain('#view-admin .admin-page');
+        expect(globalAdminCss).not.toMatch(/^\.admin-page\s*\{/m);
     });
 });
 

@@ -378,13 +378,13 @@ describe('CSS — admin page styles', () => {
         expect(css).toContain('.admin-page-sections');
     });
 
-    it('admin page uses max-width for content', () => {
-        const match = css.match(/\.admin-page\s*\{[^}]*max-width/);
+    it('global admin page uses max-width scoped to #view-admin', () => {
+        const match = css.match(/#view-admin\s+\.admin-page\s*\{[^}]*max-width/);
         expect(match).not.toBeNull();
     });
 
-    it('admin page uses auto margin for centering', () => {
-        const match = css.match(/\.admin-page\s*\{[^}]*margin:\s*0\s+auto/);
+    it('global admin page uses auto margin for centering scoped to #view-admin', () => {
+        const match = css.match(/#view-admin\s+\.admin-page\s*\{[^}]*margin:\s*0\s+auto/);
         expect(match).not.toBeNull();
     });
 
