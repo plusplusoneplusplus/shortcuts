@@ -20,7 +20,7 @@ import { RepoCard } from '../../../src/server/spa/client/react/repos/RepoCard';
 import { ReposView } from '../../../src/server/spa/client/react/repos/ReposView';
 import { RepoInfoTab } from '../../../src/server/spa/client/react/repos/RepoInfoTab';
 import { PipelinesTab } from '../../../src/server/spa/client/react/repos/PipelinesTab';
-import { TasksStub } from '../../../src/server/spa/client/react/repos/TasksStub';
+import { TasksPanel } from '../../../src/server/spa/client/react/tasks/TasksPanel';
 import { AddRepoDialog } from '../../../src/server/spa/client/react/repos/AddRepoDialog';
 import { ReposGrid } from '../../../src/server/spa/client/react/repos/ReposGrid';
 import { RepoDetail } from '../../../src/server/spa/client/react/repos/RepoDetail';
@@ -377,10 +377,23 @@ describe('PipelinesTab', () => {
     });
 });
 
-describe('TasksStub', () => {
-    it('renders placeholder message', () => {
-        render(<Wrap><TasksStub /></Wrap>);
-        expect(screen.getByText('Tasks coming in commit 007')).toBeDefined();
+describe('TasksPanel', () => {
+    beforeEach(() => {
+        global.fetch = vi.fn().mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({
+                name: 'root',
+                relativePath: '',
+                children: [],
+                documentGroups: [],
+                singleDocuments: [],
+            }),
+        });
+    });
+
+    it('renders loading state initially', () => {
+        render(<Wrap><TasksPanel wsId="ws-1" /></Wrap>);
+        expect(screen.getByText('Loading tasks…')).toBeDefined();
     });
 });
 

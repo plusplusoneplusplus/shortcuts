@@ -3,11 +3,10 @@
  */
 
 import { getWsPath, getApiBase } from './config';
-import { appState, queueState, taskPanelState } from './state';
+import { appState, queueState } from './state';
 import { fetchApi } from './core';
 import { renderDetail, clearDetail } from './detail';
 import { renderQueuePanel, startQueuePolling, stopQueuePolling } from './queue';
-import { fetchRepoTasks } from './tasks';
 
 let wsReconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let wsReconnectDelay = 1000;
@@ -166,9 +165,8 @@ export function handleWsMessage(msg: any): void {
             }
         }
     } else if (msg.type === 'tasks-changed' && msg.workspaceId) {
-        if (taskPanelState.selectedWorkspaceId === msg.workspaceId) {
-            fetchRepoTasks(msg.workspaceId);
-        }
+        // Dispatch event for React TasksPanel to handle
+        window.dispatchEvent(new CustomEvent('tasks-changed', { detail: { wsId: msg.workspaceId } }));
     } else if (msg.type === 'wiki-reload' && msg.wikiId) {
         (window as any).handleWikiReload?.(msg.wikiId);
     } else if (msg.type === 'wiki-rebuilding' && msg.wikiId) {

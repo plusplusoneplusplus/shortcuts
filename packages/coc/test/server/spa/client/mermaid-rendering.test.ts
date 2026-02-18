@@ -1,11 +1,12 @@
 /**
- * Tests for task-mermaid.ts
+ * Tests for mermaid diagram rendering in task preview.
  *
- * Unit tests for mermaid diagram rendering in task preview.
- * Uses JSDOM-like structures via minimal DOM mocking for Node environment.
+ * Unit tests for mermaid rendering via markdown-renderer and useMermaid hook.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
+import * as fs from 'fs';
+import * as path from 'path';
 import { renderMarkdownToHtml } from '../../../../src/server/spa/client/markdown-renderer';
 
 // ---------------------------------------------------------------------------
@@ -220,45 +221,25 @@ describe('Mermaid rendering in task preview', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Tests for task-mermaid.ts module exports (DOM-free where possible)
+// Tests for useMermaid hook (replaces task-mermaid.ts module)
 // ---------------------------------------------------------------------------
 
-describe('task-mermaid module', () => {
-
-    describe('ensureMermaid', () => {
-        let originalCreateElement: typeof document.createElement;
-        let originalHead: HTMLHeadElement;
-
-        beforeEach(() => {
-            // Reset the mermaid load promise by re-importing
-            vi.resetModules();
-        });
-
-        it('is exported as a function', async () => {
-            const mod = await import('../../../../src/server/spa/client/task-mermaid');
-            expect(typeof mod.ensureMermaid).toBe('function');
-        });
-
-        it('initTaskMermaid is exported as a function', async () => {
-            const mod = await import('../../../../src/server/spa/client/task-mermaid');
-            expect(typeof mod.initTaskMermaid).toBe('function');
-        });
-
-        it('reinitMermaidTheme is exported as a function', async () => {
-            const mod = await import('../../../../src/server/spa/client/task-mermaid');
-            expect(typeof mod.reinitMermaidTheme).toBe('function');
-        });
+describe('useMermaid hook module', () => {
+    it('exports useMermaid hook', async () => {
+        const hookPath = path.resolve(__dirname, '../../../../src/server/spa/client/react/hooks/useMermaid.ts');
+        const content = fs.readFileSync(hookPath, 'utf8');
+        expect(content).toContain('export function useMermaid');
     });
 
-    describe('initTaskMermaid with no scope', () => {
-        it('accepts an optional root parameter', async () => {
-            const mod = await import('../../../../src/server/spa/client/task-mermaid');
-            // The function signature accepts an optional HTMLElement root.
-            // Without DOM, we just verify it doesn't crash with undefined root
-            // (it will try document.getElementById which won't exist — but the
-            //  function is designed to no-op if scope is null)
-            expect(typeof mod.initTaskMermaid).toBe('function');
-            expect(mod.initTaskMermaid.length).toBeLessThanOrEqual(1);
-        });
+    it('handles mermaid CDN loading', async () => {
+        const hookPath = path.resolve(__dirname, '../../../../src/server/spa/client/react/hooks/useMermaid.ts');
+        const content = fs.readFileSync(hookPath, 'utf8');
+        expect(content).toContain('mermaid');
+    });
+
+    it('supports theme reinitialisation', async () => {
+        const hookPath = path.resolve(__dirname, '../../../../src/server/spa/client/react/hooks/useMermaid.ts');
+        const content = fs.readFileSync(hookPath, 'utf8');
+        expect(content).toContain('theme');
     });
 });

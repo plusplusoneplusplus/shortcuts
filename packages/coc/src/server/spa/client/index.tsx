@@ -32,11 +32,9 @@ import './filters';
 // 7. Queue (still used by legacy modules)
 import './queue';
 
-// 8. Tasks (workspace task CRUD, tree rendering — repos now handled by React)
-import './tasks';
+// 8. Tasks — now handled by React TasksPanel (packages/coc/src/server/spa/client/react/tasks/)
 
-// 9a. Task Mermaid (mermaid diagram rendering in task preview)
-import './task-mermaid';
+// 9a. Task Mermaid — now handled by React useMermaid hook
 
 // 10. Wiki (wiki list, component browser, add wiki dialog, ask AI, graph, admin)
 import './wiki';

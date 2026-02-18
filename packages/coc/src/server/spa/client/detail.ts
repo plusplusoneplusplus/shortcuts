@@ -1413,8 +1413,8 @@ async function applyWriteBack(
         showToast('Changes applied to ' + fileName, 'success');
 
         // Refresh task tree to reflect updated file content
-        if (typeof (window as any).fetchRepoTasks === 'function' && wsId) {
-            (window as any).fetchRepoTasks(wsId);
+        if (wsId) {
+            window.dispatchEvent(new CustomEvent('tasks-changed', { detail: { wsId } }));
         }
     } catch (err) {
         btn.removeAttribute('disabled');

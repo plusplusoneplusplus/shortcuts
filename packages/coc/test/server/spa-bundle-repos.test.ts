@@ -28,7 +28,6 @@ describe('React repos component files', () => {
         'RepoInfoTab.tsx',
         'PipelinesTab.tsx',
         'RepoQueueTab.tsx',
-        'TasksStub.tsx',
         'RepoDetail.tsx',
         'ReposGrid.tsx',
         'ReposView.tsx',
@@ -287,7 +286,7 @@ describe('client bundle — React repos components', () => {
         expect(script).toContain('Add Repository');
     });
 
-    it('bundle contains tasks stub', () => {
-        expect(script).toContain('Tasks coming in commit 007');
+    it('bundle contains TasksPanel component', () => {
+        expect(script).toContain('TasksPanel');
     });
 });

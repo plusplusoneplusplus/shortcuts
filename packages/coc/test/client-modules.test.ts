@@ -32,7 +32,7 @@ describe('client source file existence', () => {
         'config.ts', 'state.ts', 'utils.ts', 'theme.ts',
         'core.ts', 'sidebar.ts', 'detail.ts', 'filters.ts',
         'queue.ts', 'websocket.ts', 'index.tsx',
-        'tasks.ts', 'ai-actions.ts',
+        'ai-actions.ts',
         'wiki.ts', 'wiki-components.ts', 'wiki-types.ts',
         'wiki-content.ts', 'wiki-markdown.ts', 'wiki-toc.ts', 'wiki-mermaid-zoom.ts',
         'wiki-ask.ts', 'wiki-ask.css',
@@ -626,7 +626,6 @@ describe('client/index.ts', () => {
         const detailIdx = content.indexOf("import './detail'");
         const filtersIdx = content.indexOf("import './filters'");
         const queueIdx = content.indexOf("import './queue'");
-        const tasksIdx = content.indexOf("import './tasks'");
         const aiActionsIdx = content.indexOf("import './ai-actions'");
         const wsIdx = content.indexOf("import './websocket'");
 
@@ -638,8 +637,7 @@ describe('client/index.ts', () => {
         expect(sidebarIdx).toBeLessThan(detailIdx);
         expect(detailIdx).toBeLessThan(filtersIdx);
         expect(filtersIdx).toBeLessThan(queueIdx);
-        expect(queueIdx).toBeLessThan(tasksIdx);
-        expect(tasksIdx).toBeLessThan(aiActionsIdx);
+        expect(queueIdx).toBeLessThan(aiActionsIdx);
         expect(aiActionsIdx).toBeLessThan(wsIdx);
     });
 });
@@ -700,7 +698,6 @@ describe('window global assignments', () => {
     it('should have all required window globals across client modules', () => {
         const allContent = [
             'state.ts', 'utils.ts', 'core.ts', 'detail.ts', 'queue.ts',
-            'tasks.ts',
         ].map(f => readClientFile(f)).join('\n');
 
         const expectedGlobals = [
@@ -721,11 +718,6 @@ describe('window global assignments', () => {
             'queueMoveUp',
             'queueMoveToTop',
             'toggleQueueHistory',
-            'fetchRepoTasks',
-            'createRepoTask',
-            'createRepoFolder',
-            'showRepoAIGenerateDialog',
-            'openTaskFileFromHash',
             '__setHashSilent',
         ];
 
@@ -739,171 +731,75 @@ describe('window global assignments', () => {
 // Tasks module
 // ============================================================================
 
-describe('client/tasks.ts', () => {
-    let content: string;
-    beforeAll(() => { content = readClientFile('tasks.ts'); });
+describe('React tasks components (replaces client/tasks.ts)', () => {
+    const tasksDir = path.join(CLIENT_DIR, 'react', 'tasks');
+    const hooksDir = path.join(CLIENT_DIR, 'react', 'hooks');
+    const contextDir = path.join(CLIENT_DIR, 'react', 'context');
 
-    it('imports from state', () => {
-        expect(content).toContain("from './state'");
+    it('has TasksPanel.tsx', () => {
+        expect(fs.existsSync(path.join(tasksDir, 'TasksPanel.tsx'))).toBe(true);
     });
 
-    it('imports from config', () => {
-        expect(content).toContain("from './config'");
+    it('has TaskTree.tsx', () => {
+        expect(fs.existsSync(path.join(tasksDir, 'TaskTree.tsx'))).toBe(true);
     });
 
-    it('imports from core', () => {
-        expect(content).toContain("from './core'");
+    it('has TaskTreeItem.tsx', () => {
+        expect(fs.existsSync(path.join(tasksDir, 'TaskTreeItem.tsx'))).toBe(true);
     });
 
-    it('imports from utils', () => {
-        expect(content).toContain("from './utils'");
+    it('has TaskPreview.tsx', () => {
+        expect(fs.existsSync(path.join(tasksDir, 'TaskPreview.tsx'))).toBe(true);
     });
 
-    it('exports fetchRepoTasks', () => {
-        expect(content).toContain('export async function fetchRepoTasks');
+    it('has TaskActions.tsx', () => {
+        expect(fs.existsSync(path.join(tasksDir, 'TaskActions.tsx'))).toBe(true);
     });
 
-    it('exports createRepoTask', () => {
-        expect(content).toContain('export async function createRepoTask');
+    it('has useTaskTree.ts hook', () => {
+        expect(fs.existsSync(path.join(hooksDir, 'useTaskTree.ts'))).toBe(true);
     });
 
-    it('exports createRepoFolder', () => {
-        expect(content).toContain('export async function createRepoFolder');
+    it('has useMermaid.ts hook', () => {
+        expect(fs.existsSync(path.join(hooksDir, 'useMermaid.ts'))).toBe(true);
     });
 
-    it('exports showRepoAIGenerateDialog', () => {
-        expect(content).toContain('export function showRepoAIGenerateDialog');
+    it('has TaskContext.tsx', () => {
+        expect(fs.existsSync(path.join(contextDir, 'TaskContext.tsx'))).toBe(true);
     });
 
-    it('assigns required window globals', () => {
-        expect(content).toContain('(window as any).fetchRepoTasks = fetchRepoTasks');
-        expect(content).toContain('(window as any).createRepoTask = createRepoTask');
-        expect(content).toContain('(window as any).createRepoFolder = createRepoFolder');
-        expect(content).toContain('(window as any).showRepoAIGenerateDialog = showRepoAIGenerateDialog');
+    it('useTaskTree exports context file filtering utilities', () => {
+        const content = fs.readFileSync(path.join(hooksDir, 'useTaskTree.ts'), 'utf8');
+        expect(content).toContain('CONTEXT_FILES');
+        expect(content).toContain('isContextFile');
     });
 
-    it('prevents duplicate event listener attachment', () => {
-        expect(content).toContain('columnsListenerAttached');
-        expect(content).toContain('columnsListenerContainer');
+    it('useTaskTree defines TaskFolder type', () => {
+        const content = fs.readFileSync(path.join(hooksDir, 'useTaskTree.ts'), 'utf8');
+        expect(content).toContain('interface TaskFolder');
+        expect(content).toContain('documentGroups');
+        expect(content).toContain('singleDocuments');
     });
 
-    it('imports renderMarkdownToHtml from markdown-renderer', () => {
-        expect(content).toContain("import { renderMarkdownToHtml } from './markdown-renderer'");
+    it('TaskPreview uses renderMarkdownToHtml from markdown-renderer', () => {
+        const content = fs.readFileSync(path.join(tasksDir, 'TaskPreview.tsx'), 'utf8');
+        expect(content).toContain("from '../../markdown-renderer'");
     });
 
-    it('has openTaskFile function for click-to-open', () => {
-        expect(content).toContain('async function openTaskFile');
+    it('TaskContext defines task panel state actions', () => {
+        const content = fs.readFileSync(path.join(contextDir, 'TaskContext.tsx'), 'utf8');
+        expect(content).toContain('SET_OPEN_FILE_PATH');
+        expect(content).toContain('TOGGLE_SELECTED_FILE');
+        expect(content).toContain('CLEAR_SELECTION');
+        expect(content).toContain('WORKSPACE_TASKS_CHANGED');
     });
 
-    it('has closeTaskPreview function', () => {
-        expect(content).toContain('function closeTaskPreview');
+    it('vanilla tasks.ts has been deleted', () => {
+        expect(fs.existsSync(path.join(CLIENT_DIR, 'tasks.ts'))).toBe(false);
     });
 
-    it('has openTaskFileFromHash for deep-link navigation', () => {
-        expect(content).toContain('async function openTaskFileFromHash');
-    });
-
-    it('exposes openTaskFileFromHash on window', () => {
-        expect(content).toContain('(window as any).openTaskFileFromHash = openTaskFileFromHash');
-    });
-
-    it('has updateTaskHash for URL state management', () => {
-        expect(content).toContain('function updateTaskHash');
-    });
-
-    it('updates taskPanelState.openFilePath on open', () => {
-        expect(content).toContain('taskPanelState.openFilePath = filePath');
-    });
-
-    it('clears taskPanelState.openFilePath on close', () => {
-        expect(content).toContain('taskPanelState.openFilePath = null');
-    });
-
-    it('has Miller columns rendering functions', () => {
-        expect(content).toContain('function renderMillerColumns');
-        expect(content).toContain('function renderColumn');
-    });
-
-    it('has Miller column event delegation', () => {
-        expect(content).toContain('function attachMillerEventListeners');
-    });
-
-    it('navigates folders via __navPath in expandedFolders', () => {
-        expect(content).toContain("'__navPath'");
-    });
-
-    it('uses __setHashSilent from window for URL updates', () => {
-        expect(content).toContain('__setHashSilent');
-    });
-
-    it('has countFolderItems function for recursive item counting', () => {
-        expect(content).toContain('function countFolderItems');
-    });
-
-    it('renders folder count badge in folder rows', () => {
-        expect(content).toContain('task-folder-count');
-    });
-
-    it('countFolderItems counts singleDocuments', () => {
-        expect(content).toContain('folder.singleDocuments');
-    });
-
-    it('countFolderItems counts documentGroups', () => {
-        expect(content).toContain('folder.documentGroups');
-    });
-
-    it('countFolderItems recurses into children', () => {
-        expect(content).toContain('countFolderItems(child)');
-    });
-
-    it('renders file rows with data-file-path attribute', () => {
-        expect(content).toContain('data-file-path');
-    });
-
-    it('handles folder navigation clicks in Miller columns', () => {
-        expect(content).toContain("target.closest('[data-nav-folder]')");
-    });
-
-    it('handles file row clicks for opening preview', () => {
-        expect(content).toContain("target.closest('[data-file-path]')");
-    });
-
-    it('resolves folder by path from root', () => {
-        expect(content).toContain('function resolveFolderByPath');
-    });
-
-    it('fetches file content via API for preview', () => {
-        expect(content).toContain('/tasks/content?path=');
-    });
-
-    it('uses renderMarkdownToHtml with stripFrontmatter', () => {
-        expect(content).toContain('renderMarkdownToHtml(content, { stripFrontmatter: true })');
-    });
-
-    it('imports showAIActionDropdown from ai-actions', () => {
-        expect(content).toContain("from './ai-actions'");
-    });
-
-    it('renders AI action button in document-group file rows', () => {
-        expect(content).toContain('data-action="ai-action"');
-        expect(content).toContain('title="AI Actions"');
-    });
-
-    it('renders AI action button with data-path attribute', () => {
-        expect(content).toContain("data-path=\"' + escapeHtmlClient(docPath) + '\"");
-    });
-
-    it('handles AI action button click before folder/file handlers', () => {
-        expect(content).toContain("target.closest('[data-action=\"ai-action\"]')");
-    });
-
-    it('calls showAIActionDropdown on AI button click', () => {
-        expect(content).toContain('showAIActionDropdown(aiActionBtn, wsId, taskPath)');
-    });
-
-    it('stops propagation on AI action button click', () => {
-        // Ensures AI button click does not bubble to file-path handler
-        expect(content).toContain('e.stopPropagation()');
+    it('vanilla task-mermaid.ts has been deleted', () => {
+        expect(fs.existsSync(path.join(CLIENT_DIR, 'task-mermaid.ts'))).toBe(false);
     });
 });
 

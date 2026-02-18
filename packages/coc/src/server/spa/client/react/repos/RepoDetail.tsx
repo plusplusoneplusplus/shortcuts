@@ -7,7 +7,7 @@ import { useApp } from '../context/AppContext';
 import { Button, cn } from '../shared';
 import { RepoInfoTab } from './RepoInfoTab';
 import { PipelinesTab } from './PipelinesTab';
-import { TasksStub } from './TasksStub';
+import { TasksPanel } from '../tasks/TasksPanel';
 import { RepoQueueTab } from './RepoQueueTab';
 import { AddRepoDialog } from './AddRepoDialog';
 import { getApiBase } from '../../config';
@@ -91,7 +91,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
             <div className="flex-1 overflow-y-auto">
                 {activeSubTab === 'info' && <RepoInfoTab repo={repo} />}
                 {activeSubTab === 'pipelines' && <PipelinesTab repo={repo} />}
-                {activeSubTab === 'tasks' && <TasksStub />}
+                {activeSubTab === 'tasks' && <TasksPanel wsId={ws.id} />}
                 {activeSubTab === 'queue' && <RepoQueueTab workspaceId={ws.id} />}
             </div>
 
