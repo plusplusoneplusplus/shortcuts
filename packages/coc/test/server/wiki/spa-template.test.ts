@@ -907,6 +907,37 @@ describe('generateSpaHtml — bundle files', () => {
 });
 
 // ============================================================================
+// Full-width layout
+// ============================================================================
+
+describe('generateSpaHtml — full-width layout', () => {
+    const stylesPath = path.resolve(__dirname, '../../../src/server/wiki/spa/client/styles.css');
+    const css = fs.readFileSync(stylesPath, 'utf8');
+
+    it('article element is flex-grow to fill available space', () => {
+        const articleRule = css.match(/\.article\s*\{[^}]*\}/s)?.[0] ?? '';
+        expect(articleRule).toContain('flex: 1');
+        expect(articleRule).toContain('min-width: 0');
+    });
+
+    it('markdown-body does not have a fixed max-width', () => {
+        const mdRule = css.match(/\.markdown-body\s*\{[^}]*\}/s)?.[0] ?? '';
+        expect(mdRule).not.toMatch(/max-width:\s*\d+px/);
+    });
+
+    it('content-layout uses flex display without fixed max-width', () => {
+        const layoutRule = css.match(/\.content-layout\s*\{[^}]*\}/s)?.[0] ?? '';
+        expect(layoutRule).toContain('display: flex');
+        expect(layoutRule).not.toMatch(/max-width:\s*\d+px/);
+    });
+
+    it('admin-section uses full width', () => {
+        const sectionRule = css.match(/\.admin-section\s*\{[^}]*\}/s)?.[0] ?? '';
+        expect(sectionRule).toContain('max-width: 100%');
+    });
+});
+
+// ============================================================================
 // Config injection
 // ============================================================================
 

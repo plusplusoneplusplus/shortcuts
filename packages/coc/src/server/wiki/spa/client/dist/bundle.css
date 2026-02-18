@@ -1359,7 +1359,7 @@ body {
   display: flex;
 }
 .admin-section {
-  max-width: 900px;
+  max-width: 100%;
 }
 .admin-file-info {
   display: flex;

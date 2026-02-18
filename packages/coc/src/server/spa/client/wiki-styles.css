@@ -563,7 +563,6 @@
 /* Markdown body */
 .wiki-component-detail .markdown-body,
 .wiki-article .markdown-body {
-    max-width: 800px;
     line-height: 1.7;
     overflow-wrap: break-word;
 }

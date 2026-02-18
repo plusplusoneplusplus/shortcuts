@@ -891,7 +891,7 @@ body {
 .admin-body { flex: 1; overflow: auto; padding: 24px 40px; }
 .admin-tab-content { display: none; flex-direction: column; }
 .admin-tab-content.active { display: flex; }
-.admin-section { max-width: 900px; }
+.admin-section { max-width: 100%; }
 .admin-file-info {
     display: flex; align-items: center; justify-content: space-between;
     margin-bottom: 10px; font-size: 12px;

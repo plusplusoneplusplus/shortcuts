@@ -909,6 +909,69 @@ describe('CSS — wiki styles', () => {
 });
 
 // ============================================================================
+// CSS — wiki full-width layout
+// ============================================================================
+
+describe('CSS — wiki pages use full width', () => {
+    const wikiCss = readClientFile('wiki-styles.css');
+
+    it('does not constrain markdown-body with a fixed max-width', () => {
+        const mdBodyRule = wikiCss.match(
+            /\.wiki-article\s+\.markdown-body\s*\{[^}]*\}/s
+        )?.[0] ?? '';
+        const combinedRule = wikiCss.match(
+            /\.wiki-component-detail\s+\.markdown-body[\s\S]*?\{[^}]*\}/
+        )?.[0] ?? '';
+        expect(mdBodyRule).not.toContain('max-width: 800px');
+        expect(combinedRule).not.toContain('max-width: 800px');
+    });
+
+    it('wiki-article is flex-grow to fill available space', () => {
+        expect(wikiCss).toContain('.wiki-article');
+        const articleRule = wikiCss.match(/\.wiki-article\s*\{[^}]*\}/s)?.[0] ?? '';
+        expect(articleRule).toContain('flex: 1');
+        expect(articleRule).toContain('min-width: 0');
+    });
+
+    it('wiki-content-layout uses flex display without fixed max-width', () => {
+        const layoutRule = wikiCss.match(
+            /\.wiki-content-layout\s*\{[^}]*\}/s
+        )?.[0] ?? '';
+        expect(layoutRule).toContain('display: flex');
+        expect(layoutRule).not.toMatch(/max-width:\s*\d+px/);
+    });
+
+    it('wiki-miller-col-preview expands to fill remaining space', () => {
+        const previewRule = wikiCss.match(
+            /\.wiki-miller-col-preview\s*\{[^}]*\}/s
+        )?.[0] ?? '';
+        expect(previewRule).toContain('flex: 1 1 auto');
+    });
+
+    it('admin-section uses full width', () => {
+        expect(wikiCss).toContain('.admin-section');
+        const sectionRule = wikiCss.match(
+            /\.admin-section\s*\{[^}]*\}/s
+        )?.[0] ?? '';
+        expect(sectionRule).toContain('max-width: 100%');
+    });
+
+    it('admin-editor uses full width', () => {
+        const editorRule = wikiCss.match(
+            /\.admin-editor\s*\{[^}]*\}/s
+        )?.[0] ?? '';
+        expect(editorRule).toContain('width: 100%');
+    });
+
+    it('wiki-content is flex-1 to fill the main area', () => {
+        const contentRule = wikiCss.match(
+            /\.wiki-content\s*\{[^}]*\}/s
+        )?.[0] ?? '';
+        expect(contentRule).toContain('flex: 1');
+    });
+});
+
+// ============================================================================
 // HTML template — Edit Wiki dialog
 // ============================================================================
 
