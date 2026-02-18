@@ -124,7 +124,12 @@ export type ServerMessage =
     | { type: 'comments-cleared'; filePath: string; count: number }
     | { type: 'document-updated'; filePath: string; content: string; comments: MarkdownCommentSummary[] }
     | { type: 'data-wiped'; timestamp: number }
-    | { type: 'data-imported'; timestamp: number; mode: 'replace' | 'merge' };
+    | { type: 'data-imported'; timestamp: number; mode: 'replace' | 'merge' }
+    | { type: 'schedule-added'; repoId: string; scheduleId: string; schedule?: unknown }
+    | { type: 'schedule-updated'; repoId: string; scheduleId: string; schedule?: unknown }
+    | { type: 'schedule-removed'; repoId: string; scheduleId: string }
+    | { type: 'schedule-triggered'; repoId: string; scheduleId: string; schedule?: unknown; run?: unknown }
+    | { type: 'schedule-run-complete'; repoId: string; scheduleId: string; schedule?: unknown; run?: unknown };
 
 /** Client → Server message types */
 export type ClientMessage =

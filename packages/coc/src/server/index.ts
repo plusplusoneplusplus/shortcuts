@@ -31,6 +31,9 @@ import type { ProcessStore, AIProcess, ProcessChangeCallback, ProcessOutputEvent
 import { TaskQueueManager, FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
 import { createQueueExecutorBridge } from './queue-executor-bridge';
 import { QueuePersistence, computeRepoId } from './queue-persistence';
+import { SchedulePersistence } from './schedule-persistence';
+import { ScheduleManager } from './schedule-manager';
+import { registerScheduleRoutes } from './schedule-handler';
 import { OutputPruner } from './output-pruner';
 import { StaleTaskDetector } from './stale-task-detector';
 import { TaskWatcher } from './task-watcher';
@@ -158,6 +161,11 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const queuePersistence = new QueuePersistence(queueManager, dataDir);
     queuePersistence.restore();
 
+    // Initialize schedule manager with persistent storage
+    const schedulePersistence = new SchedulePersistence(dataDir);
+    const scheduleManager = new ScheduleManager(schedulePersistence, queueManager);
+    scheduleManager.restore();
+
     // Wire up output file pruner for automatic cleanup
     const outputPruner = new OutputPruner(store, dataDir);
 
@@ -198,6 +206,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     registerPreferencesRoutes(routes, dataDir);
     registerTaskCommentsRoutes(routes, dataDir);
     registerAdminRoutes(routes, { store, dataDir, getWsServer: () => wsServer, configPath: options.configPath, getQueueManager: () => queueManager, getQueuePersistence: () => queuePersistence });
+    registerScheduleRoutes(routes, scheduleManager);
 
     // Always register wiki routes (they are safe even with no wikis registered)
     const wikiManager = registerWikiRoutes(routes, {
@@ -340,6 +349,17 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         } as any);
     });
 
+    // Bridge schedule change events to WebSocket
+    scheduleManager.on('change', (event: any) => {
+        wsServer.broadcastProcessEvent({
+            type: event.type,
+            repoId: event.repoId,
+            scheduleId: event.scheduleId,
+            schedule: event.schedule,
+            run: event.run,
+        } as any);
+    });
+
     // Bridge task file changes to WebSocket
     const taskWatcher = new TaskWatcher((workspaceId) => {
         wsServer.broadcastProcessEvent({
@@ -403,6 +423,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             taskWatcher.closeAll();
             // Dispose wiki manager (stop file watchers, destroy sessions)
             wikiManager?.disposeAll();
+            // Dispose schedule manager (cancel timers)
+            scheduleManager.dispose();
 
             // Drain queue if requested
             let drainOutcome: 'completed' | 'timeout' | undefined;
@@ -474,3 +496,8 @@ export { registerAdminRoutes, resetWipeToken } from './admin-handler';
 export type { AdminRouteOptions } from './admin-handler';
 export { DataWiper } from './data-wiper';
 export type { WipeOptions, WipeResult } from './data-wiper';
+export { SchedulePersistence, getRepoScheduleFilePath } from './schedule-persistence';
+export type { PersistedScheduleState } from './schedule-persistence';
+export { ScheduleManager, parseCron, nextCronTime, describeCron } from './schedule-manager';
+export type { ScheduleEntry, ScheduleRunRecord, ScheduleStatus, ScheduleOnFailure, ScheduleChangeEvent } from './schedule-manager';
+export { registerScheduleRoutes } from './schedule-handler';

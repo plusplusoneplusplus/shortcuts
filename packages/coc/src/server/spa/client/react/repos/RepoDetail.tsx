@@ -9,6 +9,7 @@ import { RepoInfoTab } from './RepoInfoTab';
 import { PipelinesTab } from './PipelinesTab';
 import { TasksPanel } from '../tasks/TasksPanel';
 import { RepoQueueTab } from './RepoQueueTab';
+import { RepoSchedulesTab } from './RepoSchedulesTab';
 import { AddRepoDialog } from './AddRepoDialog';
 import { getApiBase } from '../utils/config';
 import type { RepoData } from './repoGrouping';
@@ -25,6 +26,7 @@ const SUB_TABS: { key: RepoSubTab; label: string }[] = [
     { key: 'pipelines', label: 'Pipelines' },
     { key: 'tasks', label: 'Tasks' },
     { key: 'queue', label: 'Queue' },
+    { key: 'schedules', label: 'Schedules' },
 ];
 
 export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
@@ -93,6 +95,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                 {activeSubTab === 'pipelines' && <PipelinesTab repo={repo} />}
                 {activeSubTab === 'tasks' && <TasksPanel wsId={ws.id} />}
                 {activeSubTab === 'queue' && <RepoQueueTab workspaceId={ws.id} />}
+                {activeSubTab === 'schedules' && <RepoSchedulesTab workspaceId={ws.id} />}
             </div>
 
             {/* Edit dialog */}

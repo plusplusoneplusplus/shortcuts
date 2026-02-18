@@ -1,0 +1,438 @@
+/**
+ * Tests for ScheduleManager
+ *
+ * Tests for cron parsing, nextCronTime, describeCron, and core manager logic.
+ * Cross-platform compatible (Linux/Mac/Windows).
+ */
+
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
+import { ScheduleManager, parseCron, nextCronTime, describeCron } from '../src/server/schedule-manager';
+import { SchedulePersistence } from '../src/server/schedule-persistence';
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+function createTempDir(): string {
+    return fs.mkdtempSync(path.join(os.tmpdir(), 'schedule-mgr-test-'));
+}
+
+function cleanupDir(dir: string): void {
+    try {
+        fs.rmSync(dir, { recursive: true, force: true });
+    } catch { /* ignore */ }
+}
+
+// ============================================================================
+// Cron Parser Tests
+// ============================================================================
+
+describe('parseCron', () => {
+    it('parses wildcard fields', () => {
+        const fields = parseCron('* * * * *');
+        expect(fields.minutes.size).toBe(60);
+        expect(fields.hours.size).toBe(24);
+        expect(fields.daysOfMonth.size).toBe(31);
+        expect(fields.months.size).toBe(12);
+        expect(fields.daysOfWeek.size).toBe(7);
+    });
+
+    it('parses specific values', () => {
+        const fields = parseCron('30 9 15 6 1');
+        expect(fields.minutes).toEqual(new Set([30]));
+        expect(fields.hours).toEqual(new Set([9]));
+        expect(fields.daysOfMonth).toEqual(new Set([15]));
+        expect(fields.months).toEqual(new Set([6]));
+        expect(fields.daysOfWeek).toEqual(new Set([1]));
+    });
+
+    it('parses comma-separated values', () => {
+        const fields = parseCron('0,30 9,17 * * *');
+        expect(fields.minutes).toEqual(new Set([0, 30]));
+        expect(fields.hours).toEqual(new Set([9, 17]));
+    });
+
+    it('parses ranges', () => {
+        const fields = parseCron('0 9-17 * * *');
+        expect(fields.hours).toEqual(new Set([9, 10, 11, 12, 13, 14, 15, 16, 17]));
+    });
+
+    it('parses step values', () => {
+        const fields = parseCron('*/15 * * * *');
+        expect(fields.minutes).toEqual(new Set([0, 15, 30, 45]));
+    });
+
+    it('parses range with step', () => {
+        const fields = parseCron('0 0-12/3 * * *');
+        expect(fields.hours).toEqual(new Set([0, 3, 6, 9, 12]));
+    });
+
+    it('throws on invalid expression', () => {
+        expect(() => parseCron('* *')).toThrow('expected 5 fields');
+        expect(() => parseCron('too many * * * * * *')).toThrow('expected 5 fields');
+    });
+});
+
+// ============================================================================
+// nextCronTime Tests
+// ============================================================================
+
+describe('nextCronTime', () => {
+    it('returns next minute for * * * * *', () => {
+        const now = new Date(2026, 1, 18, 10, 30, 0); // Feb 18 2026 10:30 local
+        const next = nextCronTime('* * * * *', now);
+        expect(next).not.toBeNull();
+        expect(next!.getMinutes()).toBe(31);
+    });
+
+    it('returns correct time for 0 9 * * *', () => {
+        const now = new Date('2026-02-18T08:00:00Z');
+        const next = nextCronTime('0 9 * * *', now);
+        expect(next).not.toBeNull();
+        expect(next!.getHours()).toBe(9);
+        expect(next!.getMinutes()).toBe(0);
+    });
+
+    it('returns next day when time has passed', () => {
+        const now = new Date(2026, 1, 18, 10, 0, 0); // Feb 18 2026 10:00 local
+        const next = nextCronTime('0 9 * * *', now);
+        expect(next).not.toBeNull();
+        expect(next!.getDate()).toBe(19);
+        expect(next!.getHours()).toBe(9);
+    });
+
+    it('handles step expressions', () => {
+        const now = new Date(2026, 1, 18, 10, 0, 0); // Feb 18 2026 10:00 local
+        const next = nextCronTime('*/30 * * * *', now);
+        expect(next).not.toBeNull();
+        expect(next!.getMinutes() % 30).toBe(0);
+    });
+});
+
+// ============================================================================
+// describeCron Tests
+// ============================================================================
+
+describe('describeCron', () => {
+    it('describes every minute', () => {
+        expect(describeCron('* * * * *')).toBe('Every minute');
+    });
+
+    it('describes minute intervals', () => {
+        expect(describeCron('*/15 * * * *')).toBe('Every 15 minutes');
+    });
+
+    it('describes hour intervals', () => {
+        expect(describeCron('0 */2 * * *')).toBe('Every 2 hours');
+    });
+
+    it('describes daily at time', () => {
+        expect(describeCron('0 9 * * *')).toBe('Every day at 09:00');
+    });
+
+    it('describes weekly', () => {
+        expect(describeCron('0 10 * * 1')).toBe('Mon at 10:00');
+    });
+
+    it('returns raw expr for complex expressions', () => {
+        expect(describeCron('0 9-17 * * 1-5')).toBe('0 9-17 * * 1-5');
+    });
+});
+
+// ============================================================================
+// ScheduleManager Tests
+// ============================================================================
+
+describe('ScheduleManager', () => {
+    let dataDir: string;
+    let persistence: SchedulePersistence;
+    let manager: ScheduleManager;
+
+    beforeEach(() => {
+        dataDir = createTempDir();
+        persistence = new SchedulePersistence(dataDir);
+        manager = new ScheduleManager(persistence);
+    });
+
+    afterEach(() => {
+        manager.dispose();
+        cleanupDir(dataDir);
+    });
+
+    const REPO_ID = 'test-repo-id';
+
+    describe('addSchedule', () => {
+        it('creates a schedule with generated ID', () => {
+            const schedule = manager.addSchedule(REPO_ID, {
+                name: 'Test',
+                target: 'pipelines/test.yaml',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'active',
+            });
+
+            expect(schedule.id).toMatch(/^sch_/);
+            expect(schedule.name).toBe('Test');
+            expect(schedule.createdAt).toBeDefined();
+        });
+
+        it('persists the schedule', () => {
+            manager.addSchedule(REPO_ID, {
+                name: 'Persistent',
+                target: 'pipelines/test.yaml',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'active',
+            });
+
+            const loaded = persistence.loadAll();
+            expect(loaded.get(REPO_ID)).toHaveLength(1);
+            expect(loaded.get(REPO_ID)![0].name).toBe('Persistent');
+        });
+
+        it('emits schedule-added event', () => {
+            const events: any[] = [];
+            manager.on('change', (e: any) => events.push(e));
+
+            manager.addSchedule(REPO_ID, {
+                name: 'Test',
+                target: 'test.yaml',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'active',
+            });
+
+            expect(events).toHaveLength(1);
+            expect(events[0].type).toBe('schedule-added');
+            expect(events[0].repoId).toBe(REPO_ID);
+        });
+
+        it('rejects invalid cron', () => {
+            expect(() => manager.addSchedule(REPO_ID, {
+                name: 'Test',
+                target: 'test.yaml',
+                cron: 'invalid',
+                params: {},
+                onFailure: 'notify',
+                status: 'active',
+            })).toThrow();
+        });
+    });
+
+    describe('getSchedules', () => {
+        it('returns empty array for unknown repo', () => {
+            expect(manager.getSchedules('unknown')).toEqual([]);
+        });
+
+        it('returns all schedules for a repo', () => {
+            manager.addSchedule(REPO_ID, { name: 'A', target: 'a.yaml', cron: '0 9 * * *', params: {}, onFailure: 'notify', status: 'active' });
+            manager.addSchedule(REPO_ID, { name: 'B', target: 'b.yaml', cron: '0 10 * * *', params: {}, onFailure: 'notify', status: 'active' });
+
+            expect(manager.getSchedules(REPO_ID)).toHaveLength(2);
+        });
+    });
+
+    describe('updateSchedule', () => {
+        it('updates schedule properties', () => {
+            const schedule = manager.addSchedule(REPO_ID, {
+                name: 'Original',
+                target: 'test.yaml',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'active',
+            });
+
+            const updated = manager.updateSchedule(REPO_ID, schedule.id, { name: 'Updated', status: 'paused' });
+            expect(updated).toBeDefined();
+            expect(updated!.name).toBe('Updated');
+            expect(updated!.status).toBe('paused');
+        });
+
+        it('returns undefined for non-existent schedule', () => {
+            const result = manager.updateSchedule(REPO_ID, 'nonexistent', { name: 'X' });
+            expect(result).toBeUndefined();
+        });
+
+        it('emits schedule-updated event', () => {
+            const schedule = manager.addSchedule(REPO_ID, {
+                name: 'Test',
+                target: 'test.yaml',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'active',
+            });
+
+            const events: any[] = [];
+            manager.on('change', (e: any) => events.push(e));
+
+            manager.updateSchedule(REPO_ID, schedule.id, { status: 'paused' });
+
+            expect(events.some(e => e.type === 'schedule-updated')).toBe(true);
+        });
+    });
+
+    describe('removeSchedule', () => {
+        it('removes a schedule', () => {
+            const schedule = manager.addSchedule(REPO_ID, {
+                name: 'To Remove',
+                target: 'test.yaml',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'active',
+            });
+
+            const result = manager.removeSchedule(REPO_ID, schedule.id);
+            expect(result).toBe(true);
+            expect(manager.getSchedules(REPO_ID)).toHaveLength(0);
+        });
+
+        it('returns false for non-existent schedule', () => {
+            expect(manager.removeSchedule(REPO_ID, 'nonexistent')).toBe(false);
+        });
+
+        it('emits schedule-removed event', () => {
+            const schedule = manager.addSchedule(REPO_ID, {
+                name: 'Test',
+                target: 'test.yaml',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'active',
+            });
+
+            const events: any[] = [];
+            manager.on('change', (e: any) => events.push(e));
+
+            manager.removeSchedule(REPO_ID, schedule.id);
+            expect(events.some(e => e.type === 'schedule-removed')).toBe(true);
+        });
+    });
+
+    describe('triggerRun', () => {
+        it('creates a run record', async () => {
+            const schedule = manager.addSchedule(REPO_ID, {
+                name: 'Trigger Test',
+                target: 'test.yaml',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'active',
+            });
+
+            const run = await manager.triggerRun(REPO_ID, schedule.id);
+            expect(run.scheduleId).toBe(schedule.id);
+            expect(run.repoId).toBe(REPO_ID);
+            expect(run.startedAt).toBeDefined();
+        });
+
+        it('adds to run history', async () => {
+            const schedule = manager.addSchedule(REPO_ID, {
+                name: 'History Test',
+                target: 'test.yaml',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'active',
+            });
+
+            await manager.triggerRun(REPO_ID, schedule.id);
+            const history = manager.getRunHistory(schedule.id);
+            expect(history.length).toBeGreaterThan(0);
+        });
+
+        it('throws for non-existent schedule', async () => {
+            await expect(manager.triggerRun(REPO_ID, 'nonexistent')).rejects.toThrow('Schedule not found');
+        });
+
+        it('emits schedule-triggered and schedule-run-complete events', async () => {
+            const schedule = manager.addSchedule(REPO_ID, {
+                name: 'Event Test',
+                target: 'test.yaml',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'active',
+            });
+
+            const events: any[] = [];
+            manager.on('change', (e: any) => events.push(e));
+
+            await manager.triggerRun(REPO_ID, schedule.id);
+            expect(events.some(e => e.type === 'schedule-triggered')).toBe(true);
+            expect(events.some(e => e.type === 'schedule-run-complete')).toBe(true);
+        });
+    });
+
+    describe('restore', () => {
+        it('restores schedules from persistence', () => {
+            // Create a schedule, save, dispose, then restore in a new manager
+            manager.addSchedule(REPO_ID, {
+                name: 'Restored Schedule',
+                target: 'test.yaml',
+                cron: '0 9 * * *',
+                params: { env: 'prod' },
+                onFailure: 'stop',
+                status: 'paused',
+            });
+
+            manager.dispose();
+
+            const newManager = new ScheduleManager(persistence);
+            newManager.restore();
+
+            const schedules = newManager.getSchedules(REPO_ID);
+            expect(schedules).toHaveLength(1);
+            expect(schedules[0].name).toBe('Restored Schedule');
+            expect(schedules[0].params).toEqual({ env: 'prod' });
+            expect(schedules[0].onFailure).toBe('stop');
+            expect(schedules[0].status).toBe('paused');
+
+            newManager.dispose();
+        });
+    });
+
+    describe('dispose', () => {
+        it('cancels all timers', () => {
+            manager.addSchedule(REPO_ID, {
+                name: 'Timed',
+                target: 'test.yaml',
+                cron: '* * * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'active',
+            });
+
+            // Should not throw
+            expect(() => manager.dispose()).not.toThrow();
+        });
+    });
+
+    describe('run history limit', () => {
+        it('caps run history at 10 entries', async () => {
+            const schedule = manager.addSchedule(REPO_ID, {
+                name: 'History Limit',
+                target: 'test.yaml',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'active',
+            });
+
+            for (let i = 0; i < 15; i++) {
+                await manager.triggerRun(REPO_ID, schedule.id);
+            }
+
+            const history = manager.getRunHistory(schedule.id);
+            expect(history.length).toBeLessThanOrEqual(10);
+        });
+    });
+});

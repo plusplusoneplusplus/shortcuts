@@ -63,6 +63,13 @@ function AppInner() {
                     window.dispatchEvent(new CustomEvent('tasks-changed', { detail: { wsId: msg.workspaceId } }));
                 }
                 break;
+            case 'schedule-added':
+            case 'schedule-updated':
+            case 'schedule-removed':
+            case 'schedule-triggered':
+            case 'schedule-run-complete':
+                window.dispatchEvent(new CustomEvent('schedule-changed', { detail: msg }));
+                break;
             case 'wiki-reload':
                 if (msg.wiki) appDispatch({ type: 'WIKI_RELOAD', wiki: msg.wiki });
                 else if (msg.data?.wiki) appDispatch({ type: 'WIKI_RELOAD', wiki: msg.data.wiki });

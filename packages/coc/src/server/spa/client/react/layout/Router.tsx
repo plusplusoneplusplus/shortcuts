@@ -26,7 +26,7 @@ function tabFromHash(hash: string): DashboardTab | null {
     return null;
 }
 
-const VALID_REPO_SUB_TABS: Set<string> = new Set(['info', 'pipelines', 'tasks', 'queue']);
+const VALID_REPO_SUB_TABS: Set<string> = new Set(['info', 'pipelines', 'tasks', 'queue', 'schedules']);
 
 export function Router() {
     const { state, dispatch } = useApp();
