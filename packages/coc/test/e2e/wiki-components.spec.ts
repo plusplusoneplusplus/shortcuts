@@ -12,10 +12,10 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { test, expect } from './fixtures/server-fixture';
 import { seedWiki } from './fixtures/seed';
-import { createWikiFixture, createWikiComponent } from './fixtures/wiki-fixtures';
-import type { ComponentGraph, ComponentInfo, CategoryInfo } from './fixtures/wiki-fixtures';
+import { expect, test } from './fixtures/server-fixture';
+import type { CategoryInfo, ComponentGraph, ComponentInfo } from './fixtures/wiki-fixtures';
+import { createWikiComponent, createWikiFixture } from './fixtures/wiki-fixtures';
 
 // ================================================================
 // Helpers
