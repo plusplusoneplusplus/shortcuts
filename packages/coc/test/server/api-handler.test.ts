@@ -10,6 +10,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as http from 'http';
+import * as childProcess from 'child_process';
 import { createExecutionServer } from '../../src/server/index';
 import { sendJSON, sendError, parseQueryParams, stripExcludedFields } from '@plusplusoneplusplus/coc-server';
 import { FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
@@ -515,6 +516,164 @@ describe('API Handler', () => {
             expect(patchRes.status).toBe(200);
             const body = JSON.parse(patchRes.body);
             expect(body.workspace.remoteUrl).toBe('https://github.com/patched/repo.git');
+        });
+
+        // ================================================================
+        // git-info ahead/behind
+        // ================================================================
+
+        it('should return ahead=0 and behind=0 when branch is in sync', async () => {
+            const srv = await startServer();
+            const bareDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bare-'));
+            const cloneDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clone-'));
+            try {
+                childProcess.execSync('git init --bare', { cwd: bareDir });
+                childProcess.execSync(`git clone "${bareDir}" repo`, { cwd: cloneDir });
+                const repoDir = path.join(cloneDir, 'repo');
+                childProcess.execSync('git config user.email "test@test.com"', { cwd: repoDir });
+                childProcess.execSync('git config user.name "Test"', { cwd: repoDir });
+                fs.writeFileSync(path.join(repoDir, 'file.txt'), 'init');
+                childProcess.execSync('git add . && git commit -m "init"', { cwd: repoDir });
+                childProcess.execSync('git push origin HEAD', { cwd: repoDir });
+
+                await postJSON(`${srv.url}/api/workspaces`, { id: 'ws-sync', name: 'sync', rootPath: repoDir });
+                const res = await request(`${srv.url}/api/workspaces/ws-sync/git-info`);
+                const body = JSON.parse(res.body);
+                expect(body.isGitRepo).toBe(true);
+                expect(body.ahead).toBe(0);
+                expect(body.behind).toBe(0);
+            } finally {
+                fs.rmSync(bareDir, { recursive: true, force: true });
+                fs.rmSync(cloneDir, { recursive: true, force: true });
+            }
+        });
+
+        it('should return ahead=1 for unpushed commit', async () => {
+            const srv = await startServer();
+            const bareDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bare-'));
+            const cloneDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clone-'));
+            try {
+                childProcess.execSync('git init --bare', { cwd: bareDir });
+                childProcess.execSync(`git clone "${bareDir}" repo`, { cwd: cloneDir });
+                const repoDir = path.join(cloneDir, 'repo');
+                childProcess.execSync('git config user.email "test@test.com"', { cwd: repoDir });
+                childProcess.execSync('git config user.name "Test"', { cwd: repoDir });
+                fs.writeFileSync(path.join(repoDir, 'file.txt'), 'init');
+                childProcess.execSync('git add . && git commit -m "init"', { cwd: repoDir });
+                childProcess.execSync('git push origin HEAD', { cwd: repoDir });
+
+                // Make one more commit locally without pushing
+                fs.writeFileSync(path.join(repoDir, 'file2.txt'), 'local');
+                childProcess.execSync('git add . && git commit -m "local"', { cwd: repoDir });
+
+                await postJSON(`${srv.url}/api/workspaces`, { id: 'ws-ahead', name: 'ahead', rootPath: repoDir });
+                const res = await request(`${srv.url}/api/workspaces/ws-ahead/git-info`);
+                const body = JSON.parse(res.body);
+                expect(body.ahead).toBe(1);
+                expect(body.behind).toBe(0);
+            } finally {
+                fs.rmSync(bareDir, { recursive: true, force: true });
+                fs.rmSync(cloneDir, { recursive: true, force: true });
+            }
+        });
+
+        it('should return behind=1 for commits on origin not yet merged', async () => {
+            const srv = await startServer();
+            const bareDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bare-'));
+            const cloneDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clone-'));
+            const pusherDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pusher-'));
+            try {
+                childProcess.execSync('git init --bare', { cwd: bareDir });
+                childProcess.execSync(`git clone "${bareDir}" repo`, { cwd: cloneDir });
+                const repoDir = path.join(cloneDir, 'repo');
+                childProcess.execSync('git config user.email "test@test.com"', { cwd: repoDir });
+                childProcess.execSync('git config user.name "Test"', { cwd: repoDir });
+                fs.writeFileSync(path.join(repoDir, 'file.txt'), 'init');
+                childProcess.execSync('git add . && git commit -m "init"', { cwd: repoDir });
+                childProcess.execSync('git push origin HEAD', { cwd: repoDir });
+
+                // Simulate a teammate pushing a commit via a second clone
+                childProcess.execSync(`git clone "${bareDir}" repo`, { cwd: pusherDir });
+                const pusherRepo = path.join(pusherDir, 'repo');
+                childProcess.execSync('git config user.email "other@test.com"', { cwd: pusherRepo });
+                childProcess.execSync('git config user.name "Other"', { cwd: pusherRepo });
+                fs.writeFileSync(path.join(pusherRepo, 'remote.txt'), 'remote');
+                childProcess.execSync('git add . && git commit -m "remote" && git push origin HEAD', { cwd: pusherRepo });
+
+                // Fetch in original clone so tracking ref is updated
+                childProcess.execSync('git fetch', { cwd: repoDir });
+
+                await postJSON(`${srv.url}/api/workspaces`, { id: 'ws-behind', name: 'behind', rootPath: repoDir });
+                const res = await request(`${srv.url}/api/workspaces/ws-behind/git-info`);
+                const body = JSON.parse(res.body);
+                expect(body.ahead).toBe(0);
+                expect(body.behind).toBe(1);
+            } finally {
+                fs.rmSync(bareDir, { recursive: true, force: true });
+                fs.rmSync(cloneDir, { recursive: true, force: true });
+                fs.rmSync(pusherDir, { recursive: true, force: true });
+            }
+        });
+
+        it('should return ahead=0 and behind=0 when no upstream is configured', async () => {
+            const srv = await startServer();
+            const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'no-upstream-'));
+            try {
+                childProcess.execSync('git init', { cwd: tmpDir });
+                childProcess.execSync('git config user.email "test@test.com"', { cwd: tmpDir });
+                childProcess.execSync('git config user.name "Test"', { cwd: tmpDir });
+                fs.writeFileSync(path.join(tmpDir, 'file.txt'), 'init');
+                childProcess.execSync('git add . && git commit -m "init"', { cwd: tmpDir });
+
+                await postJSON(`${srv.url}/api/workspaces`, { id: 'ws-no-upstream', name: 'no-upstream', rootPath: tmpDir });
+                const res = await request(`${srv.url}/api/workspaces/ws-no-upstream/git-info`);
+                const body = JSON.parse(res.body);
+                expect(body.isGitRepo).toBe(true);
+                expect(body.ahead).toBe(0);
+                expect(body.behind).toBe(0);
+            } finally {
+                fs.rmSync(tmpDir, { recursive: true, force: true });
+            }
+        });
+
+        it('should return ahead=1 and behind=1 when diverged', async () => {
+            const srv = await startServer();
+            const bareDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bare-'));
+            const cloneDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clone-'));
+            const pusherDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pusher-'));
+            try {
+                childProcess.execSync('git init --bare', { cwd: bareDir });
+                childProcess.execSync(`git clone "${bareDir}" repo`, { cwd: cloneDir });
+                const repoDir = path.join(cloneDir, 'repo');
+                childProcess.execSync('git config user.email "test@test.com"', { cwd: repoDir });
+                childProcess.execSync('git config user.name "Test"', { cwd: repoDir });
+                fs.writeFileSync(path.join(repoDir, 'file.txt'), 'init');
+                childProcess.execSync('git add . && git commit -m "init"', { cwd: repoDir });
+                childProcess.execSync('git push origin HEAD', { cwd: repoDir });
+
+                // Teammate pushes a commit
+                childProcess.execSync(`git clone "${bareDir}" repo`, { cwd: pusherDir });
+                const pusherRepo = path.join(pusherDir, 'repo');
+                childProcess.execSync('git config user.email "other@test.com"', { cwd: pusherRepo });
+                childProcess.execSync('git config user.name "Other"', { cwd: pusherRepo });
+                fs.writeFileSync(path.join(pusherRepo, 'remote.txt'), 'remote');
+                childProcess.execSync('git add . && git commit -m "remote" && git push origin HEAD', { cwd: pusherRepo });
+
+                // Local commit + fetch (no merge)
+                fs.writeFileSync(path.join(repoDir, 'local.txt'), 'local');
+                childProcess.execSync('git add . && git commit -m "local"', { cwd: repoDir });
+                childProcess.execSync('git fetch', { cwd: repoDir });
+
+                await postJSON(`${srv.url}/api/workspaces`, { id: 'ws-diverged', name: 'diverged', rootPath: repoDir });
+                const res = await request(`${srv.url}/api/workspaces/ws-diverged/git-info`);
+                const body = JSON.parse(res.body);
+                expect(body.ahead).toBe(1);
+                expect(body.behind).toBe(1);
+            } finally {
+                fs.rmSync(bareDir, { recursive: true, force: true });
+                fs.rmSync(cloneDir, { recursive: true, force: true });
+                fs.rmSync(pusherDir, { recursive: true, force: true });
+            }
         });
 
         it('should discover pipelines in a workspace', async () => {

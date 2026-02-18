@@ -288,12 +288,26 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                 const dirty = status.trim().length > 0;
                 const remoteUrl = detectRemoteUrl(ws.rootPath);
 
+                // Ahead/behind counts relative to the upstream tracking branch
+                let ahead = 0;
+                let behind = 0;
+                try {
+                    const counts = execGitSync('rev-list --left-right --count HEAD...@{u}', ws.rootPath);
+                    const parts = counts.trim().split(/\s+/);
+                    if (parts.length === 2) {
+                        ahead = parseInt(parts[0], 10) || 0;
+                        behind = parseInt(parts[1], 10) || 0;
+                    }
+                } catch {
+                    // No upstream tracking branch — leave both at 0
+                }
+
                 // Update workspace remoteUrl if it changed (or wasn't set)
                 if (remoteUrl && remoteUrl !== ws.remoteUrl) {
                     await store.updateWorkspace(ws.id, { remoteUrl });
                 }
 
-                sendJSON(res, 200, { branch, dirty, isGitRepo: true, remoteUrl: remoteUrl || null });
+                sendJSON(res, 200, { branch, dirty, ahead, behind, isGitRepo: true, remoteUrl: remoteUrl || null });
             } catch {
                 sendJSON(res, 200, { branch: null, dirty: false, isGitRepo: false, remoteUrl: null });
             }

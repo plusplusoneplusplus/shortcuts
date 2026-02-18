@@ -74,7 +74,7 @@ if (tabBar) {
 
 interface RepoData {
     workspace: any;
-    gitInfo?: { branch: string | null; dirty: boolean; isGitRepo: boolean; remoteUrl?: string | null };
+    gitInfo?: { branch: string | null; dirty: boolean; isGitRepo: boolean; remoteUrl?: string | null; ahead?: number; behind?: number };
     pipelines?: Array<{ name: string; path: string }>;
     stats?: { success: number; failed: number; running: number };
     taskCount?: number;
@@ -715,12 +715,19 @@ function renderInfoTab(repo: RepoData): string {
     const color = ws.color || '#848484';
     const branch = repo.gitInfo?.branch || 'n/a';
     const dirty = repo.gitInfo?.dirty ? ' (dirty)' : '';
+    const ahead = repo.gitInfo?.ahead ?? 0;
+    const behind = repo.gitInfo?.behind ?? 0;
+    const syncLabel = (ahead === 0 && behind === 0)
+        ? 'synced'
+        : [ahead > 0 ? `↑ ${ahead} ahead` : '', behind > 0 ? `↓ ${behind} behind` : '']
+            .filter(Boolean).join(' · ');
     const stats = repo.stats || { success: 0, failed: 0, running: 0 };
     const remoteUrl = ws.remoteUrl || repo.gitInfo?.remoteUrl || null;
 
     let html = '<div class="meta-grid">' +
         '<div class="meta-item"><label>Path</label><span class="meta-path">' + escapeHtmlClient(ws.rootPath || '') + '</span></div>' +
         '<div class="meta-item"><label>Branch</label><span>' + escapeHtmlClient(branch + dirty) + '</span></div>' +
+        '<div class="meta-item"><label>Sync</label><span>' + escapeHtmlClient(syncLabel) + '</span></div>' +
         (remoteUrl ? '<div class="meta-item"><label>Remote</label><span class="meta-path">' + escapeHtmlClient(remoteUrl) + '</span></div>' : '') +
         '<div class="meta-item"><label>Color</label><span><span class="repo-color-dot" style="background:' + escapeHtmlClient(color) + ';display:inline-block;vertical-align:middle"></span> ' + escapeHtmlClient(color) + '</span></div>' +
         '<div class="meta-item"><label>Pipelines</label><span>' + (repo.pipelines?.length || 0) + '</span></div>' +
