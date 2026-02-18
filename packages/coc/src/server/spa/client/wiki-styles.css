@@ -1009,6 +1009,9 @@
 .admin-page.hidden { display: none; }
 .admin-page.wiki-admin-embedded {
     height: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 0;
 }
 .admin-page.wiki-admin-embedded .admin-tabs {
     display: none;

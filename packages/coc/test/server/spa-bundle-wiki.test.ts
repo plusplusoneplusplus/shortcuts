@@ -969,6 +969,14 @@ describe('CSS — wiki pages use full width', () => {
         )?.[0] ?? '';
         expect(contentRule).toContain('flex: 1');
     });
+
+    it('embedded admin page overrides global max-width constraint', () => {
+        const embeddedRule = wikiCss.match(
+            /\.admin-page\.wiki-admin-embedded\s*\{[^}]*\}/s
+        )?.[0] ?? '';
+        expect(embeddedRule).toContain('max-width: none');
+        expect(embeddedRule).toContain('margin: 0');
+    });
 });
 
 // ============================================================================
