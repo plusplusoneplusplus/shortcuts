@@ -13,6 +13,7 @@ const statusMap: Record<string, string> = {
     completed: 'bg-[#16825d]/15 text-[#16825d] dark:text-[#89d185]',
     failed: 'bg-[#f14c4c]/15 text-[#f14c4c] dark:text-[#f48771]',
     cancelled: 'bg-[#e8912d]/15 text-[#e8912d] dark:text-[#cca700]',
+    warning: 'bg-[#f59e0b]/15 text-[#f59e0b] dark:text-[#fbbf24]',
 };
 
 export function Badge({ status, children, className }: BadgeProps) {

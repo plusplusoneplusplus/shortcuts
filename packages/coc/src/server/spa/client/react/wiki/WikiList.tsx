@@ -36,7 +36,7 @@ const statusConfig: Record<WikiStatus, { label: string; badge: string }> = {
     loaded: { label: 'Ready', badge: 'completed' },
     generating: { label: 'Generating', badge: 'running' },
     error: { label: 'Error', badge: 'failed' },
-    pending: { label: 'Pending', badge: 'queued' },
+    pending: { label: 'Setup Required', badge: 'warning' },
 };
 
 function relativeTime(dateStr: string): string {
@@ -61,6 +61,11 @@ export function WikiList() {
 
     const selectWiki = useCallback((wikiId: string) => {
         dispatch({ type: 'SELECT_WIKI', wikiId });
+        location.hash = '#wiki/' + encodeURIComponent(wikiId);
+    }, [dispatch]);
+
+    const setupWiki = useCallback((wikiId: string) => {
+        dispatch({ type: 'SELECT_WIKI_WITH_TAB', wikiId, tab: 'admin' });
         location.hash = '#wiki/' + encodeURIComponent(wikiId);
     }, [dispatch]);
 
@@ -121,6 +126,16 @@ export function WikiList() {
                                     )}
                                     {wiki.generatedAt && (
                                         <span>{relativeTime(wiki.generatedAt)}</span>
+                                    )}
+                                    {status === 'pending' && (
+                                        <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            className="!text-[#f59e0b] !px-1.5 !py-0.5 !text-[11px] border border-[#f59e0b] hover:!bg-[#f59e0b]/10"
+                                            onClick={(e) => { e.stopPropagation(); setupWiki(wiki.id); }}
+                                        >
+                                            → Setup
+                                        </Button>
                                     )}
                                 </div>
                                 <div className="flex justify-end gap-1 mt-2" onClick={e => e.stopPropagation()}>

@@ -33,7 +33,7 @@ const statusConfig: Record<WikiStatus, { label: string; badge: string }> = {
     loaded: { label: 'Ready', badge: 'completed' },
     generating: { label: 'Generating', badge: 'running' },
     error: { label: 'Error', badge: 'failed' },
-    pending: { label: 'Pending', badge: 'queued' },
+    pending: { label: 'Setup Required', badge: 'warning' },
 };
 
 export function WikiDetail({ wikiId }: WikiDetailProps) {
@@ -41,6 +41,17 @@ export function WikiDetail({ wikiId }: WikiDetailProps) {
     const [graph, setGraph] = useState<ComponentGraph | null>(null);
     const [loadingGraph, setLoadingGraph] = useState(true);
     const [activeTab, setActiveTab] = useState<WikiProjectTab>('browse');
+
+    // Consume initial tab from context (e.g. from "→ Setup" CTA on pending wiki cards)
+    useEffect(() => {
+        if (state.wikiDetailInitialTab) {
+            const tab = state.wikiDetailInitialTab as WikiProjectTab;
+            if (['browse', 'ask', 'graph', 'admin'].includes(tab)) {
+                setActiveTab(tab);
+            }
+            dispatch({ type: 'SELECT_WIKI', wikiId: wikiId });
+        }
+    }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
     const wiki = useMemo(
         () => state.wikis.find((w: any) => w.id === wikiId),
@@ -84,6 +95,20 @@ export function WikiDetail({ wikiId }: WikiDetailProps) {
         }
 
         if (!graph) {
+            if (wikiStatus === 'pending') {
+                return (
+                    <div className="flex flex-col items-center justify-center h-full text-center">
+                        <div className="text-4xl mb-3">⚠</div>
+                        <div className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-1">Setup Required</div>
+                        <div className="text-xs text-[#848484] mb-4 max-w-xs">
+                            This wiki has been registered but has not been generated yet.
+                        </div>
+                        <Button size="sm" onClick={() => setActiveTab('admin')}>
+                            → Run Setup Wizard
+                        </Button>
+                    </div>
+                );
+            }
             return (
                 <div className="flex items-center justify-center h-full text-sm text-[#848484]">
                     No graph data available. Try generating the wiki first.

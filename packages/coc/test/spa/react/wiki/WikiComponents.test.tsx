@@ -38,6 +38,7 @@ describe('AppContext reducer — wiki actions', () => {
         selectedWikiId: null,
         selectedWikiComponentId: null,
         wikiView: 'list',
+        wikiDetailInitialTab: null,
         wikis: [],
         conversationCache: {},
     };
@@ -124,6 +125,19 @@ describe('AppContext reducer — wiki actions', () => {
         const result = appReducer(withWikis, { type: 'WIKI_ERROR', wikiId: 'w1', error: 'Something failed' });
         expect(result.wikis[0].status).toBe('error');
         expect(result.wikis[0].errorMessage).toBe('Something failed');
+    });
+
+    it('SELECT_WIKI_WITH_TAB sets wikiDetailInitialTab', () => {
+        const result = appReducer(baseState, { type: 'SELECT_WIKI_WITH_TAB', wikiId: 'w1', tab: 'admin' });
+        expect(result.selectedWikiId).toBe('w1');
+        expect(result.wikiView).toBe('detail');
+        expect(result.wikiDetailInitialTab).toBe('admin');
+    });
+
+    it('SELECT_WIKI clears wikiDetailInitialTab', () => {
+        const withTab = { ...baseState, wikiDetailInitialTab: 'admin' };
+        const result = appReducer(withTab, { type: 'SELECT_WIKI', wikiId: 'w1' });
+        expect(result.wikiDetailInitialTab).toBeNull();
     });
 });
 
@@ -269,6 +283,65 @@ describe('WikiList', () => {
         await waitFor(() => {
             expect(screen.getByText('No wikis registered.')).toBeTruthy();
         });
+    });
+
+    it('shows "Setup Required" badge for pending wikis', async () => {
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve([
+                { id: 'w-pending', name: 'Pending Wiki', status: 'pending', color: '#aaa' },
+            ]),
+        }));
+        render(<Wrap><WikiList /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByText('Setup Required')).toBeTruthy();
+        });
+    });
+
+    it('shows "→ Setup" CTA button only on pending wiki cards', async () => {
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve([
+                { id: 'w1', name: 'Loaded Wiki', status: 'loaded', color: '#3b82f6', componentCount: 5 },
+                { id: 'w2', name: 'Pending Wiki', status: 'pending', color: '#aaa' },
+                { id: 'w3', name: 'Generating Wiki', status: 'generating', color: '#eee' },
+            ]),
+        }));
+        render(<Wrap><WikiList /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByText('Loaded Wiki')).toBeTruthy();
+        });
+        const setupButtons = screen.getAllByText('→ Setup');
+        expect(setupButtons).toHaveLength(1);
+    });
+
+    it('does not show "→ Setup" CTA on loaded wikis', async () => {
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve([
+                { id: 'w1', name: 'Loaded Wiki', status: 'loaded', color: '#3b82f6', componentCount: 10 },
+            ]),
+        }));
+        render(<Wrap><WikiList /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByText('Ready')).toBeTruthy();
+        });
+        expect(screen.queryByText('→ Setup')).toBeNull();
+    });
+
+    it('does not show "→ Setup" CTA on generating or error wikis', async () => {
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve([
+                { id: 'w2', name: 'Generating Wiki', status: 'generating', color: '#ef4444' },
+                { id: 'w3', name: 'Error Wiki', status: 'error', color: '#22c55e' },
+            ]),
+        }));
+        render(<Wrap><WikiList /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByText('Generating Wiki')).toBeTruthy();
+        });
+        expect(screen.queryByText('→ Setup')).toBeNull();
     });
 });
 
@@ -426,6 +499,7 @@ describe('useWebSocket wiki event dispatching', () => {
             searchQuery: '', expandedGroups: {}, activeTab: 'repos', workspaces: [],
             selectedRepoId: null, activeRepoSubTab: 'info',
             selectedWikiId: null, selectedWikiComponentId: null, wikiView: 'list',
+            wikiDetailInitialTab: null,
             wikis: [{ id: 'w1', name: 'Old', status: 'generating' }],
             conversationCache: {},
         };
@@ -440,6 +514,7 @@ describe('useWebSocket wiki event dispatching', () => {
             searchQuery: '', expandedGroups: {}, activeTab: 'repos', workspaces: [],
             selectedRepoId: null, activeRepoSubTab: 'info',
             selectedWikiId: null, selectedWikiComponentId: null, wikiView: 'list',
+            wikiDetailInitialTab: null,
             wikis: [{ id: 'w1', status: 'loaded' }],
             conversationCache: {},
         };
@@ -453,6 +528,7 @@ describe('useWebSocket wiki event dispatching', () => {
             searchQuery: '', expandedGroups: {}, activeTab: 'repos', workspaces: [],
             selectedRepoId: null, activeRepoSubTab: 'info',
             selectedWikiId: null, selectedWikiComponentId: null, wikiView: 'list',
+            wikiDetailInitialTab: null,
             wikis: [{ id: 'w1', status: 'generating' }],
             conversationCache: {},
         };
