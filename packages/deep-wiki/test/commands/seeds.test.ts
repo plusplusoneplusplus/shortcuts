@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import * as yaml from 'js-yaml';
 import { EXIT_CODES } from '../../src/cli';
 
 // Mock the seeds module to avoid actual SDK calls
@@ -79,7 +80,7 @@ describe('Seeds Command', () => {
         it('should return CONFIG_ERROR for non-existent path', async () => {
             const { executeSeeds } = await import('../../src/commands/seeds');
             const exitCode = await executeSeeds('/nonexistent/path/that/doesnt/exist', {
-                output: path.join(tmpDir, 'seeds.json'),
+                output: path.join(tmpDir, 'seeds.yaml'),
                 maxThemes: 50,
                 verbose: false,
             });
@@ -93,7 +94,7 @@ describe('Seeds Command', () => {
 
             const { executeSeeds } = await import('../../src/commands/seeds');
             const exitCode = await executeSeeds(filePath, {
-                output: path.join(tmpDir, 'seeds.json'),
+                output: path.join(tmpDir, 'seeds.yaml'),
                 maxThemes: 50,
                 verbose: false,
             });
@@ -113,7 +114,7 @@ describe('Seeds Command', () => {
 
             const { executeSeeds } = await import('../../src/commands/seeds');
             await executeSeeds(repoDir, {
-                output: path.join(tmpDir, 'seeds.json'),
+                output: path.join(tmpDir, 'seeds.yaml'),
                 maxThemes: 50,
                 verbose: false,
             });
@@ -125,7 +126,7 @@ describe('Seeds Command', () => {
         it('should print output file in header', async () => {
             const repoDir = path.join(tmpDir, 'repo');
             fs.mkdirSync(repoDir);
-            const outputFile = path.join(tmpDir, 'custom-seeds.json');
+            const outputFile = path.join(tmpDir, 'custom-seeds.yaml');
 
             const { executeSeeds } = await import('../../src/commands/seeds');
             await executeSeeds(repoDir, {
@@ -134,7 +135,7 @@ describe('Seeds Command', () => {
                 verbose: false,
             });
 
-            expect(stderrOutput).toContain('custom-seeds.json');
+            expect(stderrOutput).toContain('custom-seeds.yaml');
         });
 
         it('should print max themes in header', async () => {
@@ -143,7 +144,7 @@ describe('Seeds Command', () => {
 
             const { executeSeeds } = await import('../../src/commands/seeds');
             await executeSeeds(repoDir, {
-                output: path.join(tmpDir, 'seeds.json'),
+                output: path.join(tmpDir, 'seeds.yaml'),
                 maxThemes: 30,
                 verbose: false,
             });
@@ -157,7 +158,7 @@ describe('Seeds Command', () => {
 
             const { executeSeeds } = await import('../../src/commands/seeds');
             await executeSeeds(repoDir, {
-                output: path.join(tmpDir, 'seeds.json'),
+                output: path.join(tmpDir, 'seeds.yaml'),
                 maxThemes: 50,
                 model: 'claude-sonnet',
                 verbose: false,
@@ -184,7 +185,7 @@ describe('Seeds Command', () => {
 
             const { executeSeeds } = await import('../../src/commands/seeds');
             const exitCode = await executeSeeds(repoDir, {
-                output: path.join(tmpDir, 'seeds.json'),
+                output: path.join(tmpDir, 'seeds.yaml'),
                 maxThemes: 50,
                 verbose: false,
             });
@@ -204,7 +205,7 @@ describe('Seeds Command', () => {
 
             const { executeSeeds } = await import('../../src/commands/seeds');
             const exitCode = await executeSeeds(repoDir, {
-                output: path.join(tmpDir, 'seeds.json'),
+                output: path.join(tmpDir, 'seeds.yaml'),
                 maxThemes: 50,
                 verbose: false,
             });
@@ -224,7 +225,7 @@ describe('Seeds Command', () => {
 
             const { executeSeeds } = await import('../../src/commands/seeds');
             const exitCode = await executeSeeds(repoDir, {
-                output: path.join(tmpDir, 'seeds.json'),
+                output: path.join(tmpDir, 'seeds.yaml'),
                 maxThemes: 50,
                 verbose: false,
             });
@@ -238,10 +239,10 @@ describe('Seeds Command', () => {
     // ========================================================================
 
     describe('successful seeds generation', () => {
-        it('should write seeds.json and return SUCCESS', async () => {
+        it('should write seeds.yaml and return SUCCESS', async () => {
             const repoDir = path.join(tmpDir, 'repo');
             fs.mkdirSync(repoDir);
-            const outputFile = path.join(tmpDir, 'seeds.json');
+            const outputFile = path.join(tmpDir, 'seeds.yaml');
 
             const { executeSeeds } = await import('../../src/commands/seeds');
             const exitCode = await executeSeeds(repoDir, {
@@ -254,7 +255,7 @@ describe('Seeds Command', () => {
 
             // Check output file
             expect(fs.existsSync(outputFile)).toBe(true);
-            const content = JSON.parse(fs.readFileSync(outputFile, 'utf-8'));
+            const content = yaml.load(fs.readFileSync(outputFile, 'utf-8')) as any;
             expect(content.themes).toHaveLength(2);
             expect(content.themes[0].theme).toBe('authentication');
             expect(content.version).toBe('1.0.0');
@@ -267,7 +268,7 @@ describe('Seeds Command', () => {
 
             const { executeSeeds } = await import('../../src/commands/seeds');
             await executeSeeds(repoDir, {
-                output: path.join(tmpDir, 'seeds.json'),
+                output: path.join(tmpDir, 'seeds.yaml'),
                 maxThemes: 50,
                 verbose: false,
             });
@@ -282,7 +283,7 @@ describe('Seeds Command', () => {
 
             const { executeSeeds } = await import('../../src/commands/seeds');
             await executeSeeds(repoDir, {
-                output: path.join(tmpDir, 'seeds.json'),
+                output: path.join(tmpDir, 'seeds.yaml'),
                 maxThemes: 50,
                 verbose: false,
             });
@@ -297,7 +298,7 @@ describe('Seeds Command', () => {
 
             const { executeSeeds } = await import('../../src/commands/seeds');
             await executeSeeds(repoDir, {
-                output: path.join(tmpDir, 'seeds.json'),
+                output: path.join(tmpDir, 'seeds.yaml'),
                 maxThemes: 50,
                 verbose: true,
             });
@@ -310,7 +311,7 @@ describe('Seeds Command', () => {
             const repoDir = path.join(tmpDir, 'repo');
             fs.mkdirSync(repoDir);
             const outputDir = path.join(tmpDir, 'output', 'subdir');
-            const outputFile = path.join(outputDir, 'seeds.json');
+            const outputFile = path.join(outputDir, 'seeds.yaml');
 
             const { executeSeeds } = await import('../../src/commands/seeds');
             await executeSeeds(repoDir, {

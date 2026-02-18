@@ -540,7 +540,7 @@ export interface SeedsOutput {
  * Options for the `deep-wiki seeds` command.
  */
 export interface SeedsCommandOptions {
-    /** Output file path (default: "seeds.json") */
+    /** Output file path (default: "seeds.yaml") */
     output: string;
     /** Maximum number of themes to generate (default: 50) */
     maxThemes: number;

@@ -70,7 +70,7 @@ export function createProgram(): Command {
         .command('seeds')
         .description('Generate theme seeds for breadth-first discovery')
         .argument('[repo-path]', 'Path to the local git repository')
-        .option('-o, --output <path>', 'Output file path', 'seeds.json')
+        .option('-o, --output <path>', 'Output file path', 'seeds.yaml')
         .option('--max-themes <n>', 'Maximum number of themes to generate', (v: string) => parseInt(v, 10), 50)
         .option('-m, --model <model>', 'AI model to use')
         .option('-t, --timeout <seconds>', 'Timeout in seconds for seeds session', (v: string) => parseInt(v, 10))

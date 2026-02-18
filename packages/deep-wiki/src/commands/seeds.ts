@@ -9,6 +9,7 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
+import * as yaml from 'js-yaml';
 import type { SeedsCommandOptions, SeedsOutput } from '../types';
 import { generateThemeSeeds, SeedsError } from '../seeds';
 import {
@@ -125,14 +126,14 @@ export async function executeSeeds(
 
         try {
             fs.mkdirSync(outputDir, { recursive: true });
-            fs.writeFileSync(outputPath, JSON.stringify(output, null, 2), 'utf-8');
+            fs.writeFileSync(outputPath, yaml.dump(output), 'utf-8');
             process.stderr.write('\n');
             printSuccess(`Seeds written to ${bold(outputPath)}`);
         } catch (writeError) {
             printWarning(`Could not write to file: ${getErrorMessage(writeError)}`);
             printInfo('Outputting to stdout instead');
             // Fall back to stdout
-            process.stdout.write(JSON.stringify(output, null, 2) + '\n');
+            process.stdout.write(yaml.dump(output));
         }
 
         return EXIT_CODES.SUCCESS;

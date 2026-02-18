@@ -112,7 +112,7 @@ describe('CLI', () => {
             const cmd = program.commands.find(c => c.name() === 'seeds')!;
             const outputOpt = cmd.options.find(o => o.long === '--output');
             expect(outputOpt).toBeDefined();
-            expect(outputOpt!.defaultValue).toBe('seeds.json');
+            expect(outputOpt!.defaultValue).toBe('seeds.yaml');
         });
 
         it('should have default value for --max-themes', () => {
