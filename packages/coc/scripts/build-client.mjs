@@ -11,7 +11,7 @@ import * as esbuild from 'esbuild';
 
 // Main dashboard SPA
 await esbuild.build({
-    entryPoints: ['src/server/spa/client/index.ts'],
+    entryPoints: ['src/server/spa/client/index.tsx'],
     outfile: 'src/server/spa/client/dist/bundle.js',
     bundle: true,
     format: 'iife',

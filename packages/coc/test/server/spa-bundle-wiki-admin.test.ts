@@ -565,7 +565,7 @@ describe('CSS — wiki admin styles', () => {
 
 describe('index.ts — wiki-admin import', () => {
     let content: string;
-    beforeAll(() => { content = readClientFile('index.ts'); });
+    beforeAll(() => { content = readClientFile('index.tsx'); });
 
     it('imports wiki-admin module', () => {
         expect(content).toContain("import './wiki-admin'");

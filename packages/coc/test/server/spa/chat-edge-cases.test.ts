@@ -260,7 +260,7 @@ describe('client bundle — chat edge cases', () => {
         });
 
         it('error-alert content is escaped via escapeHtmlClient', () => {
-            expect(script).toContain('escapeHtmlClient(process.error)');
+            expect(script).toMatch(/escapeHtmlClient\(process\d*\.error\)/);
         });
 
         it('bubble-error content is escaped via escapeHtmlClient', () => {
@@ -272,7 +272,7 @@ describe('client bundle — chat edge cases', () => {
         });
 
         it('metadata grid values are escaped via escapeHtmlClient', () => {
-            expect(script).toContain('escapeHtmlClient(process.workspaceId)');
+            expect(script).toMatch(/escapeHtmlClient\(process\d*\.workspaceId\)/);
             expect(script).toContain('escapeHtmlClient(typeLabel(');
         });
 
@@ -288,11 +288,11 @@ describe('client bundle — chat edge cases', () => {
     describe('error message rendering', () => {
         it('renders error-alert div when process.error is present', () => {
             expect(script).toContain('error-alert');
-            expect(script).toContain('process.error');
+            expect(script).toMatch(/process\d*\.error/);
         });
 
         it('error-alert uses escapeHtmlClient for error text', () => {
-            expect(script).toContain('escapeHtmlClient(process.error)');
+            expect(script).toMatch(/escapeHtmlClient\(process\d*\.error\)/);
         });
 
         it('error-alert has CSS styles in bundle', () => {

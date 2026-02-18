@@ -26,16 +26,16 @@ describe('Client Build Infrastructure', () => {
     // ========================================================================
 
     describe('client source entry points', () => {
-        it('should have client/index.ts entry point', () => {
-            expect(fs.existsSync(path.join(CLIENT_DIR, 'index.ts'))).toBe(true);
+        it('should have client/index.tsx entry point', () => {
+            expect(fs.existsSync(path.join(CLIENT_DIR, 'index.tsx'))).toBe(true);
         });
 
         it('should have client/styles.css entry point', () => {
             expect(fs.existsSync(path.join(CLIENT_DIR, 'styles.css'))).toBe(true);
         });
 
-        it('client/index.ts should import all client modules', () => {
-            const content = fs.readFileSync(path.join(CLIENT_DIR, 'index.ts'), 'utf8');
+        it('client/index.tsx should import all client modules', () => {
+            const content = fs.readFileSync(path.join(CLIENT_DIR, 'index.tsx'), 'utf8');
             expect(content).toContain("import './config'");
             expect(content).toContain("import './state'");
             expect(content).toContain("import './utils'");
@@ -93,8 +93,8 @@ describe('Client Build Infrastructure', () => {
             expect(scriptContent).toContain('es2020');
         });
 
-        it('should bundle client/index.ts entry point', () => {
-            expect(scriptContent).toContain('src/server/spa/client/index.ts');
+        it('should bundle client/index.tsx entry point', () => {
+            expect(scriptContent).toContain('src/server/spa/client/index.tsx');
         });
 
         it('should output to client/dist/bundle.js', () => {

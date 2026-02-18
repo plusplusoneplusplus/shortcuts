@@ -31,7 +31,7 @@ describe('client source file existence', () => {
     const expectedFiles = [
         'config.ts', 'state.ts', 'utils.ts', 'theme.ts',
         'core.ts', 'sidebar.ts', 'detail.ts', 'filters.ts',
-        'queue.ts', 'websocket.ts', 'index.ts',
+        'queue.ts', 'websocket.ts', 'index.tsx',
         'tasks.ts', 'repos.ts', 'ai-actions.ts',
         'wiki.ts', 'wiki-components.ts', 'wiki-types.ts',
         'wiki-content.ts', 'wiki-markdown.ts', 'wiki-toc.ts', 'wiki-mermaid-zoom.ts',
@@ -596,7 +596,7 @@ describe('client/websocket.ts', () => {
 
 describe('client/index.ts', () => {
     let content: string;
-    beforeAll(() => { content = readClientFile('index.ts'); });
+    beforeAll(() => { content = readClientFile('index.tsx'); });
 
     it('imports all 8 modules plus config and state', () => {
         expect(content).toContain("import './config'");

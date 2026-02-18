@@ -57,6 +57,7 @@ ${bundleCss}
     </style>
 </head>
 <body>
+    <div id="app-root"></div>
     <header class="top-bar">
         <div class="top-bar-left">
             <button class="hamburger-btn" id="hamburger-btn" aria-label="Toggle sidebar">&#9776;</button>

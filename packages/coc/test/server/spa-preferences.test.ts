@@ -230,7 +230,7 @@ describe('client/queue.ts — preferences integration', () => {
 
 describe('client/index.ts — preferences bootstrapping', () => {
     let content: string;
-    beforeAll(() => { content = readClientFile('index.ts'); });
+    beforeAll(() => { content = readClientFile('index.tsx'); });
 
     it('imports loadPreferences and initModelPersistence from preferences', () => {
         expect(content).toContain("from './preferences'");

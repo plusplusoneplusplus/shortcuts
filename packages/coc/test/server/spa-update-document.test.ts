@@ -460,7 +460,7 @@ describe('Update Document — no unintended file modifications', () => {
     });
 
     it('index.ts does not import showUpdateDocumentModal directly', () => {
-        const indexContent = readClientFile('index.ts');
+        const indexContent = readClientFile('index.tsx');
         expect(indexContent).not.toContain('showUpdateDocumentModal');
     });
 });

@@ -2,9 +2,12 @@
  * CoC — Dashboard client entry point.
  *
  * Bundled by esbuild into client/dist/bundle.js (IIFE).
- * Import order matters: each module's top-level side effects
- * (event listeners, init calls) execute in this order.
+ * Mounts React into #app-root for Processes/Queue tabs.
+ * Legacy vanilla modules remain active for other tabs (Repos, Wiki, etc.).
  */
+
+import { createRoot } from 'react-dom/client';
+import { App } from './react/App';
 
 // 1. Pure utilities and config (no side effects)
 import './config';
@@ -17,16 +20,16 @@ import './theme';
 // 3. Core (registers hashchange listener)
 import { init } from './core';
 
-// 4. Sidebar (registers clear-completed, hamburger listeners)
+// 4. Sidebar (cache utilities, live timers — still used by legacy modules)
 import './sidebar';
 
-// 5. Detail (no top-level side effects beyond variable declarations)
+// 5. Detail (still used by repos, wiki)
 import './detail';
 
-// 6. Filters (registers search, status, type, workspace listeners)
+// 6. Filters (still used by legacy modules)
 import './filters';
 
-// 7. Queue (calls fetchQueue(), registers enqueue form listeners)
+// 7. Queue (still used by legacy modules)
 import './queue';
 
 // 8. Repos (tab switching, repos grid, add repo dialog, detail)
@@ -72,5 +75,11 @@ import './websocket';
 // 16. File path hover preview
 import './file-preview';
 
-// Bootstrap the app
+// Bootstrap legacy modules (repos, wiki, admin, tasks)
 init();
+
+// Mount React app into #app-root
+const appRoot = document.getElementById('app-root');
+if (appRoot) {
+    createRoot(appRoot).render(<App />);
+}

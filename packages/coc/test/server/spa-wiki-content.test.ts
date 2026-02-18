@@ -820,7 +820,7 @@ describe('theme.ts — hljs dark/light toggle', () => {
 
 describe('index.ts — wiki content module imports', () => {
     let content: string;
-    beforeAll(() => { content = readClientFile('index.ts'); });
+    beforeAll(() => { content = readClientFile('index.tsx'); });
 
     it('imports wiki-content module', () => {
         expect(content).toContain("import './wiki-content'");

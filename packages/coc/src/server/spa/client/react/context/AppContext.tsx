@@ -1,0 +1,186 @@
+/**
+ * AppContext — centralised state for the processes/repos/wiki UI.
+ * Replaces the global mutable appState singleton from state.ts.
+ */
+
+import { createContext, useContext, useReducer, type ReactNode, type Dispatch } from 'react';
+import type { DashboardTab, RepoSubTab, WikiViewMode, ConversationCacheEntry } from '../types/dashboard';
+
+// ── State ──────────────────────────────────────────────────────────────
+
+export interface AppContextState {
+    processes: any[];
+    selectedId: string | null;
+    workspace: string;
+    statusFilter: string;
+    searchQuery: string;
+    expandedGroups: Record<string, boolean>;
+    activeTab: DashboardTab;
+    workspaces: any[];
+    selectedRepoId: string | null;
+    activeRepoSubTab: RepoSubTab;
+    selectedWikiId: string | null;
+    selectedWikiComponentId: string | null;
+    wikiView: WikiViewMode;
+    wikis: any[];
+    conversationCache: Record<string, ConversationCacheEntry>;
+}
+
+const initialState: AppContextState = {
+    processes: [],
+    selectedId: null,
+    workspace: '__all',
+    statusFilter: '__all',
+    searchQuery: '',
+    expandedGroups: {},
+    activeTab: 'repos',
+    workspaces: [],
+    selectedRepoId: null,
+    activeRepoSubTab: 'info',
+    selectedWikiId: null,
+    selectedWikiComponentId: null,
+    wikiView: 'list',
+    wikis: [],
+    conversationCache: {},
+};
+
+// ── Actions ────────────────────────────────────────────────────────────
+
+const MAX_CACHE_ENTRIES = 50;
+const CACHE_TTL_MS = 60 * 60 * 1000;
+
+export type AppAction =
+    | { type: 'PROCESS_ADDED'; process: any }
+    | { type: 'PROCESS_UPDATED'; process: any }
+    | { type: 'PROCESS_REMOVED'; processId: string }
+    | { type: 'PROCESSES_CLEARED' }
+    | { type: 'SET_PROCESSES'; processes: any[] }
+    | { type: 'WORKSPACES_LOADED'; workspaces: any[] }
+    | { type: 'WORKSPACE_REGISTERED'; workspace: any }
+    | { type: 'SELECT_PROCESS'; id: string | null }
+    | { type: 'SET_WORKSPACE_FILTER'; value: string }
+    | { type: 'SET_STATUS_FILTER'; value: string }
+    | { type: 'SET_SEARCH_QUERY'; value: string }
+    | { type: 'SET_ACTIVE_TAB'; tab: DashboardTab }
+    | { type: 'SET_SELECTED_REPO'; id: string | null }
+    | { type: 'SET_REPO_SUB_TAB'; tab: RepoSubTab }
+    | { type: 'SET_WIKI_VIEW'; wikiId: string | null; componentId: string | null; view: WikiViewMode }
+    | { type: 'SET_WIKIS'; wikis: any[] }
+    | { type: 'TOGGLE_GROUP'; key: string }
+    | { type: 'CACHE_CONVERSATION'; processId: string; turns: any[] }
+    | { type: 'APPEND_TURN'; processId: string; turn: any }
+    | { type: 'INVALIDATE_CONVERSATION'; processId: string };
+
+// ── Reducer ────────────────────────────────────────────────────────────
+
+export function appReducer(state: AppContextState, action: AppAction): AppContextState {
+    switch (action.type) {
+        case 'PROCESS_ADDED': {
+            const exists = state.processes.some(p => p.id === action.process.id);
+            if (exists) return state;
+            return { ...state, processes: [...state.processes, action.process] };
+        }
+        case 'PROCESS_UPDATED': {
+            const idx = state.processes.findIndex(p => p.id === action.process.id);
+            if (idx < 0) return state;
+            const updated = [...state.processes];
+            updated[idx] = { ...updated[idx], ...action.process };
+            return { ...state, processes: updated };
+        }
+        case 'PROCESS_REMOVED': {
+            const filtered = state.processes.filter(p => p.id !== action.processId);
+            const newSelectedId = state.selectedId === action.processId ? null : state.selectedId;
+            return { ...state, processes: filtered, selectedId: newSelectedId };
+        }
+        case 'PROCESSES_CLEARED': {
+            const remaining = state.processes.filter(p => p.status !== 'completed');
+            const stillSelected = remaining.some(p => p.id === state.selectedId);
+            return { ...state, processes: remaining, selectedId: stillSelected ? state.selectedId : null };
+        }
+        case 'SET_PROCESSES':
+            return { ...state, processes: action.processes };
+        case 'WORKSPACES_LOADED':
+            return { ...state, workspaces: action.workspaces };
+        case 'WORKSPACE_REGISTERED': {
+            const exists = state.workspaces.some(w => w.id === action.workspace.id);
+            if (exists) return state;
+            return { ...state, workspaces: [...state.workspaces, action.workspace] };
+        }
+        case 'SELECT_PROCESS':
+            return { ...state, selectedId: action.id };
+        case 'SET_WORKSPACE_FILTER':
+            return { ...state, workspace: action.value };
+        case 'SET_STATUS_FILTER':
+            return { ...state, statusFilter: action.value };
+        case 'SET_SEARCH_QUERY':
+            return { ...state, searchQuery: action.value };
+        case 'SET_ACTIVE_TAB':
+            return { ...state, activeTab: action.tab };
+        case 'SET_SELECTED_REPO':
+            return { ...state, selectedRepoId: action.id };
+        case 'SET_REPO_SUB_TAB':
+            return { ...state, activeRepoSubTab: action.tab };
+        case 'SET_WIKI_VIEW':
+            return { ...state, selectedWikiId: action.wikiId, selectedWikiComponentId: action.componentId, wikiView: action.view };
+        case 'SET_WIKIS':
+            return { ...state, wikis: action.wikis };
+        case 'TOGGLE_GROUP':
+            return { ...state, expandedGroups: { ...state.expandedGroups, [action.key]: !state.expandedGroups[action.key] } };
+        case 'CACHE_CONVERSATION': {
+            const now = Date.now();
+            const cache = { ...state.conversationCache };
+            // Evict expired
+            for (const key of Object.keys(cache)) {
+                if (now - cache[key].cachedAt > CACHE_TTL_MS) delete cache[key];
+            }
+            // Evict oldest if over limit
+            const keys = Object.keys(cache);
+            if (keys.length >= MAX_CACHE_ENTRIES) {
+                let oldestKey = keys[0];
+                let oldestTime = cache[oldestKey].cachedAt;
+                for (let i = 1; i < keys.length; i++) {
+                    if (cache[keys[i]].cachedAt < oldestTime) {
+                        oldestKey = keys[i];
+                        oldestTime = cache[keys[i]].cachedAt;
+                    }
+                }
+                delete cache[oldestKey];
+            }
+            cache[action.processId] = { turns: action.turns, cachedAt: now };
+            return { ...state, conversationCache: cache };
+        }
+        case 'APPEND_TURN': {
+            const entry = state.conversationCache[action.processId];
+            if (!entry) return state;
+            return {
+                ...state,
+                conversationCache: {
+                    ...state.conversationCache,
+                    [action.processId]: { ...entry, turns: [...entry.turns, action.turn] },
+                },
+            };
+        }
+        case 'INVALIDATE_CONVERSATION': {
+            const cache = { ...state.conversationCache };
+            delete cache[action.processId];
+            return { ...state, conversationCache: cache };
+        }
+        default:
+            return state;
+    }
+}
+
+// ── Context ────────────────────────────────────────────────────────────
+
+const AppContext = createContext<{ state: AppContextState; dispatch: Dispatch<AppAction> } | null>(null);
+
+export function AppProvider({ children }: { children: ReactNode }) {
+    const [state, dispatch] = useReducer(appReducer, initialState);
+    return <AppContext.Provider value={{ state, dispatch }}>{children}</AppContext.Provider>;
+}
+
+export function useApp() {
+    const ctx = useContext(AppContext);
+    if (!ctx) throw new Error('useApp must be used within AppProvider');
+    return ctx;
+}

@@ -635,7 +635,7 @@ describe('wiki.ts — graph button integration', () => {
 
 describe('index.ts — wiki-graph import', () => {
     let content: string;
-    beforeAll(() => { content = readClientFile('index.ts'); });
+    beforeAll(() => { content = readClientFile('index.tsx'); });
 
     it('imports wiki-graph module', () => {
         expect(content).toContain("import './wiki-graph'");

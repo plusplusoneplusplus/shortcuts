@@ -403,7 +403,7 @@ describe('repos.ts — wiki in switchTab', () => {
 
 describe('index.ts — wiki imports', () => {
     let content: string;
-    beforeAll(() => { content = readClientFile('index.ts'); });
+    beforeAll(() => { content = readClientFile('index.tsx'); });
 
     it('imports wiki module', () => {
         expect(content).toContain("import './wiki'");

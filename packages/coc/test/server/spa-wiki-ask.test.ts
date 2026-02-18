@@ -696,7 +696,7 @@ describe('CSS bundle — wiki-ask styles', () => {
 
 describe('index.ts — wiki-ask import', () => {
     let content: string;
-    beforeAll(() => { content = readClientFile('index.ts'); });
+    beforeAll(() => { content = readClientFile('index.tsx'); });
 
     it('imports wiki-ask module', () => {
         expect(content).toContain("import './wiki-ask'");

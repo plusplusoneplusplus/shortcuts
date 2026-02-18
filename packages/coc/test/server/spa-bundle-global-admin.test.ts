@@ -452,7 +452,7 @@ describe('CSS — admin page styles', () => {
 
 describe('index.ts — global admin import', () => {
     let content: string;
-    beforeAll(() => { content = readClientFile('index.ts'); });
+    beforeAll(() => { content = readClientFile('index.tsx'); });
 
     it('imports admin module', () => {
         expect(content).toContain("import './admin'");
