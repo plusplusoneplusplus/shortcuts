@@ -11,6 +11,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { validateConfigWithSchema } from './config/schema';
 
 // ============================================================================
 // Types
@@ -166,7 +167,7 @@ export function loadConfigFile(configPath?: string): CLIConfig | undefined {
     // Auto-migrate legacy config if needed
     migrateConfigIfNeeded();
 
-    // Try new location first
+    // Try new location first — if it exists but is invalid, fail fast
     const newPath = getConfigFilePath();
     const result = loadConfigFromPath(newPath);
     if (result !== undefined) {
@@ -178,84 +179,37 @@ export function loadConfigFile(configPath?: string): CLIConfig | undefined {
 }
 
 /**
- * Load and parse a config file from a specific path
+ * Load and parse a config file from a specific path.
+ * Returns undefined if the file does not exist.
+ * @throws {Error} if the file exists but contains invalid config
  */
 function loadConfigFromPath(filePath: string): CLIConfig | undefined {
+    if (!fs.existsSync(filePath)) {
+        return undefined;
+    }
     try {
-        if (!fs.existsSync(filePath)) {
-            return undefined;
-        }
         const content = fs.readFileSync(filePath, 'utf-8');
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const yaml = require('js-yaml');
-        const config = yaml.load(content) as CLIConfig;
+        const config = yaml.load(content);
         return validateConfig(config);
-    } catch {
-        return undefined;
+    } catch (error) {
+        if (error instanceof Error && error.message.startsWith('Invalid config file:')) {
+            throw new Error(`Failed to load ${filePath}: ${error.message}`);
+        }
+        throw new Error(`Failed to parse ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
     }
 }
 
 /**
- * Validate and sanitize a config object
+ * Validate and sanitize a config object using Zod schema.
+ * @throws {Error} if config is invalid with detailed error message
  */
 function validateConfig(config: unknown): CLIConfig | undefined {
     if (typeof config !== 'object' || config === null) {
         return undefined;
     }
-
-    const raw = config as Record<string, unknown>;
-    const result: CLIConfig = {};
-
-    if (typeof raw.model === 'string') {
-        result.model = raw.model;
-    }
-
-    if (typeof raw.parallel === 'number' && raw.parallel > 0) {
-        result.parallel = Math.floor(raw.parallel);
-    }
-
-    if (typeof raw.output === 'string' && ['table', 'json', 'csv', 'markdown'].includes(raw.output)) {
-        result.output = raw.output as CLIConfig['output'];
-    }
-
-    if (typeof raw.approvePermissions === 'boolean') {
-        result.approvePermissions = raw.approvePermissions;
-    }
-
-    if (typeof raw.mcpConfig === 'string') {
-        result.mcpConfig = raw.mcpConfig;
-    }
-
-    if (typeof raw.timeout === 'number' && raw.timeout > 0) {
-        result.timeout = raw.timeout;
-    }
-
-    if (typeof raw.persist === 'boolean') {
-        result.persist = raw.persist;
-    }
-
-    // Validate serve sub-object
-    if (typeof raw.serve === 'object' && raw.serve !== null) {
-        const s = raw.serve as Record<string, unknown>;
-        const serve: CLIConfig['serve'] = {};
-        if (typeof s.port === 'number' && s.port > 0) {
-            serve.port = Math.floor(s.port);
-        }
-        if (typeof s.host === 'string') {
-            serve.host = s.host;
-        }
-        if (typeof s.dataDir === 'string') {
-            serve.dataDir = s.dataDir;
-        }
-        if (typeof s.theme === 'string' && ['auto', 'light', 'dark'].includes(s.theme)) {
-            serve.theme = s.theme as 'auto' | 'light' | 'dark';
-        }
-        if (Object.keys(serve).length > 0) {
-            result.serve = serve;
-        }
-    }
-
-    return result;
+    return validateConfigWithSchema(config);
 }
 
 /**

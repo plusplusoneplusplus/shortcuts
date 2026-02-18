@@ -133,35 +133,28 @@ timeout: 300
             expect(result!.output).toBeUndefined();
         });
 
-        it('should return undefined for invalid YAML', () => {
+        it('should throw for invalid YAML', () => {
             const configPath = path.join(tmpDir, 'invalid.yaml');
             fs.writeFileSync(configPath, '{{invalid yaml content]]');
-            const result = loadConfigFile(configPath);
-            expect(result).toBeUndefined();
+            expect(() => loadConfigFile(configPath)).toThrow('Failed to parse');
         });
 
-        it('should reject invalid parallel value (string)', () => {
+        it('should throw for invalid parallel value (string)', () => {
             const configPath = path.join(tmpDir, 'bad-parallel.yaml');
             fs.writeFileSync(configPath, 'parallel: "not-a-number"\n');
-            const result = loadConfigFile(configPath);
-            expect(result).toBeDefined();
-            expect(result!.parallel).toBeUndefined();
+            expect(() => loadConfigFile(configPath)).toThrow('Invalid config file');
         });
 
-        it('should reject negative parallel value', () => {
+        it('should throw for negative parallel value', () => {
             const configPath = path.join(tmpDir, 'negative-parallel.yaml');
             fs.writeFileSync(configPath, 'parallel: -5\n');
-            const result = loadConfigFile(configPath);
-            expect(result).toBeDefined();
-            expect(result!.parallel).toBeUndefined();
+            expect(() => loadConfigFile(configPath)).toThrow('Invalid config file');
         });
 
-        it('should reject invalid output format', () => {
+        it('should throw for invalid output format', () => {
             const configPath = path.join(tmpDir, 'bad-output.yaml');
             fs.writeFileSync(configPath, 'output: xml\n');
-            const result = loadConfigFile(configPath);
-            expect(result).toBeDefined();
-            expect(result!.output).toBeUndefined();
+            expect(() => loadConfigFile(configPath)).toThrow('Invalid config file');
         });
 
         it('should accept valid output formats', () => {
@@ -188,28 +181,22 @@ timeout: 300
             expect(result).toBeUndefined();
         });
 
-        it('should floor fractional parallel values', () => {
+        it('should throw for fractional parallel values', () => {
             const configPath = path.join(tmpDir, 'float.yaml');
             fs.writeFileSync(configPath, 'parallel: 7.8\n');
-            const result = loadConfigFile(configPath);
-            expect(result).toBeDefined();
-            expect(result!.parallel).toBe(7);
+            expect(() => loadConfigFile(configPath)).toThrow('Invalid config file');
         });
 
-        it('should reject non-boolean approvePermissions', () => {
+        it('should throw for non-boolean approvePermissions', () => {
             const configPath = path.join(tmpDir, 'bad-bool.yaml');
             fs.writeFileSync(configPath, 'approvePermissions: "yes"\n');
-            const result = loadConfigFile(configPath);
-            expect(result).toBeDefined();
-            expect(result!.approvePermissions).toBeUndefined();
+            expect(() => loadConfigFile(configPath)).toThrow('Invalid config file');
         });
 
-        it('should reject negative timeout', () => {
+        it('should throw for negative timeout', () => {
             const configPath = path.join(tmpDir, 'bad-timeout.yaml');
             fs.writeFileSync(configPath, 'timeout: -10\n');
-            const result = loadConfigFile(configPath);
-            expect(result).toBeDefined();
-            expect(result!.timeout).toBeUndefined();
+            expect(() => loadConfigFile(configPath)).toThrow('Invalid config file');
         });
 
         it('should load persist: true', () => {
@@ -228,12 +215,10 @@ timeout: 300
             expect(result!.persist).toBe(false);
         });
 
-        it('should reject non-boolean persist', () => {
+        it('should throw for non-boolean persist', () => {
             const configPath = path.join(tmpDir, 'bad-persist.yaml');
             fs.writeFileSync(configPath, 'persist: "yes"\n');
-            const result = loadConfigFile(configPath);
-            expect(result).toBeDefined();
-            expect(result!.persist).toBeUndefined();
+            expect(() => loadConfigFile(configPath)).toThrow('Invalid config file');
         });
 
         it('should bypass fallback and migration when explicit configPath is provided', () => {
