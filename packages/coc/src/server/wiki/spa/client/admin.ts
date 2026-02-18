@@ -6,7 +6,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { componentGraph, currentComponentId, setCurrentComponentId, escapeHtml } from './core';
-import { showAdminContent } from './sidebar';
+import { showAdminContent, showWikiContent } from './sidebar';
 import { readSSEStream } from './sse-utils';
 
 interface ThemeSeedClient {
@@ -21,6 +21,12 @@ let adminInitialized = false;
 let generateRunning = false;
 let wizardInitialized = false;
 let wizardSeeds: ThemeSeedClient[] = [];
+
+const wizardState = {
+    configYaml: '',
+    yamlEditorOpen: false,
+    wizardGenerating: false
+};
 
 export function showAdmin(skipHistory?: boolean): void {
     setCurrentComponentId(null);
@@ -691,6 +697,157 @@ function initWizardEvents(): void {
             advanceWizardToStep2();
         });
     }
+
+    // Step 2: Config — Continue button
+    const configSaveBtn = document.getElementById('wizard-config-continue-btn');
+    if (configSaveBtn) {
+        configSaveBtn.addEventListener('click', async function () {
+            clearWizardConfigStatus();
+            let yamlToSave: string;
+
+            const advancedDetails = document.getElementById('wizard-config-advanced') as HTMLDetailsElement | null;
+            const yamlEditorOpen = advancedDetails ? advancedDetails.open : false;
+
+            if (yamlEditorOpen) {
+                const ta = document.getElementById('wizard-config-yaml') as HTMLTextAreaElement | null;
+                yamlToSave = ta ? ta.value : wizardState.configYaml;
+            } else {
+                const modelEl = document.getElementById('wizard-config-model') as HTMLSelectElement | null;
+                const depthEl = document.querySelector<HTMLInputElement>('input[name="wizard-depth"]:checked');
+                const focusEl = document.getElementById('wizard-config-focus') as HTMLInputElement | null;
+                const model = modelEl ? modelEl.value : '';
+                const depth = depthEl ? depthEl.value : 'standard';
+                const focus = focusEl ? focusEl.value.trim() : '';
+
+                yamlToSave = buildConfigYaml(wizardState.configYaml, { model, depth, focus });
+            }
+
+            try {
+                const res = await fetch('/api/admin/config', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content: yamlToSave })
+                });
+                const result = await res.json();
+                if (!result.success) {
+                    setWizardConfigStatus('Save failed: ' + (result.error || 'Unknown error'), true);
+                    return;
+                }
+                wizardState.configYaml = yamlToSave;
+                advanceWizard(3);
+            } catch (err: any) {
+                setWizardConfigStatus('Error: ' + err.message, true);
+            }
+        });
+    }
+
+    // Step 2: Config — Back button
+    const configBackBtn = document.getElementById('wizard-config-back-btn');
+    if (configBackBtn) {
+        configBackBtn.addEventListener('click', function () {
+            advanceWizard(1);
+        });
+    }
+
+    // Step 3: Generate — Generate Wiki button
+    const wizardGenerateBtn = document.getElementById('wizard-generate-btn') as HTMLButtonElement | null;
+    if (wizardGenerateBtn) {
+        wizardGenerateBtn.addEventListener('click', async function () {
+            if (wizardState.wizardGenerating) return;
+            wizardState.wizardGenerating = true;
+            wizardGenerateBtn.disabled = true;
+            wizardGenerateBtn.textContent = 'Generating\u2026';
+
+            const logEl = document.getElementById('wizard-generate-log');
+            if (logEl) { logEl.textContent = ''; logEl.classList.remove('hidden'); }
+
+            const forceEl = document.getElementById('generate-force') as HTMLInputElement | null;
+            const force = forceEl ? forceEl.checked : false;
+
+            function appendWizardLog(msg: string): void {
+                if (!logEl) return;
+                logEl.textContent += (logEl.textContent ? '\n' : '') + msg;
+                logEl.scrollTop = logEl.scrollHeight;
+            }
+
+            try {
+                const response = await fetch('/api/admin/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ startPhase: 1, endPhase: 5, force: force })
+                });
+
+                if (response.status === 409) {
+                    appendWizardLog('Generation already in progress \u2014 please wait and try again.');
+                    return;
+                }
+                if (!response.ok) {
+                    const errData = await response.json().catch(function () { return {}; });
+                    appendWizardLog('Error: ' + ((errData as any).error || 'Unknown error'));
+                    return;
+                }
+
+                let generationSucceeded = false;
+
+                const reader = response.body!.getReader();
+                await readSSEStream(reader, function (event) {
+                    switch (event.type) {
+                        case 'status':
+                            appendWizardLog('[Phase ' + event.phase + '] ' + event.message);
+                            break;
+                        case 'log':
+                            if (event.message) appendWizardLog(event.message);
+                            break;
+                        case 'progress':
+                            appendWizardLog('Phase ' + event.phase + ': ' + event.current + '/' + event.total);
+                            break;
+                        case 'phase-complete':
+                            appendWizardLog(
+                                event.success
+                                    ? '\u2713 Phase ' + event.phase + ' complete' +
+                                      (event.duration ? ' (' + formatDuration(event.duration) + ')' : '')
+                                    : '\u2717 Phase ' + event.phase + ' failed: ' + event.message
+                            );
+                            break;
+                        case 'error':
+                            appendWizardLog('Error: ' + event.message);
+                            break;
+                        case 'done':
+                            if (event.success) {
+                                generationSucceeded = true;
+                                appendWizardLog(
+                                    '\u2713 Wiki generation complete' +
+                                    (event.duration ? ' in ' + formatDuration(event.duration) : '')
+                                );
+                            } else {
+                                appendWizardLog('Generation failed: ' + (event.error || 'Unknown error'));
+                            }
+                            break;
+                    }
+                });
+
+                if (generationSucceeded) {
+                    await new Promise(function (resolve) { setTimeout(resolve, 800); });
+                    dismissWizard();
+                }
+            } catch (err: any) {
+                appendWizardLog('Connection error: ' + err.message);
+            } finally {
+                wizardState.wizardGenerating = false;
+                wizardGenerateBtn.disabled = false;
+                wizardGenerateBtn.textContent = 'Generate Wiki';
+            }
+        });
+    }
+
+    // Step 3: Generate — Back button
+    const generateBackBtn = document.getElementById('wizard-generate-back-btn');
+    if (generateBackBtn) {
+        generateBackBtn.addEventListener('click', function () {
+            if (wizardState.wizardGenerating) return;
+            advanceWizard(2);
+        });
+    }
 }
 
 async function startWizardSeedsGenerate(): Promise<void> {
@@ -796,15 +953,135 @@ async function saveWizardSeedsAndAdvance(): Promise<void> {
 }
 
 function advanceWizardToStep2(): void {
-    const stepSeeds = document.getElementById('wizard-step-seeds');
-    if (stepSeeds) stepSeeds.classList.add('hidden');
+    advanceWizard(2);
+}
 
-    const stepConfig = document.getElementById('wizard-step-config');
-    if (stepConfig) stepConfig.classList.remove('hidden');
+function advanceWizard(step: number): void {
+    const stepIds = ['wizard-step-seeds', 'wizard-step-config', 'wizard-step-generate'];
+    const indicatorIds = ['wizard-step-indicator-seeds', 'wizard-step-indicator-config', 'wizard-step-indicator-generate'];
 
-    const indicators = document.querySelectorAll('#wizard-stepper .wizard-step-indicator');
-    indicators.forEach(function (el, i) {
-        if (i === 0) el.classList.remove('active');
-        if (i === 1) el.classList.add('active');
+    stepIds.forEach(function (id) {
+        const el = document.getElementById(id);
+        if (el) el.classList.add('hidden');
     });
+
+    const activePanel = document.getElementById(stepIds[step - 1]);
+    if (activePanel) activePanel.classList.remove('hidden');
+
+    indicatorIds.forEach(function (id, i) {
+        const el = document.getElementById(id);
+        if (el) {
+            if (i === step - 1) el.classList.add('active');
+            else el.classList.remove('active');
+        }
+    });
+
+    if (step === 2) enterWizardStep2();
+    if (step === 3) enterWizardStep3();
+}
+
+async function enterWizardStep2(): Promise<void> {
+    const res = await fetch('/api/admin/config');
+    const data = await res.json();
+    const yaml: string = (data.exists && data.content) ? data.content : '';
+    wizardState.configYaml = yaml;
+
+    const modelVal  = extractYamlScalar(yaml, 'model')  ?? '';
+    const depthVal  = extractYamlScalar(yaml, 'depth')  ?? 'standard';
+    const focusVal  = extractYamlScalar(yaml, 'focus')  ?? '';
+
+    const modelEl = document.getElementById('wizard-config-model') as HTMLSelectElement | null;
+    if (modelEl && modelVal) modelEl.value = modelVal;
+
+    const depthRadios = document.querySelectorAll<HTMLInputElement>('input[name="wizard-depth"]');
+    depthRadios.forEach(function (r) { r.checked = (r.value === depthVal); });
+
+    const focusEl = document.getElementById('wizard-config-focus') as HTMLInputElement | null;
+    if (focusEl) focusEl.value = focusVal;
+
+    const yamlTextarea = document.getElementById('wizard-config-yaml') as HTMLTextAreaElement | null;
+    if (yamlTextarea) yamlTextarea.value = yaml;
+
+    clearWizardConfigStatus();
+}
+
+async function enterWizardStep3(): Promise<void> {
+    try {
+        const res = await fetch('/api/admin/generate/status');
+        const data = await res.json();
+        if (!data.available) return;
+
+        for (let phase = 1; phase <= 5; phase++) {
+            const badge = document.getElementById('wizard-phase-badge-' + phase);
+            if (!badge) continue;
+            const phaseData = data.phases[String(phase)];
+            if (phaseData && phaseData.cached) {
+                badge.textContent = 'Cached';
+                badge.className = 'wizard-phase-badge cached';
+            } else {
+                badge.textContent = 'None';
+                badge.className = 'wizard-phase-badge missing';
+            }
+        }
+    } catch (_e) {
+        // Silently ignore — badges stay in default state
+    }
+}
+
+function dismissWizard(): void {
+    const wizard = document.getElementById('bootstrap-wizard');
+    if (wizard) wizard.classList.add('hidden');
+
+    showWikiContent();
+
+    if (typeof (window as any).reinitWiki === 'function') {
+        (window as any).reinitWiki();
+    } else {
+        window.location.reload();
+    }
+}
+
+function setWizardConfigStatus(msg: string, isError: boolean): void {
+    const el = document.getElementById('wizard-config-status');
+    if (!el) { if (isError) console.error(msg); return; }
+    el.textContent = msg;
+    el.className = 'wizard-status ' + (isError ? 'error' : 'success');
+}
+
+function clearWizardConfigStatus(): void {
+    const el = document.getElementById('wizard-config-status');
+    if (el) { el.textContent = ''; el.className = 'wizard-status'; }
+}
+
+export function extractYamlScalar(yaml: string, key: string): string | null {
+    const re = new RegExp('^' + key + ':\\s*[\'"]?([^\'"\\n#]+)[\'"]?', 'm');
+    const m = yaml.match(re);
+    return m ? m[1].trim() : null;
+}
+
+export function buildConfigYaml(
+    existing: string,
+    fields: { model: string; depth: string; focus: string }
+): string {
+    let yaml = existing;
+
+    function upsertKey(src: string, key: string, val: string): string {
+        if (!val) return src;
+        const re = new RegExp('^' + key + ':.*$', 'm');
+        const line = key + ': ' + val;
+        return re.test(src) ? src.replace(re, line) : src + (src.endsWith('\n') ? '' : '\n') + line + '\n';
+    }
+
+    if (!yaml.trim()) {
+        const lines: string[] = [];
+        if (fields.model) lines.push('model: ' + fields.model);
+        if (fields.depth) lines.push('depth: ' + fields.depth);
+        if (fields.focus) lines.push('focus: ' + fields.focus);
+        return lines.join('\n') + '\n';
+    }
+
+    yaml = upsertKey(yaml, 'model', fields.model);
+    yaml = upsertKey(yaml, 'depth', fields.depth);
+    yaml = upsertKey(yaml, 'focus', fields.focus);
+    return yaml;
 }

@@ -240,6 +240,8 @@ ${enableSearch ? `            <div class="search-box">
                                   <textarea class="admin-editor wizard-config-textarea" id="wizard-config-yaml" spellcheck="false" placeholder="# Optional YAML overrides"></textarea>
                                 </details>
 
+                                <div id="wizard-config-status" class="wizard-status"></div>
+
                                 <div class="admin-actions wizard-panel-actions">
                                   <button class="admin-btn admin-btn-reset" id="wizard-config-back-btn">Back</button>
                                   <button class="admin-btn admin-btn-save" id="wizard-config-continue-btn">Continue</button>
@@ -279,6 +281,8 @@ ${enableSearch ? `            <div class="search-box">
                                     <span class="wizard-phase-badge" id="wizard-phase-badge-5"></span>
                                   </div>
                                 </div>
+
+                                <pre class="wizard-log hidden" id="wizard-generate-log"></pre>
 
                                 <div class="admin-actions wizard-panel-actions">
                                   <button class="admin-btn admin-btn-reset" id="wizard-generate-back-btn">Back</button>
