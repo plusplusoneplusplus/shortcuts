@@ -16,7 +16,7 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { sendJSON, sendError, parseBody } from './api-handler';
-import type { Route } from './types';
+import type { Route } from '@plusplusoneplusplus/coc-server';
 
 // ============================================================================
 // Types

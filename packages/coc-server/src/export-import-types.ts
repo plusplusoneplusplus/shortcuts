@@ -8,10 +8,43 @@
  */
 
 import type { AIProcess, WorkspaceInfo, WikiInfo, QueuedTask, ProcessStore, TaskQueueManager } from '@plusplusoneplusplus/pipeline-core';
-import type { UserPreferences } from './preferences-handler';
-import type { CLIConfig } from '../config';
-import type { DataWiper } from './data-wiper';
-import type { QueuePersistence } from './queue-persistence';
+
+// Temporary forward-declarations for types still in coc package.
+// These will be replaced with proper imports once dependencies are extracted.
+
+/** User UI preferences persisted on disk. */
+export interface UserPreferences {
+    /** Last-selected AI model in the SPA (empty string = default). */
+    lastModel?: string;
+}
+
+/** CLI configuration from ~/.coc.yaml. */
+export interface CLIConfig {
+    model?: string;
+    parallel?: number;
+    output?: 'table' | 'json' | 'csv' | 'markdown';
+    approvePermissions?: boolean;
+    mcpConfig?: string;
+    timeout?: number;
+    persist?: boolean;
+    serve?: {
+        port?: number;
+        host?: string;
+        dataDir?: string;
+        theme?: 'auto' | 'light' | 'dark';
+    };
+}
+
+/** Data wiper instance for clearing server data (opaque handle). */
+export interface DataWiper {
+    getDryRunSummary(options?: { includeWikis?: boolean }): Promise<any>;
+    wipeData(options?: { includeWikis?: boolean }): Promise<any>;
+}
+
+/** Queue persistence for saving/restoring task queues (opaque handle). */
+export interface QueuePersistence {
+    restore(): void;
+}
 
 // ============================================================================
 // Constants

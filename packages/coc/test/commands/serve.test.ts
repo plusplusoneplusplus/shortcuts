@@ -12,7 +12,7 @@ import * as os from 'os';
 import { setColorEnabled } from '../../src/logger';
 import { EXIT_CODES, createProgram } from '../../src/cli';
 import { mergeConfig, DEFAULT_CONFIG } from '../../src/config';
-import type { ServeCommandOptions } from '../../src/server/types';
+import type { ServeCommandOptions } from '@plusplusoneplusplus/coc-server';
 
 // ============================================================================
 // Mock the server module to avoid starting a real HTTP server

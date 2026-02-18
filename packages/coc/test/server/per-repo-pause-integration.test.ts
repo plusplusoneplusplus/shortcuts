@@ -18,7 +18,7 @@ import * as path from 'path';
 import { createExecutionServer } from '../../src/server/index';
 import { TaskQueueManager } from '@plusplusoneplusplus/pipeline-core';
 import { computeRepoId } from '../../src/server/queue-persistence';
-import type { ExecutionServer } from '../../src/server/types';
+import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 
 // ============================================================================
 // Helpers

@@ -32,7 +32,7 @@ import {
 } from '@plusplusoneplusplus/pipeline-core';
 import type { SelectedContext } from '@plusplusoneplusplus/pipeline-core';
 import { sendJSON, sendError, parseBody } from './api-handler';
-import type { Route } from './types';
+import type { Route } from '@plusplusoneplusplus/coc-server';
 
 // ============================================================================
 // Workspace resolution helper

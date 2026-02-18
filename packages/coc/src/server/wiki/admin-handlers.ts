@@ -11,7 +11,7 @@
 import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
-import { sendJson, send400, send500 } from '../router';
+import { sendJson, send400, send500 } from '@plusplusoneplusplus/coc-server';
 import { readBody } from './ask-handler';
 import type { WikiManager } from './wiki-manager';
 

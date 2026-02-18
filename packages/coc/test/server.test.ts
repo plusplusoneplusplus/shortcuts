@@ -10,9 +10,9 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import * as http from 'http';
 import { createExecutionServer } from '../src/server/index';
-import { createRequestHandler, readJsonBody, sendJson } from '../src/server/router';
-import type { ExecutionServer } from '../src/server/types';
-import type { Route } from '../src/server/types';
+import { createRequestHandler, readJsonBody, sendJson } from '@plusplusoneplusplus/coc-server';
+import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
+import type { Route } from '@plusplusoneplusplus/coc-server';
 import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
 
 // ============================================================================

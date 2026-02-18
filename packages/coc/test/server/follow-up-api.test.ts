@@ -16,7 +16,7 @@ import { FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
 import type { AIProcess, ProcessStore } from '@plusplusoneplusplus/pipeline-core';
 import { createRequestHandler, registerApiRoutes, generateDashboardHtml } from '../../src/server/index';
 import type { QueueExecutorBridge } from '../../src/server/queue-executor-bridge';
-import type { Route } from '../../src/server/types';
+import type { Route } from '@plusplusoneplusplus/coc-server';
 import { createMockBridge } from '../helpers/mock-sdk-service';
 
 // ============================================================================

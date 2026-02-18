@@ -13,10 +13,10 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { execSync } from 'child_process';
-import { extractRepoId, findGitRoot, normalizeRepoPath, getWorkingDirectory } from '../../src/server/repo-utils';
+import { extractRepoId, findGitRoot, normalizeRepoPath, getWorkingDirectory } from '../src/repo-utils';
 
-// Resolve the monorepo root (four levels up from test/server/)
-const MONOREPO_ROOT = path.resolve(__dirname, '../../../..');
+// Resolve the monorepo root (three levels up from packages/coc-server/test/)
+const MONOREPO_ROOT = path.resolve(__dirname, '../../..');
 
 describe('repo-utils', () => {
     // ========================================================================
@@ -38,7 +38,7 @@ describe('repo-utils', () => {
         });
 
         it('should find git root for a file path', () => {
-            const filePath = path.resolve(__dirname, '../../src/server/repo-utils.ts');
+            const filePath = path.resolve(__dirname, '../src/repo-utils.ts');
             const gitRoot = findGitRoot(filePath);
             expect(gitRoot).not.toBeNull();
             expect(path.resolve(gitRoot!)).toBe(path.resolve(MONOREPO_ROOT));
@@ -129,21 +129,21 @@ describe('repo-utils', () => {
         });
 
         it('should extract from promptFilePath', () => {
-            const payload = { promptFilePath: path.resolve(__dirname, '../../src/server/repo-utils.ts') };
+            const payload = { promptFilePath: path.resolve(__dirname, '../src/repo-utils.ts') };
             const repoId = extractRepoId(payload);
             expect(repoId).not.toBeNull();
             expect(repoId).toBe(normalizeRepoPath(MONOREPO_ROOT));
         });
 
         it('should extract from filePath', () => {
-            const payload = { filePath: path.resolve(__dirname, '../../src/server/repo-utils.ts') };
+            const payload = { filePath: path.resolve(__dirname, '../src/repo-utils.ts') };
             const repoId = extractRepoId(payload);
             expect(repoId).not.toBeNull();
             expect(repoId).toBe(normalizeRepoPath(MONOREPO_ROOT));
         });
 
         it('should extract from documentUri (file:// scheme)', () => {
-            const absPath = path.resolve(__dirname, '../../src/server/repo-utils.ts');
+            const absPath = path.resolve(__dirname, '../src/repo-utils.ts');
             const fileUri = 'file://' + absPath;
             const payload = { documentUri: fileUri, commentIds: [], promptTemplate: '' };
             const repoId = extractRepoId(payload);
@@ -171,7 +171,7 @@ describe('repo-utils', () => {
         it('should try multiple candidates (fallback)', () => {
             const payload = {
                 workingDirectory: '/nonexistent',
-                promptFilePath: path.resolve(__dirname, '../../src/server/repo-utils.ts'),
+                promptFilePath: path.resolve(__dirname, '../src/repo-utils.ts'),
             };
             const repoId = extractRepoId(payload);
             // Should fall back to promptFilePath when workingDirectory fails
@@ -182,7 +182,7 @@ describe('repo-utils', () => {
         it('should skip empty string candidates', () => {
             const payload = {
                 workingDirectory: '',
-                promptFilePath: path.resolve(__dirname, '../../src/server/repo-utils.ts'),
+                promptFilePath: path.resolve(__dirname, '../src/repo-utils.ts'),
             };
             const repoId = extractRepoId(payload);
             expect(repoId).not.toBeNull();
@@ -190,7 +190,7 @@ describe('repo-utils', () => {
 
         it('should handle encoded URI components in documentUri', () => {
             // Use real path to avoid null from non-existent file
-            const absPath = path.resolve(__dirname, '../../src/server/repo-utils.ts');
+            const absPath = path.resolve(__dirname, '../src/repo-utils.ts');
             const encoded = 'file://' + encodeURIComponent(absPath).replace(/%2F/gi, '/');
             const payload = { documentUri: encoded, commentIds: [], promptTemplate: '' };
             const repoId = extractRepoId(payload);

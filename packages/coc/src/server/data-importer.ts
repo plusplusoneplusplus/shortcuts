@@ -17,8 +17,8 @@ import type {
     ImportOptions,
     ImportResult,
     QueueSnapshot,
-} from './export-import-types';
-import { validateExportPayload } from './export-import-types';
+} from '@plusplusoneplusplus/coc-server';
+import { validateExportPayload } from '@plusplusoneplusplus/coc-server';
 import { readPreferences, writePreferences } from './preferences-handler';
 import { computeRepoId, getRepoQueueFilePath } from './queue-persistence';
 

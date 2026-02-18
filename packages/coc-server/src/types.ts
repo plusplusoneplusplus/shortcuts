@@ -74,7 +74,8 @@ export interface ServerCloseOptions {
 export interface ExecutionServer {
     server: http.Server;
     store: ProcessStore;
-    wsServer: import('./websocket').ProcessWebSocketServer;
+    /** WebSocket server instance (ProcessWebSocketServer from coc/server/websocket). */
+    wsServer: any;
     port: number;
     host: string;
     url: string;

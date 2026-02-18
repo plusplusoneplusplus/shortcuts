@@ -14,7 +14,7 @@ import {
     EXPORT_SCHEMA_VERSION,
     type CoCExportPayload,
     type ImportMode,
-} from '../../src/server/export-import-types';
+} from '../src/export-import-types';
 
 // ============================================================================
 // Helpers

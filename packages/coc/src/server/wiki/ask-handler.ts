@@ -10,7 +10,7 @@
 import type { IncomingMessage, ServerResponse } from 'http';
 import type { WikiManager } from './wiki-manager';
 import type { AskAIFunction } from './types';
-import { send400, readJsonBody } from '../router';
+import { send400, readJsonBody } from '@plusplusoneplusplus/coc-server';
 
 // ============================================================================
 // Types

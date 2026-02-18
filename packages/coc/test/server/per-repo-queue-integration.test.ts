@@ -17,7 +17,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { WebSocket } from 'ws';
 import { createExecutionServer } from '../../src/server/index';
-import type { ExecutionServer } from '../../src/server/types';
+import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 
 // ============================================================================
 // Helpers

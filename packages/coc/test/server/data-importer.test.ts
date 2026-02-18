@@ -22,7 +22,7 @@ import {
     EXPORT_SCHEMA_VERSION,
     type CoCExportPayload,
     type ImportOptions,
-} from '../../src/server/export-import-types';
+} from '@plusplusoneplusplus/coc-server';
 import { readPreferences, writePreferences } from '../../src/server/preferences-handler';
 import { getRepoQueueFilePath } from '../../src/server/queue-persistence';
 

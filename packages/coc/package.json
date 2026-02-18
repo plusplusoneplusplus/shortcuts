@@ -20,6 +20,7 @@
     "lint": "eslint src"
   },
   "dependencies": {
+    "@plusplusoneplusplus/coc-server": "1.0.0",
     "@plusplusoneplusplus/pipeline-core": "1.0.0",
     "commander": "^12.1.0",
     "js-yaml": "^4.1.0",

@@ -12,7 +12,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as http from 'http';
 import { createExecutionServer } from '../../src/server/index';
 import { FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
-import type { ExecutionServer } from '../../src/server/types';
+import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';

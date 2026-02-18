@@ -16,7 +16,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import type { ProcessStore, ProcessFilter, AIProcess, AIProcessStatus, AIProcessType, WorkspaceInfo, ConversationTurn } from '@plusplusoneplusplus/pipeline-core';
 import { deserializeProcess } from '@plusplusoneplusplus/pipeline-core';
-import type { Route } from './types';
+import type { Route } from '@plusplusoneplusplus/coc-server';
 import type { QueueExecutorBridge } from './queue-executor-bridge';
 import { handleProcessStream } from './sse-handler';
 

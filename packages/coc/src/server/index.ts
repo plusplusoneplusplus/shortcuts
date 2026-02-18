@@ -13,7 +13,7 @@ import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
 import { EventEmitter } from 'events';
-import { createRequestHandler } from './router';
+import { createRequestHandler } from '@plusplusoneplusplus/coc-server';
 import { registerApiRoutes } from './api-handler';
 import { registerQueueRoutes } from './queue-handler';
 import { registerTaskRoutes, registerTaskWriteRoutes } from './tasks-handler';
@@ -25,8 +25,8 @@ import { registerTaskCommentsRoutes } from './task-comments-handler';
 import { registerWikiRoutes } from './wiki';
 import { ProcessWebSocketServer, toProcessSummary } from './websocket';
 import { generateDashboardHtml } from './spa';
-import type { ExecutionServerOptions, ExecutionServer } from './types';
-import type { Route } from './types';
+import type { ExecutionServerOptions, ExecutionServer } from '@plusplusoneplusplus/coc-server';
+import type { Route } from '@plusplusoneplusplus/coc-server';
 import type { ProcessStore, AIProcess, ProcessChangeCallback, ProcessOutputEvent } from '@plusplusoneplusplus/pipeline-core';
 import { TaskQueueManager, FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
 import { createQueueExecutorBridge } from './queue-executor-bridge';
@@ -394,7 +394,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         port: actualPort,
         host,
         url,
-        close: async (closeOptions?: import('./types').ServerCloseOptions) => {
+        close: async (closeOptions?: import('@plusplusoneplusplus/coc-server').ServerCloseOptions) => {
             // Stop stale task detection
             staleDetector.dispose();
             // Stop output pruner cleanup
@@ -440,9 +440,9 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 }
 
 // Re-exports
-export type { ExecutionServerOptions, ExecutionServer, Route, WikiServerOptions, ServerCloseOptions } from './types';
+export type { ExecutionServerOptions, ExecutionServer, Route, WikiServerOptions, ServerCloseOptions } from '@plusplusoneplusplus/coc-server';
 export type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
-export { sendJson, send404, send400, send500, readJsonBody, createRequestHandler } from './router';
+export { sendJson, send404, send400, send500, readJsonBody, createRequestHandler } from '@plusplusoneplusplus/coc-server';
 export { registerApiRoutes, sendJSON, sendError, parseBody, parseQueryParams } from './api-handler';
 export { registerQueueRoutes } from './queue-handler';
 export { registerTaskRoutes, registerTaskWriteRoutes } from './tasks-handler';
@@ -450,7 +450,7 @@ export { registerTaskGenerationRoutes } from './task-generation-handler';
 export { handleProcessStream } from './sse-handler';
 export { ProcessWebSocketServer, toProcessSummary, toCommentSummary } from './websocket';
 export type { WSClient, ProcessSummary, MarkdownCommentSummary, QueueTaskSummary, QueueHistoryTaskSummary, QueueSnapshot, ServerMessage, ClientMessage } from './websocket';
-export type { RouterOptions } from './router';
+export type { RouterOptions } from '@plusplusoneplusplus/coc-server';
 export { generateDashboardHtml } from './spa';
 export type { DashboardOptions } from './spa';
 export { CLITaskExecutor, createQueueExecutorBridge } from './queue-executor-bridge';

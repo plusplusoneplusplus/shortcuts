@@ -10,12 +10,11 @@
 import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
-import type { Route } from '../types';
-import type { WikiServerOptions } from '../types';
+import type { Route, WikiServerOptions } from '@plusplusoneplusplus/coc-server';
+import { sendJson, send404, send500, readJsonBody } from '@plusplusoneplusplus/coc-server';
 import { WikiManager } from './wiki-manager';
 import type { AskAIFunction } from './types';
 import type { ProcessStore, WikiInfo } from '@plusplusoneplusplus/pipeline-core';
-import { sendJson, send404, send500 } from '../router';
 import { handleWikiAskRequest } from './ask-handler';
 import { handleWikiExploreRequest } from './explore-handler';
 import { handleGetSeeds, handlePutSeeds, handleGetConfig, handlePutConfig } from './admin-handlers';
@@ -196,7 +195,6 @@ export function registerWikiRoutes(
         pattern: '/api/wikis',
         handler: async (req, res) => {
             try {
-                const { readJsonBody } = await import('../router');
                 const body = await readJsonBody<{
                     id: string;
                     wikiDir?: string;
@@ -319,7 +317,6 @@ export function registerWikiRoutes(
         handler: async (req, res, match) => {
             const wikiId = decodeURIComponent(match![1]);
             try {
-                const { readJsonBody } = await import('../router');
                 const body = await readJsonBody<{
                     title?: string;
                     name?: string;

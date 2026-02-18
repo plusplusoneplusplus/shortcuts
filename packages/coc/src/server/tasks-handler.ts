@@ -16,7 +16,7 @@ import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
 import { TaskManager, scanDocumentsRecursively, scanFoldersRecursively, groupTaskDocuments } from '@plusplusoneplusplus/pipeline-core';
 import type { TasksViewerSettings, TaskFolder } from '@plusplusoneplusplus/pipeline-core';
 import { sendJSON, sendError, parseBody } from './api-handler';
-import type { Route } from './types';
+import type { Route } from '@plusplusoneplusplus/coc-server';
 
 // ============================================================================
 // Default Settings

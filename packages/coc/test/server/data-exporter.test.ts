@@ -19,7 +19,7 @@ import { exportAllData } from '../../src/server/data-exporter';
 import {
     validateExportPayload,
     EXPORT_SCHEMA_VERSION,
-} from '../../src/server/export-import-types';
+} from '@plusplusoneplusplus/coc-server';
 
 // ============================================================================
 // Helpers

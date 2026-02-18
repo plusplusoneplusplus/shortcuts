@@ -16,7 +16,7 @@ import { resolveConfig } from './config';
 import type { ResolvedCLIConfig } from './config';
 import { setColorEnabled, setVerbosity } from './logger';
 import type { OutputFormat } from './output-formatter';
-import type { ServeCommandOptions } from './server/types';
+import type { ServeCommandOptions } from '@plusplusoneplusplus/coc-server';
 
 // ============================================================================
 // Exit Codes

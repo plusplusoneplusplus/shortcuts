@@ -19,7 +19,7 @@ import { WebSocket } from 'ws';
 import { createExecutionServer } from '../../src/server/index';
 import { ProcessWebSocketServer, toProcessSummary } from '../../src/server/websocket';
 import { FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
-import type { ExecutionServer } from '../../src/server/types';
+import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 import type { ProcessSummary, ServerMessage } from '../../src/server/websocket';
 import type { AIProcess } from '@plusplusoneplusplus/pipeline-core';
 

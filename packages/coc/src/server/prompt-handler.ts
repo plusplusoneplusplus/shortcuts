@@ -14,7 +14,7 @@ import * as url from 'url';
 import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
 import { findPromptFiles, findSkills } from '@plusplusoneplusplus/pipeline-core';
 import { sendJSON, sendError } from './api-handler';
-import type { Route } from './types';
+import type { Route } from '@plusplusoneplusplus/coc-server';
 
 // ============================================================================
 // Workspace resolution helper

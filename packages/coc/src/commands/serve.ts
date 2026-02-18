@@ -21,7 +21,7 @@ import {
     cyan,
 } from '../logger';
 import { FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
-import type { ServeCommandOptions } from '../server/types';
+import type { ServeCommandOptions } from '@plusplusoneplusplus/coc-server';
 
 // ============================================================================
 // Execute Serve Command

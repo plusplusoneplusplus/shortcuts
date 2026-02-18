@@ -15,8 +15,8 @@ import type {
     CoCExportPayload,
     ExportOptions,
     QueueSnapshot,
-} from './export-import-types';
-import { EXPORT_SCHEMA_VERSION } from './export-import-types';
+} from '@plusplusoneplusplus/coc-server';
+import { EXPORT_SCHEMA_VERSION } from '@plusplusoneplusplus/coc-server';
 import { readPreferences } from './preferences-handler';
 import { loadConfigFile } from '../config';
 

@@ -11,7 +11,7 @@ import type { IncomingMessage, ServerResponse } from 'http';
 import type { WikiManager } from './wiki-manager';
 import type { AskAIFunction } from './types';
 import { sendSSE, readBody } from './ask-handler';
-import { send400, send404 } from '../router';
+import { send400, send404 } from '@plusplusoneplusplus/coc-server';
 
 // ============================================================================
 // Types
