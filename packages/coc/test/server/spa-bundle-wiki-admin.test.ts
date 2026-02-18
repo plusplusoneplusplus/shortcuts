@@ -35,6 +35,11 @@ describe('wiki-admin client source file', () => {
         expect(content).toContain('export function hideWikiAdmin');
     });
 
+    it('exports showWikiAdminTab function', () => {
+        const content = readClientFile('wiki-admin.ts');
+        expect(content).toContain('export function showWikiAdminTab');
+    });
+
     it('exports resetAdminState function', () => {
         const content = readClientFile('wiki-admin.ts');
         expect(content).toContain('export function resetAdminState');
@@ -270,17 +275,21 @@ describe('wiki-admin — toggle visibility', () => {
     let wikiContent: string;
     beforeAll(() => { wikiContent = readClientFile('wiki.ts'); });
 
-    it('gear icon on cards calls showWikiAdmin', () => {
+    it('gear icon on cards routes to config tab', () => {
         expect(wikiContent).toContain('wiki-card-gear');
-        expect(wikiContent).toContain('showWikiAdmin(wikiId)');
+        expect(wikiContent).toContain("setWikiProjectTab('config')");
     });
 
     it('detail view has gear icon for admin access', () => {
         expect(wikiContent).toContain('wiki-detail-gear');
     });
 
-    it('admin toggle click calls showWikiAdmin with selected wikiId', () => {
-        expect(wikiContent).toContain('showWikiAdmin(appState.selectedWikiId)');
+    it('admin toggle click calls showWikiProjectTabs for selected wiki', () => {
+        expect(wikiContent).toContain('showWikiProjectTabs(appState.selectedWikiId)');
+    });
+
+    it('wiki.ts uses showWikiAdminTab helper', () => {
+        expect(wikiContent).toContain('showWikiAdminTab');
     });
 });
 
@@ -382,6 +391,10 @@ describe('client bundle — wiki-admin module', () => {
 
     it('defines hideWikiAdmin function', () => {
         expect(script).toContain('hideWikiAdmin');
+    });
+
+    it('defines showWikiAdminTab function', () => {
+        expect(script).toContain('showWikiAdminTab');
     });
 
     it('defines resetAdminState function', () => {
@@ -575,8 +588,8 @@ describe('wiki.ts — admin imports and integration', () => {
     let content: string;
     beforeAll(() => { content = readClientFile('wiki.ts'); });
 
-    it('imports showWikiAdmin from wiki-admin', () => {
-        expect(content).toContain("import { showWikiAdmin, hideWikiAdmin, resetAdminState } from './wiki-admin'");
+    it('imports showWikiAdminTab from wiki-admin', () => {
+        expect(content).toContain("import { showWikiAdminTab, hideWikiAdmin, resetAdminState } from './wiki-admin'");
     });
 
     it('has admin gear event listener in detail view', () => {
@@ -655,67 +668,61 @@ describe('wiki-admin — uses CoC patterns', () => {
 });
 
 // ============================================================================
-// wiki-admin — full-width layout (injected into #view-wiki, not #wiki-content)
+// wiki-admin — embedded in wiki content layout
 // ============================================================================
 
-describe('wiki-admin — full-width admin layout', () => {
+describe('wiki-admin — embedded admin layout', () => {
     let content: string;
     beforeAll(() => { content = readClientFile('wiki-admin.ts'); });
 
-    it('injects admin panel into #view-wiki (top-level container)', () => {
-        expect(content).toContain("document.getElementById('view-wiki')");
+    it('injects admin panel into #wiki-admin-shell when available', () => {
+        expect(content).toContain("document.getElementById('wiki-admin-shell')");
     });
 
-    it('does not inject admin panel into #wiki-content', () => {
-        // showWikiAdmin should not reference wiki-content for injection
+    it('adds embedded marker class for in-page styling', () => {
+        expect(content).toContain("panel.classList.add('wiki-admin-embedded')");
+    });
+
+    it('does not hide the wiki layout when showing admin', () => {
         const showFn = content.substring(
             content.indexOf('export function showWikiAdmin'),
             content.indexOf('export function hideWikiAdmin')
         );
-        expect(showFn).not.toContain("getElementById('wiki-content')");
+        expect(showFn).not.toContain("wikiLayout.classList.add('hidden')");
     });
 
-    it('hides .wiki-layout when showing admin', () => {
-        expect(content).toContain("#view-wiki .wiki-layout");
-        expect(content).toContain("wikiLayout.classList.add('hidden')");
+    it('does not hide ask widget when showing admin', () => {
+        const showFn = content.substring(
+            content.indexOf('export function showWikiAdmin'),
+            content.indexOf('export function hideWikiAdmin')
+        );
+        expect(showFn).not.toContain("askWidget.classList.add('hidden')");
     });
 
-    it('hides wiki-ask-widget when showing admin', () => {
-        expect(content).toContain("getElementById('wiki-ask-widget')");
-        expect(content).toContain("askWidget.classList.add('hidden')");
-    });
-
-    it('restores .wiki-layout when hiding admin', () => {
-        expect(content).toContain("wikiLayout.classList.remove('hidden')");
-    });
-
-    it('restores wiki-ask-widget when hiding admin', () => {
-        expect(content).toContain("askWidget.classList.remove('hidden')");
+    it('exports showWikiAdminTab helper for direct tab opening', () => {
+        expect(content).toContain('export function showWikiAdminTab');
     });
 });
 
 // ============================================================================
-// CSS — full-width admin layout styles
+// CSS — embedded admin layout styles
 // ============================================================================
 
-describe('CSS — wiki admin full-width layout', () => {
+describe('CSS — wiki admin embedded layout', () => {
     const css = readClientFile('wiki-styles.css');
 
-    it('defines .wiki-layout.hidden to hide the grid', () => {
-        expect(css).toContain('.wiki-layout.hidden');
+    it('defines project toolbar styles', () => {
+        expect(css).toContain('.wiki-project-toolbar');
+        expect(css).toContain('.wiki-project-tab');
     });
 
-    it('admin-section uses full width (no max-width: 900px)', () => {
-        // Ensure admin-section is not constrained to 900px
-        const sectionRule = css.match(/\.admin-section\s*\{[^}]*\}/);
-        expect(sectionRule).toBeTruthy();
-        expect(sectionRule![0]).not.toContain('900px');
-        expect(sectionRule![0]).toContain('max-width: 100%');
+    it('defines browse and admin shell containers', () => {
+        expect(css).toContain('.wiki-browse-shell');
+        expect(css).toContain('.wiki-admin-shell');
     });
 
-    it('admin-page uses full viewport height', () => {
-        const pageRule = css.match(/\.admin-page\s*\{[^}]*\}/);
-        expect(pageRule).toBeTruthy();
-        expect(pageRule![0]).toContain('calc(100vh');
+    it('defines embedded admin page styles', () => {
+        expect(css).toContain('.admin-page.wiki-admin-embedded');
+        expect(css).toContain('.admin-page.wiki-admin-embedded .admin-tabs');
     });
 });

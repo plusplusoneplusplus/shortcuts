@@ -322,10 +322,13 @@ test.describe('Wiki selection & display', () => {
             await page.click('.wiki-card[data-wiki-id="wiki-desel-1"]');
             await expect(page.locator('#wiki-component-detail')).toBeVisible({ timeout: 5000 });
 
-            // Deselect wiki (click back button to return to list view)
-            await page.click('#wiki-back-btn');
+            // Deselect wiki by navigating to bare #wiki route
+            await page.evaluate(() => {
+                location.hash = '#wiki';
+            });
 
             await expect(page.locator('#wiki-component-detail')).toBeHidden();
+            await expect(page.locator('#wiki-empty')).toBeVisible();
             await expect(page.locator('.wiki-card-list')).toBeVisible();
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -572,11 +575,11 @@ test.describe('Delete wiki via UI', () => {
 });
 
 // ================================================================
-// Admin Gear
+// Admin Action Tabs
 // ================================================================
 
-test.describe('Admin gear', () => {
-    test('gear icon visible when wiki selected (in detail view)', async ({ page, serverUrl }) => {
+test.describe('Admin action tabs', () => {
+    test('project-level action tabs are visible when wiki is selected', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-wiki-admin-'));
         try {
             const wikiDir = path.join(tmpDir, 'wiki-data');
@@ -589,13 +592,17 @@ test.describe('Admin gear', () => {
             await expect(page.locator('.wiki-card[data-wiki-id="wiki-admin-1"]')).toBeVisible({ timeout: 10000 });
             await page.click('.wiki-card[data-wiki-id="wiki-admin-1"]');
 
-            await expect(page.locator('#wiki-detail-gear')).toBeVisible({ timeout: 5000 });
+            await expect(page.locator('#wiki-project-toolbar')).toBeVisible({ timeout: 5000 });
+            await expect(page.locator('.wiki-project-tab[data-wiki-project-tab="browse"]')).toBeVisible();
+            await expect(page.locator('.wiki-project-tab[data-wiki-project-tab="seeds"]')).toBeVisible();
+            await expect(page.locator('.wiki-project-tab[data-wiki-project-tab="config"]')).toBeVisible();
+            await expect(page.locator('.wiki-project-tab[data-wiki-project-tab="generate"]')).toBeVisible();
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         }
     });
 
-    test('gear icon on card or in detail opens admin panel', async ({ page, serverUrl }) => {
+    test('switching tabs opens admin panel and returns to browse view', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-wiki-toggle-'));
         try {
             const wikiDir = path.join(tmpDir, 'wiki-data');
@@ -607,15 +614,14 @@ test.describe('Admin gear', () => {
 
             await expect(page.locator('.wiki-card[data-wiki-id="wiki-toggle-1"]')).toBeVisible({ timeout: 10000 });
 
-            // Select wiki and open admin via detail gear
+            // Select wiki and open admin through action tab
             await page.click('.wiki-card[data-wiki-id="wiki-toggle-1"]');
-            await expect(page.locator('#wiki-detail-gear')).toBeVisible({ timeout: 5000 });
-
-            await page.click('#wiki-detail-gear');
+            await page.click('.wiki-project-tab[data-wiki-project-tab="config"]');
             await expect(page.locator('#wiki-admin-panel')).not.toHaveClass(/hidden/, { timeout: 5000 });
+            await expect(page.locator('#wiki-sidebar')).toBeVisible();
 
-            // Back to wiki — gear should remain visible when returning to detail
-            await page.click('#wiki-admin-back');
+            // Back to browse tab
+            await page.click('.wiki-project-tab[data-wiki-project-tab="browse"]');
             await expect(page.locator('#wiki-component-detail')).toBeVisible();
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });

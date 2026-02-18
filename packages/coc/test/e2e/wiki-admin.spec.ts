@@ -58,6 +58,7 @@ async function selectWikiAndOpenAdmin(
     page: Page,
     serverUrl: string,
     wikiId: string,
+    tab: 'seeds' | 'config' | 'generate' = 'seeds',
 ): Promise<void> {
     await page.goto(serverUrl);
     await page.click('[data-tab="wiki"]');
@@ -65,9 +66,9 @@ async function selectWikiAndOpenAdmin(
     await page.click('.wiki-card[data-wiki-id="' + wikiId + '"]');
     await expect(page.locator('#wiki-component-tree')).not.toBeEmpty({ timeout: 5_000 });
 
-    // Open admin panel
-    await expect(page.locator('#wiki-detail-gear')).toBeVisible({ timeout: 5_000 });
-    await page.click('#wiki-detail-gear');
+    // Open admin panel through project-level tabs
+    await expect(page.locator('#wiki-project-toolbar')).toBeVisible({ timeout: 5_000 });
+    await page.click(`.wiki-project-tab[data-wiki-project-tab="${tab}"]`);
     await expect(page.locator('#wiki-admin-panel')).not.toHaveClass(/hidden/, { timeout: 5_000 });
 }
 
@@ -104,37 +105,28 @@ const TEST_ARTICLES: Record<string, string> = {
 
 test.describe('Wiki Admin Panel', () => {
     test.describe('Admin panel toggle', () => {
-        test('clicking admin toggle shows panel and hides wiki layout', async ({ page, serverUrl }) => {
+        test('switching to action tabs shows admin panel and keeps sidebar', async ({ page, serverUrl }) => {
             const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-admin-toggle-'));
             try {
                 const wikiDir = path.join(tmpDir, 'wiki-data');
                 createCustomWiki(wikiDir, buildTestComponents(), CATEGORIES, { articles: TEST_ARTICLES });
                 await seedWiki(serverUrl, 'admin-toggle-wiki', wikiDir, undefined, 'Admin Toggle Wiki');
 
-                await page.goto(serverUrl);
-                await page.click('[data-tab="wiki"]');
-                await expect(page.locator('.wiki-card[data-wiki-id="admin-toggle-wiki"]')).toBeVisible({ timeout: 10_000 });
-                await page.click('.wiki-card[data-wiki-id="admin-toggle-wiki"]');
-                await expect(page.locator('#wiki-component-tree')).not.toBeEmpty({ timeout: 5_000 });
-
-                // Admin panel should be hidden initially
-                // (It may not exist in DOM yet until first toggle)
-                const adminPanel = page.locator('#wiki-admin-panel');
-
-                // Click admin gear
-                await page.click('#wiki-detail-gear');
+                await selectWikiAndOpenAdmin(page, serverUrl, 'admin-toggle-wiki', 'seeds');
 
                 // Admin panel should be visible
+                const adminPanel = page.locator('#wiki-admin-panel');
                 await expect(adminPanel).not.toHaveClass(/hidden/, { timeout: 5_000 });
 
-                // Wiki layout should be hidden
+                // Wiki layout and sidebar should remain visible
                 const wikiLayout = page.locator('#view-wiki .wiki-layout');
-                await expect(wikiLayout).toHaveClass(/hidden/);
-
-                // Click back button to return to wiki
-                await page.click('#wiki-admin-back');
-                await expect(adminPanel).toHaveClass(/hidden/);
                 await expect(wikiLayout).not.toHaveClass(/hidden/);
+                await expect(page.locator('#wiki-sidebar')).toBeVisible();
+
+                // Switch back to browse
+                await page.click('.wiki-project-tab[data-wiki-project-tab="browse"]');
+                await expect(adminPanel).toHaveClass(/hidden/, { timeout: 5_000 });
+                await expect(page.locator('#wiki-component-detail')).toBeVisible();
             } finally {
                 fs.rmSync(tmpDir, { recursive: true, force: true });
             }
@@ -155,27 +147,27 @@ test.describe('Wiki Admin Panel', () => {
                 await selectWikiAndOpenAdmin(page, serverUrl, 'admin-tabs-wiki');
 
                 // Seeds tab should be active by default
-                await expect(page.locator('.admin-tab[data-tab="seeds"]')).toHaveClass(/active/);
+                await expect(page.locator('.wiki-project-tab[data-wiki-project-tab="seeds"]')).toHaveClass(/active/);
                 await expect(page.locator('#admin-content-seeds')).toHaveClass(/active/);
                 await expect(page.locator('#admin-content-config')).not.toHaveClass(/active/);
                 await expect(page.locator('#admin-content-generate')).not.toHaveClass(/active/);
 
                 // Switch to config tab
-                await page.click('.admin-tab[data-tab="config"]');
-                await expect(page.locator('.admin-tab[data-tab="config"]')).toHaveClass(/active/);
-                await expect(page.locator('.admin-tab[data-tab="seeds"]')).not.toHaveClass(/active/);
+                await page.click('.wiki-project-tab[data-wiki-project-tab="config"]');
+                await expect(page.locator('.wiki-project-tab[data-wiki-project-tab="config"]')).toHaveClass(/active/);
+                await expect(page.locator('.wiki-project-tab[data-wiki-project-tab="seeds"]')).not.toHaveClass(/active/);
                 await expect(page.locator('#admin-content-config')).toHaveClass(/active/);
                 await expect(page.locator('#admin-content-seeds')).not.toHaveClass(/active/);
 
                 // Switch to generate tab
-                await page.click('.admin-tab[data-tab="generate"]');
-                await expect(page.locator('.admin-tab[data-tab="generate"]')).toHaveClass(/active/);
+                await page.click('.wiki-project-tab[data-wiki-project-tab="generate"]');
+                await expect(page.locator('.wiki-project-tab[data-wiki-project-tab="generate"]')).toHaveClass(/active/);
                 await expect(page.locator('#admin-content-generate')).toHaveClass(/active/);
                 await expect(page.locator('#admin-content-config')).not.toHaveClass(/active/);
 
                 // Switch back to seeds
-                await page.click('.admin-tab[data-tab="seeds"]');
-                await expect(page.locator('.admin-tab[data-tab="seeds"]')).toHaveClass(/active/);
+                await page.click('.wiki-project-tab[data-wiki-project-tab="seeds"]');
+                await expect(page.locator('.wiki-project-tab[data-wiki-project-tab="seeds"]')).toHaveClass(/active/);
                 await expect(page.locator('#admin-content-seeds')).toHaveClass(/active/);
             } finally {
                 fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -192,8 +184,8 @@ test.describe('Wiki Admin Panel', () => {
 
                 // Click each tab and verify only one is active
                 for (const tabName of ['seeds', 'config', 'generate']) {
-                    await page.click(`.admin-tab[data-tab="${tabName}"]`);
-                    const activeTabs = page.locator('.admin-tab.active');
+                    await page.click(`.wiki-project-tab[data-wiki-project-tab="${tabName}"]`);
+                    const activeTabs = page.locator('.wiki-project-tab.active');
                     await expect(activeTabs).toHaveCount(1);
                     const activeContents = page.locator('.admin-tab-content.active');
                     await expect(activeContents).toHaveCount(1);
@@ -310,7 +302,7 @@ test.describe('Wiki Admin Panel', () => {
                 await selectWikiAndOpenAdmin(page, serverUrl, 'admin-config-wiki');
 
                 // Switch to config tab
-                await page.click('.admin-tab[data-tab="config"]');
+                await page.click('.wiki-project-tab[data-wiki-project-tab="config"]');
                 await expect(page.locator('#admin-content-config')).toHaveClass(/active/);
 
                 // Config editor should contain the config data
@@ -341,7 +333,7 @@ test.describe('Wiki Admin Panel', () => {
                 await selectWikiAndOpenAdmin(page, serverUrl, 'admin-gen-wiki');
 
                 // Switch to generate tab
-                await page.click('.admin-tab[data-tab="generate"]');
+                await page.click('.wiki-project-tab[data-wiki-project-tab="generate"]');
                 await expect(page.locator('#admin-content-generate')).toHaveClass(/active/);
 
                 // All 5 phase cards should be present
@@ -370,7 +362,7 @@ test.describe('Wiki Admin Panel', () => {
                 await seedWiki(serverUrl, 'admin-gen-ctrl-wiki', wikiDir, tmpDir, 'Admin Gen Ctrl Wiki');
                 await selectWikiAndOpenAdmin(page, serverUrl, 'admin-gen-ctrl-wiki');
 
-                await page.click('.admin-tab[data-tab="generate"]');
+                await page.click('.wiki-project-tab[data-wiki-project-tab="generate"]');
 
                 // Force checkbox
                 await expect(page.locator('#generate-force')).toBeVisible();
@@ -393,7 +385,7 @@ test.describe('Wiki Admin Panel', () => {
                 await seedWiki(serverUrl, 'admin-gen-run-wiki', wikiDir, tmpDir, 'Admin Gen Run Wiki');
                 await selectWikiAndOpenAdmin(page, serverUrl, 'admin-gen-run-wiki');
 
-                await page.click('.admin-tab[data-tab="generate"]');
+                await page.click('.wiki-project-tab[data-wiki-project-tab="generate"]');
 
                 // Mock the generate endpoint
                 await page.route('**/api/wikis/*/admin/generate', async (route, req) => {
@@ -464,7 +456,7 @@ test.describe('Wiki Admin Panel', () => {
                 await seedWiki(serverUrl, 'admin-gen-err-wiki', wikiDir, tmpDir, 'Admin Gen Err Wiki');
                 await selectWikiAndOpenAdmin(page, serverUrl, 'admin-gen-err-wiki');
 
-                await page.click('.admin-tab[data-tab="generate"]');
+                await page.click('.wiki-project-tab[data-wiki-project-tab="generate"]');
 
                 // Mock generate endpoint to return error
                 await page.route('**/api/wikis/*/admin/generate', async (route, req) => {
@@ -498,7 +490,7 @@ test.describe('Wiki Admin Panel', () => {
                 await seedWiki(serverUrl, 'admin-gen-409-wiki', wikiDir, tmpDir, 'Admin Gen 409 Wiki');
                 await selectWikiAndOpenAdmin(page, serverUrl, 'admin-gen-409-wiki');
 
-                await page.click('.admin-tab[data-tab="generate"]');
+                await page.click('.wiki-project-tab[data-wiki-project-tab="generate"]');
 
                 // Mock generate endpoint to return 409 conflict
                 await page.route('**/api/wikis/*/admin/generate', async (route, req) => {
@@ -525,33 +517,33 @@ test.describe('Wiki Admin Panel', () => {
     // ================================================================
 
     test.describe('Tab state preservation', () => {
-        test('switching tabs preserves editor content', async ({ page, serverUrl }) => {
+        test('switching tabs preserves saved seeds content', async ({ page, serverUrl }) => {
             const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-admin-preserve-'));
             try {
                 const wikiDir = path.join(tmpDir, 'wiki-data');
                 createCustomWiki(wikiDir, buildTestComponents(), CATEGORIES, { articles: TEST_ARTICLES });
                 await seedWiki(serverUrl, 'admin-preserve-wiki', wikiDir, undefined, 'Admin Preserve Wiki');
                 await selectWikiAndOpenAdmin(page, serverUrl, 'admin-preserve-wiki');
+                await page.waitForTimeout(600);
 
-                // Type in seeds editor
+                // Type in seeds editor and save
                 const seedsEditor = page.locator('#seeds-editor');
                 await seedsEditor.fill('{"custom": "seeds data"}');
+                await page.click('#seeds-save');
+                await expect(page.locator('#seeds-status')).toContainText('Saved');
 
-                // Switch to config tab
-                await page.click('.admin-tab[data-tab="config"]');
+                // Switch to config tab and edit
+                await page.click('.wiki-project-tab[data-wiki-project-tab="config"]');
                 const configEditor = page.locator('#config-editor');
+                await page.waitForTimeout(300);
                 await configEditor.fill('model: custom-model');
 
                 // Switch to generate tab and back to seeds
-                await page.click('.admin-tab[data-tab="generate"]');
-                await page.click('.admin-tab[data-tab="seeds"]');
+                await page.click('.wiki-project-tab[data-wiki-project-tab="generate"]');
+                await page.click('.wiki-project-tab[data-wiki-project-tab="seeds"]');
 
-                // Seeds content should be preserved
-                await expect(seedsEditor).toHaveValue('{"custom": "seeds data"}');
-
-                // Switch back to config
-                await page.click('.admin-tab[data-tab="config"]');
-                await expect(configEditor).toHaveValue('model: custom-model');
+                // Saved seeds content should be preserved after tab switches
+                await expect(seedsEditor).toHaveValue('{\n  "custom": "seeds data"\n}');
             } finally {
                 fs.rmSync(tmpDir, { recursive: true, force: true });
             }

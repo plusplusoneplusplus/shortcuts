@@ -571,6 +571,45 @@ describe('wiki.ts — sidebar list/detail views', () => {
 });
 
 // ============================================================================
+// wiki.ts source — project action tabs
+// ============================================================================
+
+describe('wiki.ts — project action tabs', () => {
+    let content: string;
+    beforeAll(() => { content = readClientFile('wiki.ts'); });
+
+    it('defines wiki project tab type', () => {
+        expect(content).toContain("type WikiProjectTab = 'browse' | 'seeds' | 'config' | 'generate'");
+    });
+
+    it('creates wiki project toolbar dynamically', () => {
+        expect(content).toContain("id=\"wiki-project-toolbar\"");
+        expect(content).toContain("data-wiki-project-tab=\"browse\"");
+        expect(content).toContain("data-wiki-project-tab=\"seeds\"");
+        expect(content).toContain("data-wiki-project-tab=\"config\"");
+        expect(content).toContain("data-wiki-project-tab=\"generate\"");
+    });
+
+    it('creates dedicated admin shell container', () => {
+        expect(content).toContain("adminShell.id = 'wiki-admin-shell'");
+    });
+
+    it('switches between browse and admin shells by tab', () => {
+        expect(content).toContain("if (tab === 'browse' || !hasSelectedWiki)");
+        expect(content).toContain("browseShell.classList.add('hidden')");
+        expect(content).toContain("adminShell.classList.remove('hidden')");
+    });
+
+    it('opens admin tabs through showWikiAdminTab helper', () => {
+        expect(content).toContain('showWikiAdminTab(appState.selectedWikiId!, tab)');
+    });
+
+    it('exposes setWikiProjectTab on window', () => {
+        expect(content).toContain('(window as any).setWikiProjectTab');
+    });
+});
+
+// ============================================================================
 // wiki.ts source — wiki status handling
 // ============================================================================
 

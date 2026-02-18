@@ -24,6 +24,8 @@ let adminInitialized = false;
 let generateRunning = false;
 let currentAdminWikiId: string | null = null;
 
+export type WikiAdminTab = 'seeds' | 'config' | 'generate';
+
 export function resetAdminState(): void {
     adminSeedsOriginal = '';
     adminConfigOriginal = '';
@@ -147,25 +149,37 @@ export function renderAdminPanel(): string {
 
 export function showWikiAdmin(wikiId: string): void {
     if (currentAdminWikiId !== wikiId) {
+        // Recreate the panel to avoid stale event handlers capturing old wiki IDs.
+        const existingPanel = document.getElementById('wiki-admin-panel');
+        if (existingPanel) existingPanel.remove();
+    }
+
+    if (currentAdminWikiId !== wikiId) {
         resetAdminState();
         currentAdminWikiId = wikiId;
     }
 
-    // Inject admin panel HTML into #view-wiki (top-level) for full-width layout
+    // Inject admin panel into the in-page admin shell so the wiki sidebar stays visible.
+    const adminHost = document.getElementById('wiki-admin-shell')
+        || document.getElementById('wiki-content')
+        || document.getElementById('view-wiki');
+    if (!adminHost) return;
+
     let panel = document.getElementById('wiki-admin-panel');
+    const panelWasVisible = !!panel && !panel.classList.contains('hidden');
     if (!panel) {
-        const viewWiki = document.getElementById('view-wiki');
-        if (!viewWiki) return;
-        viewWiki.insertAdjacentHTML('beforeend', renderAdminPanel());
+        adminHost.insertAdjacentHTML('beforeend', renderAdminPanel());
         panel = document.getElementById('wiki-admin-panel');
+    } else if (panel.parentElement !== adminHost) {
+        adminHost.appendChild(panel);
     }
 
-    // Hide the entire wiki grid layout and ask widget, show admin full-width
-    const wikiLayout = document.querySelector('#view-wiki .wiki-layout') as HTMLElement | null;
-    const askWidget = document.getElementById('wiki-ask-widget');
-    if (wikiLayout) wikiLayout.classList.add('hidden');
-    if (askWidget) askWidget.classList.add('hidden');
-    if (panel) panel.classList.remove('hidden');
+    if (panel) {
+        panel.classList.add('wiki-admin-embedded');
+        panel.classList.remove('hidden');
+    }
+
+    setActiveAdminTab('seeds');
 
     if (!adminInitialized) {
         initAdminEvents(wikiId);
@@ -174,20 +188,21 @@ export function showWikiAdmin(wikiId: string): void {
         adminInitialized = true;
     }
 
-    loadAdminSeeds(wikiId);
-    loadAdminConfig(wikiId);
-    loadGenerateStatus(wikiId);
+    if (!panelWasVisible) {
+        loadAdminSeeds(wikiId);
+        loadAdminConfig(wikiId);
+        loadGenerateStatus(wikiId);
+    }
+}
+
+export function showWikiAdminTab(wikiId: string, tab: WikiAdminTab): void {
+    showWikiAdmin(wikiId);
+    setActiveAdminTab(tab);
 }
 
 export function hideWikiAdmin(): void {
     const panel = document.getElementById('wiki-admin-panel');
     if (panel) panel.classList.add('hidden');
-
-    // Restore wiki layout and ask widget visibility
-    const wikiLayout = document.querySelector('#view-wiki .wiki-layout') as HTMLElement | null;
-    const askWidget = document.getElementById('wiki-ask-widget');
-    if (wikiLayout) wikiLayout.classList.remove('hidden');
-    if (askWidget) askWidget.classList.remove('hidden');
 }
 
 // ================================================================
@@ -199,11 +214,9 @@ function initAdminEvents(wikiId: string): void {
     document.querySelectorAll('#wiki-admin-panel .admin-tab').forEach(function (tab) {
         tab.addEventListener('click', function () {
             const target = (tab as HTMLElement).getAttribute('data-tab');
-            document.querySelectorAll('#wiki-admin-panel .admin-tab').forEach(function (t) { t.classList.remove('active'); });
-            document.querySelectorAll('#wiki-admin-panel .admin-tab-content').forEach(function (c) { c.classList.remove('active'); });
-            tab.classList.add('active');
-            const contentEl = document.getElementById('admin-content-' + target);
-            if (contentEl) contentEl.classList.add('active');
+            if (target === 'seeds' || target === 'config' || target === 'generate') {
+                setActiveAdminTab(target);
+            }
         });
     });
 
@@ -212,6 +225,7 @@ function initAdminEvents(wikiId: string): void {
     if (backBtn) {
         backBtn.addEventListener('click', function () {
             hideWikiAdmin();
+            (window as any).setWikiProjectTab?.('browse');
         });
     }
 
@@ -313,6 +327,17 @@ function clearAdminStatus(which: string): void {
     if (!el) return;
     el.textContent = '';
     el.className = 'admin-file-status';
+}
+
+function setActiveAdminTab(tab: WikiAdminTab): void {
+    document.querySelectorAll('#wiki-admin-panel .admin-tab').forEach(function (t) {
+        t.classList.toggle('active', (t as HTMLElement).getAttribute('data-tab') === tab);
+    });
+    document.querySelectorAll('#wiki-admin-panel .admin-tab-content').forEach(function (c) {
+        c.classList.remove('active');
+    });
+    const contentEl = document.getElementById('admin-content-' + tab);
+    if (contentEl) contentEl.classList.add('active');
 }
 
 // ================================================================
@@ -826,5 +851,6 @@ export async function runComponentRegenFromAdmin(wikiId: string, componentId: st
 
 // Expose for global access
 (window as any).showWikiAdmin = showWikiAdmin;
+(window as any).showWikiAdminTab = showWikiAdminTab;
 (window as any).hideWikiAdmin = hideWikiAdmin;
 (window as any).runComponentRegenFromAdmin = runComponentRegenFromAdmin;

@@ -14,7 +14,7 @@ import { buildComponentTree } from './wiki-components';
 import { setWikiGraph, clearWikiState, showWikiHome, loadWikiComponent } from './wiki-content';
 import { showWikiGraph, hideWikiGraph, isGraphShowing } from './wiki-graph';
 import { setupWikiAskListeners } from './wiki-ask';
-import { showWikiAdmin, hideWikiAdmin, resetAdminState } from './wiki-admin';
+import { showWikiAdminTab, hideWikiAdmin, resetAdminState } from './wiki-admin';
 import type { WikiData, ComponentGraph, WikiStatus } from './wiki-types';
 
 // ================================================================
@@ -22,6 +22,7 @@ import type { WikiData, ComponentGraph, WikiStatus } from './wiki-types';
 // ================================================================
 
 let editingWikiId: string | null = null;
+type WikiProjectTab = 'browse' | 'seeds' | 'config' | 'generate';
 
 export function showEditWikiDialog(wikiId: string): void {
     const wiki = (appState.wikis as WikiData[]).find(w => w.id === wikiId);
@@ -120,6 +121,10 @@ export async function deleteWiki(wikiId: string): Promise<void> {
                 if (appState.selectedWikiId === wikiId) {
                     appState.selectedWikiId = null;
                     appState.wikiView = 'list';
+                    hideWikiAdmin();
+                    resetAdminState();
+                    hideWikiProjectTabs();
+                    showWikiEmptyState();
                     setHashSilent('#wiki');
                 }
                 await fetchWikisData();
@@ -186,6 +191,112 @@ function getStatusBadge(status: WikiStatus): string {
 }
 
 // ================================================================
+// Wiki project page tabs (Browse / Seeds / Config / Generate)
+// ================================================================
+
+function ensureWikiProjectLayout(): void {
+    const wikiContent = document.getElementById('wiki-content');
+    if (!wikiContent) return;
+
+    let toolbar = document.getElementById('wiki-project-toolbar');
+    if (!toolbar) {
+        wikiContent.insertAdjacentHTML('afterbegin',
+            '<div class="wiki-project-toolbar hidden" id="wiki-project-toolbar">' +
+            '<div class="wiki-project-title-wrap">' +
+            '<h2 class="wiki-project-title" id="wiki-project-title"></h2>' +
+            '</div>' +
+            '<div class="wiki-project-tabs" id="wiki-project-tabs">' +
+            '<button class="wiki-project-tab active" data-wiki-project-tab="browse">Browse</button>' +
+            '<button class="wiki-project-tab" data-wiki-project-tab="seeds">Seeds</button>' +
+            '<button class="wiki-project-tab" data-wiki-project-tab="config">Config</button>' +
+            '<button class="wiki-project-tab" data-wiki-project-tab="generate">Generate</button>' +
+            '</div>' +
+            '</div>');
+        toolbar = document.getElementById('wiki-project-toolbar');
+    }
+
+    if (toolbar && !toolbar.hasAttribute('data-listeners-attached')) {
+        toolbar.querySelectorAll('.wiki-project-tab').forEach(tabEl => {
+            tabEl.addEventListener('click', () => {
+                const tab = tabEl.getAttribute('data-wiki-project-tab');
+                if (tab === 'browse' || tab === 'seeds' || tab === 'config' || tab === 'generate') {
+                    setWikiProjectTab(tab);
+                }
+            });
+        });
+        toolbar.setAttribute('data-listeners-attached', 'true');
+    }
+
+    let browseShell = document.getElementById('wiki-browse-shell');
+    const emptyState = document.getElementById('wiki-empty');
+    const componentDetail = document.getElementById('wiki-component-detail');
+    if (!browseShell && emptyState && componentDetail) {
+        browseShell = document.createElement('div');
+        browseShell.id = 'wiki-browse-shell';
+        browseShell.className = 'wiki-browse-shell';
+        wikiContent.insertBefore(browseShell, emptyState);
+        browseShell.appendChild(emptyState);
+        browseShell.appendChild(componentDetail);
+    }
+
+    let adminShell = document.getElementById('wiki-admin-shell');
+    if (!adminShell) {
+        adminShell = document.createElement('div');
+        adminShell.id = 'wiki-admin-shell';
+        adminShell.className = 'wiki-admin-shell hidden';
+        wikiContent.appendChild(adminShell);
+    }
+}
+
+function getWikiDisplayName(wikiId: string): string {
+    const wiki = (appState.wikis as WikiData[]).find(w => w.id === wikiId);
+    if (!wiki) return wikiId;
+    return wiki.name || wiki.title || wiki.id;
+}
+
+function showWikiProjectTabs(wikiId: string): void {
+    ensureWikiProjectLayout();
+    const toolbar = document.getElementById('wiki-project-toolbar');
+    const title = document.getElementById('wiki-project-title');
+    if (toolbar) toolbar.classList.remove('hidden');
+    if (title) title.textContent = getWikiDisplayName(wikiId);
+    setWikiProjectTab('browse');
+}
+
+function hideWikiProjectTabs(): void {
+    ensureWikiProjectLayout();
+    const toolbar = document.getElementById('wiki-project-toolbar');
+    const title = document.getElementById('wiki-project-title');
+    if (toolbar) toolbar.classList.add('hidden');
+    if (title) title.textContent = '';
+    setWikiProjectTab('browse');
+}
+
+function setWikiProjectTab(tab: WikiProjectTab): void {
+    ensureWikiProjectLayout();
+
+    const browseShell = document.getElementById('wiki-browse-shell');
+    const adminShell = document.getElementById('wiki-admin-shell');
+    const hasSelectedWiki = !!appState.selectedWikiId;
+
+    document.querySelectorAll('.wiki-project-tab').forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('data-wiki-project-tab') === tab);
+    });
+
+    if (tab === 'browse' || !hasSelectedWiki) {
+        if (browseShell) browseShell.classList.remove('hidden');
+        if (adminShell) adminShell.classList.add('hidden');
+        hideWikiAdmin();
+        return;
+    }
+
+    if (browseShell) browseShell.classList.add('hidden');
+    if (adminShell) adminShell.classList.remove('hidden');
+
+    showWikiAdminTab(appState.selectedWikiId!, tab);
+}
+
+// ================================================================
 // Sidebar rendering — two states
 // ================================================================
 
@@ -194,6 +305,7 @@ export function renderWikiSidebar(): void {
 }
 
 function renderWikiListSidebar(): void {
+    ensureWikiProjectLayout();
     const sidebar = document.getElementById('wiki-sidebar');
     if (!sidebar) return;
 
@@ -312,10 +424,17 @@ function attachWikiListListeners(): void {
 
     // Gear icon clicks (stop propagation)
     document.querySelectorAll('.wiki-card-gear').forEach(btn => {
-        btn.addEventListener('click', (e: Event) => {
+        btn.addEventListener('click', async (e: Event) => {
             e.stopPropagation();
             const wikiId = btn.getAttribute('data-wiki-id');
-            if (wikiId) showWikiAdmin(wikiId);
+            if (!wikiId) return;
+
+            if (appState.selectedWikiId !== wikiId) {
+                await onWikiCardClicked(wikiId);
+            } else {
+                showWikiProjectTabs(wikiId);
+            }
+            setWikiProjectTab('config');
         });
     });
 
@@ -340,7 +459,9 @@ function attachWikiDetailListeners(): void {
     const gearBtn = document.getElementById('wiki-detail-gear');
     if (gearBtn) {
         gearBtn.addEventListener('click', () => {
-            if (appState.selectedWikiId) showWikiAdmin(appState.selectedWikiId);
+            if (!appState.selectedWikiId) return;
+            showWikiProjectTabs(appState.selectedWikiId);
+            setWikiProjectTab('config');
         });
     }
 
@@ -365,6 +486,7 @@ async function onWikiCardClicked(wikiId: string): Promise<void> {
 
     // Re-render list sidebar to highlight the active card (no view transition)
     renderWikiListSidebar();
+    showWikiProjectTabs(wikiId);
 
     const status = getWikiStatus(wiki);
 
@@ -408,6 +530,7 @@ export function navigateToWikiList(): void {
 
     hideWikiAdmin();
     resetAdminState();
+    hideWikiProjectTabs();
 
     renderWikiListSidebar();
     showWikiEmptyState();
@@ -423,7 +546,10 @@ export async function showWikiDetail(wikiId: string): Promise<void> {
 export async function showWikiComponent(wikiId: string, compId: string): Promise<void> {
     if (appState.selectedWikiId !== wikiId) {
         await showWikiDetail(wikiId);
+    } else {
+        showWikiProjectTabs(wikiId);
     }
+    setWikiProjectTab('browse');
     setHashSilent(`#wiki/${encodeURIComponent(wikiId)}/component/${encodeURIComponent(compId)}`);
     await loadWikiComponent(wikiId, compId);
 }
@@ -808,6 +934,11 @@ if (editWikiOverlay) {
 (window as any).handleWikiRebuilding = handleWikiRebuilding;
 (window as any).handleWikiError = handleWikiError;
 (window as any).showWikiNotFound = showWikiNotFound;
+(window as any).setWikiProjectTab = (tab: string) => {
+    if (tab === 'browse' || tab === 'seeds' || tab === 'config' || tab === 'generate') {
+        setWikiProjectTab(tab);
+    }
+};
 
 // Initialize Ask AI listeners
 setupWikiAskListeners();

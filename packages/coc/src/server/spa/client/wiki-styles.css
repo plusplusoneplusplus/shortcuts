@@ -302,6 +302,84 @@
     flex-direction: column;
 }
 
+.wiki-project-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 14px 8px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    flex-shrink: 0;
+}
+.wiki-project-toolbar.hidden { display: none; }
+
+.wiki-project-title-wrap {
+    min-width: 0;
+    flex: 1;
+}
+
+.wiki-project-title {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wiki-project-tabs {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 2px;
+}
+
+.wiki-project-tab {
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+
+.wiki-project-tab:hover {
+    background: var(--hover-bg);
+    color: var(--text-primary);
+}
+
+.wiki-project-tab.active {
+    background: var(--active-bg);
+    color: var(--accent);
+    font-weight: 600;
+}
+
+.wiki-browse-shell {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.wiki-browse-shell.hidden { display: none; }
+
+.wiki-admin-shell {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.wiki-admin-shell.hidden { display: none; }
+
 /* ================================================================
    Wiki Miller Columns
    ================================================================ */
@@ -884,6 +962,9 @@
 
 /* Responsive: hide ToC on small screens */
 @media (max-width: 900px) {
+    .wiki-project-toolbar { padding: 8px 10px; }
+    .wiki-project-title { font-size: 13px; }
+    .wiki-project-tab { padding: 5px 8px; }
     .wiki-toc-sidebar { display: none; }
     .wiki-article { padding: 24px 16px 80px; }
     .wiki-layout { grid-template-columns: 240px 1fr; }
@@ -893,6 +974,15 @@
 }
 
 @media (max-width: 768px) {
+    .wiki-project-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+    }
+    .wiki-project-tabs {
+        width: 100%;
+        overflow-x: auto;
+    }
     .wiki-layout { grid-template-columns: 1fr; }
     .wiki-sidebar { display: none; }
     .wiki-miller-col-groups { flex: 0 0 180px; min-width: 160px; }
@@ -918,6 +1008,15 @@
     overflow: auto;
 }
 .admin-page.hidden { display: none; }
+.admin-page.wiki-admin-embedded {
+    height: 100%;
+}
+.admin-page.wiki-admin-embedded .admin-tabs {
+    display: none;
+}
+.admin-page.wiki-admin-embedded .admin-body {
+    padding: 14px;
+}
 .admin-page-header {
     padding: 24px 32px 0;
 }
