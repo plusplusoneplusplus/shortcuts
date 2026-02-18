@@ -10,7 +10,7 @@
  */
 
 import type { TaskQueueManager, QueuedTask, CreateTaskInput, TaskPriority, QueueStats, ProcessStore } from '@plusplusoneplusplus/pipeline-core';
-import { sendJSON, sendError, parseBody } from './api-handler';
+import { sendJSON, sendError, parseBody } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
 import { computeRepoId } from './queue-persistence';
 import { extractRepoId } from '@plusplusoneplusplus/coc-server';

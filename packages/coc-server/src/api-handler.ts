@@ -16,9 +16,18 @@ import * as fs from 'fs';
 import * as os from 'os';
 import type { ProcessStore, ProcessFilter, AIProcess, AIProcessStatus, AIProcessType, WorkspaceInfo, ConversationTurn } from '@plusplusoneplusplus/pipeline-core';
 import { deserializeProcess } from '@plusplusoneplusplus/pipeline-core';
-import type { Route } from '@plusplusoneplusplus/coc-server';
-import type { QueueExecutorBridge } from './queue-executor-bridge';
+import type { Route } from './types';
 import { handleProcessStream } from './sse-handler';
+
+/**
+ * Bridge interface for executing follow-up messages on existing AI sessions.
+ * The full implementation lives in `packages/coc` (queue-executor-bridge.ts)
+ * and will be moved in a later commit.
+ */
+export interface QueueExecutorBridge {
+    executeFollowUp(processId: string, message: string): Promise<void>;
+    isSessionAlive(processId: string): Promise<boolean>;
+}
 
 // ============================================================================
 // Response Helpers

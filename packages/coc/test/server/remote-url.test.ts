@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { normalizeRemoteUrl, detectRemoteUrl } from '../../src/server/api-handler';
+import { normalizeRemoteUrl, detectRemoteUrl } from '@plusplusoneplusplus/coc-server';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';

@@ -11,7 +11,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as http from 'http';
 import { createExecutionServer } from '../../src/server/index';
-import { sendJSON, sendError, parseQueryParams, stripExcludedFields } from '../../src/server/api-handler';
+import { sendJSON, sendError, parseQueryParams, stripExcludedFields } from '@plusplusoneplusplus/coc-server';
 import { FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 import * as fs from 'fs';

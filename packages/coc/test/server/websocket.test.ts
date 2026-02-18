@@ -17,10 +17,10 @@ import * as os from 'os';
 import * as path from 'path';
 import { WebSocket } from 'ws';
 import { createExecutionServer } from '../../src/server/index';
-import { ProcessWebSocketServer, toProcessSummary } from '../../src/server/websocket';
+import { ProcessWebSocketServer, toProcessSummary } from '@plusplusoneplusplus/coc-server';
 import { FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
-import type { ProcessSummary, ServerMessage } from '../../src/server/websocket';
+import type { ProcessSummary, ServerMessage } from '@plusplusoneplusplus/coc-server';
 import type { AIProcess } from '@plusplusoneplusplus/pipeline-core';
 
 // ============================================================================

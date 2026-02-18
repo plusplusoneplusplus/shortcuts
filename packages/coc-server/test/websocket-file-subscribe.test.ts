@@ -9,8 +9,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ProcessWebSocketServer } from '@plusplusoneplusplus/coc-server';
-import type { WSClient, ServerMessage, MarkdownCommentSummary } from '@plusplusoneplusplus/coc-server';
+import { ProcessWebSocketServer } from '../src/websocket';
+import type { WSClient, ServerMessage, MarkdownCommentSummary } from '../src/websocket';
 
 // ============================================================================
 // Helpers

@@ -31,7 +31,7 @@ import {
     DEFAULT_AI_TIMEOUT_MS,
 } from '@plusplusoneplusplus/pipeline-core';
 import type { SelectedContext } from '@plusplusoneplusplus/pipeline-core';
-import { sendJSON, sendError, parseBody } from './api-handler';
+import { sendJSON, sendError, parseBody } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
 
 // ============================================================================

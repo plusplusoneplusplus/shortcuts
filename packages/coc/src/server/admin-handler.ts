@@ -11,14 +11,14 @@
 import * as crypto from 'crypto';
 import * as url from 'url';
 import type { ProcessStore, TaskQueueManager } from '@plusplusoneplusplus/pipeline-core';
-import { sendJSON, sendError, parseBody } from './api-handler';
+import { sendJSON, sendError, parseBody } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
 import { DataWiper } from './data-wiper';
 import { exportAllData } from './data-exporter';
 import { importData } from './data-importer';
 import { validateExportPayload } from '@plusplusoneplusplus/coc-server';
 import type { CoCExportPayload, ImportMode } from '@plusplusoneplusplus/coc-server';
-import type { ProcessWebSocketServer } from './websocket';
+import type { ProcessWebSocketServer } from '@plusplusoneplusplus/coc-server';
 import type { QueuePersistence } from './queue-persistence';
 import { getResolvedConfigWithSource, loadConfigFile, writeConfigFile, getConfigFilePath } from '../config';
 import type { CLIConfig } from '../config';

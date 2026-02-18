@@ -51,3 +51,39 @@ export {
     normalizeRepoPath,
     getWorkingDirectory,
 } from './repo-utils';
+
+// Process API handlers
+export {
+    registerApiRoutes,
+    sendJSON,
+    sendError,
+    parseBody,
+    parseQueryParams,
+    stripExcludedFields,
+    execGitSync,
+    detectRemoteUrl,
+    normalizeRemoteUrl,
+    discoverPipelines,
+    browseDirectory,
+} from './api-handler';
+export type { QueueExecutorBridge } from './api-handler';
+
+// WebSocket server
+export {
+    ProcessWebSocketServer,
+    toProcessSummary,
+    toCommentSummary,
+} from './websocket';
+export type {
+    WSClient,
+    ProcessSummary,
+    MarkdownCommentSummary,
+    QueueTaskSummary,
+    QueueHistoryTaskSummary,
+    QueueSnapshot as WSQueueSnapshot,
+    ServerMessage,
+    ClientMessage,
+} from './websocket';
+
+// SSE streaming
+export { handleProcessStream } from './sse-handler';

@@ -471,7 +471,7 @@ describe('queue-executor-bridge — session expiry', () => {
 describe('api-handler — session expiry 410', () => {
     it('api-handler source contains 410 status code for session expiry', async () => {
         const apiSource = fs.readFileSync(
-            path.join(__dirname, '..', '..', '..', 'src', 'server', 'api-handler.ts'),
+            path.join(__dirname, '..', '..', '..', '..', 'coc-server', 'src', 'api-handler.ts'),
             'utf8'
         );
         expect(apiSource).toContain('410');
@@ -481,7 +481,7 @@ describe('api-handler — session expiry 410', () => {
 
     it('api-handler checks isSessionAlive before executing follow-up', () => {
         const apiSource = fs.readFileSync(
-            path.join(__dirname, '..', '..', '..', 'src', 'server', 'api-handler.ts'),
+            path.join(__dirname, '..', '..', '..', '..', 'coc-server', 'src', 'api-handler.ts'),
             'utf8'
         );
         expect(apiSource).toContain('isSessionAlive');
