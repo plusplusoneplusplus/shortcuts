@@ -9,14 +9,12 @@
 
 import { Command } from 'commander';
 import { executeRun } from './commands/run';
-import type { RunCommandOptions } from './commands/run';
 import { executeValidate } from './commands/validate';
 import { executeList } from './commands/list';
+import { resolveRunOptions, resolveListOptions, resolveServeOptions, resolveWipeDataOptions } from './commands/options-resolver';
 import { resolveConfig } from './config';
 import type { ResolvedCLIConfig } from './config';
 import { setColorEnabled, setVerbosity } from './logger';
-import type { OutputFormat } from './output-formatter';
-import type { ServeCommandOptions } from '@plusplusoneplusplus/coc-server';
 
 // ============================================================================
 // Exit Codes
@@ -68,22 +66,7 @@ export function createProgram(): Command {
         .action(async (pipelinePath: string, opts: Record<string, unknown>) => {
             const config = resolveConfig();
             applyGlobalOptions(opts, config);
-
-            const options: RunCommandOptions = {
-                model: (opts.model as string) || config.model,
-                parallel: (opts.parallel as number) || config.parallel,
-                output: ((opts.output as string) || config.output) as OutputFormat,
-                outputFile: opts.outputFile as string | undefined,
-                workspaceRoot: opts.workspaceRoot as string | undefined,
-                params: opts.param as Record<string, string>,
-                verbose: Boolean(opts.verbose),
-                dryRun: Boolean(opts.dryRun),
-                timeout: (opts.timeout as number) || config.timeout,
-                noColor: !opts.color,
-                approvePermissions: Boolean(opts.approvePermissions) || config.approvePermissions,
-                persist: (opts.persist as boolean) ?? config.persist,
-                dataDir: config.serve?.dataDir,
-            };
+            const options = resolveRunOptions(opts, config);
 
             const exitCode = await executeRun(pipelinePath, options);
             process.exit(exitCode);
@@ -119,8 +102,8 @@ export function createProgram(): Command {
         .action((dirPath: string, opts: Record<string, unknown>) => {
             const config = resolveConfig();
             applyGlobalOptions(opts, config);
+            const { format } = resolveListOptions(opts, config);
 
-            const format = ((opts.output as string) || config.output) as OutputFormat;
             const exitCode = executeList(dirPath, format);
             process.exit(exitCode);
         });
@@ -143,18 +126,10 @@ export function createProgram(): Command {
         .action(async (opts: Record<string, unknown>) => {
             const config = resolveConfig();
             applyGlobalOptions(opts, config);
+            const options = resolveServeOptions(opts, config);
 
             const { executeServe } = await import('./commands/serve');
-            const exitCode = await executeServe({
-                port: (opts.port as number | undefined) ?? config.serve?.port,
-                host: (opts.host as string | undefined) ?? config.serve?.host,
-                dataDir: (opts.dataDir as string | undefined) ?? config.serve?.dataDir,
-                open: opts.open as boolean | undefined,
-                theme: ((opts.theme as string | undefined) ?? config.serve?.theme) as ServeCommandOptions['theme'],
-                noColor: opts.color === false,
-                drainTimeout: opts.drainTimeout as number | undefined,
-                noDrain: opts.drain === false,
-            });
+            const exitCode = await executeServe(options);
             process.exit(exitCode);
         });
 
@@ -177,15 +152,10 @@ export function createProgram(): Command {
         .action(async (opts: Record<string, unknown>) => {
             const config = resolveConfig();
             applyGlobalOptions(opts, config);
+            const options = resolveWipeDataOptions(opts, config);
 
             const { executeWipeData } = await import('./commands/wipe-data');
-            const exitCode = await executeWipeData({
-                confirm: Boolean(opts.confirm),
-                includeWikis: Boolean(opts.includeWikis),
-                dryRun: Boolean(opts.dryRun),
-                dataDir: (opts.dataDir as string | undefined) ?? config.serve?.dataDir,
-                noColor: opts.color === false,
-            });
+            const exitCode = await executeWipeData(options);
             process.exit(exitCode);
         });
 
