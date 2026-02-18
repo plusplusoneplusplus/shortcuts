@@ -9,7 +9,7 @@ import { getApiBase } from './config';
 import { fetchApi } from './core';
 import { escapeHtmlClient, copyToClipboard } from './utils';
 import { showAIActionDropdown, hideAIActionDropdown, showFollowPromptSubmenu } from './ai-actions';
-import { showToast } from './ai-actions';
+import { showToast, getTasksFolderPath } from './ai-actions';
 import { renderMarkdownToHtml } from './markdown-renderer';
 import { initTaskMermaid } from './task-mermaid';
 import {
@@ -1024,6 +1024,23 @@ function dismissContextMenu(): void {
     if (existing) existing.remove();
 }
 
+/** Copy a task/folder relative or absolute path to clipboard. */
+async function copyTaskPath(wsId: string, relativePath: string, absolute: boolean): Promise<void> {
+    if (absolute) {
+        const ws = appState.workspaces.find((w: any) => w.id === wsId);
+        const rootPath = ws?.rootPath || '';
+        const tasksFolder = await getTasksFolderPath(wsId);
+        const fullPath = rootPath
+            ? rootPath + '/' + tasksFolder + '/' + relativePath
+            : tasksFolder + '/' + relativePath;
+        copyToClipboard(fullPath);
+        showToast('✓ Copied: ' + fullPath, 'success');
+    } else {
+        copyToClipboard(relativePath);
+        showToast('✓ Copied: ' + relativePath, 'success');
+    }
+}
+
 /** Show a context menu at (x, y) for a task file with the given path and current status. */
 function showTaskContextMenu(x: number, y: number, filePath: string, currentStatus: string | undefined): void {
     dismissContextMenu();
@@ -1074,6 +1091,16 @@ function showTaskContextMenu(x: number, y: number, filePath: string, currentStat
                 '<span class="ctx-menu-icon">📦</span><span>Archive</span>' +
             '</div>';
     }
+
+    // Copy Path
+    itemsHtml +=
+        '<div class="task-context-menu-separator"></div>' +
+        '<div class="task-context-menu-item" data-ctx-action="copy-path" data-ctx-path="' + escapeHtmlClient(filePath) + '">' +
+            '<span class="ctx-menu-icon">📋</span><span>Copy Path</span>' +
+        '</div>' +
+        '<div class="task-context-menu-item" data-ctx-action="copy-absolute-path" data-ctx-path="' + escapeHtmlClient(filePath) + '">' +
+            '<span class="ctx-menu-icon">📋</span><span>Copy Absolute Path</span>' +
+        '</div>';
 
     itemsHtml +=
         '<div class="task-context-menu-separator"></div>' +
@@ -1145,6 +1172,10 @@ function showTaskContextMenu(x: number, y: number, filePath: string, currentStat
                 archiveItem(wsId, path, 'archive');
             } else if (action === 'unarchive-task') {
                 archiveItem(wsId, path, 'unarchive');
+            } else if (action === 'copy-path') {
+                copyTaskPath(wsId, path, false);
+            } else if (action === 'copy-absolute-path') {
+                copyTaskPath(wsId, path, true);
             }
             dismissContextMenu();
         }
@@ -1248,6 +1279,21 @@ function showFolderContextMenu(x: number, y: number, folderPath: string): void {
     // Separator
     itemsHtml += '<div class="task-context-menu-separator"></div>';
 
+    // Copy Path
+    itemsHtml +=
+        '<div class="task-context-menu-item" data-ctx-action="copy-path" data-ctx-path="' + escapeHtmlClient(folderPath) + '">' +
+            '<span class="ctx-menu-icon">📋</span><span>Copy Path</span>' +
+        '</div>';
+
+    // Copy Absolute Path
+    itemsHtml +=
+        '<div class="task-context-menu-item" data-ctx-action="copy-absolute-path" data-ctx-path="' + escapeHtmlClient(folderPath) + '">' +
+            '<span class="ctx-menu-icon">📋</span><span>Copy Absolute Path</span>' +
+        '</div>';
+
+    // Separator
+    itemsHtml += '<div class="task-context-menu-separator"></div>';
+
     // Archive / Unarchive
     if (isArchived) {
         itemsHtml +=
@@ -1332,6 +1378,12 @@ function showFolderContextMenu(x: number, y: number, folderPath: string): void {
             }
             case 'move-folder':
                 showMoveDialog(wsId, path);
+                break;
+            case 'copy-path':
+                copyTaskPath(wsId, path, false);
+                break;
+            case 'copy-absolute-path':
+                copyTaskPath(wsId, path, true);
                 break;
             case 'archive-folder':
                 archiveItem(wsId, path, 'archive');
