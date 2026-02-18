@@ -1,0 +1,173 @@
+/* ================================================================
+   Task Preview: Mermaid diagram rendering
+   ================================================================ */
+
+.mermaid-container {
+    border: 1px solid var(--border-color, #e1e4e8);
+    border-radius: 6px;
+    margin: 12px 0;
+    overflow: hidden;
+    background: var(--card-bg, #fff);
+}
+
+[data-theme="dark"] .mermaid-container {
+    border-color: var(--border-color, #30363d);
+    background: var(--card-bg, #161b22);
+}
+
+.mermaid-container .mermaid-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    font-size: 12px;
+    color: var(--text-secondary, #586069);
+    border-bottom: 1px solid var(--border-color, #e1e4e8);
+    background: var(--bg-secondary, #f6f8fa);
+}
+
+[data-theme="dark"] .mermaid-container .mermaid-header {
+    background: var(--bg-secondary, #0d1117);
+    border-color: var(--border-color, #30363d);
+}
+
+/* Toolbar */
+.task-mermaid-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 12px;
+    border-bottom: 1px solid var(--border-color, #e1e4e8);
+    background: var(--bg-secondary, #f6f8fa);
+}
+
+[data-theme="dark"] .task-mermaid-toolbar {
+    background: var(--bg-secondary, #0d1117);
+    border-color: var(--border-color, #30363d);
+}
+
+.task-mermaid-btn {
+    padding: 2px 8px;
+    border: 1px solid var(--border-color, #d1d5da);
+    border-radius: 4px;
+    background: var(--card-bg, #fff);
+    color: var(--text-primary, #24292e);
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+    line-height: 1.5;
+}
+
+.task-mermaid-btn:hover {
+    background: var(--bg-hover, #f3f4f6);
+    border-color: var(--text-secondary, #586069);
+}
+
+[data-theme="dark"] .task-mermaid-btn {
+    background: var(--card-bg, #161b22);
+    color: var(--text-primary, #c9d1d9);
+    border-color: var(--border-color, #30363d);
+}
+
+[data-theme="dark"] .task-mermaid-btn:hover {
+    background: var(--bg-hover, #21262d);
+}
+
+.task-mermaid-btn:active {
+    transform: scale(0.95);
+}
+
+.task-mermaid-zoom-level {
+    font-size: 11px;
+    color: var(--text-secondary, #586069);
+    min-width: 36px;
+    text-align: center;
+    user-select: none;
+}
+
+.task-mermaid-collapse {
+    margin-left: auto;
+}
+
+/* Viewport for zoom/pan */
+.task-mermaid-viewport {
+    overflow: hidden;
+    min-height: 100px;
+    max-height: 600px;
+    cursor: grab;
+    position: relative;
+}
+
+.task-mermaid-viewport:active,
+.task-mermaid-viewport.task-mermaid-dragging {
+    cursor: grabbing;
+}
+
+.task-mermaid-svg-wrapper {
+    transform-origin: 0 0;
+    transition: transform 0.1s ease-out;
+    display: flex;
+    justify-content: center;
+    padding: 16px;
+}
+
+.task-mermaid-viewport.task-mermaid-dragging .task-mermaid-svg-wrapper {
+    transition: none;
+}
+
+.mermaid-container pre.mermaid {
+    background: transparent;
+    border: none;
+    margin: 0;
+    padding: 0;
+}
+
+.mermaid-container pre.mermaid svg {
+    max-width: 100%;
+    height: auto;
+}
+
+/* Source view */
+.task-mermaid-source-view {
+    padding: 12px;
+    overflow: auto;
+    max-height: 500px;
+}
+
+.task-mermaid-source-view pre {
+    margin: 0;
+    padding: 12px;
+    border-radius: 4px;
+    background: var(--bg-secondary, #f6f8fa);
+    overflow-x: auto;
+}
+
+[data-theme="dark"] .task-mermaid-source-view pre {
+    background: var(--bg-secondary, #0d1117);
+}
+
+.task-mermaid-source-view code {
+    font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    white-space: pre;
+    color: var(--text-primary, #24292e);
+}
+
+[data-theme="dark"] .task-mermaid-source-view code {
+    color: var(--text-primary, #c9d1d9);
+}
+
+/* Error state */
+.task-mermaid-error {
+    padding: 24px;
+    text-align: center;
+    color: var(--text-secondary, #586069);
+    font-size: 13px;
+    font-style: italic;
+}
+
+/* Dark theme SVG filter for mermaid diagrams */
+[data-theme="dark"] .mermaid-container .mermaid svg {
+    filter: none; /* mermaid dark theme handles colors natively */
+}

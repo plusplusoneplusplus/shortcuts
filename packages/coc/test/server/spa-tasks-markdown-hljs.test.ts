@@ -198,7 +198,7 @@ describe('renderMarkdown — CSS styles', () => {
         const fs = require('fs');
         const path = require('path');
         const css = fs.readFileSync(
-            path.join(__dirname, '..', '..', 'src', 'server', 'spa', 'client', 'styles.css'), 'utf8'
+            path.join(__dirname, '..', '..', 'src', 'server', 'spa', 'client', 'dist', 'bundle.css'), 'utf8'
         );
         expect(css).toContain('.task-preview-body pre code.hljs');
     });
@@ -207,7 +207,7 @@ describe('renderMarkdown — CSS styles', () => {
         const fs = require('fs');
         const path = require('path');
         const css = fs.readFileSync(
-            path.join(__dirname, '..', '..', 'src', 'server', 'spa', 'client', 'styles.css'), 'utf8'
+            path.join(__dirname, '..', '..', 'src', 'server', 'spa', 'client', 'dist', 'bundle.css'), 'utf8'
         );
         expect(css).toContain('.line-number');
         expect(css).toContain('user-select: none');

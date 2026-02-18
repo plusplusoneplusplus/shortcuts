@@ -559,7 +559,7 @@ describe('spa/types.ts — enableWiki option', () => {
 
 describe('styles.css — wiki content styles', () => {
     let cssContent: string;
-    beforeAll(() => { cssContent = readClientFile('styles.css') + readClientFile('wiki-styles.css'); });
+    beforeAll(() => { cssContent = fs.readFileSync(path.join(CLIENT_DIR, 'dist', 'bundle.css'), 'utf8'); });
 
     // CSS variables
     it('defines --code-bg variable', () => {
@@ -659,7 +659,8 @@ describe('styles.css — wiki content styles', () => {
 
     it('heading anchor opacity 0 by default, 1 on hover', () => {
         expect(cssContent).toContain('opacity: 0');
-        expect(cssContent).toContain(':hover .heading-anchor { opacity: 1');
+        expect(cssContent).toContain(':hover .heading-anchor');
+        expect(cssContent).toContain('opacity: 1');
     });
 
     // Copy button

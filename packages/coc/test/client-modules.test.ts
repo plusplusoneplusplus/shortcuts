@@ -1127,7 +1127,7 @@ describe('client/state.ts — TaskPanelState', () => {
 describe('styles.css — Task styles', () => {
     let cssContent: string;
     beforeAll(() => {
-        cssContent = fs.readFileSync(path.join(CLIENT_DIR, 'styles.css'), 'utf8');
+        cssContent = fs.readFileSync(path.join(CLIENT_DIR, 'dist', 'bundle.css'), 'utf8');
     });
 
     it('has task tree styles', () => {
@@ -1201,7 +1201,7 @@ describe('styles.css — Task styles', () => {
     });
 
     it('has dark theme shadow override for AI dropdown', () => {
-        expect(cssContent).toContain('html[data-theme="dark"] .ai-action-dropdown');
+        expect(cssContent).toMatch(/html\[data-theme=["']?dark["']?\] \.ai-action-dropdown/);
     });
 
     it('has hover-reveal for AI action button in Miller file rows', () => {

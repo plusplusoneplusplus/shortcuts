@@ -1,0 +1,302 @@
+/* ---- Conversation Section ---- */
+.conversation-section {
+    margin-top: 16px;
+}
+.chat-layout .conversation-section {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.conversation-section h2 {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 0 0 8px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.streaming-indicator {
+    font-size: 10px;
+    color: var(--status-running);
+    animation: pulse 1.5s ease-in-out infinite;
+}
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+.conversation-body {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 16px;
+    min-height: 200px;
+    max-height: 60vh;
+    overflow-y: auto;
+    font-size: 13px;
+    line-height: 1.6;
+    word-wrap: break-word;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    position: relative;  /* anchor for scroll-to-bottom button */
+}
+.chat-layout .conversation-body {
+    min-height: 0;
+    max-height: none;
+    flex: 1;
+}
+.conversation-body pre {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 12px;
+    overflow-x: auto;
+    margin: 8px 0;
+}
+.conversation-body code {
+    font-family: 'SF Mono', 'Monaco', 'Menlo', 'Consolas', monospace;
+    font-size: 12px;
+}
+.conversation-body p {
+    margin: 4px 0;
+}
+.conversation-body h1, .conversation-body h2, .conversation-body h3, .conversation-body h4 {
+    margin: 12px 0 6px 0;
+}
+.conversation-body ul, .conversation-body ol {
+    margin: 4px 0;
+    padding-left: 20px;
+}
+.conversation-body blockquote {
+    border-left: 3px solid var(--accent);
+    margin: 8px 0;
+    padding: 4px 12px;
+    color: var(--text-secondary);
+}
+.conversation-waiting {
+    color: var(--text-secondary);
+    font-style: italic;
+    padding: 20px 0;
+    text-align: center;
+}
+
+/* ---- Chat Message Bubbles ---- */
+.chat-message {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-width: 85%;
+    padding: 10px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    word-wrap: break-word;
+    position: relative;
+}
+.chat-message.user {
+    align-self: flex-end;
+    background: var(--active-bg);
+    border-color: rgba(0, 120, 212, 0.2);
+}
+.chat-message.assistant {
+    align-self: flex-start;
+    background: var(--bg-primary);
+}
+
+.chat-message-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+.chat-message-header .role-icon {
+    font-size: 12px;
+}
+.chat-message-header .timestamp {
+    font-weight: 400;
+    margin-left: auto;
+}
+
+.chat-message-content {
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-primary);
+}
+
+/* ---- Chat Input Bar ---- */
+.chat-input-bar {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    padding: 12px 16px;
+    border-top: 1px solid var(--border-color);
+    background: var(--bg-primary);
+}
+.chat-layout .chat-input-bar {
+    padding: 12px 24px;
+}
+.chat-input-bar textarea {
+    flex: 1;
+    min-height: 36px;
+    max-height: 120px;
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 13px;
+    line-height: 1.5;
+    resize: none;
+    overflow-y: auto;
+}
+.chat-input-bar textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+.chat-input-bar textarea::placeholder {
+    color: var(--text-secondary);
+    font-style: italic;
+}
+.chat-input-bar .send-btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 6px;
+    background: var(--accent);
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: opacity 0.15s;
+}
+.chat-input-bar .send-btn:hover {
+    opacity: 0.85;
+}
+.chat-input-bar.disabled textarea {
+    opacity: 0.6;
+    pointer-events: none;
+}
+.chat-input-bar.disabled .send-btn {
+    opacity: 0.4;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+/* ---- Streaming State ---- */
+.chat-message.streaming {
+    border-left: 3px solid var(--status-running);
+    animation: pulse 1.5s ease-in-out infinite;
+}
+.typing-cursor {
+    display: inline-block;
+    width: 2px;
+    height: 1em;
+    background: var(--text-primary);
+    margin-left: 2px;
+    vertical-align: text-bottom;
+    animation: blink 0.8s step-end infinite;
+}
+@keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+}
+
+/* ---- Chat Bubble Copy Button ---- */
+.bubble-copy-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 12px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+.chat-message:hover .bubble-copy-btn {
+    opacity: 1;
+}
+.bubble-copy-btn:hover {
+    background: var(--hover-bg);
+}
+
+/* ---- Scroll to Bottom ---- */
+.scroll-to-bottom {
+    position: absolute;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 6px 14px;
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    font-size: 12px;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    transition: opacity 0.15s, background-color 0.15s;
+    z-index: 5;
+    opacity: 0;
+    pointer-events: none;
+}
+.scroll-to-bottom.visible {
+    opacity: 1;
+    pointer-events: auto;
+}
+.scroll-to-bottom:hover {
+    background: var(--hover-bg);
+    color: var(--text-primary);
+}
+
+/* ---- Session Expiry Error Bubble ---- */
+.chat-error-bubble {
+    background: rgba(241, 76, 76, 0.08);
+    border: 1px solid rgba(241, 76, 76, 0.2);
+    border-radius: 8px;
+    color: var(--status-failed);
+    padding: 8px 12px;
+    font-size: 12px;
+    margin: 8px 0;
+    text-align: center;
+}
+
+/* ---- First-Time Chat Hint ---- */
+.chat-hint {
+    background: rgba(78, 154, 241, 0.08);
+    border: 1px solid rgba(78, 154, 241, 0.15);
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.chat-hint-dismiss {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 12px;
+    padding: 0 2px;
+}
+.chat-hint-dismiss:hover {
+    color: var(--text-primary);
+}
+
+/* ---- Long Conversation Hint ---- */
+.chat-long-hint {
+    text-align: center;
+    font-size: 11px;
+    color: var(--text-secondary);
+    padding: 8px;
+    border-top: 1px solid var(--border-color);
+    margin: 8px 0;
+}

@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
-import { getClientBundle, generateDashboardHtml } from './spa-test-helpers';
+import { getClientBundle, getClientCssBundle, generateDashboardHtml } from './spa-test-helpers';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -360,7 +360,7 @@ describe('HTML template — admin toggle link', () => {
 
 describe('CSS — admin page styles', () => {
     let css: string;
-    beforeAll(() => { css = readClientFile('styles.css'); });
+    beforeAll(() => { css = getClientCssBundle(); });
 
     it('defines .admin-page style', () => {
         expect(css).toContain('.admin-page');
@@ -584,7 +584,7 @@ describe('global admin — config section HTML', () => {
 
 describe('CSS — admin config styles', () => {
     let css: string;
-    beforeAll(() => { css = readClientFile('styles.css'); });
+    beforeAll(() => { css = getClientCssBundle(); });
 
     it('defines .admin-config-section style', () => {
         expect(css).toContain('.admin-config-section');
@@ -868,7 +868,7 @@ describe('global admin — form event handling', () => {
 
 describe('CSS — admin config editor styles', () => {
     let css: string;
-    beforeAll(() => { css = readClientFile('styles.css'); });
+    beforeAll(() => { css = getClientCssBundle(); });
 
     it('defines .admin-config-form style', () => {
         expect(css).toContain('.admin-config-form');

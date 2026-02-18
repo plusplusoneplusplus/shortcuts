@@ -1,0 +1,391 @@
+/* ---- Repos View (Sidebar + Detail Layout) ---- */
+.repos-sidebar {
+    background: var(--bg-sidebar);
+    border-right: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.repos-sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px;
+    border-bottom: 1px solid var(--border-color);
+}
+.repos-sidebar-header h2 {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 0;
+    flex: 1;
+}
+
+.repos-add-btn {
+    font-size: 11px;
+    padding: 4px 10px;
+}
+.repos-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 0;
+}
+.repo-item {
+    display: flex;
+    flex-direction: column;
+    padding: 10px 12px;
+    border-left: 3px solid transparent;
+    cursor: pointer;
+    transition: background-color 0.15s, border-color 0.15s;
+    gap: 2px;
+}
+.repo-item:hover { background: var(--hover-bg); }
+.repo-item.active {
+    background: var(--active-bg);
+    border-left-color: var(--accent);
+}
+.repo-item-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.repo-color-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.repo-item-name {
+    font-size: 13px;
+    font-weight: 600;
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.repo-item-meta {
+    padding-left: 18px;
+}
+.repo-item-path {
+    font-size: 10px;
+    color: var(--text-secondary);
+    font-family: 'SF Mono', 'Cascadia Code', monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: block;
+}
+.repo-item-stats {
+    display: flex;
+    gap: 8px;
+    font-size: 10px;
+    color: var(--text-secondary);
+    padding-left: 18px;
+    flex-wrap: wrap;
+}
+.repo-item-stats span { white-space: nowrap; }
+.repo-stat-counts { letter-spacing: 0.3px; }
+
+/* ---- Repo Groups (Clone Grouping) ---- */
+.repo-group {
+    border-bottom: 1px solid var(--border-color);
+}
+.repo-group-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text-secondary);
+    background: var(--bg-secondary);
+    user-select: none;
+}
+.repo-group-header:hover {
+    background: var(--hover-bg);
+}
+.repo-group-toggle {
+    font-size: 10px;
+    width: 12px;
+    text-align: center;
+    flex-shrink: 0;
+}
+.repo-group-icon {
+    font-size: 14px;
+    flex-shrink: 0;
+}
+.repo-group-label {
+    flex: 1;
+    font-weight: 600;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.repo-group-badge {
+    background: var(--accent);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 10px;
+    flex-shrink: 0;
+}
+.repo-group-children {
+    padding-left: 8px;
+    border-left: 2px solid var(--accent);
+    margin-left: 16px;
+}
+.repo-item-grouped {
+    padding-left: 8px;
+}
+.repo-branch-badge {
+    font-size: 10px;
+    background: var(--bg-secondary);
+    color: var(--accent);
+    border: 1px solid var(--border-color);
+    padding: 0 5px;
+    border-radius: 3px;
+    margin-left: 6px;
+    white-space: nowrap;
+    font-weight: 500;
+}
+
+
+/* ---- Repos Sidebar Footer ---- */
+.repos-sidebar-footer {
+    padding: 8px 12px;
+    border-top: 1px solid var(--border-color);
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+/* ---- Repo Detail Panel ---- */
+.repo-detail-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+.repo-detail-header h1 {
+    font-size: 20px;
+    font-weight: 600;
+    margin: 0;
+    flex: 1;
+}
+.repo-remove-action {
+    color: var(--status-failed);
+    border-color: var(--status-failed);
+}
+.repo-remove-action:hover {
+    background: rgba(241,76,76,0.08);
+}
+
+/* ---- Repo Sub-Tab Bar ---- */
+.repo-sub-tab-bar {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 20px;
+}
+.repo-sub-tab {
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-secondary);
+    padding: 8px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.repo-sub-tab:hover { color: var(--text-primary); }
+.repo-sub-tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+}
+.repo-sub-tab-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1;
+}
+.repo-sub-tab-content {
+    min-height: 200px;
+}
+
+/* ---- Repo Tasks Toolbar ---- */
+.repo-tasks-toolbar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+.repo-pipeline-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+.repo-pipeline-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    margin-bottom: 8px;
+}
+.repo-pipeline-item .pipeline-name {
+    font-size: 13px;
+    font-weight: 500;
+}
+.repo-pipeline-actions { display: flex; gap: 6px; }
+
+/* ---- Repo Validation ---- */
+.repo-validation {
+    margin: 8px 0;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    line-height: 1.5;
+}
+.repo-validation:empty { display: none; }
+.repo-validation.success {
+    background: rgba(22,130,93,0.08);
+    border: 1px solid rgba(22,130,93,0.2);
+    color: var(--status-completed);
+}
+.repo-validation.error {
+    background: rgba(241,76,76,0.08);
+    border: 1px solid rgba(241,76,76,0.2);
+    color: var(--status-failed);
+}
+
+/* ---- Path Browser ---- */
+.path-input-row {
+    display: flex;
+    gap: 6px;
+}
+.path-input-row input {
+    flex: 1;
+}
+.browse-btn {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 7px 12px;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background-color 0.15s;
+}
+.browse-btn:hover {
+    background: var(--hover-bg);
+}
+.path-browser {
+    margin-top: 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-primary);
+    overflow: hidden;
+}
+.path-browser-breadcrumb {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 8px 10px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    font-size: 12px;
+    font-family: 'SF Mono', 'Cascadia Code', monospace;
+    gap: 1px;
+}
+.breadcrumb-segment {
+    cursor: pointer;
+    color: var(--accent);
+    padding: 1px 2px;
+    border-radius: 2px;
+    transition: background-color 0.15s;
+}
+.breadcrumb-segment:hover {
+    background: var(--hover-bg);
+    text-decoration: underline;
+}
+.breadcrumb-sep {
+    color: var(--text-secondary);
+    margin: 0 1px;
+}
+.path-browser-list {
+    max-height: 240px;
+    overflow-y: auto;
+    padding: 4px 0;
+}
+.path-browser-entry {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background-color 0.15s;
+}
+.path-browser-entry:hover {
+    background: var(--hover-bg);
+}
+.path-browser-parent {
+    color: var(--text-secondary);
+}
+.entry-icon {
+    flex-shrink: 0;
+    font-size: 14px;
+}
+.entry-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.git-badge {
+    flex-shrink: 0;
+    background: rgba(22,130,93,0.12);
+    color: var(--status-completed);
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 3px;
+}
+.path-browser-loading,
+.path-browser-empty,
+.path-browser-error {
+    padding: 16px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+.path-browser-error {
+    color: var(--status-failed);
+}
+.path-browser-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 8px 10px;
+    border-top: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+}
+.path-browser-cancel-btn,
+.path-browser-select-btn {
+    padding: 5px 12px;
+    font-size: 12px;
+}

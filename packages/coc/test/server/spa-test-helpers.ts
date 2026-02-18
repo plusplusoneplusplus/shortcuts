@@ -14,6 +14,12 @@ export function getClientBundle(): string {
     return fs.readFileSync(bundlePath, 'utf8');
 }
 
+/** Read the esbuild-bundled client CSS for style content tests. */
+export function getClientCssBundle(): string {
+    const cssPath = path.join(__dirname, '..', '..', 'src', 'server', 'spa', 'client', 'dist', 'bundle.css');
+    return fs.readFileSync(cssPath, 'utf8');
+}
+
 /** Re-export commonly used test dependencies. */
 export { generateDashboardHtml } from '../../src/server/spa';
 export { escapeHtml } from '../../src/server/spa/helpers';

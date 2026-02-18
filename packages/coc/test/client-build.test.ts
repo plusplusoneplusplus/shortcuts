@@ -49,9 +49,16 @@ describe('Client Build Infrastructure', () => {
             expect(content).toContain('init()');
         });
 
-        it('client/styles.css should contain real CSS', () => {
+        it('client/styles.css should be a valid CSS entry point with imports', () => {
             const content = fs.readFileSync(path.join(CLIENT_DIR, 'styles.css'), 'utf8');
-            expect(content).toContain(':root');
+            expect(content).toContain('@import');
+            expect(content).toContain('_variables.css');
+            expect(content).toContain('_base.css');
+        });
+
+        it('client/dist/bundle.css should contain resolved CSS variables', () => {
+            const bundle = fs.readFileSync(path.join(CLIENT_DIST, 'bundle.css'), 'utf8');
+            expect(bundle).toContain(':root');
         });
     });
 

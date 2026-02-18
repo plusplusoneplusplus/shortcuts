@@ -1,0 +1,185 @@
+/* ---- Top Bar ---- */
+.top-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 48px;
+    padding: 0 16px;
+    background: var(--topbar-bg);
+    color: var(--topbar-text);
+    border-bottom: 1px solid var(--border-color);
+    z-index: 100;
+    position: relative;
+}
+.top-bar-left { display: flex; align-items: center; gap: 16px; }
+.top-bar-logo { font-weight: 600; font-size: 14px; letter-spacing: 0.3px; }
+.top-bar-right { display: flex; align-items: center; gap: 8px; }
+.top-bar-btn {
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.15);
+    color: var(--topbar-text);
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 16px;
+    line-height: 1;
+    transition: background-color 0.15s;
+}
+.top-bar-btn:hover { background: rgba(255,255,255,0.1); }
+a.top-bar-btn { text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }
+.top-bar-btn.active { background: rgba(255,255,255,0.18); border-color: rgba(255,255,255,0.3); }
+.workspace-select {
+    background: rgba(255,255,255,0.1);
+    color: var(--topbar-text);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 13px;
+    cursor: pointer;
+    max-width: 200px;
+}
+.workspace-select option { background: var(--bg-primary); color: var(--text-primary); }
+.hamburger-btn {
+    display: none;
+    background: transparent;
+    border: none;
+    color: var(--topbar-text);
+    font-size: 20px;
+    cursor: pointer;
+    padding: 4px 8px;
+}
+
+/* ---- App Layout ---- */
+.app-layout {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    height: calc(100vh - 48px);
+}
+
+/* ---- Sidebar ---- */
+.sidebar {
+    background: var(--bg-sidebar);
+    border-right: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.filter-bar {
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    border-bottom: 1px solid var(--border-color);
+}
+.filter-bar input,
+.filter-bar select {
+    width: 100%;
+    padding: 6px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 13px;
+}
+.filter-bar input:focus,
+.filter-bar select:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+/* ---- Sidebar Footer ---- */
+.sidebar-footer {
+    padding: 8px 12px;
+    border-top: 1px solid var(--border-color);
+}
+.sidebar-btn {
+    width: 100%;
+    padding: 6px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 12px;
+    cursor: pointer;
+    transition: background-color 0.15s;
+}
+.sidebar-btn:hover { background: var(--hover-bg); }
+
+/* ---- Empty State ---- */
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    text-align: center;
+    color: var(--text-secondary);
+}
+.empty-state-icon { font-size: 32px; margin-bottom: 12px; }
+.empty-state-title { font-size: 14px; font-weight: 600; margin-bottom: 4px; color: var(--text-primary); }
+.empty-state-text { font-size: 12px; }
+
+/* ---- Inline Top-Bar Tabs ---- */
+.top-bar-tabs {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin-left: 4px;
+}
+.top-bar-tab {
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--topbar-muted);
+    padding: 14px 14px 12px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+    line-height: 1;
+}
+.top-bar-tab:hover { color: var(--topbar-text); }
+.top-bar-tab.active {
+    color: var(--topbar-text);
+    border-bottom-color: var(--topbar-text);
+}
+
+/* ---- App View (tab content) ---- */
+.app-view {
+    height: calc(100vh - 48px);
+    overflow-y: auto;
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 768px) {
+    .hamburger-btn { display: block; }
+    .top-bar-logo { display: none; }
+    .top-bar-tab { padding: 14px 10px 12px; font-size: 12px; }
+    .app-layout { grid-template-columns: 1fr; }
+    .sidebar {
+        position: fixed;
+        top: 48px;
+        left: 0;
+        width: 100%;
+        height: calc(100vh - 48px);
+        z-index: 50;
+        transform: translateX(-100%);
+        transition: transform 0.2s;
+    }
+    .sidebar.open { transform: translateX(0); }
+    .detail-panel { padding: 16px; }
+    .repos-sidebar {
+        position: fixed;
+        top: 48px;
+        left: 0;
+        width: 100%;
+        height: calc(100vh - 48px);
+        z-index: 50;
+        transform: translateX(-100%);
+        transition: transform 0.2s;
+    }
+    .repos-sidebar.open { transform: translateX(0); }
+    .chat-message { max-width: 95%; }
+    .chat-input-bar { padding: 8px 12px; }
+    .chat-input-bar .send-btn { padding: 8px 12px; }
+}
