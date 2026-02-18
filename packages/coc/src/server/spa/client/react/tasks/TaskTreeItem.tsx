@@ -13,6 +13,7 @@ export interface TaskTreeItemProps {
     isSelected: boolean;
     isOpen: boolean;
     commentCount: number;
+    queueRunning: number;
     showContextFiles: boolean;
     onFolderClick: (folder: TaskFolder) => void;
     onFileClick: (path: string) => void;
@@ -63,6 +64,7 @@ export function TaskTreeItem({
     isSelected,
     isOpen,
     commentCount,
+    queueRunning,
     showContextFiles,
     onFolderClick,
     onFileClick,
@@ -135,6 +137,16 @@ export function TaskTreeItem({
             <span className="flex-1 truncate text-[#1e1e1e] dark:text-[#cccccc]">
                 {displayName}
             </span>
+
+            {/* Queue execution indicator */}
+            {queueRunning > 0 && (
+                <span
+                    className="miller-queue-indicator miller-queue-indicator-running flex-shrink-0 text-[9px] font-medium px-1.5 py-px rounded-full bg-[#0078d4] text-white animate-pulse"
+                    title={`In progress (${queueRunning})`}
+                >
+                    in progress
+                </span>
+            )}
 
             {/* Comment count badge */}
             {commentCount > 0 && (

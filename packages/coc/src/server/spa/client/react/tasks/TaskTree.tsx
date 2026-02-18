@@ -5,6 +5,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { TaskTreeItem } from './TaskTreeItem';
 import { useTaskPanel } from '../context/TaskContext';
+import { useQueueActivity } from '../hooks/useQueueActivity';
 import { folderToNodes, isTaskFolder } from '../hooks/useTaskTree';
 import type { TaskNode, TaskFolder } from '../hooks/useTaskTree';
 
@@ -31,6 +32,7 @@ function getNodePath(node: TaskNode): string | null {
 
 export function TaskTree({ tree, commentCounts, wsId }: TaskTreeProps) {
     const { openFilePath, setOpenFilePath, selectedFilePaths, toggleSelectedFile, showContextFiles } = useTaskPanel();
+    const queueActivity = useQueueActivity(wsId);
     const [columns, setColumns] = useState<TaskNode[][]>([]);
     const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -83,6 +85,7 @@ export function TaskTree({ tree, commentCounts, wsId }: TaskTreeProps) {
                                     isSelected={path ? selectedFilePaths.has(path) : false}
                                     isOpen={path ? path === openFilePath : false}
                                     commentCount={path ? (commentCounts[path] || 0) : 0}
+                                    queueRunning={path ? (queueActivity[path] || 0) : 0}
                                     showContextFiles={showContextFiles}
                                     onFolderClick={(folder) => handleFolderClick(folder, colIndex)}
                                     onFileClick={handleFileClick}

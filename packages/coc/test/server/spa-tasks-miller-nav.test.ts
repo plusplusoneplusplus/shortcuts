@@ -96,3 +96,124 @@ describe('React TaskTreeItem — file and folder rendering', () => {
         expect(content).toContain('return null');
     });
 });
+
+// ============================================================================
+// useQueueActivity hook — queue-to-task mapping
+// ============================================================================
+
+describe('useQueueActivity — queue execution activity mapping', () => {
+    const hookFile = path.join(CLIENT_DIR, 'react', 'hooks', 'useQueueActivity.ts');
+
+    it('useQueueActivity.ts exists', () => {
+        expect(fs.existsSync(hookFile)).toBe(true);
+    });
+
+    it('exports useQueueActivity hook', () => {
+        const content = fs.readFileSync(hookFile, 'utf8');
+        expect(content).toContain('export function useQueueActivity');
+    });
+
+    it('consumes QueueContext via useQueue', () => {
+        const content = fs.readFileSync(hookFile, 'utf8');
+        expect(content).toContain('useQueue');
+    });
+
+    it('consumes AppContext via useApp for workspace rootPath', () => {
+        const content = fs.readFileSync(hookFile, 'utf8');
+        expect(content).toContain('useApp');
+        expect(content).toContain('rootPath');
+    });
+
+    it('extracts planFilePath from payload', () => {
+        const content = fs.readFileSync(hookFile, 'utf8');
+        expect(content).toContain('planFilePath');
+    });
+
+    it('extracts originalTaskPath from payload.data', () => {
+        const content = fs.readFileSync(hookFile, 'utf8');
+        expect(content).toContain('originalTaskPath');
+    });
+
+    it('normalizes backslashes to forward slashes', () => {
+        const content = fs.readFileSync(hookFile, 'utf8');
+        expect(content).toContain('replace(/\\\\/g');
+    });
+
+    it('processes both queued and running items', () => {
+        const content = fs.readFileSync(hookFile, 'utf8');
+        expect(content).toContain('queueState.queued');
+        expect(content).toContain('queueState.running');
+    });
+
+    it('uses useMemo for performance', () => {
+        const content = fs.readFileSync(hookFile, 'utf8');
+        expect(content).toContain('useMemo');
+    });
+
+    it('returns a QueueActivityMap record type', () => {
+        const content = fs.readFileSync(hookFile, 'utf8');
+        expect(content).toContain('QueueActivityMap');
+    });
+});
+
+// ============================================================================
+// Queue indicator in TaskTreeItem
+// ============================================================================
+
+describe('TaskTreeItem — queue execution indicator', () => {
+    const itemFile = path.join(CLIENT_DIR, 'react', 'tasks', 'TaskTreeItem.tsx');
+
+    it('accepts queueRunning prop', () => {
+        const content = fs.readFileSync(itemFile, 'utf8');
+        expect(content).toContain('queueRunning');
+    });
+
+    it('renders miller-queue-indicator class', () => {
+        const content = fs.readFileSync(itemFile, 'utf8');
+        expect(content).toContain('miller-queue-indicator');
+    });
+
+    it('renders miller-queue-indicator-running class', () => {
+        const content = fs.readFileSync(itemFile, 'utf8');
+        expect(content).toContain('miller-queue-indicator-running');
+    });
+
+    it('shows indicator only when queueRunning > 0', () => {
+        const content = fs.readFileSync(itemFile, 'utf8');
+        expect(content).toContain('queueRunning > 0');
+    });
+
+    it('displays "in progress" text in the indicator', () => {
+        const content = fs.readFileSync(itemFile, 'utf8');
+        expect(content).toContain('in progress');
+    });
+
+    it('includes running count in title tooltip', () => {
+        const content = fs.readFileSync(itemFile, 'utf8');
+        expect(content).toContain('In progress (');
+    });
+
+    it('uses animate-pulse for subtle running animation', () => {
+        const content = fs.readFileSync(itemFile, 'utf8');
+        expect(content).toContain('animate-pulse');
+    });
+});
+
+// ============================================================================
+// TaskTree — queue activity integration
+// ============================================================================
+
+describe('TaskTree — queue activity integration', () => {
+    const treeFile = path.join(CLIENT_DIR, 'react', 'tasks', 'TaskTree.tsx');
+
+    it('imports useQueueActivity hook', () => {
+        const content = fs.readFileSync(treeFile, 'utf8');
+        expect(content).toContain('useQueueActivity');
+    });
+
+    it('passes queueRunning prop to TaskTreeItem', () => {
+        const content = fs.readFileSync(treeFile, 'utf8');
+        expect(content).toContain('queueRunning');
+        expect(content).toContain('queueActivity');
+    });
+});
