@@ -23,10 +23,10 @@ test.describe('Wiki tab empty state & list', () => {
         await page.click('[data-tab="wiki"]');
 
         await expect(page.locator('#wiki-empty')).toBeVisible();
-        await expect(page.locator('#wiki-empty')).toContainText('Select a wiki');
+        await expect(page.locator('#wiki-empty')).toContainText('No wikis yet');
     });
 
-    test('displays seeded wikis in the selector dropdown', async ({ page, serverUrl }) => {
+    test('displays seeded wikis in the card list', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-wiki-list-'));
         try {
             // Seed wikis without component-graph.json so they stay store-only
@@ -42,21 +42,21 @@ test.describe('Wiki tab empty state & list', () => {
             await page.goto(serverUrl);
             await page.click('[data-tab="wiki"]');
 
-            // 1 placeholder + 2 wikis
-            await expect(page.locator('#wiki-select option')).toHaveCount(3, { timeout: 10000 });
-            await expect(page.locator('#wiki-select')).toContainText('Frontend Wiki');
-            await expect(page.locator('#wiki-select')).toContainText('Backend Wiki');
+            // 2 wiki cards in the list
+            await expect(page.locator('.wiki-card')).toHaveCount(2, { timeout: 10000 });
+            await expect(page.locator('.wiki-card[data-wiki-id="wiki-1"]')).toBeVisible();
+            await expect(page.locator('.wiki-card[data-wiki-id="wiki-2"]')).toBeVisible();
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         }
     });
 
-    test('wiki dropdown shows placeholder by default', async ({ page, serverUrl }) => {
+    test('wiki list shows empty state when no wikis', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
         await page.click('[data-tab="wiki"]');
 
-        await expect(page.locator('#wiki-select')).toHaveValue('');
-        await expect(page.locator('#wiki-select option').first()).toContainText('Select wiki...');
+        await expect(page.locator('.wiki-card')).toHaveCount(0);
+        await expect(page.locator('#wiki-empty')).toBeVisible();
     });
 });
 
@@ -69,7 +69,7 @@ test.describe('Add Wiki dialog', () => {
         await page.goto(serverUrl);
         await page.click('[data-tab="wiki"]');
 
-        await page.click('#add-wiki-btn');
+        await page.click('#wiki-list-add-btn');
         await expect(page.locator('#add-wiki-overlay')).toBeVisible();
         await expect(page.locator('#wiki-path')).toBeVisible();
     });
@@ -78,7 +78,7 @@ test.describe('Add Wiki dialog', () => {
         await page.goto(serverUrl);
         await page.click('[data-tab="wiki"]');
 
-        await page.click('#add-wiki-btn');
+        await page.click('#wiki-list-add-btn');
         await expect(page.locator('#add-wiki-overlay')).toBeVisible();
 
         await page.click('#add-wiki-cancel-btn');
@@ -89,7 +89,7 @@ test.describe('Add Wiki dialog', () => {
         await page.goto(serverUrl);
         await page.click('[data-tab="wiki"]');
 
-        await page.click('#add-wiki-btn');
+        await page.click('#wiki-list-add-btn');
         await expect(page.locator('#add-wiki-overlay')).toBeVisible();
 
         // Click the overlay background (not the inner dialog)
@@ -106,7 +106,7 @@ test.describe('Add Wiki form validation', () => {
     test('empty path does not submit and overlay stays open', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
         await page.click('[data-tab="wiki"]');
-        await page.click('#add-wiki-btn');
+        await page.click('#wiki-list-add-btn');
         await expect(page.locator('#add-wiki-overlay')).toBeVisible();
 
         // Ensure path is empty
@@ -115,13 +115,13 @@ test.describe('Add Wiki form validation', () => {
 
         // Form returns early — overlay stays open, no wiki added
         await expect(page.locator('#add-wiki-overlay')).toBeVisible();
-        await expect(page.locator('#wiki-select option')).toHaveCount(1); // Only placeholder
+        await expect(page.locator('.wiki-card')).toHaveCount(0);
     });
 
     test('validation error on non-existent path', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
         await page.click('[data-tab="wiki"]');
-        await page.click('#add-wiki-btn');
+        await page.click('#wiki-list-add-btn');
         await expect(page.locator('#add-wiki-overlay')).toBeVisible();
 
         // The form sends repoPath to the server; server derives wikiDir and
@@ -146,7 +146,7 @@ test.describe('Add Wiki success workflow', () => {
         try {
             await page.goto(serverUrl);
             await page.click('[data-tab="wiki"]');
-            await page.click('#add-wiki-btn');
+            await page.click('#wiki-list-add-btn');
 
             await page.fill('#wiki-path', tmpDir);
             await page.fill('#wiki-name', 'My Test Wiki');
@@ -156,9 +156,9 @@ test.describe('Add Wiki success workflow', () => {
 
             // Dialog should close
             await expect(page.locator('#add-wiki-overlay')).toBeHidden({ timeout: 5000 });
-            // Wiki appears in dropdown (placeholder + 1 wiki)
-            await expect(page.locator('#wiki-select option')).toHaveCount(2, { timeout: 10000 });
-            await expect(page.locator('#wiki-select')).toContainText('My Test Wiki');
+            // Wiki appears in card list
+            await expect(page.locator('.wiki-card')).toHaveCount(1, { timeout: 10000 });
+            await expect(page.locator('.wiki-card')).toContainText('My Test Wiki');
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         }
@@ -172,7 +172,7 @@ test.describe('Add Wiki success workflow', () => {
         try {
             await page.goto(serverUrl);
             await page.click('[data-tab="wiki"]');
-            await page.click('#add-wiki-btn');
+            await page.click('#wiki-list-add-btn');
 
             // Navigate browser to tmpDir
             await page.fill('#wiki-path', tmpDir);
@@ -204,7 +204,7 @@ test.describe('Wiki path browser', () => {
         try {
             await page.goto(serverUrl);
             await page.click('[data-tab="wiki"]');
-            await page.click('#add-wiki-btn');
+            await page.click('#wiki-list-add-btn');
 
             await page.fill('#wiki-path', tmpDir);
             await page.click('#wiki-browse-btn');
@@ -231,7 +231,7 @@ test.describe('Wiki path browser', () => {
         try {
             await page.goto(serverUrl);
             await page.click('[data-tab="wiki"]');
-            await page.click('#add-wiki-btn');
+            await page.click('#wiki-list-add-btn');
 
             await page.fill('#wiki-path', tmpDir);
             await page.click('#wiki-browse-btn');
@@ -251,7 +251,7 @@ test.describe('Wiki path browser', () => {
     test('cancel button closes path browser', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
         await page.click('[data-tab="wiki"]');
-        await page.click('#add-wiki-btn');
+        await page.click('#wiki-list-add-btn');
 
         await page.click('#wiki-browse-btn');
         await expect(page.locator('#wiki-path-browser')).toBeVisible();
@@ -276,8 +276,8 @@ test.describe('Wiki selection & display', () => {
             await page.goto(serverUrl);
             await page.click('[data-tab="wiki"]');
 
-            await expect(page.locator('#wiki-select option')).toHaveCount(2, { timeout: 10000 });
-            await page.selectOption('#wiki-select', 'wiki-sel-1');
+            await expect(page.locator('.wiki-card[data-wiki-id="wiki-sel-1"]')).toBeVisible({ timeout: 10000 });
+            await page.click('.wiki-card[data-wiki-id="wiki-sel-1"]');
 
             // Component tree should populate
             await expect(page.locator('#wiki-component-tree')).not.toBeEmpty({ timeout: 5000 });
@@ -297,8 +297,8 @@ test.describe('Wiki selection & display', () => {
             await page.goto(serverUrl);
             await page.click('[data-tab="wiki"]');
 
-            await expect(page.locator('#wiki-select option')).toHaveCount(2, { timeout: 10000 });
-            await page.selectOption('#wiki-select', 'wiki-detail-1');
+            await expect(page.locator('.wiki-card[data-wiki-id="wiki-detail-1"]')).toBeVisible({ timeout: 10000 });
+            await page.click('.wiki-card[data-wiki-id="wiki-detail-1"]');
 
             await expect(page.locator('#wiki-component-detail')).toBeVisible({ timeout: 5000 });
             await expect(page.locator('#wiki-empty')).toBeHidden();
@@ -318,15 +318,15 @@ test.describe('Wiki selection & display', () => {
             await page.click('[data-tab="wiki"]');
 
             // Select wiki
-            await expect(page.locator('#wiki-select option')).toHaveCount(2, { timeout: 10000 });
-            await page.selectOption('#wiki-select', 'wiki-desel-1');
+            await expect(page.locator('.wiki-card[data-wiki-id="wiki-desel-1"]')).toBeVisible({ timeout: 10000 });
+            await page.click('.wiki-card[data-wiki-id="wiki-desel-1"]');
             await expect(page.locator('#wiki-component-detail')).toBeVisible({ timeout: 5000 });
 
-            // Deselect wiki (select empty option)
-            await page.selectOption('#wiki-select', '');
+            // Deselect wiki (click back button to return to list view)
+            await page.click('#wiki-back-btn');
 
             await expect(page.locator('#wiki-component-detail')).toBeHidden();
-            await expect(page.locator('#wiki-empty')).toBeVisible();
+            await expect(page.locator('.wiki-card-list')).toBeVisible();
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         }
@@ -338,7 +338,7 @@ test.describe('Wiki selection & display', () => {
 // ================================================================
 
 test.describe('Delete wiki', () => {
-    test('delete wiki via REST API removes it from dropdown', async ({ page, serverUrl }) => {
+    test('delete wiki via REST API removes it from card list', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-wiki-del-'));
         try {
             const wikiDir = path.join(tmpDir, 'wiki-data');
@@ -348,7 +348,7 @@ test.describe('Delete wiki', () => {
             await page.goto(serverUrl);
             await page.click('[data-tab="wiki"]');
 
-            await expect(page.locator('#wiki-select option')).toHaveCount(2, { timeout: 10000 });
+            await expect(page.locator('.wiki-card[data-wiki-id="wiki-del-1"]')).toBeVisible({ timeout: 10000 });
 
             // Delete via REST API
             const res = await request(`${serverUrl}/api/wikis/wiki-del-1`, { method: 'DELETE' });
@@ -358,8 +358,8 @@ test.describe('Delete wiki', () => {
             await page.reload();
             await page.click('[data-tab="wiki"]');
 
-            // Only placeholder should remain
-            await expect(page.locator('#wiki-select option')).toHaveCount(1, { timeout: 10000 });
+            // No wiki cards should remain
+            await expect(page.locator('.wiki-card')).toHaveCount(0, { timeout: 10000 });
             await expect(page.locator('#wiki-empty')).toBeVisible();
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -368,18 +368,11 @@ test.describe('Delete wiki', () => {
 });
 
 // ================================================================
-// Admin Toggle
+// Admin Gear
 // ================================================================
 
-test.describe('Admin toggle', () => {
-    test('admin toggle hidden when no wiki selected', async ({ page, serverUrl }) => {
-        await page.goto(serverUrl);
-        await page.click('[data-tab="wiki"]');
-
-        await expect(page.locator('#wiki-admin-toggle')).toHaveClass(/hidden/);
-    });
-
-    test('admin toggle visible when wiki selected', async ({ page, serverUrl }) => {
+test.describe('Admin gear', () => {
+    test('gear icon visible when wiki selected (in detail view)', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-wiki-admin-'));
         try {
             const wikiDir = path.join(tmpDir, 'wiki-data');
@@ -389,16 +382,16 @@ test.describe('Admin toggle', () => {
             await page.goto(serverUrl);
             await page.click('[data-tab="wiki"]');
 
-            await expect(page.locator('#wiki-select option')).toHaveCount(2, { timeout: 10000 });
-            await page.selectOption('#wiki-select', 'wiki-admin-1');
+            await expect(page.locator('.wiki-card[data-wiki-id="wiki-admin-1"]')).toBeVisible({ timeout: 10000 });
+            await page.click('.wiki-card[data-wiki-id="wiki-admin-1"]');
 
-            await expect(page.locator('#wiki-admin-toggle')).not.toHaveClass(/hidden/, { timeout: 5000 });
+            await expect(page.locator('#wiki-detail-gear')).toBeVisible({ timeout: 5000 });
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         }
     });
 
-    test('admin toggle hides when wiki deselected', async ({ page, serverUrl }) => {
+    test('gear icon on card or in detail opens admin panel', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-wiki-toggle-'));
         try {
             const wikiDir = path.join(tmpDir, 'wiki-data');
@@ -408,15 +401,18 @@ test.describe('Admin toggle', () => {
             await page.goto(serverUrl);
             await page.click('[data-tab="wiki"]');
 
-            await expect(page.locator('#wiki-select option')).toHaveCount(2, { timeout: 10000 });
+            await expect(page.locator('.wiki-card[data-wiki-id="wiki-toggle-1"]')).toBeVisible({ timeout: 10000 });
 
-            // Select wiki — toggle becomes visible
-            await page.selectOption('#wiki-select', 'wiki-toggle-1');
-            await expect(page.locator('#wiki-admin-toggle')).not.toHaveClass(/hidden/, { timeout: 5000 });
+            // Select wiki and open admin via detail gear
+            await page.click('.wiki-card[data-wiki-id="wiki-toggle-1"]');
+            await expect(page.locator('#wiki-detail-gear')).toBeVisible({ timeout: 5000 });
 
-            // Deselect wiki — toggle hides
-            await page.selectOption('#wiki-select', '');
-            await expect(page.locator('#wiki-admin-toggle')).toHaveClass(/hidden/);
+            await page.click('#wiki-detail-gear');
+            await expect(page.locator('#wiki-admin-panel')).not.toHaveClass(/hidden/, { timeout: 5000 });
+
+            // Back to wiki — gear should remain visible when returning to detail
+            await page.click('#wiki-admin-back');
+            await expect(page.locator('#wiki-component-detail')).toBeVisible();
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         }
@@ -433,7 +429,7 @@ test.describe('Color & form options', () => {
         try {
             await page.goto(serverUrl);
             await page.click('[data-tab="wiki"]');
-            await page.click('#add-wiki-btn');
+            await page.click('#wiki-list-add-btn');
 
             await page.fill('#wiki-path', tmpDir);
             await page.fill('#wiki-name', 'Color Test Wiki');
@@ -457,7 +453,7 @@ test.describe('Color & form options', () => {
     test('generate AI checkbox defaults to checked', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
         await page.click('[data-tab="wiki"]');
-        await page.click('#add-wiki-btn');
+        await page.click('#wiki-list-add-btn');
 
         await expect(page.locator('#wiki-generate-ai')).toBeChecked();
     });
@@ -465,7 +461,7 @@ test.describe('Color & form options', () => {
     test('generate AI checkbox can be unchecked', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
         await page.click('[data-tab="wiki"]');
-        await page.click('#add-wiki-btn');
+        await page.click('#wiki-list-add-btn');
 
         await expect(page.locator('#wiki-generate-ai')).toBeChecked();
         await page.uncheck('#wiki-generate-ai');

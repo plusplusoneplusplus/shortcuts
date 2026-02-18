@@ -42,6 +42,8 @@ export interface ConversationCacheEntry {
     cachedAt: number;
 }
 
+export type WikiViewMode = 'list' | 'detail';
+
 export interface AppState {
     processes: any[];
     selectedId: string | null;
@@ -56,6 +58,8 @@ export interface AppState {
     activeRepoSubTab: RepoSubTab;
     selectedWikiId: string | null;
     selectedWikiComponentId: string | null;
+    wikiView: WikiViewMode;
+    wikis: any[];
     /** Client-side cache of loaded conversations (processId → turns). */
     conversationCache: Record<string, ConversationCacheEntry>;
 }
@@ -74,6 +78,8 @@ export const appState: AppState = {
     activeRepoSubTab: 'info',
     selectedWikiId: null,
     selectedWikiComponentId: null,
+    wikiView: 'list',
+    wikis: [],
     conversationCache: {},
 };
 

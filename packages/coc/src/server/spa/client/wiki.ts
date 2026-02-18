@@ -1,8 +1,9 @@
 /**
- * Wiki tab: wiki list selector, component browser, Add Wiki dialog.
+ * Wiki tab: wiki list sidebar, component browser, Add Wiki dialog.
  *
- * Handles fetching wikis, populating the sidebar selector,
- * loading component graphs, and rendering component content.
+ * Two-state sidebar:
+ *   - List view: wiki cards with status badges
+ *   - Detail view: back arrow + component tree
  */
 
 import { appState } from './state';
@@ -14,146 +15,407 @@ import { setWikiGraph, clearWikiState, showWikiHome, loadWikiComponent } from '.
 import { showWikiGraph, hideWikiGraph, isGraphShowing } from './wiki-graph';
 import { setupWikiAskListeners } from './wiki-ask';
 import { showWikiAdmin, hideWikiAdmin, resetAdminState } from './wiki-admin';
-import type { WikiData, ComponentGraph } from './wiki-types';
+import type { WikiData, ComponentGraph, WikiStatus } from './wiki-types';
 
 // ================================================================
 // Wiki data fetching
 // ================================================================
 
-let wikisData: WikiData[] = [];
-
 export async function fetchWikisData(): Promise<void> {
     try {
         const data = await fetchApi('/wikis');
         if (data && Array.isArray(data)) {
-            wikisData = data;
+            appState.wikis = data;
         } else if (data && data.wikis && Array.isArray(data.wikis)) {
-            wikisData = data.wikis;
+            appState.wikis = data.wikis;
         } else {
-            wikisData = [];
+            appState.wikis = [];
         }
-        populateWikiSelect();
+        renderWikiSidebar();
     } catch (err) {
         console.error('[wiki] fetchWikisData failed:', err);
-        wikisData = [];
-        populateWikiSelect();
-    }
-}
-
-function populateWikiSelect(): void {
-    const select = document.getElementById('wiki-select') as HTMLSelectElement | null;
-    if (!select) return;
-
-    // Preserve current selection
-    const currentValue = select.value;
-
-    select.innerHTML = '<option value="">Select wiki...</option>';
-    for (const wiki of wikisData) {
-        const opt = document.createElement('option');
-        opt.value = wiki.id;
-        opt.textContent = wiki.name || wiki.id;
-        select.appendChild(opt);
-    }
-
-    // Restore selection if still valid
-    if (currentValue && wikisData.some(w => w.id === currentValue)) {
-        select.value = currentValue;
+        appState.wikis = [];
+        renderWikiSidebar();
     }
 }
 
 // ================================================================
-// Wiki selection & component graph
+// Wiki status helpers
 // ================================================================
 
-async function onWikiSelected(wikiId: string): Promise<void> {
-    // Reset and hide admin panel when switching wikis
+function getWikiStatus(wiki: WikiData): WikiStatus {
+    if (wiki.status) return wiki.status;
+    if (wiki.loaded) return 'loaded';
+    return 'pending';
+}
+
+function getStatusBadge(status: WikiStatus): string {
+    switch (status) {
+        case 'loaded':
+            return '<span class="wiki-card-status wiki-card-status-ready">&#10003; Ready</span>';
+        case 'generating':
+            return '<span class="wiki-card-status wiki-card-status-generating">&#9203; Generating&hellip;</span>';
+        case 'error':
+            return '<span class="wiki-card-status wiki-card-status-error">&#9888; Error</span>';
+        case 'pending':
+        default:
+            return '<span class="wiki-card-status wiki-card-status-pending">&#9675; No data</span>';
+    }
+}
+
+// ================================================================
+// Sidebar rendering — two states
+// ================================================================
+
+export function renderWikiSidebar(): void {
+    if (appState.wikiView === 'detail' && appState.selectedWikiId) {
+        renderWikiDetailSidebar();
+    } else {
+        renderWikiListSidebar();
+    }
+}
+
+function renderWikiListSidebar(): void {
+    const sidebar = document.getElementById('wiki-sidebar');
+    if (!sidebar) return;
+
+    const wikis = appState.wikis as WikiData[];
+
+    let html = '<div class="wiki-sidebar-header wiki-sidebar-header-list">' +
+        '<span class="wiki-sidebar-title">Wikis</span>' +
+        '<button class="wiki-sidebar-add-btn" id="wiki-list-add-btn">+ Add</button>' +
+        '</div>';
+
+    html += '<div class="wiki-card-list" id="wiki-card-list">';
+
+    if (wikis.length === 0) {
+        html += '<div class="wiki-list-empty">' +
+            '<p>No wikis registered.</p>' +
+            '<p>Click &ldquo;+ Add&rdquo; to generate a wiki for a repository.</p>' +
+            '<button class="wiki-sidebar-add-btn wiki-empty-add-btn" id="wiki-empty-add-btn">+ Add Wiki</button>' +
+            '</div>';
+    } else {
+        for (const wiki of wikis) {
+            const status = getWikiStatus(wiki);
+            const color = wiki.color || '#848484';
+            const name = wiki.name || wiki.title || wiki.id;
+            const isActive = appState.selectedWikiId === wiki.id;
+            const activeClass = isActive ? ' wiki-card-active' : '';
+            const statusClass = ' wiki-card-' + status;
+
+            html += '<div class="wiki-card' + activeClass + statusClass + '" data-wiki-id="' + escapeHtmlClient(wiki.id) + '">' +
+                '<div class="wiki-card-row">' +
+                '<span class="wiki-card-dot" style="background:' + escapeHtmlClient(color) + '"></span>' +
+                '<span class="wiki-card-name">' + escapeHtmlClient(name) + '</span>' +
+                '<button class="wiki-card-gear" data-wiki-id="' + escapeHtmlClient(wiki.id) + '" title="Wiki Admin">&#9881;</button>' +
+                '</div>' +
+                '<div class="wiki-card-meta">';
+
+            if (status === 'loaded' && typeof wiki.componentCount === 'number') {
+                html += '<span class="wiki-card-count">' + wiki.componentCount + ' components</span> &middot; ';
+            }
+            html += getStatusBadge(status);
+            html += '</div></div>';
+        }
+    }
+
+    html += '</div>';
+
+    // Preserve component tree and content containers
+    const treeContainer = document.getElementById('wiki-component-tree');
+    const graphBtnContainer = document.getElementById('wiki-graph-btn-container');
+
+    sidebar.innerHTML = html +
+        '<div class="wiki-graph-btn-container hidden" id="wiki-graph-btn-container">' +
+        '<button class="wiki-graph-btn" id="wiki-graph-btn">&#x1F4CA; Dependency Graph</button>' +
+        '</div>' +
+        '<div class="wiki-component-tree" id="wiki-component-tree"></div>';
+
+    attachWikiListListeners();
+}
+
+function renderWikiDetailSidebar(): void {
+    const sidebar = document.getElementById('wiki-sidebar');
+    if (!sidebar) return;
+
+    const wiki = (appState.wikis as WikiData[]).find(w => w.id === appState.selectedWikiId);
+    const wikiName = wiki ? (wiki.name || wiki.title || wiki.id) : (appState.selectedWikiId || '');
+
+    let html = '<div class="wiki-sidebar-header wiki-sidebar-header-detail">' +
+        '<button class="wiki-sidebar-back-btn" id="wiki-back-btn">&larr;</button>' +
+        '<span class="wiki-sidebar-detail-name">' + escapeHtmlClient(wikiName) + '</span>' +
+        '<button class="wiki-card-gear wiki-detail-gear" id="wiki-detail-gear" title="Wiki Admin">&#9881;</button>' +
+        '</div>' +
+        '<div class="wiki-graph-btn-container hidden" id="wiki-graph-btn-container">' +
+        '<button class="wiki-graph-btn" id="wiki-graph-btn">&#x1F4CA; Dependency Graph</button>' +
+        '</div>' +
+        '<div class="wiki-component-tree" id="wiki-component-tree"></div>';
+
+    sidebar.innerHTML = html;
+    attachWikiDetailListeners();
+}
+
+// ================================================================
+// Event listener attachment
+// ================================================================
+
+function attachWikiListListeners(): void {
+    // Card clicks
+    document.querySelectorAll('.wiki-card').forEach(card => {
+        card.addEventListener('click', (e: Event) => {
+            const target = e.target as HTMLElement;
+            if (target.closest('.wiki-card-gear')) return;
+            const wikiId = card.getAttribute('data-wiki-id');
+            if (wikiId) onWikiCardClicked(wikiId);
+        });
+    });
+
+    // Gear icon clicks (stop propagation)
+    document.querySelectorAll('.wiki-card-gear').forEach(btn => {
+        btn.addEventListener('click', (e: Event) => {
+            e.stopPropagation();
+            const wikiId = btn.getAttribute('data-wiki-id');
+            if (wikiId) showWikiAdmin(wikiId);
+        });
+    });
+
+    // Add buttons
+    const addBtn = document.getElementById('wiki-list-add-btn');
+    if (addBtn) addBtn.addEventListener('click', showAddWikiDialog);
+
+    const emptyAddBtn = document.getElementById('wiki-empty-add-btn');
+    if (emptyAddBtn) emptyAddBtn.addEventListener('click', showAddWikiDialog);
+
+    // Graph button
+    const graphBtn = document.getElementById('wiki-graph-btn');
+    if (graphBtn) graphBtn.addEventListener('click', () => showWikiGraph());
+}
+
+function attachWikiDetailListeners(): void {
+    // Back button
+    const backBtn = document.getElementById('wiki-back-btn');
+    if (backBtn) backBtn.addEventListener('click', navigateToWikiList);
+
+    // Gear icon
+    const gearBtn = document.getElementById('wiki-detail-gear');
+    if (gearBtn) {
+        gearBtn.addEventListener('click', () => {
+            if (appState.selectedWikiId) showWikiAdmin(appState.selectedWikiId);
+        });
+    }
+
+    // Graph button
+    const graphBtn = document.getElementById('wiki-graph-btn');
+    if (graphBtn) graphBtn.addEventListener('click', () => showWikiGraph());
+}
+
+// ================================================================
+// Navigation
+// ================================================================
+
+async function onWikiCardClicked(wikiId: string): Promise<void> {
+    const wiki = (appState.wikis as WikiData[]).find(w => w.id === wikiId);
+    if (!wiki) return;
+
+    appState.selectedWikiId = wikiId;
+    appState.wikiView = 'detail';
+    setHashSilent(`#wiki/${encodeURIComponent(wikiId)}`);
+
     hideWikiAdmin();
     resetAdminState();
 
-    const adminToggle = document.getElementById('wiki-admin-toggle');
+    // Transition sidebar to detail view
+    renderWikiDetailSidebar();
 
-    if (!wikiId) {
-        appState.selectedWikiId = null;
-        clearWikiState();
-        clearWikiContent();
-        clearComponentTree();
-        const graphBtnContainer = document.getElementById('wiki-graph-btn-container');
-        if (graphBtnContainer) graphBtnContainer.classList.add('hidden');
-        if (adminToggle) adminToggle.classList.add('hidden');
-        return;
+    const status = getWikiStatus(wiki);
+
+    if (status === 'loaded') {
+        await loadWikiGraph(wikiId);
+    } else if (status === 'generating') {
+        showWikiGeneratingState();
+    } else if (status === 'error') {
+        showWikiErrorState(wiki.errorMessage);
+    } else {
+        showWikiPendingState();
     }
+}
 
-    appState.selectedWikiId = wikiId;
-    setHashSilent(`#wiki/${encodeURIComponent(wikiId)}`);
-    if (adminToggle) adminToggle.classList.remove('hidden');
-
-    // Fetch component graph
+async function loadWikiGraph(wikiId: string): Promise<void> {
     const graph = await fetchApi(`/wikis/${encodeURIComponent(wikiId)}/graph`) as ComponentGraph | null;
     const treeContainer = document.getElementById('wiki-component-tree');
     const graphBtnContainer = document.getElementById('wiki-graph-btn-container');
+
     if (graph && treeContainer) {
         setWikiGraph(wikiId, graph);
         buildComponentTree(graph, treeContainer);
         if (graphBtnContainer) graphBtnContainer.classList.remove('hidden');
-    } else if (treeContainer) {
-        clearWikiState();
-        treeContainer.innerHTML = '<div class="wiki-tree-empty">No component data available</div>';
-        if (graphBtnContainer) graphBtnContainer.classList.add('hidden');
-    }
 
-    // Show home view with project stats and component grid
-    if (graph) {
         const detail = document.getElementById('wiki-component-detail');
         const empty = document.getElementById('wiki-empty');
         if (detail) detail.classList.remove('hidden');
         if (empty) empty.classList.add('hidden');
         showWikiHome();
-    } else {
+    } else if (treeContainer) {
+        clearWikiState();
+        treeContainer.innerHTML = '<div class="wiki-tree-empty">No component data available</div>';
+        if (graphBtnContainer) graphBtnContainer.classList.add('hidden');
         showWikiEmptyState();
     }
 }
 
-export async function showWikiDetail(wikiId: string): Promise<void> {
-    const select = document.getElementById('wiki-select') as HTMLSelectElement | null;
+export function navigateToWikiList(): void {
+    appState.wikiView = 'list';
+    setHashSilent('#wiki');
 
-    // Ensure wikis are loaded
-    if (wikisData.length === 0) {
+    hideWikiAdmin();
+    resetAdminState();
+
+    renderWikiListSidebar();
+    showWikiEmptyState();
+}
+
+export async function showWikiDetail(wikiId: string): Promise<void> {
+    if (appState.wikis.length === 0) {
         await fetchWikisData();
     }
-
-    if (select) select.value = wikiId;
-    await onWikiSelected(wikiId);
+    await onWikiCardClicked(wikiId);
 }
 
 export async function showWikiComponent(wikiId: string, compId: string): Promise<void> {
-    // Ensure wiki is selected
     if (appState.selectedWikiId !== wikiId) {
         await showWikiDetail(wikiId);
     }
-
     setHashSilent(`#wiki/${encodeURIComponent(wikiId)}/component/${encodeURIComponent(compId)}`);
     await loadWikiComponent(wikiId, compId);
 }
+
+// ================================================================
+// Main content states
+// ================================================================
 
 function showWikiEmptyState(): void {
     const detail = document.getElementById('wiki-component-detail');
     const empty = document.getElementById('wiki-empty');
     if (detail) detail.classList.add('hidden');
-    if (empty) empty.classList.remove('hidden');
-}
-
-function clearWikiContent(): void {
-    const detail = document.getElementById('wiki-component-detail');
-    if (detail) {
-        detail.innerHTML = '';
-        detail.classList.add('hidden');
+    if (empty) {
+        empty.classList.remove('hidden');
+        const wikis = appState.wikis as WikiData[];
+        if (wikis.length === 0) {
+            empty.innerHTML = '<div class="empty-state">' +
+                '<div class="empty-state-icon">&#128214;</div>' +
+                '<div class="empty-state-title">No wikis yet</div>' +
+                '<div class="empty-state-text">Add a wiki to start browsing AI-generated documentation.</div>' +
+                '<button class="wiki-sidebar-add-btn wiki-main-add-btn" id="wiki-main-add-btn">+ Add Wiki</button>' +
+                '</div>';
+            const mainAddBtn = document.getElementById('wiki-main-add-btn');
+            if (mainAddBtn) mainAddBtn.addEventListener('click', showAddWikiDialog);
+        } else {
+            empty.innerHTML = '<div class="empty-state">' +
+                '<div class="empty-state-icon">&#128214;</div>' +
+                '<div class="empty-state-title">Select a wiki</div>' +
+                '<div class="empty-state-text">Choose a wiki from the sidebar to browse its documentation.</div>' +
+                '</div>';
+        }
     }
-    showWikiEmptyState();
 }
 
-function clearComponentTree(): void {
-    const tree = document.getElementById('wiki-component-tree');
-    if (tree) tree.innerHTML = '';
+function showWikiGeneratingState(): void {
+    const detail = document.getElementById('wiki-component-detail');
+    const empty = document.getElementById('wiki-empty');
+    if (detail) detail.classList.add('hidden');
+    if (empty) {
+        empty.classList.remove('hidden');
+        empty.innerHTML = '<div class="empty-state">' +
+            '<div class="empty-state-icon wiki-generating-icon">&#9203;</div>' +
+            '<div class="empty-state-title">Generating wiki&hellip;</div>' +
+            '<div class="empty-state-text">This wiki is currently being generated. It will appear here when ready.</div>' +
+            '</div>';
+    }
+}
+
+function showWikiErrorState(errorMessage?: string): void {
+    const detail = document.getElementById('wiki-component-detail');
+    const empty = document.getElementById('wiki-empty');
+    if (detail) detail.classList.add('hidden');
+    if (empty) {
+        empty.classList.remove('hidden');
+        const msg = errorMessage ? escapeHtmlClient(errorMessage) : 'An error occurred while generating this wiki.';
+        empty.innerHTML = '<div class="empty-state">' +
+            '<div class="empty-state-icon wiki-error-icon">&#9888;</div>' +
+            '<div class="empty-state-title">Error</div>' +
+            '<div class="empty-state-text">' + msg + '</div>' +
+            '</div>';
+    }
+}
+
+function showWikiPendingState(): void {
+    const detail = document.getElementById('wiki-component-detail');
+    const empty = document.getElementById('wiki-empty');
+    if (detail) detail.classList.add('hidden');
+    if (empty) {
+        empty.classList.remove('hidden');
+        empty.innerHTML = '<div class="empty-state">' +
+            '<div class="empty-state-icon">&#9675;</div>' +
+            '<div class="empty-state-title">No data yet</div>' +
+            '<div class="empty-state-text">This wiki has been registered but not yet generated. Use the admin panel to start generation.</div>' +
+            '</div>';
+    }
+}
+
+export function showWikiNotFound(): void {
+    const detail = document.getElementById('wiki-component-detail');
+    const empty = document.getElementById('wiki-empty');
+    if (detail) detail.classList.add('hidden');
+    if (empty) {
+        empty.classList.remove('hidden');
+        empty.innerHTML = '<div class="empty-state">' +
+            '<div class="empty-state-icon">&#128214;</div>' +
+            '<div class="empty-state-title">Wiki not found</div>' +
+            '<div class="empty-state-text">It may have been removed.</div>' +
+            '</div>';
+    }
+}
+
+// ================================================================
+// WebSocket event handlers
+// ================================================================
+
+export function handleWikiReload(wikiId: string): void {
+    const wiki = (appState.wikis as WikiData[]).find(w => w.id === wikiId);
+    if (wiki) {
+        wiki.loaded = true;
+        wiki.status = 'loaded';
+    }
+    renderWikiSidebar();
+
+    if (appState.selectedWikiId === wikiId && appState.wikiView === 'detail') {
+        loadWikiGraph(wikiId);
+    }
+}
+
+export function handleWikiRebuilding(wikiId: string): void {
+    const wiki = (appState.wikis as WikiData[]).find(w => w.id === wikiId);
+    if (wiki) {
+        wiki.status = 'generating';
+    }
+    renderWikiSidebar();
+
+    if (appState.selectedWikiId === wikiId && appState.wikiView === 'detail') {
+        showWikiGeneratingState();
+    }
+}
+
+export function handleWikiError(wikiId: string, message?: string): void {
+    const wiki = (appState.wikis as WikiData[]).find(w => w.id === wikiId);
+    if (wiki) {
+        wiki.status = 'error';
+        wiki.errorMessage = message;
+    }
+    renderWikiSidebar();
+
+    if (appState.selectedWikiId === wikiId && appState.wikiView === 'detail') {
+        showWikiErrorState(message);
+    }
 }
 
 // ================================================================
@@ -194,7 +456,6 @@ async function submitAddWiki(e: Event): Promise<void> {
     const color = colorSelect?.value || '#0078d4';
     const generateWithAI = generateAI?.checked ?? true;
 
-    // Generate a deterministic ID from the path
     const id = 'wiki-' + hashString(repoPath);
 
     try {
@@ -344,21 +605,8 @@ function selectWikiBrowserPath(): void {
 }
 
 // ================================================================
-// Event listeners
+// Event listeners (dialog-level — always present in DOM)
 // ================================================================
-
-// Wiki selector
-const wikiSelect = document.getElementById('wiki-select');
-if (wikiSelect) {
-    wikiSelect.addEventListener('change', (e: Event) => {
-        const value = (e.target as HTMLSelectElement).value;
-        onWikiSelected(value);
-    });
-}
-
-// Add wiki button
-const addWikiBtn = document.getElementById('add-wiki-btn');
-if (addWikiBtn) addWikiBtn.addEventListener('click', showAddWikiDialog);
 
 // Add wiki form
 const addWikiForm = document.getElementById('add-wiki-form');
@@ -390,25 +638,18 @@ if (wikiPathBrowserCancel) wikiPathBrowserCancel.addEventListener('click', close
 const wikiPathBrowserSelect = document.getElementById('wiki-path-browser-select');
 if (wikiPathBrowserSelect) wikiPathBrowserSelect.addEventListener('click', selectWikiBrowserPath);
 
-// Dependency graph button
-const wikiGraphBtn = document.getElementById('wiki-graph-btn');
-if (wikiGraphBtn) wikiGraphBtn.addEventListener('click', () => showWikiGraph());
-
-// Admin toggle button
-const adminToggle = document.getElementById('wiki-admin-toggle');
-if (adminToggle) {
-    adminToggle.addEventListener('click', () => {
-        const wikiId = appState.selectedWikiId;
-        if (wikiId) showWikiAdmin(wikiId);
-    });
-}
-
 // Expose for global access
 (window as any).fetchWikisData = fetchWikisData;
 (window as any).showWikiDetail = showWikiDetail;
 (window as any).showWikiComponent = showWikiComponent;
 (window as any).showAddWikiDialog = showAddWikiDialog;
 (window as any).hideAddWikiDialog = hideAddWikiDialog;
+(window as any).navigateToWikiList = navigateToWikiList;
+(window as any).renderWikiSidebar = renderWikiSidebar;
+(window as any).handleWikiReload = handleWikiReload;
+(window as any).handleWikiRebuilding = handleWikiRebuilding;
+(window as any).handleWikiError = handleWikiError;
+(window as any).showWikiNotFound = showWikiNotFound;
 
 // Initialize Ask AI listeners
 setupWikiAskListeners();

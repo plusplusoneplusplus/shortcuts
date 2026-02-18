@@ -4,12 +4,20 @@
  * Mirrors the server-side wiki types needed by the SPA dashboard.
  */
 
+export type WikiStatus = 'loaded' | 'generating' | 'error' | 'pending';
+
 export interface WikiData {
     id: string;
     name: string;
     repoPath: string;
     color?: string;
     generatedAt?: string;
+    loaded?: boolean;
+    componentCount?: number;
+    status?: WikiStatus;
+    title?: string;
+    aiEnabled?: boolean;
+    errorMessage?: string;
 }
 
 export interface ComponentGraph {

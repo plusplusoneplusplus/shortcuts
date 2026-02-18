@@ -74,7 +74,7 @@ function createCustomWiki(
     return graph;
 }
 
-/** Navigate to wiki tab and select a wiki by ID from the dropdown. */
+/** Navigate to wiki tab and select a wiki by clicking its card. */
 async function selectWiki(
     page: import('@playwright/test').Page,
     serverUrl: string,
@@ -82,8 +82,8 @@ async function selectWiki(
 ): Promise<void> {
     await page.goto(serverUrl);
     await page.click('[data-tab="wiki"]');
-    await expect(page.locator('#wiki-select')).toContainText(wikiId, { timeout: 10_000 });
-    await page.selectOption('#wiki-select', wikiId);
+    await expect(page.locator('.wiki-card[data-wiki-id="' + wikiId + '"]')).toBeVisible({ timeout: 10_000 });
+    await page.click('.wiki-card[data-wiki-id="' + wikiId + '"]');
     // Wait for tree to populate
     await expect(page.locator('#wiki-component-tree')).not.toBeEmpty({ timeout: 5_000 });
 }
@@ -148,8 +148,8 @@ test.describe('Component tree rendering', () => {
             await page.goto(serverUrl);
             await page.click('[data-tab="wiki"]');
 
-            await expect(page.locator('#wiki-select option')).toHaveCount(2, { timeout: 10_000 });
-            await page.selectOption('#wiki-select', 'empty-wiki');
+            await expect(page.locator('.wiki-card[data-wiki-id="empty-wiki"]')).toBeVisible({ timeout: 10_000 });
+            await page.click('.wiki-card[data-wiki-id="empty-wiki"]');
 
             const tree = page.locator('#wiki-component-tree');
             await expect(tree.locator('.wiki-tree-empty')).toBeVisible({ timeout: 5_000 });

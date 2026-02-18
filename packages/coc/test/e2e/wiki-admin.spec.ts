@@ -61,13 +61,13 @@ async function selectWikiAndOpenAdmin(
 ): Promise<void> {
     await page.goto(serverUrl);
     await page.click('[data-tab="wiki"]');
-    await expect(page.locator('#wiki-select')).toContainText(wikiId, { timeout: 10_000 });
-    await page.selectOption('#wiki-select', wikiId);
+    await expect(page.locator('.wiki-card[data-wiki-id="' + wikiId + '"]')).toBeVisible({ timeout: 10_000 });
+    await page.click('.wiki-card[data-wiki-id="' + wikiId + '"]');
     await expect(page.locator('#wiki-component-tree')).not.toBeEmpty({ timeout: 5_000 });
 
     // Open admin panel
-    await expect(page.locator('#wiki-admin-toggle')).not.toHaveClass(/hidden/, { timeout: 5_000 });
-    await page.click('#wiki-admin-toggle');
+    await expect(page.locator('#wiki-detail-gear')).toBeVisible({ timeout: 5_000 });
+    await page.click('#wiki-detail-gear');
     await expect(page.locator('#wiki-admin-panel')).not.toHaveClass(/hidden/, { timeout: 5_000 });
 }
 
@@ -113,16 +113,16 @@ test.describe('Wiki Admin Panel', () => {
 
                 await page.goto(serverUrl);
                 await page.click('[data-tab="wiki"]');
-                await expect(page.locator('#wiki-select option')).toHaveCount(2, { timeout: 10_000 });
-                await page.selectOption('#wiki-select', 'admin-toggle-wiki');
+                await expect(page.locator('.wiki-card[data-wiki-id="admin-toggle-wiki"]')).toBeVisible({ timeout: 10_000 });
+                await page.click('.wiki-card[data-wiki-id="admin-toggle-wiki"]');
                 await expect(page.locator('#wiki-component-tree')).not.toBeEmpty({ timeout: 5_000 });
 
                 // Admin panel should be hidden initially
                 // (It may not exist in DOM yet until first toggle)
                 const adminPanel = page.locator('#wiki-admin-panel');
 
-                // Click admin toggle
-                await page.click('#wiki-admin-toggle');
+                // Click admin gear
+                await page.click('#wiki-detail-gear');
 
                 // Admin panel should be visible
                 await expect(adminPanel).not.toHaveClass(/hidden/, { timeout: 5_000 });

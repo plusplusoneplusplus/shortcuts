@@ -1,5 +1,8 @@
 /**
  * SPA Dashboard Tests — Wiki tab scaffold (HTML, bundle, CSS, routing)
+ *
+ * Covers the redesigned wiki page with sidebar list/detail views,
+ * wiki cards with status badges, and WebSocket event handling.
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -45,6 +48,18 @@ describe('wiki client source files', () => {
         const content = readClientFile('wiki-types.ts');
         expect(content).toContain('export interface ComponentInfo');
     });
+
+    it('wiki-types.ts exports WikiStatus type', () => {
+        const content = readClientFile('wiki-types.ts');
+        expect(content).toContain('export type WikiStatus');
+    });
+
+    it('WikiData includes status fields', () => {
+        const content = readClientFile('wiki-types.ts');
+        expect(content).toContain('loaded?: boolean');
+        expect(content).toContain('componentCount?: number');
+        expect(content).toContain('status?: WikiStatus');
+    });
 });
 
 // ============================================================================
@@ -65,6 +80,26 @@ describe('state.ts — wiki additions', () => {
 
     it('appState initializes selectedWikiId to null', () => {
         expect(content).toMatch(/selectedWikiId:\s*null/);
+    });
+
+    it('AppState has wikiView field', () => {
+        expect(content).toContain('wikiView');
+    });
+
+    it('appState initializes wikiView to list', () => {
+        expect(content).toMatch(/wikiView:\s*'list'/);
+    });
+
+    it('AppState has wikis cache array', () => {
+        expect(content).toContain('wikis: any[]');
+    });
+
+    it('appState initializes wikis to empty array', () => {
+        expect(content).toMatch(/wikis:\s*\[\]/);
+    });
+
+    it('exports WikiViewMode type', () => {
+        expect(content).toContain("export type WikiViewMode = 'list' | 'detail'");
     });
 });
 
@@ -100,6 +135,14 @@ describe('client bundle — wiki module', () => {
         expect(script).toContain('buildComponentTree');
     });
 
+    it('defines navigateToWikiList function', () => {
+        expect(script).toContain('navigateToWikiList');
+    });
+
+    it('defines renderWikiSidebar function', () => {
+        expect(script).toContain('renderWikiSidebar');
+    });
+
     it('posts to /wikis endpoint on add wiki', () => {
         expect(script).toContain('/wikis');
     });
@@ -122,6 +165,22 @@ describe('client bundle — wiki module', () => {
 
     it('exposes showWikiComponent on window', () => {
         expect(script).toContain('showWikiComponent');
+    });
+
+    it('exposes navigateToWikiList on window', () => {
+        expect(script).toContain('navigateToWikiList');
+    });
+
+    it('exposes handleWikiReload on window', () => {
+        expect(script).toContain('handleWikiReload');
+    });
+
+    it('exposes handleWikiRebuilding on window', () => {
+        expect(script).toContain('handleWikiRebuilding');
+    });
+
+    it('exposes handleWikiError on window', () => {
+        expect(script).toContain('handleWikiError');
     });
 });
 
@@ -180,7 +239,7 @@ describe('HTML template — wiki tab', () => {
 });
 
 // ============================================================================
-// HTML template — wiki view structure
+// HTML template — wiki view structure (redesigned sidebar)
 // ============================================================================
 
 describe('HTML template — wiki view structure', () => {
@@ -200,11 +259,15 @@ describe('HTML template — wiki view structure', () => {
         expect(html).toContain('id="wiki-content"');
     });
 
-    it('contains wiki selector with dropdown and add button', () => {
-        expect(html).toContain('id="wiki-select"');
-        expect(html).toContain('Select wiki...');
-        expect(html).toContain('id="add-wiki-btn"');
-        expect(html).toContain('+ Add Wiki');
+    it('contains sidebar header with title and add button', () => {
+        expect(html).toContain('wiki-sidebar-header');
+        expect(html).toContain('wiki-sidebar-title');
+        expect(html).toContain('wiki-sidebar-add-btn');
+        expect(html).toContain('+ Add');
+    });
+
+    it('contains wiki card list container', () => {
+        expect(html).toContain('id="wiki-card-list"');
     });
 
     it('contains wiki component tree container', () => {
@@ -218,6 +281,10 @@ describe('HTML template — wiki view structure', () => {
 
     it('contains wiki component detail container', () => {
         expect(html).toContain('id="wiki-component-detail"');
+    });
+
+    it('does not contain old dropdown selector', () => {
+        expect(html).not.toContain('id="wiki-select"');
     });
 });
 
@@ -305,6 +372,10 @@ describe('core.ts — wiki hash routing', () => {
 
     it('calls showWikiComponent for component route', () => {
         expect(content).toContain('showWikiComponent');
+    });
+
+    it('calls navigateToWikiList for bare #wiki route', () => {
+        expect(content).toContain('navigateToWikiList');
     });
 });
 
@@ -394,7 +465,7 @@ describe('HTML template — enableWiki true CDN scripts', () => {
 });
 
 // ============================================================================
-// Client bundle — wiki list fetch and populate robustness
+// Client bundle — wiki list fetch robustness
 // ============================================================================
 
 describe('client bundle — wiki list fetch robustness', () => {
@@ -413,16 +484,20 @@ describe('client bundle — wiki list fetch robustness', () => {
         expect(script).toContain('fetchWikisData failed');
     });
 
-    it('populateWikiSelect clears previous options before populating', () => {
-        expect(script).toContain('Select wiki...');
+    it('renders wiki cards with status badges', () => {
+        expect(script).toContain('wiki-card-status');
     });
 
-    it('populateWikiSelect uses wiki.name with fallback to wiki.id', () => {
-        expect(script).toContain('wiki.name || wiki.id');
+    it('renders wiki card color dots', () => {
+        expect(script).toContain('wiki-card-dot');
     });
 
-    it('populateWikiSelect preserves current selection if still valid', () => {
-        expect(script).toContain('currentValue');
+    it('renders wiki card names', () => {
+        expect(script).toContain('wiki-card-name');
+    });
+
+    it('renders wiki card gear icons for admin', () => {
+        expect(script).toContain('wiki-card-gear');
     });
 });
 
@@ -444,9 +519,192 @@ describe('wiki.ts — fetchWikisData error handling', () => {
         expect(content).toContain('fetchWikisData failed');
     });
 
-    it('still populates select on error (with empty list)', () => {
-        // After catch, wikisData should be set to [] and populateWikiSelect called
-        expect(content).toContain('wikisData = [];');
+    it('resets wikis to empty array on error', () => {
+        expect(content).toContain('appState.wikis = [];');
+    });
+
+    it('calls renderWikiSidebar after fetch', () => {
+        expect(content).toContain('renderWikiSidebar()');
+    });
+});
+
+// ============================================================================
+// wiki.ts source — sidebar list/detail views
+// ============================================================================
+
+describe('wiki.ts — sidebar list/detail views', () => {
+    let content: string;
+    beforeAll(() => { content = readClientFile('wiki.ts'); });
+
+    it('has renderWikiSidebar function', () => {
+        expect(content).toContain('function renderWikiSidebar');
+    });
+
+    it('has renderWikiListSidebar function', () => {
+        expect(content).toContain('function renderWikiListSidebar');
+    });
+
+    it('has renderWikiDetailSidebar function', () => {
+        expect(content).toContain('function renderWikiDetailSidebar');
+    });
+
+    it('renders back button in detail view', () => {
+        expect(content).toContain('wiki-sidebar-back-btn');
+        expect(content).toContain('wiki-back-btn');
+    });
+
+    it('renders wiki card list in list view', () => {
+        expect(content).toContain('wiki-card-list');
+    });
+
+    it('has navigateToWikiList function', () => {
+        expect(content).toContain('function navigateToWikiList');
+    });
+
+    it('sets wikiView to list on back navigation', () => {
+        expect(content).toContain("appState.wikiView = 'list'");
+    });
+
+    it('sets wikiView to detail on card click', () => {
+        expect(content).toContain("appState.wikiView = 'detail'");
+    });
+});
+
+// ============================================================================
+// wiki.ts source — wiki status handling
+// ============================================================================
+
+describe('wiki.ts — wiki status handling', () => {
+    let content: string;
+    beforeAll(() => { content = readClientFile('wiki.ts'); });
+
+    it('has getWikiStatus helper', () => {
+        expect(content).toContain('function getWikiStatus');
+    });
+
+    it('has getStatusBadge helper', () => {
+        expect(content).toContain('function getStatusBadge');
+    });
+
+    it('handles loaded status', () => {
+        expect(content).toContain('wiki-card-status-ready');
+    });
+
+    it('handles generating status', () => {
+        expect(content).toContain('wiki-card-status-generating');
+    });
+
+    it('handles error status', () => {
+        expect(content).toContain('wiki-card-status-error');
+    });
+
+    it('handles pending status', () => {
+        expect(content).toContain('wiki-card-status-pending');
+    });
+});
+
+// ============================================================================
+// wiki.ts source — empty states
+// ============================================================================
+
+describe('wiki.ts — empty and special states', () => {
+    let content: string;
+    beforeAll(() => { content = readClientFile('wiki.ts'); });
+
+    it('has showWikiNotFound function', () => {
+        expect(content).toContain('function showWikiNotFound');
+        expect(content).toContain('Wiki not found');
+    });
+
+    it('shows empty state with add CTA when no wikis', () => {
+        expect(content).toContain('No wikis yet');
+        expect(content).toContain('wiki-main-add-btn');
+    });
+
+    it('shows generating state', () => {
+        expect(content).toContain('Generating wiki');
+    });
+
+    it('shows error state with message', () => {
+        expect(content).toContain('function showWikiErrorState');
+    });
+
+    it('shows pending state', () => {
+        expect(content).toContain('function showWikiPendingState');
+        expect(content).toContain('No data yet');
+    });
+});
+
+// ============================================================================
+// wiki.ts source — WebSocket event handlers
+// ============================================================================
+
+describe('wiki.ts — WebSocket event handlers', () => {
+    let content: string;
+    beforeAll(() => { content = readClientFile('wiki.ts'); });
+
+    it('has handleWikiReload function', () => {
+        expect(content).toContain('function handleWikiReload');
+    });
+
+    it('handleWikiReload updates wiki status to loaded', () => {
+        expect(content).toContain("wiki.status = 'loaded'");
+    });
+
+    it('has handleWikiRebuilding function', () => {
+        expect(content).toContain('function handleWikiRebuilding');
+    });
+
+    it('handleWikiRebuilding updates wiki status to generating', () => {
+        expect(content).toContain("wiki.status = 'generating'");
+    });
+
+    it('has handleWikiError function', () => {
+        expect(content).toContain('function handleWikiError');
+    });
+
+    it('handleWikiError updates wiki status to error', () => {
+        expect(content).toContain("wiki.status = 'error'");
+    });
+
+    it('re-renders sidebar after WebSocket events', () => {
+        const reloadIdx = content.indexOf('function handleWikiReload');
+        const rebuildIdx = content.indexOf('function handleWikiRebuilding');
+        const errorIdx = content.indexOf('function handleWikiError');
+        const afterReload = content.slice(reloadIdx, rebuildIdx);
+        const afterRebuild = content.slice(rebuildIdx, errorIdx);
+        const afterError = content.slice(errorIdx, errorIdx + 500);
+        expect(afterReload).toContain('renderWikiSidebar()');
+        expect(afterRebuild).toContain('renderWikiSidebar()');
+        expect(afterError).toContain('renderWikiSidebar()');
+    });
+});
+
+// ============================================================================
+// websocket.ts — wiki event handling
+// ============================================================================
+
+describe('websocket.ts — wiki event handling', () => {
+    let content: string;
+    beforeAll(() => { content = readClientFile('websocket.ts'); });
+
+    it('handles wiki-reload WebSocket event', () => {
+        expect(content).toContain("msg.type === 'wiki-reload'");
+        expect(content).toContain('handleWikiReload');
+    });
+
+    it('handles wiki-rebuilding WebSocket event', () => {
+        expect(content).toContain("msg.type === 'wiki-rebuilding'");
+        expect(content).toContain('handleWikiRebuilding');
+    });
+
+    it('handles wiki-error WebSocket event', () => {
+        expect(content).toContain("msg.type === 'wiki-error'");
+        expect(content).toContain('handleWikiError');
+    });
+
+    it('passes error message from wiki-error event', () => {
+        expect(content).toContain('msg.message');
     });
 });
 
@@ -465,8 +723,57 @@ describe('CSS — wiki styles', () => {
         expect(html).toContain('.wiki-sidebar');
     });
 
-    it('defines wiki-selector styles', () => {
-        expect(html).toContain('.wiki-selector');
+    it('defines wiki-sidebar-header styles', () => {
+        expect(html).toContain('.wiki-sidebar-header');
+    });
+
+    it('defines wiki-sidebar-title styles', () => {
+        expect(html).toContain('.wiki-sidebar-title');
+    });
+
+    it('defines wiki-sidebar-add-btn styles', () => {
+        expect(html).toContain('.wiki-sidebar-add-btn');
+    });
+
+    it('defines wiki-sidebar-back-btn styles', () => {
+        expect(html).toContain('.wiki-sidebar-back-btn');
+    });
+
+    it('defines wiki-card styles', () => {
+        expect(html).toContain('.wiki-card');
+    });
+
+    it('defines wiki-card-dot styles', () => {
+        expect(html).toContain('.wiki-card-dot');
+    });
+
+    it('defines wiki-card-name styles', () => {
+        expect(html).toContain('.wiki-card-name');
+    });
+
+    it('defines wiki-card-gear styles with hover opacity', () => {
+        expect(html).toContain('.wiki-card-gear');
+        expect(html).toContain('.wiki-card:hover .wiki-card-gear');
+    });
+
+    it('defines wiki-card-active styles with left border accent', () => {
+        expect(html).toContain('.wiki-card-active');
+    });
+
+    it('defines wiki-card-status badge styles', () => {
+        expect(html).toContain('.wiki-card-status');
+        expect(html).toContain('.wiki-card-status-ready');
+        expect(html).toContain('.wiki-card-status-generating');
+        expect(html).toContain('.wiki-card-status-error');
+        expect(html).toContain('.wiki-card-status-pending');
+    });
+
+    it('defines wiki-pulse animation for generating status', () => {
+        expect(html).toContain('@keyframes wiki-pulse');
+    });
+
+    it('defines wiki-card-list styles', () => {
+        expect(html).toContain('.wiki-card-list');
     });
 
     it('defines wiki-component-tree styles', () => {
@@ -550,5 +857,36 @@ describe('CSS — wiki styles', () => {
     it('defines copy button styles', () => {
         expect(html).toContain('.copy-btn');
         expect(html).toContain('.heading-anchor');
+    });
+
+    it('defines responsive breakpoints for wiki layout', () => {
+        expect(html).toContain('@media (max-width: 900px)');
+        expect(html).toContain('@media (max-width: 768px)');
+    });
+});
+
+// ============================================================================
+// wiki-routes.ts — componentCount in GET /api/wikis
+// ============================================================================
+
+describe('wiki-routes.ts — componentCount in API response', () => {
+    let content: string;
+    beforeAll(() => {
+        content = fs.readFileSync(
+            path.resolve(__dirname, '..', '..', 'src', 'server', 'wiki', 'wiki-routes.ts'),
+            'utf8'
+        );
+    });
+
+    it('includes componentCount for loaded wikis', () => {
+        expect(content).toContain('componentCount');
+    });
+
+    it('reads component count from graph', () => {
+        expect(content).toContain('runtime.wikiData?.graph?.components?.length');
+    });
+
+    it('includes color from persisted wiki data', () => {
+        expect(content).toContain('color: persisted?.color');
     });
 });

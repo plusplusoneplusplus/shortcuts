@@ -184,10 +184,15 @@ export function handleWsMessage(msg: any): void {
             }
         }
     } else if (msg.type === 'tasks-changed' && msg.workspaceId) {
-        // Re-fetch the task list if the changed workspace matches the currently viewed repo
         if (taskPanelState.selectedWorkspaceId === msg.workspaceId) {
             fetchRepoTasks(msg.workspaceId);
         }
+    } else if (msg.type === 'wiki-reload' && msg.wikiId) {
+        (window as any).handleWikiReload?.(msg.wikiId);
+    } else if (msg.type === 'wiki-rebuilding' && msg.wikiId) {
+        (window as any).handleWikiRebuilding?.(msg.wikiId);
+    } else if (msg.type === 'wiki-error' && msg.wikiId) {
+        (window as any).handleWikiError?.(msg.wikiId, msg.message);
     }
 }
 

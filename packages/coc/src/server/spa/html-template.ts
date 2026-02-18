@@ -137,13 +137,11 @@ ${bundleCss}
     <div class="app-view hidden" id="view-wiki">
         <div class="wiki-layout">
             <aside class="wiki-sidebar" id="wiki-sidebar">
-                <div class="wiki-selector" id="wiki-selector">
-                    <select id="wiki-select" class="workspace-select">
-                        <option value="">Select wiki...</option>
-                    </select>
-                    <button class="enqueue-btn-primary" id="add-wiki-btn">+ Add Wiki</button>
-                    <button class="wiki-admin-toggle-btn hidden" id="wiki-admin-toggle" title="Wiki Admin">&#9881;</button>
+                <div class="wiki-sidebar-header wiki-sidebar-header-list">
+                    <span class="wiki-sidebar-title">Wikis</span>
+                    <button class="wiki-sidebar-add-btn" id="wiki-list-add-btn">+ Add</button>
                 </div>
+                <div class="wiki-card-list" id="wiki-card-list"></div>
                 <div class="wiki-graph-btn-container hidden" id="wiki-graph-btn-container">
                     <button class="wiki-graph-btn" id="wiki-graph-btn">&#x1F4CA; Dependency Graph</button>
                 </div>
@@ -153,7 +151,7 @@ ${bundleCss}
                 <div class="empty-state" id="wiki-empty">
                     <div class="empty-state-icon">&#128214;</div>
                     <div class="empty-state-title">Select a wiki</div>
-                    <div class="empty-state-text">Choose a wiki from the sidebar or add a new one.</div>
+                    <div class="empty-state-text">Choose a wiki from the sidebar to browse its documentation.</div>
                 </div>
                 <div class="wiki-component-detail hidden" id="wiki-component-detail">
                     <div id="wiki-content-scroll" class="wiki-content-scroll">

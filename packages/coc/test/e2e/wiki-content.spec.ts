@@ -66,8 +66,8 @@ async function selectWikiAndComponent(
 ): Promise<void> {
     await page.goto(serverUrl);
     await page.click('[data-tab="wiki"]');
-    await expect(page.locator('#wiki-select')).toContainText(wikiId, { timeout: 10_000 });
-    await page.selectOption('#wiki-select', wikiId);
+    await expect(page.locator('.wiki-card[data-wiki-id="' + wikiId + '"]')).toBeVisible({ timeout: 10_000 });
+    await page.click('.wiki-card[data-wiki-id="' + wikiId + '"]');
     await expect(page.locator('#wiki-component-tree')).not.toBeEmpty({ timeout: 5_000 });
     await page.click(`.wiki-tree-component[data-id="${componentId}"]`);
     await expect(page.locator('#wiki-article-content')).not.toBeEmpty({ timeout: 5_000 });

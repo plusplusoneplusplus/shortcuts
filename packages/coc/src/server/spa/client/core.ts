@@ -205,6 +205,7 @@ export function handleHashChange(): void {
     // #wiki
     if (hash === 'wiki') {
         (window as any).switchTab?.('wiki');
+        (window as any).navigateToWikiList?.();
         return;
     }
 

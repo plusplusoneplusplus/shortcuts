@@ -141,38 +141,48 @@ export function registerWikiRoutes(
             const seen = new Set<string>();
             const wikis: Array<Record<string, unknown>> = [];
 
+            // Build a color lookup from persisted wikis
+            let persistedMap = new Map<string, WikiInfo>();
+            if (store) {
+                try {
+                    const persisted = await store.getWikis();
+                    for (const wiki of persisted) {
+                        persistedMap.set(wiki.id, wiki);
+                    }
+                } catch {
+                    // Ignore store read errors
+                }
+            }
+
             for (const id of wikiManager.getRegisteredIds()) {
                 const runtime = wikiManager.get(id)!;
                 seen.add(id);
+                const componentCount = runtime.wikiData?.graph?.components?.length ?? 0;
+                const persisted = persistedMap.get(id);
                 wikis.push({
                     id,
                     wikiDir: runtime.registration.wikiDir,
                     repoPath: runtime.registration.repoPath,
                     aiEnabled: runtime.registration.aiEnabled,
                     title: runtime.registration.title,
+                    color: persisted?.color,
                     loaded: true,
+                    componentCount,
                 });
             }
 
             // Add persisted wikis that aren't loaded (e.g., pending generation)
-            if (store) {
-                try {
-                    const persisted = await store.getWikis();
-                    for (const wiki of persisted) {
-                        if (seen.has(wiki.id)) continue;
-                        wikis.push({
-                            id: wiki.id,
-                            name: wiki.name,
-                            wikiDir: wiki.wikiDir,
-                            repoPath: wiki.repoPath,
-                            aiEnabled: wiki.aiEnabled,
-                            color: wiki.color,
-                            loaded: false,
-                        });
-                    }
-                } catch {
-                    // Ignore store read errors
-                }
+            for (const [id, wiki] of persistedMap) {
+                if (seen.has(id)) continue;
+                wikis.push({
+                    id: wiki.id,
+                    name: wiki.name,
+                    wikiDir: wiki.wikiDir,
+                    repoPath: wiki.repoPath,
+                    aiEnabled: wiki.aiEnabled,
+                    color: wiki.color,
+                    loaded: false,
+                });
             }
 
             sendJson(res, wikis);

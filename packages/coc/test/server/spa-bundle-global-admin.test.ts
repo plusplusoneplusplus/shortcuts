@@ -675,10 +675,10 @@ describe('global admin — independent of wiki admin', () => {
         expect(content).not.toContain("from './admin'");
     });
 
-    it('admin toggle has different id than wiki-admin-toggle', () => {
+    it('admin toggle has different id than wiki admin gear', () => {
         const html = generateDashboardHtml();
         expect(html).toContain('id="admin-toggle"');
-        expect(html).toContain('id="wiki-admin-toggle"');
+        expect(html).not.toContain('id="wiki-admin-toggle"');
     });
 });
 

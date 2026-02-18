@@ -270,16 +270,17 @@ describe('wiki-admin — toggle visibility', () => {
     let wikiContent: string;
     beforeAll(() => { wikiContent = readClientFile('wiki.ts'); });
 
-    it('admin toggle button is hidden when no wiki selected', () => {
-        expect(wikiContent).toContain("adminToggle.classList.add('hidden')");
+    it('gear icon on cards calls showWikiAdmin', () => {
+        expect(wikiContent).toContain('wiki-card-gear');
+        expect(wikiContent).toContain('showWikiAdmin(wikiId)');
     });
 
-    it('admin toggle button is shown when wiki is selected', () => {
-        expect(wikiContent).toContain("adminToggle.classList.remove('hidden')");
+    it('detail view has gear icon for admin access', () => {
+        expect(wikiContent).toContain('wiki-detail-gear');
     });
 
     it('admin toggle click calls showWikiAdmin with selected wikiId', () => {
-        expect(wikiContent).toContain('showWikiAdmin(wikiId)');
+        expect(wikiContent).toContain('showWikiAdmin(appState.selectedWikiId)');
     });
 });
 
@@ -425,24 +426,23 @@ describe('client bundle — wiki-admin module', () => {
 // HTML template — admin toggle button
 // ============================================================================
 
-describe('HTML template — wiki admin toggle', () => {
+describe('HTML template — wiki admin access', () => {
     const html = generateDashboardHtml();
 
-    it('contains admin toggle button in wiki selector', () => {
-        expect(html).toContain('id="wiki-admin-toggle"');
+    it('wiki sidebar header contains add button', () => {
+        expect(html).toContain('wiki-sidebar-add-btn');
     });
 
-    it('admin toggle button is hidden by default', () => {
-        expect(html).toContain('wiki-admin-toggle-btn hidden');
+    it('wiki sidebar has card list container for gear icons', () => {
+        expect(html).toContain('wiki-card-list');
     });
 
-    it('admin toggle has gear icon', () => {
-        // &#9881; is the gear symbol (⚙)
+    it('contains gear icon entity in bundle', () => {
         expect(html).toContain('&#9881;');
     });
 
-    it('admin toggle has title attribute', () => {
-        expect(html).toContain('title="Wiki Admin"');
+    it('wiki admin toggle button CSS is still defined', () => {
+        expect(html).toContain('.wiki-admin-toggle-btn');
     });
 });
 
@@ -579,8 +579,8 @@ describe('wiki.ts — admin imports and integration', () => {
         expect(content).toContain("import { showWikiAdmin, hideWikiAdmin, resetAdminState } from './wiki-admin'");
     });
 
-    it('has admin toggle event listener', () => {
-        expect(content).toContain("document.getElementById('wiki-admin-toggle')");
+    it('has admin gear event listener in detail view', () => {
+        expect(content).toContain("document.getElementById('wiki-detail-gear')");
     });
 
     it('resets admin state on wiki deselection', () => {
