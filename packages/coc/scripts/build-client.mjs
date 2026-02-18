@@ -23,7 +23,7 @@ await esbuild.build({
 });
 
 await esbuild.build({
-    entryPoints: ['src/server/spa/client/styles.css'],
+    entryPoints: ['src/server/spa/client/tailwind.css'],
     outfile: 'src/server/spa/client/dist/bundle.css',
     bundle: true,
     minify: false,

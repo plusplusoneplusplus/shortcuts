@@ -9,6 +9,7 @@ import { ProcessesView } from '../processes/ProcessesView';
 import { QueueView } from '../queue/QueueView';
 import { ReposView } from '../repos';
 import { WikiView } from '../wiki/WikiView';
+import { AdminPanel } from '../admin/AdminPanel';
 import type { DashboardTab, RepoSubTab } from '../types/dashboard';
 
 function StubView({ id, label }: { id: string; label: string }) {
@@ -90,7 +91,7 @@ export function Router() {
         case 'wiki':
             return <WikiView />;
         case 'admin':
-            return <StubView id="view-admin" label="Admin" />;
+            return <AdminPanel />;
         case 'reports':
             return <StubView id="view-reports" label="Reports" />;
         default:

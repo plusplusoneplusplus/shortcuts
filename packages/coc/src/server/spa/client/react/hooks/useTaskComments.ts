@@ -3,7 +3,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getApiBase } from '../../config';
+import { getApiBase } from '../utils/config';
 import type {
     TaskComment,
     TaskCommentStatus,

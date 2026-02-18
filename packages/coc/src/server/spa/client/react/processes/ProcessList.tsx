@@ -6,7 +6,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { Card, Badge, cn } from '../shared';
-import { formatDuration, statusIcon, statusLabel } from '../../utils';
+import { formatDuration, statusIcon, statusLabel } from '../utils/format';
 
 export function ProcessList() {
     const { state, dispatch } = useApp();

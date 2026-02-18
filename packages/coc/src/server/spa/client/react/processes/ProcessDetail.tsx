@@ -9,7 +9,7 @@ import { fetchApi } from '../hooks/useApi';
 import { Badge, Spinner } from '../shared';
 import { ToolCallView } from './ToolCallView';
 import { MarkdownView } from './MarkdownView';
-import { formatDuration, statusIcon, statusLabel } from '../../utils';
+import { formatDuration, statusIcon, statusLabel } from '../utils/format';
 import type { ClientConversationTurn } from '../types/dashboard';
 
 const CACHE_TTL_MS = 60 * 60 * 1000;

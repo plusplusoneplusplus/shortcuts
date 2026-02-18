@@ -1,6 +1,6 @@
 /**
- * Utility functions for the dashboard SPA.
- * Pure utility functions with no DOM dependencies.
+ * Pure utility functions for the dashboard SPA (React).
+ * Ported from the vanilla utils.ts — same implementations.
  */
 
 export function formatDuration(ms: number | null | undefined): string {
@@ -32,6 +32,26 @@ export function formatRelativeTime(dateStr: string | null | undefined): string {
     return d.toLocaleDateString();
 }
 
+export function escapeHtml(str: string | null | undefined): string {
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+export function copyToClipboard(text: string): Promise<void> {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        return navigator.clipboard.writeText(text);
+    }
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    return Promise.resolve();
+}
+
 export function statusIcon(status: string): string {
     const map: Record<string, string> = { running: '\u{1F504}', completed: '\u2705', failed: '\u274C', cancelled: '\u{1F6AB}', queued: '\u23F3' };
     return map[status] || '';
@@ -53,25 +73,3 @@ export function typeLabel(type: string): string {
     };
     return map[type] || type || '';
 }
-
-export function copyToClipboard(text: string): void {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text);
-    } else {
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        ta.style.position = 'fixed';
-        ta.style.left = '-9999px';
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
-    }
-}
-
-export function escapeHtmlClient(str: string | null | undefined): string {
-    if (!str) return '';
-    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-(window as any).copyToClipboard = copyToClipboard;

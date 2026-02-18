@@ -5,7 +5,7 @@
 import { Button } from '../shared';
 import { useTaskPanel } from '../context/TaskContext';
 import { isContextFile } from '../hooks/useTaskTree';
-import { getApiBase } from '../../config';
+import { getApiBase } from '../utils/config';
 
 interface TaskActionsProps {
     wsId: string;

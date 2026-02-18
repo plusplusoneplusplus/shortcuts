@@ -4,7 +4,7 @@
 
 import { useState, useCallback } from 'react';
 import { Dialog, Button } from '../shared';
-import { getApiBase } from '../../config';
+import { getApiBase } from '../utils/config';
 
 const COLOR_PRESETS = ['#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#8b5cf6', '#ec4899', '#848484'];
 

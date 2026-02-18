@@ -4,7 +4,7 @@
  */
 
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { getWsPath } from '../../config';
+import { getWsPath } from '../utils/config';
 
 export type WsStatus = 'connecting' | 'open' | 'closed';
 

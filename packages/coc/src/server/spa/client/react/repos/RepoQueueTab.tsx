@@ -5,9 +5,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Badge, Card, Button, cn } from '../shared';
 import { fetchApi } from '../hooks/useApi';
-import { getApiBase } from '../../config';
+import { getApiBase } from '../utils/config';
 import { useQueue } from '../context/QueueContext';
-import { formatDuration, statusIcon, formatRelativeTime } from '../../utils';
+import { formatDuration, statusIcon, formatRelativeTime } from '../utils/format';
 
 interface RepoQueueTabProps {
     workspaceId: string;

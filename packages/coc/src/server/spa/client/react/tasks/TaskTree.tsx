@@ -11,6 +11,7 @@ import type { TaskNode, TaskFolder } from '../hooks/useTaskTree';
 interface TaskTreeProps {
     tree: TaskFolder;
     commentCounts: Record<string, number>;
+    wsId: string;
 }
 
 function getNodePath(node: TaskNode): string | null {
@@ -28,7 +29,7 @@ function getNodePath(node: TaskNode): string | null {
     return null;
 }
 
-export function TaskTree({ tree, commentCounts }: TaskTreeProps) {
+export function TaskTree({ tree, commentCounts, wsId }: TaskTreeProps) {
     const { openFilePath, setOpenFilePath, selectedFilePaths, toggleSelectedFile, showContextFiles } = useTaskPanel();
     const [columns, setColumns] = useState<TaskNode[][]>([]);
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -78,6 +79,7 @@ export function TaskTree({ tree, commentCounts }: TaskTreeProps) {
                                 <TaskTreeItem
                                     key={nodeIndex}
                                     item={node}
+                                    wsId={wsId}
                                     isSelected={path ? selectedFilePaths.has(path) : false}
                                     isOpen={path ? path === openFilePath : false}
                                     commentCount={path ? (commentCounts[path] || 0) : 0}

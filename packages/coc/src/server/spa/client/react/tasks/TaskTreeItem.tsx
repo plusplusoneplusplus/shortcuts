@@ -3,11 +3,13 @@
  */
 
 import { cn } from '../shared';
+import { AIActionsDropdown } from '../shared/AIActionsDropdown';
 import { isContextFile, isTaskFolder, isTaskDocumentGroup, isTaskDocument } from '../hooks/useTaskTree';
 import type { TaskNode, TaskFolder, TaskDocumentGroup, TaskDocument } from '../hooks/useTaskTree';
 
 export interface TaskTreeItemProps {
     item: TaskNode;
+    wsId: string;
     isSelected: boolean;
     isOpen: boolean;
     commentCount: number;
@@ -57,6 +59,7 @@ function getStatusIcon(status?: string): string {
 
 export function TaskTreeItem({
     item,
+    wsId,
     isSelected,
     isOpen,
     commentCount,
@@ -145,8 +148,10 @@ export function TaskTreeItem({
                 <span className="flex-shrink-0 text-[10px] text-[#848484]">▶</span>
             )}
 
-            {/* AI actions stub (commit 010) */}
-            <span data-testid="ai-actions-stub" />
+            {/* AI actions */}
+            {!isFolder && path && (
+                <AIActionsDropdown wsId={wsId} taskPath={path} />
+            )}
         </li>
     );
 }

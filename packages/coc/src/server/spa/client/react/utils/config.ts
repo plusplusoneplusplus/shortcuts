@@ -1,6 +1,6 @@
 /**
- * Dashboard config injection — reads server-provided configuration
- * from the global `window.__DASHBOARD_CONFIG__` set by the HTML template.
+ * Dashboard config — reads server-provided configuration
+ * from the global window.__DASHBOARD_CONFIG__ set by the HTML template.
  */
 
 interface DashboardConfig {

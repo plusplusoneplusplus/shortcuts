@@ -6,7 +6,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useQueue } from '../context/QueueContext';
 import { Badge, Card, Button, cn } from '../shared';
-import { formatDuration, statusIcon, statusLabel, typeLabel } from '../../utils';
+import { formatDuration, statusIcon, statusLabel, typeLabel } from '../utils/format';
 
 export function QueuePanel() {
     const { state, dispatch } = useQueue();

@@ -7,7 +7,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button, Card, Spinner, Badge } from '../shared';
 import { cn } from '../shared/cn';
-import { getApiBase } from '../../config';
+import { getApiBase } from '../utils/config';
 import { fetchApi } from '../hooks/useApi';
 
 type WikiAdminTab = 'generate' | 'seeds' | 'config';

@@ -10,7 +10,7 @@ import { PipelinesTab } from './PipelinesTab';
 import { TasksPanel } from '../tasks/TasksPanel';
 import { RepoQueueTab } from './RepoQueueTab';
 import { AddRepoDialog } from './AddRepoDialog';
-import { getApiBase } from '../../config';
+import { getApiBase } from '../utils/config';
 import type { RepoData } from './repoGrouping';
 import type { RepoSubTab } from '../types/dashboard';
 

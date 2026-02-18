@@ -3,7 +3,7 @@
  * Mirrors the fetchApi in core.ts but throws on error instead of returning null.
  */
 
-import { getApiBase } from '../../config';
+import { getApiBase } from '../utils/config';
 
 export async function fetchApi(path: string): Promise<any> {
     const res = await fetch(getApiBase() + path);

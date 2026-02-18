@@ -1,0 +1,215 @@
+/**
+ * FollowPromptDialog — modal for running a "Follow Prompt" AI action on a task file.
+ * Fetches available prompts/skills, lets user pick one and submit to queue.
+ */
+
+import { useState, useEffect, useCallback } from 'react';
+import { Dialog, Button, Spinner, useToast, ToastContainer } from './index';
+import { usePreferences } from '../hooks/usePreferences';
+import { useApp } from '../context/AppContext';
+import { getApiBase } from '../utils/config';
+
+interface PromptItem {
+    name: string;
+    relativePath: string;
+}
+
+interface SkillItem {
+    name: string;
+    description?: string;
+}
+
+export interface FollowPromptDialogProps {
+    wsId: string;
+    taskPath: string;
+    taskName: string;
+    onClose: () => void;
+}
+
+const DEFAULT_TASKS_FOLDER = '.vscode/tasks';
+
+async function getTasksFolderPath(wsId: string): Promise<string> {
+    try {
+        const res = await fetch(getApiBase() + `/workspaces/${encodeURIComponent(wsId)}/tasks/settings`);
+        if (!res.ok) return DEFAULT_TASKS_FOLDER;
+        const data = await res.json();
+        return typeof data.folderPath === 'string' ? data.folderPath : DEFAULT_TASKS_FOLDER;
+    } catch {
+        return DEFAULT_TASKS_FOLDER;
+    }
+}
+
+export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: FollowPromptDialogProps) {
+    const { state } = useApp();
+    const { model, setModel, loaded: prefsLoaded } = usePreferences();
+    const { toasts, addToast, removeToast } = useToast();
+
+    const [models, setModels] = useState<string[]>([]);
+    const [selectedWsId, setSelectedWsId] = useState(wsId);
+    const [prompts, setPrompts] = useState<PromptItem[]>([]);
+    const [skills, setSkills] = useState<SkillItem[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [submitting, setSubmitting] = useState(false);
+
+    // Fetch models and prompts/skills on mount
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                const [modelsRes, promptRes, skillRes] = await Promise.all([
+                    fetch(getApiBase() + '/models').then(r => r.ok ? r.json() : []),
+                    fetch(getApiBase() + `/workspaces/${encodeURIComponent(selectedWsId)}/prompts`).then(r => r.ok ? r.json() : null),
+                    fetch(getApiBase() + `/workspaces/${encodeURIComponent(selectedWsId)}/skills`).then(r => r.ok ? r.json() : null),
+                ]);
+                if (cancelled) return;
+                setModels(Array.isArray(modelsRes) ? modelsRes : modelsRes?.models ?? []);
+                setPrompts(promptRes?.prompts ?? []);
+                setSkills(skillRes?.skills ?? []);
+            } catch {
+                // ignore
+            } finally {
+                if (!cancelled) setLoading(false);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [selectedWsId]);
+
+    const handleSubmit = useCallback(async (type: 'prompt' | 'skill', name: string, path?: string) => {
+        setSubmitting(true);
+        try {
+            const ws = state.workspaces.find((w: any) => w.id === selectedWsId);
+            const workingDirectory = ws?.rootPath || '';
+            const tasksFolder = await getTasksFolderPath(selectedWsId);
+            const planFilePath = workingDirectory
+                ? workingDirectory + '/' + tasksFolder + '/' + taskPath
+                : taskPath;
+
+            let payload: Record<string, string>;
+            if (type === 'prompt') {
+                const promptFilePath = workingDirectory
+                    ? workingDirectory + '/' + (path || '')
+                    : path || '';
+                payload = { promptFilePath, planFilePath, workingDirectory };
+            } else {
+                payload = {
+                    skillName: name,
+                    promptContent: `Use the ${name} skill.`,
+                    planFilePath,
+                    workingDirectory,
+                };
+            }
+
+            const body: any = {
+                type: 'follow-prompt',
+                priority: 'normal',
+                displayName: `Follow: ${name} on ${taskName}`,
+                payload,
+            };
+            if (model) body.model = model;
+
+            const res = await fetch(getApiBase() + '/queue/tasks', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data.error || `HTTP ${res.status}`);
+            }
+            addToast('Queued successfully', 'success');
+            onClose();
+        } catch (err: any) {
+            addToast(err.message || 'Failed to queue', 'error');
+        } finally {
+            setSubmitting(false);
+        }
+    }, [selectedWsId, taskPath, taskName, model, state.workspaces, addToast, onClose]);
+
+    return (
+        <>
+            <Dialog open onClose={onClose} title="Follow Prompt">
+                <div className="flex flex-col gap-4">
+                    {/* Model select */}
+                    <div className="flex flex-col gap-1">
+                        <label className="text-xs text-[#616161] dark:text-[#999]">
+                            Model <span className="text-[#848484]">(optional)</span>
+                        </label>
+                        <select
+                            className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
+                            value={model}
+                            onChange={e => setModel(e.target.value)}
+                        >
+                            <option value="">Default</option>
+                            {models.map(m => <option key={m} value={m}>{m}</option>)}
+                        </select>
+                    </div>
+
+                    {/* Workspace select */}
+                    <div className="flex flex-col gap-1">
+                        <label className="text-xs text-[#616161] dark:text-[#999]">Workspace</label>
+                        <select
+                            className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
+                            value={selectedWsId}
+                            onChange={e => setSelectedWsId(e.target.value)}
+                        >
+                            {state.workspaces.map((ws: any) => (
+                                <option key={ws.id} value={ws.id}>{ws.name || ws.rootPath || ws.id}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {/* Prompts and Skills list */}
+                    {loading ? (
+                        <div className="flex items-center gap-2 py-4 text-xs text-[#848484]">
+                            <Spinner size="sm" /> Loading prompts and skills…
+                        </div>
+                    ) : prompts.length === 0 && skills.length === 0 ? (
+                        <div className="text-xs text-[#848484] py-2">
+                            <p>No prompts or skills found in this workspace.</p>
+                            <p className="mt-1 text-[10px]">Create .prompt.md files in .vscode/pipelines/ or skills in .github/skills/</p>
+                        </div>
+                    ) : (
+                        <div className="flex flex-col gap-2 max-h-[300px] overflow-y-auto">
+                            {prompts.length > 0 && (
+                                <div>
+                                    <div className="text-[10px] uppercase tracking-wider text-[#848484] mb-1">Prompts</div>
+                                    {prompts.map(p => (
+                                        <button
+                                            key={p.relativePath}
+                                            className="w-full text-left flex items-center gap-2 px-2 py-1.5 text-sm rounded hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:opacity-50"
+                                            disabled={submitting}
+                                            onClick={() => handleSubmit('prompt', p.name, p.relativePath)}
+                                        >
+                                            <span>📝</span>
+                                            <span className="truncate">{p.name}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                            {skills.length > 0 && (
+                                <div>
+                                    <div className="text-[10px] uppercase tracking-wider text-[#848484] mb-1">Skills</div>
+                                    {skills.map(s => (
+                                        <button
+                                            key={s.name}
+                                            className="w-full text-left flex items-center gap-2 px-2 py-1.5 text-sm rounded hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:opacity-50"
+                                            disabled={submitting}
+                                            onClick={() => handleSubmit('skill', s.name)}
+                                        >
+                                            <span>⚡</span>
+                                            <span className="truncate">{s.name}</span>
+                                            {s.description && (
+                                                <span className="text-xs text-[#848484] truncate">{s.description}</span>
+                                            )}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            </Dialog>
+            <ToastContainer toasts={toasts} removeToast={removeToast} />
+        </>
+    );
+}

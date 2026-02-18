@@ -9,7 +9,7 @@ import { Card, Badge, Button, Spinner } from '../shared';
 import { AddWikiDialog } from './AddWikiDialog';
 import { EditWikiDialog } from './EditWikiDialog';
 import { cn } from '../shared/cn';
-import { getApiBase } from '../../config';
+import { getApiBase } from '../utils/config';
 
 type WikiStatus = 'loaded' | 'generating' | 'error' | 'pending';
 

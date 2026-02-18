@@ -8,16 +8,22 @@ import { useQueue } from '../context/QueueContext';
 import { useApp } from '../context/AppContext';
 import { Dialog, Button } from '../shared';
 import { fetchApi } from '../hooks/useApi';
-import { getSavedModel, saveModelPreference } from '../../preferences';
+import { usePreferences } from '../hooks/usePreferences';
 
 export function EnqueueDialog() {
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { state: appState } = useApp();
+    const { model: savedModel, setModel: persistModel } = usePreferences();
     const [prompt, setPrompt] = useState('');
-    const [model, setModel] = useState(getSavedModel() || '');
+    const [model, setModel] = useState('');
     const [workspaceId, setWorkspaceId] = useState('');
     const [models, setModels] = useState<string[]>([]);
     const [submitting, setSubmitting] = useState(false);
+
+    // Sync model from preferences when loaded
+    useEffect(() => {
+        if (savedModel && !model) setModel(savedModel);
+    }, [savedModel]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Load available models
     useEffect(() => {
@@ -32,8 +38,8 @@ export function EnqueueDialog() {
 
     const handleModelChange = useCallback((value: string) => {
         setModel(value);
-        saveModelPreference(value);
-    }, []);
+        persistModel(value);
+    }, [persistModel]);
 
     const handleSubmit = useCallback(async () => {
         if (!prompt.trim()) return;

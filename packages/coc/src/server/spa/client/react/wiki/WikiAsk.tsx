@@ -7,7 +7,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Button, Spinner } from '../shared';
 import { cn } from '../shared/cn';
-import { getApiBase } from '../../config';
+import { getApiBase } from '../utils/config';
 
 declare const marked: { parse(md: string): string } | undefined;
 declare const hljs: { highlightElement(el: Element): void } | undefined;

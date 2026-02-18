@@ -5,7 +5,7 @@
 import { useState, useEffect } from 'react';
 import type { RepoData } from './repoGrouping';
 import { fetchApi } from '../hooks/useApi';
-import { formatRelativeTime } from '../../utils';
+import { formatRelativeTime } from '../utils/format';
 
 interface RepoInfoTabProps {
     repo: RepoData;

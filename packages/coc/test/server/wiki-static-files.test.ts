@@ -264,54 +264,8 @@ describe('wiki static file MIME types', () => {
 // Deep-Link Routing Tests (client bundle)
 // ============================================================================
 
-describe('client bundle — wiki deep-link routing', () => {
-    let bundle: string;
-
-    beforeAll(() => {
-        bundle = getClientBundle();
-    });
-
-    it('handles #wiki/:wikiId hash route', () => {
-        expect(bundle).toContain('wikiDetailMatch');
-        // Wiki detail now handled by React Router, not showWikiDetail global
-    });
-
-    it('handles #wiki/:wikiId/component/:compId hash route', () => {
-        expect(bundle).toContain('wikiComponentMatch');
-        // Wiki component now handled by React Router, not showWikiComponent global
-    });
-
-    it('checks component pattern before detail pattern', () => {
-        // The more specific component pattern should appear before the detail pattern
-        const compIdx = bundle.indexOf('wikiComponentMatch');
-        const detailIdx = bundle.indexOf('wikiDetailMatch');
-        expect(compIdx).toBeLessThan(detailIdx);
-    });
-
-    it('defines navigateToWiki function', () => {
-        expect(bundle).toContain('navigateToWiki');
-    });
-
-    it('defines navigateToWikiComponent function', () => {
-        expect(bundle).toContain('navigateToWikiComponent');
-    });
-
-    it('navigateToWiki sets hash with encoded wiki ID', () => {
-        // The function should set location.hash = '#wiki/' + encodeURIComponent(wikiId)
-        expect(bundle).toMatch(/navigateToWiki/);
-        expect(bundle).toContain('#wiki/');
-        expect(bundle).toContain('encodeURIComponent');
-    });
-
-    it('navigateToWikiComponent sets hash with encoded IDs', () => {
-        expect(bundle).toContain('/component/');
-    });
-
-    it('#wiki hash switches to wiki tab', () => {
-        // handleHashChange should have hash === 'wiki' check
-        expect(bundle).toMatch(/hash\s*===?\s*['"]wiki['"]/);
-    });
-});
+// Deep-link routing is now handled by React Router (Router.tsx) —
+// no vanilla core.ts routing in the bundle. See test/spa/react/ for React routing tests.
 
 // ============================================================================
 // State Tests (client bundle)

@@ -53,7 +53,7 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
             />
             <div className="flex flex-1 overflow-hidden">
                 <div className="flex-shrink-0 overflow-x-auto border-r border-[#e0e0e0] dark:border-[#3c3c3c]">
-                    <TaskTree tree={tree} commentCounts={commentCounts} />
+                    <TaskTree tree={tree} commentCounts={commentCounts} wsId={wsId} />
                 </div>
                 {openFilePath && (
                     <div className="flex-1 overflow-hidden">
