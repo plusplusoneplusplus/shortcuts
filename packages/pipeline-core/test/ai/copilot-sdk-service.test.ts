@@ -242,6 +242,9 @@ describe('CopilotSDKService - Streaming (sendWithStreaming)', () => {
 
         // Wait for the timeout to fire — don't dispatch any events
         await expect(streamingPromise).rejects.toThrow('Request timed out after 50ms');
+
+        // Session must be force-destroyed on timeout
+        expect(session.destroy).toHaveBeenCalled();
     });
 
     it('should unsubscribe event handler after session.idle resolves', async () => {

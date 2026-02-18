@@ -1155,6 +1155,8 @@ export class CopilotSDKService {
                     const staleTools = [...activeToolCalls.entries()].map(([id, t]) => `${t.toolName}(${id}, ${Date.now() - t.startTime}ms)`);
                     logger.error(LogCategory.AI, `CopilotSDKService [${sid}]: Timeout with ${activeToolCalls.size} active tool call(s): ${staleTools.join(', ')}`);
                 }
+                logger.error(LogCategory.AI, `CopilotSDKService [${sid}]: Force-destroying session due to timeout after ${timeoutMs}ms`);
+                session.destroy().catch(() => {});
                 settleError(new Error(`Request timed out after ${timeoutMs}ms`));
             }, timeoutMs);
 

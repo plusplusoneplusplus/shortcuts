@@ -12,10 +12,10 @@
 // ============================================================================
 
 /**
- * Default AI request timeout (30 minutes).
+ * Default AI request timeout (1 hour).
  * Used for individual AI calls in pipelines, map-reduce, and queue tasks.
  */
-export const DEFAULT_AI_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+export const DEFAULT_AI_TIMEOUT_MS = 60 * 60 * 1000; // 1 hour
 
 /**
  * Default poll interval for process monitoring (5 seconds).
