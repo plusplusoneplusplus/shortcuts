@@ -433,11 +433,12 @@ function inferParentToolCalls(calls: ClientToolCall[]): ClientToolCall[] {
 function injectChildrenIntoCardHTML(cardHtml: string, childrenHtml: string): string {
     if (!childrenHtml) return cardHtml;
     const tailIdx = cardHtml.lastIndexOf('</div>');
+    // Children start collapsed since parent body starts collapsed
     if (tailIdx < 0) {
-        return cardHtml + '<div class="tool-call-children">' + childrenHtml + '</div>';
+        return cardHtml + '<div class="tool-call-children subtree-collapsed">' + childrenHtml + '</div>';
     }
     return cardHtml.slice(0, tailIdx) +
-        '<div class="tool-call-children">' + childrenHtml + '</div>' +
+        '<div class="tool-call-children subtree-collapsed">' + childrenHtml + '</div>' +
         cardHtml.slice(tailIdx);
 }
 
@@ -662,6 +663,35 @@ export function updateToolCallStatus(element: HTMLElement, toolCall: ClientToolC
 
 /* ── Toggle behavior ──────────────────────────────────────── */
 
+/** Check whether a card has nested subtool children. */
+export function hasSubtoolChildren(card: HTMLElement): boolean {
+    return card.querySelector('.tool-call-children') !== null;
+}
+
+/** Recursively collapse or expand the subtool tree under a card. */
+export function setSubtreeCollapsed(card: HTMLElement, collapsed: boolean): void {
+    const childContainer = card.querySelector(':scope > .tool-call-children') as HTMLElement | null;
+    if (!childContainer) return;
+    if (collapsed) {
+        childContainer.classList.add('subtree-collapsed');
+    } else {
+        childContainer.classList.remove('subtree-collapsed');
+    }
+    // Recursively apply to descendant cards
+    const descendantCards = childContainer.querySelectorAll('.tool-call-card');
+    for (let i = 0; i < descendantCards.length; i++) {
+        const nested = descendantCards[i] as HTMLElement;
+        const nestedChildren = nested.querySelector(':scope > .tool-call-children') as HTMLElement | null;
+        if (nestedChildren) {
+            if (collapsed) {
+                nestedChildren.classList.add('subtree-collapsed');
+            } else {
+                nestedChildren.classList.remove('subtree-collapsed');
+            }
+        }
+    }
+}
+
 function attachToggleBehavior(card: HTMLElement): void {
     const header = card.querySelector('.tool-call-header');
     const body = card.querySelector('.tool-call-body');
@@ -674,10 +704,14 @@ function attachToggleBehavior(card: HTMLElement): void {
             body.classList.remove('collapsed');
             toggle.textContent = '\u25B2'; // ▲
             toggle.setAttribute('aria-label', 'Collapse tool details');
+            // Expand subtool tree
+            setSubtreeCollapsed(card, false);
         } else {
             body.classList.add('collapsed');
             toggle.textContent = '\u25BC'; // ▼
             toggle.setAttribute('aria-label', 'Expand tool details');
+            // Collapse subtool tree
+            setSubtreeCollapsed(card, true);
         }
     });
 

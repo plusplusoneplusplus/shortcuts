@@ -661,10 +661,15 @@ function removeFromTaskStack(activeTaskStack: string[], toolCallId: string): voi
 }
 
 function ensureParentChildToolContainer(parentCard: HTMLElement): HTMLElement {
-    let childContainer = parentCard.querySelector('.tool-call-children') as HTMLElement | null;
+    let childContainer = parentCard.querySelector(':scope > .tool-call-children') as HTMLElement | null;
     if (!childContainer) {
         childContainer = document.createElement('div');
         childContainer.className = 'tool-call-children';
+        // Match parent collapse state: if parent body is collapsed, children start hidden
+        const parentBody = parentCard.querySelector(':scope > .tool-call-body');
+        if (parentBody && parentBody.classList.contains('collapsed')) {
+            childContainer.classList.add('subtree-collapsed');
+        }
         parentCard.appendChild(childContainer);
     }
     return childContainer;

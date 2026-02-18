@@ -1,3 +1,8 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Subtree collapse: hide nested tool-call children when parent is collapsed */
+.tool-call-children.subtree-collapsed {
+    display: none;
+}

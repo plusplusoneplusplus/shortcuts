@@ -414,6 +414,82 @@ test.describe('Queue Task Conversation – Tool Calls', () => {
         await page.locator('.tool-call-card .tool-call-header').first().click();
         await expect(page.locator('.tool-call-card .tool-call-body.collapsed')).toHaveCount(2);
     });
+
+    test('collapsing parent task hides nested subtool cards', async ({ page, serverUrl, mockAI }) => {
+        mockAI.mockSendMessage.mockImplementation(async (opts: any) => {
+            if (opts && opts.onToolEvent) {
+                // Parent task tool call
+                opts.onToolEvent({
+                    type: 'tool-start',
+                    toolCallId: 'tc-task-parent',
+                    toolName: 'task',
+                    parameters: { agent_type: 'explore', description: 'Search codebase' },
+                });
+                await new Promise((r) => setTimeout(r, 50));
+                // Child tool calls under parent
+                opts.onToolEvent({
+                    type: 'tool-start',
+                    toolCallId: 'tc-child-view',
+                    toolName: 'view',
+                    parentToolCallId: 'tc-task-parent',
+                    parameters: { path: 'src/app.ts' },
+                });
+                opts.onToolEvent({
+                    type: 'tool-complete',
+                    toolCallId: 'tc-child-view',
+                    toolName: 'view',
+                    result: 'File content',
+                });
+                opts.onToolEvent({
+                    type: 'tool-start',
+                    toolCallId: 'tc-child-grep',
+                    toolName: 'grep',
+                    parentToolCallId: 'tc-task-parent',
+                    parameters: { pattern: 'import' },
+                });
+                opts.onToolEvent({
+                    type: 'tool-complete',
+                    toolCallId: 'tc-child-grep',
+                    toolName: 'grep',
+                    result: 'Found matches',
+                });
+                await new Promise((r) => setTimeout(r, 50));
+                opts.onToolEvent({
+                    type: 'tool-complete',
+                    toolCallId: 'tc-task-parent',
+                    toolName: 'task',
+                    result: 'Done',
+                });
+            }
+            return { success: true, response: 'Subtask completed.', sessionId: 'sess-nested' };
+        });
+
+        const task = await seedAndWaitForTask(serverUrl, {
+            payload: { prompt: 'Search the codebase' },
+        });
+        const taskId = task.id as string;
+
+        await gotoQueueTask(page, serverUrl, taskId);
+
+        // Wait for parent tool card
+        await expect(page.locator('.tool-call-card[data-tool-id="tc-task-parent"]')).toHaveCount(1, { timeout: 5000 });
+
+        // Children container should exist and start collapsed
+        const childrenContainer = page.locator('.tool-call-card[data-tool-id="tc-task-parent"] .tool-call-children');
+        await expect(childrenContainer).toHaveCount(1);
+        await expect(childrenContainer).toHaveClass(/subtree-collapsed/);
+
+        // Child cards should exist in DOM but be hidden
+        await expect(childrenContainer.locator('.tool-call-card')).toHaveCount(2);
+
+        // Expand parent — children become visible
+        await page.locator('.tool-call-card[data-tool-id="tc-task-parent"] > .tool-call-header').click();
+        await expect(childrenContainer).not.toHaveClass(/subtree-collapsed/);
+
+        // Collapse parent again — children hidden
+        await page.locator('.tool-call-card[data-tool-id="tc-task-parent"] > .tool-call-header').click();
+        await expect(childrenContainer).toHaveClass(/subtree-collapsed/);
+    });
 });
 
 // ---------------------------------------------------------------------------
