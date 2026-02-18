@@ -63,6 +63,18 @@ function AppInner() {
                     window.dispatchEvent(new CustomEvent('tasks-changed', { detail: { wsId: msg.workspaceId } }));
                 }
                 break;
+            case 'wiki-reload':
+                if (msg.wiki) appDispatch({ type: 'WIKI_RELOAD', wiki: msg.wiki });
+                else if (msg.data?.wiki) appDispatch({ type: 'WIKI_RELOAD', wiki: msg.data.wiki });
+                break;
+            case 'wiki-rebuilding':
+                if (msg.wikiId) appDispatch({ type: 'WIKI_REBUILDING', wikiId: msg.wikiId });
+                else if (msg.data?.wikiId) appDispatch({ type: 'WIKI_REBUILDING', wikiId: msg.data.wikiId });
+                break;
+            case 'wiki-error':
+                if (msg.wikiId) appDispatch({ type: 'WIKI_ERROR', wikiId: msg.wikiId, error: msg.error || '' });
+                else if (msg.data?.wikiId) appDispatch({ type: 'WIKI_ERROR', wikiId: msg.data.wikiId, error: msg.data.error || '' });
+                break;
         }
     }, [appDispatch, queueDispatch]);
 

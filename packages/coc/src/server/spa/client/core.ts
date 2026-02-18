@@ -183,29 +183,23 @@ export function handleHashChange(): void {
         return;
     }
 
-    // #wiki/{wikiId}/component/{compId}
+    // #wiki/{wikiId}/component/{compId} — handled by React Router
     const wikiComponentMatch = hash.match(/^wiki\/([^/]+)\/component\/(.+)$/);
     if (wikiComponentMatch) {
         (window as any).switchTab?.('wiki');
-        (window as any).showWikiComponent?.(
-            decodeURIComponent(wikiComponentMatch[1]),
-            decodeURIComponent(wikiComponentMatch[2])
-        );
         return;
     }
 
-    // #wiki/{wikiId}
+    // #wiki/{wikiId} — handled by React Router
     const wikiDetailMatch = hash.match(/^wiki\/([^/]+)$/);
     if (wikiDetailMatch) {
         (window as any).switchTab?.('wiki');
-        (window as any).showWikiDetail?.(decodeURIComponent(wikiDetailMatch[1]));
         return;
     }
 
     // #wiki
     if (hash === 'wiki') {
         (window as any).switchTab?.('wiki');
-        (window as any).navigateToWikiList?.();
         return;
     }
 

@@ -273,12 +273,12 @@ describe('client bundle — wiki deep-link routing', () => {
 
     it('handles #wiki/:wikiId hash route', () => {
         expect(bundle).toContain('wikiDetailMatch');
-        expect(bundle).toContain('showWikiDetail');
+        // Wiki detail now handled by React Router, not showWikiDetail global
     });
 
     it('handles #wiki/:wikiId/component/:compId hash route', () => {
         expect(bundle).toContain('wikiComponentMatch');
-        expect(bundle).toContain('showWikiComponent');
+        // Wiki component now handled by React Router, not showWikiComponent global
     });
 
     it('checks component pattern before detail pattern', () => {

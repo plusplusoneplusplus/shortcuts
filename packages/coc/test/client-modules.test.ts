@@ -33,10 +33,6 @@ describe('client source file existence', () => {
         'core.ts', 'sidebar.ts', 'detail.ts', 'filters.ts',
         'queue.ts', 'websocket.ts', 'index.tsx',
         'ai-actions.ts',
-        'wiki.ts', 'wiki-components.ts', 'wiki-types.ts',
-        'wiki-content.ts', 'wiki-markdown.ts', 'wiki-toc.ts', 'wiki-mermaid-zoom.ts',
-        'wiki-ask.ts', 'wiki-ask.css',
-        'wiki-graph.ts',
     ];
 
     for (const file of expectedFiles) {

@@ -8,6 +8,7 @@ import { useApp } from '../context/AppContext';
 import { ProcessesView } from '../processes/ProcessesView';
 import { QueueView } from '../queue/QueueView';
 import { ReposView } from '../repos';
+import { WikiView } from '../wiki/WikiView';
 import type { DashboardTab, RepoSubTab } from '../types/dashboard';
 
 function StubView({ id, label }: { id: string; label: string }) {
@@ -57,6 +58,19 @@ export function Router() {
                     }
                 }
             }
+
+            // Parse wiki deep links: #wiki/:id or #wiki/:id/component/:compId
+            if (tab === 'wiki') {
+                const parts = hash.split('/');
+                if (parts.length >= 2 && parts[0] === 'wiki' && parts[1]) {
+                    const wikiId = decodeURIComponent(parts[1]);
+                    dispatch({ type: 'SELECT_WIKI', wikiId });
+                    if (parts.length >= 4 && parts[2] === 'component' && parts[3]) {
+                        const compId = decodeURIComponent(parts[3]);
+                        dispatch({ type: 'SELECT_WIKI_COMPONENT', componentId: compId });
+                    }
+                }
+            }
         };
         handleHash();
         window.addEventListener('hashchange', handleHash);
@@ -74,7 +88,7 @@ export function Router() {
         case 'repos':
             return <ReposView />;
         case 'wiki':
-            return <StubView id="view-wiki" label="Wiki" />;
+            return <WikiView />;
         case 'admin':
             return <StubView id="view-admin" label="Admin" />;
         case 'reports':

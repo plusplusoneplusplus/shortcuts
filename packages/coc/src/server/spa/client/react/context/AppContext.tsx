@@ -66,6 +66,14 @@ export type AppAction =
     | { type: 'SET_REPO_SUB_TAB'; tab: RepoSubTab }
     | { type: 'SET_WIKI_VIEW'; wikiId: string | null; componentId: string | null; view: WikiViewMode }
     | { type: 'SET_WIKIS'; wikis: any[] }
+    | { type: 'SELECT_WIKI'; wikiId: string | null }
+    | { type: 'SELECT_WIKI_COMPONENT'; componentId: string | null }
+    | { type: 'ADD_WIKI'; wiki: any }
+    | { type: 'UPDATE_WIKI'; wiki: any }
+    | { type: 'REMOVE_WIKI'; wikiId: string }
+    | { type: 'WIKI_RELOAD'; wiki: any }
+    | { type: 'WIKI_REBUILDING'; wikiId: string }
+    | { type: 'WIKI_ERROR'; wikiId: string; error: string }
     | { type: 'TOGGLE_GROUP'; key: string }
     | { type: 'CACHE_CONVERSATION'; processId: string; turns: any[] }
     | { type: 'APPEND_TURN'; processId: string; turn: any }
@@ -124,6 +132,46 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             return { ...state, selectedWikiId: action.wikiId, selectedWikiComponentId: action.componentId, wikiView: action.view };
         case 'SET_WIKIS':
             return { ...state, wikis: action.wikis };
+        case 'SELECT_WIKI':
+            return { ...state, selectedWikiId: action.wikiId, selectedWikiComponentId: null, wikiView: action.wikiId ? 'detail' : 'list' };
+        case 'SELECT_WIKI_COMPONENT':
+            return { ...state, selectedWikiComponentId: action.componentId };
+        case 'ADD_WIKI':
+            return { ...state, wikis: [...state.wikis, action.wiki] };
+        case 'UPDATE_WIKI': {
+            const idx = state.wikis.findIndex((w: any) => w.id === action.wiki.id);
+            if (idx < 0) return state;
+            const updated = [...state.wikis];
+            updated[idx] = { ...updated[idx], ...action.wiki };
+            return { ...state, wikis: updated };
+        }
+        case 'REMOVE_WIKI': {
+            const filtered = state.wikis.filter((w: any) => w.id !== action.wikiId);
+            const clearSelected = state.selectedWikiId === action.wikiId;
+            return { ...state, wikis: filtered, ...(clearSelected ? { selectedWikiId: null, selectedWikiComponentId: null, wikiView: 'list' as WikiViewMode } : {}) };
+        }
+        case 'WIKI_RELOAD': {
+            const idx = state.wikis.findIndex((w: any) => w.id === action.wiki?.id);
+            if (idx < 0 && action.wiki) return { ...state, wikis: [...state.wikis, action.wiki] };
+            if (idx < 0) return state;
+            const updated = [...state.wikis];
+            updated[idx] = { ...updated[idx], ...action.wiki };
+            return { ...state, wikis: updated };
+        }
+        case 'WIKI_REBUILDING': {
+            const idx = state.wikis.findIndex((w: any) => w.id === action.wikiId);
+            if (idx < 0) return state;
+            const updated = [...state.wikis];
+            updated[idx] = { ...updated[idx], status: 'generating' };
+            return { ...state, wikis: updated };
+        }
+        case 'WIKI_ERROR': {
+            const idx = state.wikis.findIndex((w: any) => w.id === action.wikiId);
+            if (idx < 0) return state;
+            const updated = [...state.wikis];
+            updated[idx] = { ...updated[idx], status: 'error', errorMessage: action.error };
+            return { ...state, wikis: updated };
+        }
         case 'TOGGLE_GROUP':
             return { ...state, expandedGroups: { ...state.expandedGroups, [action.key]: !state.expandedGroups[action.key] } };
         case 'CACHE_CONVERSATION': {

@@ -36,16 +36,7 @@ import './queue';
 
 // 9a. Task Mermaid — now handled by React useMermaid hook
 
-// 10. Wiki (wiki list, component browser, add wiki dialog, ask AI, graph, admin)
-import './wiki';
-import './wiki-components';
-import './wiki-content';
-import './wiki-markdown';
-import './wiki-toc';
-import './wiki-mermaid-zoom';
-import './wiki-ask';
-import './wiki-graph';
-import './wiki-admin';
+// 10. Wiki — now handled by React wiki components (react/wiki/)
 
 // 11. Global admin overlay (gear icon in top bar)
 import './admin';

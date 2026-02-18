@@ -453,12 +453,6 @@ describe('index.ts — global admin import', () => {
         expect(content).toContain("import './admin'");
     });
 
-    it('admin import is after wiki modules', () => {
-        const wikiAdminIdx = content.indexOf("import './wiki-admin'");
-        const adminIdx = content.indexOf("import './admin'");
-        expect(adminIdx).toBeGreaterThan(wikiAdminIdx);
-    });
-
     it('admin import is before websocket module', () => {
         const adminIdx = content.indexOf("import './admin'");
         const wsIdx = content.indexOf("import './websocket'");
@@ -663,11 +657,6 @@ describe('global admin — independent of wiki admin', () => {
     it('admin.ts does not import from wiki-admin', () => {
         const content = readClientFile('admin.ts');
         expect(content).not.toContain("from './wiki-admin'");
-    });
-
-    it('wiki-admin.ts does not import from admin', () => {
-        const content = readClientFile('wiki-admin.ts');
-        expect(content).not.toContain("from './admin'");
     });
 
     it('admin toggle has different id than wiki admin gear', () => {

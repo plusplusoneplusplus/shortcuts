@@ -72,11 +72,11 @@ describe('styles.css entry point', () => {
         }
     });
 
-    it('imports external dependencies first', () => {
-        const imports = entryContent.match(/@import\s+'[^']+'/g) || [];
-        expect(imports.length).toBeGreaterThanOrEqual(2);
-        expect(imports[0]).toContain('wiki-ask.css');
-        expect(imports[1]).toContain('wiki-styles.css');
+    it('imports external dependencies first (wiki styles now in React)', () => {
+        // Wiki CSS imports were removed — now handled by Tailwind in React components
+        // Verify foundation imports come early
+        const variablesIdx = entryContent.indexOf('_variables.css');
+        expect(variablesIdx).toBeGreaterThan(-1);
     });
 
     it('imports foundation modules before feature modules', () => {
@@ -528,12 +528,12 @@ describe('bundle.css integrity', () => {
         expect(bundle).toContain('.task-mermaid-viewport');
     });
 
-    it('contains wiki-ask.css styles', () => {
-        expect(bundle).toContain('.wiki-ask');
+    it('wiki-ask.css removed (migrated to React Tailwind)', () => {
+        expect(bundle).not.toContain('.wiki-ask');
     });
 
-    it('contains wiki-styles.css styles', () => {
-        expect(bundle).toContain('.wiki-article');
+    it('wiki-styles.css removed (migrated to React Tailwind)', () => {
+        expect(bundle).not.toContain('.wiki-article');
     });
 
     it('task-comments-styles.css removed (migrated to Tailwind)', () => {

@@ -264,12 +264,10 @@ describe('SPA conversation rendering', () => {
     describe('SSE tool event handling', () => {
         it('should handle tool-start events', () => {
             expect(script).toContain('tool-start');
-            expect(script).toContain('handleToolStart');
         });
 
         it('should handle tool-complete events', () => {
             expect(script).toContain('tool-complete');
-            expect(script).toContain('handleToolComplete');
         });
 
         it('should find existing card by tool ID on update', () => {

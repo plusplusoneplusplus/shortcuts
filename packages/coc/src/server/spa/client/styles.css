@@ -1,6 +1,5 @@
 /* External dependencies */
-@import './wiki-ask.css';
-@import './wiki-styles.css';
+/* Wiki styles now handled by React Tailwind components */
 
 
 /* Foundation */
