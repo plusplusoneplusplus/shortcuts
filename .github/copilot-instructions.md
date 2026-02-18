@@ -1,7 +1,7 @@
 ## Rules
 - Never `git add/commit` files under `.vscode/tasks` (creating is fine).
 - Assume no backward compatibility unless explicitly asked.
-- Use `claude-haiku-4.5` for simple exploration tasks.
+- Use `claude-haiku-4.5` for simple exploration tasks. Use `claude-sonnet-4.6` for complex exploration tasks. 
 
 ## Project Principles
 - CoC (Copilot of Copilot) is independent of the VS Code extension.
