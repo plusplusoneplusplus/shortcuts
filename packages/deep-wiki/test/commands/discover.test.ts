@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import * as yaml from 'js-yaml';
 import { EXIT_CODES } from '../../src/cli';
 
 // Mock the discovery component to avoid actual SDK calls
@@ -499,8 +500,8 @@ describe('Discover Command', () => {
             const discovery = await import('../../src/discovery');
             const seeds = await import('../../src/seeds');
 
-            const seedFile = path.join(tmpDir, 'seeds.json');
-            fs.writeFileSync(seedFile, JSON.stringify({
+            const seedFile = path.join(tmpDir, 'seeds.yaml');
+            fs.writeFileSync(seedFile, yaml.dump({
                 themes: [
                     { theme: 'auth', description: 'Auth', hints: ['auth'] },
                 ],

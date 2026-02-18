@@ -10,7 +10,7 @@
  *   .wiki-cache/
  *   ├── discovery/
  *   │   ├── _metadata.json             # Round progress, convergence state
- *   │   ├── seeds.json                 # Cached auto-generated seeds
+ *   │   ├── seeds.yaml                 # Cached auto-generated seeds
  *   │   ├── structural-scan.json       # Large-repo structural scan
  *   │   ├── probes/                    # Per-theme probe results
  *   │   │   ├── auth.json
@@ -64,7 +64,7 @@ const DOMAINS_DIR = 'domains';
 const METADATA_FILE = '_metadata.json';
 
 /** File name for cached seeds */
-const SEEDS_FILE = 'seeds.json';
+const SEEDS_FILE = 'seeds.yaml';
 
 /** File name for cached structural scan */
 const STRUCTURAL_SCAN_FILE = 'structural-scan.json';

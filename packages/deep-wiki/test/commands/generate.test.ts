@@ -11,6 +11,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import * as yaml from 'js-yaml';
 
 // ============================================================================
 // Mocks
@@ -697,8 +698,8 @@ describe('executeGenerate — --seeds option', () => {
         const discovery = await import('../../src/discovery');
         const seeds = await import('../../src/seeds');
 
-        const seedFile = path.join(tempDir, 'seeds.json');
-        fs.writeFileSync(seedFile, JSON.stringify({
+        const seedFile = path.join(tempDir, 'seeds.yaml');
+        fs.writeFileSync(seedFile, yaml.dump({
             themes: [
                 { theme: 'auth', description: 'Auth', hints: ['auth'] },
             ],

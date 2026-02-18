@@ -10,6 +10,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import * as yaml from 'js-yaml';
 import type {
     ThemeSeed,
     ThemeProbeResult,
@@ -176,7 +177,7 @@ describe('seeds cache', () => {
     it('should handle corrupted JSON gracefully', () => {
         const discoveryDir = getDiscoveryCacheDir(outputDir);
         fs.mkdirSync(discoveryDir, { recursive: true });
-        fs.writeFileSync(path.join(discoveryDir, 'seeds.json'), 'not json!!!', 'utf-8');
+        fs.writeFileSync(path.join(discoveryDir, 'seeds.yaml'), 'not json!!!', 'utf-8');
 
         const loaded = getCachedSeeds(outputDir, gitHash);
         expect(loaded).toBeNull();
@@ -656,8 +657,8 @@ describe('edge cases', () => {
 
         // Seeds file with no seeds field
         fs.writeFileSync(
-            path.join(discoveryDir, 'seeds.json'),
-            JSON.stringify({ gitHash: 'hash', timestamp: Date.now() }),
+            path.join(discoveryDir, 'seeds.yaml'),
+            yaml.dump({ gitHash: 'hash', timestamp: Date.now() }),
             'utf-8'
         );
 
