@@ -161,6 +161,7 @@ export function registerWikiRoutes(
                 const persisted = persistedMap.get(id);
                 wikis.push({
                     id,
+                    name: persisted?.name ?? runtime.registration.title ?? id,
                     wikiDir: runtime.registration.wikiDir,
                     repoPath: runtime.registration.repoPath,
                     aiEnabled: runtime.registration.aiEnabled,
@@ -317,19 +318,48 @@ export function registerWikiRoutes(
         pattern: /^\/api\/wikis\/([^/]+)$/,
         handler: async (req, res, match) => {
             const wikiId = decodeURIComponent(match![1]);
-            const runtime = wikiManager.get(wikiId);
-            if (!runtime) {
-                send404(res, `Wiki not found: ${wikiId}`);
-                return;
-            }
             try {
                 const { readJsonBody } = await import('../router');
-                const body = await readJsonBody<{ title?: string; aiEnabled?: boolean }>(req);
-                // Re-register with updated fields
-                const reg = { ...runtime.registration };
-                if (body.title !== undefined) reg.title = body.title;
-                if (body.aiEnabled !== undefined) reg.aiEnabled = body.aiEnabled;
-                wikiManager.register(reg);
+                const body = await readJsonBody<{
+                    title?: string;
+                    name?: string;
+                    color?: string;
+                    aiEnabled?: boolean;
+                }>(req);
+
+                const runtime = wikiManager.get(wikiId);
+                let foundInStore = false;
+
+                // Persist updates to the store
+                if (store) {
+                    const storeUpdates: Record<string, unknown> = {};
+                    if (body.name !== undefined) storeUpdates.name = body.name;
+                    if (body.title !== undefined) storeUpdates.name = body.title;
+                    if (body.color !== undefined) storeUpdates.color = body.color;
+                    if (body.aiEnabled !== undefined) storeUpdates.aiEnabled = body.aiEnabled;
+                    if (Object.keys(storeUpdates).length > 0) {
+                        const updated = await store.updateWiki(wikiId, storeUpdates as Partial<Omit<WikiInfo, 'id'>>);
+                        foundInStore = updated !== undefined;
+                    } else {
+                        const wikis = await store.getWikis();
+                        foundInStore = wikis.some(w => w.id === wikiId);
+                    }
+                }
+
+                if (!runtime && !foundInStore) {
+                    send404(res, `Wiki not found: ${wikiId}`);
+                    return;
+                }
+
+                // Update manager registration if wiki is loaded
+                if (runtime) {
+                    const reg = { ...runtime.registration };
+                    if (body.title !== undefined) reg.title = body.title;
+                    if (body.name !== undefined) reg.title = body.name;
+                    if (body.aiEnabled !== undefined) reg.aiEnabled = body.aiEnabled;
+                    wikiManager.register(reg);
+                }
+
                 sendJson(res, { success: true, id: wikiId });
             } catch (err) {
                 sendJson(res, { error: err instanceof Error ? err.message : String(err) }, 400);

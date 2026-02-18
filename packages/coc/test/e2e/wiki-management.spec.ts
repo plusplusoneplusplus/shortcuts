@@ -334,10 +334,10 @@ test.describe('Wiki selection & display', () => {
 });
 
 // ================================================================
-// Delete Wiki
+// Delete Wiki (REST API)
 // ================================================================
 
-test.describe('Delete wiki', () => {
+test.describe('Delete wiki via REST API', () => {
     test('delete wiki via REST API removes it from card list', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-wiki-del-'));
         try {
@@ -361,6 +361,210 @@ test.describe('Delete wiki', () => {
             // No wiki cards should remain
             await expect(page.locator('.wiki-card')).toHaveCount(0, { timeout: 10000 });
             await expect(page.locator('#wiki-empty')).toBeVisible();
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+    });
+});
+
+// ================================================================
+// Edit Wiki Dialog
+// ================================================================
+
+test.describe('Edit wiki dialog', () => {
+    test('edit button visible on wiki card hover', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-wiki-edit-btn-'));
+        try {
+            const wikiDir = path.join(tmpDir, 'wiki-data');
+            fs.mkdirSync(wikiDir, { recursive: true });
+            await seedWiki(serverUrl, 'wiki-edit-1', wikiDir, undefined, 'Edit Wiki');
+
+            await page.goto(serverUrl);
+            await page.click('[data-tab="wiki"]');
+
+            const card = page.locator('.wiki-card[data-wiki-id="wiki-edit-1"]');
+            await expect(card).toBeVisible({ timeout: 10000 });
+
+            // Hover to reveal action buttons
+            await card.hover();
+            await expect(card.locator('.wiki-card-edit')).toBeVisible();
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+    });
+
+    test('edit button opens edit wiki dialog', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-wiki-edit-open-'));
+        try {
+            const wikiDir = path.join(tmpDir, 'wiki-data');
+            fs.mkdirSync(wikiDir, { recursive: true });
+            await seedWiki(serverUrl, 'wiki-edit-2', wikiDir, undefined, 'Edit Wiki 2');
+
+            await page.goto(serverUrl);
+            await page.click('[data-tab="wiki"]');
+
+            const card = page.locator('.wiki-card[data-wiki-id="wiki-edit-2"]');
+            await expect(card).toBeVisible({ timeout: 10000 });
+
+            await card.hover();
+            await card.locator('.wiki-card-edit').click();
+
+            await expect(page.locator('#edit-wiki-overlay')).toBeVisible();
+            await expect(page.locator('#edit-wiki-name')).toHaveValue('Edit Wiki 2');
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+    });
+
+    test('cancel closes edit wiki dialog', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-wiki-edit-cancel-'));
+        try {
+            const wikiDir = path.join(tmpDir, 'wiki-data');
+            fs.mkdirSync(wikiDir, { recursive: true });
+            await seedWiki(serverUrl, 'wiki-edit-3', wikiDir, undefined, 'Edit Wiki 3');
+
+            await page.goto(serverUrl);
+            await page.click('[data-tab="wiki"]');
+
+            const card = page.locator('.wiki-card[data-wiki-id="wiki-edit-3"]');
+            await expect(card).toBeVisible({ timeout: 10000 });
+
+            await card.hover();
+            await card.locator('.wiki-card-edit').click();
+            await expect(page.locator('#edit-wiki-overlay')).toBeVisible();
+
+            await page.click('#edit-wiki-cancel-btn');
+            await expect(page.locator('#edit-wiki-overlay')).toBeHidden();
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+    });
+
+    test('submit edit updates wiki name in card list', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-wiki-edit-submit-'));
+        try {
+            const wikiDir = path.join(tmpDir, 'wiki-data');
+            fs.mkdirSync(wikiDir, { recursive: true });
+            await seedWiki(serverUrl, 'wiki-edit-4', wikiDir, undefined, 'Original Name');
+
+            await page.goto(serverUrl);
+            await page.click('[data-tab="wiki"]');
+
+            const card = page.locator('.wiki-card[data-wiki-id="wiki-edit-4"]');
+            await expect(card).toBeVisible({ timeout: 10000 });
+
+            await card.hover();
+            await card.locator('.wiki-card-edit').click();
+            await expect(page.locator('#edit-wiki-overlay')).toBeVisible();
+
+            await page.fill('#edit-wiki-name', 'Renamed Wiki');
+            await page.click('#edit-wiki-submit');
+
+            await expect(page.locator('#edit-wiki-overlay')).toBeHidden({ timeout: 5000 });
+            await expect(card).toContainText('Renamed Wiki');
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+    });
+});
+
+// ================================================================
+// Delete Wiki (UI)
+// ================================================================
+
+test.describe('Delete wiki via UI', () => {
+    test('delete button visible on wiki card hover', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-wiki-del-btn-'));
+        try {
+            const wikiDir = path.join(tmpDir, 'wiki-data');
+            fs.mkdirSync(wikiDir, { recursive: true });
+            await seedWiki(serverUrl, 'wiki-del-btn-1', wikiDir, undefined, 'Delete Wiki');
+
+            await page.goto(serverUrl);
+            await page.click('[data-tab="wiki"]');
+
+            const card = page.locator('.wiki-card[data-wiki-id="wiki-del-btn-1"]');
+            await expect(card).toBeVisible({ timeout: 10000 });
+
+            await card.hover();
+            await expect(card.locator('.wiki-card-delete')).toBeVisible();
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+    });
+
+    test('delete button opens confirmation dialog', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-wiki-del-confirm-'));
+        try {
+            const wikiDir = path.join(tmpDir, 'wiki-data');
+            fs.mkdirSync(wikiDir, { recursive: true });
+            await seedWiki(serverUrl, 'wiki-del-confirm-1', wikiDir, undefined, 'Confirm Delete');
+
+            await page.goto(serverUrl);
+            await page.click('[data-tab="wiki"]');
+
+            const card = page.locator('.wiki-card[data-wiki-id="wiki-del-confirm-1"]');
+            await expect(card).toBeVisible({ timeout: 10000 });
+
+            await card.hover();
+            await card.locator('.wiki-card-delete').click();
+
+            await expect(page.locator('#delete-wiki-overlay')).toBeVisible();
+            await expect(page.locator('#delete-wiki-name')).toContainText('Confirm Delete');
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+    });
+
+    test('cancel closes delete confirmation', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-wiki-del-cancel-'));
+        try {
+            const wikiDir = path.join(tmpDir, 'wiki-data');
+            fs.mkdirSync(wikiDir, { recursive: true });
+            await seedWiki(serverUrl, 'wiki-del-cancel-1', wikiDir, undefined, 'Cancel Delete');
+
+            await page.goto(serverUrl);
+            await page.click('[data-tab="wiki"]');
+
+            const card = page.locator('.wiki-card[data-wiki-id="wiki-del-cancel-1"]');
+            await expect(card).toBeVisible({ timeout: 10000 });
+
+            await card.hover();
+            await card.locator('.wiki-card-delete').click();
+            await expect(page.locator('#delete-wiki-overlay')).toBeVisible();
+
+            await page.click('#delete-wiki-cancel-btn');
+            await expect(page.locator('#delete-wiki-overlay')).toBeHidden();
+
+            // Wiki should still be in the list
+            await expect(card).toBeVisible();
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+    });
+
+    test('confirm removes wiki from card list', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-wiki-del-exec-'));
+        try {
+            const wikiDir = path.join(tmpDir, 'wiki-data');
+            fs.mkdirSync(wikiDir, { recursive: true });
+            await seedWiki(serverUrl, 'wiki-del-exec-1', wikiDir, undefined, 'Delete Me');
+
+            await page.goto(serverUrl);
+            await page.click('[data-tab="wiki"]');
+
+            const card = page.locator('.wiki-card[data-wiki-id="wiki-del-exec-1"]');
+            await expect(card).toBeVisible({ timeout: 10000 });
+
+            await card.hover();
+            await card.locator('.wiki-card-delete').click();
+            await expect(page.locator('#delete-wiki-overlay')).toBeVisible();
+
+            await page.click('#delete-wiki-confirm');
+            await expect(page.locator('#delete-wiki-overlay')).toBeHidden({ timeout: 5000 });
+
+            // Wiki should be removed
+            await expect(page.locator('.wiki-card[data-wiki-id="wiki-del-exec-1"]')).toHaveCount(0, { timeout: 10000 });
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         }

@@ -383,6 +383,20 @@
 .enqueue-btn-secondary:hover {
     background: var(--hover-bg);
 }
+.enqueue-btn-danger {
+    background: #ef4444;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    padding: 7px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: opacity 0.15s;
+}
+.enqueue-btn-danger:hover {
+    opacity: 0.85;
+}
 
 /* ---- Queue Task Conversation View ---- */
 .detail-header-top {

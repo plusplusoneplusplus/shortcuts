@@ -378,7 +378,18 @@ describe('Wiki Routes Integration', () => {
             expect(body.title).toBe('Updated Title');
         });
 
-        it('PATCH /api/wikis/:wikiId returns 404 for unknown wiki', async () => {
+        it('PATCH /api/wikis/:wikiId updates name field', async () => {
+            const res = await patchJSON(`${server.url}/api/wikis/test-wiki`, {
+                name: 'Renamed Wiki',
+            });
+            expect(res.status).toBe(200);
+
+            const get = await getJSON(`${server.url}/api/wikis/test-wiki`);
+            const body = JSON.parse(get.body);
+            expect(body.title).toBe('Renamed Wiki');
+        });
+
+        it('PATCH /api/wikis/:wikiId returns 404 for unknown wiki without store', async () => {
             const res = await patchJSON(`${server.url}/api/wikis/nonexistent`, { title: 'x' });
             expect(res.status).toBe(404);
         });
@@ -1074,6 +1085,140 @@ describe('Wiki Store Persistence', () => {
         // Verify removed from store
         const storedWikis = await store.getWikis();
         expect(storedWikis.some(w => w.id === 'del-wiki')).toBe(false);
+
+        await server.close();
+    });
+
+    it('PATCH updates name and color in the store', async () => {
+        const { FileProcessStore } = await import('@plusplusoneplusplus/pipeline-core');
+        const store = new FileProcessStore({ dataDir });
+
+        const wikiDir = makeTempWikiDir();
+        const server = await createExecutionServer({
+            port: 0,
+            dataDir,
+            store,
+        });
+
+        // Register
+        await postJSON(`${server.url}/api/wikis`, {
+            id: 'edit-wiki',
+            wikiDir,
+            name: 'Original Name',
+            color: '#0078d4',
+        });
+
+        // Update name and color
+        const patch = await patchJSON(`${server.url}/api/wikis/edit-wiki`, {
+            name: 'New Name',
+            color: '#16825d',
+        });
+        expect(patch.status).toBe(200);
+
+        // Verify store was updated
+        const storedWikis = await store.getWikis();
+        const updated = storedWikis.find(w => w.id === 'edit-wiki');
+        expect(updated).toBeDefined();
+        expect(updated!.name).toBe('New Name');
+        expect(updated!.color).toBe('#16825d');
+
+        await server.close();
+    });
+
+    it('PATCH updates name in the API list response', async () => {
+        const { FileProcessStore } = await import('@plusplusoneplusplus/pipeline-core');
+        const store = new FileProcessStore({ dataDir });
+
+        const wikiDir = makeTempWikiDir();
+        const server = await createExecutionServer({
+            port: 0,
+            dataDir,
+            store,
+        });
+
+        await postJSON(`${server.url}/api/wikis`, {
+            id: 'rename-wiki',
+            wikiDir,
+            name: 'Before Rename',
+        });
+
+        await patchJSON(`${server.url}/api/wikis/rename-wiki`, {
+            name: 'After Rename',
+        });
+
+        const list = await getJSON(`${server.url}/api/wikis`);
+        const wikis = JSON.parse(list.body);
+        const wiki = wikis.find((w: any) => w.id === 'rename-wiki');
+        expect(wiki).toBeDefined();
+        expect(wiki.name).toBe('After Rename');
+
+        await server.close();
+    });
+
+    it('PATCH color updates in the API list response', async () => {
+        const { FileProcessStore } = await import('@plusplusoneplusplus/pipeline-core');
+        const store = new FileProcessStore({ dataDir });
+
+        const wikiDir = makeTempWikiDir();
+        const server = await createExecutionServer({
+            port: 0,
+            dataDir,
+            store,
+        });
+
+        await postJSON(`${server.url}/api/wikis`, {
+            id: 'color-wiki',
+            wikiDir,
+            name: 'Color Wiki',
+            color: '#0078d4',
+        });
+
+        await patchJSON(`${server.url}/api/wikis/color-wiki`, {
+            color: '#f14c4c',
+        });
+
+        const list = await getJSON(`${server.url}/api/wikis`);
+        const wikis = JSON.parse(list.body);
+        const wiki = wikis.find((w: any) => w.id === 'color-wiki');
+        expect(wiki).toBeDefined();
+        expect(wiki.color).toBe('#f14c4c');
+
+        await server.close();
+    });
+
+    it('PATCH succeeds for store-only wikis (not loaded in manager)', async () => {
+        const { FileProcessStore } = await import('@plusplusoneplusplus/pipeline-core');
+        const store = new FileProcessStore({ dataDir });
+
+        // Register a wiki directly in the store (no component-graph.json)
+        const pendingDir = path.join(dataDir, 'wikis', 'store-only');
+        fs.mkdirSync(pendingDir, { recursive: true });
+        await store.registerWiki({
+            id: 'store-only',
+            name: 'Store Only Wiki',
+            wikiDir: pendingDir,
+            color: '#848484',
+            aiEnabled: false,
+            registeredAt: new Date().toISOString(),
+        });
+
+        const server = await createExecutionServer({
+            port: 0,
+            dataDir,
+            store,
+        });
+
+        const patch = await patchJSON(`${server.url}/api/wikis/store-only`, {
+            name: 'Updated Store Wiki',
+            color: '#b180d7',
+        });
+        expect(patch.status).toBe(200);
+
+        const storedWikis = await store.getWikis();
+        const updated = storedWikis.find(w => w.id === 'store-only');
+        expect(updated).toBeDefined();
+        expect(updated!.name).toBe('Updated Store Wiki');
+        expect(updated!.color).toBe('#b180d7');
 
         await server.close();
     });

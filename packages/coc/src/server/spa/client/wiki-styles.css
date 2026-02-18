@@ -132,20 +132,42 @@
     white-space: nowrap;
 }
 
-.wiki-card-gear {
+.wiki-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+.wiki-card:hover .wiki-card-actions { opacity: 1; }
+
+.wiki-card-action-btn {
     background: none;
     border: none;
     color: var(--text-secondary);
-    font-size: 14px;
+    font-size: 13px;
     cursor: pointer;
     padding: 2px 4px;
     border-radius: 4px;
-    opacity: 0;
-    transition: opacity 0.15s;
+    transition: background 0.15s, color 0.15s;
     line-height: 1;
 }
-.wiki-card:hover .wiki-card-gear { opacity: 1; }
-.wiki-card-gear:hover { background: var(--hover-bg); color: var(--text-primary); }
+.wiki-card-action-btn:hover { background: var(--hover-bg); color: var(--text-primary); }
+.wiki-card-delete:hover { color: #ef4444; }
+
+.wiki-card-gear {
+    font-size: 14px;
+}
+
+.delete-wiki-message {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin: 0 0 8px;
+}
+.delete-wiki-message strong {
+    color: var(--text-primary);
+}
 
 .wiki-detail-gear {
     opacity: 1;

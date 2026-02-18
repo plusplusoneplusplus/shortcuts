@@ -254,6 +254,55 @@ ${bundleCss}
         </div>
     </div>
 
+    <!-- Edit Wiki Dialog Overlay -->
+    <div id="edit-wiki-overlay" class="enqueue-overlay hidden">
+        <div class="enqueue-dialog" style="width: 420px;">
+            <div class="enqueue-dialog-header">
+                <h2>Edit Wiki</h2>
+                <button class="enqueue-close-btn" id="edit-wiki-cancel">&times;</button>
+            </div>
+            <form id="edit-wiki-form" class="enqueue-form">
+                <div class="enqueue-field">
+                    <label for="edit-wiki-name">Name</label>
+                    <input type="text" id="edit-wiki-name" placeholder="Wiki name" required />
+                </div>
+                <div class="enqueue-field">
+                    <label for="edit-wiki-color">Color</label>
+                    <select id="edit-wiki-color">
+                        <option value="#0078d4">&#128309; Blue</option>
+                        <option value="#16825d">&#128994; Green</option>
+                        <option value="#f14c4c">&#128308; Red</option>
+                        <option value="#e8912d">&#128992; Orange</option>
+                        <option value="#b180d7">&#128995; Purple</option>
+                        <option value="#848484">&#9898; Gray</option>
+                    </select>
+                </div>
+                <div id="edit-wiki-validation" class="repo-validation"></div>
+                <div class="enqueue-actions">
+                    <button type="button" class="enqueue-btn-secondary" id="edit-wiki-cancel-btn">Cancel</button>
+                    <button type="submit" class="enqueue-btn-primary" id="edit-wiki-submit">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Delete Wiki Confirmation Overlay -->
+    <div id="delete-wiki-overlay" class="enqueue-overlay hidden">
+        <div class="enqueue-dialog" style="width: 400px;">
+            <div class="enqueue-dialog-header">
+                <h2>Remove Wiki</h2>
+                <button class="enqueue-close-btn" id="delete-wiki-cancel">&times;</button>
+            </div>
+            <div class="enqueue-form">
+                <p class="delete-wiki-message">Are you sure you want to remove <strong id="delete-wiki-name"></strong>? This will unregister the wiki from the dashboard. Generated files on disk will not be deleted.</p>
+                <div class="enqueue-actions">
+                    <button type="button" class="enqueue-btn-secondary" id="delete-wiki-cancel-btn">Cancel</button>
+                    <button type="button" class="enqueue-btn-danger" id="delete-wiki-confirm">Remove</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Add Repo Dialog Overlay -->
     <div id="add-repo-overlay" class="enqueue-overlay hidden">
         <div class="enqueue-dialog" style="width: 480px;">

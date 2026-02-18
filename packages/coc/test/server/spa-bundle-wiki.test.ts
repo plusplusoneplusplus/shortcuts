@@ -751,9 +751,13 @@ describe('CSS — wiki styles', () => {
         expect(html).toContain('.wiki-card-name');
     });
 
-    it('defines wiki-card-gear styles with hover opacity', () => {
+    it('defines wiki-card-gear styles', () => {
         expect(html).toContain('.wiki-card-gear');
-        expect(html).toContain('.wiki-card:hover .wiki-card-gear');
+    });
+
+    it('defines wiki-card-actions with hover visibility', () => {
+        expect(html).toContain('.wiki-card-actions');
+        expect(html).toContain('.wiki-card:hover .wiki-card-actions');
     });
 
     it('defines wiki-card-active styles with left border accent', () => {
@@ -862,6 +866,275 @@ describe('CSS — wiki styles', () => {
     it('defines responsive breakpoints for wiki layout', () => {
         expect(html).toContain('@media (max-width: 900px)');
         expect(html).toContain('@media (max-width: 768px)');
+    });
+});
+
+// ============================================================================
+// HTML template — Edit Wiki dialog
+// ============================================================================
+
+describe('HTML template — Edit Wiki dialog', () => {
+    const html = generateDashboardHtml();
+
+    it('contains edit wiki overlay', () => {
+        expect(html).toContain('id="edit-wiki-overlay"');
+    });
+
+    it('edit wiki dialog is hidden by default', () => {
+        expect(html).toMatch(/id="edit-wiki-overlay"\s+class="enqueue-overlay hidden"/);
+    });
+
+    it('contains edit wiki name input', () => {
+        expect(html).toContain('id="edit-wiki-name"');
+    });
+
+    it('contains edit wiki color select', () => {
+        expect(html).toContain('id="edit-wiki-color"');
+    });
+
+    it('contains edit wiki validation area', () => {
+        expect(html).toContain('id="edit-wiki-validation"');
+    });
+
+    it('contains cancel and save buttons', () => {
+        expect(html).toContain('id="edit-wiki-cancel-btn"');
+        expect(html).toContain('id="edit-wiki-submit"');
+        expect(html).toContain('>Save<');
+    });
+
+    it('dialog header says Edit Wiki', () => {
+        expect(html).toContain('>Edit Wiki<');
+    });
+
+    it('contains edit wiki form', () => {
+        expect(html).toContain('id="edit-wiki-form"');
+    });
+});
+
+// ============================================================================
+// HTML template — Delete Wiki confirmation dialog
+// ============================================================================
+
+describe('HTML template — Delete Wiki confirmation dialog', () => {
+    const html = generateDashboardHtml();
+
+    it('contains delete wiki overlay', () => {
+        expect(html).toContain('id="delete-wiki-overlay"');
+    });
+
+    it('delete wiki dialog is hidden by default', () => {
+        expect(html).toMatch(/id="delete-wiki-overlay"\s+class="enqueue-overlay hidden"/);
+    });
+
+    it('contains delete wiki name placeholder', () => {
+        expect(html).toContain('id="delete-wiki-name"');
+    });
+
+    it('contains cancel and confirm buttons', () => {
+        expect(html).toContain('id="delete-wiki-cancel-btn"');
+        expect(html).toContain('id="delete-wiki-confirm"');
+    });
+
+    it('confirm button has danger class', () => {
+        expect(html).toContain('enqueue-btn-danger');
+    });
+
+    it('dialog header says Remove Wiki', () => {
+        expect(html).toContain('>Remove Wiki<');
+    });
+
+    it('explains that files on disk are not deleted', () => {
+        expect(html).toContain('Generated files on disk will not be deleted');
+    });
+});
+
+// ============================================================================
+// wiki.ts source — edit/delete wiki functions
+// ============================================================================
+
+describe('wiki.ts — edit wiki dialog', () => {
+    let content: string;
+    beforeAll(() => { content = readClientFile('wiki.ts'); });
+
+    it('has showEditWikiDialog function', () => {
+        expect(content).toContain('function showEditWikiDialog');
+    });
+
+    it('has hideEditWikiDialog function', () => {
+        expect(content).toContain('function hideEditWikiDialog');
+    });
+
+    it('has submitEditWiki function', () => {
+        expect(content).toContain('function submitEditWiki');
+    });
+
+    it('sends PATCH request to update wiki', () => {
+        expect(content).toContain("method: 'PATCH'");
+    });
+
+    it('pre-populates name input from wiki data', () => {
+        expect(content).toContain('edit-wiki-name');
+    });
+
+    it('pre-populates color select from wiki data', () => {
+        expect(content).toContain('edit-wiki-color');
+    });
+
+    it('validates that name is required', () => {
+        expect(content).toContain('Name is required');
+    });
+
+    it('exposes showEditWikiDialog on window', () => {
+        expect(content).toContain('showEditWikiDialog');
+    });
+
+    it('exposes hideEditWikiDialog on window', () => {
+        expect(content).toContain('hideEditWikiDialog');
+    });
+});
+
+describe('wiki.ts — delete wiki', () => {
+    let content: string;
+    beforeAll(() => { content = readClientFile('wiki.ts'); });
+
+    it('has deleteWiki function', () => {
+        expect(content).toContain('function deleteWiki');
+    });
+
+    it('sends DELETE request to remove wiki', () => {
+        expect(content).toContain("method: 'DELETE'");
+    });
+
+    it('shows confirmation overlay before deleting', () => {
+        expect(content).toContain('delete-wiki-overlay');
+    });
+
+    it('resets selectedWikiId after deleting current wiki', () => {
+        expect(content).toContain('appState.selectedWikiId = null');
+    });
+
+    it('navigates to wiki list after deletion', () => {
+        expect(content).toContain("setHashSilent('#wiki')");
+    });
+
+    it('exposes deleteWiki on window', () => {
+        expect(content).toContain('deleteWiki');
+    });
+});
+
+describe('wiki.ts — wiki card actions', () => {
+    let content: string;
+    beforeAll(() => { content = readClientFile('wiki.ts'); });
+
+    it('renders edit button on wiki cards', () => {
+        expect(content).toContain('wiki-card-edit');
+    });
+
+    it('renders delete button on wiki cards', () => {
+        expect(content).toContain('wiki-card-delete');
+    });
+
+    it('renders actions container on wiki cards', () => {
+        expect(content).toContain('wiki-card-actions');
+    });
+
+    it('attaches click listener for edit buttons', () => {
+        expect(content).toContain('.wiki-card-edit');
+        expect(content).toContain('showEditWikiDialog');
+    });
+
+    it('attaches click listener for delete buttons', () => {
+        expect(content).toContain('.wiki-card-delete');
+        expect(content).toContain('deleteWiki');
+    });
+
+    it('stops propagation on action button clicks', () => {
+        expect(content).toContain('e.stopPropagation()');
+    });
+
+    it('card click ignores clicks on actions container', () => {
+        expect(content).toContain('.wiki-card-actions');
+    });
+});
+
+// ============================================================================
+// CSS — edit/delete wiki styles
+// ============================================================================
+
+describe('CSS — wiki edit/delete styles', () => {
+    const html = generateDashboardHtml();
+
+    it('defines wiki-card-actions styles', () => {
+        expect(html).toContain('.wiki-card-actions');
+    });
+
+    it('defines wiki-card-action-btn styles', () => {
+        expect(html).toContain('.wiki-card-action-btn');
+    });
+
+    it('defines wiki-card-edit styles', () => {
+        expect(html).toContain('.wiki-card-edit');
+    });
+
+    it('defines wiki-card-delete hover color', () => {
+        expect(html).toContain('.wiki-card-delete:hover');
+    });
+
+    it('defines enqueue-btn-danger styles', () => {
+        expect(html).toContain('.enqueue-btn-danger');
+    });
+
+    it('defines delete-wiki-message styles', () => {
+        expect(html).toContain('.delete-wiki-message');
+    });
+
+    it('actions are hidden by default and shown on hover', () => {
+        expect(html).toContain('.wiki-card:hover .wiki-card-actions');
+    });
+});
+
+// ============================================================================
+// Client bundle — edit/delete wiki functions
+// ============================================================================
+
+describe('client bundle — wiki edit/delete functions', () => {
+    let script: string;
+    beforeAll(() => { script = getClientBundle(); });
+
+    it('defines showEditWikiDialog function', () => {
+        expect(script).toContain('showEditWikiDialog');
+    });
+
+    it('defines hideEditWikiDialog function', () => {
+        expect(script).toContain('hideEditWikiDialog');
+    });
+
+    it('defines deleteWiki function', () => {
+        expect(script).toContain('deleteWiki');
+    });
+
+    it('exposes showEditWikiDialog on window', () => {
+        expect(script).toContain('showEditWikiDialog');
+    });
+
+    it('exposes deleteWiki on window', () => {
+        expect(script).toContain('deleteWiki');
+    });
+
+    it('renders wiki-card-edit buttons', () => {
+        expect(script).toContain('wiki-card-edit');
+    });
+
+    it('renders wiki-card-delete buttons', () => {
+        expect(script).toContain('wiki-card-delete');
+    });
+
+    it('sends PATCH request for edit', () => {
+        expect(script).toContain('PATCH');
+    });
+
+    it('sends DELETE request for remove', () => {
+        expect(script).toContain('DELETE');
     });
 });
 

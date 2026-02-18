@@ -18,6 +18,128 @@ import { showWikiAdmin, hideWikiAdmin, resetAdminState } from './wiki-admin';
 import type { WikiData, ComponentGraph, WikiStatus } from './wiki-types';
 
 // ================================================================
+// Edit/Delete wiki helpers
+// ================================================================
+
+let editingWikiId: string | null = null;
+
+export function showEditWikiDialog(wikiId: string): void {
+    const wiki = (appState.wikis as WikiData[]).find(w => w.id === wikiId);
+    if (!wiki) return;
+
+    editingWikiId = wikiId;
+    const overlay = document.getElementById('edit-wiki-overlay');
+    if (!overlay) return;
+
+    const nameInput = document.getElementById('edit-wiki-name') as HTMLInputElement | null;
+    const colorSelect = document.getElementById('edit-wiki-color') as HTMLSelectElement | null;
+    const validation = document.getElementById('edit-wiki-validation');
+
+    if (nameInput) nameInput.value = wiki.name || wiki.title || wiki.id;
+    if (colorSelect) colorSelect.value = wiki.color || '#848484';
+    if (validation) { validation.innerHTML = ''; validation.className = 'repo-validation'; }
+
+    overlay.classList.remove('hidden');
+    if (nameInput) nameInput.focus();
+}
+
+export function hideEditWikiDialog(): void {
+    const overlay = document.getElementById('edit-wiki-overlay');
+    if (overlay) overlay.classList.add('hidden');
+    editingWikiId = null;
+}
+
+async function submitEditWiki(e: Event): Promise<void> {
+    e.preventDefault();
+    if (!editingWikiId) return;
+
+    const nameInput = document.getElementById('edit-wiki-name') as HTMLInputElement | null;
+    const colorSelect = document.getElementById('edit-wiki-color') as HTMLSelectElement | null;
+
+    const name = nameInput?.value.trim() || '';
+    if (!name) {
+        showEditWikiValidation('Name is required', false);
+        return;
+    }
+    const color = colorSelect?.value || '#848484';
+
+    try {
+        const res = await fetch(getApiBase() + '/wikis/' + encodeURIComponent(editingWikiId), {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, color }),
+        });
+
+        if (!res.ok) {
+            const body = await res.json().catch(() => ({ error: 'Failed' }));
+            showEditWikiValidation(body.error || 'Failed to update wiki', false);
+            return;
+        }
+
+        hideEditWikiDialog();
+        await fetchWikisData();
+    } catch {
+        showEditWikiValidation('Network error', false);
+    }
+}
+
+function showEditWikiValidation(msg: string, success: boolean): void {
+    const el = document.getElementById('edit-wiki-validation');
+    if (!el) return;
+    el.className = 'repo-validation ' + (success ? 'success' : 'error');
+    el.textContent = msg;
+}
+
+export async function deleteWiki(wikiId: string): Promise<void> {
+    const wiki = (appState.wikis as WikiData[]).find(w => w.id === wikiId);
+    const wikiName = wiki ? (wiki.name || wiki.title || wiki.id) : wikiId;
+
+    const overlay = document.getElementById('delete-wiki-overlay');
+    const nameEl = document.getElementById('delete-wiki-name');
+    if (!overlay) return;
+
+    if (nameEl) nameEl.textContent = wikiName;
+    overlay.classList.remove('hidden');
+
+    const confirmBtn = document.getElementById('delete-wiki-confirm');
+    const cancelBtn = document.getElementById('delete-wiki-cancel-btn');
+
+    const cleanup = () => {
+        overlay.classList.add('hidden');
+        confirmBtn?.removeEventListener('click', onConfirm);
+        cancelBtn?.removeEventListener('click', onCancel);
+    };
+
+    const onConfirm = async () => {
+        cleanup();
+        try {
+            const res = await fetch(getApiBase() + '/wikis/' + encodeURIComponent(wikiId), {
+                method: 'DELETE',
+            });
+            if (res.ok) {
+                if (appState.selectedWikiId === wikiId) {
+                    appState.selectedWikiId = null;
+                    appState.wikiView = 'list';
+                    setHashSilent('#wiki');
+                }
+                await fetchWikisData();
+            }
+        } catch {
+            // Silently fail on network error
+        }
+    };
+
+    const onCancel = () => { cleanup(); };
+
+    confirmBtn?.addEventListener('click', onConfirm);
+    cancelBtn?.addEventListener('click', onCancel);
+
+    overlay.addEventListener('click', (e: Event) => {
+        if (e.target === overlay) cleanup();
+    }, { once: true });
+}
+
+// ================================================================
 // Wiki data fetching
 // ================================================================
 
@@ -107,7 +229,11 @@ function renderWikiListSidebar(): void {
                 '<div class="wiki-card-row">' +
                 '<span class="wiki-card-dot" style="background:' + escapeHtmlClient(color) + '"></span>' +
                 '<span class="wiki-card-name">' + escapeHtmlClient(name) + '</span>' +
-                '<button class="wiki-card-gear" data-wiki-id="' + escapeHtmlClient(wiki.id) + '" title="Wiki Admin">&#9881;</button>' +
+                '<span class="wiki-card-actions">' +
+                '<button class="wiki-card-action-btn wiki-card-edit" data-wiki-id="' + escapeHtmlClient(wiki.id) + '" title="Edit wiki">&#9998;</button>' +
+                '<button class="wiki-card-action-btn wiki-card-delete" data-wiki-id="' + escapeHtmlClient(wiki.id) + '" title="Remove wiki">&#128465;</button>' +
+                '<button class="wiki-card-action-btn wiki-card-gear" data-wiki-id="' + escapeHtmlClient(wiki.id) + '" title="Wiki Admin">&#9881;</button>' +
+                '</span>' +
                 '</div>' +
                 '<div class="wiki-card-meta">';
 
@@ -164,9 +290,27 @@ function attachWikiListListeners(): void {
     document.querySelectorAll('.wiki-card').forEach(card => {
         card.addEventListener('click', (e: Event) => {
             const target = e.target as HTMLElement;
-            if (target.closest('.wiki-card-gear')) return;
+            if (target.closest('.wiki-card-actions')) return;
             const wikiId = card.getAttribute('data-wiki-id');
             if (wikiId) onWikiCardClicked(wikiId);
+        });
+    });
+
+    // Edit button clicks
+    document.querySelectorAll('.wiki-card-edit').forEach(btn => {
+        btn.addEventListener('click', (e: Event) => {
+            e.stopPropagation();
+            const wikiId = btn.getAttribute('data-wiki-id');
+            if (wikiId) showEditWikiDialog(wikiId);
+        });
+    });
+
+    // Delete button clicks
+    document.querySelectorAll('.wiki-card-delete').forEach(btn => {
+        btn.addEventListener('click', (e: Event) => {
+            e.stopPropagation();
+            const wikiId = btn.getAttribute('data-wiki-id');
+            if (wikiId) deleteWiki(wikiId);
         });
     });
 
@@ -638,12 +782,31 @@ if (wikiPathBrowserCancel) wikiPathBrowserCancel.addEventListener('click', close
 const wikiPathBrowserSelect = document.getElementById('wiki-path-browser-select');
 if (wikiPathBrowserSelect) wikiPathBrowserSelect.addEventListener('click', selectWikiBrowserPath);
 
+// Edit wiki form
+const editWikiForm = document.getElementById('edit-wiki-form');
+if (editWikiForm) editWikiForm.addEventListener('submit', submitEditWiki);
+
+const editWikiCancelBtn = document.getElementById('edit-wiki-cancel');
+if (editWikiCancelBtn) editWikiCancelBtn.addEventListener('click', hideEditWikiDialog);
+const editWikiCancelBtn2 = document.getElementById('edit-wiki-cancel-btn');
+if (editWikiCancelBtn2) editWikiCancelBtn2.addEventListener('click', hideEditWikiDialog);
+
+const editWikiOverlay = document.getElementById('edit-wiki-overlay');
+if (editWikiOverlay) {
+    editWikiOverlay.addEventListener('click', (e: Event) => {
+        if (e.target === editWikiOverlay) hideEditWikiDialog();
+    });
+}
+
 // Expose for global access
 (window as any).fetchWikisData = fetchWikisData;
 (window as any).showWikiDetail = showWikiDetail;
 (window as any).showWikiComponent = showWikiComponent;
 (window as any).showAddWikiDialog = showAddWikiDialog;
 (window as any).hideAddWikiDialog = hideAddWikiDialog;
+(window as any).showEditWikiDialog = showEditWikiDialog;
+(window as any).hideEditWikiDialog = hideEditWikiDialog;
+(window as any).deleteWiki = deleteWiki;
 (window as any).navigateToWikiList = navigateToWikiList;
 (window as any).renderWikiSidebar = renderWikiSidebar;
 (window as any).handleWikiReload = handleWikiReload;
