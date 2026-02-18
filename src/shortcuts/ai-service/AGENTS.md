@@ -3,16 +3,15 @@
 This module provides a generic, domain-agnostic service for tracking AI processes. It is designed to be used by any feature that needs to invoke AI tools and track their execution.
 
 **Major Updates (2026-01):**
-- **Pipeline Core Extraction:** Core AI functionality (CopilotSDKService, session pool, CLI utilities) moved to `pipeline-core` package
+- **Pipeline Core Extraction:** Core AI functionality (CopilotSDKService, CLI utilities) moved to `pipeline-core` package
 - Added GitHub Copilot SDK support as primary AI backend
 - Created unified AI invoker factory with automatic SDK/CLI fallback
-- Session pool for parallel workloads (code review, pipelines)
 - Eliminated ~450 lines of duplicated backend selection code
 - **Task Queue System:** Priority-based task queuing with VS Code integration
 - **Interactive Sessions:** Management of interactive CLI sessions in external terminals
 
 **Package Structure:**
-- `pipeline-core` - Pure Node.js core (CopilotSDKService, SessionPool, CLI utils, TaskQueueManager)
+- `pipeline-core` - Pure Node.js core (CopilotSDKService, CLI utils, TaskQueueManager)
 - `src/shortcuts/ai-service/` - VS Code integration layer (AIProcessManager, tree provider, queue service, commands)
 
 ## Architecture Overview
@@ -32,8 +31,8 @@ This module provides a generic, domain-agnostic service for tracking AI processe
 │  │  (Generic API)  │  │ Factory (2026)  │  │    (UI View)    │ │
 │  └─────────────────┘  └─────────────────┘  └─────────────────┘ │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐ │
-│  │ Queue Service   │  │ Interactive     │  │ Session Pool    │ │
-│  │ (Priority Queue)│  │ Session Manager │  │ (for parallel)  │ │
+│  │ Queue Service   │  │ Interactive     │  │               │ │
+│  │ (Priority Queue)│  │ Session Manager │  │               │ │
 │  └─────────────────┘  └─────────────────┘  └─────────────────┘ │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐ │
 │  │ Copilot SDK     │  │ Copilot CLI     │  │ Process Monitor │ │
@@ -668,7 +667,6 @@ const invoker = createAIInvoker({
     workingDirectory: workspaceRoot,
     featureName: 'My Feature',
     model: 'gpt-4',
-    usePool: false,  // true for parallel workloads (code review, pipelines)
     clipboardFallback: true  // Copy to clipboard if all backends fail
 });
 
@@ -695,8 +693,6 @@ if (result.success) {
 5. Optional clipboard fallback for user-facing features
 
 **Use Cases:**
-- `usePool: false` - One-off requests (clarification, discovery)
-- `usePool: true` - Parallel workloads (code review, pipelines)
 - `clipboardFallback: true` - User-facing features
 - `clipboardFallback: false` - Background/automated features
 
@@ -826,9 +822,7 @@ The module now supports **GitHub Copilot SDK** as the primary AI backend:
 
 ```json
 {
-  "workspaceShortcuts.aiService.backend": "copilot-sdk",  // or "copilot-cli", "clipboard"
-  "workspaceShortcuts.aiService.sessionPool.enabled": true,  // for parallel workloads
-  "workspaceShortcuts.aiService.sessionPool.maxSessions": 5
+  "workspaceShortcuts.aiService.backend": "copilot-sdk"  // or "copilot-cli", "clipboard"
 }
 ```
 
@@ -838,25 +832,6 @@ The `createAIInvoker()` factory automatically handles:
 1. **SDK-first approach**: Try SDK if configured and available
 2. **CLI fallback**: Fall back to CLI if SDK fails or unavailable
 3. **Clipboard fallback**: Optionally copy to clipboard as last resort
-
-### Session Pool for Parallel Workloads
-
-For features with concurrent requests (code review, pipelines):
-
-```typescript
-const invoker = createAIInvoker({
-    workingDirectory: workspaceRoot,
-    usePool: true,  // Use session pool
-    featureName: 'Code Review'
-});
-
-// Multiple concurrent invocations will reuse sessions from pool
-const results = await Promise.all([
-    invoker({ prompt: 'Review rule 1...' }),
-    invoker({ prompt: 'Review rule 2...' }),
-    invoker({ prompt: 'Review rule 3...' })
-]);
-```
 
 ## Migration from Legacy API
 
@@ -872,7 +847,7 @@ The legacy methods are still available but marked as `@deprecated`.
 
 ## See Also
 
-- `packages/pipeline-core/src/ai/` - Core AI service (CopilotSDKService, SessionPool, CLI utils)
+- `packages/pipeline-core/src/ai/` - Core AI service (CopilotSDKService, CLI utils)
 - `packages/pipeline-core/src/queue/` - Task queue core (TaskQueueManager, QueueExecutor)
 - `src/shortcuts/code-review/process-adapter.ts` - Reference implementation of the adapter pattern
 - `src/shortcuts/map-reduce/` - Map-reduce framework for parallel AI workflows

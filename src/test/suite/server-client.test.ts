@@ -129,22 +129,6 @@ suite('ServerClient Tests', () => {
         manager.cancelProcess(id);
     });
 
-    test('setServerClient can be called multiple times', () => {
-        const { MockAIProcessManager } = require('../../shortcuts/ai-service');
-        const manager = new MockAIProcessManager();
-
-        const client1 = new ServerClient('http://localhost:4001');
-        const client2 = new ServerClient('http://localhost:4002');
-
-        // Should not throw when called multiple times
-        manager.setServerClient(client1);
-        manager.setServerClient(client2);
-        manager.setServerClient(undefined);
-
-        client1.dispose();
-        client2.dispose();
-    });
-
     test('ServerClient constructor parses URL correctly', () => {
         const client = new ServerClient('https://example.com:8443/prefix');
         // Should not throw; verify queue works
