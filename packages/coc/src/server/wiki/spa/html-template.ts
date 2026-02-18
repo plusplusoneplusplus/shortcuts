@@ -106,7 +106,6 @@ ${enableSearch ? `            <div class="search-box">
                 <div class="admin-page-header">
                     <div class="admin-page-title-row">
                         <h1 class="admin-page-title">Admin Portal</h1>
-                        <button class="admin-btn admin-btn-back" id="admin-back" aria-label="Back to wiki">&larr; Back to Wiki</button>
                     </div>
                     <p class="admin-page-desc">Manage seeds, configuration, and generation.</p>
                 </div>

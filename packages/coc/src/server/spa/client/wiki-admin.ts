@@ -77,7 +77,6 @@ export function renderAdminPanel(): string {
     <div class="admin-page-header">
         <div class="admin-page-title-row">
             <h2 class="admin-page-title">Wiki Admin</h2>
-            <button class="admin-btn-back" id="wiki-admin-back">&larr; Back to Wiki</button>
         </div>
         <p class="admin-page-desc">Manage seeds, configuration, and wiki generation.</p>
     </div>
@@ -219,15 +218,6 @@ function initAdminEvents(wikiId: string): void {
             }
         });
     });
-
-    // Back button
-    const backBtn = document.getElementById('wiki-admin-back');
-    if (backBtn) {
-        backBtn.addEventListener('click', function () {
-            hideWikiAdmin();
-            (window as any).setWikiProjectTab?.('browse');
-        });
-    }
 
     // Save seeds
     const seedsSave = document.getElementById('seeds-save');

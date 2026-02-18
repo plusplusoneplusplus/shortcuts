@@ -1559,12 +1559,6 @@
         showAdmin(false);
       });
     }
-    const adminBack = document.getElementById("admin-back");
-    if (adminBack) {
-      adminBack.addEventListener("click", function() {
-        window.showHome(false);
-      });
-    }
   }
   function initAdminEvents() {
     document.querySelectorAll(".admin-tab").forEach(function(tab) {

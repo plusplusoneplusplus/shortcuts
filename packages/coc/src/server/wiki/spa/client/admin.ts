@@ -41,12 +41,6 @@ export function setupAdminListeners(): void {
         });
     }
 
-    const adminBack = document.getElementById('admin-back');
-    if (adminBack) {
-        adminBack.addEventListener('click', function () {
-            (window as any).showHome(false);
-        });
-    }
 }
 
 function initAdminEvents(): void {

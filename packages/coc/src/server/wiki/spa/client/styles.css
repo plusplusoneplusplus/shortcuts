@@ -867,13 +867,6 @@ body {
 .admin-page-desc {
     margin: 0 0 20px; font-size: 14px; color: var(--content-muted);
 }
-.admin-btn-back {
-    background: var(--code-bg); color: var(--content-text);
-    border: 1px solid var(--content-border);
-    padding: 6px 16px; border-radius: 6px; font-size: 13px;
-    cursor: pointer; white-space: nowrap;
-}
-.admin-btn-back:hover { background: var(--sidebar-hover); }
 .admin-tabs {
     display: flex; padding: 0 40px; gap: 0;
     border-bottom: 1px solid var(--content-border);

@@ -1009,9 +1009,6 @@
 .admin-page.hidden { display: none; }
 .admin-page.wiki-admin-embedded {
     height: 100%;
-    max-width: none;
-    margin: 0;
-    padding: 0;
 }
 .admin-page.wiki-admin-embedded .admin-tabs {
     display: none;
@@ -1032,13 +1029,6 @@
 .admin-page-desc {
     margin: 0 0 16px; font-size: 14px; color: var(--text-secondary);
 }
-.admin-btn-back {
-    background: var(--bg-secondary); color: var(--text-primary);
-    border: 1px solid var(--border-color);
-    padding: 6px 16px; border-radius: 6px; font-size: 13px;
-    cursor: pointer; white-space: nowrap;
-}
-.admin-btn-back:hover { background: var(--hover-bg); }
 .admin-tabs {
     display: flex; padding: 0 32px; gap: 0;
     border-bottom: 1px solid var(--border-color);

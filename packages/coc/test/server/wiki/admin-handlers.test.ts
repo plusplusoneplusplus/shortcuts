@@ -462,7 +462,7 @@ describe('SPA admin portal', () => {
         expect(body).toContain('id="admin-page"');
         expect(body).toContain('admin-tab-seeds');
         expect(body).toContain('admin-tab-config');
-        expect(body).toContain('id="admin-back"');
+        expect(body).not.toContain('id="admin-back"');
         expect(body).toContain('Admin Portal');
     });
 

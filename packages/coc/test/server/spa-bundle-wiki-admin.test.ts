@@ -103,8 +103,8 @@ describe('wiki-admin — renderAdminPanel HTML structure', () => {
         expect(content).toContain('id="config-reset"');
     });
 
-    it('generates back button', () => {
-        expect(content).toContain('id="wiki-admin-back"');
+    it('does not generate back button', () => {
+        expect(content).not.toContain('id="wiki-admin-back"');
     });
 
     it('generates 5 phase cards', () => {
