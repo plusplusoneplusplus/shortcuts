@@ -814,6 +814,183 @@ describe('Admin handlers with repoPath', () => {
 });
 
 // ============================================================================
+// YAML Seeds Migration Tests
+// ============================================================================
+
+describe('Seeds YAML migration (multi-wiki)', () => {
+    let server: ExecutionServer;
+    let tempDirs: string[] = [];
+    let wikiDir: string;
+
+    function makeTempWikiDir(graph?: ComponentGraph): string {
+        const dir = createTempWikiDir(graph);
+        tempDirs.push(dir);
+        return dir;
+    }
+
+    beforeEach(async () => {
+        wikiDir = makeTempWikiDir();
+        server = await createExecutionServer({
+            port: 0,
+            wiki: {
+                enabled: true,
+                wikis: {
+                    'yaml-wiki': { wikiDir },
+                },
+                aiEnabled: false,
+            },
+        });
+    });
+
+    afterEach(async () => {
+        await server.close();
+        for (const dir of tempDirs) removeTempDir(dir);
+        tempDirs = [];
+    });
+
+    it('GET reads seeds.yaml (not seeds.json)', async () => {
+        const yaml = await import('js-yaml');
+        const seedsData = {
+            version: '1.0.0',
+            themes: [{ theme: 'auth', description: 'Authentication', hints: ['login'] }],
+        };
+        fs.writeFileSync(path.join(wikiDir, 'seeds.yaml'), yaml.dump(seedsData), 'utf-8');
+
+        const res = await getJSON(`${server.url}/api/wikis/yaml-wiki/admin/seeds`);
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.exists).toBe(true);
+        expect(body.content.themes[0].theme).toBe('auth');
+        expect(body.path).toContain('seeds.yaml');
+    });
+
+    it('GET returns Invalid YAML error for bad YAML', async () => {
+        fs.writeFileSync(path.join(wikiDir, 'seeds.yaml'), '{{: bad yaml ::::', 'utf-8');
+
+        const res = await getJSON(`${server.url}/api/wikis/yaml-wiki/admin/seeds`);
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.exists).toBe(true);
+        expect(body.error).toBe('Invalid YAML');
+        expect(body.raw).toBe('{{: bad yaml ::::');
+    });
+
+    it('PUT writes seeds as YAML via yaml.dump', async () => {
+        const seedData = {
+            themes: [{ theme: 'api', description: 'API layer', hints: ['rest'] }],
+        };
+        const put = await putJSON(`${server.url}/api/wikis/yaml-wiki/admin/seeds`, {
+            content: seedData,
+        });
+        expect(put.status).toBe(200);
+        expect(JSON.parse(put.body).success).toBe(true);
+
+        // Verify the file is written as YAML (not JSON)
+        const written = fs.readFileSync(path.join(wikiDir, 'seeds.yaml'), 'utf-8');
+        expect(written).not.toContain('{');
+        expect(written).toContain('theme: api');
+
+        // Verify round-trip via GET
+        const get = await getJSON(`${server.url}/api/wikis/yaml-wiki/admin/seeds`);
+        expect(get.status).toBe(200);
+        const body = JSON.parse(get.body);
+        expect(body.content.themes[0].theme).toBe('api');
+    });
+
+    it('PUT passes raw string content through as-is', async () => {
+        const rawYaml = 'themes:\n  - theme: raw\n    description: Raw string\n    hints: []\n';
+        const put = await putJSON(`${server.url}/api/wikis/yaml-wiki/admin/seeds`, {
+            content: rawYaml,
+        });
+        expect(put.status).toBe(200);
+
+        const written = fs.readFileSync(path.join(wikiDir, 'seeds.yaml'), 'utf-8');
+        expect(written).toBe(rawYaml);
+    });
+});
+
+// ============================================================================
+// Seeds Generate Endpoint Tests
+// ============================================================================
+
+describe('POST /api/wikis/:wikiId/admin/seeds/generate', () => {
+    let server: ExecutionServer;
+    let tempDirs: string[] = [];
+
+    function makeTempWikiDir(graph?: ComponentGraph): string {
+        const dir = createTempWikiDir(graph);
+        tempDirs.push(dir);
+        return dir;
+    }
+
+    afterEach(async () => {
+        await server.close();
+        for (const dir of tempDirs) removeTempDir(dir);
+        tempDirs = [];
+    });
+
+    it('returns 404 JSON for unknown wikiId', async () => {
+        const wikiDir = makeTempWikiDir();
+        server = await createExecutionServer({
+            port: 0,
+            wiki: {
+                enabled: true,
+                wikis: { 'gen-wiki': { wikiDir } },
+                aiEnabled: false,
+            },
+        });
+
+        const res = await postJSON(`${server.url}/api/wikis/unknown/admin/seeds/generate`, {});
+        expect(res.status).toBe(404);
+        const body = JSON.parse(res.body);
+        expect(body.error).toContain('Wiki not found');
+    });
+
+    it('returns 400 JSON when repoPath is not configured', async () => {
+        const wikiDir = makeTempWikiDir();
+        server = await createExecutionServer({
+            port: 0,
+            wiki: {
+                enabled: true,
+                wikis: { 'no-repo-wiki': { wikiDir } },
+                aiEnabled: false,
+            },
+        });
+
+        const res = await postJSON(`${server.url}/api/wikis/no-repo-wiki/admin/seeds/generate`, {});
+        expect(res.status).toBe(400);
+        const body = JSON.parse(res.body);
+        expect(body.error).toContain('No repository path configured');
+    });
+
+    it('route is registered (not 404 for valid wiki with repoPath)', async () => {
+        const wikiDir = makeTempWikiDir();
+        const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-seeds-gen-repo-'));
+        tempDirs.push(repoDir);
+        server = await createExecutionServer({
+            port: 0,
+            wiki: {
+                enabled: true,
+                wikis: { 'repo-wiki': { wikiDir, repoPath: repoDir } },
+                aiEnabled: false,
+            },
+        });
+
+        // This will attempt to run the SSE endpoint; since deep-wiki is not available
+        // as a runtime dependency in tests, we expect SSE to start (200) and then
+        // produce an error event. The important thing is it's NOT a 404.
+        const res = await httpRequest(`${server.url}/api/wikis/repo-wiki/admin/seeds/generate`, {
+            method: 'POST',
+            body: '{}',
+            headers: { 'Content-Type': 'application/json' },
+        });
+        // Should be 200 (SSE started) — deep-wiki import may fail but SSE headers are sent first
+        expect(res.status).toBe(200);
+        expect(res.headers['content-type']).toBe('text/event-stream');
+    });
+});
+
+// ============================================================================
 // Wiki Routes Always Registered (no wiki.enabled required)
 // ============================================================================
 

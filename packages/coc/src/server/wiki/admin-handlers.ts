@@ -12,23 +12,23 @@ import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
 import { sendJson, send400, send500 } from '@plusplusoneplusplus/coc-server';
-import { readBody } from './ask-handler';
+import { readBody, sendSSE } from './ask-handler';
 import type { WikiManager } from './wiki-manager';
 
 // ============================================================================
 // Seeds Handlers
 // ============================================================================
 
-const SEEDS_FILE = 'seeds.json';
+const SEEDS_FILE = 'seeds.yaml';
 
 /**
- * GET /api/wikis/:wikiId/admin/seeds — Read seeds.json from the wiki directory.
+ * GET /api/wikis/:wikiId/admin/seeds — Read seeds.yaml from the wiki directory.
  */
-export function handleGetSeeds(
+export async function handleGetSeeds(
     res: http.ServerResponse,
     wikiId: string,
     wikiManager: WikiManager,
-): void {
+): Promise<void> {
     const wiki = wikiManager.get(wikiId);
     if (!wiki) {
         sendJson(res, { error: `Wiki not found: ${wikiId}` }, 404);
@@ -45,9 +45,10 @@ export function handleGetSeeds(
         const content = fs.readFileSync(seedsPath, 'utf-8');
         let parsed: unknown;
         try {
-            parsed = JSON.parse(content);
+            const yaml = await import('js-yaml');
+            parsed = yaml.load(content);
         } catch {
-            sendJson(res, { exists: true, content: null, raw: content, path: seedsPath, error: 'Invalid JSON' });
+            sendJson(res, { exists: true, content: null, raw: content, path: seedsPath, error: 'Invalid YAML' });
             return;
         }
 
@@ -58,7 +59,7 @@ export function handleGetSeeds(
 }
 
 /**
- * PUT /api/wikis/:wikiId/admin/seeds — Write seeds.json to the wiki directory.
+ * PUT /api/wikis/:wikiId/admin/seeds — Write seeds.yaml to the wiki directory.
  */
 export async function handlePutSeeds(
     req: http.IncomingMessage,
@@ -97,7 +98,8 @@ export async function handlePutSeeds(
         }
 
         const seedsPath = path.join(wiki.registration.wikiDir, SEEDS_FILE);
-        const content = typeof seeds === 'string' ? seeds : JSON.stringify(seeds, null, 2);
+        const yaml = await import('js-yaml');
+        const content = typeof seeds === 'string' ? seeds : yaml.dump(seeds);
         fs.writeFileSync(seedsPath, content, 'utf-8');
 
         sendJson(res, { success: true, path: seedsPath });
@@ -226,4 +228,92 @@ export async function handlePutConfig(
     } catch (error) {
         send500(res, `Failed to save config: ${error instanceof Error ? error.message : String(error)}`);
     }
+}
+
+// ============================================================================
+// Seeds Generate Handler
+// ============================================================================
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function importDeepWiki(subpath: string): Promise<any> {
+    const modulePath = `@plusplusoneplusplus/deep-wiki/dist/${subpath}`;
+    return import(modulePath);
+}
+
+/**
+ * POST /api/wikis/:wikiId/admin/seeds/generate — Generate theme seeds via AI (SSE).
+ */
+export async function handleGenerateSeeds(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    wikiId: string,
+    wikiManager: WikiManager,
+): Promise<void> {
+    const wiki = wikiManager.get(wikiId);
+    if (!wiki) {
+        sendJson(res, { error: `Wiki not found: ${wikiId}` }, 404);
+        return;
+    }
+
+    const repoPath = wiki.registration.repoPath;
+    if (!repoPath) {
+        sendJson(res, { error: 'No repository path configured' }, 400);
+        return;
+    }
+
+    // Parse optional JSON body
+    let maxThemes: number | undefined;
+    let model: string | undefined;
+    let timeout: number | undefined;
+    try {
+        const body = await readBody(req);
+        if (body.trim()) {
+            const parsed = JSON.parse(body);
+            maxThemes = parsed.maxThemes;
+            model = parsed.model;
+            timeout = parsed.timeout;
+        }
+    } catch {
+        // Use defaults on parse error
+    }
+
+    // SSE setup
+    res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no',
+    });
+
+    try {
+        sendSSE(res, { type: 'status', message: 'Checking AI availability...' });
+
+        const { checkAIAvailability } = await importDeepWiki('ai-invoker');
+        const availability = await checkAIAvailability();
+        if (!availability.available) {
+            const reason = availability.reason || 'Copilot SDK not available';
+            sendSSE(res, { type: 'error', message: reason });
+            sendSSE(res, { type: 'done', success: false, error: reason });
+            res.end();
+            return;
+        }
+
+        sendSSE(res, { type: 'status', message: 'Generating theme seeds...' });
+
+        const { runSeedsSession } = await importDeepWiki('seeds/seeds-session');
+        const seeds = await runSeedsSession(repoPath, {
+            maxThemes: maxThemes ?? 50,
+            model,
+            timeout,
+        });
+
+        sendSSE(res, { type: 'log', message: `Generated ${seeds.length} theme seeds` });
+        sendSSE(res, { type: 'done', success: true, seeds });
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        sendSSE(res, { type: 'error', message });
+        sendSSE(res, { type: 'done', success: false, error: message });
+    }
+
+    res.end();
 }

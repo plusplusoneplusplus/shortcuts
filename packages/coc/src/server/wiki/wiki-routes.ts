@@ -17,7 +17,7 @@ import type { AskAIFunction } from './types';
 import type { ProcessStore, WikiInfo } from '@plusplusoneplusplus/pipeline-core';
 import { handleWikiAskRequest } from './ask-handler';
 import { handleWikiExploreRequest } from './explore-handler';
-import { handleGetSeeds, handlePutSeeds, handleGetConfig, handlePutConfig } from './admin-handlers';
+import { handleGetSeeds, handlePutSeeds, handleGetConfig, handlePutConfig, handleGenerateSeeds } from './admin-handlers';
 import {
     handleStartGenerate,
     handleCancelGenerate,
@@ -531,7 +531,7 @@ export function registerWikiRoutes(
         pattern: /^\/api\/wikis\/([^/]+)\/admin\/seeds$/,
         handler: async (_req, res, match) => {
             const wikiId = decodeURIComponent(match![1]);
-            handleGetSeeds(res, wikiId, wikiManager);
+            await handleGetSeeds(res, wikiId, wikiManager);
         },
     });
 
@@ -542,6 +542,16 @@ export function registerWikiRoutes(
         handler: async (req, res, match) => {
             const wikiId = decodeURIComponent(match![1]);
             await handlePutSeeds(req, res, wikiId, wikiManager);
+        },
+    });
+
+    // POST /api/wikis/:wikiId/admin/seeds/generate
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/wikis\/([^/]+)\/admin\/seeds\/generate$/,
+        handler: async (req, res, match) => {
+            const wikiId = decodeURIComponent(match![1]);
+            await handleGenerateSeeds(req, res, wikiId, wikiManager);
         },
     });
 
