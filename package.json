@@ -11,6 +11,7 @@
   "workspaces": [
     "packages/pipeline-core",
     "packages/coc",
+    "packages/coc-server",
     "packages/deep-wiki"
   ],
   "engines": {
