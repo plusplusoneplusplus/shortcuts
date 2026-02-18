@@ -2669,6 +2669,16 @@ html[data-theme="dark"] .miller-row-drop-target {
     background: rgba(241, 76, 76, 0.08);
 }
 
+/* Context menu keyboard shortcut label */
+.ctx-menu-shortcut {
+    margin-left: auto;
+    padding-left: 24px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    opacity: 0.7;
+    font-family: system-ui, -apple-system, sans-serif;
+}
+
 /* Disabled context menu item */
 .task-context-menu-item-disabled {
     color: var(--vscode-disabledForeground, #6c6c6c);

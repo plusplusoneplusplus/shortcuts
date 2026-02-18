@@ -357,3 +357,35 @@ describe('SPA styles — task preview scrolling', () => {
         expect(rule).toContain('overflow-y: hidden');
     });
 });
+
+describe('Bundled CSS — context menu shortcut label', () => {
+    const html = generateDashboardHtml();
+
+    it('defines ctx-menu-shortcut class', () => {
+        expect(html).toContain('.ctx-menu-shortcut');
+    });
+
+    it('ctx-menu-shortcut has margin-left auto for right-alignment', () => {
+        const start = html.indexOf('.ctx-menu-shortcut');
+        expect(start).toBeGreaterThan(-1);
+        const end = html.indexOf('}', start);
+        const rule = html.substring(start, end + 1);
+        expect(rule).toContain('margin-left: auto');
+    });
+
+    it('ctx-menu-shortcut has secondary text color', () => {
+        const start = html.indexOf('.ctx-menu-shortcut');
+        expect(start).toBeGreaterThan(-1);
+        const end = html.indexOf('}', start);
+        const rule = html.substring(start, end + 1);
+        expect(rule).toContain('color: var(--text-secondary)');
+    });
+
+    it('ctx-menu-shortcut has smaller font size', () => {
+        const start = html.indexOf('.ctx-menu-shortcut');
+        expect(start).toBeGreaterThan(-1);
+        const end = html.indexOf('}', start);
+        const rule = html.substring(start, end + 1);
+        expect(rule).toContain('font-size: 11px');
+    });
+});

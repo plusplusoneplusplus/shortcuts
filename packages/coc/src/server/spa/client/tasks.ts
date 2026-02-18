@@ -43,6 +43,7 @@ import {
     type CommentCategory,
     type CommentFilter,
     type StatusFilter,
+    type SelectionInfo,
 } from './task-comments-ui';
 import type { TaskComment as ClientTaskComment } from './task-comments-types';
 
@@ -123,8 +124,8 @@ let commentEventUnsub: (() => void) | null = null;
 let commentKeyHandler: ((e: KeyboardEvent) => void) | null = null;
 /** Selection toolbar instance for the current preview. */
 let selectionToolbar: SelectionToolbar | null = null;
-/** Mouseup handler for selection detection. */
-let mouseupHandler: ((e: MouseEvent) => void) | null = null;
+/** Contextmenu handler for right-click comment creation. */
+let previewContextmenuHandler: ((e: MouseEvent) => void) | null = null;
 /** Comment counts per file path for tree badges. */
 let treeCommentCounts: Record<string, number> = {};
 
@@ -1709,9 +1710,12 @@ function cleanupCommentState(): void {
         selectionToolbar.dispose();
         selectionToolbar = null;
     }
-    if (mouseupHandler) {
-        document.removeEventListener('mouseup', mouseupHandler);
-        mouseupHandler = null;
+    if (previewContextmenuHandler) {
+        const previewBody = document.getElementById('task-preview-body');
+        if (previewBody) {
+            previewBody.removeEventListener('contextmenu', previewContextmenuHandler);
+        }
+        previewContextmenuHandler = null;
     }
     previewComments = [];
     previewRawContent = '';
@@ -1942,13 +1946,17 @@ function setupCodeBlockHandlers(): void {
     });
 }
 
-/** Set up the selection toolbar that shows on text selection in the preview body. */
+/** Set up the selection toolbar that shows via right-click context menu in the preview body. */
 function setupSelectionToolbar(wsId: string, filePath: string): void {
     if (selectionToolbar) {
         selectionToolbar.dispose();
     }
-    if (mouseupHandler) {
-        document.removeEventListener('mouseup', mouseupHandler);
+    if (previewContextmenuHandler) {
+        const previewBody = document.getElementById('task-preview-body');
+        if (previewBody) {
+            previewBody.removeEventListener('contextmenu', previewContextmenuHandler);
+        }
+        previewContextmenuHandler = null;
     }
 
     selectionToolbar = new SelectionToolbar({
@@ -1979,17 +1987,123 @@ function setupSelectionToolbar(wsId: string, filePath: string): void {
         },
     });
 
-    mouseupHandler = () => {
+    previewContextmenuHandler = (e: MouseEvent) => {
+        // Hold Shift+right-click to show the native browser context menu
+        if (e.shiftKey) return;
+
         const previewBody = document.getElementById('task-preview-body');
         if (!previewBody || !selectionToolbar) return;
 
         const selInfo = getPreviewSelection(previewBody);
-        if (!selInfo) return;
 
-        selectionToolbar.show(selInfo);
+        // Show custom context menu with "Add Comment" option
+        e.preventDefault();
+        showPreviewContextMenu(e.clientX, e.clientY, selInfo, selectionToolbar);
     };
 
-    document.addEventListener('mouseup', mouseupHandler);
+    const previewBody = document.getElementById('task-preview-body');
+    if (previewBody) {
+        previewBody.addEventListener('contextmenu', previewContextmenuHandler);
+    }
+}
+
+/** Show a context menu at (x, y) for the preview body with comment actions. */
+function showPreviewContextMenu(
+    x: number,
+    y: number,
+    selInfo: SelectionInfo | null,
+    toolbar: SelectionToolbar
+): void {
+    dismissContextMenu();
+
+    const menu = document.createElement('div');
+    menu.id = 'task-context-menu';
+    menu.className = 'task-context-menu';
+
+    const hasSelection = selInfo !== null;
+    const disabledClass = hasSelection ? '' : ' task-context-menu-item-disabled';
+    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+    const shortcutLabel = isMac ? '\u2318\u21E7M' : 'Ctrl+Shift+M';
+
+    let itemsHtml = '';
+
+    // Cut / Copy / Paste
+    itemsHtml +=
+        '<div class="task-context-menu-item" data-ctx-action="preview-cut">' +
+            '<span class="ctx-menu-icon">\u2702\uFE0F</span>' +
+            '<span>Cut</span>' +
+            '<span class="ctx-menu-shortcut">' + (isMac ? '\u2318X' : 'Ctrl+X') + '</span>' +
+        '</div>' +
+        '<div class="task-context-menu-item" data-ctx-action="preview-copy">' +
+            '<span class="ctx-menu-icon">\uD83D\uDCCB</span>' +
+            '<span>Copy</span>' +
+            '<span class="ctx-menu-shortcut">' + (isMac ? '\u2318C' : 'Ctrl+C') + '</span>' +
+        '</div>';
+
+    itemsHtml += '<div class="task-context-menu-separator"></div>';
+
+    // Add Comment
+    itemsHtml +=
+        '<div class="task-context-menu-item' + disabledClass + '" data-ctx-action="preview-add-comment">' +
+            '<span class="ctx-menu-icon">\uD83D\uDCAC</span>' +
+            '<span>Add Comment</span>' +
+            '<span class="ctx-menu-shortcut">' + shortcutLabel + '</span>' +
+        '</div>';
+
+    menu.innerHTML = itemsHtml;
+    document.body.appendChild(menu);
+
+    // Position: keep within viewport
+    const rect = menu.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    let left = x;
+    let top = y;
+
+    if (left + rect.width > vw) left = vw - rect.width - 4;
+    if (top + rect.height > vh) top = vh - rect.height - 4;
+    if (left < 0) left = 4;
+    if (top < 0) top = 4;
+
+    menu.style.left = left + 'px';
+    menu.style.top = top + 'px';
+
+    // Click handler for menu items
+    menu.addEventListener('click', (e: Event) => {
+        const target = e.target as HTMLElement;
+        const item = target.closest('[data-ctx-action]') as HTMLElement | null;
+        if (!item) return;
+        if (item.classList.contains('task-context-menu-item-disabled')) return;
+
+        const action = item.getAttribute('data-ctx-action');
+        if (action === 'preview-add-comment' && selInfo) {
+            toolbar.show(selInfo);
+        } else if (action === 'preview-copy') {
+            document.execCommand('copy');
+        } else if (action === 'preview-cut') {
+            document.execCommand('cut');
+        }
+        dismissContextMenu();
+    });
+
+    // Dismiss on click outside or Escape
+    const onClickOutside = (e: MouseEvent) => {
+        if (!menu.contains(e.target as Node)) {
+            dismissContextMenu();
+            document.removeEventListener('click', onClickOutside, true);
+        }
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+            dismissContextMenu();
+            document.removeEventListener('keydown', onKeyDown, true);
+        }
+    };
+    setTimeout(() => {
+        document.addEventListener('click', onClickOutside, true);
+        document.addEventListener('keydown', onKeyDown, true);
+    }, 0);
 }
 
 /** Set up Ctrl+Shift+M / Cmd+Shift+M keyboard shortcut for showing selection toolbar. */
