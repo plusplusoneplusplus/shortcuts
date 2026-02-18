@@ -78,6 +78,20 @@
     border-left: 3px solid var(--status-failed);
 }
 
+/* Nested subagent tool calls under parent task cards */
+.tool-call-children {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 6px 10px 10px 22px;
+    padding-left: 10px;
+    border-left: 2px solid var(--border-color);
+}
+
+.tool-call-children > .tool-call-card {
+    margin: 0;
+}
+
 /* Header: clickable, always visible */
 .tool-call-header {
     display: flex;

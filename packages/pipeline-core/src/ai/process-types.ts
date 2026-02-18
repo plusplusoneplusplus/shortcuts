@@ -197,6 +197,11 @@ export interface ToolCall {
     result?: string;
     /** Error message (if failed) */
     error?: string;
+    /**
+     * Parent tool call ID when this tool was triggered inside another tool
+     * (for example: subagent tools under a `task` tool call).
+     */
+    parentToolCallId?: string;
     /** Permission request details (if applicable) */
     permissionRequest?: ToolCallPermissionRequest;
     /** Permission decision (if applicable) */
@@ -215,6 +220,7 @@ export interface SerializedToolCall {
     args: Record<string, unknown>;
     result?: string;
     error?: string;
+    parentToolCallId?: string;
     permissionRequest?: {
         kind: string;
         timestamp: string;  // ISO string
@@ -482,6 +488,7 @@ export function serializeProcess(process: AIProcess & Partial<TrackedProcessFiel
                 args: tc.args,
                 result: tc.result,
                 error: tc.error,
+                ...(tc.parentToolCallId ? { parentToolCallId: tc.parentToolCallId } : {}),
                 permissionRequest: tc.permissionRequest ? {
                     kind: tc.permissionRequest.kind,
                     timestamp: tc.permissionRequest.timestamp.toISOString(),
@@ -507,6 +514,7 @@ export function serializeProcess(process: AIProcess & Partial<TrackedProcessFiel
                     args: item.toolCall.args,
                     result: item.toolCall.result,
                     error: item.toolCall.error,
+                    ...(item.toolCall.parentToolCallId ? { parentToolCallId: item.toolCall.parentToolCallId } : {}),
                     permissionRequest: item.toolCall.permissionRequest ? {
                         kind: item.toolCall.permissionRequest.kind,
                         timestamp: item.toolCall.permissionRequest.timestamp.toISOString(),
@@ -567,6 +575,7 @@ export function deserializeProcess(serialized: SerializedAIProcess): AIProcess {
                 args: tc.args,
                 result: tc.result,
                 error: tc.error,
+                parentToolCallId: tc.parentToolCallId,
                 permissionRequest: tc.permissionRequest ? {
                     kind: tc.permissionRequest.kind,
                     timestamp: new Date(tc.permissionRequest.timestamp),
@@ -592,6 +601,7 @@ export function deserializeProcess(serialized: SerializedAIProcess): AIProcess {
                     args: item.toolCall.args,
                     result: item.toolCall.result,
                     error: item.toolCall.error,
+                    parentToolCallId: item.toolCall.parentToolCallId,
                     permissionRequest: item.toolCall.permissionRequest ? {
                         kind: item.toolCall.permissionRequest.kind,
                         timestamp: new Date(item.toolCall.permissionRequest.timestamp),

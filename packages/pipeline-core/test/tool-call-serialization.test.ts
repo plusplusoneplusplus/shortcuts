@@ -126,6 +126,43 @@ describe('ToolCall serialization', () => {
         expect(dTc.result).toBe('file content');
     });
 
+    it('round-trips parentToolCallId for nested tool calls', () => {
+        const parent: ToolCall = {
+            id: 'tc-parent',
+            name: 'task',
+            status: 'completed',
+            startTime: new Date('2026-02-15T10:01:00.000Z'),
+            endTime: new Date('2026-02-15T10:01:10.000Z'),
+            args: { agent_type: 'explore' },
+        };
+        const child: ToolCall = {
+            id: 'tc-child',
+            name: 'glob',
+            status: 'completed',
+            startTime: new Date('2026-02-15T10:01:01.000Z'),
+            endTime: new Date('2026-02-15T10:01:02.000Z'),
+            args: { glob_pattern: '**/*.ts' },
+            result: 'a.ts\nb.ts',
+            parentToolCallId: 'tc-parent',
+        };
+
+        const turn: ConversationTurn = {
+            role: 'assistant',
+            content: 'Nested run',
+            timestamp: new Date('2026-02-15T10:01:00.000Z'),
+            turnIndex: 0,
+            toolCalls: [parent, child],
+            timeline: [],
+        };
+        const process = makeProcess({ conversationTurns: [turn] });
+
+        const serialized = serializeProcess(process);
+        expect(serialized.conversationTurns![0].toolCalls![1].parentToolCallId).toBe('tc-parent');
+
+        const deserialized = deserializeProcess(serialized);
+        expect(deserialized.conversationTurns![0].toolCalls![1].parentToolCallId).toBe('tc-parent');
+    });
+
     it('round-trips tool call with permission request and approval', () => {
         const permReqTs = new Date('2026-02-15T10:01:01.000Z');
         const permResTs = new Date('2026-02-15T10:01:02.000Z');

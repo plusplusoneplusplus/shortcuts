@@ -158,6 +158,10 @@ describe('SPA conversation rendering', () => {
             expect(script).toContain('tool-calls-container');
         });
 
+        it('should support nested tool call containers for subagent calls', () => {
+            expect(script).toContain('tool-call-children');
+        });
+
         it('should display tool name and icon in header', () => {
             expect(script).toContain('tool-call-name');
             expect(script).toContain('tool-call-icon');
@@ -377,6 +381,11 @@ describe('SPA conversation rendering', () => {
         it('should create inline tool-calls-container during streaming', () => {
             expect(script).toContain('tool-calls-container');
             expect(script).toContain('.chat-message.assistant');
+        });
+
+        it('should resolve parent tool IDs for nested streaming tool calls', () => {
+            expect(script).toContain('resolveParentToolCallId');
+            expect(script).toContain('appendStreamingToolCard');
         });
 
         it('should find tool card by data-tool-id attribute', () => {

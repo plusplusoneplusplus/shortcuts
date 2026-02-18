@@ -12,9 +12,12 @@ export interface ClientToolCall {
     toolName: string;
     args: any;
     result?: string;
+    error?: string;
     status: 'pending' | 'running' | 'completed' | 'failed';
     startTime?: string;
     endTime?: string;
+    /** Parent tool call ID for nested/subagent calls. */
+    parentToolCallId?: string;
 }
 
 /** Timeline event for the SPA client (timestamps are ISO strings) */

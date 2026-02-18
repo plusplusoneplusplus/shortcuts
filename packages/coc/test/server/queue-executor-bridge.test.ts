@@ -2802,6 +2802,58 @@ describe('tool event emission via onToolEvent', () => {
         });
     });
 
+    it('should preserve parentToolCallId for nested subagent events', async () => {
+        mockSendMessage.mockImplementation(async (opts: any) => {
+            if (opts.onToolEvent) {
+                opts.onToolEvent({
+                    type: 'tool-start',
+                    toolCallId: 'tc-parent',
+                    toolName: 'task',
+                    parameters: { agent_type: 'explore' },
+                });
+                opts.onToolEvent({
+                    type: 'tool-start',
+                    toolCallId: 'tc-child',
+                    toolName: 'glob',
+                    parentToolCallId: 'tc-parent',
+                    parameters: { glob_pattern: '**/*.ts' },
+                });
+                opts.onToolEvent({
+                    type: 'tool-complete',
+                    toolCallId: 'tc-child',
+                    toolName: 'glob',
+                    parentToolCallId: 'tc-parent',
+                    result: 'a.ts\nb.ts',
+                });
+            }
+            return { success: true, response: 'done', sessionId: 'sess-parent' };
+        });
+
+        const executor = new CLITaskExecutor(store);
+        const task: QueuedTask = {
+            id: 'task-parent-tool',
+            type: 'ai-clarification',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { prompt: 'test' },
+            config: {},
+        };
+
+        await executor.execute(task);
+
+        expect(store.emitProcessEvent).toHaveBeenCalledWith('queue_task-parent-tool', expect.objectContaining({
+            type: 'tool-start',
+            toolCallId: 'tc-child',
+            parentToolCallId: 'tc-parent',
+        }));
+        expect(store.emitProcessEvent).toHaveBeenCalledWith('queue_task-parent-tool', expect.objectContaining({
+            type: 'tool-complete',
+            toolCallId: 'tc-child',
+            parentToolCallId: 'tc-parent',
+        }));
+    });
+
     it('should emit tool-failed events to store.emitProcessEvent', async () => {
         mockSendMessage.mockImplementation(async (opts: any) => {
             if (opts.onToolEvent) {
@@ -3125,6 +3177,57 @@ describe('timeline population during execution', () => {
         expect(assistantTurn!.timeline[0].toolCall!.id).toBe('tc-tl-1');
         expect(assistantTurn!.timeline[1].type).toBe('tool-complete');
         expect(assistantTurn!.timeline[1].toolCall!.result).toBe('file contents');
+    });
+
+    it('should preserve parentToolCallId in timeline tool calls', async () => {
+        mockSendMessage.mockImplementation(async (opts: any) => {
+            if (opts.onToolEvent) {
+                opts.onToolEvent({
+                    type: 'tool-start',
+                    toolCallId: 'tc-parent',
+                    toolName: 'task',
+                    parameters: { agent_type: 'explore' },
+                });
+                opts.onToolEvent({
+                    type: 'tool-start',
+                    toolCallId: 'tc-child',
+                    toolName: 'glob',
+                    parentToolCallId: 'tc-parent',
+                    parameters: { glob_pattern: '**/*.ts' },
+                });
+                opts.onToolEvent({
+                    type: 'tool-complete',
+                    toolCallId: 'tc-child',
+                    toolName: 'glob',
+                    parentToolCallId: 'tc-parent',
+                    result: 'match',
+                });
+            }
+            return { success: true, response: 'done', sessionId: 'sess-tl-parent' };
+        });
+
+        const executor = new CLITaskExecutor(store);
+        const task: QueuedTask = {
+            id: 'task-tl-parent',
+            type: 'ai-clarification',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { prompt: 'test' },
+            config: {},
+        };
+
+        await executor.execute(task);
+
+        const process = await store.getProcess('queue_task-tl-parent');
+        const assistantTurn = process!.conversationTurns!.find(t => t.role === 'assistant');
+        expect(assistantTurn).toBeDefined();
+
+        const childStart = assistantTurn!.timeline.find(
+            (item) => item.type === 'tool-start' && item.toolCall?.id === 'tc-child'
+        );
+        expect(childStart).toBeDefined();
+        expect(childStart!.toolCall!.parentToolCallId).toBe('tc-parent');
     });
 
     it('should append tool-failed events to timeline', async () => {

@@ -228,6 +228,11 @@ export interface ToolEvent {
     type: 'tool-start' | 'tool-complete' | 'tool-failed';
     toolCallId: string;
     toolName?: string;
+    /**
+     * Parent tool call ID when this tool is executed by a subagent
+     * (typically nested under a `task` tool call).
+     */
+    parentToolCallId?: string;
     /** Tool input parameters (for 'tool-start' events). */
     parameters?: Record<string, unknown>;
     /** Tool output result (for 'tool-complete' events). */

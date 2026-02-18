@@ -364,6 +364,128 @@ function renderGroupHTML(calls: ClientToolCall[]): string {
     return html;
 }
 
+/** Parse ISO timestamp into milliseconds, or null when unavailable/invalid. */
+function toMillis(iso?: string): number | null {
+    if (!iso) return null;
+    const ms = new Date(iso).getTime();
+    return Number.isFinite(ms) ? ms : null;
+}
+
+/**
+ * Infer parent relationships for subagent calls:
+ * - Use explicit parentToolCallId when provided.
+ * - Otherwise, nest non-task calls under the currently active `task` call.
+ */
+function inferParentToolCalls(calls: ClientToolCall[]): ClientToolCall[] {
+    const cloned = calls.map((c) => ({ ...c }));
+    const ordered = cloned.map((call, originalIndex) => ({
+        call,
+        originalIndex,
+        startMs: toMillis(call.startTime),
+        endMs: toMillis(call.endTime),
+    }));
+
+    ordered.sort((a, b) => {
+        const aKey = a.startMs ?? Number.MAX_SAFE_INTEGER;
+        const bKey = b.startMs ?? Number.MAX_SAFE_INTEGER;
+        if (aKey !== bKey) return aKey - bKey;
+        return a.originalIndex - b.originalIndex;
+    });
+
+    const activeTaskStack: Array<{ id: string; endMs: number | null }> = [];
+
+    for (const item of ordered) {
+        const currentStart = item.startMs;
+        if (currentStart != null) {
+            // Drop tasks that are definitively finished before this call starts.
+            while (activeTaskStack.length > 0) {
+                const top = activeTaskStack[activeTaskStack.length - 1];
+                if (top.endMs != null && top.endMs <= currentStart) {
+                    activeTaskStack.pop();
+                } else {
+                    break;
+                }
+            }
+        }
+
+        const call = item.call;
+        const explicitParent = call.parentToolCallId;
+        const activeParent = activeTaskStack.length > 0
+            ? activeTaskStack[activeTaskStack.length - 1].id
+            : undefined;
+
+        if (!explicitParent && call.toolName !== 'task' && activeParent && currentStart != null) {
+            call.parentToolCallId = activeParent;
+        }
+
+        if (call.toolName === 'task') {
+            if (!call.parentToolCallId && activeParent && call.id !== activeParent && currentStart != null) {
+                // Nested task calls (task tool invokes another task/subagent).
+                call.parentToolCallId = activeParent;
+            }
+            activeTaskStack.push({ id: call.id, endMs: item.endMs });
+        }
+    }
+
+    return cloned;
+}
+
+function injectChildrenIntoCardHTML(cardHtml: string, childrenHtml: string): string {
+    if (!childrenHtml) return cardHtml;
+    const tailIdx = cardHtml.lastIndexOf('</div>');
+    if (tailIdx < 0) {
+        return cardHtml + '<div class="tool-call-children">' + childrenHtml + '</div>';
+    }
+    return cardHtml.slice(0, tailIdx) +
+        '<div class="tool-call-children">' + childrenHtml + '</div>' +
+        cardHtml.slice(tailIdx);
+}
+
+function renderNestedToolCallsHTML(calls: ClientToolCall[]): string {
+    const normalized = calls.map((c) => ({ ...c }));
+
+    type ToolNode = {
+        call: ClientToolCall;
+        children: ToolNode[];
+        originalIndex: number;
+    };
+
+    const nodes = new Map<string, ToolNode>();
+    const roots: ToolNode[] = [];
+
+    for (let i = 0; i < normalized.length; i++) {
+        const call = normalized[i];
+        if (!call.id) continue;
+        nodes.set(call.id, { call, children: [], originalIndex: i });
+    }
+
+    for (const node of nodes.values()) {
+        const parentId = node.call.parentToolCallId;
+        if (parentId && parentId !== node.call.id && nodes.has(parentId)) {
+            nodes.get(parentId)!.children.push(node);
+        } else {
+            roots.push(node);
+        }
+    }
+
+    const sortByOriginalOrder = (a: ToolNode, b: ToolNode): number => a.originalIndex - b.originalIndex;
+    roots.sort(sortByOriginalOrder);
+    for (const node of nodes.values()) {
+        node.children.sort(sortByOriginalOrder);
+    }
+
+    const renderNode = (node: ToolNode): string => {
+        const baseHtml = renderToolCallHTML(node.call);
+        if (node.children.length === 0) {
+            return baseHtml;
+        }
+        const childrenHtml = node.children.map(renderNode).join('');
+        return injectChildrenIntoCardHTML(baseHtml, childrenHtml);
+    };
+
+    return roots.map(renderNode).join('');
+}
+
 /* ── Public API ────────────────────────────────────────────── */
 
 /**
@@ -380,6 +502,7 @@ export function normalizeToolCall(raw: any): ClientToolCall {
         status: raw.status || 'pending',
         startTime: raw.startTime,
         endTime: raw.endTime,
+        parentToolCallId: raw.parentToolCallId || raw.parent_tool_call_id,
     };
 }
 
@@ -431,7 +554,14 @@ export function renderToolCallHTML(toolCall: ClientToolCall | any): string {
 export function renderToolCallsHTML(toolCalls: Array<ClientToolCall | any>): string {
     if (!toolCalls || toolCalls.length === 0) return '';
 
-    const normalized = toolCalls.map(normalizeToolCall);
+    const normalized = inferParentToolCalls(toolCalls.map(normalizeToolCall));
+
+    // Prefer hierarchical rendering when parent-child relationships exist.
+    // This displays subagent tool calls directly under their parent task call.
+    if (normalized.some((tc) => !!tc.parentToolCallId)) {
+        return renderNestedToolCallsHTML(normalized);
+    }
+
     let html = '';
     let i = 0;
 

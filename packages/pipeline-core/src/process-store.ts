@@ -25,6 +25,8 @@ export interface ProcessOutputEvent {
     turnIndex?: number;
     /** Unique tool call identifier (for tool events). */
     toolCallId?: string;
+    /** Parent tool call ID for nested/subagent tool events. */
+    parentToolCallId?: string;
     /** Tool name (for 'tool-start' events). */
     toolName?: string;
     /** Tool input parameters (for 'tool-start' events). */

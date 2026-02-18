@@ -1663,6 +1663,38 @@ describe('CopilotSDKService - Empty response with tool activity', () => {
         expect(result.success).toBe(true);
         expect(result.response).toContain("I'll follow the instructions in the skill file.");
     });
+
+    it('should capture parentToolCallId for nested subagent tool calls', async () => {
+        const { sessions, resultPromise } = setupStreamingCall();
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+
+        dispatchEvent({ type: 'assistant.turn_start', data: { turnId: 'turn-parent' } });
+        dispatchEvent({ type: 'tool.execution_start', data: { toolCallId: 'tc-task', toolName: 'task' } });
+        dispatchEvent({
+            type: 'tool.execution_start',
+            data: { toolCallId: 'tc-glob', toolName: 'glob', parentToolCallId: 'tc-task' },
+        });
+        dispatchEvent({
+            type: 'tool.execution_complete',
+            data: { toolCallId: 'tc-glob', success: true, result: { content: 'a.ts\nb.ts' } },
+        });
+        dispatchEvent({ type: 'tool.execution_complete', data: { toolCallId: 'tc-task', success: true } });
+        dispatchEvent({ type: 'assistant.turn_end', data: { turnId: 'turn-parent' } });
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        const result = await resultPromise;
+        expect(result.success).toBe(true);
+        expect(result.toolCalls).toBeDefined();
+        const child = result.toolCalls!.find((tc) => tc.id === 'tc-glob');
+        expect(child).toBeDefined();
+        expect(child!.parentToolCallId).toBe('tc-task');
+    });
 });
 
 // ============================================================================

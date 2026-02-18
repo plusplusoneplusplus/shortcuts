@@ -11,7 +11,7 @@ import {
 } from './utils';
 import { navigateToProcess, setHashSilent, fetchApi } from './core';
 import { getCachedConversation, cacheConversation, invalidateConversationCache } from './sidebar';
-import { renderToolCallHTML, renderToolCallsHTML, attachToolCallToggleHandlers, normalizeToolCall, renderToolCall, updateToolCallStatus } from './tool-renderer';
+import { renderToolCallsHTML, attachToolCallToggleHandlers, normalizeToolCall, renderToolCall, updateToolCallStatus } from './tool-renderer';
 import { renderMarkdownToHtml } from './markdown-renderer';
 
 export function renderDetail(id: string): void {
@@ -391,16 +391,62 @@ function renderChatMessage(turn: ClientConversationTurn): string {
     }
     html += '</div>';
 
-    // Chronological rendering from timeline (tools appear inline where they executed)
+    // Timeline-first rendering with consolidated tool cards.
+    // We collapse lifecycle events by toolCallId so each tool appears once.
     if (turn.timeline && turn.timeline.length > 0) {
+        let hasContentSegment = false;
+        const toolsById = new Map<string, any>();
+        const orderedToolCalls: any[] = [];
+
         for (const item of turn.timeline) {
             if (item.type === 'content') {
+                hasContentSegment = true;
                 html += '<div class="chat-message-content">' + renderMarkdownToHtml(item.content || '') + '</div>';
             } else if (item.type.startsWith('tool-')) {
-                html += '<div class="tool-calls-container">';
-                html += renderToolCallHTML(item.toolCall);
-                html += '</div>';
+                const tc = normalizeToolCall(item.toolCall || {});
+                if (!tc.id) continue;
+
+                const existing = toolsById.get(tc.id);
+                if (!existing) {
+                    const snapshot = { ...tc };
+                    toolsById.set(tc.id, snapshot);
+                    orderedToolCalls.push(snapshot);
+                } else {
+                    if (tc.toolName && (!existing.toolName || existing.toolName === 'unknown')) {
+                        existing.toolName = tc.toolName;
+                    }
+                    if (tc.args && Object.keys(tc.args).length > 0) {
+                        existing.args = tc.args;
+                    }
+                    if (tc.status) {
+                        existing.status = tc.status;
+                    }
+                    if (tc.result !== undefined) {
+                        existing.result = tc.result;
+                    }
+                    if (tc.error !== undefined) {
+                        existing.error = tc.error;
+                    }
+                    if (tc.startTime && !existing.startTime) {
+                        existing.startTime = tc.startTime;
+                    }
+                    if (tc.endTime) {
+                        existing.endTime = tc.endTime;
+                    }
+                    if (tc.parentToolCallId && !existing.parentToolCallId) {
+                        existing.parentToolCallId = tc.parentToolCallId;
+                    }
+                }
             }
+        }
+
+        if (!hasContentSegment) {
+            html += '<div class="chat-message-content">' + renderMarkdownToHtml(turn.content || '') + '</div>';
+        }
+        if (!isUser && orderedToolCalls.length > 0) {
+            html += '<div class="tool-calls-container">';
+            html += renderToolCallsHTML(orderedToolCalls);
+            html += '</div>';
         }
     } else {
         // Empty timeline: streaming/optimistic/backward-compat turns
@@ -419,6 +465,61 @@ function renderChatMessage(turn: ClientConversationTurn): string {
 
     html += '</div>';
     return html;
+}
+
+/**
+ * Resolve parent tool call id for streaming tool events.
+ * Prefers explicit parent from server; falls back to current active task call.
+ */
+function resolveParentToolCallId(data: any, activeTaskStack: string[], toolName: string): string | undefined {
+    if (typeof data?.parentToolCallId === 'string' && data.parentToolCallId) {
+        return data.parentToolCallId;
+    }
+    if (activeTaskStack.length === 0) {
+        return undefined;
+    }
+    // In legacy events without explicit parent, infer from active task scope.
+    // This applies to both nested task calls and regular tool calls.
+    if (toolName === 'task' || toolName !== '') {
+        return activeTaskStack[activeTaskStack.length - 1];
+    }
+    return undefined;
+}
+
+function removeFromTaskStack(activeTaskStack: string[], toolCallId: string): void {
+    const idx = activeTaskStack.lastIndexOf(toolCallId);
+    if (idx >= 0) {
+        activeTaskStack.splice(idx, 1);
+    }
+}
+
+function ensureParentChildToolContainer(parentCard: HTMLElement): HTMLElement {
+    let childContainer = parentCard.querySelector('.tool-call-children') as HTMLElement | null;
+    if (!childContainer) {
+        childContainer = document.createElement('div');
+        childContainer.className = 'tool-call-children';
+        parentCard.appendChild(childContainer);
+    }
+    return childContainer;
+}
+
+function appendStreamingToolCard(
+    bubble: HTMLElement,
+    card: HTMLElement,
+    parentToolCallId?: string
+): void {
+    if (parentToolCallId) {
+        const parentCard = findToolCard(parentToolCallId);
+        if (parentCard) {
+            ensureParentChildToolContainer(parentCard).appendChild(card);
+            return;
+        }
+    }
+
+    const toolContainer = document.createElement('div');
+    toolContainer.className = 'tool-calls-container';
+    toolContainer.appendChild(card);
+    bubble.appendChild(toolContainer);
 }
 
 function renderQueueTaskConversation(processId: string, taskId: string, proc: any): void {
@@ -799,6 +900,7 @@ function connectFollowUpSSE(processId: string): void {
     const eventSource = new EventSource(sseUrl);
     let accumulatedContent = '';
     let followUpCurrentSegment = '';
+    const activeTaskToolCalls: string[] = [];
 
     eventSource.addEventListener('chunk', function(e: MessageEvent) {
         try {
@@ -834,20 +936,22 @@ function connectFollowUpSSE(processId: string): void {
             // Reset current segment so subsequent chunks go into a new content div
             followUpCurrentSegment = '';
 
-            // Create a new inline tool container after the current content
-            const toolContainer = document.createElement('div');
-            toolContainer.className = 'tool-calls-container';
-            bubble.appendChild(toolContainer);
+            const toolName = typeof data.toolName === 'string' ? data.toolName : '';
+            const parentToolCallId = resolveParentToolCallId(data, activeTaskToolCalls, toolName);
 
             const tc = normalizeToolCall({
                 id: data.toolCallId || '',
-                toolName: data.toolName || '',
+                toolName,
                 args: data.parameters || {},
                 status: 'running',
                 startTime: new Date().toISOString(),
+                parentToolCallId,
             });
+            if (toolName === 'task' && tc.id) {
+                activeTaskToolCalls.push(tc.id);
+            }
             const card = renderToolCall(tc);
-            toolContainer.appendChild(card);
+            appendStreamingToolCard(bubble, card, parentToolCallId);
             scrollConversationToBottom();
         } catch(err) {}
     });
@@ -857,14 +961,20 @@ function connectFollowUpSSE(processId: string): void {
             const data = JSON.parse(e.data);
             const card = findToolCard(data.toolCallId);
             if (card) {
+                const toolName = (typeof data.toolName === 'string' && data.toolName)
+                    ? data.toolName
+                    : (card.querySelector('.tool-call-name')?.textContent || '');
                 updateToolCallStatus(card, {
                     id: data.toolCallId,
-                    toolName: card.querySelector('.tool-call-name')?.textContent || '',
+                    toolName,
                     args: {},
                     result: typeof data.result === 'string' ? data.result : JSON.stringify(data.result),
                     status: 'completed',
                     endTime: new Date().toISOString(),
                 });
+                if (toolName === 'task') {
+                    removeFromTaskStack(activeTaskToolCalls, data.toolCallId);
+                }
             }
         } catch(err) {}
     });
@@ -874,13 +984,19 @@ function connectFollowUpSSE(processId: string): void {
             const data = JSON.parse(e.data);
             const card = findToolCard(data.toolCallId);
             if (card) {
+                const toolName = (typeof data.toolName === 'string' && data.toolName)
+                    ? data.toolName
+                    : (card.querySelector('.tool-call-name')?.textContent || '');
                 updateToolCallStatus(card, {
                     id: data.toolCallId,
-                    toolName: card.querySelector('.tool-call-name')?.textContent || '',
+                    toolName,
                     args: {},
                     status: 'failed',
                     endTime: new Date().toISOString(),
                 });
+                if (toolName === 'task') {
+                    removeFromTaskStack(activeTaskToolCalls, data.toolCallId);
+                }
             }
         } catch(err) {}
     });
@@ -962,6 +1078,7 @@ function connectQueueTaskSSE(processId: string, taskId: string, proc: any): void
     const sseUrl = getApiBase() + '/processes/' + encodeURIComponent(processId) + '/stream';
     const eventSource = new EventSource(sseUrl);
     activeQueueTaskStream = eventSource;
+    const activeTaskToolCalls: string[] = [];
 
     eventSource.addEventListener('chunk', function(e: MessageEvent) {
         if (queueTaskStreamProcessId !== processId) {
@@ -984,6 +1101,7 @@ function connectQueueTaskSSE(processId: string, taskId: string, proc: any): void
                         role: 'assistant',
                         content: fullContent,
                         streaming: true,
+                        timeline: [],
                     });
                 }
 
@@ -1005,20 +1123,22 @@ function connectQueueTaskSSE(processId: string, taskId: string, proc: any): void
             streamContentBeforeLastTool += queueTaskStreamContent;
             queueTaskStreamContent = '';
 
-            // Create an inline tool-calls-container directly after the current content
-            const toolContainer = document.createElement('div');
-            toolContainer.className = 'tool-calls-container';
-            bubble.appendChild(toolContainer);
+            const toolName = typeof data.toolName === 'string' ? data.toolName : '';
+            const parentToolCallId = resolveParentToolCallId(data, activeTaskToolCalls, toolName);
 
             const tc = normalizeToolCall({
                 id: data.toolCallId || '',
-                toolName: data.toolName || '',
+                toolName,
                 args: data.parameters || {},
                 status: 'running',
                 startTime: new Date().toISOString(),
+                parentToolCallId,
             });
+            if (toolName === 'task' && tc.id) {
+                activeTaskToolCalls.push(tc.id);
+            }
             const card = renderToolCall(tc);
-            toolContainer.appendChild(card);
+            appendStreamingToolCard(bubble, card, parentToolCallId);
             scrollConversationToBottom();
         } catch(err) {}
     });
@@ -1029,14 +1149,20 @@ function connectQueueTaskSSE(processId: string, taskId: string, proc: any): void
             const data = JSON.parse(e.data);
             const card = findToolCard(data.toolCallId);
             if (card) {
+                const toolName = (typeof data.toolName === 'string' && data.toolName)
+                    ? data.toolName
+                    : (card.querySelector('.tool-call-name')?.textContent || '');
                 updateToolCallStatus(card, {
                     id: data.toolCallId,
-                    toolName: card.querySelector('.tool-call-name')?.textContent || '',
+                    toolName,
                     args: {},
                     result: typeof data.result === 'string' ? data.result : JSON.stringify(data.result),
                     status: 'completed',
                     endTime: new Date().toISOString(),
                 });
+                if (toolName === 'task') {
+                    removeFromTaskStack(activeTaskToolCalls, data.toolCallId);
+                }
             }
         } catch(err) {}
     });
@@ -1047,13 +1173,19 @@ function connectQueueTaskSSE(processId: string, taskId: string, proc: any): void
             const data = JSON.parse(e.data);
             const card = findToolCard(data.toolCallId);
             if (card) {
+                const toolName = (typeof data.toolName === 'string' && data.toolName)
+                    ? data.toolName
+                    : (card.querySelector('.tool-call-name')?.textContent || '');
                 updateToolCallStatus(card, {
                     id: data.toolCallId,
-                    toolName: card.querySelector('.tool-call-name')?.textContent || '',
+                    toolName,
                     args: {},
                     status: 'failed',
                     endTime: new Date().toISOString(),
                 });
+                if (toolName === 'task') {
+                    removeFromTaskStack(activeTaskToolCalls, data.toolCallId);
+                }
             }
         } catch(err) {}
     });

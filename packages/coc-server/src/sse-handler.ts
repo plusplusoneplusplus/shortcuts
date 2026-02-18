@@ -18,9 +18,9 @@ import type { AIProcess } from '@plusplusoneplusplus/pipeline-core';
  *
  * Protocol:
  *   event: chunk              → { content: string }
- *   event: tool-start         → { turnIndex, toolCallId, toolName, parameters }
- *   event: tool-complete      → { turnIndex, toolCallId, result }
- *   event: tool-failed        → { turnIndex, toolCallId, error }
+ *   event: tool-start         → { turnIndex, toolCallId, parentToolCallId?, toolName, parameters }
+ *   event: tool-complete      → { turnIndex, toolCallId, parentToolCallId?, result }
+ *   event: tool-failed        → { turnIndex, toolCallId, parentToolCallId?, error }
  *   event: permission-request → { turnIndex, permissionId, kind, description }
  *   event: status             → { status, result?, error?, duration? }
  *   event: done               → { processId }
@@ -80,6 +80,7 @@ export async function handleProcessStream(
             sendEvent(res, 'tool-start', {
                 turnIndex: event.turnIndex,
                 toolCallId: event.toolCallId,
+                parentToolCallId: event.parentToolCallId,
                 toolName: event.toolName,
                 parameters: event.parameters,
             });
@@ -87,12 +88,14 @@ export async function handleProcessStream(
             sendEvent(res, 'tool-complete', {
                 turnIndex: event.turnIndex,
                 toolCallId: event.toolCallId,
+                parentToolCallId: event.parentToolCallId,
                 result: event.result,
             });
         } else if (event.type === 'tool-failed') {
             sendEvent(res, 'tool-failed', {
                 turnIndex: event.turnIndex,
                 toolCallId: event.toolCallId,
+                parentToolCallId: event.parentToolCallId,
                 error: event.error,
             });
         } else if (event.type === 'permission-request') {

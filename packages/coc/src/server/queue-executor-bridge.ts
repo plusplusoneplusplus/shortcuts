@@ -329,6 +329,7 @@ export class CLITaskExecutor implements TaskExecutor {
                             args: event.parameters || {},
                             result: event.result,
                             error: event.error,
+                            ...(event.parentToolCallId ? { parentToolCallId: event.parentToolCallId } : {}),
                         },
                     });
                     try {
@@ -336,6 +337,7 @@ export class CLITaskExecutor implements TaskExecutor {
                             type: event.type,
                             toolCallId: event.toolCallId,
                             toolName: event.toolName,
+                            ...(event.parentToolCallId ? { parentToolCallId: event.parentToolCallId } : {}),
                             parameters: event.parameters,
                             result: event.result,
                             error: event.error,
@@ -560,6 +562,7 @@ export class CLITaskExecutor implements TaskExecutor {
                         args: event.parameters || {},
                         result: event.result,
                         error: event.error,
+                        ...(event.parentToolCallId ? { parentToolCallId: event.parentToolCallId } : {}),
                     },
                 });
                 try {
@@ -567,6 +570,7 @@ export class CLITaskExecutor implements TaskExecutor {
                         type: event.type,
                         toolCallId: event.toolCallId,
                         toolName: event.toolName,
+                        ...(event.parentToolCallId ? { parentToolCallId: event.parentToolCallId } : {}),
                         parameters: event.parameters,
                         result: event.result,
                         error: event.error,

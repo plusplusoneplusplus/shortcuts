@@ -412,6 +412,7 @@ describe('Server Integration', () => {
                         type: 'tool-start',
                         turnIndex: 0,
                         toolCallId: 'call_def',
+                        parentToolCallId: 'call_abc',
                         toolName: 'edit',
                         parameters: { path: '/src/app.ts' },
                     });
@@ -419,6 +420,7 @@ describe('Server Integration', () => {
                         type: 'tool-failed',
                         turnIndex: 0,
                         toolCallId: 'call_def',
+                        parentToolCallId: 'call_abc',
                         error: 'Permission denied',
                     });
                     store.emitProcessEvent('sse-tools', {
@@ -440,6 +442,7 @@ describe('Server Integration', () => {
             expect((toolStarts[0].data as any).toolCallId).toBe('call_abc');
             expect((toolStarts[0].data as any).turnIndex).toBe(0);
             expect((toolStarts[0].data as any).parameters).toEqual({ path: '/src/app.ts' });
+            expect((toolStarts[1].data as any).parentToolCallId).toBe('call_abc');
 
             const toolCompletes = events.filter(e => e.event === 'tool-complete');
             expect(toolCompletes).toHaveLength(1);
@@ -448,6 +451,7 @@ describe('Server Integration', () => {
             const toolFails = events.filter(e => e.event === 'tool-failed');
             expect(toolFails).toHaveLength(1);
             expect((toolFails[0].data as any).error).toBe('Permission denied');
+            expect((toolFails[0].data as any).parentToolCallId).toBe('call_abc');
 
             const permReqs = events.filter(e => e.event === 'permission-request');
             expect(permReqs).toHaveLength(1);

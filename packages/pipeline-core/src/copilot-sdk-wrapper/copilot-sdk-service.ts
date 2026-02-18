@@ -1276,6 +1276,7 @@ export class CopilotSDKService {
                     // Tool execution is starting — track it for debugging stuck sessions
                     const toolCallId = event.data?.toolCallId || '(unknown)';
                     const toolName = event.data?.toolName || '(unknown)';
+                    const parentToolCallId = event.data?.parentToolCallId;
                     activeToolCalls.set(toolCallId, { toolName, startTime: Date.now() });
                     const argsStr = event.data?.arguments ? ` args=${JSON.stringify(event.data.arguments).substring(0, 200)}` : '';
                     logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: Tool execution started: ${toolName} [${toolCallId}]${argsStr}`);
@@ -1286,6 +1287,7 @@ export class CopilotSDKService {
                         status: 'running',
                         startTime: new Date(),
                         args: (event.data?.arguments ?? {}) as Record<string, unknown>,
+                        ...(parentToolCallId ? { parentToolCallId } : {}),
                     };
                     toolCallsMap!.set(toolCall.id, toolCall);
                     // Emit tool-start event for real-time UI updates
@@ -1295,6 +1297,7 @@ export class CopilotSDKService {
                                 type: 'tool-start',
                                 toolCallId: toolCall.id,
                                 toolName: toolCall.name,
+                                parentToolCallId: toolCall.parentToolCallId,
                                 parameters: toolCall.args,
                             });
                         } catch { /* non-fatal */ }
@@ -1332,6 +1335,7 @@ export class CopilotSDKService {
                             startTime: new Date(tracked?.startTime ?? Date.now()),
                             endTime: new Date(),
                             args: {},
+                            ...(event.data?.parentToolCallId ? { parentToolCallId: event.data.parentToolCallId } : {}),
                             error: 'Started outside observation window',
                         });
                     }
@@ -1343,6 +1347,7 @@ export class CopilotSDKService {
                                     type: 'tool-complete',
                                     toolCallId,
                                     toolName: tracked?.toolName,
+                                    parentToolCallId: capturedTool?.parentToolCallId,
                                     result: event.data?.result?.content,
                                 });
                             } else {
@@ -1350,6 +1355,7 @@ export class CopilotSDKService {
                                     type: 'tool-failed',
                                     toolCallId,
                                     toolName: tracked?.toolName,
+                                    parentToolCallId: capturedTool?.parentToolCallId,
                                     error: event.data?.error?.message || 'Unknown error',
                                 });
                             }
