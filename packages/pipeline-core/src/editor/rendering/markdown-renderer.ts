@@ -242,7 +242,22 @@ export function applyInlineMarkdown(text: string): string {
     
     // Inline code (must be before bold/italic to avoid conflicts)
     html = html.replace(/`([^`]+)`/g, '<span class="md-inline-code">`$1`</span>');
-    
+
+    // File paths — detect absolute paths and wrap in interactive spans.
+    // Must come after inline code (so paths inside backticks are skipped)
+    // and before images/links (to avoid double-processing).
+    const FILE_PATH_RE = /(?:\/(?:Users|home|tmp|var|etc|opt|usr|mnt|Volumes)[^\s&"'<>()]*)/g;
+    html = html.replace(FILE_PATH_RE, function(match: string, offset: number) {
+        // Skip if inside a <span class="md-inline-code"> tag
+        const before = html.substring(0, offset);
+        const opens = (before.match(/<span class="md-inline-code">/g) || []).length;
+        const closes = (before.match(/<\/span>/g) || []).length;
+        if (opens > closes) return match;
+
+        const short = shortenFilePath(match);
+        return '<span class="file-path-link" data-full-path="' + match + '" title="' + match + '">' + short + '</span>';
+    });
+
     // Images ![alt](url) - render as actual images with preview
     html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, src) => {
         const resolvedSrc = resolveImagePath(src);
@@ -284,6 +299,18 @@ export function applyInlineMarkdown(text: string): string {
     html = html.replace(/~~([^~]+)~~/g, '<span class="md-strike"><span class="md-marker">~~</span>$1<span class="md-marker">~~</span></span>');
     
     return html;
+}
+
+/**
+ * Shorten an absolute file path for display.
+ * Strips common home-dir and project prefixes.
+ */
+function shortenFilePath(p: string): string {
+    if (!p) return '';
+    return p
+        .replace(/^\/Users\/[^/]+\/Documents\/Projects\//, '')
+        .replace(/^\/Users\/[^/]+\//, '~/')
+        .replace(/^\/home\/[^/]+\//, '~/');
 }
 
 /**

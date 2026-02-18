@@ -69,5 +69,8 @@ import './task-comments-client';
 // 15. WebSocket (calls connectWebSocket())
 import './websocket';
 
+// 16. File path hover preview
+import './file-preview';
+
 // Bootstrap the app
 init();

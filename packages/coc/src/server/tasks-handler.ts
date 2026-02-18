@@ -63,6 +63,96 @@ async function resolveWorkspace(store: ProcessStore, id: string) {
 export function registerTaskRoutes(routes: Route[], store: ProcessStore): void {
 
     // ------------------------------------------------------------------
+    // GET /api/workspaces/:id/files/preview — File content preview
+    // Returns first N lines (or full content) of a file within the workspace.
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/files\/preview$/,
+        handler: async (req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const ws = await resolveWorkspace(store, id);
+            if (!ws) {
+                return sendError(res, 404, 'Workspace not found');
+            }
+
+            const parsed = url.parse(req.url || '/', true);
+            const filePath = typeof parsed.query.path === 'string' ? parsed.query.path : '';
+            if (!filePath) {
+                return sendError(res, 400, 'Missing required query parameter: path');
+            }
+
+            // Resolve and validate path is within workspace
+            const resolvedPath = path.resolve(filePath);
+            const wsRoot = path.resolve(ws.rootPath);
+            if (!resolvedPath.startsWith(wsRoot + path.sep) && resolvedPath !== wsRoot) {
+                return sendError(res, 403, 'Access denied: path is outside workspace');
+            }
+
+            // Binary file rejection by extension
+            const BINARY_EXTS = new Set([
+                '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.ico', '.webp', '.svg',
+                '.mp3', '.mp4', '.avi', '.mov', '.mkv', '.wav', '.flac',
+                '.zip', '.tar', '.gz', '.bz2', '.7z', '.rar',
+                '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+                '.exe', '.dll', '.so', '.dylib', '.bin', '.o', '.a',
+                '.woff', '.woff2', '.ttf', '.eot', '.otf',
+            ]);
+            const ext = path.extname(resolvedPath).toLowerCase();
+            if (BINARY_EXTS.has(ext)) {
+                return sendError(res, 400, 'Binary files are not supported');
+            }
+
+            // Parse lines parameter (default 20, 0 = all, max 500)
+            let maxLines = 20;
+            const linesParam = parsed.query.lines;
+            if (typeof linesParam === 'string' && linesParam !== '') {
+                maxLines = parseInt(linesParam, 10);
+                if (isNaN(maxLines) || maxLines < 0) maxLines = 20;
+                if (maxLines > 500 && maxLines !== 0) maxLines = 500;
+            }
+
+            try {
+                const stat = await fs.promises.stat(resolvedPath);
+                if (!stat.isFile()) {
+                    return sendError(res, 404, 'Not a file');
+                }
+                // File size cap: 2MB
+                if (stat.size > 2 * 1024 * 1024) {
+                    return sendError(res, 400, 'File too large (max 2MB)');
+                }
+
+                const content = await fs.promises.readFile(resolvedPath, 'utf-8');
+                const allLines = content.split('\n');
+                // Remove trailing empty line from split
+                if (allLines.length > 0 && allLines[allLines.length - 1] === '') {
+                    allLines.pop();
+                }
+
+                const truncated = maxLines > 0 && allLines.length > maxLines;
+                const lines = maxLines === 0 ? allLines : allLines.slice(0, maxLines);
+
+                const fileName = path.basename(resolvedPath);
+                const language = ext ? ext.substring(1) : '';
+
+                sendJSON(res, 200, {
+                    path: resolvedPath,
+                    fileName,
+                    lines,
+                    totalLines: allLines.length,
+                    truncated,
+                    language,
+                });
+            } catch (err: any) {
+                if (err.code === 'ENOENT') {
+                    return sendError(res, 404, 'File not found');
+                }
+                return sendError(res, 500, 'Failed to read file: ' + (err.message || 'Unknown error'));
+            }
+        },
+    });
+
+    // ------------------------------------------------------------------
     // GET /api/workspaces/:id/tasks/content — Raw markdown content
     // (must be registered before the general /tasks route)
     // ------------------------------------------------------------------

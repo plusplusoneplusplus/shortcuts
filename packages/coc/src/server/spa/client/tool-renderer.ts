@@ -151,7 +151,7 @@ function buildResultHTML(result: string | undefined, toolName: string): string {
  * Strips common home-dir and project prefixes so
  * `/Users/foo/Documents/Projects/bar/src/file.ts` becomes `bar/src/file.ts`.
  */
-function shortenPath(p: string): string {
+export function shortenPath(p: string): string {
     if (!p) return '';
     // Strip /Users/<user>/Documents/Projects/ or /home/<user>/
     const shortened = p

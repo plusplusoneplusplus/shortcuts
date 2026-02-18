@@ -1,0 +1,191 @@
+/* ---- File Path Preview ---- */
+
+/* File path links in chat messages */
+.file-path-link {
+    font-family: var(--font-mono, 'SF Mono', 'Menlo', 'Consolas', monospace);
+    color: var(--accent, #0078d4);
+    text-decoration: underline;
+    text-decoration-style: dashed;
+    text-underline-offset: 3px;
+    cursor: pointer;
+    border-radius: 3px;
+    padding: 0 2px;
+    transition: background 0.15s;
+}
+.file-path-link:hover {
+    background: var(--hover-bg, rgba(0,120,212,0.08));
+}
+
+/* ---- Hover Tooltip ---- */
+.file-preview-tooltip {
+    position: fixed;
+    z-index: 10000;
+    background: var(--bg-primary, #fff);
+    border: 1px solid var(--border-color, #e0e0e0);
+    border-radius: 8px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.15);
+    max-width: 500px;
+    max-height: 350px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    animation: file-preview-fadein 0.15s ease;
+}
+@keyframes file-preview-fadein {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.file-preview-tooltip-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    background: var(--bg-secondary, #f3f3f3);
+    border-bottom: 1px solid var(--border-color, #e0e0e0);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.file-preview-tooltip-filename {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.file-preview-tooltip-info {
+    font-weight: 400;
+    color: var(--text-secondary, #6e6e6e);
+    flex-shrink: 0;
+}
+
+.file-preview-tooltip-body {
+    flex: 1;
+    overflow: auto;
+    padding: 0;
+    min-height: 40px;
+}
+.file-preview-tooltip-loading,
+.file-preview-tooltip-error {
+    padding: 16px;
+    font-size: 12px;
+    color: var(--text-secondary, #6e6e6e);
+    text-align: center;
+}
+.file-preview-tooltip-error {
+    color: var(--status-failed, #f14c4c);
+}
+
+/* Shared code block for tooltip and dialog */
+.file-preview-code {
+    display: flex;
+    margin: 0;
+    padding: 0;
+    font-size: 12px;
+    line-height: 1.5;
+    font-family: var(--font-mono, 'SF Mono', 'Menlo', 'Consolas', monospace);
+    background: transparent;
+    overflow: visible;
+}
+.file-preview-code code {
+    display: block;
+    white-space: pre;
+    padding: 8px 0;
+}
+.file-preview-code .line-numbers {
+    text-align: right;
+    padding-right: 12px;
+    padding-left: 12px;
+    color: var(--text-secondary, #6e6e6e);
+    user-select: none;
+    border-right: 1px solid var(--border-color, #e0e0e0);
+    flex-shrink: 0;
+}
+.file-preview-code .line-content {
+    padding-left: 12px;
+    padding-right: 12px;
+    flex: 1;
+    overflow-x: auto;
+}
+.file-preview-code .line-number {
+    display: block;
+    opacity: 0.5;
+}
+
+/* ---- Full Content Dialog (Modal) ---- */
+.file-content-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10001;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: file-preview-fadein 0.15s ease;
+}
+.file-content-dialog {
+    background: var(--bg-primary, #fff);
+    border-radius: 12px;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.25);
+    width: 80vw;
+    max-width: 1000px;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.file-content-dialog-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--bg-secondary, #f3f3f3);
+    border-bottom: 1px solid var(--border-color, #e0e0e0);
+}
+.file-content-dialog-title {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    overflow: hidden;
+    min-width: 0;
+}
+.file-content-dialog-filename {
+    font-size: 14px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.file-content-dialog-fullpath {
+    font-size: 11px;
+    color: var(--text-secondary, #6e6e6e);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-mono, 'SF Mono', 'Menlo', 'Consolas', monospace);
+}
+.file-content-dialog-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+.file-content-dialog-actions button {
+    background: none;
+    border: 1px solid var(--border-color, #e0e0e0);
+    border-radius: 6px;
+    padding: 4px 10px;
+    cursor: pointer;
+    font-size: 14px;
+    color: var(--text-primary, #1e1e1e);
+    transition: background 0.15s;
+}
+.file-content-dialog-actions button:hover {
+    background: var(--hover-bg, rgba(0,0,0,0.04));
+}
+.file-content-dialog-body {
+    flex: 1;
+    overflow: auto;
+    min-height: 100px;
+}

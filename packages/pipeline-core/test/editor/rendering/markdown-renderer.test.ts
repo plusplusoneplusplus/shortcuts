@@ -177,6 +177,60 @@ describe('applyInlineMarkdown', () => {
         expect(html).toContain('md-anchor-link');
         expect(html).toContain('data-anchor="my-section"');
     });
+
+    // File path detection
+    describe('file path detection', () => {
+        it('detects /Users absolute paths', () => {
+            const html = applyInlineMarkdown('See /Users/john/project/src/main.ts');
+            expect(html).toContain('file-path-link');
+            expect(html).toContain('data-full-path="/Users/john/project/src/main.ts"');
+        });
+
+        it('detects /home absolute paths', () => {
+            const html = applyInlineMarkdown('Check /home/dev/app/index.js');
+            expect(html).toContain('file-path-link');
+            expect(html).toContain('data-full-path="/home/dev/app/index.js"');
+        });
+
+        it('detects /tmp, /var, /etc, /opt paths', () => {
+            expect(applyInlineMarkdown('/tmp/out.log')).toContain('file-path-link');
+            expect(applyInlineMarkdown('/var/log/sys')).toContain('file-path-link');
+            expect(applyInlineMarkdown('/etc/nginx.conf')).toContain('file-path-link');
+            expect(applyInlineMarkdown('/opt/bin/node')).toContain('file-path-link');
+        });
+
+        it('shortens /Users/<user>/Documents/Projects/ paths', () => {
+            const html = applyInlineMarkdown('/Users/john/Documents/Projects/myapp/src/index.ts');
+            expect(html).toContain('>myapp/src/index.ts</span>');
+        });
+
+        it('shortens /Users/<user>/ to ~/', () => {
+            const html = applyInlineMarkdown('/Users/john/Desktop/file.txt');
+            expect(html).toContain('>~/Desktop/file.txt</span>');
+        });
+
+        it('shortens /home/<user>/ to ~/', () => {
+            const html = applyInlineMarkdown('/home/john/projects/app.js');
+            expect(html).toContain('>~/projects/app.js</span>');
+        });
+
+        it('does not match relative paths', () => {
+            const html = applyInlineMarkdown('src/main.ts');
+            expect(html).not.toContain('file-path-link');
+        });
+
+        it('does not match paths inside inline code', () => {
+            const html = applyInlineMarkdown('Run `cat /Users/john/file.txt`');
+            // inline code is processed first
+            expect(html).toContain('md-inline-code');
+        });
+
+        it('handles multiple paths in one line', () => {
+            const html = applyInlineMarkdown('/Users/a/f1.ts and /Users/b/f2.ts');
+            const matches = html.match(/file-path-link/g);
+            expect(matches).toHaveLength(2);
+        });
+    });
 });
 
 describe('applySourceModeHighlighting', () => {
