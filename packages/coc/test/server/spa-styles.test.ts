@@ -275,3 +275,85 @@ describe('SPA styles — history view', () => {
         expect(html).toContain('@keyframes spin');
     });
 });
+
+// ============================================================================
+// Task preview scrolling layout
+// ============================================================================
+
+describe('SPA styles — task preview scrolling', () => {
+    let html: string;
+    beforeAll(() => { html = generateDashboardHtml(); });
+
+    it('defines task-preview-content-wrapper as flex container', () => {
+        expect(html).toContain('.task-preview-content-wrapper');
+        // Extract the rule block
+        const start = html.indexOf('.task-preview-content-wrapper {');
+        expect(start).toBeGreaterThan(-1);
+        const end = html.indexOf('}', start);
+        const rule = html.substring(start, end + 1);
+        expect(rule).toContain('display: flex');
+        expect(rule).toContain('flex: 1');
+    });
+
+    it('task-preview-content-wrapper has min-height: 0 for flex shrinking', () => {
+        const start = html.indexOf('.task-preview-content-wrapper {');
+        const end = html.indexOf('}', start);
+        const rule = html.substring(start, end + 1);
+        expect(rule).toContain('min-height: 0');
+    });
+
+    it('task-preview-content-wrapper has overflow: hidden to contain children', () => {
+        const start = html.indexOf('.task-preview-content-wrapper {');
+        const end = html.indexOf('}', start);
+        const rule = html.substring(start, end + 1);
+        expect(rule).toContain('overflow: hidden');
+    });
+
+    it('task-preview-body has overflow-y: auto for scrolling', () => {
+        const start = html.indexOf('.task-preview-body {');
+        expect(start).toBeGreaterThan(-1);
+        const end = html.indexOf('}', start);
+        const rule = html.substring(start, end + 1);
+        expect(rule).toContain('overflow-y: auto');
+    });
+
+    it('task-preview-body has min-height: 0 for flex shrinking', () => {
+        const start = html.indexOf('.task-preview-body {');
+        const end = html.indexOf('}', start);
+        const rule = html.substring(start, end + 1);
+        expect(rule).toContain('min-height: 0');
+    });
+
+    it('task-preview-body has flex: 1 to fill available space', () => {
+        const start = html.indexOf('.task-preview-body {');
+        const end = html.indexOf('}', start);
+        const rule = html.substring(start, end + 1);
+        expect(rule).toContain('flex: 1');
+    });
+
+    it('miller-preview-column is a flex column container', () => {
+        // The shared rule for .task-file-preview, .miller-preview-column
+        expect(html).toContain('.miller-preview-column');
+        expect(html).toContain('flex-direction: column');
+    });
+
+    it('miller-preview-column has overflow: hidden to constrain children', () => {
+        // The shared rule
+        const start = html.indexOf('.task-file-preview,');
+        expect(start).toBeGreaterThan(-1);
+        const end = html.indexOf('}', start);
+        const rule = html.substring(start, end + 1);
+        expect(rule).toContain('overflow: hidden');
+        expect(rule).toContain('display: flex');
+        expect(rule).toContain('flex-direction: column');
+    });
+
+    it('miller-columns has max-height constraint for scroll containment', () => {
+        const start = html.indexOf('.miller-columns {');
+        expect(start).toBeGreaterThan(-1);
+        const end = html.indexOf('}', start);
+        const rule = html.substring(start, end + 1);
+        expect(rule).toContain('max-height:');
+        expect(rule).toContain('overflow-y: hidden');
+    });
+});

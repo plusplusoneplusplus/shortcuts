@@ -2389,11 +2389,19 @@ html[data-theme="dark"] .miller-row-drop-target {
     color: var(--text-primary);
 }
 
+.task-preview-content-wrapper {
+    flex: 1;
+    display: flex;
+    min-height: 0;   /* allow flex child to shrink below content size */
+    overflow: hidden;
+}
+
 .task-preview-body {
     padding: 16px 20px;
     font-size: 14px;
     line-height: 1.7;
     flex: 1;
+    min-height: 0;   /* allow flex child to shrink below content size */
     overflow-y: auto;
 }
 

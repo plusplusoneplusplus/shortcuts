@@ -615,3 +615,23 @@ describe('Checkbox selection UI — CSS styles', () => {
         expect(html).toContain('.miller-bulk-action-btn:hover');
     });
 });
+
+// ============================================================================
+// Task preview scrollable layout — client bundle
+// ============================================================================
+
+describe('Task preview scrollable layout — client bundle', () => {
+    let script: string;
+    beforeAll(() => { script = getClientBundle(); });
+
+    it('wraps task-preview-body in task-preview-content-wrapper', () => {
+        expect(script).toContain('task-preview-content-wrapper');
+        expect(script).toContain('task-preview-body');
+    });
+
+    it('renders task-preview-content-wrapper containing preview body and comments sidebar', () => {
+        // The wrapper should contain both the body and the sidebar
+        expect(script).toContain('task-preview-content-wrapper');
+        expect(script).toContain('task-preview-comments-sidebar');
+    });
+});
