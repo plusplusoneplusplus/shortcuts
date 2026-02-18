@@ -2500,23 +2500,11 @@ export function showRepoAIGenerateDialog(wsId: string, preselectedFolder?: strin
                 // Shared options (depth + separator)
                 '<hr class="ai-gen-divider" />' +
                 '<div class="enqueue-field">' +
-                    '<label>Generation Depth</label>' +
-                    '<div class="ai-gen-depth-options">' +
-                        '<label class="ai-gen-depth-option selected" id="ai-gen-depth-simple">' +
-                            '<input type="radio" name="ai-gen-depth" value="simple" checked />' +
-                            '<div class="ai-gen-depth-content">' +
-                                '<div class="ai-gen-depth-title">⚡ Simple</div>' +
-                                '<div class="ai-gen-depth-desc">Quick, single-pass AI analysis</div>' +
-                            '</div>' +
-                        '</label>' +
-                        '<label class="ai-gen-depth-option" id="ai-gen-depth-deep">' +
-                            '<input type="radio" name="ai-gen-depth" value="deep" />' +
-                            '<div class="ai-gen-depth-content">' +
-                                '<div class="ai-gen-depth-title">🔬 Deep</div>' +
-                                '<div class="ai-gen-depth-desc">Multi-phase research using go-deep skill</div>' +
-                            '</div>' +
-                        '</label>' +
-                    '</div>' +
+                    '<label for="ai-gen-depth">Generation Depth</label>' +
+                    '<select id="ai-gen-depth" class="ai-gen-depth-select">' +
+                        '<option value="simple">⚡ Simple — Quick, single-pass AI analysis</option>' +
+                        '<option value="deep">🔬 Deep — Multi-phase research using go-deep skill</option>' +
+                    '</select>' +
                 '</div>' +
                 '<div id="ai-gen-progress" class="hidden" style="margin:8px 0;padding:8px;background:var(--bg-secondary,#f5f5f5);border-radius:4px;font-size:0.85em;max-height:200px;overflow-y:auto;white-space:pre-wrap"></div>' +
                 '<div class="enqueue-actions">' +
@@ -2547,20 +2535,6 @@ export function showRepoAIGenerateDialog(wsId: string, preselectedFolder?: strin
         });
     });
 
-    // Depth option selection
-    const depthSimple = document.getElementById('ai-gen-depth-simple') as HTMLLabelElement;
-    const depthDeep = document.getElementById('ai-gen-depth-deep') as HTMLLabelElement;
-
-    if (depthSimple && depthDeep) {
-        depthSimple.addEventListener('click', () => {
-            depthSimple.classList.add('selected');
-            depthDeep.classList.remove('selected');
-        });
-        depthDeep.addEventListener('click', () => {
-            depthDeep.classList.add('selected');
-            depthSimple.classList.remove('selected');
-        });
-    }
 
     // Name validation
     function validateTaskName(value: string): string | null {
@@ -2612,7 +2586,7 @@ export function showRepoAIGenerateDialog(wsId: string, preselectedFolder?: strin
         let prompt: string | undefined;
         let name: string | undefined;
         let targetFolder: string | undefined;
-        const depth = (overlay.querySelector('input[name="ai-gen-depth"]:checked') as HTMLInputElement)?.value || 'simple';
+        const depth = (document.getElementById('ai-gen-depth') as HTMLSelectElement)?.value || 'simple';
 
         if (currentAIMode === 'create') {
             // Validate name

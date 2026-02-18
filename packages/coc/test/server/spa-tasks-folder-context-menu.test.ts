@@ -515,18 +515,17 @@ describe('Folder context menu — AI Generate dialog structure', () => {
         expect(script).toContain('Task Focus');
     });
 
-    it('renders depth options with Simple and Deep radio buttons', () => {
-        expect(script).toContain('ai-gen-depth-options');
-        expect(script).toContain('ai-gen-depth-simple');
-        expect(script).toContain('ai-gen-depth-deep');
+    it('renders depth select dropdown with Simple and Deep options', () => {
+        expect(script).toContain('ai-gen-depth');
+        expect(script).toContain('ai-gen-depth-select');
     });
 
-    it('renders Simple depth option label', () => {
+    it('renders Simple depth option in dropdown', () => {
         expect(script).toContain('Simple');
         expect(script).toContain('single-pass AI analysis');
     });
 
-    it('renders Deep depth option label', () => {
+    it('renders Deep depth option in dropdown', () => {
         expect(script).toContain('Deep');
         expect(script).toContain('go-deep skill');
     });
@@ -656,24 +655,8 @@ describe('Folder context menu — AI Generate dialog CSS styles', () => {
         expect(html).toContain('.ai-gen-mode-tab:disabled');
     });
 
-    it('defines ai-gen-depth-options style', () => {
-        expect(html).toContain('.ai-gen-depth-options');
-    });
-
-    it('defines ai-gen-depth-option style', () => {
-        expect(html).toContain('.ai-gen-depth-option');
-    });
-
-    it('defines selected depth option style', () => {
-        expect(html).toContain('.ai-gen-depth-option.selected');
-    });
-
-    it('defines ai-gen-depth-title style', () => {
-        expect(html).toContain('.ai-gen-depth-title');
-    });
-
-    it('defines ai-gen-depth-desc style', () => {
-        expect(html).toContain('.ai-gen-depth-desc');
+    it('defines ai-gen-depth-select style', () => {
+        expect(html).toContain('.ai-gen-depth-select');
     });
 
     it('defines ai-gen-hint style', () => {
@@ -700,12 +683,4 @@ describe('Folder context menu — AI Generate dialog CSS styles', () => {
         expect(html).toContain('.ai-gen-mode-content');
     });
 
-    it('defines depth option hover style with accent border', () => {
-        expect(html).toContain('.ai-gen-depth-option:hover');
-    });
-
-    it('defines depth option radio button accent color', () => {
-        // esbuild CSS minifier strips quotes: input[type=radio]
-        expect(html).toContain('.ai-gen-depth-option input[type=radio]');
-    });
 });

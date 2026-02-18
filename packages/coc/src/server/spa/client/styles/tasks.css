@@ -726,53 +726,8 @@ html[data-theme="dark"] .miller-row-drop-target {
     margin: 16px 0 12px;
 }
 
-.ai-gen-depth-options {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.ai-gen-depth-option {
-    display: flex;
-    align-items: flex-start;
-    padding: 10px 12px;
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    background: var(--bg-secondary);
+.ai-gen-depth-select {
     cursor: pointer;
-    transition: border-color 0.2s, background-color 0.2s;
-}
-
-.ai-gen-depth-option:hover {
-    border-color: var(--accent);
-    background: var(--hover-bg, rgba(255, 255, 255, 0.03));
-}
-
-.ai-gen-depth-option.selected {
-    border-color: var(--accent);
-    background: var(--selection-bg, rgba(0, 122, 204, 0.08));
-}
-
-.ai-gen-depth-option input[type="radio"] {
-    margin: 0 10px 0 0;
-    margin-top: 2px;
-    accent-color: var(--accent);
-}
-
-.ai-gen-depth-content {
-    flex: 1;
-}
-
-.ai-gen-depth-title {
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text-primary);
-}
-
-.ai-gen-depth-desc {
-    font-size: 11px;
-    color: var(--text-secondary);
-    margin-top: 2px;
 }
 
 .ai-gen-no-features {
