@@ -332,8 +332,8 @@ async function renameItem(wsId: string, itemPath: string, currentName: string): 
     }, currentName);
 }
 
-async function deleteItem(wsId: string, itemPath: string, name: string): Promise<void> {
-    if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
+async function deleteItem(wsId: string, itemPath: string, name: string, confirmed = false): Promise<void> {
+    if (!confirmed && !confirm(`Delete "${name}"? This cannot be undone.`)) return;
 
     try {
         const res = await fetch(getApiBase() + `/workspaces/${encodeURIComponent(wsId)}/tasks`, {
@@ -1543,7 +1543,7 @@ function applyFollowPromptToSelected(): void {
 /** Delete a folder after confirmation via the DELETE API. */
 function deleteFolderFromMenu(wsId: string, folderPath: string, folderName: string): void {
     if (!confirm(`Delete folder "${folderName}" and all its contents? This cannot be undone.`)) return;
-    deleteItem(wsId, folderPath, folderName);
+    deleteItem(wsId, folderPath, folderName, true);
 }
 
 /** Show a dialog for choosing a destination folder to move the source into. */

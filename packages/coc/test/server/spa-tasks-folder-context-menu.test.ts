@@ -300,6 +300,37 @@ describe('Folder context menu — delete operation', () => {
 });
 
 // ============================================================================
+// Folder context menu — single delete confirmation (no double dialog)
+// ============================================================================
+
+describe('Folder context menu — single delete confirmation', () => {
+    let script: string;
+    beforeAll(() => { script = getClientBundle(); });
+
+    it('deleteItem accepts an optional confirmed parameter', () => {
+        // The function signature should include a confirmed parameter with default value
+        expect(script).toMatch(/deleteItem\(.*,\s*confirmed\s*=\s*false\)/s);
+    });
+
+    it('deleteItem skips its own confirm when confirmed is true', () => {
+        // The guard should check !confirmed before calling confirm()
+        expect(script).toContain('!confirmed');
+    });
+
+    it('deleteFolderFromMenu passes confirmed=true to deleteItem', () => {
+        // After folder-specific confirm, deleteItem is called with true to skip second dialog
+        expect(script).toMatch(/deleteItem\([^)]*,\s*true\)/);
+    });
+
+    it('deleteItem still shows confirm dialog for direct (non-folder) calls', () => {
+        // The default value of confirmed is false, so direct callers still see the dialog
+        // Verify confirm() call exists in deleteItem
+        expect(script).toContain('Delete "');
+        expect(script).toContain('? This cannot be undone.');
+    });
+});
+
+// ============================================================================
 // Folder context menu — CSS styles
 // ============================================================================
 
