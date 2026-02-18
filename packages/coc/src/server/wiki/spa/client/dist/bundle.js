@@ -1734,14 +1734,14 @@
     try {
       const res = await fetch("/api/admin/generate/status");
       const data = await res.json();
-      const unavailableEl = document.getElementById("generate-unavailable");
+      const wizardEl = document.getElementById("bootstrap-wizard");
       const controlsEl = document.getElementById("generate-controls");
       if (!data.available) {
-        if (unavailableEl) unavailableEl.classList.remove("hidden");
+        if (wizardEl) wizardEl.classList.remove("hidden");
         if (controlsEl) controlsEl.style.display = "none";
         return;
       }
-      if (unavailableEl) unavailableEl.classList.add("hidden");
+      if (wizardEl) wizardEl.classList.add("hidden");
       if (controlsEl) controlsEl.style.display = "";
       for (let phase = 1; phase <= 5; phase++) {
         const badge = document.getElementById("phase-cache-" + phase);

@@ -492,7 +492,7 @@ describe('SPA generate tab', () => {
         expect(body).toContain('generate-run-range');
     });
 
-    it('should include unavailable message element', async () => {
+    it('should include bootstrap wizard element', async () => {
         const { wikiDir } = setupWikiDir();
         const s = await startServer(wikiDir);
 
@@ -504,8 +504,7 @@ describe('SPA generate tab', () => {
             }).on('error', reject);
         });
 
-        expect(body).toContain('generate-unavailable');
-        expect(body).toContain('--generate');
+        expect(body).toContain('bootstrap-wizard');
     });
 
     it('should include phase descriptions', async () => {

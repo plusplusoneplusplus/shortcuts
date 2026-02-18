@@ -961,3 +961,188 @@ describe('generateSpaHtml — config injection', () => {
         expect(configIdx).toBeLessThan(lastScriptClose);
     });
 });
+
+// ============================================================================
+// Bootstrap Wizard HTML Scaffold
+// ============================================================================
+
+describe('generateSpaHtml — bootstrap wizard scaffold', () => {
+    function getHtml(): string {
+        return generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+    }
+
+    it('should include #bootstrap-wizard inside #admin-content-generate', () => {
+        const html = getHtml();
+        expect(html).toContain('id="bootstrap-wizard"');
+        const adminGenIdx = html.indexOf('id="admin-content-generate"');
+        const wizardIdx = html.indexOf('id="bootstrap-wizard"');
+        expect(wizardIdx).toBeGreaterThan(adminGenIdx);
+    });
+
+    it('#bootstrap-wizard should carry the hidden class', () => {
+        const html = getHtml();
+        const match = html.match(/<div\s+id="bootstrap-wizard"\s+class="([^"]*)"/);
+        expect(match).toBeTruthy();
+        expect(match![1]).toContain('hidden');
+    });
+
+    it('should not contain #generate-unavailable div in HTML', () => {
+        const html = getHtml();
+        expect(html).not.toContain('id="generate-unavailable"');
+    });
+
+    it('#bootstrap-wizard should appear before #generate-controls', () => {
+        const html = getHtml();
+        const wizardIdx = html.indexOf('id="bootstrap-wizard"');
+        const controlsIdx = html.indexOf('id="generate-controls"');
+        expect(wizardIdx).toBeLessThan(controlsIdx);
+    });
+
+    describe('wizard step indicators', () => {
+        it('should have step indicators for seeds, config, generate', () => {
+            const html = getHtml();
+            expect(html).toContain('id="wizard-step-indicator-seeds"');
+            expect(html).toContain('id="wizard-step-indicator-config"');
+            expect(html).toContain('id="wizard-step-indicator-generate"');
+        });
+
+        it('step 1 (seeds) should have active class by default', () => {
+            const html = getHtml();
+            const seedsSection = html.substring(
+                html.indexOf('id="wizard-step-indicator-seeds"') - 50,
+                html.indexOf('id="wizard-step-indicator-seeds"') + 80
+            );
+            expect(seedsSection).toContain('active');
+        });
+
+        it('step 2 and 3 should not have active class', () => {
+            const html = getHtml();
+            const configMatch = html.match(/<div\s+class="wizard-step"\s+id="wizard-step-indicator-config"/);
+            expect(configMatch).toBeTruthy();
+            const generateMatch = html.match(/<div\s+class="wizard-step"\s+id="wizard-step-indicator-generate"/);
+            expect(generateMatch).toBeTruthy();
+        });
+    });
+
+    describe('wizard step panels', () => {
+        it('should have all three step panels', () => {
+            const html = getHtml();
+            expect(html).toContain('id="wizard-step-seeds"');
+            expect(html).toContain('id="wizard-step-config"');
+            expect(html).toContain('id="wizard-step-generate"');
+        });
+
+        it('step 2 and 3 panels should be hidden', () => {
+            const html = getHtml();
+            const configPanelMatch = html.match(/<div\s+class="wizard-panel hidden"\s+id="wizard-step-config"/);
+            expect(configPanelMatch).toBeTruthy();
+            const genPanelMatch = html.match(/<div\s+class="wizard-panel hidden"\s+id="wizard-step-generate"/);
+            expect(genPanelMatch).toBeTruthy();
+        });
+    });
+
+    describe('step 1 — seeds elements', () => {
+        it('should have auto-generate seeds button', () => {
+            const html = getHtml();
+            expect(html).toContain('id="wizard-seeds-generate-btn"');
+        });
+
+        it('should have seeds log element (hidden)', () => {
+            const html = getHtml();
+            expect(html).toContain('id="wizard-seeds-log"');
+            const match = html.match(/<div\s+class="wizard-log hidden"\s+id="wizard-seeds-log"/);
+            expect(match).toBeTruthy();
+        });
+
+        it('should have seeds review and chips containers', () => {
+            const html = getHtml();
+            expect(html).toContain('id="wizard-seeds-review"');
+            expect(html).toContain('id="wizard-seeds-chips"');
+        });
+
+        it('should have seeds YAML editor', () => {
+            const html = getHtml();
+            expect(html).toContain('id="wizard-seeds-editor"');
+        });
+
+        it('should have skip and save buttons', () => {
+            const html = getHtml();
+            expect(html).toContain('id="wizard-seeds-skip-btn"');
+            expect(html).toContain('id="wizard-seeds-save-btn"');
+        });
+    });
+
+    describe('step 2 — config elements', () => {
+        it('should have model select', () => {
+            const html = getHtml();
+            expect(html).toContain('id="wizard-config-model"');
+        });
+
+        it('should have depth radios', () => {
+            const html = getHtml();
+            expect(html).toContain('id="wizard-config-depth"');
+            expect(html).toContain('value="shallow"');
+            expect(html).toContain('value="standard"');
+            expect(html).toContain('value="deep"');
+        });
+
+        it('should have focus input', () => {
+            const html = getHtml();
+            expect(html).toContain('id="wizard-config-focus"');
+        });
+
+        it('should have advanced YAML config textarea', () => {
+            const html = getHtml();
+            expect(html).toContain('id="wizard-config-yaml"');
+        });
+
+        it('should have back and continue buttons', () => {
+            const html = getHtml();
+            expect(html).toContain('id="wizard-config-back-btn"');
+            expect(html).toContain('id="wizard-config-continue-btn"');
+        });
+    });
+
+    describe('step 3 — generate elements', () => {
+        it('should have phase badge spans for all 5 phases', () => {
+            const html = getHtml();
+            for (let i = 1; i <= 5; i++) {
+                expect(html).toContain(`id="wizard-phase-badge-${i}"`);
+            }
+        });
+
+        it('should have back and generate buttons', () => {
+            const html = getHtml();
+            expect(html).toContain('id="wizard-generate-back-btn"');
+            expect(html).toContain('id="wizard-generate-btn"');
+        });
+
+        it('should list all five phase names', () => {
+            const html = getHtml();
+            const wizardSection = html.substring(
+                html.indexOf('id="wizard-step-generate"'),
+                html.indexOf('<!-- /bootstrap-wizard -->')
+            );
+            expect(wizardSection).toContain('Discovery');
+            expect(wizardSection).toContain('Consolidation');
+            expect(wizardSection).toContain('Analysis');
+            expect(wizardSection).toContain('Writing');
+            expect(wizardSection).toContain('Website');
+        });
+    });
+
+    it('should have no duplicate IDs in HTML markup', () => {
+        const html = getHtml();
+        // Extract only the HTML body markup, excluding inline <script> blocks
+        const bodyStart = html.indexOf('<body>');
+        const firstScript = html.indexOf('<script>', bodyStart);
+        const bodyHtml = html.substring(bodyStart, firstScript > -1 ? firstScript : undefined);
+        const idMatches = bodyHtml.match(/\bid="([^"]+)"/g) || [];
+        const ids = idMatches.map(m => m.match(/id="([^"]+)"/)![1]);
+        const duplicates = ids.filter((id, i) => ids.indexOf(id) !== i);
+        expect(duplicates).toEqual([]);
+    });
+});

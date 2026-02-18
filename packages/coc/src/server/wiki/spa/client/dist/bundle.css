@@ -1616,6 +1616,235 @@ body {
   background: rgba(239, 68, 68, 0.1);
   color: #ef4444;
 }
+.wizard-steps {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin-bottom: 24px;
+  padding: 16px 0 8px;
+  border-bottom: 1px solid var(--content-border);
+}
+.wizard-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--content-muted);
+}
+.wizard-step.active {
+  color: var(--link-color);
+  font-weight: 600;
+}
+.wizard-step.done {
+  color: #22c55e;
+}
+.wizard-step.done .wizard-step-number::after {
+  content: "\2713";
+}
+.wizard-step-number {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.wizard-step.active .wizard-step-number {
+  background: var(--link-color);
+  color: #fff;
+  border-color: var(--link-color);
+}
+.wizard-step.done .wizard-step-number {
+  background: #22c55e;
+  color: #fff;
+  border-color: #22c55e;
+}
+.wizard-step-connector {
+  flex: 1;
+  height: 1px;
+  background: var(--content-border);
+  margin: 0 8px;
+}
+.wizard-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.wizard-panel.hidden {
+  display: none;
+}
+.wizard-panel-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--content-text);
+}
+.wizard-panel-desc {
+  margin: 0;
+  font-size: 13px;
+  color: var(--content-muted);
+}
+.wizard-panel-actions {
+  justify-content: flex-end;
+}
+.wizard-seeds-actions {
+  display: flex;
+  gap: 8px;
+}
+.wizard-log {
+  max-height: 200px;
+  overflow-y: auto;
+  background: var(--code-bg);
+  border: 1px solid var(--code-border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-family:
+    "SF Mono",
+    "Fira Code",
+    monospace;
+  font-size: 12px;
+  color: var(--content-muted);
+  white-space: pre-wrap;
+}
+.wizard-log.hidden {
+  display: none;
+}
+.wizard-seeds-review {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.wizard-seeds-review.hidden {
+  display: none;
+}
+.wizard-seeds-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.wizard-seed-chip {
+  cursor: default;
+}
+.wizard-advanced {
+  border: 1px solid var(--content-border);
+  border-radius: 6px;
+}
+.wizard-advanced-summary {
+  padding: 10px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--content-muted);
+  user-select: none;
+}
+.wizard-advanced-summary:hover {
+  color: var(--content-text);
+}
+.wizard-seeds-textarea,
+.wizard-config-textarea {
+  min-height: 200px;
+}
+.wizard-config-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.wizard-config-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.wizard-config-label {
+  width: 80px;
+  flex-shrink: 0;
+  padding-top: 6px;
+  font-size: 13px;
+  color: var(--content-text);
+}
+.wizard-config-select {
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  background: var(--code-bg);
+  color: var(--content-text);
+  border: 1px solid var(--code-border);
+  cursor: pointer;
+}
+.wizard-config-radios {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding-top: 4px;
+}
+.wizard-config-radio-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.wizard-config-input {
+  flex: 1;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  background: var(--code-bg);
+  color: var(--content-text);
+  border: 1px solid var(--code-border);
+}
+.wizard-config-input:focus,
+.wizard-config-select:focus {
+  outline: 2px solid var(--link-color);
+  outline-offset: -1px;
+}
+.wizard-phase-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.wizard-phase-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: var(--card-bg);
+  border: 1px solid var(--content-border);
+  font-size: 13px;
+}
+.wizard-phase-number {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--content-border);
+  color: var(--content-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.wizard-phase-name {
+  flex: 1;
+  color: var(--content-text);
+}
+.wizard-phase-badge {
+  font-size: 11px;
+  font-weight: 600;
+}
+.wizard-phase-badge.cached {
+  color: #22c55e;
+}
+.wizard-phase-badge.missing {
+  color: #6b7280;
+}
+.wizard-phase-badge.stale {
+  color: #f59e0b;
+}
 @media (max-width: 768px) {
   .admin-page-header {
     padding: 20px 16px 0;

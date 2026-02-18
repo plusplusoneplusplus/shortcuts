@@ -143,10 +143,151 @@ ${enableSearch ? `            <div class="search-box">
                     </div>
                     <div class="admin-tab-content" id="admin-content-generate">
                         <div class="admin-section">
-                            <div id="generate-unavailable" class="generate-unavailable hidden">
-                                <p>Generation requires a repository path. Restart with:</p>
-                                <code>deep-wiki serve &lt;wiki-dir&gt; --generate &lt;repo-path&gt;</code>
+                            <!-- Bootstrap Wizard (hidden until JS in 003/004 activates it) -->
+                            <div id="bootstrap-wizard" class="hidden">
+
+                              <!-- Step indicator / breadcrumb -->
+                              <div class="wizard-steps">
+                                <div class="wizard-step active" id="wizard-step-indicator-seeds" data-step="seeds">
+                                  <span class="wizard-step-number">1</span>
+                                  <span class="wizard-step-label">Seeds</span>
+                                </div>
+                                <div class="wizard-step-connector"></div>
+                                <div class="wizard-step" id="wizard-step-indicator-config" data-step="config">
+                                  <span class="wizard-step-number">2</span>
+                                  <span class="wizard-step-label">Config</span>
+                                </div>
+                                <div class="wizard-step-connector"></div>
+                                <div class="wizard-step" id="wizard-step-indicator-generate" data-step="generate">
+                                  <span class="wizard-step-number">3</span>
+                                  <span class="wizard-step-label">Generate</span>
+                                </div>
+                              </div>
+
+                              <!-- Step 1: Seeds -->
+                              <div class="wizard-panel" id="wizard-step-seeds">
+                                <h3 class="wizard-panel-title">Step 1 — Seeds</h3>
+                                <p class="wizard-panel-desc">
+                                  Seeds are theme keywords that guide the wiki generation.
+                                  Auto-generate them from the repo, or edit manually.
+                                </p>
+
+                                <div class="wizard-seeds-actions">
+                                  <button class="admin-btn admin-btn-save" id="wizard-seeds-generate-btn">Auto-generate Seeds</button>
+                                </div>
+
+                                <!-- SSE streaming log shown while seeds are being generated -->
+                                <div class="wizard-log hidden" id="wizard-seeds-log"></div>
+
+                                <!-- Theme chip review panel (populated by JS after SSE completes) -->
+                                <div class="wizard-seeds-review hidden" id="wizard-seeds-review">
+                                  <div class="wizard-seeds-chips" id="wizard-seeds-chips"></div>
+                                </div>
+
+                                <!-- YAML editor for manual editing -->
+                                <details class="wizard-advanced" id="wizard-seeds-advanced">
+                                  <summary class="wizard-advanced-summary">Edit seeds YAML directly</summary>
+                                  <textarea class="admin-editor wizard-seeds-textarea" id="wizard-seeds-editor" spellcheck="false" placeholder="# seeds.yaml&#10;themes:&#10;  - name: ...&#10;    description: ..."></textarea>
+                                </details>
+
+                                <div class="admin-actions wizard-panel-actions">
+                                  <button class="admin-btn admin-btn-reset" id="wizard-seeds-skip-btn">Skip</button>
+                                  <button class="admin-btn admin-btn-save" id="wizard-seeds-save-btn">Save &amp; Continue</button>
+                                </div>
+                              </div>
+
+                              <!-- Step 2: Config (hidden initially) -->
+                              <div class="wizard-panel hidden" id="wizard-step-config">
+                                <h3 class="wizard-panel-title">Step 2 — Config</h3>
+                                <p class="wizard-panel-desc">Configure how the wiki will be generated.</p>
+
+                                <div class="wizard-config-form">
+                                  <div class="wizard-config-row">
+                                    <label class="wizard-config-label" for="wizard-config-model">Model</label>
+                                    <select class="wizard-config-select" id="wizard-config-model">
+                                      <option value="">Default</option>
+                                      <option value="gpt-4o">gpt-4o</option>
+                                      <option value="gpt-4o-mini">gpt-4o-mini</option>
+                                      <option value="claude-sonnet">claude-sonnet</option>
+                                    </select>
+                                  </div>
+
+                                  <div class="wizard-config-row">
+                                    <label class="wizard-config-label">Depth</label>
+                                    <div class="wizard-config-radios" id="wizard-config-depth">
+                                      <label class="wizard-config-radio-label">
+                                        <input type="radio" name="wizard-depth" value="shallow"> Shallow
+                                      </label>
+                                      <label class="wizard-config-radio-label">
+                                        <input type="radio" name="wizard-depth" value="standard" checked> Standard
+                                      </label>
+                                      <label class="wizard-config-radio-label">
+                                        <input type="radio" name="wizard-depth" value="deep"> Deep
+                                      </label>
+                                    </div>
+                                  </div>
+
+                                  <div class="wizard-config-row">
+                                    <label class="wizard-config-label" for="wizard-config-focus">Focus</label>
+                                    <input class="wizard-config-input" type="text" id="wizard-config-focus"
+                                           placeholder="e.g. authentication, data pipeline (optional)">
+                                  </div>
+                                </div>
+
+                                <!-- Collapsible advanced YAML override -->
+                                <details class="wizard-advanced" id="wizard-config-advanced">
+                                  <summary class="wizard-advanced-summary">Advanced YAML config</summary>
+                                  <textarea class="admin-editor wizard-config-textarea" id="wizard-config-yaml" spellcheck="false" placeholder="# Optional YAML overrides"></textarea>
+                                </details>
+
+                                <div class="admin-actions wizard-panel-actions">
+                                  <button class="admin-btn admin-btn-reset" id="wizard-config-back-btn">Back</button>
+                                  <button class="admin-btn admin-btn-save" id="wizard-config-continue-btn">Continue</button>
+                                </div>
+                              </div>
+
+                              <!-- Step 3: Generate (hidden initially) -->
+                              <div class="wizard-panel hidden" id="wizard-step-generate">
+                                <h3 class="wizard-panel-title">Step 3 — Generate</h3>
+                                <p class="wizard-panel-desc">Review the phases that will run, then start generation.</p>
+
+                                <!-- Summary of phases with cache badges (mirrors existing phase cards but read-only) -->
+                                <div class="wizard-phase-list">
+                                  <div class="wizard-phase-row">
+                                    <span class="wizard-phase-number">1</span>
+                                    <span class="wizard-phase-name">Discovery</span>
+                                    <span class="wizard-phase-badge" id="wizard-phase-badge-1"></span>
+                                  </div>
+                                  <div class="wizard-phase-row">
+                                    <span class="wizard-phase-number">2</span>
+                                    <span class="wizard-phase-name">Consolidation</span>
+                                    <span class="wizard-phase-badge" id="wizard-phase-badge-2"></span>
+                                  </div>
+                                  <div class="wizard-phase-row">
+                                    <span class="wizard-phase-number">3</span>
+                                    <span class="wizard-phase-name">Analysis</span>
+                                    <span class="wizard-phase-badge" id="wizard-phase-badge-3"></span>
+                                  </div>
+                                  <div class="wizard-phase-row">
+                                    <span class="wizard-phase-number">4</span>
+                                    <span class="wizard-phase-name">Writing</span>
+                                    <span class="wizard-phase-badge" id="wizard-phase-badge-4"></span>
+                                  </div>
+                                  <div class="wizard-phase-row">
+                                    <span class="wizard-phase-number">5</span>
+                                    <span class="wizard-phase-name">Website</span>
+                                    <span class="wizard-phase-badge" id="wizard-phase-badge-5"></span>
+                                  </div>
+                                </div>
+
+                                <div class="admin-actions wizard-panel-actions">
+                                  <button class="admin-btn admin-btn-reset" id="wizard-generate-back-btn">Back</button>
+                                  <button class="admin-btn admin-btn-save" id="wizard-generate-btn">Generate Wiki</button>
+                                </div>
+                              </div>
+
                             </div>
+                            <!-- /bootstrap-wizard -->
                             <div id="generate-controls">
                                 <div class="generate-options">
                                     <label class="generate-force-label">
