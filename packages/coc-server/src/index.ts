@@ -24,6 +24,19 @@ export {
 } from './router';
 export type { RouterOptions } from './router';
 
+// Shared router primitives (for building custom routers)
+export {
+    createRouter,
+    serveStaticFile,
+    readBody,
+} from './shared/router';
+export type {
+    RouteHandler,
+    Route as SharedRoute,
+    StaticFileHandler,
+    SharedRouterOptions,
+} from './shared/router';
+
 // Export/import types and validation
 export type {
     ExportMetadata,
