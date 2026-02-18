@@ -28,7 +28,8 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
             const data = await fetchApi('/queue?repoId=' + encodeURIComponent(workspaceId));
             setRunning(data?.running || []);
             setQueued(data?.queued || []);
-            setHistory(data?.history || []);
+            const historyData = await fetchApi('/queue/history?repoId=' + encodeURIComponent(workspaceId)).catch(() => null);
+            setHistory(historyData?.history || []);
         } catch {
             setRunning([]);
             setQueued([]);
