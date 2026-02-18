@@ -10,7 +10,7 @@ import {
     formatDuration, formatRelativeTime, escapeHtmlClient,
     statusIcon, typeLabel,
 } from './utils';
-import { showQueueTaskDetail } from './detail';
+import { showQueueTaskDetail, showPendingTaskInfo, getPendingInfoTaskId } from './detail';
 import { selectProcess, startLiveTimers, stopLiveTimers } from './sidebar';
 import { saveModelPreference } from './preferences';
 
@@ -39,6 +39,15 @@ export async function fetchQueue(): Promise<void> {
         }
 
         renderQueuePanel();
+
+        // Auto-transition: if viewing a pending task info panel and the task has started running, switch to conversation view
+        const pendingInfoId = getPendingInfoTaskId();
+        if (pendingInfoId) {
+            const isNowRunning = queueState.running.some(function(t: any) { return t.id === pendingInfoId; });
+            if (isNowRunning) {
+                showQueueTaskDetail(pendingInfoId);
+            }
+        }
 
         // Start/stop polling based on active tasks
         const hasActive = (queueState.stats.queued > 0 || queueState.stats.running > 0);
@@ -250,10 +259,10 @@ export function renderQueueTask(task: any, isQueued: boolean, index?: number): s
         elapsed = formatRelativeTime(new Date(task.createdAt).toISOString());
     }
 
-    // Running tasks are clickable to view conversation
+    // Running tasks open conversation view; queued tasks open info panel
     const clickAttr = task.status === 'running'
         ? ' onclick="showQueueTaskDetail(\'' + escapeHtmlClient(task.id) + '\')" style="cursor:pointer"'
-        : '';
+        : ' onclick="showPendingTaskInfo(\'' + escapeHtmlClient(task.id) + '\')" style="cursor:pointer"';
 
     let html = '<div class="queue-task ' + task.status + '" data-task-id="' + escapeHtmlClient(task.id) + '"' + clickAttr + '>' +
         '<div class="queue-task-row">' +
@@ -527,5 +536,6 @@ if (enqueueOverlay) {
 (window as any).queueMoveToTop = queueMoveToTop;
 (window as any).toggleQueueHistory = toggleQueueHistory;
 (window as any).showQueueTaskDetail = showQueueTaskDetail;
+(window as any).showPendingTaskInfo = showPendingTaskInfo;
 (window as any).queueForceFailAll = queueForceFailAll;
 (window as any).queueForceFailTask = queueForceFailTask;

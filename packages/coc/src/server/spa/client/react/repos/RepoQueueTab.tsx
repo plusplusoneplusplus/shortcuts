@@ -21,7 +21,7 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
     const [loading, setLoading] = useState(true);
     const [now, setNow] = useState(Date.now());
 
-    const { state: queueState } = useQueue();
+    const { state: queueState, dispatch: queueDispatch } = useQueue();
 
     const fetchQueue = async () => {
         try {
@@ -99,6 +99,7 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
                                 status="running"
                                 now={now}
                                 onCancel={() => handleCancel(task.id)}
+                                onClick={() => queueDispatch({ type: 'SELECT_QUEUE_TASK', id: task.id })}
                             />
                         ))}
                     </div>
@@ -121,6 +122,7 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
                                 onCancel={() => handleCancel(task.id)}
                                 onMoveUp={index > 0 ? () => handleMoveUp(task.id) : undefined}
                                 onMoveToTop={() => handleMoveToTop(task.id)}
+                                onClick={() => queueDispatch({ type: 'SELECT_QUEUE_TASK', id: task.id })}
                             />
                         ))}
                     </div>
@@ -164,13 +166,14 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
     );
 }
 
-function QueueTaskItem({ task, status, now, onCancel, onMoveUp, onMoveToTop }: {
+function QueueTaskItem({ task, status, now, onCancel, onMoveUp, onMoveToTop, onClick }: {
     task: any;
     status: 'running' | 'queued';
     now: number;
     onCancel: () => void;
     onMoveUp?: () => void;
     onMoveToTop?: () => void;
+    onClick?: () => void;
 }) {
     const name = (task.displayName || task.type || 'Task').substring(0, 35);
     const icon = status === 'running' ? '🔄' : '⏳';
@@ -182,7 +185,7 @@ function QueueTaskItem({ task, status, now, onCancel, onMoveUp, onMoveToTop }: {
     }
 
     return (
-        <Card className="p-2">
+        <Card className="p-2" onClick={onClick}>
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc]">
                     <span>{icon}</span>

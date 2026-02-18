@@ -15,6 +15,13 @@ import { renderToolCallsHTML, attachToolCallToggleHandlers, normalizeToolCall, r
 import { renderMarkdownToHtml } from './markdown-renderer';
 
 export function renderDetail(id: string): void {
+    // Pending task info view (ID starts with 'queue-info/')
+    if (id.startsWith('queue-info/')) {
+        const taskId = id.substring('queue-info/'.length);
+        showPendingTaskInfo(taskId);
+        return;
+    }
+
     // Queue processes (ID starts with 'queue_') should use the queue task conversation view
     if (id.startsWith('queue_')) {
         const taskId = id.substring('queue_'.length);
@@ -252,6 +259,7 @@ function setConversationHTML(el: HTMLElement, processId: string, turns: ClientCo
 export function clearDetail(): void {
     // Clean up any active SSE connection
     closeQueueTaskStream();
+    pendingInfoTaskId = null;
     const emptyEl = document.getElementById('detail-empty');
     const contentEl = document.getElementById('detail-content');
     const panelEl = document.getElementById('detail-panel');
@@ -283,6 +291,164 @@ let userHasScrolledUp = false;
 const chatEnterSend = localStorage.getItem('coc-chat-enter-send') !== 'false';
 const chatAutoScroll = localStorage.getItem('coc-chat-auto-scroll') !== 'false';
 
+// ================================================================
+// Pending Task Info Panel
+// ================================================================
+
+/** Tracks the task ID currently displayed in the pending info panel (for auto-transition). */
+let pendingInfoTaskId: string | null = null;
+
+/** Returns the currently displayed pending task ID (used by queue polling for auto-transition). */
+export function getPendingInfoTaskId(): string | null {
+    return pendingInfoTaskId;
+}
+
+/**
+ * Show an info panel for a pending (queued) task.
+ * Displays metadata and prompt content without a chat/conversation layout.
+ */
+export function showPendingTaskInfo(taskId: string): void {
+    pendingInfoTaskId = taskId;
+
+    // Update the URL hash for deep-linking
+    setHashSilent('#queue-info/' + encodeURIComponent(taskId));
+
+    // Close any previous stream
+    closeQueueTaskStream();
+
+    const emptyEl = document.getElementById('detail-empty');
+    const contentEl = document.getElementById('detail-content');
+    const panelEl = document.getElementById('detail-panel');
+    if (emptyEl) emptyEl.classList.add('hidden');
+    if (!contentEl) return;
+    contentEl.classList.remove('hidden');
+    if (panelEl) panelEl.classList.remove('chat-layout');
+
+    contentEl.innerHTML = '<div style="padding:24px;color:#848484">Loading task info...</div>';
+
+    // Fetch task data from queue API
+    fetchApi('/queue/' + encodeURIComponent(taskId)).then(function(data: any) {
+        const task = data && data.task ? data.task : null;
+        if (!task) {
+            // Task not found — it may have started running already
+            showQueueTaskDetail(taskId);
+            return;
+        }
+
+        // If task is no longer pending, switch to conversation view
+        if (task.status === 'running' || task.status === 'completed' || task.status === 'failed') {
+            pendingInfoTaskId = null;
+            showQueueTaskDetail(taskId);
+            return;
+        }
+
+        renderPendingTaskInfoPanel(taskId, task);
+    }).catch(function() {
+        if (!contentEl) return;
+        contentEl.innerHTML = '<div style="padding:24px;color:#848484">Failed to load task info.</div>';
+    });
+}
+
+function renderPendingTaskInfoPanel(taskId: string, task: any): void {
+    const contentEl = document.getElementById('detail-content');
+    if (!contentEl) return;
+
+    const name = task.displayName || task.type || 'Pending Task';
+    const priorityIcons: Record<string, string> = { high: '\u{1F525}', normal: '\u2796', low: '\u{1F53D}' };
+    const priorityLabel = task.priority || 'normal';
+    const priorityIcon = priorityIcons[priorityLabel] || '';
+    const created = task.createdAt ? new Date(task.createdAt).toLocaleString() : '';
+    const model = task.config && task.config.model ? task.config.model : '';
+    const workingDir = task.payload && task.payload.workingDirectory ? task.payload.workingDirectory : '';
+    const repoId = task.repoId || '';
+
+    let html = '<div class="pending-task-info" style="padding:24px;max-width:720px">';
+
+    // Header
+    html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">' +
+        '<span style="font-size:24px">\u23F3</span>' +
+        '<h2 style="margin:0;font-size:18px;font-weight:600">' + escapeHtmlClient(name) + '</h2>' +
+        '<span class="status-badge queued" style="font-size:11px;padding:2px 8px;border-radius:4px">Pending</span>' +
+    '</div>';
+
+    // Metadata section
+    html += '<div style="display:grid;grid-template-columns:140px 1fr;gap:8px 16px;margin-bottom:24px;font-size:13px">';
+    html += '<span style="color:#848484">Task ID</span><span style="word-break:break-all">' + escapeHtmlClient(task.id) + '</span>';
+    html += '<span style="color:#848484">Type</span><span>' + escapeHtmlClient(task.type || 'unknown') + '</span>';
+    html += '<span style="color:#848484">Priority</span><span>' + priorityIcon + ' ' + escapeHtmlClient(priorityLabel) + '</span>';
+    if (created) {
+        html += '<span style="color:#848484">Created</span><span>' + escapeHtmlClient(created) + '</span>';
+    }
+    if (model) {
+        html += '<span style="color:#848484">Model</span><span>' + escapeHtmlClient(model) + '</span>';
+    }
+    if (workingDir) {
+        html += '<span style="color:#848484">Working Directory</span><span style="word-break:break-all">' + escapeHtmlClient(workingDir) + '</span>';
+    }
+    if (repoId) {
+        html += '<span style="color:#848484">Repo ID</span><span style="word-break:break-all">' + escapeHtmlClient(repoId) + '</span>';
+    }
+    html += '</div>';
+
+    // Prompt / Payload section
+    html += renderPendingTaskPayload(task);
+
+    // Action buttons
+    html += '<div style="display:flex;gap:8px;margin-top:24px">' +
+        '<button class="queue-action-btn queue-action-danger" onclick="queueCancelTask(\'' + escapeHtmlClient(taskId) + '\'); clearDetail();" style="padding:6px 16px;border-radius:4px;cursor:pointer">Cancel Task</button>' +
+        '<button class="queue-action-btn" onclick="queueMoveToTop(\'' + escapeHtmlClient(taskId) + '\')" style="padding:6px 16px;border-radius:4px;cursor:pointer">Move to Top</button>' +
+    '</div>';
+
+    html += '</div>';
+
+    contentEl.innerHTML = html;
+}
+
+function renderPendingTaskPayload(task: any): string {
+    const payload = task.payload || {};
+    const type = task.type || '';
+    let html = '';
+
+    if (type === 'follow-prompt') {
+        const promptContent = payload.promptContent || '';
+        const promptFile = payload.promptFilePath || '';
+        if (promptFile) {
+            html += '<div style="margin-bottom:8px;font-size:12px;color:#848484">Prompt file: ' + escapeHtmlClient(promptFile) + '</div>';
+        }
+        if (promptContent) {
+            html += '<h3 style="margin:0 0 8px;font-size:14px;font-weight:600">Prompt</h3>';
+            html += '<pre class="pending-task-prompt-content" style="max-height:400px;overflow:auto;padding:12px;border-radius:6px;font-size:12px;white-space:pre-wrap;word-break:break-word;background:var(--vscode-textBlockQuote-background, #f3f3f3);border:1px solid var(--vscode-panel-border, #e0e0e0)">' + escapeHtmlClient(promptContent) + '</pre>';
+        }
+    } else if (type === 'ai-clarification') {
+        const prompt = payload.prompt || '';
+        if (payload.filePath) {
+            html += '<div style="margin-bottom:8px;font-size:12px;color:#848484">File: ' + escapeHtmlClient(payload.filePath) + '</div>';
+        }
+        if (payload.selectedText) {
+            html += '<div style="margin-bottom:8px;font-size:12px;color:#848484">Selected text: <code>' + escapeHtmlClient(payload.selectedText.length > 200 ? payload.selectedText.substring(0, 200) + '...' : payload.selectedText) + '</code></div>';
+        }
+        if (prompt) {
+            html += '<h3 style="margin:0 0 8px;font-size:14px;font-weight:600">Prompt</h3>';
+            html += '<pre class="pending-task-prompt-content" style="max-height:400px;overflow:auto;padding:12px;border-radius:6px;font-size:12px;white-space:pre-wrap;word-break:break-word;background:var(--vscode-textBlockQuote-background, #f3f3f3);border:1px solid var(--vscode-panel-border, #e0e0e0)">' + escapeHtmlClient(prompt) + '</pre>';
+        }
+    } else if (type === 'code-review') {
+        html += '<h3 style="margin:0 0 8px;font-size:14px;font-weight:600">Code Review Details</h3>';
+        html += '<div style="display:grid;grid-template-columns:140px 1fr;gap:8px 16px;font-size:13px">';
+        if (payload.commitSha) html += '<span style="color:#848484">Commit SHA</span><span>' + escapeHtmlClient(payload.commitSha) + '</span>';
+        if (payload.diffType) html += '<span style="color:#848484">Diff Type</span><span>' + escapeHtmlClient(payload.diffType) + '</span>';
+        if (payload.rulesFolder) html += '<span style="color:#848484">Rules Folder</span><span>' + escapeHtmlClient(payload.rulesFolder) + '</span>';
+        html += '</div>';
+    } else if (type === 'custom' && payload.data) {
+        html += '<h3 style="margin:0 0 8px;font-size:14px;font-weight:600">Payload</h3>';
+        html += '<pre class="pending-task-prompt-content" style="max-height:400px;overflow:auto;padding:12px;border-radius:6px;font-size:12px;white-space:pre-wrap;word-break:break-word;background:var(--vscode-textBlockQuote-background, #f3f3f3);border:1px solid var(--vscode-panel-border, #e0e0e0)">' + escapeHtmlClient(JSON.stringify(payload.data, null, 2)) + '</pre>';
+    } else if (Object.keys(payload).length > 0) {
+        html += '<h3 style="margin:0 0 8px;font-size:14px;font-weight:600">Payload</h3>';
+        html += '<pre class="pending-task-prompt-content" style="max-height:400px;overflow:auto;padding:12px;border-radius:6px;font-size:12px;white-space:pre-wrap;word-break:break-word;background:var(--vscode-textBlockQuote-background, #f3f3f3);border:1px solid var(--vscode-panel-border, #e0e0e0)">' + escapeHtmlClient(JSON.stringify(payload, null, 2)) + '</pre>';
+    }
+
+    return html;
+}
+
 export function closeQueueTaskStream(): void {
     if (activeQueueTaskStream) {
         activeQueueTaskStream.close();
@@ -296,6 +462,7 @@ export function closeQueueTaskStream(): void {
  * Connects to SSE for real-time streaming if the task is running.
  */
 export function showQueueTaskDetail(taskId: string): void {
+    pendingInfoTaskId = null;
     const processId = 'queue_' + taskId;
 
     // Update the URL hash for deep-linking
@@ -1457,6 +1624,7 @@ function findToolCard(toolCallId: string): HTMLElement | null {
 (window as any).copyQueueTaskResult = copyQueueTaskResult;
 (window as any).copyConversationOutput = copyConversationOutput;
 (window as any).showQueueTaskDetail = showQueueTaskDetail;
+(window as any).showPendingTaskInfo = showPendingTaskInfo;
 (window as any).sendFollowUpMessage = sendFollowUpMessage;
 (window as any).connectFollowUpSSE = connectFollowUpSSE;
 (window as any).scrollConversationToBottom = function() {
