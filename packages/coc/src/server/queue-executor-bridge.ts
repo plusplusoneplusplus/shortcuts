@@ -16,6 +16,7 @@
  */
 
 import * as fs from 'fs';
+import * as path from 'path';
 import { OutputFileManager } from './output-file-manager';
 import {
     QueueExecutor,
@@ -439,12 +440,14 @@ export class CLITaskExecutor implements TaskExecutor {
             // Use VS Code extension format: "Follow the instruction {promptFilePath}. {planFilePath}"
             const hasAdditionalContext = !!task.payload.additionalContext;
             const hasPlanFilePath = !!task.payload.planFilePath;
+            const contextSuffix = this.findContextFileSuffix(task.payload.planFilePath);
 
             if (!hasAdditionalContext && hasPlanFilePath && !task.payload.promptContent) {
                 // New-style: file-path-based prompt referencing both files
                 try {
                     if (task.payload.promptFilePath && fs.existsSync(task.payload.promptFilePath)) {
-                        return `Follow the instruction ${task.payload.promptFilePath}. ${task.payload.planFilePath}`;
+                        const base = `Follow the instruction ${task.payload.promptFilePath}. ${task.payload.planFilePath}`;
+                        return contextSuffix ? `${base}\n\n${contextSuffix}` : base;
                     }
                 } catch {
                     // Fall through to legacy handling
@@ -453,7 +456,8 @@ export class CLITaskExecutor implements TaskExecutor {
 
             if (!hasAdditionalContext && hasPlanFilePath && task.payload.promptContent) {
                 // Skill-type: promptContent + planFilePath reference (no inline content)
-                return `${task.payload.promptContent} ${task.payload.planFilePath}`;
+                const base = `${task.payload.promptContent} ${task.payload.planFilePath}`;
+                return contextSuffix ? `${base}\n\n${contextSuffix}` : base;
             }
 
             // Legacy path: resolve context block from additionalContext + planFilePath content
@@ -478,7 +482,12 @@ export class CLITaskExecutor implements TaskExecutor {
 
             // Prepend context block if available
             if (contextBlock) {
-                return `Context document:\n\n${contextBlock}\n\n---\n\n${prompt}`;
+                prompt = `Context document:\n\n${contextBlock}\n\n---\n\n${prompt}`;
+            }
+
+            // Append CONTEXT.md reference if available
+            if (contextSuffix) {
+                prompt = `${prompt}\n\n${contextSuffix}`;
             }
 
             return prompt;
@@ -638,6 +647,25 @@ export class CLITaskExecutor implements TaskExecutor {
         }
 
         return parts.join('\n\n');
+    }
+
+    /**
+     * Look for a CONTEXT.md file in the same directory as the plan file.
+     * Returns a prompt suffix like "See context details in /abs/path/CONTEXT.md",
+     * or undefined if no context file exists.
+     */
+    private findContextFileSuffix(planFilePath?: string): string | undefined {
+        if (!planFilePath) return undefined;
+        try {
+            const dir = path.dirname(planFilePath);
+            const contextPath = path.join(dir, 'CONTEXT.md');
+            if (fs.existsSync(contextPath)) {
+                return `See context details in ${contextPath}`;
+            }
+        } catch {
+            // Non-fatal
+        }
+        return undefined;
     }
 
     /**

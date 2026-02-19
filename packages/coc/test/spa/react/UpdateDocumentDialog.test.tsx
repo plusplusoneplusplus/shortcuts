@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
+import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
 import { UpdateDocumentDialog } from '../../../src/server/spa/client/react/shared/UpdateDocumentDialog';
 
 const mockFetch = vi.fn();
@@ -14,7 +15,9 @@ beforeEach(() => {
 function renderDialog(onClose = vi.fn()) {
     return render(
         <AppProvider>
-            <UpdateDocumentDialog wsId="ws-1" taskPath="test/task.md" taskName="task" onClose={onClose} />
+            <ToastProvider value={{ addToast: vi.fn(), removeToast: vi.fn(), toasts: [] }}>
+                <UpdateDocumentDialog wsId="ws-1" taskPath="test/task.md" taskName="task" onClose={onClose} />
+            </ToastProvider>
         </AppProvider>
     );
 }
@@ -31,12 +34,12 @@ describe('UpdateDocumentDialog', () => {
         expect(screen.getByText('Update Document')).toBeDefined();
     });
 
-    it('populates model select from /api/models', async () => {
+    it('populates model select from /api/queue/models', async () => {
         mockFetch.mockImplementation((url: string) => {
-            if (url.includes('/models')) {
+            if (url.includes('/queue/models')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve(['gpt-4', 'claude-3']),
+                    json: () => Promise.resolve({ models: ['gpt-4', 'claude-3'] }),
                 });
             }
             return Promise.resolve({
@@ -99,8 +102,8 @@ describe('UpdateDocumentDialog', () => {
             );
             expect(postCalls.length).toBe(1);
             const body = JSON.parse(postCalls[0][1].body);
-            expect(body.type).toBe('update-document');
-            expect(body.payload.promptContent).toContain('task');
+            expect(body.type).toBe('custom');
+            expect(body.payload.data.prompt).toContain('task');
         });
     });
 

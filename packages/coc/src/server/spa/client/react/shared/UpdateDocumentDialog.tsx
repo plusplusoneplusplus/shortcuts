@@ -42,10 +42,10 @@ export function UpdateDocumentDialog({ wsId, taskPath, taskName, onClose }: Upda
 
     useEffect(() => {
         let cancelled = false;
-        fetch(getApiBase() + '/models')
+        fetch(getApiBase() + '/queue/models')
             .then(r => r.ok ? r.json() : [])
             .then(data => {
-                if (!cancelled) setModels(Array.isArray(data) ? data : data?.models ?? []);
+                if (!cancelled) setModels(data?.models ?? (Array.isArray(data) ? data : []));
             })
             .catch(() => {});
         return () => { cancelled = true; };
@@ -74,7 +74,7 @@ export function UpdateDocumentDialog({ wsId, taskPath, taskName, onClose }: Upda
                     },
                 },
             };
-            if (model) body.model = model;
+            if (model) body.config = { model };
 
             const res = await fetch(getApiBase() + '/queue/tasks', {
                 method: 'POST',

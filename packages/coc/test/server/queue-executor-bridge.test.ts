@@ -686,6 +686,144 @@ describe('CLITaskExecutor', () => {
                 readFileSyncMock.mockReset();
             });
         });
+
+        // ====================================================================
+        // CONTEXT.md auto-attachment
+        // ====================================================================
+
+        describe('CONTEXT.md auto-attachment', () => {
+            it('should append CONTEXT.md reference for new-style prompt (promptFilePath + planFilePath)', async () => {
+                const existsSyncMock = vi.mocked(fs.existsSync);
+                existsSyncMock.mockImplementation((p: fs.PathLike) => {
+                    const s = String(p);
+                    if (s === '/workspace/.github/prompts/impl.prompt.md') return true;
+                    if (s === '/workspace/.vscode/tasks/feature/CONTEXT.md') return true;
+                    return false;
+                });
+
+                const executor = new CLITaskExecutor(store);
+                const task: QueuedTask = {
+                    id: 'task-ctx-md-1',
+                    type: 'follow-prompt',
+                    priority: 'normal',
+                    status: 'running',
+                    createdAt: Date.now(),
+                    payload: {
+                        promptFilePath: '/workspace/.github/prompts/impl.prompt.md',
+                        planFilePath: '/workspace/.vscode/tasks/feature/plan.md',
+                        workingDirectory: '/workspace',
+                    },
+                    config: {},
+                };
+
+                const result = await executor.execute(task);
+                expect(result.success).toBe(true);
+                const prompt = mockSendMessage.mock.calls[0][0].prompt;
+                expect(prompt).toContain('See context details in /workspace/.vscode/tasks/feature/CONTEXT.md');
+                existsSyncMock.mockReset();
+            });
+
+            it('should append CONTEXT.md reference for skill-type prompt (promptContent + planFilePath)', async () => {
+                const existsSyncMock = vi.mocked(fs.existsSync);
+                existsSyncMock.mockImplementation((p: fs.PathLike) => {
+                    const s = String(p);
+                    if (s === '/workspace/.vscode/tasks/coc/CONTEXT.md') return true;
+                    return false;
+                });
+
+                const executor = new CLITaskExecutor(store);
+                const task: QueuedTask = {
+                    id: 'task-ctx-md-2',
+                    type: 'follow-prompt',
+                    priority: 'normal',
+                    status: 'running',
+                    createdAt: Date.now(),
+                    payload: {
+                        promptContent: 'Use the impl skill.',
+                        planFilePath: '/workspace/.vscode/tasks/coc/task.md',
+                        workingDirectory: '/workspace',
+                    },
+                    config: {},
+                };
+
+                const result = await executor.execute(task);
+                expect(result.success).toBe(true);
+                const prompt = mockSendMessage.mock.calls[0][0].prompt;
+                expect(prompt).toContain('Use the impl skill.');
+                expect(prompt).toContain('See context details in /workspace/.vscode/tasks/coc/CONTEXT.md');
+                existsSyncMock.mockReset();
+            });
+
+            it('should not append CONTEXT.md reference when file does not exist', async () => {
+                const existsSyncMock = vi.mocked(fs.existsSync);
+                existsSyncMock.mockImplementation((p: fs.PathLike) => {
+                    const s = String(p);
+                    if (s === '/workspace/.github/prompts/review.prompt.md') return true;
+                    return false;
+                });
+
+                const executor = new CLITaskExecutor(store);
+                const task: QueuedTask = {
+                    id: 'task-ctx-md-3',
+                    type: 'follow-prompt',
+                    priority: 'normal',
+                    status: 'running',
+                    createdAt: Date.now(),
+                    payload: {
+                        promptFilePath: '/workspace/.github/prompts/review.prompt.md',
+                        planFilePath: '/workspace/.vscode/tasks/feature/plan.md',
+                        workingDirectory: '/workspace',
+                    },
+                    config: {},
+                };
+
+                const result = await executor.execute(task);
+                expect(result.success).toBe(true);
+                const prompt = mockSendMessage.mock.calls[0][0].prompt;
+                expect(prompt).not.toContain('CONTEXT.md');
+                existsSyncMock.mockReset();
+            });
+
+            it('should not duplicate CONTEXT.md if additionalContext is already present', async () => {
+                const existsSyncMock = vi.mocked(fs.existsSync);
+                const readFileSyncMock = vi.mocked(fs.readFileSync);
+                existsSyncMock.mockImplementation((p: fs.PathLike) => {
+                    const s = String(p);
+                    if (s === '/workspace/.github/skills/impl/SKILL.md') return true;
+                    if (s === '/workspace/plan.md') return true;
+                    if (s === '/workspace/CONTEXT.md') return true;
+                    return false;
+                });
+                readFileSyncMock.mockImplementation((p: fs.PathOrFileDescriptor, _opts?: any) => {
+                    if (String(p) === '/workspace/plan.md') return '# Plan content';
+                    throw new Error('not found');
+                });
+
+                const executor = new CLITaskExecutor(store);
+                const task: QueuedTask = {
+                    id: 'task-ctx-md-4',
+                    type: 'follow-prompt',
+                    priority: 'normal',
+                    status: 'running',
+                    createdAt: Date.now(),
+                    payload: {
+                        promptFilePath: '/workspace/.github/skills/impl/SKILL.md',
+                        planFilePath: '/workspace/plan.md',
+                        additionalContext: 'Already provided context.',
+                        workingDirectory: '/workspace',
+                    },
+                    config: {},
+                };
+
+                const result = await executor.execute(task);
+                expect(result.success).toBe(true);
+                const prompt = mockSendMessage.mock.calls[0][0].prompt;
+                expect(prompt).toContain('Already provided context.');
+                expect(prompt).toContain('See context details in /workspace/CONTEXT.md');
+                existsSyncMock.mockReset();
+                readFileSyncMock.mockReset();
+            });
+        });
     });
 
     // ========================================================================

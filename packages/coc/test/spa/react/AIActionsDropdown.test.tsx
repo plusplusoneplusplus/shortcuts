@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
+import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
 import { AIActionsDropdown } from '../../../src/server/spa/client/react/shared/AIActionsDropdown';
 
 const mockFetch = vi.fn();
@@ -18,7 +19,9 @@ beforeEach(() => {
 function renderDropdown(props?: Partial<{ wsId: string; taskPath: string }>) {
     return render(
         <AppProvider>
-            <AIActionsDropdown wsId={props?.wsId ?? 'ws-1'} taskPath={props?.taskPath ?? 'test/task.md'} />
+            <ToastProvider value={{ addToast: vi.fn(), removeToast: vi.fn(), toasts: [] }}>
+                <AIActionsDropdown wsId={props?.wsId ?? 'ws-1'} taskPath={props?.taskPath ?? 'test/task.md'} />
+            </ToastProvider>
         </AppProvider>
     );
 }

@@ -1,20 +1,25 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
+import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
 import { FollowPromptDialog } from '../../../src/server/spa/client/react/shared/FollowPromptDialog';
 
 const mockFetch = vi.fn();
+const mockAddToast = vi.fn();
 
 beforeEach(() => {
     vi.restoreAllMocks();
     mockFetch.mockReset();
+    mockAddToast.mockReset();
     global.fetch = mockFetch;
 });
 
 function renderDialog(onClose = vi.fn()) {
     return render(
         <AppProvider>
-            <FollowPromptDialog wsId="ws-1" taskPath="test/task.md" taskName="task" onClose={onClose} />
+            <ToastProvider value={{ addToast: mockAddToast, removeToast: vi.fn(), toasts: [] }}>
+                <FollowPromptDialog wsId="ws-1" taskPath="test/task.md" taskName="task" onClose={onClose} />
+            </ToastProvider>
         </AppProvider>
     );
 }
@@ -31,12 +36,12 @@ describe('FollowPromptDialog', () => {
         expect(screen.getByText('Follow Prompt')).toBeDefined();
     });
 
-    it('populates model select from /api/models', async () => {
+    it('populates model select from /api/queue/models', async () => {
         mockFetch.mockImplementation((url: string) => {
-            if (url.includes('/models')) {
+            if (url.includes('/queue/models')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve(['gpt-4', 'gpt-3.5']),
+                    json: () => Promise.resolve({ models: ['gpt-4', 'gpt-3.5'] }),
                 });
             }
             if (url.includes('/preferences')) {
@@ -137,6 +142,84 @@ describe('FollowPromptDialog', () => {
             const body = JSON.parse(postCalls[0][1].body);
             expect(body.type).toBe('follow-prompt');
             expect(body.payload.promptFilePath).toContain('impl.prompt.md');
+        });
+    });
+
+    it('sends model inside config object, not at top level', async () => {
+        const onClose = vi.fn();
+
+        mockFetch.mockImplementation((url: string, opts?: any) => {
+            if (url.includes('/queue/models')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ models: ['gpt-4', 'claude-sonnet'] }),
+                });
+            }
+            if (url.includes('/prompts')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ prompts: [{ name: 'review', relativePath: '.github/prompts/review.prompt.md' }] }),
+                });
+            }
+            if (url.includes('/skills')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ skills: [] }),
+                });
+            }
+            if (url.includes('/tasks/settings')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ folderPath: '.vscode/tasks' }),
+                });
+            }
+            if (url.includes('/preferences')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ lastModel: 'gpt-4' }),
+                });
+            }
+            if (opts?.method === 'POST' && url.includes('/queue/tasks')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'q-2' }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        await act(async () => {
+            renderDialog(onClose);
+        });
+
+        // Wait for models to load and select one
+        await waitFor(() => {
+            const select = screen.getAllByRole('combobox')[0] as HTMLSelectElement;
+            expect(Array.from(select.options).some(o => o.value === 'gpt-4')).toBe(true);
+        });
+
+        // Select model
+        const modelSelect = screen.getAllByRole('combobox')[0] as HTMLSelectElement;
+        await act(async () => {
+            fireEvent.change(modelSelect, { target: { value: 'gpt-4' } });
+        });
+
+        // Wait for prompt items to appear
+        await waitFor(() => {
+            expect(screen.getByText('review')).toBeDefined();
+        });
+
+        // Click prompt to submit
+        await act(async () => {
+            fireEvent.click(screen.getByText('review'));
+        });
+
+        await waitFor(() => {
+            const postCalls = mockFetch.mock.calls.filter(
+                ([_, opts]: [string, any]) => opts?.method === 'POST' && _.includes('/queue/tasks')
+            );
+            expect(postCalls.length).toBe(1);
+            const body = JSON.parse(postCalls[0][1].body);
+            expect(body.config).toBeDefined();
+            expect(body.config.model).toBe('gpt-4');
+            expect(body.model).toBeUndefined();
         });
     });
 });

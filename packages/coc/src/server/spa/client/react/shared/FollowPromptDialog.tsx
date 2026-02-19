@@ -58,12 +58,12 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
         (async () => {
             try {
                 const [modelsRes, promptRes, skillRes] = await Promise.all([
-                    fetch(getApiBase() + '/models').then(r => r.ok ? r.json() : []),
+                    fetch(getApiBase() + '/queue/models').then(r => r.ok ? r.json() : []),
                     fetch(getApiBase() + `/workspaces/${encodeURIComponent(selectedWsId)}/prompts`).then(r => r.ok ? r.json() : null),
                     fetch(getApiBase() + `/workspaces/${encodeURIComponent(selectedWsId)}/skills`).then(r => r.ok ? r.json() : null),
                 ]);
                 if (cancelled) return;
-                setModels(Array.isArray(modelsRes) ? modelsRes : modelsRes?.models ?? []);
+                setModels(modelsRes?.models ?? (Array.isArray(modelsRes) ? modelsRes : []));
                 setPrompts(promptRes?.prompts ?? []);
                 setSkills(skillRes?.skills ?? []);
             } catch {
@@ -106,7 +106,7 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
                 displayName: `Follow: ${name} on ${taskName}`,
                 payload,
             };
-            if (model) body.model = model;
+            if (model) body.config = { model };
 
             const res = await fetch(getApiBase() + '/queue/tasks', {
                 method: 'POST',
