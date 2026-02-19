@@ -100,32 +100,38 @@ export function TaskTree({ tree, commentCounts, wsId, initialFolderPath, initial
                 return (
                 <div
                     key={colIndex}
-                    className="flex-shrink-0 w-56 border-r border-[#e0e0e0] dark:border-[#3c3c3c] overflow-y-auto"
+                    className="flex-shrink-0 w-56 h-full border-r border-[#e0e0e0] dark:border-[#3c3c3c] overflow-y-auto"
                     data-testid={`miller-column-${colIndex}`}
                 >
-                    <ul className="py-1">
-                        {colNodes.map((node, nodeIndex) => {
-                            const path = getNodePath(node);
-                            const folderMdCount = isTaskFolder(node) ? countMarkdownFilesInFolder(node) : 0;
-                            return (
-                                <TaskTreeItem
-                                    key={nodeIndex}
-                                    item={node}
-                                    wsId={wsId}
-                                    isSelected={path ? selectedFilePaths.has(path) : false}
-                                    isOpen={path ? path === openFilePath : false}
-                                    isActiveFolder={isTaskFolder(node) && activeFolderKeys[colIndex] === getFolderKey(node as TaskFolder)}
-                                    commentCount={path ? (commentCounts[path] || 0) : 0}
-                                    queueRunning={path ? (queueActivity[path] || 0) : 0}
-                                    folderMdCount={folderMdCount}
-                                    showContextFiles={showContextFiles}
-                                    onFolderClick={(folder) => handleFolderClick(folder, colIndex)}
-                                    onFileClick={handleFileClick}
-                                    onCheckboxChange={handleCheckboxChange}
-                                />
-                            );
-                        })}
-                    </ul>
+                    {colNodes.length === 0 ? (
+                        <div className="py-6 px-4 text-center text-xs text-[#848484] dark:text-[#666] italic">
+                            Empty folder
+                        </div>
+                    ) : (
+                        <ul className="py-1">
+                            {colNodes.map((node, nodeIndex) => {
+                                const path = getNodePath(node);
+                                const folderMdCount = isTaskFolder(node) ? countMarkdownFilesInFolder(node) : 0;
+                                return (
+                                    <TaskTreeItem
+                                        key={nodeIndex}
+                                        item={node}
+                                        wsId={wsId}
+                                        isSelected={path ? selectedFilePaths.has(path) : false}
+                                        isOpen={path ? path === openFilePath : false}
+                                        isActiveFolder={isTaskFolder(node) && activeFolderKeys[colIndex] === getFolderKey(node as TaskFolder)}
+                                        commentCount={path ? (commentCounts[path] || 0) : 0}
+                                        queueRunning={path ? (queueActivity[path] || 0) : 0}
+                                        folderMdCount={folderMdCount}
+                                        showContextFiles={showContextFiles}
+                                        onFolderClick={(folder) => handleFolderClick(folder, colIndex)}
+                                        onFileClick={handleFileClick}
+                                        onCheckboxChange={handleCheckboxChange}
+                                    />
+                                );
+                            })}
+                        </ul>
+                    )}
                 </div>
                 );
             })}
