@@ -150,6 +150,49 @@ describe('ProcessDetail', () => {
         expect(screen.getByText('Session ID')).toBeDefined();
         expect(screen.getByText('sess-meta-123')).toBeDefined();
     });
+
+    it('dismisses metadata popover when clicking outside', async () => {
+        const processId = 'proc-meta-dismiss-1';
+        (global as any).fetch = vi.fn().mockResolvedValue({
+            ok: true,
+            status: 200,
+            json: async () => ({
+                process: {
+                    id: processId,
+                    type: 'clarification',
+                    status: 'completed',
+                    metadata: { model: 'claude-haiku-4.5' },
+                    sdkSessionId: 'sess-dismiss-1',
+                    conversationTurns: [
+                        { role: 'user', content: 'Q', timeline: [] },
+                        { role: 'assistant', content: 'A', timeline: [] },
+                    ],
+                },
+            }),
+        });
+
+        render(
+            <Wrap>
+                <SeededProcessDetail
+                    process={{
+                        id: processId,
+                        status: 'completed',
+                        type: 'clarification',
+                        promptPreview: 'Q',
+                    }}
+                />
+            </Wrap>
+        );
+
+        await screen.findByText('Q');
+        fireEvent.click(screen.getByRole('button', { name: 'Show conversation metadata' }));
+        expect(screen.getByText('Conversation metadata')).toBeDefined();
+
+        fireEvent.mouseDown(document.body);
+        await waitFor(() => {
+            expect(screen.queryByText('Conversation metadata')).toBeNull();
+        });
+    });
 });
 
 describe('ConversationTurnBubble', () => {

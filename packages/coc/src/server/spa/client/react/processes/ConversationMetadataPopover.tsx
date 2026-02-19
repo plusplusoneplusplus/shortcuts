@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { formatDuration } from '../utils/format';
 
 interface MetaRow {
@@ -84,12 +84,32 @@ function buildRows(process: any, turnsCount?: number): MetaRow[] {
 
 export function ConversationMetadataPopover({ process, turnsCount }: { process: any; turnsCount?: number }) {
     const [open, setOpen] = useState(false);
+    const rootRef = useRef<HTMLDivElement | null>(null);
     const rows = useMemo(() => buildRows(process, turnsCount), [process, turnsCount]);
+
+    useEffect(() => {
+        if (!open) return;
+
+        const handleOutsidePointer = (event: MouseEvent | TouchEvent) => {
+            const target = event.target as Node | null;
+            if (!target || !rootRef.current) return;
+            if (!rootRef.current.contains(target)) {
+                setOpen(false);
+            }
+        };
+
+        document.addEventListener('mousedown', handleOutsidePointer);
+        document.addEventListener('touchstart', handleOutsidePointer);
+        return () => {
+            document.removeEventListener('mousedown', handleOutsidePointer);
+            document.removeEventListener('touchstart', handleOutsidePointer);
+        };
+    }, [open]);
 
     if (rows.length === 0) return null;
 
     return (
-        <div className="relative">
+        <div ref={rootRef} className="relative">
             <button
                 type="button"
                 aria-label={open ? 'Hide conversation metadata' : 'Show conversation metadata'}
