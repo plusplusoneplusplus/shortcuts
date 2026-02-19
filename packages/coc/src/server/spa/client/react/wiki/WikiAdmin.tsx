@@ -71,74 +71,114 @@ function GenerateTab({ wikiId }: { wikiId: string }) {
     const [phase4Expanded, setPhase4Expanded] = useState(false);
     const abortRef = useRef<AbortController | null>(null);
 
-    // Load cache status
-    useEffect(() => {
-        fetchApi('/wikis/' + encodeURIComponent(wikiId) + '/admin/cache')
+    const loadCacheStatus = useCallback(() => {
+        fetchApi('/wikis/' + encodeURIComponent(wikiId) + '/admin/generate/status')
             .then(data => {
-                if (data && typeof data === 'object') setCache(data);
+                if (data?.phases && typeof data.phases === 'object') {
+                    const m: Record<number, string> = {};
+                    for (const [k, v] of Object.entries(data.phases as Record<string, { cached: boolean }>)) {
+                        m[parseInt(k)] = v.cached ? 'cached' : 'none';
+                    }
+                    setCache(m);
+                }
             })
             .catch(() => {});
     }, [wikiId]);
 
-    const runPhase = useCallback((phase: number) => {
+    useEffect(() => { loadCacheStatus(); }, [loadCacheStatus]);
+
+    const runPhase = useCallback((startPhase: number, endPhase: number) => {
         if (runningPhase !== null) return;
-        setRunningPhase(phase);
-        setLogs(prev => ({ ...prev, [phase]: [] }));
+        setRunningPhase(startPhase);
+        setLogs(prev => {
+            const n = { ...prev };
+            for (let p = startPhase; p <= endPhase; p++) n[p] = [];
+            return n;
+        });
         setPhase4Components([]);
 
         const controller = new AbortController();
         abortRef.current = controller;
 
-        const url = getApiBase() + '/wikis/' + encodeURIComponent(wikiId) + '/generate?phase=' + phase;
-        const evtSource = new EventSource(url);
+        const url = getApiBase() + '/wikis/' + encodeURIComponent(wikiId) + '/admin/generate';
+        fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ startPhase, endPhase }),
+            signal: controller.signal,
+        }).then(async res => {
+            if (!res.ok) {
+                const text = await res.text();
+                setLogs(prev => ({ ...prev, [startPhase]: [...(prev[startPhase] || []), '❌ ' + text] }));
+                setRunningPhase(null);
+                return;
+            }
 
-        evtSource.onmessage = (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                if (data.type === 'log' || data.type === 'progress') {
-                    setLogs(prev => ({
-                        ...prev,
-                        [phase]: [...(prev[phase] || []), data.message || data.text || JSON.stringify(data)],
-                    }));
-                } else if (data.type === 'component-written') {
-                    setPhase4Components(prev => [...prev, data.name || data.componentId || '']);
-                } else if (data.type === 'done' || data.type === 'complete') {
-                    evtSource.close();
-                    setRunningPhase(null);
-                    // Refresh cache
-                    fetchApi('/wikis/' + encodeURIComponent(wikiId) + '/admin/cache')
-                        .then(d => { if (d && typeof d === 'object') setCache(d); })
-                        .catch(() => {});
-                } else if (data.type === 'error') {
-                    setLogs(prev => ({
-                        ...prev,
-                        [phase]: [...(prev[phase] || []), '❌ ' + (data.message || 'Error')],
-                    }));
-                    evtSource.close();
-                    setRunningPhase(null);
+            const reader = res.body!.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            // eslint-disable-next-line no-constant-condition
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+
+                for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue;
+                    try {
+                        const data = JSON.parse(line.slice(6));
+                        const phase: number = data.phase ?? startPhase;
+                        if (data.type === 'log' || data.type === 'progress') {
+                            setLogs(prev => ({
+                                ...prev,
+                                [phase]: [...(prev[phase] || []), data.message || data.text || JSON.stringify(data)],
+                            }));
+                        } else if (data.type === 'status') {
+                            setRunningPhase(phase);
+                            if (data.message) {
+                                setLogs(prev => ({ ...prev, [phase]: [...(prev[phase] || []), data.message] }));
+                            }
+                        } else if (data.type === 'phase-complete') {
+                            setLogs(prev => ({
+                                ...prev,
+                                [data.phase]: [...(prev[data.phase] || []), `✓ ${data.message || 'Complete'}`],
+                            }));
+                        } else if (data.type === 'component-written') {
+                            setPhase4Components(prev => [...prev, data.name || data.componentId || '']);
+                        } else if (data.type === 'done' || data.type === 'complete') {
+                            setRunningPhase(null);
+                            loadCacheStatus();
+                        } else if (data.type === 'error') {
+                            setLogs(prev => ({
+                                ...prev,
+                                [phase]: [...(prev[phase] || []), '❌ ' + (data.message || 'Error')],
+                            }));
+                            setRunningPhase(null);
+                        }
+                    } catch { /* ignore */ }
                 }
-            } catch { /* ignore */ }
-        };
-
-        evtSource.onerror = () => {
-            evtSource.close();
+            }
             setRunningPhase(null);
-        };
-
-        // Cleanup on abort
-        controller.signal.addEventListener('abort', () => {
-            evtSource.close();
+        }).catch(err => {
+            if (err.name !== 'AbortError') {
+                setLogs(prev => ({ ...prev, [startPhase]: [...(prev[startPhase] || []), '❌ Connection error'] }));
+            }
             setRunningPhase(null);
         });
-    }, [wikiId, runningPhase]);
+    }, [wikiId, runningPhase, loadCacheStatus]);
 
     const runAll = useCallback(() => {
-        runPhase(fromPhase);
+        runPhase(fromPhase, 5);
     }, [runPhase, fromPhase]);
 
     const handleAbort = useCallback(() => {
         if (abortRef.current) abortRef.current.abort();
-    }, []);
+        fetch(getApiBase() + '/wikis/' + encodeURIComponent(wikiId) + '/admin/generate/cancel', { method: 'POST' })
+            .catch(() => {});
+    }, [wikiId]);
 
     const getCacheBadge = (phase: number): { label: string; status: string } => {
         const v = cache[phase];
@@ -192,7 +232,7 @@ function GenerateTab({ wikiId }: { wikiId: string }) {
                                 variant="secondary"
                                 disabled={runningPhase !== null}
                                 loading={isRunning}
-                                onClick={() => runPhase(phase)}
+                                onClick={() => runPhase(phase, phase)}
                                 id={`phase-run-${phase}`}
                             >
                                 Run
@@ -242,6 +282,8 @@ function EditorTab({ wikiId, kind }: { wikiId: string; kind: 'seeds' | 'config' 
     const [resourcePath, setResourcePath] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
     const [status, setStatus] = useState<string | null>(null);
+    const [generating, setGenerating] = useState(false);
+    const [genLogs, setGenLogs] = useState<string[]>([]);
 
     useEffect(() => {
         fetchApi('/wikis/' + encodeURIComponent(wikiId) + '/admin/' + kind)
@@ -299,8 +341,70 @@ function EditorTab({ wikiId, kind }: { wikiId: string; kind: 'seeds' | 'config' 
 
     const isModified = content !== original;
 
+    const handleGenerateSeeds = useCallback(async () => {
+        setGenerating(true);
+        setGenLogs([]);
+        try {
+            const res = await fetch(getApiBase() + '/wikis/' + encodeURIComponent(wikiId) + '/admin/seeds/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({}),
+            });
+            if (!res.ok) {
+                setGenLogs(['❌ ' + await res.text()]);
+                setGenerating(false);
+                return;
+            }
+
+            const reader = res.body!.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            // eslint-disable-next-line no-constant-condition
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+                for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue;
+                    try {
+                        const data = JSON.parse(line.slice(6));
+                        if (data.type === 'status' || data.type === 'log') {
+                            setGenLogs(prev => [...prev, data.message || '']);
+                        } else if (data.type === 'done' && data.success && Array.isArray(data.seeds)) {
+                            // Write seeds to the editor
+                            const yaml = data.seeds.map((s: any) => `- name: ${s.name || s}\n  description: ${s.description || ''}`).join('\n');
+                            setContent(yaml);
+                            setGenLogs(prev => [...prev, `✓ Generated ${data.seeds.length} seeds`]);
+                        } else if (data.type === 'error') {
+                            setGenLogs(prev => [...prev, '❌ ' + (data.message || 'Error')]);
+                        }
+                    } catch { /* ignore */ }
+                }
+            }
+        } catch (err: any) {
+            setGenLogs(['❌ ' + (err?.message || 'Network error')]);
+        }
+        setGenerating(false);
+    }, [wikiId]);
+
     return (
         <div className="space-y-2">
+            {kind === 'seeds' && (
+                <div className="flex items-center justify-between pb-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
+                    <span className="text-xs text-[#848484]">Generate theme seeds via AI</span>
+                    <Button size="sm" loading={generating} onClick={handleGenerateSeeds} id="seeds-generate">
+                        Generate Seeds
+                    </Button>
+                </div>
+            )}
+            {kind === 'seeds' && genLogs.length > 0 && (
+                <pre className="text-[10px] leading-4 text-[#848484] bg-[#1e1e1e] dark:bg-black rounded p-2 max-h-24 overflow-y-auto font-mono" id="seeds-gen-log">
+                    {genLogs.join('\n')}
+                </pre>
+            )}
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                     <span className="text-xs text-[#848484]" id={`${kind}-path`}>
