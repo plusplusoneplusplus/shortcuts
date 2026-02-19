@@ -14,6 +14,7 @@ export interface TaskTreeItemProps {
     isOpen: boolean;
     commentCount: number;
     queueRunning: number;
+    folderMdCount: number;
     showContextFiles: boolean;
     onFolderClick: (folder: TaskFolder) => void;
     onFileClick: (path: string) => void;
@@ -65,6 +66,7 @@ export function TaskTreeItem({
     isOpen,
     commentCount,
     queueRunning,
+    folderMdCount,
     showContextFiles,
     onFolderClick,
     onFileClick,
@@ -152,6 +154,16 @@ export function TaskTreeItem({
             {commentCount > 0 && (
                 <span className="flex-shrink-0 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full min-w-[16px] text-center">
                     {commentCount}
+                </span>
+            )}
+
+            {/* Folder recursive markdown count badge */}
+            {isFolder && (
+                <span
+                    className="task-folder-count flex-shrink-0 text-[10px] bg-[#e0e0e0] dark:bg-[#3c3c3c] text-[#616161] dark:text-[#999] px-1 py-px rounded-full min-w-[16px] text-center"
+                    title={`${folderMdCount} markdown file${folderMdCount === 1 ? '' : 's'} in folder`}
+                >
+                    {folderMdCount}
                 </span>
             )}
 

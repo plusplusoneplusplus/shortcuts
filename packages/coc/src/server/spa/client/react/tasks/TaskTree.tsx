@@ -6,7 +6,7 @@ import { useState, useEffect, useRef } from 'react';
 import { TaskTreeItem } from './TaskTreeItem';
 import { useTaskPanel } from '../context/TaskContext';
 import { useQueueActivity } from '../hooks/useQueueActivity';
-import { folderToNodes, isTaskFolder } from '../hooks/useTaskTree';
+import { folderToNodes, isTaskFolder, countMarkdownFilesInFolder } from '../hooks/useTaskTree';
 import type { TaskNode, TaskFolder } from '../hooks/useTaskTree';
 
 interface TaskTreeProps {
@@ -77,6 +77,7 @@ export function TaskTree({ tree, commentCounts, wsId }: TaskTreeProps) {
                     <ul className="py-1">
                         {colNodes.map((node, nodeIndex) => {
                             const path = getNodePath(node);
+                            const folderMdCount = isTaskFolder(node) ? countMarkdownFilesInFolder(node) : 0;
                             return (
                                 <TaskTreeItem
                                     key={nodeIndex}
@@ -86,6 +87,7 @@ export function TaskTree({ tree, commentCounts, wsId }: TaskTreeProps) {
                                     isOpen={path ? path === openFilePath : false}
                                     commentCount={path ? (commentCounts[path] || 0) : 0}
                                     queueRunning={path ? (queueActivity[path] || 0) : 0}
+                                    folderMdCount={folderMdCount}
                                     showContextFiles={showContextFiles}
                                     onFolderClick={(folder) => handleFolderClick(folder, colIndex)}
                                     onFileClick={handleFileClick}

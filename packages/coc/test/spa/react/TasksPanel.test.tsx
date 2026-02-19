@@ -216,4 +216,59 @@ describe('TasksPanel', () => {
             expect(screen.getByText('3')).toBeTruthy();
         });
     });
+
+    it('shows recursive markdown count badge for folder rows', async () => {
+        const nestedTree = {
+            name: 'tasks',
+            relativePath: '',
+            children: [
+                {
+                    name: 'feature1',
+                    relativePath: 'feature1',
+                    children: [
+                        {
+                            name: 'backlog',
+                            relativePath: 'feature1/backlog',
+                            children: [],
+                            documentGroups: [],
+                            singleDocuments: [
+                                { baseName: 'item', fileName: 'item.md', relativePath: 'feature1/backlog', isArchived: false },
+                            ],
+                        },
+                    ],
+                    documentGroups: [
+                        {
+                            baseName: 'spec',
+                            isArchived: false,
+                            documents: [
+                                { baseName: 'spec', docType: 'plan', fileName: 'spec.plan.md', relativePath: 'feature1', isArchived: false },
+                            ],
+                        },
+                    ],
+                    singleDocuments: [
+                        { baseName: 'design', fileName: 'design.md', relativePath: 'feature1', isArchived: false },
+                    ],
+                },
+            ],
+            documentGroups: [],
+            singleDocuments: [],
+        };
+
+        fetchSpy.mockImplementation((url: string) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve(nestedTree) });
+        });
+
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree-item-feature1')).toBeTruthy();
+        });
+
+        const featureRow = screen.getByTestId('task-tree-item-feature1');
+        const folderBadge = featureRow.querySelector('.task-folder-count');
+        expect(folderBadge).toBeTruthy();
+        expect(folderBadge?.textContent).toBe('3');
+    });
 });

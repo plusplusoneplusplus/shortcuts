@@ -66,6 +66,22 @@ export function folderToNodes(folder: TaskFolder): TaskNode[] {
     return [...folder.children, ...folder.documentGroups, ...folder.singleDocuments];
 }
 
+export function countMarkdownFilesInFolder(folder: TaskFolder): number {
+    const directSingles = folder.singleDocuments.reduce((count, doc) => (
+        doc.fileName.toLowerCase().endsWith('.md') ? count + 1 : count
+    ), 0);
+    const groupedDocs = folder.documentGroups.reduce((groupCount, group) => (
+        groupCount + group.documents.reduce((docCount, doc) => (
+            doc.fileName.toLowerCase().endsWith('.md') ? docCount + 1 : docCount
+        ), 0)
+    ), 0);
+    const childDocs = folder.children.reduce((childCount, child) => (
+        childCount + countMarkdownFilesInFolder(child)
+    ), 0);
+
+    return directSingles + groupedDocs + childDocs;
+}
+
 // ── Hook ───────────────────────────────────────────────────────────────
 
 export interface UseTaskTreeResult {
