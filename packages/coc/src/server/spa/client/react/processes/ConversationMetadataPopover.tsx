@@ -38,6 +38,13 @@ function parseSessionIdFromResult(result: unknown): string | null {
     }
 }
 
+export function getSessionIdFromProcess(process: any): string | null {
+    if (!process) return null;
+    return toStringValue(process.sdkSessionId)
+        || toStringValue(process.sessionId)
+        || parseSessionIdFromResult(process.result);
+}
+
 function buildRows(process: any, turnsCount?: number): MetaRow[] {
     if (!process) return [];
 
@@ -59,9 +66,7 @@ function buildRows(process: any, turnsCount?: number): MetaRow[] {
         ? Math.max(0, endedMs - startedMs)
         : undefined;
     const duration = typeof process.duration === 'number' ? process.duration : computedDuration;
-    const sessionId = toStringValue(process.sdkSessionId)
-        || toStringValue(process.sessionId)
-        || parseSessionIdFromResult(process.result);
+    const sessionId = getSessionIdFromProcess(process);
 
     push('Process ID', process.id, { breakAll: true, mono: true });
     push('Queue Task ID', queueTaskId, { breakAll: true, mono: true });

@@ -23,6 +23,7 @@ import { registerPreferencesRoutes } from './preferences-handler';
 import { registerAdminRoutes } from './admin-handler';
 import { registerTaskCommentsRoutes } from './task-comments-handler';
 import { registerWikiRoutes } from './wiki';
+import { registerProcessResumeRoutes } from './process-resume-handler';
 import { ProcessWebSocketServer, toProcessSummary } from '@plusplusoneplusplus/coc-server';
 import { generateDashboardHtml } from './spa';
 import type { ExecutionServerOptions, ExecutionServer } from '@plusplusoneplusplus/coc-server';
@@ -198,6 +199,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // Build API routes
     const routes: Route[] = [];
     registerApiRoutes(routes, store, bridge);
+    registerProcessResumeRoutes(routes, store);
     registerQueueRoutes(routes, queueManager, store);
     registerTaskRoutes(routes, store);
     registerTaskWriteRoutes(routes, store);
@@ -466,6 +468,7 @@ export type { ExecutionServerOptions, ExecutionServer, Route, WikiServerOptions,
 export type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
 export { sendJson, send404, send400, send500, readJsonBody, createRequestHandler } from '@plusplusoneplusplus/coc-server';
 export { registerApiRoutes, sendJSON, sendError, parseBody, parseQueryParams } from '@plusplusoneplusplus/coc-server';
+export { registerProcessResumeRoutes } from './process-resume-handler';
 export { registerQueueRoutes } from './queue-handler';
 export { registerTaskRoutes, registerTaskWriteRoutes } from './tasks-handler';
 export { registerTaskGenerationRoutes } from './task-generation-handler';

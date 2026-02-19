@@ -6,9 +6,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { fetchApi } from '../hooks/useApi';
-import { Badge, Spinner } from '../shared';
+import { getApiBase } from '../utils/config';
+import { Badge, Button, Spinner } from '../shared';
 import { ConversationTurnBubble } from './ConversationTurnBubble';
-import { ConversationMetadataPopover } from './ConversationMetadataPopover';
+import { ConversationMetadataPopover, getSessionIdFromProcess } from './ConversationMetadataPopover';
 import { formatDuration, statusIcon, statusLabel } from '../utils/format';
 import type { ClientConversationTurn } from '../types/dashboard';
 
@@ -60,6 +61,8 @@ export function ProcessDetail() {
     const [processDetails, setProcessDetails] = useState<any>(null);
     const eventSourceRef = useRef<EventSource | null>(null);
     const [now, setNow] = useState(Date.now());
+    const [resumeLaunching, setResumeLaunching] = useState(false);
+    const [resumeFeedback, setResumeFeedback] = useState<{ type: 'success' | 'error'; message: string; command?: string } | null>(null);
 
     const process = processes.find((p: any) => p.id === selectedId);
 
@@ -160,6 +163,43 @@ export function ProcessDetail() {
             ? formatDuration(process.duration)
             : '';
     const metadataProcess = processDetails || process;
+    const resumeSessionId = getSessionIdFromProcess(metadataProcess);
+
+    const launchInteractiveResume = async () => {
+        if (!selectedId || !resumeSessionId) return;
+        setResumeLaunching(true);
+        setResumeFeedback(null);
+        try {
+            const response = await fetch(`${getApiBase()}/processes/${encodeURIComponent(selectedId)}/resume-cli`, {
+                method: 'POST',
+            });
+            const body = await response.json().catch(() => null);
+            if (!response.ok) {
+                throw new Error(body?.error || `Failed to launch resume command (${response.status})`);
+            }
+
+            const launched = body?.launched !== false;
+            if (launched) {
+                setResumeFeedback({
+                    type: 'success',
+                    message: 'Opened Terminal with Copilot resume command.',
+                });
+            } else {
+                setResumeFeedback({
+                    type: 'success',
+                    message: 'Auto-launch unavailable. Run this command manually.',
+                    command: typeof body?.command === 'string' ? body.command : undefined,
+                });
+            }
+        } catch (error: any) {
+            setResumeFeedback({
+                type: 'error',
+                message: error?.message || 'Failed to launch Copilot resume command.',
+            });
+        } finally {
+            setResumeLaunching(false);
+        }
+    };
 
     return (
         <div className="flex-1 overflow-y-auto p-4">
@@ -174,11 +214,33 @@ export function ProcessDetail() {
                             <span className="text-xs text-[#848484]">{duration}</span>
                         )}
                     </div>
-                    <ConversationMetadataPopover process={metadataProcess} turnsCount={turns.length} />
+                    <div className="flex items-center gap-2">
+                        {resumeSessionId && (
+                            <Button
+                                variant="secondary"
+                                size="sm"
+                                loading={resumeLaunching}
+                                onClick={() => { void launchInteractiveResume(); }}
+                            >
+                                Resume CLI
+                            </Button>
+                        )}
+                        <ConversationMetadataPopover process={metadataProcess} turnsCount={turns.length} />
+                    </div>
                 </div>
                 <div className="text-sm text-[#1e1e1e] dark:text-[#cccccc] break-words">
                     {process.fullPrompt || process.promptPreview || process.id}
                 </div>
+                {resumeFeedback && (
+                    <div className={`mt-2 text-xs ${resumeFeedback.type === 'error' ? 'text-[#f14c4c]' : 'text-[#6a9955] dark:text-[#89d185]'}`}>
+                        {resumeFeedback.message}
+                        {resumeFeedback.command && (
+                            <div className="mt-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] px-2 py-1 font-mono text-[11px] break-all text-[#1e1e1e] dark:text-[#cccccc]">
+                                {resumeFeedback.command}
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
 
             {/* Conversation turns */}

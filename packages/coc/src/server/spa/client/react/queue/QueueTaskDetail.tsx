@@ -11,7 +11,7 @@ import { fetchApi } from '../hooks/useApi';
 import { getApiBase } from '../utils/config';
 import { Badge, Spinner, Button } from '../shared';
 import { ConversationTurnBubble } from '../processes/ConversationTurnBubble';
-import { ConversationMetadataPopover } from '../processes/ConversationMetadataPopover';
+import { ConversationMetadataPopover, getSessionIdFromProcess } from '../processes/ConversationMetadataPopover';
 import { formatDuration, statusIcon, statusLabel } from '../utils/format';
 import type { ClientConversationTurn } from '../types/dashboard';
 
@@ -82,6 +82,8 @@ export function QueueTaskDetail() {
     const [followUpSending, setFollowUpSending] = useState(false);
     const [followUpError, setFollowUpError] = useState<string | null>(null);
     const [followUpSessionExpired, setFollowUpSessionExpired] = useState(false);
+    const [resumeLaunching, setResumeLaunching] = useState(false);
+    const [resumeFeedback, setResumeFeedback] = useState<{ type: 'success' | 'error'; message: string; command?: string } | null>(null);
 
     const isPending = task?.status === 'queued';
     const selectedProcessId = task?.processId || (selectedTaskId ? `queue_${selectedTaskId}` : null);
@@ -292,6 +294,8 @@ export function QueueTaskDetail() {
         setFollowUpError(null);
         setFollowUpSending(false);
         setFollowUpSessionExpired(false);
+        setResumeLaunching(false);
+        setResumeFeedback(null);
         setProcessDetails(null);
         closeFollowUpStream();
         queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
@@ -348,6 +352,43 @@ export function QueueTaskDetail() {
         await fetch(getApiBase() + '/queue/' + encodeURIComponent(selectedTaskId) + '/move-to-top', { method: 'POST' });
     };
     const metadataProcess = processDetails || fullTask || task;
+    const resumeSessionId = getSessionIdFromProcess(metadataProcess);
+
+    const launchInteractiveResume = async () => {
+        if (!selectedProcessId || !resumeSessionId) return;
+        setResumeLaunching(true);
+        setResumeFeedback(null);
+        try {
+            const response = await fetch(`${getApiBase()}/processes/${encodeURIComponent(selectedProcessId)}/resume-cli`, {
+                method: 'POST',
+            });
+            const body = await response.json().catch(() => null);
+            if (!response.ok) {
+                throw new Error(body?.error || `Failed to launch resume command (${response.status})`);
+            }
+
+            const launched = body?.launched !== false;
+            if (launched) {
+                setResumeFeedback({
+                    type: 'success',
+                    message: 'Opened Terminal with Copilot resume command.',
+                });
+            } else {
+                setResumeFeedback({
+                    type: 'success',
+                    message: 'Auto-launch unavailable. Run this command manually.',
+                    command: typeof body?.command === 'string' ? body.command : undefined,
+                });
+            }
+        } catch (error: any) {
+            setResumeFeedback({
+                type: 'error',
+                message: error?.message || 'Failed to launch Copilot resume command.',
+            });
+        } finally {
+            setResumeLaunching(false);
+        }
+    };
 
     return (
         <div className="flex-1 flex flex-col min-h-0">
@@ -363,7 +404,19 @@ export function QueueTaskDetail() {
                         <span className="text-xs text-[#848484]">{formatDuration(task.duration)}</span>
                     )}
                     {!isPending && (
-                        <ConversationMetadataPopover process={metadataProcess} turnsCount={turns.length} />
+                        <>
+                            {resumeSessionId && (
+                                <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    loading={resumeLaunching}
+                                    onClick={() => { void launchInteractiveResume(); }}
+                                >
+                                    Resume CLI
+                                </Button>
+                            )}
+                            <ConversationMetadataPopover process={metadataProcess} turnsCount={turns.length} />
+                        </>
                     )}
                 </div>
                 <Button
@@ -409,6 +462,16 @@ export function QueueTaskDetail() {
 
             {!isPending && (
                 <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3 space-y-2">
+                    {resumeFeedback && (
+                        <div className={`text-xs ${resumeFeedback.type === 'error' ? 'text-[#f14c4c]' : 'text-[#6a9955] dark:text-[#89d185]'}`}>
+                            {resumeFeedback.message}
+                            {resumeFeedback.command && (
+                                <div className="mt-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] px-2 py-1 font-mono text-[11px] break-all text-[#1e1e1e] dark:text-[#cccccc]">
+                                    {resumeFeedback.command}
+                                </div>
+                            )}
+                        </div>
+                    )}
                     {followUpError && (
                         <div className="text-xs text-[#f14c4c]">
                             {followUpError}

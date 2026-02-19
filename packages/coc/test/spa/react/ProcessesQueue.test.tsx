@@ -193,6 +193,66 @@ describe('ProcessDetail', () => {
             expect(screen.queryByText('Conversation metadata')).toBeNull();
         });
     });
+
+    it('launches interactive resume from process detail', async () => {
+        const processId = 'proc-resume-ui-1';
+        const fetchMock = vi.fn().mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const requestUrl = String(input);
+            if (requestUrl.includes(`/processes/${processId}/resume-cli`)) {
+                return {
+                    ok: true,
+                    status: 200,
+                    json: async () => ({
+                        launched: true,
+                        command: "cd '/tmp' && copilot --yolo --resume 'sess-resume-ui-1'",
+                    }),
+                };
+            }
+            return {
+                ok: true,
+                status: 200,
+                json: async () => ({
+                    process: {
+                        id: processId,
+                        type: 'clarification',
+                        status: 'completed',
+                        metadata: { model: 'claude-haiku-4.5' },
+                        sdkSessionId: 'sess-resume-ui-1',
+                        conversationTurns: [
+                            { role: 'user', content: 'Q', timeline: [] },
+                            { role: 'assistant', content: 'A', timeline: [] },
+                        ],
+                    },
+                }),
+            };
+        });
+        (global as any).fetch = fetchMock;
+
+        render(
+            <Wrap>
+                <SeededProcessDetail
+                    process={{
+                        id: processId,
+                        status: 'completed',
+                        type: 'clarification',
+                        promptPreview: 'Q',
+                    }}
+                />
+            </Wrap>
+        );
+
+        await screen.findByText('Q');
+        fireEvent.click(screen.getByRole('button', { name: 'Resume CLI' }));
+
+        await waitFor(() => {
+            expect(fetchMock).toHaveBeenCalledWith(
+                expect.stringContaining(`/processes/${processId}/resume-cli`),
+                expect.objectContaining({ method: 'POST' })
+            );
+        });
+
+        expect(screen.getByText('Opened Terminal with Copilot resume command.')).toBeDefined();
+    });
 });
 
 describe('ConversationTurnBubble', () => {
