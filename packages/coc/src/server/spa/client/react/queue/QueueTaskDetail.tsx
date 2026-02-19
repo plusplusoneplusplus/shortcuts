@@ -17,6 +17,44 @@ import type { ClientConversationTurn } from '../types/dashboard';
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
 
+function getConversationTurns(data: any): ClientConversationTurn[] {
+    const process = data?.process;
+    if (process?.conversationTurns && Array.isArray(process.conversationTurns) && process.conversationTurns.length > 0) {
+        return process.conversationTurns;
+    }
+    if (Array.isArray(data?.conversation) && data.conversation.length > 0) {
+        return data.conversation;
+    }
+    if (Array.isArray(data?.turns) && data.turns.length > 0) {
+        return data.turns;
+    }
+
+    // Backward-compatible fallback for older persisted processes.
+    if (process) {
+        const synthetic: ClientConversationTurn[] = [];
+        const userContent = process.fullPrompt || process.promptPreview;
+        if (userContent) {
+            synthetic.push({
+                role: 'user',
+                content: userContent,
+                timestamp: process.startTime || undefined,
+                timeline: [],
+            });
+        }
+        if (process.result) {
+            synthetic.push({
+                role: 'assistant',
+                content: process.result,
+                timestamp: process.endTime || undefined,
+                timeline: [],
+            });
+        }
+        return synthetic;
+    }
+
+    return [];
+}
+
 export function QueueTaskDetail() {
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { state: appState, dispatch: appDispatch } = useApp();
@@ -28,6 +66,7 @@ export function QueueTaskDetail() {
     const eventSourceRef = useRef<EventSource | null>(null);
 
     const isPending = task?.status === 'queued';
+    const selectedProcessId = task?.processId || (selectedTaskId ? `queue_${selectedTaskId}` : null);
 
     // Determine task object from queue state
     useEffect(() => {
@@ -56,16 +95,16 @@ export function QueueTaskDetail() {
             setLoading(false);
         } else {
             setLoading(true);
-            fetchApi(`/queue/tasks/${encodeURIComponent(selectedTaskId)}`)
+            fetchApi(`/processes/${encodeURIComponent(selectedProcessId || `queue_${selectedTaskId}`)}`)
                 .then((data: any) => {
-                    const t = data?.conversation || data?.turns || [];
+                    const t = getConversationTurns(data);
                     appDispatch({ type: 'CACHE_CONVERSATION', processId: selectedTaskId, turns: t });
                     setTurns(t);
                 })
                 .catch(() => setTurns([]))
                 .finally(() => setLoading(false));
         }
-    }, [selectedTaskId, isPending, appDispatch]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [selectedTaskId, selectedProcessId, isPending, appDispatch]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // SSE streaming for running tasks
     useEffect(() => {
@@ -76,7 +115,8 @@ export function QueueTaskDetail() {
 
         if (!selectedTaskId || task?.status !== 'running') return;
 
-        const es = new EventSource(`/api/queue/tasks/${encodeURIComponent(selectedTaskId)}/stream`);
+        const processId = selectedProcessId || `queue_${selectedTaskId}`;
+        const es = new EventSource(`/api/processes/${encodeURIComponent(processId)}/stream`);
         eventSourceRef.current = es;
 
         es.onmessage = (event) => {
@@ -96,7 +136,7 @@ export function QueueTaskDetail() {
             es.close();
             eventSourceRef.current = null;
         };
-    }, [selectedTaskId, task?.status, appDispatch]);
+    }, [selectedTaskId, selectedProcessId, task?.status, appDispatch]);
 
     if (!selectedTaskId) return null;
 

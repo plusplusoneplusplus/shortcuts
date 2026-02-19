@@ -14,6 +14,44 @@ import type { ClientConversationTurn } from '../types/dashboard';
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
 
+function getConversationTurns(data: any): ClientConversationTurn[] {
+    const process = data?.process;
+    if (process?.conversationTurns && Array.isArray(process.conversationTurns) && process.conversationTurns.length > 0) {
+        return process.conversationTurns;
+    }
+    if (Array.isArray(data?.conversation) && data.conversation.length > 0) {
+        return data.conversation;
+    }
+    if (Array.isArray(data?.turns) && data.turns.length > 0) {
+        return data.turns;
+    }
+
+    // Backward-compatible fallback for older persisted processes.
+    if (process) {
+        const synthetic: ClientConversationTurn[] = [];
+        const userContent = process.fullPrompt || process.promptPreview;
+        if (userContent) {
+            synthetic.push({
+                role: 'user',
+                content: userContent,
+                timestamp: process.startTime || undefined,
+                timeline: [],
+            });
+        }
+        if (process.result) {
+            synthetic.push({
+                role: 'assistant',
+                content: process.result,
+                timestamp: process.endTime || undefined,
+                timeline: [],
+            });
+        }
+        return synthetic;
+    }
+
+    return [];
+}
+
 export function ProcessDetail() {
     const { state, dispatch } = useApp();
     const { selectedId, conversationCache, processes } = state;
@@ -47,7 +85,7 @@ export function ProcessDetail() {
             setLoading(true);
             fetchApi(`/processes/${encodeURIComponent(selectedId)}`)
                 .then((data: any) => {
-                    const t = data?.conversation || data?.turns || [];
+                    const t = getConversationTurns(data);
                     dispatch({ type: 'CACHE_CONVERSATION', processId: selectedId, turns: t });
                     setTurns(t);
                 })
