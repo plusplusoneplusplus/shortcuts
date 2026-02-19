@@ -7,8 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { fetchApi } from '../hooks/useApi';
 import { Badge, Spinner } from '../shared';
-import { ToolCallView } from './ToolCallView';
-import { MarkdownView } from './MarkdownView';
+import { ConversationTurnBubble } from './ConversationTurnBubble';
 import { formatDuration, statusIcon, statusLabel } from '../utils/format';
 import type { ClientConversationTurn } from '../types/dashboard';
 
@@ -167,14 +166,7 @@ export function ProcessDetail() {
             ) : (
                 <div className="space-y-3">
                     {turns.map((turn, i) => (
-                        <div key={i} className="space-y-1">
-                            {turn.content && (
-                                <MarkdownView html={turn.content} />
-                            )}
-                            {turn.toolCalls?.map((tc, j) => (
-                                <ToolCallView key={tc.id || j} toolCall={tc} />
-                            ))}
-                        </div>
+                        <ConversationTurnBubble key={i} turn={turn} />
                     ))}
                 </div>
             )}

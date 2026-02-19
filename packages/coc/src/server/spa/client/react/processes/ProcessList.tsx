@@ -5,11 +5,13 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
+import { useQueue } from '../context/QueueContext';
 import { Card, Badge, cn } from '../shared';
 import { formatDuration, statusIcon, statusLabel } from '../utils/format';
 
 export function ProcessList() {
     const { state, dispatch } = useApp();
+    const { dispatch: queueDispatch } = useQueue();
     const [now, setNow] = useState(Date.now());
 
     // Live timer for running processes
@@ -75,7 +77,10 @@ export function ProcessList() {
                 return (
                     <Card
                         key={p.id}
-                        onClick={() => dispatch({ type: 'SELECT_PROCESS', id: p.id })}
+                        onClick={() => {
+                            dispatch({ type: 'SELECT_PROCESS', id: p.id });
+                            queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null });
+                        }}
                         className={cn(
                             'p-2.5',
                             isActive && 'ring-2 ring-[#0078d4] dark:ring-[#3794ff]'

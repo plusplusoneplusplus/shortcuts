@@ -7,8 +7,12 @@ import { ProcessFilters } from './ProcessFilters';
 import { ProcessList } from './ProcessList';
 import { ProcessDetail } from './ProcessDetail';
 import { QueuePanel } from '../queue/QueuePanel';
+import { QueueTaskDetail } from '../queue/QueueTaskDetail';
+import { useQueue } from '../context/QueueContext';
 
 export function ProcessesView() {
+    const { state: queueState } = useQueue();
+
     return (
         <div id="view-processes" className="flex h-[calc(100vh-48px)]">
             {/* Left panel: filters + list */}
@@ -22,7 +26,7 @@ export function ProcessesView() {
 
             {/* Right panel: detail */}
             <main className="flex-1 flex flex-col bg-white dark:bg-[#1e1e1e]">
-                <ProcessDetail />
+                {queueState.selectedTaskId ? <QueueTaskDetail /> : <ProcessDetail />}
             </main>
         </div>
     );

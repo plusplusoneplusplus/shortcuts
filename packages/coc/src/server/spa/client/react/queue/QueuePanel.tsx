@@ -5,11 +5,13 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useQueue } from '../context/QueueContext';
+import { useApp } from '../context/AppContext';
 import { Badge, Card, Button, cn } from '../shared';
 import { formatDuration, statusIcon, statusLabel, typeLabel } from '../utils/format';
 
 export function QueuePanel() {
     const { state, dispatch } = useQueue();
+    const { dispatch: appDispatch } = useApp();
     const { queued, running, history, stats, showHistory, draining, drainQueued, drainRunning } = state;
     const [now, setNow] = useState(Date.now());
 
@@ -51,7 +53,11 @@ export function QueuePanel() {
                                 key={task.id}
                                 task={task}
                                 now={now}
-                                onClick={() => dispatch({ type: 'SELECT_QUEUE_TASK', id: task.id })}
+                                selected={state.selectedTaskId === task.id}
+                                onClick={() => {
+                                    dispatch({ type: 'SELECT_QUEUE_TASK', id: task.id });
+                                    appDispatch({ type: 'SELECT_PROCESS', id: null });
+                                }}
                             />
                         ))}
                     </div>
@@ -67,7 +73,11 @@ export function QueuePanel() {
                                 key={task.id}
                                 task={task}
                                 now={now}
-                                onClick={() => dispatch({ type: 'SELECT_QUEUE_TASK', id: task.id })}
+                                selected={state.selectedTaskId === task.id}
+                                onClick={() => {
+                                    dispatch({ type: 'SELECT_QUEUE_TASK', id: task.id });
+                                    appDispatch({ type: 'SELECT_PROCESS', id: null });
+                                }}
                             />
                         ))}
                     </div>
@@ -100,7 +110,11 @@ export function QueuePanel() {
                                 key={task.id}
                                 task={task}
                                 now={now}
-                                onClick={() => dispatch({ type: 'SELECT_QUEUE_TASK', id: task.id })}
+                                selected={state.selectedTaskId === task.id}
+                                onClick={() => {
+                                    dispatch({ type: 'SELECT_QUEUE_TASK', id: task.id });
+                                    appDispatch({ type: 'SELECT_PROCESS', id: null });
+                                }}
                             />
                         ))}
                     </div>
@@ -110,7 +124,12 @@ export function QueuePanel() {
     );
 }
 
-function QueueTaskCard({ task, now, onClick }: { task: any; now: number; onClick: () => void }) {
+function QueueTaskCard({ task, now, selected, onClick }: {
+    task: any;
+    now: number;
+    selected: boolean;
+    onClick: () => void;
+}) {
     const elapsed = task.status === 'running' && task.startTime
         ? formatDuration(now - new Date(task.startTime).getTime())
         : task.duration != null
@@ -122,7 +141,11 @@ function QueueTaskCard({ task, now, onClick }: { task: any; now: number; onClick
         : task.id;
 
     return (
-        <Card onClick={onClick} className="p-2">
+        <Card
+            onClick={onClick}
+            className={cn('p-2', selected && 'ring-2 ring-[#0078d4] dark:ring-[#3794ff]')}
+            aria-label={`Task ${statusLabel(task.status).toLowerCase()}: ${preview}`}
+        >
             <div className="flex items-center justify-between gap-2 mb-0.5">
                 <Badge status={task.status}>
                     {statusIcon(task.status)} {statusLabel(task.status)}
