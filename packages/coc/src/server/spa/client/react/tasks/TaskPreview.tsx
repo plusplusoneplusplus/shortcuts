@@ -11,10 +11,12 @@ interface TaskPreviewProps {
 
 export function TaskPreview({ wsId, filePath }: TaskPreviewProps) {
     return (
-        <MarkdownReviewEditor
-            wsId={wsId}
-            filePath={filePath}
-            fetchMode="tasks"
-        />
+        <div className="flex h-full min-h-0 min-w-0 overflow-hidden">
+            <MarkdownReviewEditor
+                wsId={wsId}
+                filePath={filePath}
+                fetchMode="tasks"
+            />
+        </div>
     );
 }

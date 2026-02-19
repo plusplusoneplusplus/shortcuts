@@ -8,7 +8,7 @@ import { useTaskTree } from '../hooks/useTaskTree';
 import { TaskTree } from './TaskTree';
 import { TaskPreview } from './TaskPreview';
 import { TaskActions } from './TaskActions';
-import { Spinner, cn } from '../shared';
+import { Spinner } from '../shared';
 
 interface TasksPanelProps {
     wsId: string;
@@ -17,7 +17,6 @@ interface TasksPanelProps {
 function TasksPanelInner({ wsId }: TasksPanelProps) {
     const { tree, commentCounts, loading, error } = useTaskTree(wsId);
     const { openFilePath, selectedFilePaths, clearSelection } = useTaskPanel();
-    const hasPreview = Boolean(openFilePath);
 
     if (loading) {
         return (
@@ -53,19 +52,24 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
                 onClearSelection={clearSelection}
             />
             <div
-                className={cn(
-                    'grid flex-1 overflow-hidden min-h-0 min-w-0',
-                    hasPreview ? 'grid-cols-[minmax(320px,56%)_1fr]' : 'grid-cols-1',
-                )}
+                className="flex-1 overflow-x-auto overflow-y-hidden min-h-0 min-w-0"
+                data-testid="tasks-miller-scroll-container"
             >
-                <div className="overflow-x-auto min-h-0 min-w-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c]">
-                    <TaskTree tree={tree} commentCounts={commentCounts} wsId={wsId} />
-                </div>
-                {openFilePath && (
-                    <div className="flex-1 overflow-hidden min-h-0 min-w-0">
-                        <TaskPreview wsId={wsId} filePath={openFilePath} />
+                <div className="flex h-full min-h-0 w-max min-w-full">
+                    <div className="flex-shrink-0 h-full min-h-0">
+                        <TaskTree
+                            tree={tree}
+                            commentCounts={commentCounts}
+                            wsId={wsId}
+                        />
                     </div>
-                )}
+
+                    {openFilePath && (
+                        <div className="h-full min-h-0 min-w-[72rem] w-[72rem] max-w-[72rem] border-r border-[#e0e0e0] dark:border-[#3c3c3c]">
+                            <TaskPreview wsId={wsId} filePath={openFilePath} />
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );

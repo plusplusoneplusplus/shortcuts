@@ -204,6 +204,40 @@ describe('TasksPanel', () => {
         });
     });
 
+    it('keeps previous miller columns visible when opening markdown preview', async () => {
+        fetchSpy.mockImplementation((url: string) => {
+            if (url.includes('tasks/content')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ content: '# Preview heading\nBody line' }) });
+            }
+            if (url.includes('/comments/')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ comments: [] }) });
+            }
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
+        });
+
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree-item-feature1')).toBeTruthy();
+        });
+
+        fireEvent.click(screen.getByTestId('task-tree-item-feature1'));
+        await waitFor(() => {
+            expect(screen.getByTestId('miller-column-1')).toBeTruthy();
+        });
+
+        fireEvent.click(screen.getByTestId('task-tree-item-design'));
+        await waitFor(() => {
+            expect(screen.getByTestId('markdown-review-status-bar')).toBeTruthy();
+        });
+
+        expect(screen.getByTestId('miller-column-0')).toBeTruthy();
+        expect(screen.getByTestId('miller-column-1')).toBeTruthy();
+        expect(screen.getByTestId('tasks-miller-scroll-container')).toBeTruthy();
+    });
+
     it('shows comment count badge', async () => {
         fetchSpy.mockImplementation((url: string) => {
             if (url.includes('comment-counts')) {

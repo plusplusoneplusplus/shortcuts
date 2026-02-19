@@ -5,6 +5,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
+import React from 'react';
 import { MarkdownReviewEditor } from '../../../src/server/spa/client/react/shared/MarkdownReviewEditor';
 
 function mockJsonResponse(body: any, ok = true, status = 200): Response {
@@ -28,7 +29,7 @@ describe('MarkdownReviewEditor', () => {
         vi.restoreAllMocks();
     });
 
-    it('renders markdown headings with top status bar and comment pane for task files', async () => {
+    it('renders markdown headings with top status bar and without empty comment pane', async () => {
         fetchSpy.mockImplementation((input: RequestInfo | URL) => {
             const url = String(input);
             if (url.includes('/tasks/content?')) {
@@ -61,7 +62,7 @@ describe('MarkdownReviewEditor', () => {
         expect(document.querySelector('#task-preview-body .code-block-container')).toBeTruthy();
         expect(screen.getByTestId('markdown-review-status-bar')).toBeTruthy();
         expect(screen.getByTestId('editor-status-filter-all')).toBeTruthy();
-        expect(screen.getByTestId('comment-sidebar')).toBeTruthy();
+        expect(screen.queryByTestId('comment-sidebar')).toBeNull();
     });
 
     it('falls back to workspace file preview in auto mode', async () => {

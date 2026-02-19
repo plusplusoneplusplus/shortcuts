@@ -104,6 +104,7 @@ export function MarkdownReviewEditor({
         if (categoryFilter !== 'all' && getCommentCategory(comment) !== categoryFilter) return false;
         return true;
     });
+    const showCommentListPanel = comments.length > 0;
 
     useEffect(() => {
         let cancelled = false;
@@ -268,8 +269,8 @@ export function MarkdownReviewEditor({
     }
 
     return (
-        <div className="flex flex-1 overflow-hidden min-h-0 min-w-0 p-2">
-            <div className="flex flex-1 overflow-hidden min-h-0 min-w-0 rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e]">
+        <div className="flex h-full flex-1 overflow-hidden min-h-0 min-w-0 p-2">
+            <div className="flex h-full flex-1 overflow-hidden min-h-0 min-w-0 rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e]">
                 <div className="flex min-h-0 min-w-0 flex-1 flex-col">
                     <div
                         className="px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#252526]"
@@ -347,22 +348,24 @@ export function MarkdownReviewEditor({
                     </div>
                 </div>
 
-                <CommentSidebar
-                    taskId={filePath}
-                    filePath={filePath}
-                    comments={comments}
-                    filteredComments={filteredComments}
-                    loading={commentsLoading}
-                    compact
-                    showHeader={false}
-                    showFilters={false}
-                    onResolve={(id) => resolveComment(id)}
-                    onUnresolve={(id) => unresolveComment(id)}
-                    onDelete={(id) => deleteComment(id)}
-                    onEdit={(id, text) => updateComment(id, { comment: text })}
-                    onAskAI={(id) => askAI(id)}
-                    onCommentClick={handleCommentClick}
-                />
+                {showCommentListPanel && (
+                    <CommentSidebar
+                        taskId={filePath}
+                        filePath={filePath}
+                        comments={comments}
+                        filteredComments={filteredComments}
+                        loading={commentsLoading}
+                        compact
+                        showHeader={false}
+                        showFilters={false}
+                        onResolve={(id) => resolveComment(id)}
+                        onUnresolve={(id) => unresolveComment(id)}
+                        onDelete={(id) => deleteComment(id)}
+                        onEdit={(id, text) => updateComment(id, { comment: text })}
+                        onAskAI={(id) => askAI(id)}
+                        onCommentClick={handleCommentClick}
+                    />
+                )}
             </div>
 
             <SelectionToolbar

@@ -2,7 +2,7 @@
  * TaskTree — Miller-columns file browser for workspace tasks.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTaskPanel } from '../context/TaskContext';
 import { useQueueActivity } from '../hooks/useQueueActivity';
 import type { TaskFolder, TaskNode } from '../hooks/useTaskTree';
@@ -34,20 +34,12 @@ export function TaskTree({ tree, commentCounts, wsId }: TaskTreeProps) {
     const { openFilePath, setOpenFilePath, selectedFilePaths, toggleSelectedFile, showContextFiles } = useTaskPanel();
     const queueActivity = useQueueActivity(wsId);
     const [columns, setColumns] = useState<TaskNode[][]>([]);
-    const scrollRef = useRef<HTMLDivElement>(null);
 
     // Initialize root column from tree
     useEffect(() => {
         const rootNodes = folderToNodes(tree);
         setColumns([rootNodes]);
     }, [tree]);
-
-    // Auto-scroll to rightmost column
-    useEffect(() => {
-        if (scrollRef.current) {
-            scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
-        }
-    }, [columns]);
 
     const handleFolderClick = (folder: TaskFolder, colIndex: number) => {
         const children = folderToNodes(folder);
@@ -64,11 +56,11 @@ export function TaskTree({ tree, commentCounts, wsId }: TaskTreeProps) {
 
     return (
         <div
-            ref={scrollRef}
-            className="flex flex-row overflow-x-auto h-full"
+            className="flex flex-row h-full min-h-0"
             data-testid="task-tree"
         >
-            {columns.map((colNodes, colIndex) => (
+            {columns.map((colNodes, colIndex) => {
+                return (
                 <div
                     key={colIndex}
                     className="flex-shrink-0 w-56 border-r border-[#e0e0e0] dark:border-[#3c3c3c] overflow-y-auto"
@@ -97,7 +89,8 @@ export function TaskTree({ tree, commentCounts, wsId }: TaskTreeProps) {
                         })}
                     </ul>
                 </div>
-            ))}
+                );
+            })}
         </div>
     );
 }
