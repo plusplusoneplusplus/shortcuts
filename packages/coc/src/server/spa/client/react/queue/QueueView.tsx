@@ -1,11 +1,11 @@
 /**
  * QueueView — top-level Queue sub-tab.
- * Renders QueuePanel, conditionally QueueTaskDetail and EnqueueDialog.
+ * Mounts queue overlays (detail drawer + enqueue dialog) and hydrates queue state.
+ * The sidebar queue summary is rendered inside ProcessesView.
  */
 
 import { useEffect } from 'react';
 import { useQueue } from '../context/QueueContext';
-import { QueuePanel } from './QueuePanel';
 import { QueueTaskDetail } from './QueueTaskDetail';
 import { EnqueueDialog } from './EnqueueDialog';
 import { fetchApi } from '../hooks/useApi';
@@ -36,10 +36,9 @@ export function QueueView() {
     }, [dispatch]);
 
     return (
-        <div className="p-4">
-            <QueuePanel />
+        <>
             <QueueTaskDetail />
             <EnqueueDialog />
-        </div>
+        </>
     );
 }

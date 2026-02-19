@@ -6,6 +6,7 @@
 import { ProcessFilters } from './ProcessFilters';
 import { ProcessList } from './ProcessList';
 import { ProcessDetail } from './ProcessDetail';
+import { QueuePanel } from '../queue/QueuePanel';
 
 export function ProcessesView() {
     return (
@@ -14,6 +15,9 @@ export function ProcessesView() {
             <aside className="w-[320px] min-w-[280px] flex flex-col border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]">
                 <ProcessFilters />
                 <ProcessList />
+                <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-2">
+                    <QueuePanel />
+                </div>
             </aside>
 
             {/* Right panel: detail */}

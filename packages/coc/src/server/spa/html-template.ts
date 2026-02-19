@@ -461,6 +461,18 @@ ${getAllModels().map(m => `                            <option value="${escapeHt
     </div>
 
     <script>
+        // During migration to React, remove legacy pre-React dashboard DOM to avoid duplicated UI controls.
+        (function cleanupLegacyDom() {
+            const root = document.getElementById('app-root');
+            if (!root) return;
+            for (const el of Array.from(document.body.children)) {
+                if (el === root) continue;
+                if (el.tagName === 'SCRIPT') continue;
+                el.remove();
+            }
+        })();
+    </script>
+    <script>
         window.__DASHBOARD_CONFIG__ = {
             apiBasePath: '${escapeHtml(apiBasePath)}',
             wsPath: '${escapeHtml(wsPath)}'

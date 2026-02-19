@@ -7,7 +7,26 @@
  *   src/server/wiki/spa/client/dist/bundle.js    (IIFE, wiki SPA)
  *   src/server/wiki/spa/client/dist/bundle.css   (wiki SPA styles)
  */
+import { mkdir, readFile, writeFile } from 'fs/promises';
+import { dirname } from 'path';
+import autoprefixer from 'autoprefixer';
 import * as esbuild from 'esbuild';
+import postcss from 'postcss';
+import tailwindcss from 'tailwindcss';
+
+async function buildTailwindBundle(inputPath, outputPath) {
+    const source = await readFile(inputPath, 'utf-8');
+    const result = await postcss([
+        tailwindcss({ config: './tailwind.config.js' }),
+        autoprefixer(),
+    ]).process(source, { from: inputPath, to: outputPath });
+
+    await mkdir(dirname(outputPath), { recursive: true });
+    await writeFile(outputPath, result.css, 'utf-8');
+
+    const sizeKb = (Buffer.byteLength(result.css, 'utf-8') / 1024).toFixed(1);
+    console.log(`\n  ${outputPath}  ${sizeKb}kb\n`);
+}
 
 // Main dashboard SPA
 await esbuild.build({
@@ -15,6 +34,7 @@ await esbuild.build({
     outfile: 'src/server/spa/client/dist/bundle.js',
     bundle: true,
     format: 'iife',
+    jsx: 'automatic',
     platform: 'browser',
     target: ['es2020'],
     minify: false,
@@ -22,13 +42,10 @@ await esbuild.build({
     logLevel: 'info',
 });
 
-await esbuild.build({
-    entryPoints: ['src/server/spa/client/tailwind.css'],
-    outfile: 'src/server/spa/client/dist/bundle.css',
-    bundle: true,
-    minify: false,
-    logLevel: 'info',
-});
+await buildTailwindBundle(
+    'src/server/spa/client/tailwind.css',
+    'src/server/spa/client/dist/bundle.css'
+);
 
 // Wiki SPA
 await esbuild.build({
@@ -36,6 +53,7 @@ await esbuild.build({
     outfile: 'src/server/wiki/spa/client/dist/bundle.js',
     bundle: true,
     format: 'iife',
+    jsx: 'automatic',
     platform: 'browser',
     target: ['es2020'],
     minify: false,
