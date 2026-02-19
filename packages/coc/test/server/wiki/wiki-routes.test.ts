@@ -1400,6 +1400,50 @@ describe('Wiki Store Persistence', () => {
         await server.close();
     });
 
+    it('admin config works for store-only pending wikis', async () => {
+        const { FileProcessStore } = await import('@plusplusoneplusplus/pipeline-core');
+        const store = new FileProcessStore({ dataDir });
+
+        const pendingDir = path.join(dataDir, 'wikis', 'store-only-admin');
+        const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-wiki-repo-'));
+        fs.mkdirSync(pendingDir, { recursive: true });
+
+        await store.registerWiki({
+            id: 'store-only-admin',
+            name: 'Store Only Admin Wiki',
+            wikiDir: pendingDir,
+            repoPath: repoDir,
+            color: '#848484',
+            aiEnabled: false,
+            registeredAt: new Date().toISOString(),
+        });
+
+        const server = await createExecutionServer({
+            port: 0,
+            dataDir,
+            store,
+        });
+
+        const getBefore = await getJSON(`${server.url}/api/wikis/store-only-admin/admin/config`);
+        expect(getBefore.status).toBe(200);
+        const beforeBody = JSON.parse(getBefore.body);
+        expect(beforeBody.exists).toBe(false);
+
+        const put = await putJSON(`${server.url}/api/wikis/store-only-admin/admin/config`, {
+            content: 'model: claude-haiku-4.5\ndepth: shallow\n',
+        });
+        expect(put.status).toBe(200);
+
+        const getAfter = await getJSON(`${server.url}/api/wikis/store-only-admin/admin/config`);
+        expect(getAfter.status).toBe(200);
+        const afterBody = JSON.parse(getAfter.body);
+        expect(afterBody.exists).toBe(true);
+        expect(afterBody.content).toContain('claude-haiku-4.5');
+
+        await server.close();
+        removeTempDir(repoDir);
+    });
+
     it('GET /api/wikis merges manager and store entries', async () => {
         const { FileProcessStore } = await import('@plusplusoneplusplus/pipeline-core');
         const store = new FileProcessStore({ dataDir });

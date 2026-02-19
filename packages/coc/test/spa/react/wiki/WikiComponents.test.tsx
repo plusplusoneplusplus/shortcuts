@@ -6,7 +6,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { AppProvider, useApp, appReducer, type AppContextState } from '../../../../src/server/spa/client/react/context/AppContext';
 import { QueueProvider } from '../../../../src/server/spa/client/react/context/QueueContext';
 import { WikiComponentTree } from '../../../../src/server/spa/client/react/wiki/WikiComponentTree';
@@ -14,9 +14,30 @@ import { WikiList } from '../../../../src/server/spa/client/react/wiki/WikiList'
 import { AddWikiDialog } from '../../../../src/server/spa/client/react/wiki/AddWikiDialog';
 import { WikiAsk } from '../../../../src/server/spa/client/react/wiki/WikiAsk';
 import { WikiAdmin } from '../../../../src/server/spa/client/react/wiki/WikiAdmin';
+import { WikiDetail } from '../../../../src/server/spa/client/react/wiki/WikiDetail';
 
 function Wrap({ children }: { children: ReactNode }) {
     return <AppProvider><QueueProvider>{children}</QueueProvider></AppProvider>;
+}
+
+function SeededWikiDetail({
+    wiki,
+    initialTab,
+}: {
+    wiki: any;
+    initialTab?: string;
+}) {
+    const { dispatch } = useApp();
+    useEffect(() => {
+        dispatch({ type: 'SET_WIKIS', wikis: [wiki] });
+        if (initialTab) {
+            dispatch({ type: 'SELECT_WIKI_WITH_TAB', wikiId: wiki.id, tab: initialTab });
+        } else {
+            dispatch({ type: 'SELECT_WIKI', wikiId: wiki.id });
+        }
+    }, [dispatch, wiki, initialTab]);
+
+    return <WikiDetail wikiId={wiki.id} />;
 }
 
 // ============================================================================
@@ -484,6 +505,142 @@ describe('WikiAdmin', () => {
         await waitFor(() => {
             expect(screen.getByText('Danger Zone')).toBeTruthy();
             expect(screen.getByText('Delete Wiki')).toBeTruthy();
+        });
+    });
+
+    it('loads config content and saves with { content } payload', async () => {
+        const mockFetch = vi.fn().mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            const method = (init?.method || 'GET').toUpperCase();
+
+            if (url.includes('/admin/cache')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({}),
+                });
+            }
+
+            if (method === 'GET' && url.includes('/admin/config')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        exists: true,
+                        content: 'model: gpt-4o\n',
+                        path: '/tmp/deep-wiki.config.yaml',
+                    }),
+                });
+            }
+
+            if (method === 'PUT' && url.includes('/admin/config')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ success: true }),
+                });
+            }
+
+            return Promise.resolve({
+                ok: true,
+                json: () => Promise.resolve({}),
+            });
+        });
+        vi.stubGlobal('fetch', mockFetch);
+
+        render(<WikiAdmin wikiId="w1" />);
+        fireEvent.click(screen.getByText('Config'));
+
+        await waitFor(() => {
+            expect(screen.getByText('/tmp/deep-wiki.config.yaml')).toBeTruthy();
+        });
+
+        const textarea = screen.getByRole('textbox');
+        expect((textarea as HTMLTextAreaElement).value).toBe('model: gpt-4o\n');
+
+        fireEvent.change(textarea, { target: { value: 'model: claude-haiku-4.5\n' } });
+        fireEvent.click(screen.getByText('Save'));
+
+        await waitFor(() => {
+            expect(screen.getByText('Saved')).toBeTruthy();
+        });
+
+        const putCall = mockFetch.mock.calls.find((call: any[]) => {
+            const url = String(call[0]);
+            const method = (call[1]?.method || 'GET').toUpperCase();
+            return url.includes('/admin/config') && method === 'PUT';
+        });
+        expect(putCall).toBeTruthy();
+        expect(JSON.parse(putCall[1].body)).toEqual({
+            content: 'model: claude-haiku-4.5\n',
+        });
+    });
+});
+
+// ============================================================================
+// WikiDetail — pending setup/admin path
+// ============================================================================
+
+describe('WikiDetail pending setup flow', () => {
+    beforeEach(() => {
+        vi.stubGlobal('fetch', vi.fn().mockImplementation((input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url.includes('/wikis/w-pending/graph')) {
+                return Promise.resolve({
+                    ok: false,
+                    status: 404,
+                    json: () => Promise.resolve({ error: 'Not generated' }),
+                });
+            }
+            if (url.includes('/wikis/w-pending/admin/cache')) {
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: () => Promise.resolve({}),
+                });
+            }
+            return Promise.resolve({
+                ok: true,
+                status: 200,
+                json: () => Promise.resolve({}),
+            });
+        }));
+    });
+
+    it('shows admin setup content when selecting Admin tab on a pending wiki', async () => {
+        render(
+            <Wrap>
+                <SeededWikiDetail
+                    wiki={{ id: 'w-pending', name: 'Pending Wiki', status: 'pending' }}
+                />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('Admin')).toBeTruthy();
+        });
+        fireEvent.click(screen.getByText('Admin'));
+
+        await waitFor(() => {
+            expect(screen.getByText('Run All')).toBeTruthy();
+        });
+        expect(screen.queryByText('→ Run Setup Wizard')).toBeNull();
+    });
+
+    it('switches from setup prompt to admin setup content when clicking setup button', async () => {
+        render(
+            <Wrap>
+                <SeededWikiDetail
+                    wiki={{ id: 'w-pending', name: 'Pending Wiki', status: 'pending' }}
+                />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('→ Run Setup Wizard')).toBeTruthy();
+        });
+
+        fireEvent.click(screen.getByText('→ Run Setup Wizard'));
+
+        await waitFor(() => {
+            expect(screen.getByText('Run All')).toBeTruthy();
         });
     });
 });

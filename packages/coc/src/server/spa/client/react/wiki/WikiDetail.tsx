@@ -96,6 +96,9 @@ export function WikiDetail({ wikiId }: WikiDetailProps) {
 
         if (!graph) {
             if (wikiStatus === 'pending') {
+                if (activeTab === 'admin') {
+                    return <WikiAdmin wikiId={wikiId} />;
+                }
                 return (
                     <div className="flex flex-col items-center justify-center h-full text-center">
                         <div className="text-4xl mb-3">⚠</div>

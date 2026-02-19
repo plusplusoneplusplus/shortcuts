@@ -239,15 +239,34 @@ function GenerateTab({ wikiId }: { wikiId: string }) {
 function EditorTab({ wikiId, kind }: { wikiId: string; kind: 'seeds' | 'config' }) {
     const [content, setContent] = useState('');
     const [original, setOriginal] = useState('');
+    const [resourcePath, setResourcePath] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
     const [status, setStatus] = useState<string | null>(null);
 
     useEffect(() => {
         fetchApi('/wikis/' + encodeURIComponent(wikiId) + '/admin/' + kind)
             .then(data => {
-                const text = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+                let text = '';
+                let resolvedPath: string | null = null;
+
+                if (kind === 'config') {
+                    resolvedPath = typeof data?.path === 'string' ? data.path : null;
+                    if (typeof data?.content === 'string') {
+                        text = data.content;
+                    }
+                } else {
+                    resolvedPath = typeof data?.path === 'string' ? data.path : null;
+                    if (typeof data?.content === 'string') {
+                        text = data.content;
+                    } else if (data?.content !== null && data?.content !== undefined) {
+                        text = JSON.stringify(data.content, null, 2);
+                    }
+                }
+
                 setContent(text);
                 setOriginal(text);
+                setResourcePath(resolvedPath);
+                setStatus(null);
             })
             .catch(() => setStatus('Failed to load'));
     }, [wikiId, kind]);
@@ -259,7 +278,7 @@ function EditorTab({ wikiId, kind }: { wikiId: string; kind: 'seeds' | 'config' 
             const res = await fetch(getApiBase() + '/wikis/' + encodeURIComponent(wikiId) + '/admin/' + kind, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: content,
+                body: JSON.stringify({ content }),
             });
             if (res.ok) {
                 setOriginal(content);
@@ -284,7 +303,9 @@ function EditorTab({ wikiId, kind }: { wikiId: string; kind: 'seeds' | 'config' 
         <div className="space-y-2">
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                    <span className="text-xs text-[#848484]" id={`${kind}-path`}>{kind}.json</span>
+                    <span className="text-xs text-[#848484]" id={`${kind}-path`}>
+                        {resourcePath || (kind === 'config' ? 'deep-wiki.config.yaml' : 'seeds.yaml')}
+                    </span>
                     {status && (
                         <span className={cn('text-xs', status === 'Saved' ? 'text-green-600' : 'text-[#f14c4c]')} id={`${kind}-status`}>
                             {status}

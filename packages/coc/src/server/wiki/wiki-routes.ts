@@ -127,6 +127,81 @@ export function registerWikiRoutes(
         aiWorkingDirectory: options.aiWorkingDirectory,
     };
 
+    async function resolveAdminRuntime(wikiId: string): Promise<any | null> {
+        const loaded = wikiManager.get(wikiId);
+        if (loaded) {
+            return loaded;
+        }
+
+        if (!store) {
+            return null;
+        }
+
+        let persisted: WikiInfo | undefined;
+        try {
+            persisted = (await store.getWikis()).find((w) => w.id === wikiId);
+        } catch {
+            return null;
+        }
+
+        if (!persisted) {
+            return null;
+        }
+
+        const registration = {
+            wikiId: persisted.id,
+            wikiDir: persisted.wikiDir,
+            repoPath: persisted.repoPath,
+            aiEnabled: persisted.aiEnabled ?? options.aiEnabled ?? false,
+            title: persisted.name,
+        };
+
+        const pendingRuntime: any = {
+            registration,
+            wikiData: {
+                graph: {
+                    project: {
+                        name: persisted.name || persisted.id,
+                        description: 'Pending wiki generation',
+                    },
+                    components: [],
+                    categories: [],
+                },
+                reload: () => {
+                    // Once generation writes component-graph.json, promote to full runtime.
+                    const graphPath = path.join(registration.wikiDir, 'component-graph.json');
+                    if (!fs.existsSync(graphPath)) return;
+                    try {
+                        wikiManager.register(registration);
+                    } catch {
+                        // Keep pending runtime if registration still fails.
+                    }
+                },
+                getThemeList: () => [],
+                getThemeArticle: () => null,
+                getThemeArticles: () => [],
+                getComponentSummaries: () => [],
+                getComponentDetail: () => null,
+                getSpecialPage: () => null,
+            },
+            contextBuilder: null,
+            sessionManager: null,
+            fileWatcher: null,
+        };
+
+        return pendingRuntime;
+    }
+
+    async function withAdminManager(wikiId: string): Promise<WikiManager | null> {
+        const runtime = await resolveAdminRuntime(wikiId);
+        if (!runtime) {
+            return null;
+        }
+        return {
+            get: (id: string) => (id === wikiId ? runtime : wikiManager.get(id)),
+        } as unknown as WikiManager;
+    }
+
     // ========================================================================
     // Wiki CRUD endpoints (manage the registry — not per-wiki scoped)
     // ========================================================================
@@ -275,8 +350,8 @@ export function registerWikiRoutes(
         pattern: /^\/api\/wikis\/([^/]+)$/,
         handler: async (_req, res, match) => {
             const wikiId = decodeURIComponent(match![1]);
-            const runtime = wikiManager.get(wikiId);
-            if (!runtime) {
+            const runtime = await resolveAdminRuntime(wikiId);
+            if (!runtime || !runtime.registration) {
                 send404(res, `Wiki not found: ${wikiId}`);
                 return;
             }
@@ -286,7 +361,8 @@ export function registerWikiRoutes(
                 repoPath: runtime.registration.repoPath,
                 aiEnabled: runtime.registration.aiEnabled,
                 title: runtime.registration.title,
-                componentCount: runtime.wikiData.graph.components.length,
+                componentCount: runtime.wikiData?.graph?.components?.length ?? 0,
+                loaded: !!wikiManager.get(wikiId),
             });
         },
     });
@@ -531,7 +607,12 @@ export function registerWikiRoutes(
         pattern: /^\/api\/wikis\/([^/]+)\/admin\/seeds$/,
         handler: async (_req, res, match) => {
             const wikiId = decodeURIComponent(match![1]);
-            await handleGetSeeds(res, wikiId, wikiManager);
+            const manager = await withAdminManager(wikiId);
+            if (!manager) {
+                send404(res, `Wiki not found: ${wikiId}`);
+                return;
+            }
+            await handleGetSeeds(res, wikiId, manager);
         },
     });
 
@@ -541,7 +622,12 @@ export function registerWikiRoutes(
         pattern: /^\/api\/wikis\/([^/]+)\/admin\/seeds$/,
         handler: async (req, res, match) => {
             const wikiId = decodeURIComponent(match![1]);
-            await handlePutSeeds(req, res, wikiId, wikiManager);
+            const manager = await withAdminManager(wikiId);
+            if (!manager) {
+                send404(res, `Wiki not found: ${wikiId}`);
+                return;
+            }
+            await handlePutSeeds(req, res, wikiId, manager);
         },
     });
 
@@ -551,7 +637,12 @@ export function registerWikiRoutes(
         pattern: /^\/api\/wikis\/([^/]+)\/admin\/seeds\/generate$/,
         handler: async (req, res, match) => {
             const wikiId = decodeURIComponent(match![1]);
-            await handleGenerateSeeds(req, res, wikiId, wikiManager);
+            const manager = await withAdminManager(wikiId);
+            if (!manager) {
+                send404(res, `Wiki not found: ${wikiId}`);
+                return;
+            }
+            await handleGenerateSeeds(req, res, wikiId, manager);
         },
     });
 
@@ -561,7 +652,12 @@ export function registerWikiRoutes(
         pattern: /^\/api\/wikis\/([^/]+)\/admin\/config$/,
         handler: async (_req, res, match) => {
             const wikiId = decodeURIComponent(match![1]);
-            handleGetConfig(res, wikiId, wikiManager);
+            const manager = await withAdminManager(wikiId);
+            if (!manager) {
+                send404(res, `Wiki not found: ${wikiId}`);
+                return;
+            }
+            handleGetConfig(res, wikiId, manager);
         },
     });
 
@@ -571,7 +667,12 @@ export function registerWikiRoutes(
         pattern: /^\/api\/wikis\/([^/]+)\/admin\/config$/,
         handler: async (req, res, match) => {
             const wikiId = decodeURIComponent(match![1]);
-            await handlePutConfig(req, res, wikiId, wikiManager);
+            const manager = await withAdminManager(wikiId);
+            if (!manager) {
+                send404(res, `Wiki not found: ${wikiId}`);
+                return;
+            }
+            await handlePutConfig(req, res, wikiId, manager);
         },
     });
 
@@ -581,7 +682,12 @@ export function registerWikiRoutes(
         pattern: /^\/api\/wikis\/([^/]+)\/admin\/generate$/,
         handler: async (req, res, match) => {
             const wikiId = decodeURIComponent(match![1]);
-            await handleStartGenerate(req, res, wikiId, wikiManager);
+            const manager = await withAdminManager(wikiId);
+            if (!manager) {
+                send404(res, `Wiki not found: ${wikiId}`);
+                return;
+            }
+            await handleStartGenerate(req, res, wikiId, manager);
         },
     });
 
@@ -601,7 +707,12 @@ export function registerWikiRoutes(
         pattern: /^\/api\/wikis\/([^/]+)\/admin\/generate\/status$/,
         handler: async (_req, res, match) => {
             const wikiId = decodeURIComponent(match![1]);
-            handleGetGenerateStatus(res, wikiId, wikiManager);
+            const manager = await withAdminManager(wikiId);
+            if (!manager) {
+                send404(res, `Wiki not found: ${wikiId}`);
+                return;
+            }
+            handleGetGenerateStatus(res, wikiId, manager);
         },
     });
 
@@ -612,7 +723,12 @@ export function registerWikiRoutes(
         handler: async (req, res, match) => {
             const wikiId = decodeURIComponent(match![1]);
             const componentId = decodeURIComponent(match![2]);
-            await handleComponentRegenerate(req, res, wikiId, componentId, wikiManager);
+            const manager = await withAdminManager(wikiId);
+            if (!manager) {
+                send404(res, `Wiki not found: ${wikiId}`);
+                return;
+            }
+            await handleComponentRegenerate(req, res, wikiId, componentId, manager);
         },
     });
 
