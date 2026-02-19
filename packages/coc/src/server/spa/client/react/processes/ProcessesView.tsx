@@ -14,18 +14,18 @@ export function ProcessesView() {
     const { state: queueState } = useQueue();
 
     return (
-        <div id="view-processes" className="flex h-[calc(100vh-48px)]">
+        <div id="view-processes" className="flex h-[calc(100vh-48px)] overflow-hidden">
             {/* Left panel: filters + list */}
-            <aside className="w-[320px] min-w-[280px] flex flex-col border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]">
+            <aside className="w-[320px] min-w-[280px] min-h-0 flex flex-col border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]">
                 <ProcessFilters />
                 <ProcessList />
-                <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-2">
+                <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-2 min-h-0">
                     <QueuePanel />
                 </div>
             </aside>
 
             {/* Right panel: detail */}
-            <main className="flex-1 flex flex-col bg-white dark:bg-[#1e1e1e]">
+            <main className="flex-1 min-h-0 flex flex-col bg-white dark:bg-[#1e1e1e]">
                 {queueState.selectedTaskId ? <QueueTaskDetail /> : <ProcessDetail />}
             </main>
         </div>

@@ -27,7 +27,7 @@ export function QueuePanel() {
     }, [hasActive]);
 
     return (
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 min-h-0">
             {/* Drain banner */}
             {draining && (
                 <div className="rounded bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 px-3 py-2 text-xs font-medium">
@@ -96,7 +96,7 @@ export function QueuePanel() {
             </div>
 
             {/* History section */}
-            <div>
+            <div className="min-h-0">
                 <button
                     className="flex items-center gap-1 text-[11px] uppercase text-[#848484] font-medium hover:text-[#0078d4] dark:hover:text-[#3794ff] transition-colors"
                     onClick={() => dispatch({ type: 'TOGGLE_HISTORY' })}
@@ -104,7 +104,7 @@ export function QueuePanel() {
                     {showHistory ? '▼' : '▶'} History ({history.length})
                 </button>
                 {showHistory && history.length > 0 && (
-                    <div className="flex flex-col gap-1 mt-1">
+                    <div className="mt-1 max-h-[38vh] overflow-y-auto pr-1 space-y-1">
                         {history.map((task: any) => (
                             <QueueTaskCard
                                 key={task.id}
