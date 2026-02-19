@@ -12,7 +12,7 @@ import { useTaskComments } from '../hooks/useTaskComments';
 import { Spinner } from './Spinner';
 import { cn } from './cn';
 import { CommentSidebar } from '../tasks/comments/CommentSidebar';
-import { SelectionToolbar } from '../tasks/comments/SelectionToolbar';
+import { ContextMenu } from '../tasks/comments/ContextMenu';
 import { InlineCommentPopup } from '../tasks/comments/InlineCommentPopup';
 import { CommentHighlight } from '../tasks/comments/CommentHighlight';
 import type { TaskComment, TaskCommentCategory, CommentSelection } from '../../task-comments-types';
@@ -65,8 +65,16 @@ export function MarkdownReviewEditor({
     const previewRef = useRef<HTMLDivElement>(null);
 
     // Selection & popup state
-    const [toolbarVisible, setToolbarVisible] = useState(false);
-    const [toolbarPos, setToolbarPos] = useState({ top: 0, left: 0 });
+    const [contextMenuVisible, setContextMenuVisible] = useState(false);
+    const [contextMenuPos, setContextMenuPos] = useState({ x: 0, y: 0 });
+    const [savedSelection, setSavedSelection] = useState<{
+        text: string;
+        range: Range;
+        startLine: number;
+        startColumn: number;
+        endLine: number;
+        endColumn: number;
+    } | null>(null);
     const [popupVisible, setPopupVisible] = useState(false);
     const [popupPos, setPopupPos] = useState({ top: 0, left: 0 });
     const [pendingSelection, setPendingSelection] = useState<{
@@ -144,63 +152,60 @@ export function MarkdownReviewEditor({
         setCategoryFilter('all');
     }, [filePath]);
 
-    // Selection change listener
+    // Save selection silently on mouseup
     useEffect(() => {
-        const handleSelectionChange = () => {
+        const handleMouseUp = () => {
             const sel = window.getSelection();
-            if (!sel || sel.isCollapsed || !sel.rangeCount) {
-                setToolbarVisible(false);
-                return;
+            if (sel && !sel.isCollapsed && sel.rangeCount && sel.toString().trim().length >= MIN_SELECTION_LENGTH) {
+                if (previewRef.current?.contains(sel.anchorNode)) {
+                    const range = sel.getRangeAt(0);
+                    const text = sel.toString().trim();
+                    const previewText = previewRef.current.textContent || '';
+                    const startOffset = getTextOffset(previewRef.current, range.startContainer, range.startOffset);
+                    const endOffset = getTextOffset(previewRef.current, range.endContainer, range.endOffset);
+                    const startPos = offsetToPosition(previewText, startOffset);
+                    const endPos = offsetToPosition(previewText, endOffset);
+                    setSavedSelection({
+                        text,
+                        range: range.cloneRange(),
+                        startLine: startPos.line,
+                        startColumn: startPos.column,
+                        endLine: endPos.line,
+                        endColumn: endPos.column,
+                    });
+                    return;
+                }
             }
-            const range = sel.getRangeAt(0);
-            const text = sel.toString().trim();
-            if (text.length < MIN_SELECTION_LENGTH) {
-                setToolbarVisible(false);
-                return;
-            }
-            // Ensure selection is within preview
-            if (!previewRef.current || !previewRef.current.contains(range.startContainer)) {
-                setToolbarVisible(false);
-                return;
-            }
-            const rect = range.getBoundingClientRect();
-            setToolbarPos({ top: rect.top - 36, left: rect.left + rect.width / 2 - 60 });
-            setToolbarVisible(true);
+            setSavedSelection(null);
         };
 
-        document.addEventListener('selectionchange', handleSelectionChange);
-        return () => document.removeEventListener('selectionchange', handleSelectionChange);
+        document.addEventListener('mouseup', handleMouseUp);
+        return () => document.removeEventListener('mouseup', handleMouseUp);
     }, []);
 
-    const handleAddCommentClick = useCallback(() => {
-        const sel = window.getSelection();
-        if (!sel || sel.isCollapsed || !sel.rangeCount || !previewRef.current) return;
+    const handleContextMenu = useCallback((e: React.MouseEvent) => {
+        e.preventDefault();
+        setContextMenuPos({ x: e.clientX, y: e.clientY });
+        setContextMenuVisible(true);
+    }, []);
 
-        const range = sel.getRangeAt(0);
-        const text = sel.toString().trim();
-        if (text.length < MIN_SELECTION_LENGTH) return;
+    const handleAddCommentFromMenu = useCallback(() => {
+        if (!savedSelection) return;
 
-        const rect = range.getBoundingClientRect();
+        const rect = savedSelection.range.getBoundingClientRect();
         setPopupPos({ top: rect.bottom + 8, left: Math.max(8, rect.left) });
 
-        // Compute line/column from text offsets
-        const previewText = previewRef.current.textContent || '';
-        const startOffset = getTextOffset(previewRef.current, range.startContainer, range.startOffset);
-        const endOffset = getTextOffset(previewRef.current, range.endContainer, range.endOffset);
-        const startPos = offsetToPosition(previewText, startOffset);
-        const endPos = offsetToPosition(previewText, endOffset);
-
         setPendingSelection({
-            text,
-            startLine: startPos.line,
-            startColumn: startPos.column,
-            endLine: endPos.line,
-            endColumn: endPos.column,
+            text: savedSelection.text,
+            startLine: savedSelection.startLine,
+            startColumn: savedSelection.startColumn,
+            endLine: savedSelection.endLine,
+            endColumn: savedSelection.endColumn,
         });
 
-        setToolbarVisible(false);
+        setContextMenuVisible(false);
         setPopupVisible(true);
-    }, []);
+    }, [savedSelection]);
 
     const handlePopupSubmit = useCallback(async (text: string, category: TaskCommentCategory) => {
         if (!pendingSelection) return;
@@ -339,6 +344,7 @@ export function MarkdownReviewEditor({
                             id="task-preview-body"
                             className="markdown-body text-sm text-[#1e1e1e] dark:text-[#cccccc]"
                             dangerouslySetInnerHTML={{ __html: html }}
+                            onContextMenu={handleContextMenu}
                         />
                         <CommentHighlight
                             comments={comments}
@@ -368,11 +374,20 @@ export function MarkdownReviewEditor({
                 )}
             </div>
 
-            <SelectionToolbar
-                visible={toolbarVisible}
-                position={toolbarPos}
-                onAddComment={handleAddCommentClick}
-            />
+            {contextMenuVisible && (
+                <ContextMenu
+                    position={contextMenuPos}
+                    items={[
+                        {
+                            label: 'Add comment',
+                            icon: '💬',
+                            disabled: !savedSelection,
+                            onClick: handleAddCommentFromMenu,
+                        },
+                    ]}
+                    onClose={() => setContextMenuVisible(false)}
+                />
+            )}
 
             {popupVisible && (
                 <InlineCommentPopup
