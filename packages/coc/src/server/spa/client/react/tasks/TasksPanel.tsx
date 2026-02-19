@@ -3,6 +3,7 @@
  * Renders a two-zone flex layout: left = TaskTree, right = TaskPreview.
  */
 
+import { useState } from 'react';
 import { TaskProvider, useTaskPanel } from '../context/TaskContext';
 import { useTaskTree } from '../hooks/useTaskTree';
 import { TaskTree } from './TaskTree';
@@ -14,9 +15,26 @@ interface TasksPanelProps {
     wsId: string;
 }
 
+export function parseTaskHashParams(hash: string, wsId: string) {
+    const parts = hash.replace(/^#/, '').split('/');
+    if (parts[0] !== 'repos' || decodeURIComponent(parts[1] || '') !== wsId || parts[2] !== 'tasks')
+        return { initialFolderPath: null, initialFilePath: null };
+    const taskParts = parts.slice(3).map(p => decodeURIComponent(p)).filter(Boolean);
+    if (!taskParts.length) return { initialFolderPath: null, initialFilePath: null };
+    const last = taskParts[taskParts.length - 1];
+    if (last.endsWith('.md')) {
+        return {
+            initialFolderPath: taskParts.slice(0, -1).join('/') || null,
+            initialFilePath: taskParts.join('/'),
+        };
+    }
+    return { initialFolderPath: taskParts.join('/'), initialFilePath: null };
+}
+
 function TasksPanelInner({ wsId }: TasksPanelProps) {
     const { tree, commentCounts, loading, error } = useTaskTree(wsId);
     const { openFilePath, selectedFilePaths, clearSelection } = useTaskPanel();
+    const [initialParams] = useState(() => parseTaskHashParams(location.hash, wsId));
 
     if (loading) {
         return (
@@ -61,6 +79,8 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
                             tree={tree}
                             commentCounts={commentCounts}
                             wsId={wsId}
+                            initialFolderPath={initialParams.initialFolderPath}
+                            initialFilePath={initialParams.initialFilePath}
                         />
                     </div>
 

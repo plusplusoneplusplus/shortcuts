@@ -9,7 +9,9 @@ import { AppProvider } from '../../../src/server/spa/client/react/context/AppCon
 import { QueueProvider } from '../../../src/server/spa/client/react/context/QueueContext';
 import { TaskProvider } from '../../../src/server/spa/client/react/context/TaskContext';
 import { taskReducer, type TaskContextState, type TaskAction } from '../../../src/server/spa/client/react/context/TaskContext';
-import { TasksPanel } from '../../../src/server/spa/client/react/tasks/TasksPanel';
+import { TasksPanel, parseTaskHashParams } from '../../../src/server/spa/client/react/tasks/TasksPanel';
+import { getFolderKey } from '../../../src/server/spa/client/react/tasks/TaskTree';
+import type { TaskFolder } from '../../../src/server/spa/client/react/hooks/useTaskTree';
 
 function Wrap({ children }: { children: ReactNode }) {
     return <AppProvider><QueueProvider>{children}</QueueProvider></AppProvider>;
@@ -304,5 +306,193 @@ describe('TasksPanel', () => {
         const folderBadge = featureRow.querySelector('.task-folder-count');
         expect(folderBadge).toBeTruthy();
         expect(folderBadge?.textContent).toBe('3');
+    });
+
+    it('highlights active folder on click', async () => {
+        fetchSpy.mockImplementation((url: string) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
+        });
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree-item-feature1')).toBeTruthy();
+        });
+        fireEvent.click(screen.getByTestId('task-tree-item-feature1'));
+        await waitFor(() => {
+            expect(screen.getByTestId('miller-column-1')).toBeTruthy();
+        });
+        const folderRow = screen.getByTestId('task-tree-item-feature1');
+        expect(folderRow.className).toContain('bg-[#0078d4]');
+    });
+
+    it('updates URL on folder click via history.replaceState', async () => {
+        const replaceStateSpy = vi.spyOn(history, 'replaceState');
+        fetchSpy.mockImplementation((url: string) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
+        });
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree-item-feature1')).toBeTruthy();
+        });
+        fireEvent.click(screen.getByTestId('task-tree-item-feature1'));
+        expect(replaceStateSpy).toHaveBeenCalledWith(null, '', '#repos/ws1/tasks/feature1');
+        replaceStateSpy.mockRestore();
+    });
+
+    it('updates URL on file click via history.replaceState', async () => {
+        const replaceStateSpy = vi.spyOn(history, 'replaceState');
+        fetchSpy.mockImplementation((url: string) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
+        });
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree-item-README')).toBeTruthy();
+        });
+        fireEvent.click(screen.getByTestId('task-tree-item-README'));
+        expect(replaceStateSpy).toHaveBeenCalledWith(null, '', '#repos/ws1/tasks/README.md');
+        replaceStateSpy.mockRestore();
+    });
+
+    it('restores folder and file from URL on mount', async () => {
+        // Set location.hash before rendering
+        window.location.hash = '#repos/ws1/tasks/feature1/design.md';
+        fetchSpy.mockImplementation((url: string) => {
+            if (url.includes('tasks/content')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ content: '# Design' }) });
+            }
+            if (url.includes('/comments/')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ comments: [] }) });
+            }
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
+        });
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            // Should auto-expand feature1 folder (column 1) and open file preview
+            expect(screen.getByTestId('miller-column-1')).toBeTruthy();
+        });
+        // The feature1 folder should be highlighted as active
+        const folderRow = screen.getByTestId('task-tree-item-feature1');
+        expect(folderRow.className).toContain('bg-[#0078d4]');
+        // Cleanup
+        window.location.hash = '';
+    });
+});
+
+// ============================================================================
+// parseTaskHashParams — URL parsing unit tests
+// ============================================================================
+
+describe('parseTaskHashParams', () => {
+    it('returns nulls for non-matching hash', () => {
+        expect(parseTaskHashParams('#other/path', 'ws1')).toEqual({
+            initialFolderPath: null,
+            initialFilePath: null,
+        });
+    });
+
+    it('returns nulls for tasks root with no sub-path', () => {
+        expect(parseTaskHashParams('#repos/ws1/tasks', 'ws1')).toEqual({
+            initialFolderPath: null,
+            initialFilePath: null,
+        });
+    });
+
+    it('parses a single folder segment', () => {
+        expect(parseTaskHashParams('#repos/ws1/tasks/misc', 'ws1')).toEqual({
+            initialFolderPath: 'misc',
+            initialFilePath: null,
+        });
+    });
+
+    it('parses nested folder segments', () => {
+        expect(parseTaskHashParams('#repos/ws1/tasks/coc/backlog', 'ws1')).toEqual({
+            initialFolderPath: 'coc/backlog',
+            initialFilePath: null,
+        });
+    });
+
+    it('parses a file in a folder', () => {
+        expect(parseTaskHashParams('#repos/ws1/tasks/misc/file.plan.md', 'ws1')).toEqual({
+            initialFolderPath: 'misc',
+            initialFilePath: 'misc/file.plan.md',
+        });
+    });
+
+    it('parses a file in nested folders', () => {
+        expect(parseTaskHashParams('#repos/ws1/tasks/coc/backlog/task.plan.md', 'ws1')).toEqual({
+            initialFolderPath: 'coc/backlog',
+            initialFilePath: 'coc/backlog/task.plan.md',
+        });
+    });
+
+    it('parses a root-level file', () => {
+        expect(parseTaskHashParams('#repos/ws1/tasks/README.md', 'ws1')).toEqual({
+            initialFolderPath: null,
+            initialFilePath: 'README.md',
+        });
+    });
+
+    it('handles URL-encoded wsId', () => {
+        expect(parseTaskHashParams('#repos/ws%201/tasks/misc', 'ws 1')).toEqual({
+            initialFolderPath: 'misc',
+            initialFilePath: null,
+        });
+    });
+
+    it('returns nulls when wsId does not match', () => {
+        expect(parseTaskHashParams('#repos/ws2/tasks/misc', 'ws1')).toEqual({
+            initialFolderPath: null,
+            initialFilePath: null,
+        });
+    });
+});
+
+// ============================================================================
+// getFolderKey — folder key generation unit tests
+// ============================================================================
+
+describe('getFolderKey', () => {
+    it('returns name for root-level folder', () => {
+        const folder: TaskFolder = {
+            name: 'misc',
+            relativePath: '',
+            children: [],
+            documentGroups: [],
+            singleDocuments: [],
+        };
+        expect(getFolderKey(folder)).toBe('misc');
+    });
+
+    it('returns relativePath for nested folder', () => {
+        const folder: TaskFolder = {
+            name: 'backlog',
+            relativePath: 'coc/backlog',
+            children: [],
+            documentGroups: [],
+            singleDocuments: [],
+        };
+        expect(getFolderKey(folder)).toBe('coc/backlog');
+    });
+
+    it('returns relativePath for first-level folder', () => {
+        const folder: TaskFolder = {
+            name: 'feature1',
+            relativePath: 'feature1',
+            children: [],
+            documentGroups: [],
+            singleDocuments: [],
+        };
+        expect(getFolderKey(folder)).toBe('feature1');
     });
 });

@@ -13,6 +13,8 @@ interface TaskTreeProps {
     tree: TaskFolder;
     commentCounts: Record<string, number>;
     wsId: string;
+    initialFolderPath?: string | null;
+    initialFilePath?: string | null;
 }
 
 function getNodePath(node: TaskNode): string | null {
@@ -30,24 +32,59 @@ function getNodePath(node: TaskNode): string | null {
     return null;
 }
 
-export function TaskTree({ tree, commentCounts, wsId }: TaskTreeProps) {
+export function getFolderKey(folder: TaskFolder): string {
+    return folder.relativePath || folder.name;
+}
+
+export function TaskTree({ tree, commentCounts, wsId, initialFolderPath, initialFilePath }: TaskTreeProps) {
     const { openFilePath, setOpenFilePath, selectedFilePaths, toggleSelectedFile, showContextFiles } = useTaskPanel();
     const queueActivity = useQueueActivity(wsId);
     const [columns, setColumns] = useState<TaskNode[][]>([]);
+    const [activeFolderKeys, setActiveFolderKeys] = useState<(string | null)[]>([]);
 
     // Initialize root column from tree
     useEffect(() => {
+        if (!tree) return;
         const rootNodes = folderToNodes(tree);
-        setColumns([rootNodes]);
+
+        if (initialFolderPath || initialFilePath) {
+            const folderPath = initialFolderPath ?? (initialFilePath ? initialFilePath.split('/').slice(0, -1).join('/') : '');
+            const segments = folderPath.split('/').filter(Boolean);
+            const cols: TaskNode[][] = [rootNodes];
+            const keys: (string | null)[] = [];
+            let cur = tree;
+            for (const seg of segments) {
+                const found = cur.children.find(f => f.name === seg);
+                if (!found) break;
+                cols.push(folderToNodes(found));
+                keys.push(getFolderKey(found));
+                cur = found;
+            }
+            setColumns(cols);
+            setActiveFolderKeys(keys);
+            if (initialFilePath) setOpenFilePath(initialFilePath);
+        } else {
+            setColumns([rootNodes]);
+            setActiveFolderKeys([]);
+        }
     }, [tree]);
 
     const handleFolderClick = (folder: TaskFolder, colIndex: number) => {
         const children = folderToNodes(folder);
         setColumns(prev => [...prev.slice(0, colIndex + 1), children]);
+
+        const newKeys = [...activeFolderKeys.slice(0, colIndex), getFolderKey(folder)];
+        setActiveFolderKeys(newKeys);
+
+        const folderPath = getFolderKey(folder);
+        const encoded = folderPath.split('/').map(encodeURIComponent).join('/');
+        history.replaceState(null, '', `#repos/${encodeURIComponent(wsId)}/tasks/${encoded}`);
     };
 
     const handleFileClick = (path: string) => {
         setOpenFilePath(path);
+        const encoded = path.split('/').map(encodeURIComponent).join('/');
+        history.replaceState(null, '', `#repos/${encodeURIComponent(wsId)}/tasks/${encoded}`);
     };
 
     const handleCheckboxChange = (path: string, _checked: boolean) => {
@@ -77,6 +114,7 @@ export function TaskTree({ tree, commentCounts, wsId }: TaskTreeProps) {
                                     wsId={wsId}
                                     isSelected={path ? selectedFilePaths.has(path) : false}
                                     isOpen={path ? path === openFilePath : false}
+                                    isActiveFolder={isTaskFolder(node) && activeFolderKeys[colIndex] === getFolderKey(node as TaskFolder)}
                                     commentCount={path ? (commentCounts[path] || 0) : 0}
                                     queueRunning={path ? (queueActivity[path] || 0) : 0}
                                     folderMdCount={folderMdCount}

@@ -12,6 +12,7 @@ export interface TaskTreeItemProps {
     wsId: string;
     isSelected: boolean;
     isOpen: boolean;
+    isActiveFolder?: boolean;
     commentCount: number;
     queueRunning: number;
     folderMdCount: number;
@@ -64,6 +65,7 @@ export function TaskTreeItem({
     wsId,
     isSelected,
     isOpen,
+    isActiveFolder,
     commentCount,
     queueRunning,
     folderMdCount,
@@ -104,6 +106,7 @@ export function TaskTreeItem({
                 'flex items-center gap-2 px-2 py-1.5 cursor-pointer text-xs transition-colors',
                 'hover:bg-black/[0.04] dark:hover:bg-white/[0.04]',
                 isOpen && 'bg-[#0078d4]/10 dark:bg-[#3794ff]/10',
+                isActiveFolder && 'bg-[#0078d4]/[0.12] dark:bg-[#3794ff]/[0.12]',
                 isSelected && 'bg-[#0078d4]/5',
                 isContext && 'opacity-50',
                 isArchived && 'opacity-60 italic',
