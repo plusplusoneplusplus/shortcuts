@@ -54,12 +54,48 @@ function quotePosix(value: string): string {
     return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
-function buildResumeCommand(sessionId: string, workingDirectory: string): string {
+function quoteWindows(value: string): string {
+    return `"${value.replace(/"/g, '""')}"`;
+}
+
+function buildResumeCommand(
+    sessionId: string,
+    workingDirectory: string,
+    platform: NodeJS.Platform = process.platform
+): string {
+    if (platform === 'win32') {
+        return `cd /d ${quoteWindows(workingDirectory)} && copilot --yolo --resume ${quoteWindows(sessionId)}`;
+    }
     return `cd ${quotePosix(workingDirectory)} && copilot --yolo --resume ${quotePosix(sessionId)}`;
 }
 
 function escapeAppleScriptString(value: string): string {
     return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+function spawnDetached(command: string, args: string[]): Promise<void> {
+    return new Promise((resolve, reject) => {
+        const child = spawn(command, args, {
+            detached: true,
+            stdio: 'ignore',
+        });
+
+        let settled = false;
+        const finishResolve = () => {
+            if (settled) return;
+            settled = true;
+            child.unref();
+            resolve();
+        };
+        const finishReject = (error: unknown) => {
+            if (settled) return;
+            settled = true;
+            reject(error);
+        };
+
+        child.once('spawn', finishResolve);
+        child.once('error', finishReject);
+    });
 }
 
 async function resolveWorkingDirectory(store: ProcessStore, processRecord: any): Promise<string> {
@@ -101,33 +137,77 @@ async function resolveWorkingDirectory(store: ProcessStore, processRecord: any):
 }
 
 export async function launchResumeCommandInTerminal(input: LaunchResumeInput): Promise<LaunchResumeResult> {
-    const command = buildResumeCommand(input.sessionId, input.workingDirectory);
+    const platform = process.platform;
+    const command = buildResumeCommand(input.sessionId, input.workingDirectory, platform);
 
-    // Keep this conservative for now: reliable auto-launch on macOS Terminal.
-    if (process.platform !== 'darwin') {
+    if (platform === 'darwin') {
+        const scriptBody = escapeAppleScriptString(command);
+        await spawnDetached('osascript', [
+            '-e',
+            'tell application "Terminal" to activate',
+            '-e',
+            `tell application "Terminal" to do script "${scriptBody}"`,
+        ]);
+
         return {
-            launched: false,
+            launched: true,
             command,
-            reason: 'Automatic terminal launch is currently supported on macOS only.',
+            terminal: 'Terminal',
         };
     }
 
-    const scriptBody = escapeAppleScriptString(command);
-    const child = spawn('osascript', [
-        '-e',
-        'tell application "Terminal" to activate',
-        '-e',
-        `tell application "Terminal" to do script "${scriptBody}"`,
-    ], {
-        detached: true,
-        stdio: 'ignore',
-    });
-    child.unref();
+    if (platform === 'win32') {
+        // Open a new cmd window and keep it open (/k) so users can continue interacting.
+        await spawnDetached('cmd.exe', ['/c', 'start', '', 'cmd.exe', '/k', command]);
+        return {
+            launched: true,
+            command,
+            terminal: 'cmd',
+        };
+    }
+
+    // Linux / Unix-like environments.
+    const posixCommand = buildResumeCommand(input.sessionId, input.workingDirectory, 'linux');
+    if (!process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) {
+        return {
+            launched: false,
+            command: posixCommand,
+            reason: 'No GUI display detected for terminal auto-launch.',
+        };
+    }
+
+    const linuxLaunchers: Array<{ terminal: string; command: string; args: string[] }> = [
+        { terminal: 'x-terminal-emulator', command: 'x-terminal-emulator', args: ['-e', '/bin/sh', '-lc', posixCommand] },
+        { terminal: 'gnome-terminal', command: 'gnome-terminal', args: ['--', '/bin/sh', '-lc', posixCommand] },
+        { terminal: 'konsole', command: 'konsole', args: ['-e', '/bin/sh', '-lc', posixCommand] },
+        { terminal: 'xfce4-terminal', command: 'xfce4-terminal', args: ['-e', '/bin/sh', '-lc', posixCommand] },
+        { terminal: 'xterm', command: 'xterm', args: ['-e', '/bin/sh', '-lc', posixCommand] },
+        { terminal: 'alacritty', command: 'alacritty', args: ['-e', '/bin/sh', '-lc', posixCommand] },
+        { terminal: 'kitty', command: 'kitty', args: ['/bin/sh', '-lc', posixCommand] },
+        { terminal: 'tilix', command: 'tilix', args: ['-e', '/bin/sh', '-lc', posixCommand] },
+        { terminal: 'terminator', command: 'terminator', args: ['-x', '/bin/sh', '-lc', posixCommand] },
+    ];
+
+    let lastError: unknown;
+    for (const launcher of linuxLaunchers) {
+        try {
+            await spawnDetached(launcher.command, launcher.args);
+            return {
+                launched: true,
+                command: posixCommand,
+                terminal: launcher.terminal,
+            };
+        } catch (error) {
+            lastError = error;
+        }
+    }
 
     return {
-        launched: true,
-        command,
-        terminal: 'Terminal',
+        launched: false,
+        command: posixCommand,
+        reason: lastError instanceof Error
+            ? `No supported terminal launcher found (${lastError.message}).`
+            : 'No supported terminal launcher found.',
     };
 }
 
