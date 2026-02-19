@@ -84,8 +84,6 @@ export class CLITaskExecutor implements TaskExecutor {
     private readonly outputBuffers: Map<string, string> = new Map();
     /** Per-process timeline accumulator for chronological execution events */
     private readonly timelineBuffers: Map<string, TimelineItem[]> = new Map();
-    /** SDK session IDs this executor has created (for session liveness checks). */
-    private readonly knownSessionIds: Set<string> = new Set();
     /** Per-process throttle state for streaming conversation flushes */
     private readonly throttleState: Map<string, {
         chunksSinceLastFlush: number;
@@ -167,9 +165,6 @@ export class CLITaskExecutor implements TaskExecutor {
             // Extract session and response data for conversation tracking
             const sessionId = (result as any)?.sessionId;
             const responseText = (result as any)?.response ?? '';
-
-            // Track session ID for liveness checks
-            if (sessionId) this.knownSessionIds.add(sessionId);
 
             // Clean up throttle state
             this.throttleState.delete(processId);
@@ -255,17 +250,15 @@ export class CLITaskExecutor implements TaskExecutor {
 
     /**
      * Check whether the SDK session for a process is still alive.
-     * Returns true (assume alive) if the session was not created by this executor.
      */
     async isSessionAlive(processId: string): Promise<boolean> {
         const process = await this.store.getProcess(processId);
         if (!process?.sdkSessionId) return false;
-        // Only report dead for sessions this executor actually created
-        if (!this.knownSessionIds.has(process.sdkSessionId)) return true;
         try {
             return this.aiService.hasKeptAliveSession(process.sdkSessionId);
         } catch {
-            return true; // Can't verify — assume alive
+            // Safe fallback: if we cannot verify liveness, treat as unavailable.
+            return false;
         }
     }
 

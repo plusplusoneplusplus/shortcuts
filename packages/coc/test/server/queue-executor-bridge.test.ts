@@ -43,7 +43,7 @@ import { createMockProcessStore, createCompletedProcessWithSession } from '../he
 // ============================================================================
 
 const sdkMocks = createMockSDKService();
-const { mockSendMessage, mockIsAvailable, mockSendFollowUp } = sdkMocks;
+const { mockSendMessage, mockIsAvailable, mockSendFollowUp, mockHasKeptAliveSession } = sdkMocks;
 
 vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@plusplusoneplusplus/pipeline-core')>();
@@ -1605,6 +1605,24 @@ describe('session tracking and conversation turns', () => {
         const executor = new CLITaskExecutor(store);
         await expect(executor.executeFollowUp('proc-no-session', 'hi'))
             .rejects.toThrow('no SDK session');
+    });
+
+    it('should report session expired when sdkSessionId is not in kept-alive map', async () => {
+        const process: AIProcess = {
+            id: 'proc-expired-session',
+            type: 'clarification',
+            promptPreview: 'test',
+            fullPrompt: 'test',
+            status: 'completed',
+            startTime: new Date(),
+            sdkSessionId: 'sess-missing-after-restart',
+        };
+        await store.addProcess(process);
+
+        mockHasKeptAliveSession.mockImplementationOnce(() => false);
+
+        const executor = new CLITaskExecutor(store);
+        await expect(executor.isSessionAlive('proc-expired-session')).resolves.toBe(false);
     });
 });
 
