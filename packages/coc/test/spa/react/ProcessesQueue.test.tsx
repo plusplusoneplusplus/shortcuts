@@ -282,6 +282,20 @@ describe('ProcessesView', () => {
         const view = document.getElementById('view-processes');
         expect(view).not.toBeNull();
     });
+
+    it('keeps sidebar width fixed with a non-shrinking layout', () => {
+        const { container } = render(<Wrap><ProcessesView /></Wrap>);
+        const aside = container.querySelector('#view-processes > aside');
+        const main = container.querySelector('#view-processes > main');
+
+        expect(aside).not.toBeNull();
+        expect(main).not.toBeNull();
+        expect(aside!.className).toContain('w-[320px]');
+        expect(aside!.className).toContain('min-w-[320px]');
+        expect(aside!.className).toContain('max-w-[320px]');
+        expect(aside!.className).toContain('shrink-0');
+        expect(main!.className).toContain('min-w-0');
+    });
 });
 
 describe('ToolCallView', () => {
@@ -443,6 +457,28 @@ describe('QueuePanel', () => {
         const taskCardText = await screen.findByText('History route test');
         fireEvent.click(taskCardText);
         expect(window.location.hash).toBe('#process/queue_task-route-1');
+    });
+
+    it('renders history cards in compact single-line format', async () => {
+        render(
+            <Wrap>
+                <SeededQueuePanel
+                    historyItem={{
+                        id: 'task-compact-1',
+                        status: 'completed',
+                        type: 'follow-prompt',
+                        prompt: 'Compact history item should stay on one line',
+                    }}
+                />
+            </Wrap>
+        );
+
+        const card = await screen.findByLabelText(/Task completed: Compact history item should stay on one line/);
+        expect(card.className).toContain('px-2');
+        expect(card.className).toContain('py-1.5');
+        expect((card as HTMLElement).querySelector('.line-clamp-1')).toBeNull();
+        expect(card.textContent).toContain('Completed');
+        expect(card.textContent).toContain('follow-prompt');
     });
 });
 

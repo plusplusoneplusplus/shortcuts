@@ -121,6 +121,7 @@ export function QueuePanel() {
                                 task={task}
                                 now={now}
                                 selected={state.selectedTaskId === task.id}
+                                compact
                                 onClick={() => openTaskInRoute(task)}
                             />
                         ))}
@@ -131,11 +132,12 @@ export function QueuePanel() {
     );
 }
 
-function QueueTaskCard({ task, now, selected, onClick }: {
+function QueueTaskCard({ task, now, selected, onClick, compact = false }: {
     task: any;
     now: number;
     selected: boolean;
     onClick: () => void;
+    compact?: boolean;
 }) {
     const elapsed = task.status === 'running' && task.startTime
         ? formatDuration(now - new Date(task.startTime).getTime())
@@ -150,22 +152,36 @@ function QueueTaskCard({ task, now, selected, onClick }: {
     return (
         <Card
             onClick={onClick}
-            className={cn('p-2', selected && 'ring-2 ring-[#0078d4] dark:ring-[#3794ff]')}
+            className={cn(compact ? 'px-2 py-1.5' : 'p-2', selected && 'ring-2 ring-[#0078d4] dark:ring-[#3794ff]')}
             aria-label={`Task ${statusLabel(task.status).toLowerCase()}: ${preview}`}
         >
-            <div className="flex items-center justify-between gap-2 mb-0.5">
-                <Badge status={task.status}>
-                    {statusIcon(task.status)} {statusLabel(task.status)}
-                </Badge>
-                <span className="text-[10px] text-[#848484]">
-                    {typeLabel(task.type)}
-                </span>
-            </div>
-            <div className="text-[11px] text-[#1e1e1e] dark:text-[#cccccc] line-clamp-1 break-words">
-                {preview}
-            </div>
-            {elapsed && (
-                <div className="text-[10px] text-[#848484] mt-0.5">{elapsed}</div>
+            {compact ? (
+                <div className="flex items-center gap-1.5 min-w-0 text-[11px] leading-5">
+                    <span className="shrink-0">{statusIcon(task.status)}</span>
+                    <span className="shrink-0 font-medium text-[#1e1e1e] dark:text-[#cccccc]">
+                        {statusLabel(task.status)}
+                    </span>
+                    <span className="shrink-0 text-[#848484]">{typeLabel(task.type)}</span>
+                    <span className="min-w-0 truncate text-[#1e1e1e] dark:text-[#cccccc]">{preview}</span>
+                    {elapsed && <span className="shrink-0 text-[10px] text-[#848484]">{elapsed}</span>}
+                </div>
+            ) : (
+                <>
+                    <div className="flex items-center justify-between gap-2 mb-0.5">
+                        <Badge status={task.status}>
+                            {statusIcon(task.status)} {statusLabel(task.status)}
+                        </Badge>
+                        <span className="text-[10px] text-[#848484]">
+                            {typeLabel(task.type)}
+                        </span>
+                    </div>
+                    <div className="text-[11px] text-[#1e1e1e] dark:text-[#cccccc] line-clamp-1 break-words">
+                        {preview}
+                    </div>
+                    {elapsed && (
+                        <div className="text-[10px] text-[#848484] mt-0.5">{elapsed}</div>
+                    )}
+                </>
             )}
         </Card>
     );
