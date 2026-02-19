@@ -6,18 +6,23 @@
 import { useState } from 'react';
 import { cn } from '../shared';
 
+interface ToolCallData {
+    id?: string;
+    toolName?: string;
+    name?: string;
+    args?: any;
+    result?: string;
+    error?: string;
+    status?: string;
+    startTime?: string;
+    endTime?: string;
+    parentToolCallId?: string;
+    children?: ToolCallData[];
+}
+
 interface ToolCallProps {
-    toolCall: {
-        id?: string;
-        toolName?: string;
-        name?: string;
-        args?: any;
-        result?: string;
-        error?: string;
-        status?: string;
-        startTime?: string;
-        endTime?: string;
-    };
+    toolCall: ToolCallData;
+    depth?: number;
 }
 
 const MAX_RESULT_LENGTH = 5000;
@@ -100,6 +105,7 @@ function getToolSummary(toolName: string, args: any): string {
         case 'skill': {
             if (args.name) return args.name;
             if (args.skill_name) return args.skill_name;
+            if (args.skill) return args.skill;
             return '';
         }
         case 'task': {
@@ -144,8 +150,11 @@ function statusIndicator(status?: string) {
     }
 }
 
-export function ToolCallView({ toolCall }: ToolCallProps) {
+export function ToolCallView({ toolCall, depth = 0 }: ToolCallProps) {
     const [expanded, setExpanded] = useState(false);
+    if (depth > 20) return null;
+
+    const depthLevel = Math.max(0, Math.min(depth, 8));
     const name = toolCall.toolName || toolCall.name || 'unknown';
     const argsObj = parseArgsObject(toolCall.args);
     const args = formatArgs(toolCall.args);
@@ -170,7 +179,13 @@ export function ToolCallView({ toolCall }: ToolCallProps) {
     const bashOptionsText = bashOptions && Object.keys(bashOptions).length > 0 ? JSON.stringify(bashOptions, null, 2) : '';
 
     return (
-        <div className="my-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#1e1e1e] text-xs">
+        <div
+            className={cn(
+                'my-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#1e1e1e] text-xs',
+                depthLevel > 0 && 'border-l-2'
+            )}
+            style={depthLevel > 0 ? { marginLeft: `${depthLevel * 12}px` } : undefined}
+        >
             <div
                 className={cn(
                     'flex items-center gap-2 px-2.5 py-1.5 cursor-pointer select-none',

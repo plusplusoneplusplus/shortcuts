@@ -77,6 +77,114 @@ describe('ConversationTurnBubble', () => {
         expect(screen.getByText('Live')).toBeDefined();
         expect(screen.getByText('bash')).toBeDefined();
     });
+
+    it('interleaves content and tool calls based on timeline order', () => {
+        render(
+            <Wrap>
+                <ConversationTurnBubble
+                    turn={{
+                        role: 'assistant',
+                        content: '',
+                        timeline: [
+                            { type: 'content', timestamp: '2026-02-19T00:00:00.000Z', content: 'SEGMENT_ONE' },
+                            {
+                                type: 'tool-start',
+                                timestamp: '2026-02-19T00:00:01.000Z',
+                                toolCall: {
+                                    id: 'task-1',
+                                    toolName: 'task',
+                                    args: { agent_type: 'explore', description: 'Explore tasks.ts SPA client' },
+                                    startTime: '2026-02-19T00:00:01.000Z',
+                                    endTime: '2026-02-19T00:00:10.000Z',
+                                    status: 'completed',
+                                },
+                            },
+                            { type: 'content', timestamp: '2026-02-19T00:00:02.000Z', content: 'SEGMENT_TWO' },
+                            {
+                                type: 'tool-start',
+                                timestamp: '2026-02-19T00:00:03.000Z',
+                                toolCall: {
+                                    id: 'view-1',
+                                    toolName: 'view',
+                                    args: {
+                                        path: '/Users/test/Documents/Projects/shortcuts/packages/coc/src/server/spa/client/tasks.ts',
+                                    },
+                                    startTime: '2026-02-19T00:00:03.000Z',
+                                    endTime: '2026-02-19T00:00:04.000Z',
+                                    status: 'completed',
+                                },
+                            },
+                            {
+                                type: 'tool-start',
+                                timestamp: '2026-02-19T00:00:05.000Z',
+                                toolCall: {
+                                    id: 'glob-1',
+                                    toolName: 'glob',
+                                    args: { pattern: '**/tasks.ts' },
+                                    startTime: '2026-02-19T00:00:05.000Z',
+                                    endTime: '2026-02-19T00:00:06.000Z',
+                                    status: 'completed',
+                                },
+                            },
+                            { type: 'content', timestamp: '2026-02-19T00:00:07.000Z', content: 'SEGMENT_THREE' },
+                        ],
+                    }}
+                />
+            </Wrap>
+        );
+
+        const text = document.body.textContent || '';
+        expect(text.indexOf('SEGMENT_ONE')).toBeLessThan(text.indexOf('task'));
+        expect(text.indexOf('task')).toBeLessThan(text.indexOf('SEGMENT_TWO'));
+        expect(text.indexOf('SEGMENT_TWO')).toBeLessThan(text.indexOf('view'));
+        expect(text.indexOf('view')).toBeLessThan(text.indexOf('glob'));
+        expect(text.indexOf('glob')).toBeLessThan(text.indexOf('SEGMENT_THREE'));
+    });
+
+    it('renders child tool calls under parent task depth', () => {
+        render(
+            <Wrap>
+                <ConversationTurnBubble
+                    turn={{
+                        role: 'assistant',
+                        content: '',
+                        timeline: [
+                            {
+                                type: 'tool-start',
+                                timestamp: '2026-02-19T00:00:00.000Z',
+                                toolCall: {
+                                    id: 'task-2',
+                                    toolName: 'task',
+                                    args: { agent_type: 'explore', description: 'Explore queue.ts SPA client' },
+                                    startTime: '2026-02-19T00:00:00.000Z',
+                                    endTime: '2026-02-19T00:00:10.000Z',
+                                    status: 'completed',
+                                },
+                            },
+                            {
+                                type: 'tool-start',
+                                timestamp: '2026-02-19T00:00:01.000Z',
+                                toolCall: {
+                                    id: 'view-2',
+                                    toolName: 'view',
+                                    args: { path: '/Users/test/Documents/Projects/shortcuts/packages/coc/src/server/spa/client/queue.ts' },
+                                    startTime: '2026-02-19T00:00:01.000Z',
+                                    endTime: '2026-02-19T00:00:02.000Z',
+                                    status: 'completed',
+                                },
+                            },
+                        ],
+                    }}
+                />
+            </Wrap>
+        );
+
+        const taskCard = screen.getByText('task').closest('.my-1') as HTMLElement;
+        const viewCard = screen.getByText('view').closest('.my-1') as HTMLElement;
+
+        expect(taskCard.style.marginLeft || '0px').toBe('0px');
+        expect(viewCard.style.marginLeft).toBe('12px');
+    });
 });
 
 describe('ProcessesView', () => {
@@ -187,6 +295,15 @@ describe('ToolCallView', () => {
         expect(screen.getByText('Command')).toBeDefined();
         expect(screen.getByText('$ npm run test:run')).toBeDefined();
         expect(screen.getByText('Options')).toBeDefined();
+    });
+
+    it('shows skill name summary when args.skill is present', () => {
+        render(
+            <Wrap>
+                <ToolCallView toolCall={{ toolName: 'skill', status: 'completed', args: { skill: 'impl' } }} />
+            </Wrap>
+        );
+        expect(screen.getByText('impl')).toBeDefined();
     });
 });
 
