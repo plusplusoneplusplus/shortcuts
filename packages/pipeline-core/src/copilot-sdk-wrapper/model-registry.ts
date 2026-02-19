@@ -71,8 +71,8 @@ const MODEL_DEFINITIONS: readonly ModelDefinition[] = [
         tier: 'standard',
     },
     {
-        id: 'gpt-5.1-codex-max',
-        label: 'GPT-5.1 Codex Max',
+        id: 'gpt-5.3-codex',
+        label: 'GPT-5.3 Codex',
         description: '',
         tier: 'premium',
     },
@@ -104,7 +104,7 @@ export const VALID_MODELS = MODEL_DEFINITIONS.map(m => m.id) as unknown as reado
     'claude-haiku-4.5',
     'claude-opus-4.6',
     'gpt-5.2',
-    'gpt-5.1-codex-max',
+    'gpt-5.3-codex',
     'gemini-3-pro-preview',
 ];
 

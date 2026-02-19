@@ -117,7 +117,7 @@ describe('Model Registry', () => {
             expect(VALID_MODELS).toContain('claude-haiku-4.5');
             expect(VALID_MODELS).toContain('claude-opus-4.6');
             expect(VALID_MODELS).toContain('gpt-5.2');
-            expect(VALID_MODELS).toContain('gpt-5.1-codex-max');
+            expect(VALID_MODELS).toContain('gpt-5.3-codex');
             expect(VALID_MODELS).toContain('gemini-3-pro-preview');
         });
 
@@ -158,7 +158,7 @@ describe('Model Registry', () => {
             expect(getModelLabel('claude-haiku-4.5')).toBe('Claude Haiku 4.5');
             expect(getModelLabel('claude-opus-4.6')).toBe('Claude Opus 4.6');
             expect(getModelLabel('gpt-5.2')).toBe('GPT-5.2');
-            expect(getModelLabel('gpt-5.1-codex-max')).toBe('GPT-5.1 Codex Max');
+            expect(getModelLabel('gpt-5.3-codex')).toBe('GPT-5.3 Codex');
             expect(getModelLabel('gemini-3-pro-preview')).toBe('Gemini 3 Pro');
         });
 
@@ -178,7 +178,7 @@ describe('Model Registry', () => {
 
         it('should return empty string for models without description', () => {
             expect(getModelDescription('gpt-5.2')).toBe('');
-            expect(getModelDescription('gpt-5.1-codex-max')).toBe('');
+            expect(getModelDescription('gpt-5.3-codex')).toBe('');
         });
 
         it('should return empty string for unknown models', () => {
@@ -205,7 +205,7 @@ describe('Model Registry', () => {
             expect(getModelDefinition('claude-sonnet-4.6')?.tier).toBe('standard');
             expect(getModelDefinition('claude-opus-4.6')?.tier).toBe('premium');
             expect(getModelDefinition('gpt-5.2')?.tier).toBe('standard');
-            expect(getModelDefinition('gpt-5.1-codex-max')?.tier).toBe('premium');
+            expect(getModelDefinition('gpt-5.3-codex')?.tier).toBe('premium');
             expect(getModelDefinition('gemini-3-pro-preview')?.tier).toBe('standard');
         });
     });

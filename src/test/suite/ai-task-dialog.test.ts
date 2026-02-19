@@ -586,6 +586,18 @@ suite('AI Task Dialog Service Tests', () => {
                 'Should retrieve previously saved model');
         });
 
+        test('getLastUsedAIModel should migrate gpt-5.1-codex-max to gpt-5.3-codex', () => {
+            const context = new MockExtensionContext();
+
+            // Simulate a user who had the old model saved
+            context.workspaceState.update('workspaceShortcuts.aiTask.lastUsedModel', 'gpt-5.1-codex-max');
+
+            const model = getLastUsedAIModel(context as unknown as vscode.ExtensionContext);
+
+            assert.strictEqual(model, 'gpt-5.3-codex',
+                'Should migrate gpt-5.1-codex-max to gpt-5.3-codex');
+        });
+
         test('getLastUsedAIModel should fallback to config default for invalid saved model', () => {
             const context = new MockExtensionContext();
             

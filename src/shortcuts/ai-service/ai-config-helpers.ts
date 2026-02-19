@@ -129,10 +129,12 @@ export function getLastUsedAIModel(context: vscode.ExtensionContext): string {
     const savedModel = context.workspaceState.get<string>(LAST_USED_MODEL_KEY);
 
     if (savedModel) {
-        // Migrate deprecated GPT-5.1 Codex selection to GPT-5.2 for AI task creation.
+        // Migrate deprecated model IDs to current equivalents.
         const migratedModel = savedModel === 'gpt-5.1-codex'
             ? 'gpt-5.2'
-            : savedModel;
+            : savedModel === 'gpt-5.1-codex-max'
+                ? 'gpt-5.3-codex'
+                : savedModel;
 
         if (isValidModelId(migratedModel)) {
             if (migratedModel !== savedModel) {

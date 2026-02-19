@@ -381,7 +381,7 @@
             "claude-haiku-4.5",
             "claude-opus-4.6",
             "gpt-5.2",
-            "gpt-5.1-codex-max",
+            "gpt-5.3-codex",
             "gemini-3-pro-preview"
           ],
           "enumDescriptions": [
@@ -543,7 +543,7 @@
             "claude-haiku-4.5",
             "claude-opus-4.6",
             "gpt-5.2",
-            "gpt-5.1-codex-max",
+            "gpt-5.3-codex",
             "gemini-3-pro-preview"
           ],
           "enumDescriptions": [
@@ -551,7 +551,7 @@
             "Claude Haiku 4.5 (Fast)",
             "Claude Opus 4.6 (Premium)",
             "GPT-5.2",
-            "GPT-5.1 Codex Max",
+            "GPT-5.3 Codex",
             "Gemini 3 Pro (Preview)"
           ],
           "default": "claude-sonnet-4.6",
