@@ -107,9 +107,11 @@ export function TaskTreeItem({
                 isSelected && 'bg-[#0078d4]/5',
                 isContext && 'opacity-50',
                 isArchived && 'opacity-60 italic',
+                !isFolder && 'miller-file-row',
             )}
             onClick={handleClick}
             data-testid={`task-tree-item-${displayName}`}
+            data-file-path={!isFolder && path ? path : undefined}
         >
             {/* Checkbox for files */}
             {!isFolder && path && (

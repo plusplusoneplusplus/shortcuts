@@ -53,7 +53,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     };
 
     return (
-        <div className="flex flex-col h-full">
+        <div id="repo-detail-content" className="flex flex-col h-full">
             {/* Header */}
             <div className="flex items-center gap-3 px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
                 <span
@@ -70,10 +70,11 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                 {SUB_TABS.map(t => (
                     <button
                         key={t.key}
+                        data-subtab={t.key}
                         className={cn(
-                            'px-3 py-2 text-xs font-medium transition-colors relative',
+                            'repo-sub-tab px-3 py-2 text-xs font-medium transition-colors relative',
                             activeSubTab === t.key
-                                ? 'text-[#0078d4] dark:text-[#3794ff]'
+                                ? 'active text-[#0078d4] dark:text-[#3794ff]'
                                 : 'text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]'
                         )}
                         onClick={() => switchSubTab(t.key)}

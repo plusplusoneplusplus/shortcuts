@@ -9,9 +9,11 @@ export interface DialogProps {
     children?: ReactNode;
     footer?: ReactNode;
     className?: string;
+    /** Optional id applied to the outer overlay div for test selection. */
+    id?: string;
 }
 
-export function Dialog({ open, onClose, title, children, footer, className }: DialogProps) {
+export function Dialog({ open, onClose, title, children, footer, className, id }: DialogProps) {
     useEffect(() => {
         if (!open) return;
         const handler = (e: KeyboardEvent) => {
@@ -25,6 +27,7 @@ export function Dialog({ open, onClose, title, children, footer, className }: Di
 
     return ReactDOM.createPortal(
         <div
+            id={id}
             className="fixed inset-0 z-[10002] flex items-center justify-center bg-black/40 dark:bg-black/60"
             onClick={onClose}
         >

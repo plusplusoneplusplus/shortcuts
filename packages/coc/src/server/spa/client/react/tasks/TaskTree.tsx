@@ -2,12 +2,12 @@
  * TaskTree — Miller-columns file browser for workspace tasks.
  */
 
-import { useState, useEffect, useRef } from 'react';
-import { TaskTreeItem } from './TaskTreeItem';
+import { useEffect, useRef, useState } from 'react';
 import { useTaskPanel } from '../context/TaskContext';
 import { useQueueActivity } from '../hooks/useQueueActivity';
-import { folderToNodes, isTaskFolder, countMarkdownFilesInFolder } from '../hooks/useTaskTree';
-import type { TaskNode, TaskFolder } from '../hooks/useTaskTree';
+import type { TaskFolder, TaskNode } from '../hooks/useTaskTree';
+import { countMarkdownFilesInFolder, folderToNodes, isTaskFolder } from '../hooks/useTaskTree';
+import { TaskTreeItem } from './TaskTreeItem';
 
 interface TaskTreeProps {
     tree: TaskFolder;

@@ -27,7 +27,7 @@ export function RepoCard({ repo, isSelected, inGroup, onClick }: RepoCardProps) 
         <Card
             onClick={onClick}
             className={cn(
-                'p-2',
+                'repo-item p-2',
                 inGroup && 'ml-4',
                 isSelected && 'ring-2 ring-[#0078d4] dark:ring-[#3794ff]'
             )}

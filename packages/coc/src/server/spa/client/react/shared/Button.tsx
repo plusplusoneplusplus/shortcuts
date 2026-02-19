@@ -5,6 +5,7 @@ import { Spinner } from './Spinner';
 export interface ButtonProps {
     variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
     size?: 'sm' | 'md' | 'lg';
+    id?: string;
     disabled?: boolean;
     loading?: boolean;
     onClick?: MouseEventHandler<HTMLButtonElement>;
@@ -29,6 +30,7 @@ const sizeMap = {
 export function Button({
     variant = 'primary',
     size = 'md',
+    id,
     disabled,
     loading,
     onClick,
@@ -38,6 +40,7 @@ export function Button({
 }: ButtonProps) {
     return (
         <button
+            id={id}
             type={type}
             onClick={onClick}
             disabled={disabled || loading}

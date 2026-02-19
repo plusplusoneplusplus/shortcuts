@@ -35,6 +35,12 @@ const typeMap = {
     info: 'bg-[#0078d4]',
 };
 
+const typeClass = {
+    success: 'toast-success',
+    error: 'toast-error',
+    info: 'toast-info',
+};
+
 export function ToastContainer({ toasts, removeToast }: ToastProps) {
     return ReactDOM.createPortal(
         <div className="fixed bottom-5 right-5 z-[10001] flex flex-col gap-2 pointer-events-none">
@@ -45,7 +51,8 @@ export function ToastContainer({ toasts, removeToast }: ToastProps) {
                     className={cn(
                         'px-4 py-2.5 rounded-md text-white text-sm font-medium shadow-lg max-w-sm break-words pointer-events-auto cursor-pointer',
                         'animate-[toast-in_0.3s_ease]',
-                        typeMap[t.type ?? 'info']
+                        typeMap[t.type ?? 'info'],
+                        typeClass[t.type ?? 'info'],
                     )}
                 >
                     {t.message}

@@ -15,7 +15,12 @@ export interface CommentSidebarProps {
     taskId: string;
     filePath: string;
     comments: TaskComment[];
+    filteredComments?: TaskComment[];
     loading: boolean;
+    className?: string;
+    compact?: boolean;
+    showHeader?: boolean;
+    showFilters?: boolean;
     onResolve: (id: string) => void;
     onUnresolve: (id: string) => void;
     onDelete: (id: string) => void;
@@ -26,7 +31,12 @@ export interface CommentSidebarProps {
 
 export function CommentSidebar({
     comments,
+    filteredComments,
     loading,
+    className,
+    compact = false,
+    showHeader = true,
+    showFilters = true,
     onResolve,
     onUnresolve,
     onDelete,
@@ -37,11 +47,11 @@ export function CommentSidebar({
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
     const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
 
-    const filtered = comments.filter(c => {
+    const filtered = (filteredComments ?? comments.filter(c => {
         if (statusFilter !== 'all' && c.status !== statusFilter) return false;
         if (categoryFilter !== 'all' && getCommentCategory(c) !== categoryFilter) return false;
         return true;
-    });
+    }));
 
     const statusTabs: { key: StatusFilter; label: string }[] = [
         { key: 'all', label: 'All' },
@@ -51,74 +61,88 @@ export function CommentSidebar({
 
     return (
         <div
-            className="flex flex-col w-[280px] min-w-[220px] border-l border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#1e1e1e] overflow-hidden"
+            className={cn(
+                'flex flex-col w-[280px] min-w-[220px] border-l border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#1e1e1e] overflow-hidden',
+                compact && 'w-[240px] min-w-[200px]',
+                className,
+            )}
             data-testid="comment-sidebar"
             role="complementary"
             aria-label="Comments"
         >
-            {/* Header */}
-            <div className="flex items-center justify-between px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
-                <span className="text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc]">
-                    Comments ({comments.length})
-                </span>
-            </div>
+            {showHeader && (
+                <div className="flex items-center justify-between px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
+                    <span className="text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc]">
+                        Comments ({comments.length})
+                    </span>
+                </div>
+            )}
 
-            {/* Status filter tabs */}
-            <div className="flex gap-1 px-2 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
-                {statusTabs.map(tab => (
-                    <button
-                        key={tab.key}
-                        onClick={() => setStatusFilter(tab.key)}
-                        className={cn(
-                            'px-2 py-0.5 text-[11px] rounded transition-colors',
-                            statusFilter === tab.key
-                                ? 'bg-[#0078d4] text-white'
-                                : 'text-[#848484] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]',
-                        )}
-                        data-testid={`status-filter-${tab.key}`}
-                    >
-                        {tab.label}
-                    </button>
-                ))}
-            </div>
-
-            {/* Category filter chips */}
-            <div className="flex gap-1 px-2 py-1.5 flex-wrap border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
-                <button
-                    onClick={() => setCategoryFilter('all')}
-                    className={cn(
-                        'px-1.5 py-0.5 text-[10px] rounded transition-colors',
-                        categoryFilter === 'all'
-                            ? 'bg-[#0078d4] text-white'
-                            : 'text-[#848484] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]',
-                    )}
-                    data-testid="category-filter-all"
-                >
-                    All
-                </button>
-                {ALL_CATEGORIES.map(cat => {
-                    const info = CATEGORY_INFO[cat];
-                    return (
+            {showFilters && (
+                <div className="flex gap-1 px-2 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
+                    {statusTabs.map(tab => (
                         <button
-                            key={cat}
-                            onClick={() => setCategoryFilter(cat)}
+                            key={tab.key}
+                            onClick={() => setStatusFilter(tab.key)}
                             className={cn(
-                                'px-1.5 py-0.5 text-[10px] rounded transition-colors',
-                                categoryFilter === cat
+                                'px-2 py-0.5 text-[11px] rounded transition-colors',
+                                statusFilter === tab.key
                                     ? 'bg-[#0078d4] text-white'
                                     : 'text-[#848484] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]',
                             )}
-                            title={info.label}
-                            data-testid={`category-filter-${cat}`}
+                            data-testid={`status-filter-${tab.key}`}
                         >
-                            {info.icon}
+                            {tab.label}
                         </button>
-                    );
-                })}
-            </div>
+                    ))}
+                </div>
+            )}
+
+            {showFilters && (
+                <div className="flex gap-1 px-2 py-1.5 flex-wrap border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
+                    <button
+                        onClick={() => setCategoryFilter('all')}
+                        className={cn(
+                            'px-1.5 py-0.5 text-[10px] rounded transition-colors',
+                            categoryFilter === 'all'
+                                ? 'bg-[#0078d4] text-white'
+                                : 'text-[#848484] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]',
+                        )}
+                        data-testid="category-filter-all"
+                    >
+                        All
+                    </button>
+                    {ALL_CATEGORIES.map(cat => {
+                        const info = CATEGORY_INFO[cat];
+                        return (
+                            <button
+                                key={cat}
+                                onClick={() => setCategoryFilter(cat)}
+                                className={cn(
+                                    'px-1.5 py-0.5 text-[10px] rounded transition-colors',
+                                    categoryFilter === cat
+                                        ? 'bg-[#0078d4] text-white'
+                                        : 'text-[#848484] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]',
+                                )}
+                                title={info.label}
+                                data-testid={`category-filter-${cat}`}
+                            >
+                                {info.icon}
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
 
             {/* Comment list */}
-            <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-2" role="list" data-testid="comment-list">
+            <div
+                className={cn(
+                    'flex-1 overflow-y-auto p-2 flex flex-col gap-2',
+                    compact && 'p-1.5 gap-1.5',
+                )}
+                role="list"
+                data-testid="comment-list"
+            >
                 {loading && (
                     <div className="text-center text-xs text-[#848484] py-4">Loading comments…</div>
                 )}

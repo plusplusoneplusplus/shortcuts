@@ -10,11 +10,13 @@ import { fetchApi } from '../hooks/useApi';
 import { useMarkdownPreview } from '../hooks/useMarkdownPreview';
 import { useTaskComments } from '../hooks/useTaskComments';
 import { Spinner } from './Spinner';
+import { cn } from './cn';
 import { CommentSidebar } from '../tasks/comments/CommentSidebar';
 import { SelectionToolbar } from '../tasks/comments/SelectionToolbar';
 import { InlineCommentPopup } from '../tasks/comments/InlineCommentPopup';
 import { CommentHighlight } from '../tasks/comments/CommentHighlight';
 import type { TaskComment, TaskCommentCategory, CommentSelection } from '../../task-comments-types';
+import { CATEGORY_INFO, ALL_CATEGORIES, getCommentCategory } from '../../task-comments-types';
 import {
     createAnchorData,
     DEFAULT_ANCHOR_MATCH_CONFIG,
@@ -28,6 +30,14 @@ export interface MarkdownReviewEditorProps {
 
 /** Minimum selection length to trigger toolbar. */
 const MIN_SELECTION_LENGTH = 3;
+type StatusFilter = 'all' | 'open' | 'resolved';
+type CategoryFilter = 'all' | TaskCommentCategory;
+
+const STATUS_TABS: { key: StatusFilter; label: string }[] = [
+    { key: 'all', label: 'All' },
+    { key: 'open', label: 'Open' },
+    { key: 'resolved', label: 'Resolved' },
+];
 
 async function fetchTaskContent(wsId: string, filePath: string): Promise<string> {
     const data = await fetchApi(`/workspaces/${encodeURIComponent(wsId)}/tasks/content?path=${encodeURIComponent(filePath)}`);
@@ -66,6 +76,8 @@ export function MarkdownReviewEditor({
         endLine: number;
         endColumn: number;
     } | null>(null);
+    const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+    const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
 
     // Comments hook
     const {
@@ -85,6 +97,12 @@ export function MarkdownReviewEditor({
         containerRef: previewRef,
         loading,
         stripFrontmatter: true,
+    });
+
+    const filteredComments = comments.filter((comment) => {
+        if (statusFilter !== 'all' && comment.status !== statusFilter) return false;
+        if (categoryFilter !== 'all' && getCommentCategory(comment) !== categoryFilter) return false;
+        return true;
     });
 
     useEffect(() => {
@@ -119,6 +137,11 @@ export function MarkdownReviewEditor({
         void load();
         return () => { cancelled = true; };
     }, [wsId, filePath, fetchMode]);
+
+    useEffect(() => {
+        setStatusFilter('all');
+        setCategoryFilter('all');
+    }, [filePath]);
 
     // Selection change listener
     useEffect(() => {
@@ -245,33 +268,102 @@ export function MarkdownReviewEditor({
     }
 
     return (
-        <div className="flex flex-1 overflow-hidden min-h-0">
-            <div className="flex-1 overflow-y-auto p-4 min-h-0">
-                <div
-                    ref={previewRef}
-                    id="task-preview-body"
-                    className="markdown-body text-sm text-[#1e1e1e] dark:text-[#cccccc]"
-                    dangerouslySetInnerHTML={{ __html: html }}
-                />
-                <CommentHighlight
+        <div className="flex flex-1 overflow-hidden min-h-0 min-w-0 p-2">
+            <div className="flex flex-1 overflow-hidden min-h-0 min-w-0 rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e]">
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+                    <div
+                        className="px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#252526]"
+                        data-testid="markdown-review-status-bar"
+                    >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc]">
+                                Comments ({comments.length})
+                            </span>
+                            <div className="flex flex-wrap gap-1">
+                                {STATUS_TABS.map(tab => (
+                                    <button
+                                        key={tab.key}
+                                        onClick={() => setStatusFilter(tab.key)}
+                                        className={cn(
+                                            'px-2 py-0.5 text-[11px] rounded transition-colors',
+                                            statusFilter === tab.key
+                                                ? 'bg-[#0078d4] text-white'
+                                                : 'text-[#848484] hover:bg-black/[0.04] dark:hover:bg-white/[0.06]',
+                                        )}
+                                        data-testid={`editor-status-filter-${tab.key}`}
+                                    >
+                                        {tab.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="mt-1 flex flex-wrap gap-1">
+                            <button
+                                onClick={() => setCategoryFilter('all')}
+                                className={cn(
+                                    'px-1.5 py-0.5 text-[10px] rounded transition-colors',
+                                    categoryFilter === 'all'
+                                        ? 'bg-[#0078d4] text-white'
+                                        : 'text-[#848484] hover:bg-black/[0.04] dark:hover:bg-white/[0.06]',
+                                )}
+                                data-testid="editor-category-filter-all"
+                            >
+                                All
+                            </button>
+                            {ALL_CATEGORIES.map(cat => {
+                                const info = CATEGORY_INFO[cat];
+                                return (
+                                    <button
+                                        key={cat}
+                                        onClick={() => setCategoryFilter(cat)}
+                                        className={cn(
+                                            'px-1.5 py-0.5 text-[10px] rounded transition-colors',
+                                            categoryFilter === cat
+                                                ? 'bg-[#0078d4] text-white'
+                                                : 'text-[#848484] hover:bg-black/[0.04] dark:hover:bg-white/[0.06]',
+                                        )}
+                                        title={info.label}
+                                        data-testid={`editor-category-filter-${cat}`}
+                                    >
+                                        {info.icon}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto p-4 min-h-0 min-w-0">
+                        <div
+                            ref={previewRef}
+                            id="task-preview-body"
+                            className="markdown-body text-sm text-[#1e1e1e] dark:text-[#cccccc]"
+                            dangerouslySetInnerHTML={{ __html: html }}
+                        />
+                        <CommentHighlight
+                            comments={comments}
+                            containerRef={previewRef}
+                            onCommentClick={handleCommentClick}
+                        />
+                    </div>
+                </div>
+
+                <CommentSidebar
+                    taskId={filePath}
+                    filePath={filePath}
                     comments={comments}
-                    containerRef={previewRef}
+                    filteredComments={filteredComments}
+                    loading={commentsLoading}
+                    compact
+                    showHeader={false}
+                    showFilters={false}
+                    onResolve={(id) => resolveComment(id)}
+                    onUnresolve={(id) => unresolveComment(id)}
+                    onDelete={(id) => deleteComment(id)}
+                    onEdit={(id, text) => updateComment(id, { comment: text })}
+                    onAskAI={(id) => askAI(id)}
                     onCommentClick={handleCommentClick}
                 />
             </div>
-
-            <CommentSidebar
-                taskId={filePath}
-                filePath={filePath}
-                comments={comments}
-                loading={commentsLoading}
-                onResolve={(id) => resolveComment(id)}
-                onUnresolve={(id) => unresolveComment(id)}
-                onDelete={(id) => deleteComment(id)}
-                onEdit={(id, text) => updateComment(id, { comment: text })}
-                onAskAI={(id) => askAI(id)}
-                onCommentClick={handleCommentClick}
-            />
 
             <SelectionToolbar
                 visible={toolbarVisible}

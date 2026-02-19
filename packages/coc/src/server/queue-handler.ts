@@ -273,32 +273,39 @@ export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueMana
 
     // ------------------------------------------------------------------
     // POST /api/queue — Enqueue a new task
+    // POST /api/queue/tasks — Alias used by React components
     // ------------------------------------------------------------------
+    const enqueueTaskHandler: Route['handler'] = async (req, res) => {
+        let body: any;
+        try {
+            body = await parseBody(req);
+        } catch {
+            return sendError(res, 400, 'Invalid JSON');
+        }
+
+        const validation = validateAndParseTask(body);
+        if (!validation.valid) {
+            return sendError(res, 400, validation.error!);
+        }
+
+        try {
+            const taskId = queueManager.enqueue(validation.input!);
+            const task = queueManager.getTask(taskId);
+            sendJSON(res, 201, { task: task ? serializeTask(task) : { id: taskId } });
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Failed to enqueue task';
+            return sendError(res, 400, message);
+        }
+    };
     routes.push({
         method: 'POST',
         pattern: '/api/queue',
-        handler: async (req, res) => {
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                return sendError(res, 400, 'Invalid JSON');
-            }
-
-            const validation = validateAndParseTask(body);
-            if (!validation.valid) {
-                return sendError(res, 400, validation.error!);
-            }
-
-            try {
-                const taskId = queueManager.enqueue(validation.input!);
-                const task = queueManager.getTask(taskId);
-                sendJSON(res, 201, { task: task ? serializeTask(task) : { id: taskId } });
-            } catch (err) {
-                const message = err instanceof Error ? err.message : 'Failed to enqueue task';
-                return sendError(res, 400, message);
-            }
-        },
+        handler: enqueueTaskHandler,
+    });
+    routes.push({
+        method: 'POST',
+        pattern: '/api/queue/tasks',
+        handler: enqueueTaskHandler,
     });
 
     // ------------------------------------------------------------------

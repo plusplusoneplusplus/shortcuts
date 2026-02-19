@@ -4,9 +4,10 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { Dialog, Button, Spinner, useToast, ToastContainer } from './index';
+import { Dialog, Button, Spinner } from './index';
 import { usePreferences } from '../hooks/usePreferences';
 import { useApp } from '../context/AppContext';
+import { useGlobalToast } from '../context/ToastContext';
 import { getApiBase } from '../utils/config';
 
 interface PromptItem {
@@ -42,7 +43,7 @@ async function getTasksFolderPath(wsId: string): Promise<string> {
 export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: FollowPromptDialogProps) {
     const { state } = useApp();
     const { model, setModel, loaded: prefsLoaded } = usePreferences();
-    const { toasts, addToast, removeToast } = useToast();
+    const { addToast } = useGlobalToast();
 
     const [models, setModels] = useState<string[]>([]);
     const [selectedWsId, setSelectedWsId] = useState(wsId);
@@ -127,14 +128,25 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
 
     return (
         <>
-            <Dialog open onClose={onClose} title="Follow Prompt">
+            <Dialog open onClose={onClose} title="Follow Prompt" id="follow-prompt-submenu">
                 <div className="flex flex-col gap-4">
+                    {/* Close button */}
+                    <button
+                        id="fp-close"
+                        className="absolute top-3 right-3 text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] text-lg leading-none"
+                        onClick={onClose}
+                        aria-label="Close"
+                    >
+                        ×
+                    </button>
+
                     {/* Model select */}
                     <div className="flex flex-col gap-1">
                         <label className="text-xs text-[#616161] dark:text-[#999]">
                             Model <span className="text-[#848484]">(optional)</span>
                         </label>
                         <select
+                            id="fp-model"
                             className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
                             value={model}
                             onChange={e => setModel(e.target.value)}
@@ -176,7 +188,8 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
                                     {prompts.map(p => (
                                         <button
                                             key={p.relativePath}
-                                            className="w-full text-left flex items-center gap-2 px-2 py-1.5 text-sm rounded hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:opacity-50"
+                                            className="fp-item w-full text-left flex items-center gap-2 px-2 py-1.5 text-sm rounded hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:opacity-50"
+                                            data-name={p.name}
                                             disabled={submitting}
                                             onClick={() => handleSubmit('prompt', p.name, p.relativePath)}
                                         >
@@ -192,7 +205,8 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
                                     {skills.map(s => (
                                         <button
                                             key={s.name}
-                                            className="w-full text-left flex items-center gap-2 px-2 py-1.5 text-sm rounded hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:opacity-50"
+                                            className="fp-item w-full text-left flex items-center gap-2 px-2 py-1.5 text-sm rounded hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:opacity-50"
+                                            data-name={s.name}
                                             disabled={submitting}
                                             onClick={() => handleSubmit('skill', s.name)}
                                         >
@@ -209,7 +223,6 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
                     )}
                 </div>
             </Dialog>
-            <ToastContainer toasts={toasts} removeToast={removeToast} />
         </>
     );
 }

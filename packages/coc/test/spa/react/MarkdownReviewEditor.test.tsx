@@ -28,7 +28,7 @@ describe('MarkdownReviewEditor', () => {
         vi.restoreAllMocks();
     });
 
-    it('renders markdown headings/code blocks and comment sidebar for task files', async () => {
+    it('renders markdown headings with top status bar and comment pane for task files', async () => {
         fetchSpy.mockImplementation((input: RequestInfo | URL) => {
             const url = String(input);
             if (url.includes('/tasks/content?')) {
@@ -59,6 +59,8 @@ describe('MarkdownReviewEditor', () => {
 
         expect(document.querySelector('#task-preview-body .md-h2')).toBeTruthy();
         expect(document.querySelector('#task-preview-body .code-block-container')).toBeTruthy();
+        expect(screen.getByTestId('markdown-review-status-bar')).toBeTruthy();
+        expect(screen.getByTestId('editor-status-filter-all')).toBeTruthy();
         expect(screen.getByTestId('comment-sidebar')).toBeTruthy();
     });
 

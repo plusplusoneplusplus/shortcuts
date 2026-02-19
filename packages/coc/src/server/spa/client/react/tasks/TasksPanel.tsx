@@ -8,7 +8,7 @@ import { useTaskTree } from '../hooks/useTaskTree';
 import { TaskTree } from './TaskTree';
 import { TaskPreview } from './TaskPreview';
 import { TaskActions } from './TaskActions';
-import { Spinner } from '../shared';
+import { Spinner, cn } from '../shared';
 
 interface TasksPanelProps {
     wsId: string;
@@ -17,6 +17,7 @@ interface TasksPanelProps {
 function TasksPanelInner({ wsId }: TasksPanelProps) {
     const { tree, commentCounts, loading, error } = useTaskTree(wsId);
     const { openFilePath, selectedFilePaths, clearSelection } = useTaskPanel();
+    const hasPreview = Boolean(openFilePath);
 
     if (loading) {
         return (
@@ -51,12 +52,17 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
                 tasksFolderPath=".vscode/tasks"
                 onClearSelection={clearSelection}
             />
-            <div className="flex flex-1 overflow-hidden min-h-0">
-                <div className="flex-shrink-0 overflow-x-auto min-h-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c]">
+            <div
+                className={cn(
+                    'grid flex-1 overflow-hidden min-h-0 min-w-0',
+                    hasPreview ? 'grid-cols-[minmax(320px,56%)_1fr]' : 'grid-cols-1',
+                )}
+            >
+                <div className="overflow-x-auto min-h-0 min-w-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c]">
                     <TaskTree tree={tree} commentCounts={commentCounts} wsId={wsId} />
                 </div>
                 {openFilePath && (
-                    <div className="flex-1 overflow-hidden min-h-0">
+                    <div className="flex-1 overflow-hidden min-h-0 min-w-0">
                         <TaskPreview wsId={wsId} filePath={openFilePath} />
                     </div>
                 )}

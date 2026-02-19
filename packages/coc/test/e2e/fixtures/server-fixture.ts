@@ -44,8 +44,19 @@ export interface ServerFixture {
  * receives an array directly (matching the `Array.isArray(pRes)` check).
  * Requests WITH query params (e.g. workspace filter) pass through unchanged
  * because the repos code expects `{ processes: [...] }`.
+ *
+ * Also blocks CDN resources (highlight.js, mermaid, marked) so that the
+ * `load` event fires promptly in headless Chromium even without internet access.
  */
 async function patchApiResponses(page: Page): Promise<void> {
+    // Stub out CDN scripts so page.goto doesn't hang waiting for external resources
+    await page.route('**://cdnjs.cloudflare.com/**', route =>
+        route.fulfill({ status: 200, body: '// cdn stub', contentType: 'text/javascript' }),
+    );
+    await page.route('**://cdn.jsdelivr.net/**', route =>
+        route.fulfill({ status: 200, body: '// cdn stub', contentType: 'text/javascript' }),
+    );
+
     await page.route('**/api/processes', async (route, request) => {
         if (request.method() !== 'GET') {
             return route.continue();

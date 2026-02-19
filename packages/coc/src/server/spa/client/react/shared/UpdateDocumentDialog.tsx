@@ -4,9 +4,10 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { Dialog, Button, Spinner, useToast, ToastContainer } from './index';
+import { Dialog, Button, Spinner } from './index';
 import { usePreferences } from '../hooks/usePreferences';
 import { useApp } from '../context/AppContext';
+import { useGlobalToast } from '../context/ToastContext';
 import { getApiBase } from '../utils/config';
 
 export interface UpdateDocumentDialogProps {
@@ -32,7 +33,7 @@ async function getTasksFolderPath(wsId: string): Promise<string> {
 export function UpdateDocumentDialog({ wsId, taskPath, taskName, onClose }: UpdateDocumentDialogProps) {
     const { state } = useApp();
     const { model, setModel } = usePreferences();
-    const { toasts, addToast, removeToast } = useToast();
+    const { addToast } = useGlobalToast();
 
     const [models, setModels] = useState<string[]>([]);
     const [selectedWsId, setSelectedWsId] = useState(wsId);
@@ -62,13 +63,15 @@ export function UpdateDocumentDialog({ wsId, taskPath, taskName, onClose }: Upda
                 : taskPath;
 
             const body: any = {
-                type: 'update-document',
+                type: 'custom',
                 priority: 'normal',
                 displayName: `Update: ${taskName}`,
                 payload: {
-                    promptContent: prompt,
-                    planFilePath,
-                    workingDirectory,
+                    data: {
+                        prompt,
+                        workingDirectory,
+                        planFilePath,
+                    },
                 },
             };
             if (model) body.model = model;
@@ -95,22 +98,34 @@ export function UpdateDocumentDialog({ wsId, taskPath, taskName, onClose }: Upda
         <>
             <Dialog
                 open
+                id="update-doc-overlay"
                 onClose={onClose}
                 title="Update Document"
                 footer={
                     <>
-                        <Button variant="secondary" onClick={onClose}>Cancel</Button>
-                        <Button onClick={handleSubmit} loading={submitting} disabled={!prompt.trim()}>
+                        <Button id="update-doc-cancel" variant="secondary" onClick={onClose}>Cancel</Button>
+                        <Button id="update-doc-submit" onClick={handleSubmit} loading={submitting} disabled={!prompt.trim()}>
                             Submit
                         </Button>
                     </>
                 }
             >
                 <div className="flex flex-col gap-4">
+                    {/* Close button */}
+                    <button
+                        id="update-doc-close"
+                        className="absolute top-3 right-3 text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] text-lg leading-none"
+                        onClick={onClose}
+                        aria-label="Close"
+                    >
+                        ×
+                    </button>
+
                     {/* Prompt textarea */}
                     <div className="flex flex-col gap-1">
                         <label className="text-xs text-[#616161] dark:text-[#999]">Prompt</label>
                         <textarea
+                            id="update-doc-instruction"
                             className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] resize-y min-h-[80px]"
                             value={prompt}
                             onChange={e => setPrompt(e.target.value)}
@@ -124,6 +139,7 @@ export function UpdateDocumentDialog({ wsId, taskPath, taskName, onClose }: Upda
                             Model <span className="text-[#848484]">(optional)</span>
                         </label>
                         <select
+                            id="update-doc-model"
                             className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
                             value={model}
                             onChange={e => setModel(e.target.value)}
@@ -148,7 +164,6 @@ export function UpdateDocumentDialog({ wsId, taskPath, taskName, onClose }: Upda
                     </div>
                 </div>
             </Dialog>
-            <ToastContainer toasts={toasts} removeToast={removeToast} />
         </>
     );
 }

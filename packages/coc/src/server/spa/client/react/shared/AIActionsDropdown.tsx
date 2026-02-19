@@ -108,6 +108,7 @@ export function AIActionsDropdown({ wsId, taskPath }: AIActionsDropdownProps) {
                 onClick={handleToggle}
                 title="AI Actions"
                 data-testid="ai-actions-trigger"
+                data-action="ai-action"
             >
                 ✨
             </button>
@@ -115,13 +116,15 @@ export function AIActionsDropdown({ wsId, taskPath }: AIActionsDropdownProps) {
             {open && ReactDOM.createPortal(
                 <div
                     ref={menuRef}
-                    className="fixed z-50 min-w-[180px] rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#252526] shadow-lg py-1"
+                    className="ai-action-dropdown fixed z-50 min-w-[180px] rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#252526] shadow-lg py-1"
                     style={{ top: menuPos.top, left: menuPos.left }}
                     data-testid="ai-actions-menu"
+                    data-task-path={taskPath}
                 >
                     <button
                         className="w-full text-left flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-black/[0.04] dark:hover:bg-white/[0.04]"
                         onClick={() => handleAction('follow-prompt')}
+                        data-ai-action="follow-prompt"
                     >
                         <span>📝</span>
                         <span className="text-[#1e1e1e] dark:text-[#cccccc]">Follow Prompt</span>
@@ -129,6 +132,7 @@ export function AIActionsDropdown({ wsId, taskPath }: AIActionsDropdownProps) {
                     <button
                         className="w-full text-left flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-black/[0.04] dark:hover:bg-white/[0.04]"
                         onClick={() => handleAction('update-document')}
+                        data-ai-action="update-document"
                     >
                         <span>✏️</span>
                         <span className="text-[#1e1e1e] dark:text-[#cccccc]">Update Document</span>

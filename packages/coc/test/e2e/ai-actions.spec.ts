@@ -12,8 +12,31 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { test, expect } from './fixtures/server-fixture';
-import { seedWorkspace } from './fixtures/seed';
+import { seedWorkspace, request } from './fixtures/seed';
 import { createRepoFixture, createTasksFixture } from './fixtures/repo-fixtures';
+
+/** Poll GET /api/queue/:id until status matches or timeout expires. */
+async function waitForTaskStatus(
+    serverUrl: string,
+    taskId: string,
+    targetStatuses: string[],
+    timeoutMs = 15_000,
+    intervalMs = 250,
+): Promise<Record<string, unknown>> {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+        const res = await request(`${serverUrl}/api/queue/${taskId}`);
+        if (res.status === 200) {
+            const json = JSON.parse(res.body);
+            const task = json.task ?? json;
+            if (targetStatuses.includes(task.status as string)) {
+                return task;
+            }
+        }
+        await new Promise((r) => setTimeout(r, intervalMs));
+    }
+    throw new Error(`Task ${taskId} did not reach ${targetStatuses.join('|')} within ${timeoutMs}ms`);
+}
 
 /**
  * Add .prompt.md files and a skill directory so the Follow Prompt submenu
@@ -173,16 +196,16 @@ test.describe('AI Actions (007)', () => {
         }
     });
 
-    test('7.6 Follow Prompt enqueues task when prompt item clicked', async ({ page, serverUrl }) => {
+    test('7.6 Follow Prompt enqueues task when prompt item clicked', async ({ page, serverUrl, mockAI }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-ai-'));
         try {
             await setupRepoWithAIActions(page, serverUrl, tmpDir);
 
-            // Intercept queue POST to verify the payload
-            const queuePromise = page.waitForRequest(req =>
-                req.url().includes('/api/queue') &&
-                !req.url().includes('/bulk') &&
-                req.method() === 'POST',
+            // Capture the queue POST response to extract the task ID for mock AI verification
+            const queueResponsePromise = page.waitForResponse(res =>
+                res.url().includes('/api/queue') &&
+                !res.url().includes('/bulk') &&
+                res.request().method() === 'POST',
             );
 
             const fileRow = page.locator('.miller-file-row').first();
@@ -195,17 +218,35 @@ test.describe('AI Actions (007)', () => {
             // Click on the review prompt
             await page.locator('.fp-item[data-name="review"]').click();
 
-            // Should have made a POST to /api/queue
-            const queueReq = await queuePromise;
-            const body = JSON.parse(queueReq.postData() || '{}');
-            expect(body.type).toBe('follow-prompt');
-            expect(body.displayName).toContain('review');
+            // Verify the POST payload
+            const queueResponse = await queueResponsePromise;
+            const reqBody = JSON.parse(queueResponse.request().postData() || '{}');
+            expect(reqBody.type).toBe('follow-prompt');
+            expect(reqBody.displayName).toContain('review');
 
             // Overlay should be removed
             await expect(page.locator('#follow-prompt-submenu')).toHaveCount(0, { timeout: 5000 });
 
             // Success toast should appear
             await expect(page.locator('.toast-success')).toBeVisible({ timeout: 5000 });
+
+            // --- Mock SDK Validation ---
+            // Extract the task ID from the queue response and wait for AI execution
+            const responseJson = await queueResponse.json();
+            const taskId = ((responseJson.task ?? responseJson) as Record<string, unknown>).id as string;
+            expect(taskId).toBeTruthy();
+
+            // Wait for the task to be executed by the mock AI
+            const completedTask = await waitForTaskStatus(serverUrl, taskId, ['completed', 'failed']);
+            expect(completedTask.status).toBe('completed');
+
+            // Verify mock SDK sendMessage was called exactly once for this task
+            expect(mockAI.mockSendMessage.calls.length).toBe(1);
+
+            // Verify the prompt passed to the mock SDK references the prompt file path
+            const [sendMessageOpts] = mockAI.mockSendMessage.calls[0] as [{ prompt: string }];
+            expect(typeof sendMessageOpts.prompt).toBe('string');
+            expect(sendMessageOpts.prompt.length).toBeGreaterThan(0);
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         }
@@ -238,16 +279,16 @@ test.describe('AI Actions (007)', () => {
         }
     });
 
-    test('7.8 Update Document submits instruction and enqueues task', async ({ page, serverUrl }) => {
+    test('7.8 Update Document submits instruction and enqueues task', async ({ page, serverUrl, mockAI }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-ai-'));
         try {
             await setupRepoWithAIActions(page, serverUrl, tmpDir);
 
-            // Intercept queue POST
-            const queuePromise = page.waitForRequest(req =>
-                req.url().includes('/api/queue') &&
-                !req.url().includes('/bulk') &&
-                req.method() === 'POST',
+            // Capture queue POST response to extract task ID for mock AI verification
+            const queueResponsePromise = page.waitForResponse(res =>
+                res.url().includes('/api/queue') &&
+                !res.url().includes('/bulk') &&
+                res.request().method() === 'POST',
             );
 
             const fileRow = page.locator('.miller-file-row').first();
@@ -260,18 +301,35 @@ test.describe('AI Actions (007)', () => {
             // Submit
             await page.click('#update-doc-submit');
 
-            // Should have made a POST to /api/queue
-            const queueReq = await queuePromise;
-            const body = JSON.parse(queueReq.postData() || '{}');
-            expect(body.type).toBe('custom');
-            expect(body.displayName).toContain('Update');
-            expect(body.payload.data.prompt).toContain('Add error handling');
+            // Verify the POST payload
+            const queueResponse = await queueResponsePromise;
+            const reqBody = JSON.parse(queueResponse.request().postData() || '{}');
+            expect(reqBody.type).toBe('custom');
+            expect(reqBody.displayName).toContain('Update');
+            expect(reqBody.payload.data.prompt).toContain('Add error handling');
 
             // Overlay should close
             await expect(page.locator('#update-doc-overlay')).toHaveCount(0, { timeout: 5000 });
 
             // Success toast
             await expect(page.locator('.toast-success')).toBeVisible({ timeout: 5000 });
+
+            // --- Mock SDK Validation ---
+            // Extract the task ID from the queue response and wait for AI execution
+            const responseJson = await queueResponse.json();
+            const taskId = ((responseJson.task ?? responseJson) as Record<string, unknown>).id as string;
+            expect(taskId).toBeTruthy();
+
+            // Wait for the task to be executed by the mock AI
+            const completedTask = await waitForTaskStatus(serverUrl, taskId, ['completed', 'failed']);
+            expect(completedTask.status).toBe('completed');
+
+            // Verify mock SDK sendMessage was called exactly once for this task
+            expect(mockAI.mockSendMessage.calls.length).toBe(1);
+
+            // Verify the prompt passed to the mock SDK contains the user's instruction
+            const [sendMessageOpts] = mockAI.mockSendMessage.calls[0] as [{ prompt: string }];
+            expect(sendMessageOpts.prompt).toContain('Add error handling');
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         }
