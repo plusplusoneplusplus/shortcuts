@@ -204,10 +204,42 @@ describe('CopilotSDKService - Keep-Alive', () => {
     // Test 6: sendFollowUp on non-existent session returns error
     // ========================================================================
     it('should return error when sendFollowUp is called on non-existent session', async () => {
+        // Use mocked SDK client so this test never touches real Copilot CLI.
+        setupService(service, createMockSession());
         const result = await service.sendFollowUp('non-existent-id', 'Follow-up');
 
         expect(result.success).toBe(false);
         expect(result.error).toMatch(/not found/);
+    });
+
+    it('should resume a persisted session by ID when not present in memory', async () => {
+        const resumedSession = createMockSession({
+            sessionId: 'sess-persisted',
+            sendAndWaitResponse: { data: { content: 'resumed response' } },
+        });
+        const { MockCopilotClient, mockClient } = createMockSDKModule();
+        mockClient.resumeSession.mockResolvedValue(resumedSession);
+
+        const serviceAny = service as any;
+        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+
+        const result = await service.sendFollowUp('sess-persisted', 'Follow-up', {
+            workingDirectory: '/test',
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.response).toBe('resumed response');
+        expect(result.sessionId).toBe('sess-persisted');
+        expect(mockClient.resumeSession).toHaveBeenCalledWith(
+            'sess-persisted',
+            expect.objectContaining({}),
+        );
+        expect(resumedSession.sendAndWait).toHaveBeenCalledWith(
+            expect.objectContaining({ prompt: 'Follow-up' }),
+            expect.any(Number),
+        );
+        expect((service as any).keptAliveSessions.has('sess-persisted')).toBe(true);
     });
 
     // ========================================================================

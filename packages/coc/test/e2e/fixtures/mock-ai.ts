@@ -86,6 +86,8 @@ export interface E2EMockAIControls {
     mockSendFollowUp: MockFn;
     /** Mock for hasKeptAliveSession */
     mockHasKeptAliveSession: MockFn;
+    /** Mock for canResumeSession */
+    mockCanResumeSession: MockFn;
     /** Reset all mocks to their default state */
     resetAll: () => void;
 }
@@ -95,6 +97,7 @@ export interface E2EMockAIOptions {
     sendMessageResponse?: Record<string, unknown>;
     sendFollowUpResponse?: Record<string, unknown>;
     hasKeptAliveSession?: boolean;
+    canResumeSession?: boolean;
 }
 
 /**
@@ -105,6 +108,7 @@ export interface E2EMockAIOptions {
  * - sendMessage → { success: true, response: 'AI response text', sessionId: 'session-123' }
  * - sendFollowUp → { success: true, response: 'Follow-up response', sessionId: 'sess-follow' }
  * - hasKeptAliveSession → true
+ * - canResumeSession → true
  */
 export function createE2EMockSDKService(options?: E2EMockAIOptions): E2EMockAIControls {
     const defaultAvailability = { available: options?.available ?? true };
@@ -119,17 +123,20 @@ export function createE2EMockSDKService(options?: E2EMockAIOptions): E2EMockAICo
         sessionId: 'sess-follow',
     };
     const defaultHasKeptAlive = options?.hasKeptAliveSession ?? true;
+    const defaultCanResume = options?.canResumeSession ?? defaultHasKeptAlive;
 
     const mockIsAvailable = createMockFn(() => Promise.resolve(defaultAvailability));
     const mockSendMessage = createMockFn(() => Promise.resolve(defaultSendMessage));
     const mockSendFollowUp = createMockFn(() => Promise.resolve(defaultSendFollowUp));
     const mockHasKeptAliveSession = createMockFn(() => defaultHasKeptAlive);
+    const mockCanResumeSession = createMockFn(() => Promise.resolve(defaultCanResume));
 
     const service = {
         isAvailable: mockIsAvailable,
         sendMessage: mockSendMessage,
         sendFollowUp: mockSendFollowUp,
         hasKeptAliveSession: mockHasKeptAliveSession,
+        canResumeSession: mockCanResumeSession,
         // Stubs for methods the executor may reference but doesn't critically need
         ensureClient: () => Promise.resolve(),
         destroyKeptAliveSession: () => Promise.resolve(),
@@ -145,6 +152,7 @@ export function createE2EMockSDKService(options?: E2EMockAIOptions): E2EMockAICo
         mockSendMessage.mockReset();
         mockSendFollowUp.mockReset();
         mockHasKeptAliveSession.mockReset();
+        mockCanResumeSession.mockReset();
     };
 
     return {
@@ -153,6 +161,7 @@ export function createE2EMockSDKService(options?: E2EMockAIOptions): E2EMockAICo
         mockIsAvailable,
         mockSendFollowUp,
         mockHasKeptAliveSession,
+        mockCanResumeSession,
         resetAll,
     };
 }

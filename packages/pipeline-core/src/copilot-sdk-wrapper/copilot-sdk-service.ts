@@ -80,6 +80,7 @@ interface KeptAliveSession {
     session: ICopilotSession;
     createdAt: number;
     lastUsedAt: number;
+    workingDirectory?: string;
 }
 
 /**
@@ -92,6 +93,10 @@ export interface SendFollowUpOptions {
     onStreamingChunk?: (chunk: string) => void;
     /** Callback for tool execution lifecycle events */
     onToolEvent?: (event: ToolEvent) => void;
+    /** Working directory used to initialize the SDK client when resuming sessions */
+    workingDirectory?: string;
+    /** Permission handler for resumed sessions */
+    onPermissionRequest?: PermissionHandler;
 }
 
 /**
@@ -122,11 +127,22 @@ interface ISessionOptions {
 }
 
 /**
+ * Options for resuming an existing session.
+ * Mirrors the SDK's ResumeSessionConfig subset we rely on.
+ */
+interface IResumeSessionOptions {
+    streaming?: boolean;
+    onPermissionRequest?: PermissionHandler;
+    mcpServers?: Record<string, MCPServerConfig>;
+}
+
+/**
  * Interface for the CopilotClient from @github/copilot-sdk
  * We define this interface to avoid direct type dependency on the SDK
  */
 interface ICopilotClient {
     createSession(options?: ISessionOptions): Promise<ICopilotSession>;
+    resumeSession?(sessionId: string, options?: IResumeSessionOptions): Promise<ICopilotSession>;
     stop(): Promise<void>;
 }
 
@@ -611,6 +627,7 @@ export class CopilotSDKService {
                         session,
                         createdAt: now,
                         lastUsedAt: now,
+                        workingDirectory: options.workingDirectory,
                     });
                     this.ensureKeepAliveCleanupTimer();
                     logger.debug(LogCategory.AI,
@@ -628,6 +645,63 @@ export class CopilotSDKService {
     }
 
     /**
+     * Try to resume a session from the SDK backing store and register it as kept-alive.
+     */
+    private async resumeKeptAliveSession(
+        sessionId: string,
+        options?: SendFollowUpOptions,
+    ): Promise<KeptAliveSession | undefined> {
+        const logger = getLogger();
+        const timeoutMs = options?.timeoutMs ?? CopilotSDKService.DEFAULT_TIMEOUT_MS;
+
+        try {
+            const client = await this.ensureClient(options?.workingDirectory);
+            if (typeof client.resumeSession !== 'function') {
+                return undefined;
+            }
+
+            const resumeOptions: IResumeSessionOptions = {};
+            if (options?.onPermissionRequest) {
+                resumeOptions.onPermissionRequest = options.onPermissionRequest;
+            }
+            if (options?.onStreamingChunk || timeoutMs > 120000) {
+                resumeOptions.streaming = true;
+            }
+
+            const session = await client.resumeSession(sessionId, resumeOptions);
+            const now = Date.now();
+            const entry: KeptAliveSession = {
+                session,
+                createdAt: now,
+                lastUsedAt: now,
+                workingDirectory: options?.workingDirectory,
+            };
+            this.keptAliveSessions.set(sessionId, entry);
+            this.ensureKeepAliveCleanupTimer();
+            logger.debug(LogCategory.AI, `CopilotSDKService [${sessionId}]: Session resumed for follow-up`);
+            return entry;
+        } catch (error) {
+            logger.debug(LogCategory.AI, `CopilotSDKService [${sessionId}]: Resume failed: ${error}`);
+            return undefined;
+        }
+    }
+
+    /**
+     * Check whether a session is available for follow-up.
+     * If needed, attempts to resume it from the SDK by session ID.
+     */
+    public async canResumeSession(
+        sessionId: string,
+        options?: Pick<SendFollowUpOptions, 'workingDirectory' | 'onPermissionRequest'>,
+    ): Promise<boolean> {
+        if (this.keptAliveSessions.has(sessionId)) {
+            return true;
+        }
+        const resumed = await this.resumeKeptAliveSession(sessionId, options);
+        return resumed !== undefined;
+    }
+
+    /**
      * Send a follow-up message to a kept-alive session.
      *
      * @param sessionId - The session ID returned from a previous sendMessage({ keepAlive: true }) call
@@ -641,7 +715,10 @@ export class CopilotSDKService {
         options?: SendFollowUpOptions,
     ): Promise<SDKInvocationResult> {
         const logger = getLogger();
-        const entry = this.keptAliveSessions.get(sessionId);
+        let entry = this.keptAliveSessions.get(sessionId);
+        if (!entry) {
+            entry = await this.resumeKeptAliveSession(sessionId, options);
+        }
         if (!entry) {
             return {
                 success: false,

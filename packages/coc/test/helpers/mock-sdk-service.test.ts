@@ -15,17 +15,19 @@ import {
 
 describe('mock-sdk-service helpers', () => {
     describe('createMockSDKService', () => {
-        it('should return object with all 4 mock functions and resetAll', () => {
+        it('should return object with all SDK mocks and resetAll', () => {
             const result = createMockSDKService();
             expect(result.mockSendMessage).toBeDefined();
             expect(result.mockIsAvailable).toBeDefined();
             expect(result.mockSendFollowUp).toBeDefined();
             expect(result.mockHasKeptAliveSession).toBeDefined();
+            expect(result.mockCanResumeSession).toBeDefined();
             expect(result.resetAll).toBeInstanceOf(Function);
             expect(result.service.sendMessage).toBe(result.mockSendMessage);
             expect(result.service.isAvailable).toBe(result.mockIsAvailable);
             expect(result.service.sendFollowUp).toBe(result.mockSendFollowUp);
             expect(result.service.hasKeptAliveSession).toBe(result.mockHasKeptAliveSession);
+            expect(result.service.canResumeSession).toBe(result.mockCanResumeSession);
         });
 
         it('should use default responses when no options provided', async () => {
@@ -40,6 +42,7 @@ describe('mock-sdk-service helpers', () => {
             expect(followUp).toEqual({ success: true, response: 'Follow-up response', sessionId: 'sess-follow' });
 
             expect(result.mockHasKeptAliveSession()).toBe(true);
+            await expect(result.mockCanResumeSession()).resolves.toBe(true);
         });
 
         it('should configure isAvailable to return { available: false }', async () => {
@@ -94,6 +97,7 @@ describe('mock-sdk-service helpers', () => {
         it('createExpiredSessionMock should have hasKeptAliveSession return false', () => {
             const result = createExpiredSessionMock();
             expect(result.mockHasKeptAliveSession()).toBe(false);
+            return expect(result.mockCanResumeSession()).resolves.toBe(false);
         });
 
         it('createUnavailableMock should have isAvailable return { available: false }', async () => {

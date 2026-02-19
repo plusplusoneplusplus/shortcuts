@@ -254,7 +254,15 @@ export class CLITaskExecutor implements TaskExecutor {
     async isSessionAlive(processId: string): Promise<boolean> {
         const process = await this.store.getProcess(processId);
         if (!process?.sdkSessionId) return false;
+        const workingDirectory = process.workingDirectory || this.defaultWorkingDirectory;
+        const onPermissionRequest = this.approvePermissions ? approveAllPermissions : undefined;
         try {
+            if (typeof (this.aiService as any).canResumeSession === 'function') {
+                return await (this.aiService as any).canResumeSession(process.sdkSessionId, {
+                    workingDirectory,
+                    onPermissionRequest,
+                });
+            }
             return this.aiService.hasKeptAliveSession(process.sdkSessionId);
         } catch {
             // Safe fallback: if we cannot verify liveness, treat as unavailable.
@@ -285,12 +293,15 @@ export class CLITaskExecutor implements TaskExecutor {
         if (!process.sdkSessionId) {
             throw new Error(`Process ${processId} has no SDK session`);
         }
+        const workingDirectory = process.workingDirectory || this.defaultWorkingDirectory;
 
         // Initialize output buffer for this follow-up
         this.outputBuffers.set(processId, '');
 
         try {
             const result = await this.aiService.sendFollowUp(process.sdkSessionId, message, {
+                workingDirectory,
+                onPermissionRequest: this.approvePermissions ? approveAllPermissions : undefined,
                 onStreamingChunk: (chunk: string) => {
                     // Accumulate for persistence
                     const existing = this.outputBuffers.get(processId) ?? '';

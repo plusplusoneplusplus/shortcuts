@@ -152,6 +152,8 @@ describe('sendFollowUp', () => {
     });
 
     it('should return error for sendFollowUp on unknown sessionId', async () => {
+        // Use mocked SDK client so this assertion does not depend on local CLI state.
+        setupService(service, createMockSession());
         const result = await service.sendFollowUp('non-existent', 'Hello');
 
         expect(result.success).toBe(false);

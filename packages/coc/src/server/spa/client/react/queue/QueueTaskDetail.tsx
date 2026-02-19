@@ -11,6 +11,7 @@ import { fetchApi } from '../hooks/useApi';
 import { getApiBase } from '../utils/config';
 import { Badge, Spinner, Button } from '../shared';
 import { ConversationTurnBubble } from '../processes/ConversationTurnBubble';
+import { ConversationMetadataPopover } from '../processes/ConversationMetadataPopover';
 import { formatDuration, statusIcon, statusLabel } from '../utils/format';
 import type { ClientConversationTurn } from '../types/dashboard';
 
@@ -74,6 +75,7 @@ export function QueueTaskDetail() {
     const turnsRef = useRef<ClientConversationTurn[]>([]);
     const [task, setTask] = useState<any>(null);
     const [fullTask, setFullTask] = useState<any>(null);
+    const [processDetails, setProcessDetails] = useState<any>(null);
     const eventSourceRef = useRef<EventSource | null>(null);
     const followUpEventSourceRef = useRef<EventSource | null>(null);
     const [followUpInput, setFollowUpInput] = useState('');
@@ -109,6 +111,7 @@ export function QueueTaskDetail() {
         if (!selectedTaskId || !selectedProcessId) return;
         try {
             const data = await fetchApi(`/processes/${encodeURIComponent(selectedProcessId)}`);
+            setProcessDetails(data?.process || null);
             const refreshedTurns = getConversationTurns(data);
             appDispatch({ type: 'CACHE_CONVERSATION', processId: selectedTaskId, turns: refreshedTurns });
             setTurns(refreshedTurns);
@@ -253,17 +256,27 @@ export function QueueTaskDetail() {
 
     // Fetch conversation on task selection (only for non-pending tasks)
     useEffect(() => {
-        if (!selectedTaskId || isPending) { setTurns([]); return; }
+        if (!selectedTaskId || isPending) {
+            setTurns([]);
+            setProcessDetails(null);
+            return;
+        }
 
         // Check shared conversation cache
         const cached = appState.conversationCache[selectedTaskId];
         if (cached && (Date.now() - cached.cachedAt < CACHE_TTL_MS)) {
             setTurns(cached.turns);
             setLoading(false);
+            fetchApi(`/processes/${encodeURIComponent(selectedProcessId || `queue_${selectedTaskId}`)}`)
+                .then((data: any) => {
+                    setProcessDetails(data?.process || null);
+                })
+                .catch(() => { /* metadata refresh is best-effort */ });
         } else {
             setLoading(true);
             fetchApi(`/processes/${encodeURIComponent(selectedProcessId || `queue_${selectedTaskId}`)}`)
                 .then((data: any) => {
+                    setProcessDetails(data?.process || null);
                     const t = getConversationTurns(data);
                     appDispatch({ type: 'CACHE_CONVERSATION', processId: selectedTaskId, turns: t });
                     setTurns(t);
@@ -279,6 +292,7 @@ export function QueueTaskDetail() {
         setFollowUpError(null);
         setFollowUpSending(false);
         setFollowUpSessionExpired(false);
+        setProcessDetails(null);
         closeFollowUpStream();
         queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -333,6 +347,7 @@ export function QueueTaskDetail() {
     const handleMoveToTop = async () => {
         await fetch(getApiBase() + '/queue/' + encodeURIComponent(selectedTaskId) + '/move-to-top', { method: 'POST' });
     };
+    const metadataProcess = processDetails || fullTask || task;
 
     return (
         <div className="flex-1 flex flex-col min-h-0">
@@ -346,6 +361,9 @@ export function QueueTaskDetail() {
                     )}
                     {task?.duration != null && (
                         <span className="text-xs text-[#848484]">{formatDuration(task.duration)}</span>
+                    )}
+                    {!isPending && (
+                        <ConversationMetadataPopover process={metadataProcess} turnsCount={turns.length} />
                     )}
                 </div>
                 <Button

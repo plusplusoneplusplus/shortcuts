@@ -21,6 +21,7 @@ export interface MockCopilotSDKService {
     isAvailable: ReturnType<typeof vi.fn>;
     sendFollowUp: ReturnType<typeof vi.fn>;
     hasKeptAliveSession: ReturnType<typeof vi.fn>;
+    canResumeSession: ReturnType<typeof vi.fn>;
 }
 
 /** Configuration for SDK service mock behavior */
@@ -43,6 +44,8 @@ export interface MockSDKServiceOptions {
     };
     /** Whether hasKeptAliveSession returns true. Default: true */
     hasKeptAliveSession?: boolean;
+    /** Whether canResumeSession returns true. Default: same as hasKeptAliveSession */
+    canResumeSession?: boolean;
 }
 
 /** Return type from createMockSDKService() with reset helper */
@@ -52,6 +55,7 @@ export interface MockSDKServiceResult {
     mockIsAvailable: ReturnType<typeof vi.fn>;
     mockSendFollowUp: ReturnType<typeof vi.fn>;
     mockHasKeptAliveSession: ReturnType<typeof vi.fn>;
+    mockCanResumeSession: ReturnType<typeof vi.fn>;
     /** Reset all mocks to their initial configured state */
     resetAll: () => void;
 }
@@ -68,6 +72,7 @@ export interface MockSDKServiceResult {
  * - sendMessage → { success: true, response: 'AI response text', sessionId: 'session-123' }
  * - sendFollowUp → { success: true, response: 'Follow-up response', sessionId: 'sess-follow' }
  * - hasKeptAliveSession → true
+ * - canResumeSession → true
  */
 export function createMockSDKService(options?: MockSDKServiceOptions): MockSDKServiceResult {
     const availableResult = { available: options?.available ?? true };
@@ -82,17 +87,20 @@ export function createMockSDKService(options?: MockSDKServiceOptions): MockSDKSe
         sessionId: 'sess-follow',
     };
     const hasKeptAliveSessionResult = options?.hasKeptAliveSession ?? true;
+    const canResumeSessionResult = options?.canResumeSession ?? hasKeptAliveSessionResult;
 
     const mockSendMessage = vi.fn().mockResolvedValue(sendMessageResponse);
     const mockIsAvailable = vi.fn().mockResolvedValue(availableResult);
     const mockSendFollowUp = vi.fn().mockResolvedValue(sendFollowUpResponse);
     const mockHasKeptAliveSession = vi.fn().mockReturnValue(hasKeptAliveSessionResult);
+    const mockCanResumeSession = vi.fn().mockResolvedValue(canResumeSessionResult);
 
     const service: MockCopilotSDKService = {
         sendMessage: mockSendMessage,
         isAvailable: mockIsAvailable,
         sendFollowUp: mockSendFollowUp,
         hasKeptAliveSession: mockHasKeptAliveSession,
+        canResumeSession: mockCanResumeSession,
     };
 
     const resetAll = () => {
@@ -100,6 +108,7 @@ export function createMockSDKService(options?: MockSDKServiceOptions): MockSDKSe
         mockIsAvailable.mockReset().mockResolvedValue(availableResult);
         mockSendFollowUp.mockReset().mockResolvedValue(sendFollowUpResponse);
         mockHasKeptAliveSession.mockReset().mockReturnValue(hasKeptAliveSessionResult);
+        mockCanResumeSession.mockReset().mockResolvedValue(canResumeSessionResult);
     };
 
     return {
@@ -108,6 +117,7 @@ export function createMockSDKService(options?: MockSDKServiceOptions): MockSDKSe
         mockIsAvailable,
         mockSendFollowUp,
         mockHasKeptAliveSession,
+        mockCanResumeSession,
         resetAll,
     };
 }

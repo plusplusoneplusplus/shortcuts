@@ -31,6 +31,15 @@ function SeededProcessList({ processes }: { processes: any[] }) {
     return <ProcessList />;
 }
 
+function SeededProcessDetail({ process }: { process: any }) {
+    const { dispatch } = useApp();
+    useEffect(() => {
+        dispatch({ type: 'SET_PROCESSES', processes: [process] });
+        dispatch({ type: 'SELECT_PROCESS', id: process.id });
+    }, [dispatch, process]);
+    return <ProcessDetail />;
+}
+
 function SeededQueuePanel({ historyItem }: { historyItem: any }) {
     const { dispatch } = useQueue();
     useEffect(() => {
@@ -86,9 +95,60 @@ describe('ProcessList', () => {
 });
 
 describe('ProcessDetail', () => {
+    beforeEach(() => {
+        vi.restoreAllMocks();
+    });
+
     it('shows empty state when no process selected', () => {
         render(<Wrap><ProcessDetail /></Wrap>);
         expect(screen.getByText('Select a process to view details')).toBeDefined();
+    });
+
+    it('toggles conversation metadata popover with model and session info', async () => {
+        const processId = 'proc-meta-1';
+        const fetchMock = vi.fn().mockResolvedValue({
+            ok: true,
+            status: 200,
+            json: async () => ({
+                process: {
+                    id: processId,
+                    type: 'clarification',
+                    status: 'completed',
+                    startTime: '2026-02-19T08:58:31.000Z',
+                    endTime: '2026-02-19T08:58:35.000Z',
+                    sdkSessionId: 'sess-meta-123',
+                    metadata: { model: 'claude-haiku-4.5' },
+                    conversationTurns: [
+                        { role: 'user', content: "what's the time now?", timeline: [] },
+                        { role: 'assistant', content: "It's 08:58 UTC", timeline: [] },
+                    ],
+                },
+            }),
+        });
+        (global as any).fetch = fetchMock;
+
+        render(
+            <Wrap>
+                <SeededProcessDetail
+                    process={{
+                        id: processId,
+                        status: 'completed',
+                        type: 'clarification',
+                        promptPreview: "what's the time now?",
+                    }}
+                />
+            </Wrap>
+        );
+
+        await screen.findByText("what's the time now?");
+        const toggle = screen.getByRole('button', { name: 'Show conversation metadata' });
+        fireEvent.click(toggle);
+
+        expect(screen.getByText('Conversation metadata')).toBeDefined();
+        expect(screen.getByText('Model')).toBeDefined();
+        expect(screen.getByText('claude-haiku-4.5')).toBeDefined();
+        expect(screen.getByText('Session ID')).toBeDefined();
+        expect(screen.getByText('sess-meta-123')).toBeDefined();
     });
 });
 
@@ -479,6 +539,73 @@ describe('QueuePanel', () => {
         expect((card as HTMLElement).querySelector('.line-clamp-1')).toBeNull();
         expect(card.textContent).toContain('Completed');
         expect(card.textContent).toContain('follow-prompt');
+    });
+});
+
+describe('QueueTaskDetail metadata popover', () => {
+    beforeEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('shows model and session metadata for queue conversations', async () => {
+        const processId = 'queue_task-meta-1';
+        const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            const method = init?.method || 'GET';
+            if (url.endsWith(`/api/processes/${processId}`) && method === 'GET') {
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: async () => ({
+                        process: {
+                            id: processId,
+                            type: 'queue-ai-clarification',
+                            status: 'completed',
+                            startTime: '2026-02-19T08:58:31.000Z',
+                            endTime: '2026-02-19T08:59:06.000Z',
+                            sdkSessionId: 'sess-queue-meta',
+                            metadata: {
+                                model: 'claude-haiku-4.5',
+                                queueTaskId: 'task-meta-1',
+                            },
+                            conversationTurns: [
+                                { role: 'user', content: 'what was my last question?', timeline: [] },
+                                { role: 'assistant', content: 'Your last question was ...', timeline: [] },
+                            ],
+                        },
+                    }),
+                });
+            }
+            return Promise.resolve({
+                ok: false,
+                status: 404,
+                json: async () => ({ error: 'not found' }),
+            });
+        });
+        (global as any).fetch = fetchMock;
+        (global as any).EventSource = undefined;
+
+        render(
+            <Wrap>
+                <SeededQueueTaskDetail
+                    task={{
+                        id: 'task-meta-1',
+                        processId,
+                        status: 'completed',
+                        type: 'ai-clarification',
+                        prompt: 'what was my last question?',
+                    }}
+                />
+            </Wrap>
+        );
+
+        await screen.findByText('Your last question was ...');
+        fireEvent.click(screen.getByRole('button', { name: 'Show conversation metadata' }));
+
+        expect(screen.getByText('Conversation metadata')).toBeDefined();
+        expect(screen.getByText('claude-haiku-4.5')).toBeDefined();
+        expect(screen.getByText('sess-queue-meta')).toBeDefined();
+        expect(screen.getByText('task-meta-1')).toBeDefined();
     });
 });
 

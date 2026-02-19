@@ -43,7 +43,7 @@ import { createMockProcessStore, createCompletedProcessWithSession } from '../he
 // ============================================================================
 
 const sdkMocks = createMockSDKService();
-const { mockSendMessage, mockIsAvailable, mockSendFollowUp, mockHasKeptAliveSession } = sdkMocks;
+const { mockSendMessage, mockIsAvailable, mockSendFollowUp, mockCanResumeSession } = sdkMocks;
 
 vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@plusplusoneplusplus/pipeline-core')>();
@@ -1071,6 +1071,8 @@ describe('CLITaskExecutor.executeFollowUp', () => {
         mockSendMessage.mockReset();
         mockIsAvailable.mockReset();
         mockSendFollowUp.mockReset();
+        mockCanResumeSession.mockReset();
+        mockCanResumeSession.mockResolvedValue(true);
         mockIsAvailable.mockResolvedValue({ available: true });
         mockSendFollowUp.mockResolvedValue({
             success: true,
@@ -1108,6 +1110,7 @@ describe('CLITaskExecutor.executeFollowUp', () => {
             status: 'running',
             startTime: new Date(),
             sdkSessionId: 'sess-123',
+            workingDirectory: '/workspace/shortcuts',
             conversationTurns: [
                 { role: 'user', content: 'initial question', timestamp: new Date(), turnIndex: 0 , timeline: [] },
             ],
@@ -1118,6 +1121,8 @@ describe('CLITaskExecutor.executeFollowUp', () => {
         await executor.executeFollowUp('proc-2', 'follow up');
 
         expect(mockSendFollowUp).toHaveBeenCalledWith('sess-123', 'follow up', expect.objectContaining({
+            workingDirectory: '/workspace/shortcuts',
+            onPermissionRequest: expect.any(Function),
             onStreamingChunk: expect.any(Function),
         }));
 
@@ -1201,6 +1206,8 @@ describe('executeFollowUp - chat conversation scenarios', () => {
         mockSendMessage.mockReset();
         mockIsAvailable.mockReset();
         mockSendFollowUp.mockReset();
+        mockCanResumeSession.mockReset();
+        mockCanResumeSession.mockResolvedValue(true);
         mockIsAvailable.mockResolvedValue({ available: true });
     });
 
@@ -1485,6 +1492,8 @@ describe('session tracking and conversation turns', () => {
         mockSendMessage.mockReset();
         mockIsAvailable.mockReset();
         mockSendFollowUp.mockReset();
+        mockCanResumeSession.mockReset();
+        mockCanResumeSession.mockResolvedValue(true);
         mockIsAvailable.mockResolvedValue({ available: true });
         mockSendMessage.mockResolvedValue({
             success: true,
@@ -1607,7 +1616,7 @@ describe('session tracking and conversation turns', () => {
             .rejects.toThrow('no SDK session');
     });
 
-    it('should report session expired when sdkSessionId is not in kept-alive map', async () => {
+    it('should report session expired when SDK cannot resume the persisted session', async () => {
         const process: AIProcess = {
             id: 'proc-expired-session',
             type: 'clarification',
@@ -1616,13 +1625,37 @@ describe('session tracking and conversation turns', () => {
             status: 'completed',
             startTime: new Date(),
             sdkSessionId: 'sess-missing-after-restart',
+            workingDirectory: '/workspace/repo',
         };
         await store.addProcess(process);
 
-        mockHasKeptAliveSession.mockImplementationOnce(() => false);
+        mockCanResumeSession.mockResolvedValueOnce(false);
 
         const executor = new CLITaskExecutor(store);
         await expect(executor.isSessionAlive('proc-expired-session')).resolves.toBe(false);
+        expect(mockCanResumeSession).toHaveBeenCalledWith('sess-missing-after-restart', expect.objectContaining({
+            workingDirectory: '/workspace/repo',
+            onPermissionRequest: expect.any(Function),
+        }));
+    });
+
+    it('should treat persisted session as alive when SDK can resume it', async () => {
+        const process: AIProcess = {
+            id: 'proc-resumable-session',
+            type: 'clarification',
+            promptPreview: 'test',
+            fullPrompt: 'test',
+            status: 'completed',
+            startTime: new Date(),
+            sdkSessionId: 'sess-resumable',
+            workingDirectory: '/workspace/repo',
+        };
+        await store.addProcess(process);
+
+        mockCanResumeSession.mockResolvedValueOnce(true);
+
+        const executor = new CLITaskExecutor(store);
+        await expect(executor.isSessionAlive('proc-resumable-session')).resolves.toBe(true);
     });
 });
 
@@ -1638,6 +1671,8 @@ describe('conversation history persistence during streaming', () => {
         mockSendMessage.mockReset();
         mockIsAvailable.mockReset();
         mockSendFollowUp.mockReset();
+        mockCanResumeSession.mockReset();
+        mockCanResumeSession.mockResolvedValue(true);
         mockIsAvailable.mockResolvedValue({ available: true });
     });
 
@@ -2721,6 +2756,8 @@ describe('tool event emission via onToolEvent', () => {
         mockSendMessage.mockReset();
         mockIsAvailable.mockReset();
         mockSendFollowUp.mockReset();
+        mockCanResumeSession.mockReset();
+        mockCanResumeSession.mockResolvedValue(true);
         mockIsAvailable.mockResolvedValue({ available: true });
     });
 
@@ -3020,6 +3057,8 @@ describe('conversation persistence mid-stream', () => {
         mockSendMessage.mockReset();
         mockIsAvailable.mockReset();
         mockSendFollowUp.mockReset();
+        mockCanResumeSession.mockReset();
+        mockCanResumeSession.mockResolvedValue(true);
         mockIsAvailable.mockResolvedValue({ available: true });
     });
 
@@ -3091,6 +3130,8 @@ describe('timeline population during execution', () => {
         mockSendMessage.mockReset();
         mockIsAvailable.mockReset();
         mockSendFollowUp.mockReset();
+        mockCanResumeSession.mockReset();
+        mockCanResumeSession.mockResolvedValue(true);
         mockIsAvailable.mockResolvedValue({ available: true });
     });
 

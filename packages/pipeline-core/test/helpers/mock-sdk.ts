@@ -40,6 +40,7 @@ export interface MockSDKModule {
     capturedOptions: any[];
     mockClient: {
         createSession: ReturnType<typeof vi.fn>;
+        resumeSession: ReturnType<typeof vi.fn>;
         stop: ReturnType<typeof vi.fn>;
     };
 }
@@ -128,6 +129,7 @@ export function createMockSDKModule(sessionOrFactory?: any): MockSDKModule {
             : typeof sessionOrFactory === 'function'
                 ? vi.fn().mockImplementation(() => Promise.resolve(sessionOrFactory()))
                 : vi.fn().mockResolvedValue(sessionOrFactory),
+        resumeSession: vi.fn().mockRejectedValue(new Error('Session not found')),
         stop: vi.fn().mockResolvedValue(undefined),
     };
 
@@ -162,6 +164,7 @@ export function createStreamingMockSDKModule(
             const s = createSession();
             return Promise.resolve(s.session);
         }),
+        resumeSession: vi.fn().mockRejectedValue(new Error('Session not found')),
         stop: vi.fn().mockResolvedValue(undefined),
     };
 

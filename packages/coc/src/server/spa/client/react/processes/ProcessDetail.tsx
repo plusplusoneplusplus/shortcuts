@@ -8,6 +8,7 @@ import { useApp } from '../context/AppContext';
 import { fetchApi } from '../hooks/useApi';
 import { Badge, Spinner } from '../shared';
 import { ConversationTurnBubble } from './ConversationTurnBubble';
+import { ConversationMetadataPopover } from './ConversationMetadataPopover';
 import { formatDuration, statusIcon, statusLabel } from '../utils/format';
 import type { ClientConversationTurn } from '../types/dashboard';
 
@@ -56,6 +57,7 @@ export function ProcessDetail() {
     const { selectedId, conversationCache, processes } = state;
     const [loading, setLoading] = useState(false);
     const [turns, setTurns] = useState<ClientConversationTurn[]>([]);
+    const [processDetails, setProcessDetails] = useState<any>(null);
     const eventSourceRef = useRef<EventSource | null>(null);
     const [now, setNow] = useState(Date.now());
 
@@ -70,27 +72,46 @@ export function ProcessDetail() {
 
     // Fetch or load conversation on selectedId change
     useEffect(() => {
+        let cancelled = false;
         if (!selectedId) {
             setTurns([]);
+            setProcessDetails(null);
             return;
         }
+
+        const fetchProcess = (showSpinner: boolean) => {
+            if (showSpinner) setLoading(true);
+            fetchApi(`/processes/${encodeURIComponent(selectedId)}`)
+                .then((data: any) => {
+                    if (cancelled) return;
+                    setProcessDetails(data?.process || null);
+                    const t = getConversationTurns(data);
+                    dispatch({ type: 'CACHE_CONVERSATION', processId: selectedId, turns: t });
+                    setTurns(t);
+                })
+                .catch(() => {
+                    if (cancelled) return;
+                    setTurns([]);
+                })
+                .finally(() => {
+                    if (!cancelled && showSpinner) setLoading(false);
+                });
+        };
 
         // Check cache
         const cached = conversationCache[selectedId];
         if (cached && (Date.now() - cached.cachedAt < CACHE_TTL_MS)) {
             setTurns(cached.turns);
             setLoading(false);
+            // Keep metadata fresh even when turn cache is warm.
+            fetchProcess(false);
         } else {
-            setLoading(true);
-            fetchApi(`/processes/${encodeURIComponent(selectedId)}`)
-                .then((data: any) => {
-                    const t = getConversationTurns(data);
-                    dispatch({ type: 'CACHE_CONVERSATION', processId: selectedId, turns: t });
-                    setTurns(t);
-                })
-                .catch(() => setTurns([]))
-                .finally(() => setLoading(false));
+            fetchProcess(true);
         }
+
+        return () => {
+            cancelled = true;
+        };
     }, [selectedId, dispatch]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // SSE streaming for running processes
@@ -138,18 +159,22 @@ export function ProcessDetail() {
         : process.duration != null
             ? formatDuration(process.duration)
             : '';
+    const metadataProcess = processDetails || process;
 
     return (
         <div className="flex-1 overflow-y-auto p-4">
             {/* Header */}
             <div className="mb-4 pb-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
-                <div className="flex items-center gap-2 mb-2">
-                    <Badge status={process.status}>
-                        {statusIcon(process.status)} {statusLabel(process.status)}
-                    </Badge>
-                    {duration && (
-                        <span className="text-xs text-[#848484]">{duration}</span>
-                    )}
+                <div className="flex items-center justify-between gap-3 mb-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                        <Badge status={process.status}>
+                            {statusIcon(process.status)} {statusLabel(process.status)}
+                        </Badge>
+                        {duration && (
+                            <span className="text-xs text-[#848484]">{duration}</span>
+                        )}
+                    </div>
+                    <ConversationMetadataPopover process={metadataProcess} turnsCount={turns.length} />
                 </div>
                 <div className="text-sm text-[#1e1e1e] dark:text-[#cccccc] break-words">
                     {process.fullPrompt || process.promptPreview || process.id}
