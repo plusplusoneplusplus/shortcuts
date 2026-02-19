@@ -1,6 +1,7 @@
 /**
  * ConversationTurnBubble — role-aware chat bubble for conversation turns.
  */
+import { useMemo, useState } from 'react';
 import { cn } from '../shared';
 import type { ClientConversationTurn } from '../types/dashboard';
 import { MarkdownView } from './MarkdownView';
@@ -199,6 +200,8 @@ function buildAssistantRender(turn: ClientConversationTurn): {
     chunks: RenderChunk[];
     toolById: Map<string, RenderToolCall>;
     toolDepthById: Map<string, number>;
+    toolParentById: Map<string, string>;
+    toolsWithChildren: Set<string>;
 } {
     const chunks: RenderChunk[] = [];
     const timeline = Array.isArray(turn.timeline) ? turn.timeline : [];
@@ -248,6 +251,16 @@ function buildAssistantRender(turn: ClientConversationTurn): {
     const inferredById = new Map<string, RenderToolCall>();
     inferred.forEach((call) => inferredById.set(call.id, call));
     const toolDepthById = buildToolDepthMap(inferred);
+    const toolParentById = new Map<string, string>();
+    const toolsWithChildren = new Set<string>();
+
+    for (const call of inferred) {
+        const parentId = call.parentToolCallId;
+        if (parentId && parentId !== call.id && inferredById.has(parentId)) {
+            toolParentById.set(call.id, parentId);
+            toolsWithChildren.add(parentId);
+        }
+    }
 
     if (!hasContent) {
         const fallbackHtml = toContentHtml(turn.content || '');
@@ -262,13 +275,26 @@ function buildAssistantRender(turn: ClientConversationTurn): {
         }
     }
 
-    return { chunks, toolById: inferredById, toolDepthById };
+    return { chunks, toolById: inferredById, toolDepthById, toolParentById, toolsWithChildren };
 }
 
 export function ConversationTurnBubble({ turn }: ConversationTurnBubbleProps) {
     const isUser = turn.role === 'user';
     const assistantRender = !isUser ? buildAssistantRender(turn) : null;
     const userContentHtml = isUser ? toContentHtml(turn.content || '') : '';
+    const [collapsedTaskIds, setCollapsedTaskIds] = useState<Record<string, boolean>>({});
+
+    const isToolHiddenByCollapsedTask = useMemo(() => {
+        if (!assistantRender) return (_toolId: string) => false;
+        return (toolId: string): boolean => {
+            let current = assistantRender.toolParentById.get(toolId);
+            while (current) {
+                if (collapsedTaskIds[current]) return true;
+                current = assistantRender.toolParentById.get(current);
+            }
+            return false;
+        };
+    }, [assistantRender, collapsedTaskIds]);
 
     return (
         <div className={cn('flex', isUser ? 'justify-end' : 'justify-start')}>
@@ -306,8 +332,25 @@ export function ConversationTurnBubble({ turn }: ConversationTurnBubbleProps) {
                         if (chunk.kind === 'tool' && chunk.toolId) {
                             const toolCall = assistantRender.toolById.get(chunk.toolId);
                             if (!toolCall) return null;
+                            if (isToolHiddenByCollapsedTask(toolCall.id)) return null;
                             const depth = assistantRender.toolDepthById.get(chunk.toolId) || 0;
-                            return <ToolCallView key={chunk.key} toolCall={toolCall} depth={depth} />;
+                            const hasSubtools = toolCall.toolName === 'task' && assistantRender.toolsWithChildren.has(toolCall.id);
+
+                            return (
+                                <ToolCallView
+                                    key={chunk.key}
+                                    toolCall={toolCall}
+                                    depth={depth}
+                                    hasSubtools={hasSubtools}
+                                    subtoolsCollapsed={!!collapsedTaskIds[toolCall.id]}
+                                    onToggleSubtools={() =>
+                                        setCollapsedTaskIds((prev) => ({
+                                            ...prev,
+                                            [toolCall.id]: !prev[toolCall.id],
+                                        }))
+                                    }
+                                />
+                            );
                         }
                         return null;
                     })}

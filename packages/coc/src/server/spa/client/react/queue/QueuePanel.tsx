@@ -26,6 +26,22 @@ export function QueuePanel() {
         return () => clearInterval(timer);
     }, [hasActive]);
 
+    const openTaskInRoute = (task: any) => {
+        const processId = typeof task?.processId === 'string' && task.processId
+            ? task.processId
+            : `queue_${task.id}`;
+        const nextHash = '#process/' + encodeURIComponent(processId);
+
+        if (location.hash !== nextHash) {
+            location.hash = nextHash;
+            return;
+        }
+
+        // Hash won't emit change when unchanged; update local state directly.
+        dispatch({ type: 'SELECT_QUEUE_TASK', id: task.id });
+        appDispatch({ type: 'SELECT_PROCESS', id: null });
+    };
+
     return (
         <div className="flex flex-col gap-3 min-h-0">
             {/* Drain banner */}
@@ -54,10 +70,7 @@ export function QueuePanel() {
                                 task={task}
                                 now={now}
                                 selected={state.selectedTaskId === task.id}
-                                onClick={() => {
-                                    dispatch({ type: 'SELECT_QUEUE_TASK', id: task.id });
-                                    appDispatch({ type: 'SELECT_PROCESS', id: null });
-                                }}
+                                onClick={() => openTaskInRoute(task)}
                             />
                         ))}
                     </div>
@@ -74,10 +87,7 @@ export function QueuePanel() {
                                 task={task}
                                 now={now}
                                 selected={state.selectedTaskId === task.id}
-                                onClick={() => {
-                                    dispatch({ type: 'SELECT_QUEUE_TASK', id: task.id });
-                                    appDispatch({ type: 'SELECT_PROCESS', id: null });
-                                }}
+                                onClick={() => openTaskInRoute(task)}
                             />
                         ))}
                     </div>
@@ -111,10 +121,7 @@ export function QueuePanel() {
                                 task={task}
                                 now={now}
                                 selected={state.selectedTaskId === task.id}
-                                onClick={() => {
-                                    dispatch({ type: 'SELECT_QUEUE_TASK', id: task.id });
-                                    appDispatch({ type: 'SELECT_PROCESS', id: null });
-                                }}
+                                onClick={() => openTaskInRoute(task)}
                             />
                         ))}
                     </div>

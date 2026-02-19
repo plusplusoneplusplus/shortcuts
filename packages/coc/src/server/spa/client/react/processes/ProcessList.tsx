@@ -78,8 +78,14 @@ export function ProcessList() {
                     <Card
                         key={p.id}
                         onClick={() => {
-                            dispatch({ type: 'SELECT_PROCESS', id: p.id });
-                            queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null });
+                            const nextHash = '#process/' + encodeURIComponent(p.id);
+                            if (location.hash !== nextHash) {
+                                location.hash = nextHash;
+                            } else {
+                                // Hash won't emit change when unchanged; update local state directly.
+                                dispatch({ type: 'SELECT_PROCESS', id: p.id });
+                                queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null });
+                            }
                         }}
                         className={cn(
                             'p-2.5',

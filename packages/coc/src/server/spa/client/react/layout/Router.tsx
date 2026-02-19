@@ -5,6 +5,7 @@
 
 import { useEffect, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
+import { useQueue } from '../context/QueueContext';
 import { ProcessesView } from '../processes/ProcessesView';
 import { QueueView } from '../queue/QueueView';
 import { ReposView } from '../repos';
@@ -26,10 +27,26 @@ export function tabFromHash(hash: string): DashboardTab | null {
     return null;
 }
 
+export function parseProcessDeepLink(hash: string): string | null {
+    const cleaned = hash.replace(/^#/, '');
+    const parts = cleaned.split('/');
+    const root = parts[0];
+
+    if ((root === 'process' || root === 'session') && parts[1]) {
+        return decodeURIComponent(parts[1]);
+    }
+    if (root === 'processes' && parts[1]) {
+        return decodeURIComponent(parts[1]);
+    }
+
+    return null;
+}
+
 export const VALID_REPO_SUB_TABS: Set<string> = new Set(['info', 'pipelines', 'tasks', 'queue', 'schedules']);
 
 export function Router() {
     const { state, dispatch } = useApp();
+    const { dispatch: queueDispatch } = useQueue();
 
     const switchTab = useCallback((tab: string) => {
         dispatch({ type: 'SET_ACTIVE_TAB', tab: tab as DashboardTab });
@@ -47,6 +64,24 @@ export function Router() {
             const hash = location.hash.replace(/^#/, '');
             const tab = tabFromHash('#' + hash);
             if (tab) dispatch({ type: 'SET_ACTIVE_TAB', tab });
+
+            // Parse process deep links: #process/:id, #session/:id, #processes/:id
+            if (tab === 'processes') {
+                const processId = parseProcessDeepLink('#' + hash);
+                if (processId) {
+                    if (processId.startsWith('queue_')) {
+                        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: processId.substring('queue_'.length) });
+                        dispatch({ type: 'SELECT_PROCESS', id: null });
+                    } else {
+                        dispatch({ type: 'SELECT_PROCESS', id: processId });
+                        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null });
+                    }
+                } else {
+                    // Plain #processes means no detail selection.
+                    dispatch({ type: 'SELECT_PROCESS', id: null });
+                    queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null });
+                }
+            }
 
             // Parse repo deep links: #repos/:id or #repos/:id/:subTab
             if (tab === 'repos') {
@@ -76,7 +111,7 @@ export function Router() {
         handleHash();
         window.addEventListener('hashchange', handleHash);
         return () => window.removeEventListener('hashchange', handleHash);
-    }, [dispatch]);
+    }, [dispatch, queueDispatch]);
 
     switch (state.activeTab) {
         case 'processes':

@@ -23,6 +23,9 @@ interface ToolCallData {
 interface ToolCallProps {
     toolCall: ToolCallData;
     depth?: number;
+    hasSubtools?: boolean;
+    subtoolsCollapsed?: boolean;
+    onToggleSubtools?: () => void;
 }
 
 const MAX_RESULT_LENGTH = 5000;
@@ -150,7 +153,13 @@ function statusIndicator(status?: string) {
     }
 }
 
-export function ToolCallView({ toolCall, depth = 0 }: ToolCallProps) {
+export function ToolCallView({
+    toolCall,
+    depth = 0,
+    hasSubtools = false,
+    subtoolsCollapsed = false,
+    onToggleSubtools,
+}: ToolCallProps) {
     const [expanded, setExpanded] = useState(false);
     if (depth > 20) return null;
 
@@ -194,6 +203,20 @@ export function ToolCallView({ toolCall, depth = 0 }: ToolCallProps) {
                 onClick={() => hasDetails && setExpanded(!expanded)}
             >
                 <span>{statusIndicator(toolCall.status)}</span>
+                {hasSubtools && (
+                    <button
+                        type="button"
+                        className="text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]"
+                        aria-label={subtoolsCollapsed ? 'Expand subtools' : 'Collapse subtools'}
+                        title={subtoolsCollapsed ? 'Expand subtools' : 'Collapse subtools'}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onToggleSubtools?.();
+                        }}
+                    >
+                        {subtoolsCollapsed ? '▶' : '▼'}
+                    </button>
+                )}
                 <span className="font-medium text-[#0078d4] dark:text-[#3794ff]">{name}</span>
                 {summary && (
                     <span className="text-[#848484] truncate min-w-0" title={summary}>

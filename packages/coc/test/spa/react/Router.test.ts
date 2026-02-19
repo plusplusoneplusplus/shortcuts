@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { tabFromHash, VALID_REPO_SUB_TABS } from '../../../src/server/spa/client/react/layout/Router';
+import { tabFromHash, VALID_REPO_SUB_TABS, parseProcessDeepLink } from '../../../src/server/spa/client/react/layout/Router';
 
 // ─── tabFromHash ─────────────────────────────────────────────────
 
@@ -179,5 +179,31 @@ describe('repo sub-tab deep-link parsing', () => {
         const result = parseRepoDeepLink('#processes');
         expect(result.repoId).toBeNull();
         expect(result.subTab).toBeNull();
+    });
+});
+
+describe('process deep-link parsing', () => {
+    it('parses #process/:id', () => {
+        expect(parseProcessDeepLink('#process/proc-1')).toBe('proc-1');
+    });
+
+    it('parses #session/:id', () => {
+        expect(parseProcessDeepLink('#session/proc-2')).toBe('proc-2');
+    });
+
+    it('parses #processes/:id', () => {
+        expect(parseProcessDeepLink('#processes/proc-3')).toBe('proc-3');
+    });
+
+    it('handles URL-encoded process ids', () => {
+        expect(parseProcessDeepLink('#process/queue_task%2F1')).toBe('queue_task/1');
+    });
+
+    it('returns null when process id missing', () => {
+        expect(parseProcessDeepLink('#process')).toBeNull();
+    });
+
+    it('returns null for unrelated hashes', () => {
+        expect(parseProcessDeepLink('#repos/my-repo')).toBeNull();
     });
 });

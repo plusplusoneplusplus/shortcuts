@@ -4,10 +4,10 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
-import type { ReactNode } from 'react';
-import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
-import { QueueProvider } from '../../../src/server/spa/client/react/context/QueueContext';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { useEffect, type ReactNode } from 'react';
+import { AppProvider, useApp } from '../../../src/server/spa/client/react/context/AppContext';
+import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/context/QueueContext';
 import { ProcessFilters } from '../../../src/server/spa/client/react/processes/ProcessFilters';
 import { ProcessList } from '../../../src/server/spa/client/react/processes/ProcessList';
 import { ProcessDetail } from '../../../src/server/spa/client/react/processes/ProcessDetail';
@@ -17,9 +17,36 @@ import { ToolCallView } from '../../../src/server/spa/client/react/processes/Too
 import { MarkdownView } from '../../../src/server/spa/client/react/processes/MarkdownView';
 import { QueuePanel } from '../../../src/server/spa/client/react/queue/QueuePanel';
 import { QueueView } from '../../../src/server/spa/client/react/queue/QueueView';
+import { QueueTaskDetail } from '../../../src/server/spa/client/react/queue/QueueTaskDetail';
 
 function Wrap({ children }: { children: ReactNode }) {
     return <AppProvider><QueueProvider>{children}</QueueProvider></AppProvider>;
+}
+
+function SeededProcessList({ processes }: { processes: any[] }) {
+    const { dispatch } = useApp();
+    useEffect(() => {
+        dispatch({ type: 'SET_PROCESSES', processes });
+    }, [dispatch, processes]);
+    return <ProcessList />;
+}
+
+function SeededQueuePanel({ historyItem }: { historyItem: any }) {
+    const { dispatch } = useQueue();
+    useEffect(() => {
+        dispatch({ type: 'SET_HISTORY', history: [historyItem] });
+        dispatch({ type: 'TOGGLE_HISTORY' });
+    }, [dispatch, historyItem]);
+    return <QueuePanel />;
+}
+
+function SeededQueueTaskDetail({ task }: { task: any }) {
+    const { dispatch } = useQueue();
+    useEffect(() => {
+        dispatch({ type: 'SET_HISTORY', history: [task] });
+        dispatch({ type: 'SELECT_QUEUE_TASK', id: task.id });
+    }, [dispatch, task]);
+    return <QueueTaskDetail />;
 }
 
 describe('ProcessFilters', () => {
@@ -38,6 +65,23 @@ describe('ProcessList', () => {
     it('shows empty state when no processes', () => {
         render(<Wrap><ProcessList /></Wrap>);
         expect(screen.getByText('No processes found')).toBeDefined();
+    });
+
+    it('updates hash route when selecting a process', async () => {
+        window.location.hash = '#processes';
+        render(
+            <Wrap>
+                <SeededProcessList
+                    processes={[
+                        { id: 'proc-route-1', status: 'completed', promptPreview: 'Route me to process detail' },
+                    ]}
+                />
+            </Wrap>
+        );
+
+        const processCardText = await screen.findByText('Route me to process detail');
+        fireEvent.click(processCardText);
+        expect(window.location.hash).toBe('#process/proc-route-1');
     });
 });
 
@@ -184,6 +228,51 @@ describe('ConversationTurnBubble', () => {
 
         expect(taskCard.style.marginLeft || '0px').toBe('0px');
         expect(viewCard.style.marginLeft).toBe('12px');
+    });
+
+    it('supports collapsing and expanding subtools under task tool', () => {
+        render(
+            <Wrap>
+                <ConversationTurnBubble
+                    turn={{
+                        role: 'assistant',
+                        content: '',
+                        timeline: [
+                            {
+                                type: 'tool-start',
+                                timestamp: '2026-02-19T00:00:00.000Z',
+                                toolCall: {
+                                    id: 'task-collapse',
+                                    toolName: 'task',
+                                    args: { agent_type: 'explore', description: 'Explore websocket.ts SPA client' },
+                                    startTime: '2026-02-19T00:00:00.000Z',
+                                    endTime: '2026-02-19T00:00:10.000Z',
+                                    status: 'completed',
+                                },
+                            },
+                            {
+                                type: 'tool-start',
+                                timestamp: '2026-02-19T00:00:01.000Z',
+                                toolCall: {
+                                    id: 'view-collapse',
+                                    toolName: 'view',
+                                    args: { path: '/Users/test/Documents/Projects/shortcuts/packages/coc/src/server/spa/client/websocket.ts' },
+                                    startTime: '2026-02-19T00:00:01.000Z',
+                                    endTime: '2026-02-19T00:00:02.000Z',
+                                    status: 'completed',
+                                },
+                            },
+                        ],
+                    }}
+                />
+            </Wrap>
+        );
+
+        expect(screen.getByText('view')).toBeDefined();
+        fireEvent.click(screen.getByRole('button', { name: 'Collapse subtools' }));
+        expect(screen.queryByText('view')).toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: 'Expand subtools' }));
+        expect(screen.getByText('view')).toBeDefined();
     });
 });
 
@@ -334,6 +423,195 @@ describe('QueuePanel', () => {
     it('renders history toggle', () => {
         render(<Wrap><QueuePanel /></Wrap>);
         expect(screen.getByText(/History/)).toBeDefined();
+    });
+
+    it('updates hash route when selecting a history task', async () => {
+        window.location.hash = '#processes';
+        render(
+            <Wrap>
+                <SeededQueuePanel
+                    historyItem={{
+                        id: 'task-route-1',
+                        status: 'completed',
+                        type: 'ai-clarification',
+                        prompt: 'History route test',
+                    }}
+                />
+            </Wrap>
+        );
+
+        const taskCardText = await screen.findByText('History route test');
+        fireEvent.click(taskCardText);
+        expect(window.location.hash).toBe('#process/queue_task-route-1');
+    });
+});
+
+describe('QueueTaskDetail follow-up input', () => {
+    beforeEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('renders a follow-up input and sends a message', async () => {
+        const processId = 'queue_task-follow-1';
+        let conversationFetchCount = 0;
+        const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            const method = init?.method || 'GET';
+
+            if (url.endsWith(`/api/processes/${processId}`) && method === 'GET') {
+                conversationFetchCount += 1;
+                if (conversationFetchCount === 1) {
+                    return Promise.resolve({
+                        ok: true,
+                        status: 200,
+                        json: async () => ({
+                            process: {
+                                id: processId,
+                                status: 'completed',
+                                conversationTurns: [
+                                    { role: 'user', content: 'First question', timeline: [] },
+                                    { role: 'assistant', content: 'First answer', timeline: [] },
+                                ],
+                            },
+                        }),
+                    });
+                }
+
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: async () => ({
+                        process: {
+                            id: processId,
+                            status: 'completed',
+                            conversationTurns: [
+                                { role: 'user', content: 'First question', timeline: [] },
+                                { role: 'assistant', content: 'First answer', timeline: [] },
+                                { role: 'user', content: 'Follow-up question', timeline: [] },
+                                { role: 'assistant', content: 'Follow-up answer', timeline: [] },
+                            ],
+                        },
+                    }),
+                });
+            }
+
+            if (url.endsWith(`/api/processes/${processId}/message`) && method === 'POST') {
+                return Promise.resolve({
+                    ok: true,
+                    status: 202,
+                    json: async () => ({ processId, turnIndex: 2 }),
+                });
+            }
+
+            return Promise.resolve({
+                ok: false,
+                status: 404,
+                json: async () => ({ error: 'not found' }),
+            });
+        });
+
+        (global as any).fetch = fetchMock;
+        (global as any).EventSource = undefined;
+
+        render(
+            <Wrap>
+                <SeededQueueTaskDetail
+                    task={{
+                        id: 'task-follow-1',
+                        processId,
+                        status: 'completed',
+                        type: 'ai-clarification',
+                        prompt: 'First question',
+                    }}
+                />
+            </Wrap>
+        );
+
+        await screen.findByText('First answer');
+
+        const input = screen.getByPlaceholderText('Continue this conversation...');
+        fireEvent.change(input, { target: { value: 'Follow-up question' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+        await waitFor(() => {
+            expect(fetchMock).toHaveBeenCalledWith(
+                expect.stringContaining(`/api/processes/${processId}/message`),
+                expect.objectContaining({ method: 'POST' })
+            );
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('Follow-up answer')).toBeDefined();
+        });
+    });
+
+    it('disables input when follow-up session expires', async () => {
+        const processId = 'queue_task-expired-1';
+        const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            const method = init?.method || 'GET';
+
+            if (url.endsWith(`/api/processes/${processId}`) && method === 'GET') {
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: async () => ({
+                        process: {
+                            id: processId,
+                            status: 'completed',
+                            conversationTurns: [
+                                { role: 'user', content: 'Start', timeline: [] },
+                                { role: 'assistant', content: 'Done', timeline: [] },
+                            ],
+                        },
+                    }),
+                });
+            }
+
+            if (url.endsWith(`/api/processes/${processId}/message`) && method === 'POST') {
+                return Promise.resolve({
+                    ok: false,
+                    status: 410,
+                    json: async () => ({ error: 'session_expired' }),
+                });
+            }
+
+            return Promise.resolve({
+                ok: false,
+                status: 404,
+                json: async () => ({ error: 'not found' }),
+            });
+        });
+
+        (global as any).fetch = fetchMock;
+        (global as any).EventSource = undefined;
+
+        render(
+            <Wrap>
+                <SeededQueueTaskDetail
+                    task={{
+                        id: 'task-expired-1',
+                        processId,
+                        status: 'completed',
+                        type: 'ai-clarification',
+                        prompt: 'Start',
+                    }}
+                />
+            </Wrap>
+        );
+
+        await screen.findByText('Done');
+
+        const input = screen.getByPlaceholderText('Continue this conversation...');
+        fireEvent.change(input, { target: { value: 'Need more' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+        await waitFor(() => {
+            expect(screen.getByText('Session expired. Start a new task to continue.')).toBeDefined();
+        });
+
+        expect((screen.getByRole('button', { name: 'Send' }) as HTMLButtonElement).disabled).toBe(true);
+        expect((screen.getByPlaceholderText('Session expired. Start a new task to continue.') as HTMLTextAreaElement).disabled).toBe(true);
     });
 });
 

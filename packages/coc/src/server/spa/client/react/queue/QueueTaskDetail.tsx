@@ -16,6 +16,17 @@ import type { ClientConversationTurn } from '../types/dashboard';
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
 
+function getInputPlaceholder(status: string | undefined, isStreaming: boolean, sessionExpired: boolean): string {
+    if (sessionExpired) return 'Session expired. Start a new task to continue.';
+    if (isStreaming) return 'Waiting for response...';
+    if (status === 'completed') return 'Continue this conversation...';
+    if (status === 'queued') return 'Follow-ups available once task starts...';
+    if (status === 'failed') return 'Retry or ask a follow-up...';
+    if (status === 'running') return 'Waiting for response...';
+    if (status === 'cancelled') return 'Task was cancelled';
+    return 'Send a message...';
+}
+
 function getConversationTurns(data: any): ClientConversationTurn[] {
     const process = data?.process;
     if (process?.conversationTurns && Array.isArray(process.conversationTurns) && process.conversationTurns.length > 0) {
@@ -60,12 +71,169 @@ export function QueueTaskDetail() {
     const { selectedTaskId } = queueState;
     const [loading, setLoading] = useState(false);
     const [turns, setTurns] = useState<ClientConversationTurn[]>([]);
+    const turnsRef = useRef<ClientConversationTurn[]>([]);
     const [task, setTask] = useState<any>(null);
     const [fullTask, setFullTask] = useState<any>(null);
     const eventSourceRef = useRef<EventSource | null>(null);
+    const followUpEventSourceRef = useRef<EventSource | null>(null);
+    const [followUpInput, setFollowUpInput] = useState('');
+    const [followUpSending, setFollowUpSending] = useState(false);
+    const [followUpError, setFollowUpError] = useState<string | null>(null);
+    const [followUpSessionExpired, setFollowUpSessionExpired] = useState(false);
 
     const isPending = task?.status === 'queued';
     const selectedProcessId = task?.processId || (selectedTaskId ? `queue_${selectedTaskId}` : null);
+    const followUpInputDisabled = isPending || task?.status === 'cancelled' || followUpSending || followUpSessionExpired;
+    const followUpPlaceholder = getInputPlaceholder(task?.status, followUpSending, followUpSessionExpired);
+
+    const closeFollowUpStream = () => {
+        if (followUpEventSourceRef.current) {
+            followUpEventSourceRef.current.close();
+            followUpEventSourceRef.current = null;
+        }
+    };
+
+    const setTurnsAndCache = (nextTurns: ClientConversationTurn[] | ((prev: ClientConversationTurn[]) => ClientConversationTurn[])) => {
+        const prev = turnsRef.current;
+        const resolved = typeof nextTurns === 'function'
+            ? (nextTurns as (value: ClientConversationTurn[]) => ClientConversationTurn[])(prev)
+            : nextTurns;
+        turnsRef.current = resolved;
+        setTurns(resolved);
+        if (selectedTaskId) {
+            appDispatch({ type: 'CACHE_CONVERSATION', processId: selectedTaskId, turns: resolved });
+        }
+    };
+
+    const refreshConversation = async () => {
+        if (!selectedTaskId || !selectedProcessId) return;
+        try {
+            const data = await fetchApi(`/processes/${encodeURIComponent(selectedProcessId)}`);
+            const refreshedTurns = getConversationTurns(data);
+            appDispatch({ type: 'CACHE_CONVERSATION', processId: selectedTaskId, turns: refreshedTurns });
+            setTurns(refreshedTurns);
+        } catch {
+            // Keep currently rendered turns if refresh fails.
+        }
+    };
+
+    const removeStreamingAssistantPlaceholder = () => {
+        setTurnsAndCache((prev) => {
+            if (prev.length === 0) return prev;
+            const last = prev[prev.length - 1];
+            if (last.role === 'assistant' && last.streaming) {
+                return prev.slice(0, -1);
+            }
+            return prev;
+        });
+    };
+
+    const waitForFollowUpCompletion = async (processId: string) => {
+        if (typeof EventSource === 'undefined') {
+            await refreshConversation();
+            return;
+        }
+
+        closeFollowUpStream();
+
+        await new Promise<void>((resolve) => {
+            const es = new EventSource(`/api/processes/${encodeURIComponent(processId)}/stream`);
+            followUpEventSourceRef.current = es;
+            let finished = false;
+
+            const finish = () => {
+                if (finished) return;
+                finished = true;
+                es.close();
+                if (followUpEventSourceRef.current === es) {
+                    followUpEventSourceRef.current = null;
+                }
+                void refreshConversation().finally(() => resolve());
+            };
+
+            const timeoutId = setTimeout(() => finish(), 90_000);
+            const finishAndClearTimeout = () => {
+                clearTimeout(timeoutId);
+                finish();
+            };
+
+            es.addEventListener('done', () => finishAndClearTimeout());
+            es.addEventListener('status', (event: Event) => {
+                try {
+                    const status = JSON.parse((event as MessageEvent).data || '{}')?.status;
+                    if (status && status !== 'running' && status !== 'queued') {
+                        finishAndClearTimeout();
+                    }
+                } catch {
+                    // Ignore malformed status events.
+                }
+            });
+            es.onerror = () => finishAndClearTimeout();
+        });
+    };
+
+    const sendFollowUp = async () => {
+        const content = followUpInput.trim();
+        if (!content || !selectedProcessId || followUpInputDisabled) return;
+
+        setFollowUpInput('');
+        setFollowUpError(null);
+        setFollowUpSending(true);
+        queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: true, turnIndex: null });
+
+        const timestamp = new Date().toISOString();
+        setTurnsAndCache((prev) => ([
+            ...prev,
+            {
+                role: 'user',
+                content,
+                timestamp,
+                timeline: [],
+            },
+            {
+                role: 'assistant',
+                content: '',
+                timestamp,
+                streaming: true,
+                timeline: [],
+            },
+        ]));
+
+        try {
+            const response = await fetch(`${getApiBase()}/processes/${encodeURIComponent(selectedProcessId)}/message`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content }),
+            });
+
+            if (response.status === 410) {
+                setFollowUpSessionExpired(true);
+                setFollowUpError('Session expired. Start a new task to continue.');
+                removeStreamingAssistantPlaceholder();
+                return;
+            }
+
+            if (!response.ok) {
+                const body = await response.json().catch(() => null);
+                setFollowUpError(body?.error || body?.message || `Failed to send message (${response.status})`);
+                removeStreamingAssistantPlaceholder();
+                return;
+            }
+
+            await waitForFollowUpCompletion(selectedProcessId);
+        } catch (error: any) {
+            setFollowUpError(error?.message || 'Failed to send follow-up message.');
+            removeStreamingAssistantPlaceholder();
+        } finally {
+            setFollowUpSending(false);
+            queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
+        }
+    };
+
+    // Keep a ref for side-effect-safe optimistic updates.
+    useEffect(() => {
+        turnsRef.current = turns;
+    }, [turns]);
 
     // Determine task object from queue state
     useEffect(() => {
@@ -105,6 +273,17 @@ export function QueueTaskDetail() {
         }
     }, [selectedTaskId, selectedProcessId, isPending, appDispatch]); // eslint-disable-line react-hooks/exhaustive-deps
 
+    // Reset follow-up state when switching tasks.
+    useEffect(() => {
+        setFollowUpInput('');
+        setFollowUpError(null);
+        setFollowUpSending(false);
+        setFollowUpSessionExpired(false);
+        closeFollowUpStream();
+        queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedTaskId]);
+
     // SSE streaming for running tasks
     useEffect(() => {
         if (eventSourceRef.current) {
@@ -137,6 +316,13 @@ export function QueueTaskDetail() {
         };
     }, [selectedTaskId, selectedProcessId, task?.status, appDispatch]);
 
+    useEffect(() => {
+        return () => {
+            closeFollowUpStream();
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     if (!selectedTaskId) return null;
 
     const handleCancel = async () => {
@@ -165,7 +351,13 @@ export function QueueTaskDetail() {
                 <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null })}
+                    onClick={() => {
+                        if (location.hash !== '#processes') {
+                            location.hash = '#processes';
+                        } else {
+                            queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null });
+                        }
+                    }}
                 >
                     ✕
                 </Button>
@@ -179,7 +371,7 @@ export function QueueTaskDetail() {
             )}
 
             {/* Content area */}
-            <div className="flex-1 min-h-0 overflow-y-auto p-4">
+            <div id="queue-task-conversation" className="flex-1 min-h-0 overflow-y-auto p-4">
                 {isPending ? (
                     <PendingTaskInfoPanel task={fullTask || task} onCancel={handleCancel} onMoveToTop={handleMoveToTop} />
                 ) : loading ? (
@@ -196,6 +388,42 @@ export function QueueTaskDetail() {
                     </div>
                 )}
             </div>
+
+            {!isPending && (
+                <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3 space-y-2">
+                    {followUpError && (
+                        <div className="text-xs text-[#f14c4c]">
+                            {followUpError}
+                        </div>
+                    )}
+                    <div className="flex items-end gap-2">
+                        <textarea
+                            id="chat-input"
+                            rows={1}
+                            value={followUpInput}
+                            disabled={followUpInputDisabled}
+                            placeholder={followUpPlaceholder}
+                            className="flex-1 min-h-[34px] max-h-28 resize-y rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] px-2 py-1.5 text-sm text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 focus:ring-[#0078d4]/50 disabled:opacity-60"
+                            onChange={(event) => setFollowUpInput(event.target.value)}
+                            onKeyDown={(event) => {
+                                if (event.key === 'Enter' && !event.shiftKey) {
+                                    event.preventDefault();
+                                    void sendFollowUp();
+                                }
+                            }}
+                        />
+                        <button
+                            id="chat-send-btn"
+                            type="button"
+                            disabled={followUpInputDisabled || !followUpInput.trim()}
+                            className="h-[34px] px-3 rounded bg-[#0078d4] text-white text-sm font-medium hover:bg-[#106ebe] disabled:opacity-50 disabled:cursor-not-allowed"
+                            onClick={() => { void sendFollowUp(); }}
+                        >
+                            {followUpSending ? '...' : 'Send'}
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
