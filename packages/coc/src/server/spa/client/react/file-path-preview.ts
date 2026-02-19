@@ -300,6 +300,14 @@ function initFilePathPreviewDelegation(): void {
         if (!target) return;
         event.preventDefault();
         event.stopPropagation();
+
+        const fullPath = target.getAttribute('data-full-path');
+        if (!fullPath) return;
+
+        hideTooltip();
+        window.dispatchEvent(new CustomEvent('coc-open-markdown-review', {
+            detail: { filePath: fullPath },
+        }));
     });
 }
 

@@ -3,7 +3,7 @@
  * Wraps providers around the layout shell.
  */
 
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useState } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { QueueProvider, useQueue } from './context/QueueContext';
 import { ThemeProvider } from './layout/ThemeProvider';
@@ -12,11 +12,67 @@ import { Router } from './layout/Router';
 import { useWebSocket } from './hooks/useWebSocket';
 import { fetchApi } from './hooks/useApi';
 import { ToastContainer, useToast } from './shared';
+import { MarkdownReviewDialog } from './processes/MarkdownReviewDialog';
+
+interface MarkdownReviewDialogState {
+    open: boolean;
+    wsId: string | null;
+    filePath: string | null;
+    displayPath: string | null;
+    fetchMode: 'tasks' | 'auto';
+}
+
+interface WorkspaceLike {
+    id: string;
+    rootPath?: string;
+}
+
+function normalizePath(pathValue: string): string {
+    return pathValue.replace(/\\/g, '/');
+}
+
+function resolveWorkspaceForPath(filePath: string, workspaces: WorkspaceLike[]): WorkspaceLike | null {
+    const normalizedPath = normalizePath(filePath);
+    let best: WorkspaceLike | null = null;
+
+    for (const ws of workspaces) {
+        if (!ws?.rootPath) continue;
+        const normalizedRoot = normalizePath(ws.rootPath).replace(/\/+$/, '');
+        if (!normalizedRoot) continue;
+
+        if (normalizedPath === normalizedRoot || normalizedPath.startsWith(normalizedRoot + '/')) {
+            if (!best || normalizedRoot.length > normalizePath(best.rootPath || '').length) {
+                best = ws;
+            }
+        }
+    }
+
+    return best;
+}
+
+function toTaskRelativePath(fullPath: string, workspaceRoot: string): string | null {
+    if (!workspaceRoot) return null;
+    const normalizedPath = normalizePath(fullPath);
+    const normalizedRoot = normalizePath(workspaceRoot).replace(/\/+$/, '');
+    const tasksRoot = `${normalizedRoot}/.vscode/tasks`;
+
+    if (normalizedPath === tasksRoot) return '';
+    if (!normalizedPath.startsWith(tasksRoot + '/')) return null;
+
+    return normalizedPath.slice(tasksRoot.length + 1);
+}
 
 function AppInner() {
-    const { dispatch: appDispatch } = useApp();
+    const { state: appState, dispatch: appDispatch } = useApp();
     const { dispatch: queueDispatch } = useQueue();
     const { toasts, removeToast } = useToast();
+    const [reviewDialog, setReviewDialog] = useState<MarkdownReviewDialogState>({
+        open: false,
+        wsId: null,
+        filePath: null,
+        displayPath: null,
+        fetchMode: 'auto',
+    });
 
     const onMessage = useCallback((msg: any) => {
         if (!msg || !msg.type) return;
@@ -106,11 +162,47 @@ function AppInner() {
         bootstrap();
     }, [connect, appDispatch]);
 
+    useEffect(() => {
+        const handleOpenMarkdownReview = (event: Event) => {
+            const detail = (event as CustomEvent<{ filePath?: string }>).detail;
+            const fullPath = typeof detail?.filePath === 'string' ? detail.filePath : '';
+            if (!fullPath) return;
+
+            const matchedWorkspace = resolveWorkspaceForPath(fullPath, appState.workspaces || []);
+            const fallbackWorkspace = appState.workspaces?.[0];
+            const workspace = matchedWorkspace || fallbackWorkspace;
+            if (!workspace?.id) return;
+
+            const taskRelativePath = toTaskRelativePath(fullPath, workspace.rootPath || '');
+
+            setReviewDialog({
+                open: true,
+                wsId: workspace.id,
+                filePath: taskRelativePath ?? fullPath,
+                displayPath: fullPath,
+                fetchMode: taskRelativePath !== null ? 'tasks' : 'auto',
+            });
+        };
+
+        window.addEventListener('coc-open-markdown-review', handleOpenMarkdownReview as EventListener);
+        return () => {
+            window.removeEventListener('coc-open-markdown-review', handleOpenMarkdownReview as EventListener);
+        };
+    }, [appState.workspaces]);
+
     return (
         <>
             <TopBar />
             <Router />
             <ToastContainer toasts={toasts} removeToast={removeToast} />
+            <MarkdownReviewDialog
+                open={reviewDialog.open}
+                onClose={() => setReviewDialog(prev => ({ ...prev, open: false }))}
+                wsId={reviewDialog.wsId}
+                filePath={reviewDialog.filePath}
+                displayPath={reviewDialog.displayPath}
+                fetchMode={reviewDialog.fetchMode}
+            />
         </>
     );
 }

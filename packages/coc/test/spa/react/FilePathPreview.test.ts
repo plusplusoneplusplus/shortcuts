@@ -67,4 +67,32 @@ describe('file-path-preview delegation', () => {
         expect(fetchMock.mock.calls[0]?.[0]).toContain('/api/workspaces');
         expect(fetchMock.mock.calls[1]?.[0]).toContain('/api/workspaces/ws-1/files/preview');
     });
+
+    it('dispatches markdown review open event on click', async () => {
+        const fullPath = '/Users/test/Documents/Projects/shortcuts/.vscode/tasks/sample.md';
+        document.body.innerHTML = `
+            <div>
+                <span class="file-path-link" data-full-path="${fullPath}">sample.md</span>
+            </div>
+        `;
+
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+            ok: true,
+            json: async () => ({ workspaces: [] }),
+        }) as any);
+
+        await import('../../../src/server/spa/client/react/file-path-preview');
+
+        const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+
+        const link = document.querySelector('.file-path-link') as HTMLElement;
+        link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+        expect(dispatchSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: 'coc-open-markdown-review',
+                detail: { filePath: fullPath },
+            })
+        );
+    });
 });

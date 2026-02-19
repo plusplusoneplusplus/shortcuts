@@ -147,3 +147,304 @@
     display: block;
     opacity: 0.5;
 }
+
+/* Markdown review surface (Tasks + Process file review dialog) */
+.markdown-body {
+    line-height: 1.65;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+    user-select: text;
+}
+
+.markdown-body .md-line {
+    margin: 0.15rem 0;
+}
+
+.markdown-body .md-h1,
+.markdown-body .md-h2,
+.markdown-body .md-h3,
+.markdown-body .md-h4,
+.markdown-body .md-h5,
+.markdown-body .md-h6 {
+    display: block;
+    font-weight: 700;
+    color: #1e1e1e;
+    margin-top: 0.35rem;
+}
+
+.dark .markdown-body .md-h1,
+.dark .markdown-body .md-h2,
+.dark .markdown-body .md-h3,
+.dark .markdown-body .md-h4,
+.dark .markdown-body .md-h5,
+.dark .markdown-body .md-h6 {
+    color: #d4d4d4;
+}
+
+.markdown-body .md-h1 {
+    font-size: 1.6rem;
+    border-bottom: 1px solid #e0e0e0;
+    padding-bottom: 0.25rem;
+}
+
+.markdown-body .md-h2 {
+    font-size: 1.3rem;
+    border-bottom: 1px solid #e0e0e0;
+    padding-bottom: 0.2rem;
+}
+
+.markdown-body .md-h3 {
+    font-size: 1.15rem;
+}
+
+.markdown-body .md-hash,
+.markdown-body .md-marker,
+.markdown-body .md-link-url {
+    color: #848484;
+    opacity: 0.7;
+}
+
+.dark .markdown-body .md-hash,
+.dark .markdown-body .md-marker,
+.dark .markdown-body .md-link-url {
+    color: #9a9a9a;
+}
+
+.dark .markdown-body .md-h1,
+.dark .markdown-body .md-h2 {
+    border-bottom-color: #3c3c3c;
+}
+
+.markdown-body .md-bold {
+    font-weight: 700;
+}
+
+.markdown-body .md-italic {
+    font-style: italic;
+}
+
+.markdown-body .md-bold-italic {
+    font-weight: 700;
+    font-style: italic;
+}
+
+.markdown-body .md-inline-code {
+    background: #f3f3f3;
+    color: #c7254e;
+    padding: 0.12em 0.38em;
+    border-radius: 4px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: 0.92em;
+}
+
+.dark .markdown-body .md-inline-code {
+    background: #2d2d2d;
+    color: #ff9da4;
+}
+
+.markdown-body .md-link,
+.markdown-body .md-link-text {
+    color: #0078d4;
+}
+
+.dark .markdown-body .md-link,
+.dark .markdown-body .md-link-text {
+    color: #7bbef3;
+}
+
+.markdown-body .md-link:hover {
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.markdown-body .md-strike {
+    text-decoration: line-through;
+    opacity: 0.85;
+}
+
+.markdown-body .md-blockquote {
+    border-left: 3px solid #0078d4;
+    padding-left: 12px;
+    color: #5f5f5f;
+    font-style: italic;
+}
+
+.dark .markdown-body .md-blockquote {
+    border-left-color: #3794ff;
+    color: #a8a8a8;
+}
+
+.markdown-body .md-list-marker,
+.markdown-body .md-checkbox {
+    color: #0078d4;
+    font-weight: 600;
+}
+
+.dark .markdown-body .md-list-marker,
+.dark .markdown-body .md-checkbox {
+    color: #7bbef3;
+}
+
+.markdown-body .md-checkbox-checked {
+    color: #16a34a;
+}
+
+.markdown-body .md-checkbox-in-progress {
+    color: #f59e0b;
+}
+
+.markdown-body .md-hr {
+    display: block;
+    height: 2px;
+    background: #e0e0e0;
+    margin: 0.9rem 0;
+}
+
+.dark .markdown-body .md-hr {
+    background: #3c3c3c;
+}
+
+.markdown-body .code-block-container {
+    margin: 0.75rem 0;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #ffffff;
+}
+
+.dark .markdown-body .code-block-container {
+    border-color: #3c3c3c;
+    background: #1e1e1e;
+}
+
+.markdown-body .code-block-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-bottom: 1px solid #e0e0e0;
+    background: #f8f8f8;
+    font-size: 11px;
+}
+
+.dark .markdown-body .code-block-header {
+    border-bottom-color: #3c3c3c;
+    background: #252526;
+}
+
+.markdown-body .code-block-language {
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.markdown-body .code-line-count {
+    color: #848484;
+}
+
+.markdown-body .code-block-copy,
+.markdown-body .code-block-collapse {
+    margin-left: auto;
+    border: 1px solid #d0d0d0;
+    background: #fff;
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+    padding: 2px 6px;
+}
+
+.dark .markdown-body .code-block-copy,
+.dark .markdown-body .code-block-collapse {
+    border-color: #4a4a4a;
+    background: #2d2d2d;
+    color: #d4d4d4;
+}
+
+.markdown-body .code-block-content {
+    margin: 0;
+    padding: 10px 0;
+    overflow: auto;
+    max-width: 100%;
+}
+
+.markdown-body .code-block-content code {
+    display: block;
+    white-space: pre;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: 12px;
+    line-height: 1.55;
+    padding: 0 10px;
+}
+
+.markdown-body .code-line {
+    display: block;
+}
+
+.markdown-body .line-number {
+    display: inline-block;
+    width: 2.6rem;
+    margin-right: 0.7rem;
+    text-align: right;
+    user-select: none;
+    color: #848484;
+}
+
+.dark .markdown-body .line-number {
+    color: #9a9a9a;
+}
+
+.markdown-body .md-table-container {
+    margin: 0.8rem 0;
+    overflow-x: auto;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+}
+
+.dark .markdown-body .md-table-container {
+    border-color: #3c3c3c;
+}
+
+.markdown-body .md-table {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 380px;
+}
+
+.markdown-body .md-table th,
+.markdown-body .md-table td {
+    border: 1px solid #e0e0e0;
+    padding: 8px 10px;
+    text-align: left;
+    vertical-align: top;
+}
+
+.dark .markdown-body .md-table th,
+.dark .markdown-body .md-table td {
+    border-color: #3c3c3c;
+}
+
+.markdown-body .md-table th {
+    background: #f3f3f3;
+    font-weight: 600;
+}
+
+.dark .markdown-body .md-table th {
+    background: #252526;
+}
+
+.markdown-body .md-table-copy-btn {
+    margin: 6px 8px;
+    float: right;
+    border: 1px solid #d0d0d0;
+    border-radius: 4px;
+    background: #fff;
+    font-size: 11px;
+    cursor: pointer;
+    padding: 2px 8px;
+}
+
+.dark .markdown-body .md-table-copy-btn {
+    border-color: #4a4a4a;
+    background: #2d2d2d;
+    color: #d4d4d4;
+}
