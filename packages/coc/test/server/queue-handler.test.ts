@@ -225,6 +225,43 @@ describe('Queue Handler', () => {
         });
     });
 
+    describe('POST /api/queue/enqueue — Legacy enqueue compatibility', () => {
+        it('should enqueue ai-clarification from prompt/model shorthand body', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(`${srv.url}/api/queue/enqueue`, {
+                prompt: 'what time is it',
+                model: 'claude-haiku-4.5',
+            });
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task).toBeDefined();
+            expect(body.task.type).toBe('ai-clarification');
+            expect(body.task.payload.prompt).toBe('what time is it');
+            expect(body.task.config.model).toBe('claude-haiku-4.5');
+        });
+
+        it('should return 400 when prompt is missing in shorthand body', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(`${srv.url}/api/queue/enqueue`, { model: 'claude-haiku-4.5' });
+            expect(res.status).toBe(400);
+            expect(JSON.parse(res.body).error).toContain('prompt');
+        });
+    });
+
+    describe('GET /api/queue/models — Model list', () => {
+        it('should return available model IDs including claude-haiku-4.5', async () => {
+            const srv = await startServer();
+
+            const res = await request(`${srv.url}/api/queue/models`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(Array.isArray(body.models)).toBe(true);
+            expect(body.models).toContain('claude-haiku-4.5');
+        });
+    });
+
     // ========================================================================
     // Auto-generated display name
     // ========================================================================

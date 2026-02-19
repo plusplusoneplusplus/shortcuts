@@ -10,6 +10,7 @@
  */
 
 import type { TaskQueueManager, QueuedTask, CreateTaskInput, TaskPriority, QueueStats, ProcessStore } from '@plusplusoneplusplus/pipeline-core';
+import { getActiveModels } from '@plusplusoneplusplus/pipeline-core';
 import { sendJSON, sendError, parseBody } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
 import { computeRepoId } from './queue-persistence';
@@ -167,6 +168,78 @@ function validateAndParseTask(taskSpec: any): TaskValidationResult {
  * @param store - Optional process store (used by force-fail routes to update linked process status)
  */
 export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueManager, store?: ProcessStore): void {
+
+    // ------------------------------------------------------------------
+    // GET /api/queue/models — List available AI model IDs
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'GET',
+        pattern: '/api/queue/models',
+        handler: async (_req, res) => {
+            const models = getActiveModels().map(model => model.id);
+            sendJSON(res, 200, { models });
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // POST /api/queue/enqueue — Legacy React enqueue endpoint
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'POST',
+        pattern: '/api/queue/enqueue',
+        handler: async (req, res) => {
+            let body: any;
+            try {
+                body = await parseBody(req);
+            } catch {
+                return sendError(res, 400, 'Invalid JSON');
+            }
+
+            // Legacy dialog sends { prompt, model, workspaceId } without task wrapper.
+            const hasTaskEnvelope = typeof body?.type === 'string';
+            if (!hasTaskEnvelope) {
+                if (!body || typeof body.prompt !== 'string' || !body.prompt.trim()) {
+                    return sendError(res, 400, 'Missing required field: prompt');
+                }
+            }
+
+            const taskSpec = hasTaskEnvelope
+                ? body
+                : {
+                    type: 'ai-clarification',
+                    priority: typeof body?.priority === 'string' ? body.priority : 'normal',
+                    payload: {
+                        prompt: body.prompt.trim(),
+                        ...(typeof body?.workspaceId === 'string' && body.workspaceId.trim()
+                            ? { workspaceId: body.workspaceId.trim() }
+                            : {}),
+                    },
+                    config: {
+                        ...(typeof body?.model === 'string' && body.model.trim()
+                            ? { model: body.model.trim() }
+                            : {}),
+                        retryOnFailure: false,
+                    },
+                    ...(typeof body?.displayName === 'string' && body.displayName.trim()
+                        ? { displayName: body.displayName.trim() }
+                        : {}),
+                };
+
+            const validation = validateAndParseTask(taskSpec);
+            if (!validation.valid) {
+                return sendError(res, 400, validation.error!);
+            }
+
+            try {
+                const taskId = queueManager.enqueue(validation.input!);
+                const task = queueManager.getTask(taskId);
+                sendJSON(res, 201, { task: task ? serializeTask(task) : { id: taskId } });
+            } catch (err) {
+                const message = err instanceof Error ? err.message : 'Failed to enqueue task';
+                return sendError(res, 400, message);
+            }
+        },
+    });
 
     // ------------------------------------------------------------------
     // GET /api/queue — List all queued tasks
