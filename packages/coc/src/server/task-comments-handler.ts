@@ -336,7 +336,7 @@ export class TaskCommentsManager {
 // ============================================================================
 
 /** Required fields for creating a comment. */
-const REQUIRED_FIELDS = ['filePath', 'selection', 'selectedText', 'comment', 'status'] as const;
+const REQUIRED_FIELDS = ['filePath', 'selection', 'selectedText', 'comment'] as const;
 
 /** Validate that the comment body has all required fields. Returns the missing field name or null. */
 function findMissingField(body: any): string | null {
@@ -573,6 +573,9 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string): vo
             const missing = findMissingField(body);
             if (missing) {
                 return sendError(res, 400, `Missing required field: ${missing}`);
+            }
+            if (!body.status) {
+                body.status = 'open';
             }
             try {
                 const comment = await manager.addComment(wsId, taskPath, body);

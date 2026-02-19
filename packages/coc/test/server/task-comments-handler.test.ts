@@ -235,6 +235,19 @@ describe('TaskCommentsManager', () => {
             expect(found).toBeNull();
         });
 
+        it('stores comment without status (caller must provide or default)', async () => {
+            const dataWithoutStatus = {
+                filePath: 'feature/task1.md',
+                selection: { startLine: 1, startColumn: 0, endLine: 1, endColumn: 10 },
+                selectedText: '# Task One',
+                comment: 'No status provided',
+            } as any;
+            const comment = await manager.addComment('ws1', 'task.md', dataWithoutStatus);
+            expect(comment.id).toBeTruthy();
+            expect(comment.comment).toBe('No status provided');
+            expect(comment.status).toBeUndefined();
+        });
+
         it('deletes all comments for a task file', async () => {
             await manager.addComment('ws1', 'task.md', makeCommentData());
             await manager.addComment('ws1', 'task.md', makeCommentData());
@@ -576,6 +589,69 @@ describe('Task Comments REST API', () => {
             const body = JSON.parse(res.body);
             expect(body.comment.author).toBe('tester');
             expect(body.comment.tags).toEqual(['bug', 'priority']);
+        });
+
+        it('defaults status to open when not provided', async () => {
+            const { status: _, ...dataWithoutStatus } = makeCommentData();
+            const res = await postJSON(commentsUrl(), dataWithoutStatus);
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.comment.status).toBe('open');
+        });
+
+        it('accepts explicit status when provided', async () => {
+            const res = await postJSON(commentsUrl(), makeCommentData({ status: 'resolved' }));
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.comment.status).toBe('resolved');
+        });
+
+        it('defaults status to open for client-style payload (no status, with category)', async () => {
+            const clientPayload = {
+                filePath: 'feature/task1.md',
+                selection: { startLine: 3, startColumn: 1, endLine: 3, endColumn: 20 },
+                selectedText: 'Some selected text',
+                comment: 'A review comment',
+                category: 'suggestion',
+            };
+            const res = await postJSON(commentsUrl(), clientPayload);
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.comment.status).toBe('open');
+            expect(body.comment.category).toBe('suggestion');
+            expect(body.comment.comment).toBe('A review comment');
+        });
+
+        it('creates comment with anchor data and no status', async () => {
+            const payload = {
+                filePath: 'feature/task1.md',
+                selection: { startLine: 1, startColumn: 1, endLine: 2, endColumn: 5 },
+                selectedText: 'Test anchor',
+                comment: 'Anchored comment',
+                anchor: {
+                    selectedText: 'Test anchor',
+                    contextBefore: 'before text',
+                    contextAfter: 'after text',
+                    originalLine: 1,
+                    textHash: 'abc123',
+                },
+            };
+            const res = await postJSON(commentsUrl(), payload);
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.comment.status).toBe('open');
+            expect(body.comment.anchor).toBeDefined();
+            expect(body.comment.anchor.selectedText).toBe('Test anchor');
+        });
+
+        it('persists defaulted status to disk', async () => {
+            const { status: _, ...dataWithoutStatus } = makeCommentData();
+            const createRes = await postJSON(commentsUrl(), dataWithoutStatus);
+            const { comment } = JSON.parse(createRes.body);
+
+            const getRes = await getJSON(commentUrl(comment.id));
+            const fetched = JSON.parse(getRes.body);
+            expect(fetched.comment.status).toBe('open');
         });
     });
 
