@@ -84,14 +84,14 @@ export function ReposView() {
     }
 
     return (
-        <div id="view-repos" className="flex h-[calc(100vh-48px)]">
+        <div id="view-repos" className="flex h-[calc(100vh-48px)] overflow-hidden">
             {/* Left: sidebar */}
-            <aside className="w-[280px] min-w-[240px] flex flex-col border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]">
+            <aside className="w-[280px] min-w-[240px] min-h-0 flex flex-col border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]">
                 <ReposGrid repos={repos} onRefresh={fetchRepos} />
             </aside>
 
             {/* Right: detail */}
-            <main className="flex-1 flex flex-col bg-white dark:bg-[#1e1e1e]">
+            <main className="flex-1 min-w-0 min-h-0 flex flex-col bg-white dark:bg-[#1e1e1e] overflow-hidden">
                 {selectedRepo ? (
                     <RepoDetail repo={selectedRepo} repos={repos} onRefresh={fetchRepos} />
                 ) : (

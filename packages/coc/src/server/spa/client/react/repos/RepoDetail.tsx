@@ -53,7 +53,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     };
 
     return (
-        <div id="repo-detail-content" className="flex flex-col h-full">
+        <div id="repo-detail-content" className="flex flex-col h-full min-h-0 min-w-0">
             {/* Header */}
             <div className="flex items-center gap-3 px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
                 <span
@@ -91,12 +91,17 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
             </div>
 
             {/* Sub-tab content */}
-            <div className="flex-1 overflow-y-auto">
-                {activeSubTab === 'info' && <RepoInfoTab repo={repo} />}
-                {activeSubTab === 'pipelines' && <PipelinesTab repo={repo} />}
-                {activeSubTab === 'tasks' && <TasksPanel wsId={ws.id} />}
-                {activeSubTab === 'queue' && <RepoQueueTab workspaceId={ws.id} />}
-                {activeSubTab === 'schedules' && <RepoSchedulesTab workspaceId={ws.id} />}
+            <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
+                {activeSubTab === 'tasks' ? (
+                    <TasksPanel wsId={ws.id} />
+                ) : (
+                    <div className="h-full overflow-y-auto min-w-0">
+                        {activeSubTab === 'info' && <RepoInfoTab repo={repo} />}
+                        {activeSubTab === 'pipelines' && <PipelinesTab repo={repo} />}
+                        {activeSubTab === 'queue' && <RepoQueueTab workspaceId={ws.id} />}
+                        {activeSubTab === 'schedules' && <RepoSchedulesTab workspaceId={ws.id} />}
+                    </div>
+                )}
             </div>
 
             {/* Edit dialog */}
