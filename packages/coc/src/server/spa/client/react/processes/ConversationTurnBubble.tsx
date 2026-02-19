@@ -5,6 +5,7 @@ import { cn } from '../shared';
 import type { ClientConversationTurn } from '../types/dashboard';
 import { MarkdownView } from './MarkdownView';
 import { ToolCallView } from './ToolCallView';
+import { renderMarkdownToHtml } from '../../markdown-renderer';
 
 interface ConversationTurnBubbleProps {
     turn: ClientConversationTurn;
@@ -12,6 +13,9 @@ interface ConversationTurnBubbleProps {
 
 export function ConversationTurnBubble({ turn }: ConversationTurnBubbleProps) {
     const isUser = turn.role === 'user';
+    const contentHtml = /<[a-z][\s\S]*>/i.test(turn.content || '')
+        ? (turn.content || '')
+        : renderMarkdownToHtml(turn.content || '');
 
     return (
         <div className={cn('flex', isUser ? 'justify-end' : 'justify-start')}>
@@ -41,8 +45,8 @@ export function ConversationTurnBubble({ turn }: ConversationTurnBubbleProps) {
                 </div>
 
                 <div className="space-y-2">
-                    {turn.content && (
-                        <MarkdownView html={turn.content} />
+                    {contentHtml && (
+                        <MarkdownView html={contentHtml} />
                     )}
 
                     {!!turn.toolCalls?.length && (

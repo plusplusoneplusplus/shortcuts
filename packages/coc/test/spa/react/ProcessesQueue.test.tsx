@@ -111,7 +111,7 @@ describe('ToolCallView', () => {
     it('expands to show args on click', () => {
         render(<Wrap><ToolCallView toolCall={{ toolName: 'edit', args: { path: '/test.ts' }, status: 'completed' }} /></Wrap>);
         fireEvent.click(screen.getByText('edit'));
-        expect(screen.getByText('Args')).toBeDefined();
+        expect(screen.getByText('Arguments')).toBeDefined();
     });
 
     it('shows error when present', () => {
@@ -140,11 +140,53 @@ describe('ToolCallView', () => {
 
     it('toggles collapsed state', () => {
         render(<Wrap><ToolCallView toolCall={{ toolName: 'edit', args: { a: 1 }, status: 'completed' }} /></Wrap>);
-        expect(screen.queryByText('Args')).toBeNull();
+        expect(screen.queryByText('Arguments')).toBeNull();
         fireEvent.click(screen.getByText('edit'));
-        expect(screen.getByText('Args')).toBeDefined();
+        expect(screen.getByText('Arguments')).toBeDefined();
         fireEvent.click(screen.getByText('edit'));
-        expect(screen.queryByText('Args')).toBeNull();
+        expect(screen.queryByText('Arguments')).toBeNull();
+    });
+
+    it('shows inline summary for view tool calls', () => {
+        render(
+            <Wrap>
+                <ToolCallView
+                    toolCall={{
+                        toolName: 'view',
+                        status: 'completed',
+                        args: {
+                            path: '/Users/test/Documents/Projects/shortcuts/src/server/spa/client/index.tsx',
+                            view_range: [10, 40],
+                        },
+                    }}
+                />
+            </Wrap>
+        );
+        expect(screen.getByText('shortcuts/src/server/spa/client/index.tsx L10-L40')).toBeDefined();
+    });
+
+    it('renders bash description and command sections', () => {
+        render(
+            <Wrap>
+                <ToolCallView
+                    toolCall={{
+                        toolName: 'bash',
+                        status: 'completed',
+                        args: {
+                            description: 'Run tests',
+                            command: 'npm run test:run',
+                            working_directory: 'packages/coc',
+                        },
+                    }}
+                />
+            </Wrap>
+        );
+        fireEvent.click(screen.getByText('bash'));
+        expect(screen.getByText('Description')).toBeDefined();
+        expect(screen.getByText('Run tests')).toBeDefined();
+        expect(screen.getByText('Command')).toBeDefined();
+        expect(screen.getByText('$ npm run test:run')).toBeDefined();
+        expect(screen.getByText('Options')).toBeDefined();
     });
 });
 

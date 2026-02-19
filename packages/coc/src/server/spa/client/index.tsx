@@ -7,6 +7,7 @@
 
 import { createRoot } from 'react-dom/client';
 import { App } from './react/App';
+import './react/file-path-preview';
 
 const container = document.getElementById('app-root');
 if (!container) throw new Error('No #app-root element found');

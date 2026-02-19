@@ -6,3 +6,144 @@
 .tool-call-children.subtree-collapsed {
     display: none;
 }
+
+/* File path links rendered from markdown conversation content */
+.file-path-link {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    color: #0078d4;
+    text-decoration: underline;
+    text-decoration-style: dashed;
+    text-underline-offset: 3px;
+    cursor: pointer;
+    border-radius: 3px;
+    padding: 0 2px;
+}
+
+.file-path-link:hover {
+    background: rgba(0, 120, 212, 0.08);
+}
+
+.dark .file-path-link {
+    color: #7bbef3;
+}
+
+/* Hover tooltip for file preview */
+.file-preview-tooltip {
+    position: fixed;
+    z-index: 10000;
+    background: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+    width: 500px;
+    max-height: 350px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.dark .file-preview-tooltip {
+    background: #1e1e1e;
+    border-color: #3c3c3c;
+}
+
+.file-preview-tooltip-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    background: #f3f3f3;
+    border-bottom: 1px solid #e0e0e0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.dark .file-preview-tooltip-header {
+    background: #252526;
+    border-bottom-color: #3c3c3c;
+}
+
+.file-preview-tooltip-filename {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.file-preview-tooltip-info {
+    font-weight: 400;
+    color: #6e6e6e;
+    flex-shrink: 0;
+}
+
+.dark .file-preview-tooltip-info {
+    color: #9a9a9a;
+}
+
+.file-preview-tooltip-body {
+    flex: 1;
+    overflow: auto;
+}
+
+.file-preview-tooltip-loading,
+.file-preview-tooltip-error {
+    padding: 16px;
+    font-size: 12px;
+    color: #6e6e6e;
+    text-align: center;
+}
+
+.dark .file-preview-tooltip-loading,
+.dark .file-preview-tooltip-error {
+    color: #9a9a9a;
+}
+
+.file-preview-tooltip-error {
+    color: #f14c4c;
+}
+
+.file-preview-code {
+    display: flex;
+    margin: 0;
+    padding: 0;
+    font-size: 12px;
+    line-height: 1.5;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    background: transparent;
+    overflow: visible;
+}
+
+.file-preview-code code {
+    display: block;
+    white-space: pre;
+    padding: 8px 0;
+}
+
+.file-preview-code .line-numbers {
+    text-align: right;
+    padding-right: 12px;
+    padding-left: 12px;
+    color: #6e6e6e;
+    user-select: none;
+    border-right: 1px solid #e0e0e0;
+    flex-shrink: 0;
+}
+
+.dark .file-preview-code .line-numbers {
+    color: #9a9a9a;
+    border-right-color: #3c3c3c;
+}
+
+.file-preview-code .line-content {
+    padding-left: 12px;
+    padding-right: 12px;
+    flex: 1;
+    overflow-x: auto;
+}
+
+.file-preview-code .line-number {
+    display: block;
+    opacity: 0.5;
+}
