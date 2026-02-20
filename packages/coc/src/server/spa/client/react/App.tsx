@@ -6,6 +6,7 @@
 import { useEffect, useCallback, useState } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { QueueProvider, useQueue } from './context/QueueContext';
+import { ToastProvider } from './context/ToastContext';
 import { ThemeProvider } from './layout/ThemeProvider';
 import { TopBar } from './layout/TopBar';
 import { Router } from './layout/Router';
@@ -65,7 +66,7 @@ function toTaskRelativePath(fullPath: string, workspaceRoot: string): string | n
 function AppInner() {
     const { state: appState, dispatch: appDispatch } = useApp();
     const { dispatch: queueDispatch } = useQueue();
-    const { toasts, removeToast } = useToast();
+    const { toasts, addToast, removeToast } = useToast();
     const [reviewDialog, setReviewDialog] = useState<MarkdownReviewDialogState>({
         open: false,
         wsId: null,
@@ -191,7 +192,7 @@ function AppInner() {
     }, [appState.workspaces]);
 
     return (
-        <>
+        <ToastProvider value={{ addToast, removeToast, toasts }}>
             <TopBar />
             <Router />
             <ToastContainer toasts={toasts} removeToast={removeToast} />
@@ -203,7 +204,7 @@ function AppInner() {
                 displayPath={reviewDialog.displayPath}
                 fetchMode={reviewDialog.fetchMode}
             />
-        </>
+        </ToastProvider>
     );
 }
 

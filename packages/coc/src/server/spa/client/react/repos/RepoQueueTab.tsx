@@ -57,17 +57,17 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
     }, [hasActive]);
 
     const handleCancel = async (taskId: string) => {
-        await fetch(getApiBase() + '/queue/tasks/' + encodeURIComponent(taskId) + '/cancel', { method: 'POST' });
+        await fetch(getApiBase() + '/queue/' + encodeURIComponent(taskId), { method: 'DELETE' });
         fetchQueue();
     };
 
     const handleMoveUp = async (taskId: string) => {
-        await fetch(getApiBase() + '/queue/tasks/' + encodeURIComponent(taskId) + '/move-up', { method: 'POST' });
+        await fetch(getApiBase() + '/queue/' + encodeURIComponent(taskId) + '/move-up', { method: 'POST' });
         fetchQueue();
     };
 
     const handleMoveToTop = async (taskId: string) => {
-        await fetch(getApiBase() + '/queue/tasks/' + encodeURIComponent(taskId) + '/move-to-top', { method: 'POST' });
+        await fetch(getApiBase() + '/queue/' + encodeURIComponent(taskId) + '/move-to-top', { method: 'POST' });
         fetchQueue();
     };
 
