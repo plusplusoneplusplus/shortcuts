@@ -55,8 +55,9 @@ function extractTaskPath(
 }
 
 export type QueueActivityMap = Record<string, number>;
+export type QueueFolderActivityMap = Record<string, number>;
 
-export function useQueueActivity(wsId: string, tasksFolder = '.vscode/tasks'): QueueActivityMap {
+export function useQueueActivity(wsId: string, tasksFolder = '.vscode/tasks'): { fileMap: QueueActivityMap; folderMap: QueueFolderActivityMap } {
     const { state: queueState } = useQueue();
     const { state: appState } = useApp();
 
@@ -74,6 +75,16 @@ export function useQueueActivity(wsId: string, tasksFolder = '.vscode/tasks'): Q
             }
         }
 
-        return map;
+        const folderMap: QueueFolderActivityMap = {};
+        for (const [rel, count] of Object.entries(map)) {
+            const parts = rel.split('/');
+            // accumulate for each ancestor folder prefix (exclude the filename itself)
+            for (let i = 1; i < parts.length; i++) {
+                const prefix = parts.slice(0, i).join('/');
+                folderMap[prefix] = (folderMap[prefix] || 0) + count;
+            }
+        }
+
+        return { fileMap: map, folderMap };
     }, [queueState.queued, queueState.running, appState.workspaces, wsId, tasksFolder]);
 }

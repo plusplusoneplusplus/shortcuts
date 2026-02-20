@@ -38,8 +38,8 @@ export function getFolderKey(folder: TaskFolder): string {
 }
 
 export function TaskTree({ tree, commentCounts, wsId, initialFolderPath, initialFilePath, onColumnsChange }: TaskTreeProps) {
-    const { openFilePath, setOpenFilePath, selectedFilePaths, toggleSelectedFile, showContextFiles } = useTaskPanel();
-    const queueActivity = useQueueActivity(wsId);
+    const { openFilePath, setOpenFilePath, selectedFilePaths, toggleSelectedFile, showContextFiles, setSelectedFolderPath } = useTaskPanel();
+    const { fileMap: queueActivity, folderMap: queueFolderActivity } = useQueueActivity(wsId);
     const [columns, setColumns] = useState<TaskNode[][]>([]);
     const [activeFolderKeys, setActiveFolderKeys] = useState<(string | null)[]>([]);
 
@@ -83,6 +83,7 @@ export function TaskTree({ tree, commentCounts, wsId, initialFolderPath, initial
         const encoded = folderPath.split('/').map(encodeURIComponent).join('/');
         history.replaceState(null, '', `#repos/${encodeURIComponent(wsId)}/tasks/${encoded}`);
 
+        setSelectedFolderPath(getFolderKey(folder));
         onColumnsChange?.();
     };
 

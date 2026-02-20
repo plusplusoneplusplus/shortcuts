@@ -13,6 +13,7 @@ export interface TaskContextState {
     showContextFiles: boolean;
     lastTasksChangedWsId: string | null;
     tasksChangedAt: number;
+    selectedFolderPath: string | null;
 }
 
 const initialState: TaskContextState = {
@@ -21,6 +22,7 @@ const initialState: TaskContextState = {
     showContextFiles: true,
     lastTasksChangedWsId: null,
     tasksChangedAt: 0,
+    selectedFolderPath: null,
 };
 
 // ── Actions ────────────────────────────────────────────────────────────
@@ -30,7 +32,8 @@ export type TaskAction =
     | { type: 'TOGGLE_SELECTED_FILE'; path: string }
     | { type: 'CLEAR_SELECTION' }
     | { type: 'TOGGLE_SHOW_CONTEXT_FILES' }
-    | { type: 'WORKSPACE_TASKS_CHANGED'; wsId: string };
+    | { type: 'WORKSPACE_TASKS_CHANGED'; wsId: string }
+    | { type: 'SET_SELECTED_FOLDER_PATH'; path: string | null };
 
 // ── Reducer ────────────────────────────────────────────────────────────
 
@@ -53,6 +56,8 @@ export function taskReducer(state: TaskContextState, action: TaskAction): TaskCo
             return { ...state, showContextFiles: !state.showContextFiles };
         case 'WORKSPACE_TASKS_CHANGED':
             return { ...state, lastTasksChangedWsId: action.wsId, tasksChangedAt: Date.now() };
+        case 'SET_SELECTED_FOLDER_PATH':
+            return { ...state, selectedFolderPath: action.path };
         default:
             return state;
     }
@@ -86,5 +91,7 @@ export function useTaskPanel() {
         clearSelection: () => dispatch({ type: 'CLEAR_SELECTION' }),
         showContextFiles: state.showContextFiles,
         toggleShowContextFiles: () => dispatch({ type: 'TOGGLE_SHOW_CONTEXT_FILES' }),
+        selectedFolderPath: state.selectedFolderPath,
+        setSelectedFolderPath: (p: string | null) => dispatch({ type: 'SET_SELECTED_FOLDER_PATH', path: p }),
     };
 }

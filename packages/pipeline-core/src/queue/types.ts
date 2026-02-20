@@ -59,6 +59,8 @@ export interface FollowPromptPayload {
     additionalContext?: string;
     /** Working directory for execution */
     workingDirectory?: string;
+    /** Folder path for queue folder filtering (relative to workspace tasks root) */
+    folderPath?: string;
 }
 
 /**
@@ -193,6 +195,8 @@ export interface QueuedTask<TPayload extends TaskPayload = TaskPayload, TResult 
     id: string;
     /** Repository identifier (for multi-repo workspaces) */
     repoId?: string;
+    /** Folder path associated with this task (for folder-scoped queue badges) */
+    folderPath?: string;
     /** Type of task */
     type: TaskType;
     /** Priority level */
