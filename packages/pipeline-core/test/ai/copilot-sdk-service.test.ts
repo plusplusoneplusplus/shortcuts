@@ -2167,3 +2167,175 @@ describe('CopilotSDKService - Debug Logging (permission handler wrapping)', () =
         await resultPromise;
     });
 });
+
+// ============================================================================
+// Stream Destroyed Error Handling Tests
+// ============================================================================
+
+describe('CopilotSDKService.isStreamDestroyedError', () => {
+    it('detects "Cannot call write after a stream was destroyed"', () => {
+        expect(CopilotSDKService.isStreamDestroyedError(
+            'Cannot call write after a stream was destroyed'
+        )).toBe(true);
+    });
+
+    it('detects ERR_STREAM_DESTROYED code', () => {
+        expect(CopilotSDKService.isStreamDestroyedError(
+            'Error [ERR_STREAM_DESTROYED]: Cannot call write after a stream was destroyed'
+        )).toBe(true);
+    });
+
+    it('detects bare "stream was destroyed"', () => {
+        expect(CopilotSDKService.isStreamDestroyedError(
+            'Copilot SDK error: stream was destroyed during write'
+        )).toBe(true);
+    });
+
+    it('detects EPIPE errors', () => {
+        expect(CopilotSDKService.isStreamDestroyedError('Error: write EPIPE')).toBe(true);
+    });
+
+    it('detects ECONNRESET errors', () => {
+        expect(CopilotSDKService.isStreamDestroyedError('read ECONNRESET')).toBe(true);
+    });
+
+    it('is case-insensitive', () => {
+        expect(CopilotSDKService.isStreamDestroyedError(
+            'CANNOT CALL WRITE AFTER A STREAM WAS DESTROYED'
+        )).toBe(true);
+    });
+
+    it('returns false for non-stream errors', () => {
+        expect(CopilotSDKService.isStreamDestroyedError('Invalid prompt')).toBe(false);
+        expect(CopilotSDKService.isStreamDestroyedError('Request timed out')).toBe(false);
+        expect(CopilotSDKService.isStreamDestroyedError('')).toBe(false);
+    });
+});
+
+describe('CopilotSDKService - Client Invalidation on Stream Error', () => {
+    let service: CopilotSDKService;
+
+    beforeEach(() => {
+        resetCopilotSDKService();
+        service = CopilotSDKService.getInstance();
+        vi.clearAllMocks();
+    });
+
+    afterEach(async () => {
+        service.dispose();
+        resetCopilotSDKService();
+    });
+
+    it('invalidates client when createSession throws a stream-destroyed error', async () => {
+        const { MockCopilotClient, mockClient } = createMockSDKModule();
+        mockClient.createSession.mockRejectedValue(
+            new Error('Cannot call write after a stream was destroyed')
+        );
+
+        const serviceAny = service as any;
+        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        serviceAny.availabilityCache = { available: true, sdkPath: '/fake' };
+
+        // First call — should fail with stream error and invalidate client
+        const result = await service.sendMessage({
+            prompt: 'test',
+            workingDirectory: '/test/dir',
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('stream was destroyed');
+
+        // Client should be nulled out so next call creates a fresh one
+        expect(serviceAny.client).toBeNull();
+        expect(serviceAny.clientCwd).toBeUndefined();
+    });
+
+    it('does NOT invalidate client on non-stream errors', async () => {
+        const { MockCopilotClient, mockClient } = createMockSDKModule();
+        mockClient.createSession.mockRejectedValue(new Error('Model not found'));
+
+        const serviceAny = service as any;
+        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        serviceAny.availabilityCache = { available: true, sdkPath: '/fake' };
+
+        const result = await service.sendMessage({
+            prompt: 'test',
+            workingDirectory: '/test/dir',
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('Model not found');
+
+        // Client should still be present
+        expect(serviceAny.client).not.toBeNull();
+    });
+
+    it('creates a fresh client on retry after stream-destroyed invalidation', async () => {
+        // Track how many CopilotClient instances are created
+        let clientCount = 0;
+        const mockClient1 = {
+            createSession: vi.fn().mockRejectedValue(
+                new Error('Cannot call write after a stream was destroyed')
+            ),
+            resumeSession: vi.fn().mockRejectedValue(new Error('Session not found')),
+            stop: vi.fn().mockResolvedValue(undefined),
+        };
+        const mockSession = {
+            sessionId: 'fresh-session',
+            sendAndWait: vi.fn().mockResolvedValue({ data: { content: 'success!' } }),
+            destroy: vi.fn().mockResolvedValue(undefined),
+        };
+        const mockClient2 = {
+            createSession: vi.fn().mockResolvedValue(mockSession),
+            resumeSession: vi.fn().mockRejectedValue(new Error('Session not found')),
+            stop: vi.fn().mockResolvedValue(undefined),
+        };
+        const clients = [mockClient1, mockClient2];
+
+        class MockCopilotClient {
+            constructor() {
+                Object.assign(this, clients[clientCount++]);
+            }
+        }
+
+        const serviceAny = service as any;
+        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        serviceAny.availabilityCache = { available: true, sdkPath: '/fake' };
+
+        // First call — stream error, client invalidated
+        const result1 = await service.sendMessage({
+            prompt: 'test',
+            workingDirectory: '/test/dir',
+        });
+        expect(result1.success).toBe(false);
+        expect(serviceAny.client).toBeNull();
+        expect(clientCount).toBe(1);
+
+        // Second call — should create new client and succeed
+        const result2 = await service.sendMessage({
+            prompt: 'test',
+            workingDirectory: '/test/dir',
+        });
+        expect(result2.success).toBe(true);
+        expect(result2.response).toBe('success!');
+        expect(clientCount).toBe(2);
+    });
+
+    it('installs and removes stream error guard with client lifecycle', async () => {
+        const { MockCopilotClient } = createMockSDKModule();
+        const serviceAny = service as any;
+        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+
+        // Before client creation — no guard
+        expect(serviceAny.streamErrorGuardHandler).toBeNull();
+
+        await serviceAny.initializeClient('/test/dir');
+
+        // After client creation — guard installed
+        expect(serviceAny.streamErrorGuardHandler).not.toBeNull();
+
+        // After invalidation — guard removed
+        serviceAny.invalidateClient();
+        expect(serviceAny.streamErrorGuardHandler).toBeNull();
+    });
+});

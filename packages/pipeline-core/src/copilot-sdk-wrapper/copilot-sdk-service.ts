@@ -278,6 +278,15 @@ export class CopilotSDKService {
     /** Default timeout for SDK requests */
     private static readonly DEFAULT_TIMEOUT_MS = DEFAULT_AI_TIMEOUT_MS;
 
+    /** Error patterns that indicate the underlying JSON-RPC stream is broken */
+    private static readonly STREAM_DESTROYED_PATTERNS = [
+        'stream was destroyed',
+        'ERR_STREAM_DESTROYED',
+        'cannot call write after a stream was destroyed',
+        'EPIPE',
+        'ECONNRESET',
+    ];
+
     private constructor() {
         // Private constructor for singleton pattern
     }
@@ -358,6 +367,33 @@ export class CopilotSDKService {
      */
     public clearAvailabilityCache(): void {
         this.availabilityCache = null;
+    }
+
+    /**
+     * Check whether an error message indicates the underlying JSON-RPC stream
+     * has been destroyed (broken pipe, reset, etc.).  These errors mean the
+     * current client can no longer communicate and must be replaced.
+     */
+    public static isStreamDestroyedError(errorMessage: string): boolean {
+        const lower = errorMessage.toLowerCase();
+        return CopilotSDKService.STREAM_DESTROYED_PATTERNS.some(
+            p => lower.includes(p.toLowerCase())
+        );
+    }
+
+    /**
+     * Discard the current client without waiting for a graceful stop.
+     * Called when the underlying stream is known to be broken — attempting
+     * `client.stop()` would itself fail on the destroyed stream.
+     */
+    private invalidateClient(): void {
+        if (this.client) {
+            this.client.stop().catch(() => {});
+            this.client = null;
+            this.clientCwd = undefined;
+            this.initializationPromise = null;
+        }
+        this.removeStreamErrorGuard();
     }
 
     /**
@@ -608,6 +644,14 @@ export class CopilotSDKService {
             const durationMs = Date.now() - startTime;
 
             logger.error(LogCategory.AI, `CopilotSDKService [${session?.sessionId ?? 'no-session'}]: Request failed after ${durationMs}ms`, error instanceof Error ? error : undefined);
+
+            // When the underlying JSON-RPC stream is destroyed, the client is
+            // no longer usable.  Null it out so the next call creates a fresh one
+            // instead of reusing the dead connection.
+            if (CopilotSDKService.isStreamDestroyedError(errorMessage)) {
+                logger.debug(LogCategory.AI, 'CopilotSDKService: Stream destroyed — invalidating client for next retry');
+                this.invalidateClient();
+            }
 
             result = {
                 success: false,
@@ -979,6 +1023,7 @@ export class CopilotSDKService {
             this.clientCwd = undefined;
         }
 
+        this.removeStreamErrorGuard();
         this.sdkModule = null;
         this.availabilityCache = null;
     }
@@ -1082,8 +1127,66 @@ export class CopilotSDKService {
         const logger = getLogger();
         logger.debug(LogCategory.AI, `CopilotSDKService: Creating CopilotClient with options: ${JSON.stringify(options)}`);
 
+        // Install a temporary uncaughtException handler *before* creating the
+        // client.  The SDK's own stdio error handler (`connectViaStdio`) re-
+        // throws `ERR_STREAM_DESTROYED` from an event listener when the CLI
+        // process's stdin is written to after the process exits.  That thrown
+        // error becomes an uncaught exception and crashes the host process.
+        //
+        // We absorb this specific class of errors here so that the normal
+        // error-return path in `sendMessage` can surface them gracefully and
+        // `invalidateClient()` can replace the dead client.
+        this.installStreamErrorGuard();
+
         this.client = new this.sdkModule.CopilotClient(options);
         this.clientCwd = cwd;
+    }
+
+    // ------------------------------------------------------------------
+    // Stream-error safety net
+    // ------------------------------------------------------------------
+
+    /** Active `uncaughtException` handler that absorbs stream-destroyed errors. */
+    private streamErrorGuardHandler: ((err: Error) => void) | null = null;
+
+    /**
+     * Install a process-level `uncaughtException` handler that absorbs
+     * `ERR_STREAM_DESTROYED` errors originating from the SDK's stdio layer.
+     *
+     * The Copilot SDK's `connectViaStdio()` installs an `error` listener on
+     * the child process's stdin that **re-throws** if `forceStopping` is false.
+     * When the CLI process exits unexpectedly, any subsequent JSON-RPC write
+     * triggers this re-throw, which surfaces as an uncaught exception that
+     * crashes the host process.
+     *
+     * This handler catches exactly that class of errors so the normal
+     * error-return path in `sendMessage` can surface them gracefully.
+     */
+    private installStreamErrorGuard(): void {
+        this.removeStreamErrorGuard();
+
+        const logger = getLogger();
+        this.streamErrorGuardHandler = (err: Error) => {
+            if (CopilotSDKService.isStreamDestroyedError(err.message || String(err))) {
+                logger.debug(LogCategory.AI,
+                    `CopilotSDKService: Absorbed uncaught stream error: ${err.message}`);
+                this.invalidateClient();
+                return; // Swallow — normal error path already reported this
+            }
+            // Not ours — re-throw so the default handler picks it up
+            throw err;
+        };
+        process.on('uncaughtException', this.streamErrorGuardHandler);
+    }
+
+    /**
+     * Remove the stream-error guard.
+     */
+    private removeStreamErrorGuard(): void {
+        if (this.streamErrorGuardHandler) {
+            process.removeListener('uncaughtException', this.streamErrorGuardHandler);
+            this.streamErrorGuardHandler = null;
+        }
     }
 
     /**

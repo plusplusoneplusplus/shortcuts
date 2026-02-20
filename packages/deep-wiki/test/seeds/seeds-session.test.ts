@@ -12,11 +12,26 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // Mock pipeline-core before importing anything that uses it
 const mockSendMessage = vi.fn();
 const mockIsAvailable = vi.fn();
+
+const STREAM_DESTROYED_PATTERNS = [
+    'stream was destroyed',
+    'ERR_STREAM_DESTROYED',
+    'cannot call write after a stream was destroyed',
+    'EPIPE',
+    'ECONNRESET',
+];
+
 vi.mock('@plusplusoneplusplus/pipeline-core', () => ({
     getCopilotSDKService: () => ({
         sendMessage: mockSendMessage,
         isAvailable: mockIsAvailable,
     }),
+    CopilotSDKService: {
+        isStreamDestroyedError: (msg: string) => {
+            const lower = msg.toLowerCase();
+            return STREAM_DESTROYED_PATTERNS.some(p => lower.includes(p.toLowerCase()));
+        },
+    },
 }));
 
 // Mock logger to avoid console output in tests

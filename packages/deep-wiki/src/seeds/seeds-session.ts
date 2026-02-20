@@ -10,6 +10,7 @@
 
 import {
     getCopilotSDKService,
+    CopilotSDKService,
     type SendMessageOptions,
     type PermissionRequest,
     type PermissionRequestResult,
@@ -31,12 +32,10 @@ const MAX_SDK_RETRIES = 2;
 /** Delay between retries (ms) */
 const RETRY_DELAY_MS = 2_000;
 
-/** Error patterns that indicate transient SDK failures worth retrying */
-const TRANSIENT_ERROR_PATTERNS = [
-    'Cannot call write after a stream was destroyed',
-    'stream was destroyed',
-    'EPIPE',
-    'ECONNRESET',
+/** Error patterns that indicate transient SDK failures worth retrying.
+ *  Stream-destruction errors are detected by the central SDK helper;
+ *  additional network-level patterns are checked here. */
+const EXTRA_TRANSIENT_PATTERNS = [
     'socket hang up',
 ];
 
@@ -74,8 +73,11 @@ function readOnlyPermissions(request: PermissionRequest): PermissionRequestResul
  * succeed on retry (e.g., destroyed streams, broken pipes).
  */
 export function isTransientSDKError(errorMessage: string): boolean {
+    if (CopilotSDKService.isStreamDestroyedError(errorMessage)) {
+        return true;
+    }
     const lower = errorMessage.toLowerCase();
-    return TRANSIENT_ERROR_PATTERNS.some(pattern => lower.includes(pattern.toLowerCase()));
+    return EXTRA_TRANSIENT_PATTERNS.some(pattern => lower.includes(pattern.toLowerCase()));
 }
 
 /**
