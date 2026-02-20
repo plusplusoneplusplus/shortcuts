@@ -30,81 +30,64 @@ import type { CLIConfig } from '../config';
 
 const TOKEN_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes
 
-interface WipeToken {
+interface TokenData {
     token: string;
     createdAt: number;
 }
 
-let activeWipeToken: WipeToken | null = null;
+/** Manages a single time-limited, one-time-use confirmation token. */
+class TokenManager {
+    private active: TokenData | null = null;
 
-/** Generate a fresh wipe confirmation token. */
-function generateWipeToken(): WipeToken {
-    const token = crypto.randomBytes(16).toString('hex');
-    const wt: WipeToken = { token, createdAt: Date.now() };
-    activeWipeToken = wt;
-    return wt;
-}
-
-/** Validate a token string. Returns true if valid and not expired. */
-function validateWipeToken(token: string): boolean {
-    if (!activeWipeToken) { return false; }
-    if (activeWipeToken.token !== token) { return false; }
-    if (Date.now() - activeWipeToken.createdAt > TOKEN_EXPIRY_MS) {
-        activeWipeToken = null;
-        return false;
+    /** Generate a fresh confirmation token. */
+    generate(): TokenData {
+        const token = crypto.randomBytes(16).toString('hex');
+        this.active = { token, createdAt: Date.now() };
+        return this.active;
     }
-    // Consume the token (one-time use)
-    activeWipeToken = null;
-    return true;
-}
 
-// Exported for testing
-export { generateWipeToken, validateWipeToken, activeWipeToken, TOKEN_EXPIRY_MS };
-
-/** Reset token state (for tests). */
-export function resetWipeToken(): void {
-    activeWipeToken = null;
-}
-
-// ============================================================================
-// Import Token Management
-// ============================================================================
-
-interface ImportToken {
-    token: string;
-    createdAt: number;
-}
-
-let activeImportToken: ImportToken | null = null;
-
-/** Generate a fresh import confirmation token. */
-function generateImportToken(): ImportToken {
-    const token = crypto.randomBytes(16).toString('hex');
-    const it: ImportToken = { token, createdAt: Date.now() };
-    activeImportToken = it;
-    return it;
-}
-
-/** Validate an import token string. Returns true if valid and not expired. */
-function validateImportToken(token: string): boolean {
-    if (!activeImportToken) { return false; }
-    if (activeImportToken.token !== token) { return false; }
-    if (Date.now() - activeImportToken.createdAt > TOKEN_EXPIRY_MS) {
-        activeImportToken = null;
-        return false;
+    /** Validate a token string. Returns true if valid and not expired. Consumes the token. */
+    validate(token: string): boolean {
+        if (!this.active) { return false; }
+        if (this.active.token !== token) { return false; }
+        if (Date.now() - this.active.createdAt > TOKEN_EXPIRY_MS) {
+            this.active = null;
+            return false;
+        }
+        // Consume the token (one-time use)
+        this.active = null;
+        return true;
     }
-    // Consume the token (one-time use)
-    activeImportToken = null;
-    return true;
+
+    /** Reset token state (for tests). */
+    reset(): void {
+        this.active = null;
+    }
+
+    /** Current active token (exposed for testing). */
+    get activeToken(): TokenData | null {
+        return this.active;
+    }
 }
 
-// Exported for testing
-export { generateImportToken, validateImportToken, activeImportToken };
+const wipeTokenManager = new TokenManager();
+const importTokenManager = new TokenManager();
 
-/** Reset import token state (for tests). */
-export function resetImportToken(): void {
-    activeImportToken = null;
-}
+// Thin wrappers preserving the original exported API
+function generateWipeToken() { return wipeTokenManager.generate(); }
+function validateWipeToken(token: string) { return wipeTokenManager.validate(token); }
+function resetWipeToken() { wipeTokenManager.reset(); }
+
+function generateImportToken() { return importTokenManager.generate(); }
+function validateImportToken(token: string) { return importTokenManager.validate(token); }
+function resetImportToken() { importTokenManager.reset(); }
+
+export {
+    TokenManager, TOKEN_EXPIRY_MS,
+    generateWipeToken, validateWipeToken, resetWipeToken,
+    generateImportToken, validateImportToken, resetImportToken,
+    wipeTokenManager, importTokenManager,
+};
 
 // ============================================================================
 // Route Registration
