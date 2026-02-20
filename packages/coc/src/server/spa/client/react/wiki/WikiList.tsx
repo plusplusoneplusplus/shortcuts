@@ -66,7 +66,7 @@ export function WikiList() {
 
     const setupWiki = useCallback((wikiId: string) => {
         dispatch({ type: 'SELECT_WIKI_WITH_TAB', wikiId, tab: 'admin' });
-        location.hash = '#wiki/' + encodeURIComponent(wikiId);
+        location.hash = '#wiki/' + encodeURIComponent(wikiId) + '/admin';
     }, [dispatch]);
 
     const handleDelete = useCallback(async (wikiId: string) => {

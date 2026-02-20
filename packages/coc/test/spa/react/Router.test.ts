@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { tabFromHash, VALID_REPO_SUB_TABS, parseProcessDeepLink } from '../../../src/server/spa/client/react/layout/Router';
+import { tabFromHash, VALID_REPO_SUB_TABS, VALID_WIKI_PROJECT_TABS, parseProcessDeepLink, parseWikiDeepLink } from '../../../src/server/spa/client/react/layout/Router';
 
 // ─── tabFromHash ─────────────────────────────────────────────────
 
@@ -215,5 +215,163 @@ describe('process deep-link parsing', () => {
 
     it('returns null for unrelated hashes', () => {
         expect(parseProcessDeepLink('#repos/my-repo')).toBeNull();
+    });
+});
+
+// ─── VALID_WIKI_PROJECT_TABS ────────────────────────────────────
+
+describe('VALID_WIKI_PROJECT_TABS', () => {
+    it('includes "browse"', () => {
+        expect(VALID_WIKI_PROJECT_TABS.has('browse')).toBe(true);
+    });
+
+    it('includes "ask"', () => {
+        expect(VALID_WIKI_PROJECT_TABS.has('ask')).toBe(true);
+    });
+
+    it('includes "graph"', () => {
+        expect(VALID_WIKI_PROJECT_TABS.has('graph')).toBe(true);
+    });
+
+    it('includes "admin"', () => {
+        expect(VALID_WIKI_PROJECT_TABS.has('admin')).toBe(true);
+    });
+
+    it('does not include unknown tab', () => {
+        expect(VALID_WIKI_PROJECT_TABS.has('settings')).toBe(false);
+    });
+
+    it('has exactly 4 entries', () => {
+        expect(VALID_WIKI_PROJECT_TABS.size).toBe(4);
+    });
+});
+
+// ─── parseWikiDeepLink ──────────────────────────────────────────
+
+describe('parseWikiDeepLink', () => {
+    it('parses #wiki/my-wiki with no tab (defaults null)', () => {
+        const result = parseWikiDeepLink('#wiki/my-wiki');
+        expect(result.wikiId).toBe('my-wiki');
+        expect(result.tab).toBeNull();
+        expect(result.componentId).toBeNull();
+    });
+
+    it('parses #wiki/my-wiki/browse', () => {
+        const result = parseWikiDeepLink('#wiki/my-wiki/browse');
+        expect(result.wikiId).toBe('my-wiki');
+        expect(result.tab).toBe('browse');
+        expect(result.componentId).toBeNull();
+    });
+
+    it('parses #wiki/my-wiki/ask', () => {
+        const result = parseWikiDeepLink('#wiki/my-wiki/ask');
+        expect(result.wikiId).toBe('my-wiki');
+        expect(result.tab).toBe('ask');
+        expect(result.componentId).toBeNull();
+    });
+
+    it('parses #wiki/my-wiki/graph', () => {
+        const result = parseWikiDeepLink('#wiki/my-wiki/graph');
+        expect(result.wikiId).toBe('my-wiki');
+        expect(result.tab).toBe('graph');
+        expect(result.componentId).toBeNull();
+    });
+
+    it('parses #wiki/my-wiki/admin', () => {
+        const result = parseWikiDeepLink('#wiki/my-wiki/admin');
+        expect(result.wikiId).toBe('my-wiki');
+        expect(result.tab).toBe('admin');
+        expect(result.componentId).toBeNull();
+    });
+
+    it('parses #wiki/my-wiki/component/comp-1', () => {
+        const result = parseWikiDeepLink('#wiki/my-wiki/component/comp-1');
+        expect(result.wikiId).toBe('my-wiki');
+        expect(result.tab).toBe('browse');
+        expect(result.componentId).toBe('comp-1');
+    });
+
+    it('handles URL-encoded wiki IDs', () => {
+        const result = parseWikiDeepLink('#wiki/my%20wiki/ask');
+        expect(result.wikiId).toBe('my wiki');
+        expect(result.tab).toBe('ask');
+    });
+
+    it('handles URL-encoded component IDs', () => {
+        const result = parseWikiDeepLink('#wiki/w1/component/comp%2Fone');
+        expect(result.wikiId).toBe('w1');
+        expect(result.tab).toBe('browse');
+        expect(result.componentId).toBe('comp/one');
+    });
+
+    it('returns null for unknown tab segment', () => {
+        const result = parseWikiDeepLink('#wiki/my-wiki/settings');
+        expect(result.wikiId).toBe('my-wiki');
+        expect(result.tab).toBeNull();
+        expect(result.componentId).toBeNull();
+    });
+
+    it('returns null wikiId for #wiki alone', () => {
+        const result = parseWikiDeepLink('#wiki');
+        expect(result.wikiId).toBeNull();
+        expect(result.tab).toBeNull();
+        expect(result.componentId).toBeNull();
+    });
+
+    it('returns null for non-wiki hash', () => {
+        const result = parseWikiDeepLink('#repos/my-repo');
+        expect(result.wikiId).toBeNull();
+        expect(result.tab).toBeNull();
+        expect(result.componentId).toBeNull();
+    });
+
+    it('returns null for empty hash', () => {
+        const result = parseWikiDeepLink('#');
+        expect(result.wikiId).toBeNull();
+        expect(result.tab).toBeNull();
+    });
+
+    it('returns null for empty string', () => {
+        const result = parseWikiDeepLink('');
+        expect(result.wikiId).toBeNull();
+        expect(result.tab).toBeNull();
+    });
+
+    it('component route takes precedence over tab matching', () => {
+        const result = parseWikiDeepLink('#wiki/w1/component/admin');
+        expect(result.wikiId).toBe('w1');
+        expect(result.tab).toBe('browse');
+        expect(result.componentId).toBe('admin');
+    });
+
+    it('returns null componentId when component segment has no ID', () => {
+        const result = parseWikiDeepLink('#wiki/w1/component');
+        expect(result.wikiId).toBe('w1');
+        expect(result.tab).toBeNull();
+        expect(result.componentId).toBeNull();
+    });
+});
+
+// ─── wiki tab deep-link integration ─────────────────────────────
+
+describe('wiki tab deep-link integration', () => {
+    it('tabFromHash returns "wiki" for all wiki tab routes', () => {
+        expect(tabFromHash('#wiki/my-wiki/browse')).toBe('wiki');
+        expect(tabFromHash('#wiki/my-wiki/ask')).toBe('wiki');
+        expect(tabFromHash('#wiki/my-wiki/graph')).toBe('wiki');
+        expect(tabFromHash('#wiki/my-wiki/admin')).toBe('wiki');
+    });
+
+    it('tabFromHash returns "wiki" for wiki component route', () => {
+        expect(tabFromHash('#wiki/my-wiki/component/comp-1')).toBe('wiki');
+    });
+
+    it('tab and component can be parsed after tabFromHash', () => {
+        const hash = '#wiki/w1/ask';
+        const tab = tabFromHash(hash);
+        expect(tab).toBe('wiki');
+        const detail = parseWikiDeepLink(hash);
+        expect(detail.wikiId).toBe('w1');
+        expect(detail.tab).toBe('ask');
     });
 });

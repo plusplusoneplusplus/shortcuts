@@ -666,6 +666,163 @@ describe('WikiDetail pending setup flow', () => {
 });
 
 // ============================================================================
+// WikiDetail — tab routing via URL hash
+// ============================================================================
+
+describe('WikiDetail tab routing', () => {
+    beforeEach(() => {
+        vi.stubGlobal('fetch', vi.fn().mockImplementation((input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url.includes('/graph')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        components: [{ id: 'c1', name: 'Component A', path: '/a', purpose: 'Purpose A', category: 'ui' }],
+                        categories: [{ id: 'ui', name: 'UI' }],
+                        project: { name: 'Test Project', description: 'A test', mainLanguage: 'TypeScript' },
+                    }),
+                });
+            }
+            if (url.includes('/admin/cache')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        }));
+        location.hash = '';
+    });
+
+    it('renders browse tab by default', async () => {
+        render(
+            <Wrap>
+                <SeededWikiDetail wiki={{ id: 'w1', name: 'My Wiki', status: 'loaded' }} />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            const browseBtn = screen.getByText('Browse');
+            expect(browseBtn.className).toContain('active');
+        });
+    });
+
+    it('renders admin tab when initialTab is "admin"', async () => {
+        render(
+            <Wrap>
+                <SeededWikiDetail
+                    wiki={{ id: 'w1', name: 'My Wiki', status: 'loaded' }}
+                    initialTab="admin"
+                />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('Run All')).toBeTruthy();
+        });
+        const adminBtn = screen.getByText('Admin');
+        expect(adminBtn.className).toContain('active');
+    });
+
+    it('renders ask tab when initialTab is "ask"', async () => {
+        render(
+            <Wrap>
+                <SeededWikiDetail
+                    wiki={{ id: 'w1', name: 'My Wiki', status: 'loaded' }}
+                    initialTab="ask"
+                />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('Ask a question about the codebase')).toBeTruthy();
+        });
+        const askBtn = screen.getByText('Ask');
+        expect(askBtn.className).toContain('active');
+    });
+
+    it('updates hash when clicking a tab', async () => {
+        render(
+            <Wrap>
+                <SeededWikiDetail wiki={{ id: 'w1', name: 'My Wiki', status: 'loaded' }} />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('Ask')).toBeTruthy();
+        });
+
+        fireEvent.click(screen.getByText('Ask'));
+
+        expect(location.hash).toBe('#wiki/w1/ask');
+    });
+
+    it('updates hash to #wiki/:id for browse tab (no /browse suffix)', async () => {
+        render(
+            <Wrap>
+                <SeededWikiDetail
+                    wiki={{ id: 'w1', name: 'My Wiki', status: 'loaded' }}
+                    initialTab="ask"
+                />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('Browse')).toBeTruthy();
+        });
+
+        fireEvent.click(screen.getByText('Browse'));
+
+        expect(location.hash).toBe('#wiki/w1');
+    });
+
+    it('updates hash to admin tab', async () => {
+        render(
+            <Wrap>
+                <SeededWikiDetail wiki={{ id: 'w1', name: 'My Wiki', status: 'loaded' }} />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('Admin')).toBeTruthy();
+        });
+
+        fireEvent.click(screen.getByText('Admin'));
+
+        expect(location.hash).toBe('#wiki/w1/admin');
+    });
+
+    it('updates hash to graph tab', async () => {
+        render(
+            <Wrap>
+                <SeededWikiDetail wiki={{ id: 'w1', name: 'My Wiki', status: 'loaded' }} />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('Graph')).toBeTruthy();
+        });
+
+        fireEvent.click(screen.getByText('Graph'));
+
+        expect(location.hash).toBe('#wiki/w1/graph');
+    });
+
+    it('encodes wiki ID in hash', async () => {
+        render(
+            <Wrap>
+                <SeededWikiDetail wiki={{ id: 'my wiki', name: 'Spaced Wiki', status: 'loaded' }} />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('Ask')).toBeTruthy();
+        });
+
+        fireEvent.click(screen.getByText('Ask'));
+
+        expect(location.hash).toBe('#wiki/my%20wiki/ask');
+    });
+});
+
+// ============================================================================
 // useWebSocket — wiki event dispatching (App.tsx onMessage)
 // ============================================================================
 

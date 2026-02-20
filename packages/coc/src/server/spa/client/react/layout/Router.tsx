@@ -11,7 +11,7 @@ import { QueueView } from '../queue/QueueView';
 import { ReposView } from '../repos';
 import { WikiView } from '../wiki/WikiView';
 import { AdminPanel } from '../admin/AdminPanel';
-import type { DashboardTab, RepoSubTab } from '../types/dashboard';
+import type { DashboardTab, RepoSubTab, WikiProjectTab } from '../types/dashboard';
 
 function StubView({ id, label }: { id: string; label: string }) {
     return <div id={id}>{label}</div>;
@@ -25,6 +25,26 @@ export function tabFromHash(hash: string): DashboardTab | null {
     if (h === 'admin') return 'admin';
     if (h === 'reports') return 'reports';
     return null;
+}
+
+export const VALID_WIKI_PROJECT_TABS: Set<string> = new Set(['browse', 'ask', 'graph', 'admin']);
+
+export function parseWikiDeepLink(hash: string): { wikiId: string | null; tab: WikiProjectTab | null; componentId: string | null } {
+    const cleaned = hash.replace(/^#/, '');
+    const parts = cleaned.split('/');
+    if (parts[0] !== 'wiki' || !parts[1]) return { wikiId: null, tab: null, componentId: null };
+
+    const wikiId = decodeURIComponent(parts[1]);
+
+    if (parts.length >= 4 && parts[2] === 'component' && parts[3]) {
+        return { wikiId, tab: 'browse', componentId: decodeURIComponent(parts[3]) };
+    }
+
+    if (parts.length >= 3 && VALID_WIKI_PROJECT_TABS.has(parts[2])) {
+        return { wikiId, tab: parts[2] as WikiProjectTab, componentId: null };
+    }
+
+    return { wikiId, tab: null, componentId: null };
 }
 
 export function parseProcessDeepLink(hash: string): string | null {
@@ -95,15 +115,17 @@ export function Router() {
                 }
             }
 
-            // Parse wiki deep links: #wiki/:id or #wiki/:id/component/:compId
+            // Parse wiki deep links: #wiki/:id, #wiki/:id/:tab, #wiki/:id/component/:compId
             if (tab === 'wiki') {
-                const parts = hash.split('/');
-                if (parts.length >= 2 && parts[0] === 'wiki' && parts[1]) {
-                    const wikiId = decodeURIComponent(parts[1]);
-                    dispatch({ type: 'SELECT_WIKI', wikiId });
-                    if (parts.length >= 4 && parts[2] === 'component' && parts[3]) {
-                        const compId = decodeURIComponent(parts[3]);
-                        dispatch({ type: 'SELECT_WIKI_COMPONENT', componentId: compId });
+                const wikiLink = parseWikiDeepLink('#' + hash);
+                if (wikiLink.wikiId) {
+                    if (wikiLink.tab) {
+                        dispatch({ type: 'SELECT_WIKI_WITH_TAB', wikiId: wikiLink.wikiId, tab: wikiLink.tab });
+                    } else {
+                        dispatch({ type: 'SELECT_WIKI', wikiId: wikiLink.wikiId });
+                    }
+                    if (wikiLink.componentId) {
+                        dispatch({ type: 'SELECT_WIKI_COMPONENT', componentId: wikiLink.componentId });
                     }
                 }
             }

@@ -13,8 +13,7 @@ import { WikiComponent } from './WikiComponent';
 import { WikiGraph } from './WikiGraph';
 import { WikiAsk } from './WikiAsk';
 import { WikiAdmin } from './WikiAdmin';
-
-type WikiProjectTab = 'browse' | 'ask' | 'graph' | 'admin';
+import type { WikiProjectTab } from '../types/dashboard';
 
 interface ComponentGraph {
     components: any[];
@@ -36,22 +35,33 @@ const statusConfig: Record<WikiStatus, { label: string; badge: string }> = {
     pending: { label: 'Setup Required', badge: 'warning' },
 };
 
+const WIKI_TABS: WikiProjectTab[] = ['browse', 'ask', 'graph', 'admin'];
+
+function buildWikiHash(wikiId: string, tab: WikiProjectTab, componentId?: string | null): string {
+    const base = '#wiki/' + encodeURIComponent(wikiId);
+    if (componentId) {
+        return base + '/component/' + encodeURIComponent(componentId);
+    }
+    if (tab === 'browse') return base;
+    return base + '/' + tab;
+}
+
 export function WikiDetail({ wikiId }: WikiDetailProps) {
     const { state, dispatch } = useApp();
     const [graph, setGraph] = useState<ComponentGraph | null>(null);
     const [loadingGraph, setLoadingGraph] = useState(true);
     const [activeTab, setActiveTab] = useState<WikiProjectTab>('browse');
 
-    // Consume initial tab from context (e.g. from "→ Setup" CTA on pending wiki cards)
+    // Consume initial tab from context (e.g. from hash routing or "→ Setup" CTA)
     useEffect(() => {
         if (state.wikiDetailInitialTab) {
             const tab = state.wikiDetailInitialTab as WikiProjectTab;
-            if (['browse', 'ask', 'graph', 'admin'].includes(tab)) {
+            if (WIKI_TABS.includes(tab)) {
                 setActiveTab(tab);
             }
             dispatch({ type: 'SELECT_WIKI', wikiId: wikiId });
         }
-    }, []);  // eslint-disable-line react-hooks/exhaustive-deps
+    }, [state.wikiDetailInitialTab]);  // eslint-disable-line react-hooks/exhaustive-deps
 
     const wiki = useMemo(
         () => state.wikis.find((w: any) => w.id === wikiId),
@@ -76,9 +86,14 @@ export function WikiDetail({ wikiId }: WikiDetailProps) {
         location.hash = '#wiki';
     }, [dispatch]);
 
+    const changeTab = useCallback((tab: WikiProjectTab) => {
+        setActiveTab(tab);
+        location.hash = buildWikiHash(wikiId, tab, tab === 'browse' ? state.selectedWikiComponentId : null);
+    }, [wikiId, state.selectedWikiComponentId]);
+
     const handleSelectComponent = useCallback((componentId: string) => {
         dispatch({ type: 'SELECT_WIKI_COMPONENT', componentId });
-        location.hash = '#wiki/' + encodeURIComponent(wikiId) + '/component/' + encodeURIComponent(componentId);
+        location.hash = buildWikiHash(wikiId, 'browse', componentId);
         setActiveTab('browse');
     }, [dispatch, wikiId]);
 
@@ -106,7 +121,7 @@ export function WikiDetail({ wikiId }: WikiDetailProps) {
                         <div className="text-xs text-[#848484] mb-4 max-w-xs">
                             This wiki has been registered but has not been generated yet.
                         </div>
-                        <Button size="sm" onClick={() => setActiveTab('admin')}>
+                        <Button size="sm" onClick={() => changeTab('admin')}>
                             → Run Setup Wizard
                         </Button>
                     </div>
@@ -147,7 +162,6 @@ export function WikiDetail({ wikiId }: WikiDetailProps) {
                         graph={graph}
                         onSelectComponent={(id) => {
                             handleSelectComponent(id);
-                            setActiveTab('browse');
                         }}
                     />
                 );
@@ -179,7 +193,7 @@ export function WikiDetail({ wikiId }: WikiDetailProps) {
                 <div className="flex-1" />
                 {/* Tab bar */}
                 <div className="flex gap-0.5" id="wiki-project-tabs">
-                    {(['browse', 'ask', 'graph', 'admin'] as WikiProjectTab[]).map(t => (
+                    {WIKI_TABS.map(t => (
                         <button
                             key={t}
                             className={cn(
@@ -189,7 +203,7 @@ export function WikiDetail({ wikiId }: WikiDetailProps) {
                                     : 'text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]'
                             )}
                             data-wiki-project-tab={t}
-                            onClick={() => setActiveTab(t)}
+                            onClick={() => changeTab(t)}
                         >
                             {t.charAt(0).toUpperCase() + t.slice(1)}
                         </button>
