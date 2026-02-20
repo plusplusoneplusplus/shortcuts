@@ -8,6 +8,39 @@ import { Button } from '../../shared';
 import type { TaskCommentCategory } from '../../../task-comments-types';
 import { CATEGORY_INFO, ALL_CATEGORIES } from '../../../task-comments-types';
 
+const VIEWPORT_MARGIN = 8;
+
+/**
+ * Clamp a popup rect so it stays fully inside the viewport.
+ * Returns adjusted { top, left } values.
+ */
+export function clampToViewport(
+    position: { top: number; left: number },
+    popupWidth: number,
+    popupHeight: number,
+    viewportWidth: number = window.innerWidth,
+    viewportHeight: number = window.innerHeight,
+    margin: number = VIEWPORT_MARGIN,
+): { top: number; left: number } {
+    let { top, left } = position;
+
+    if (left + popupWidth + margin > viewportWidth) {
+        left = viewportWidth - popupWidth - margin;
+    }
+    if (left < margin) {
+        left = margin;
+    }
+
+    if (top + popupHeight + margin > viewportHeight) {
+        top = viewportHeight - popupHeight - margin;
+    }
+    if (top < margin) {
+        top = margin;
+    }
+
+    return { top, left };
+}
+
 export interface InlineCommentPopupProps {
     position: { top: number; left: number };
     onSubmit: (text: string, category: TaskCommentCategory) => void;
@@ -17,12 +50,18 @@ export interface InlineCommentPopupProps {
 export function InlineCommentPopup({ position, onSubmit, onCancel }: InlineCommentPopupProps) {
     const [text, setText] = useState('');
     const [category, setCategory] = useState<TaskCommentCategory>('general');
+    const [clampedPos, setClampedPos] = useState(position);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const popupRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         textareaRef.current?.focus();
-    }, []);
+
+        if (popupRef.current) {
+            const rect = popupRef.current.getBoundingClientRect();
+            setClampedPos(clampToViewport(position, rect.width, rect.height));
+        }
+    }, [position]);
 
     // Escape key closes
     useEffect(() => {
@@ -64,7 +103,7 @@ export function InlineCommentPopup({ position, onSubmit, onCancel }: InlineComme
         <div
             ref={popupRef}
             className="fixed z-[10003] w-[300px] rounded-lg bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] shadow-xl p-3 flex flex-col gap-2"
-            style={{ top: position.top, left: position.left }}
+            style={{ top: clampedPos.top, left: clampedPos.left }}
             data-testid="inline-comment-popup"
         >
             {/* Category selector */}
