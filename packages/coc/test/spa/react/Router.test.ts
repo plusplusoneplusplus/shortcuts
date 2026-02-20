@@ -98,12 +98,16 @@ describe('VALID_REPO_SUB_TABS', () => {
         expect(VALID_REPO_SUB_TABS.has('schedules')).toBe(true);
     });
 
+    it('includes "chat"', () => {
+        expect(VALID_REPO_SUB_TABS.has('chat')).toBe(true);
+    });
+
     it('does not include unknown tab', () => {
         expect(VALID_REPO_SUB_TABS.has('settings')).toBe(false);
     });
 
-    it('has exactly 5 entries', () => {
-        expect(VALID_REPO_SUB_TABS.size).toBe(5);
+    it('has exactly 6 entries', () => {
+        expect(VALID_REPO_SUB_TABS.size).toBe(6);
     });
 });
 
@@ -149,6 +153,12 @@ describe('repo sub-tab deep-link parsing', () => {
         const result = parseRepoDeepLink('#repos/my-repo/schedules');
         expect(result.repoId).toBe('my-repo');
         expect(result.subTab).toBe('schedules');
+    });
+
+    it('parses #repos/my-repo/chat correctly', () => {
+        const result = parseRepoDeepLink('#repos/my-repo/chat');
+        expect(result.repoId).toBe('my-repo');
+        expect(result.subTab).toBe('chat');
     });
 
     it('returns null subTab for #repos/my-repo (no sub-tab)', () => {

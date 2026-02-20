@@ -22,7 +22,7 @@ import * as url from 'url';
 // ============================================================================
 
 const VALID_PRIORITIES: Set<string> = new Set(['high', 'normal', 'low']);
-const VALID_TASK_TYPES: Set<string> = new Set(['follow-prompt', 'resolve-comments', 'code-review', 'ai-clarification', 'custom']);
+const VALID_TASK_TYPES: Set<string> = new Set(['follow-prompt', 'resolve-comments', 'code-review', 'ai-clarification', 'custom', 'chat']);
 
 /** Human-readable labels for task types, used when auto-generating display names. */
 const TYPE_LABELS: Record<string, string> = {
@@ -31,6 +31,7 @@ const TYPE_LABELS: Record<string, string> = {
     'code-review': 'Code Review',
     'ai-clarification': 'AI Clarification',
     'custom': 'Task',
+    'chat': 'Chat',
 };
 
 /**

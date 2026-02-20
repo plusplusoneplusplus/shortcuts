@@ -212,6 +212,18 @@ describe('Queue Handler', () => {
             expect(body.task.type).toBe('code-review');
         });
 
+        it('should enqueue chat type', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(`${srv.url}/api/queue`, makeTask({
+                type: 'chat',
+                payload: { prompt: 'What does this repo do?' },
+            }));
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.type).toBe('chat');
+        });
+
         it('should enqueue resolve-comments type', async () => {
             const srv = await startServer();
 
