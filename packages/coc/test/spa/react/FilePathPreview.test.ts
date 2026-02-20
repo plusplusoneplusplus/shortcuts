@@ -7,6 +7,8 @@
 /* @vitest-environment jsdom */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 
 function mockWorkspaceAndPreview(fetchMock: ReturnType<typeof vi.fn>, overrides?: {
     fileName?: string;
@@ -234,5 +236,39 @@ describe('file-path-preview delegation', () => {
                 detail: { filePath: fullPath },
             })
         );
+    });
+});
+
+describe('file-path-link CSS rules', () => {
+    const cssPath = resolve(__dirname, '../../../src/server/spa/client/tailwind.css');
+    const css = readFileSync(cssPath, 'utf-8');
+
+    function extractBlock(selector: string): string {
+        const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const re = new RegExp(escaped + '\\s*\\{([^}]+)\\}');
+        const m = css.match(re);
+        return m ? m[1] : '';
+    }
+
+    it('uses inline-block display for wider click target', () => {
+        const block = extractBlock('.file-path-link');
+        expect(block).toContain('display: inline-block');
+    });
+
+    it('caps width at 80%', () => {
+        const block = extractBlock('.file-path-link');
+        expect(block).toContain('max-width: 80%');
+    });
+
+    it('truncates overflow with ellipsis', () => {
+        const block = extractBlock('.file-path-link');
+        expect(block).toContain('text-overflow: ellipsis');
+        expect(block).toContain('overflow: hidden');
+        expect(block).toContain('white-space: nowrap');
+    });
+
+    it('uses vertical-align bottom for proper inline alignment', () => {
+        const block = extractBlock('.file-path-link');
+        expect(block).toContain('vertical-align: bottom');
     });
 });

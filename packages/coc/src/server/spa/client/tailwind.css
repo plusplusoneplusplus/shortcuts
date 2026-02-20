@@ -16,7 +16,13 @@
     text-underline-offset: 3px;
     cursor: pointer;
     border-radius: 3px;
-    padding: 0 2px;
+    padding: 1px 6px;
+    display: inline-block;
+    max-width: 80%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
 }
 
 .file-path-link:hover {
