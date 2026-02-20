@@ -167,23 +167,23 @@ export async function runSeedsSession(
     let seeds: ThemeSeed[];
     try {
         seeds = parseSeedsResponse(result.response);
+        printInfo(`Successfully parsed ${seeds.length} theme seeds from AI response`);
     } catch (parseError) {
         // On parse failure, fall back to heuristic
-        if (options.verbose) {
-            process.stderr.write(
-                `[WARN] Failed to parse AI response: ${getErrorMessage(parseError)}. Falling back to heuristic.\n`
-            );
-        }
-        return generateHeuristicSeeds(repoPath);
+        process.stderr.write(
+            `[WARN] Failed to parse AI response: ${getErrorMessage(parseError)}. Falling back to heuristic.\n`
+        );
+        printInfo('Generating heuristic seeds from directory structure...');
+        const heuristicSeeds = generateHeuristicSeeds(repoPath);
+        printInfo(`Generated ${heuristicSeeds.length} heuristic seeds`);
+        return heuristicSeeds;
     }
 
     // Limit to maxThemes if AI over-generated
     if (seeds.length > options.maxThemes) {
-        if (options.verbose) {
-            process.stderr.write(
-                `[WARN] AI generated ${seeds.length} themes (maximum: ${options.maxThemes}). Truncating to ${options.maxThemes}.\n`
-            );
-        }
+        process.stderr.write(
+            `[WARN] AI generated ${seeds.length} themes (maximum: ${options.maxThemes}). Truncating to ${options.maxThemes}.\n`
+        );
         return seeds.slice(0, options.maxThemes);
     }
 

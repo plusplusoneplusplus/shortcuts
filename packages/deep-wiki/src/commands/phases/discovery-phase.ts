@@ -61,8 +61,9 @@ export async function runPhase1(
     let currentGitHash: string | null = null;
     try {
         currentGitHash = await getFolderHeadHash(repoPath);
-    } catch {
-        // Non-fatal
+        printInfo(`Git hash: ${currentGitHash ?? 'null'}`);
+    } catch (e) {
+        printWarning(`Failed to get git hash: ${getErrorMessage(e)}`);
     }
 
     // Clear discovery cache if --force
@@ -120,14 +121,19 @@ export async function runPhase1(
                         model: discoveryModel,
                         verbose: options.verbose,
                     });
+                    printInfo(`Seeds generation returned ${seeds.length} seeds`);
 
                     // Cache the generated seeds
                     if (currentGitHash) {
                         try {
+                            printInfo(`Saving seeds cache (gitHash: ${currentGitHash}, output: ${options.output})...`);
                             saveSeedsCache(seeds, options.output, currentGitHash);
-                        } catch {
-                            // Non-fatal
+                            printInfo('Seeds cache saved successfully');
+                        } catch (cacheError) {
+                            printWarning(`Failed to cache seeds: ${getErrorMessage(cacheError)}`);
                         }
+                    } else {
+                        printWarning('Skipping seeds cache: no git hash available');
                     }
                 }
 
