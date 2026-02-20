@@ -256,9 +256,18 @@ export function buildAskPrompt(
 
 /**
  * Send a Server-Sent Event.
+ * Returns false if the response stream is no longer writable (client disconnected).
  */
-export function sendSSE(res: ServerResponse, data: Record<string, unknown>): void {
-    res.write(`data: ${JSON.stringify(data)}\n\n`);
+export function sendSSE(res: ServerResponse, data: Record<string, unknown>): boolean {
+    if (res.destroyed || res.writableEnded) {
+        return false;
+    }
+    try {
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
+        return true;
+    } catch {
+        return false;
+    }
 }
 
 /**

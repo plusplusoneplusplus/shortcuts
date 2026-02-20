@@ -22,6 +22,25 @@ import { printInfo, printWarning, gray } from '../logger';
 import { getErrorMessage } from '../utils/error-utils';
 
 // ============================================================================
+// Retry Constants
+// ============================================================================
+
+/** Maximum number of retries for transient SDK errors */
+const MAX_SDK_RETRIES = 2;
+
+/** Delay between retries (ms) */
+const RETRY_DELAY_MS = 2_000;
+
+/** Error patterns that indicate transient SDK failures worth retrying */
+const TRANSIENT_ERROR_PATTERNS = [
+    'Cannot call write after a stream was destroyed',
+    'stream was destroyed',
+    'EPIPE',
+    'ECONNRESET',
+    'socket hang up',
+];
+
+// ============================================================================
 // Constants
 // ============================================================================
 
@@ -47,6 +66,26 @@ function readOnlyPermissions(request: PermissionRequest): PermissionRequestResul
 }
 
 // ============================================================================
+// Retry Helper
+// ============================================================================
+
+/**
+ * Check if an error message indicates a transient SDK failure that may
+ * succeed on retry (e.g., destroyed streams, broken pipes).
+ */
+export function isTransientSDKError(errorMessage: string): boolean {
+    const lower = errorMessage.toLowerCase();
+    return TRANSIENT_ERROR_PATTERNS.some(pattern => lower.includes(pattern.toLowerCase()));
+}
+
+/**
+ * Sleep for a given number of milliseconds.
+ */
+function sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// ============================================================================
 // Seeds Session
 // ============================================================================
 
@@ -56,6 +95,8 @@ function readOnlyPermissions(request: PermissionRequest): PermissionRequestResul
  * Creates a direct SDK session with read-only MCP tools, sends the
  * seeds prompt, and parses the AI response into ThemeSeed array.
  * Falls back to heuristic directory-based generation if AI under-generates.
+ *
+ * Retries automatically on transient SDK errors (e.g., destroyed streams).
  *
  * @param repoPath - Absolute path to the repository
  * @param options - Seeds command options (maxThemes, model, verbose)
@@ -97,9 +138,9 @@ export async function runSeedsSession(
         sendOptions.model = options.model;
     }
 
-    // Send the message
+    // Send the message with retry on transient errors
     printInfo('Sending seeds prompt to AI — exploring repository structure...');
-    const result = await service.sendMessage(sendOptions);
+    const result = await sendWithRetry(service, sendOptions, options.verbose);
 
     if (!result.success) {
         const errorMsg = result.error || 'Unknown SDK error';
@@ -143,6 +184,44 @@ export async function runSeedsSession(
     }
 
     return seeds;
+}
+
+/**
+ * Send a message via the SDK with automatic retry on transient errors.
+ */
+async function sendWithRetry(
+    service: ReturnType<typeof getCopilotSDKService>,
+    sendOptions: SendMessageOptions,
+    verbose?: boolean,
+): Promise<{ success: boolean; response?: string; error?: string }> {
+    let lastResult: { success: boolean; response?: string; error?: string } | undefined;
+
+    for (let attempt = 0; attempt <= MAX_SDK_RETRIES; attempt++) {
+        if (attempt > 0) {
+            printWarning(`Retrying seeds generation (attempt ${attempt + 1}/${MAX_SDK_RETRIES + 1}) after transient SDK error...`);
+            await sleep(RETRY_DELAY_MS * attempt);
+        }
+
+        const result = await service.sendMessage(sendOptions);
+        lastResult = result;
+
+        if (result.success) {
+            return result;
+        }
+
+        const errorMsg = result.error || '';
+        if (!isTransientSDKError(errorMsg) || attempt === MAX_SDK_RETRIES) {
+            return result;
+        }
+
+        if (verbose) {
+            process.stderr.write(
+                `[WARN] Transient SDK error on attempt ${attempt + 1}: ${errorMsg}\n`
+            );
+        }
+    }
+
+    return lastResult!;
 }
 
 // ============================================================================

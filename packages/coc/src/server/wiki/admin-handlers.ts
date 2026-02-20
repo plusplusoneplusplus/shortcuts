@@ -285,20 +285,37 @@ export async function handleGenerateSeeds(
         'X-Accel-Buffering': 'no',
     });
 
+    // Track client disconnect to avoid writing to a destroyed stream
+    let clientDisconnected = false;
+    req.on('close', () => { clientDisconnected = true; });
+
+    const safeSend = (data: Record<string, unknown>): boolean => {
+        if (clientDisconnected) return false;
+        return sendSSE(res, data);
+    };
+
+    const safeEnd = () => {
+        if (!res.destroyed && !res.writableEnded) {
+            res.end();
+        }
+    };
+
     try {
-        sendSSE(res, { type: 'status', message: 'Checking AI availability...' });
+        safeSend({ type: 'status', message: 'Checking AI availability...' });
 
         const { checkAIAvailability } = await importDeepWiki('ai-invoker');
         const availability = await checkAIAvailability();
         if (!availability.available) {
             const reason = availability.reason || 'Copilot SDK not available';
-            sendSSE(res, { type: 'error', message: reason });
-            sendSSE(res, { type: 'done', success: false, error: reason });
-            res.end();
+            safeSend({ type: 'error', message: reason });
+            safeSend({ type: 'done', success: false, error: reason });
+            safeEnd();
             return;
         }
 
-        sendSSE(res, { type: 'status', message: 'Generating theme seeds...' });
+        if (clientDisconnected) { safeEnd(); return; }
+
+        safeSend({ type: 'status', message: 'Generating theme seeds...' });
 
         const { runSeedsSession } = await importDeepWiki('seeds/seeds-session');
         const seeds = await runSeedsSession(repoPath, {
@@ -307,13 +324,15 @@ export async function handleGenerateSeeds(
             timeout,
         });
 
-        sendSSE(res, { type: 'log', message: `Generated ${seeds.length} theme seeds` });
-        sendSSE(res, { type: 'done', success: true, seeds });
+        if (clientDisconnected) { safeEnd(); return; }
+
+        safeSend({ type: 'log', message: `Generated ${seeds.length} theme seeds` });
+        safeSend({ type: 'done', success: true, seeds });
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
-        sendSSE(res, { type: 'error', message });
-        sendSSE(res, { type: 'done', success: false, error: message });
+        safeSend({ type: 'error', message });
+        safeSend({ type: 'done', success: false, error: message });
     }
 
-    res.end();
+    safeEnd();
 }

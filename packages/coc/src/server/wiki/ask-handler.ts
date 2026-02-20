@@ -226,9 +226,20 @@ export function buildAskPrompt(
 // SSE Utilities (shared — imported by explore-handler and generate-handler)
 // ============================================================================
 
-/** Send a Server-Sent Event. */
-export function sendSSE(res: ServerResponse, data: Record<string, unknown>): void {
-    res.write(`data: ${JSON.stringify(data)}\n\n`);
+/**
+ * Send a Server-Sent Event.
+ * Returns false if the response stream is no longer writable (client disconnected).
+ */
+export function sendSSE(res: ServerResponse, data: Record<string, unknown>): boolean {
+    if (res.destroyed || res.writableEnded) {
+        return false;
+    }
+    try {
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
+        return true;
+    } catch {
+        return false;
+    }
 }
 
 /** Read the raw request body as a string. */
