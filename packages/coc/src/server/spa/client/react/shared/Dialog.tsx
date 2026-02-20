@@ -25,6 +25,11 @@ export function Dialog({ open, onClose, title, children, footer, className, id }
 
     if (!open) return null;
 
+    const hasMaxWOverride = className ? /\bmax-w-\[/.test(className) : false;
+    const base = hasMaxWOverride
+        ? 'relative w-full rounded-lg bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] shadow-xl p-6 flex flex-col gap-4'
+        : 'relative w-full max-w-lg rounded-lg bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] shadow-xl p-6 flex flex-col gap-4';
+
     return ReactDOM.createPortal(
         <div
             id={id}
@@ -32,10 +37,7 @@ export function Dialog({ open, onClose, title, children, footer, className, id }
             onClick={onClose}
         >
             <div
-                className={cn(
-                    'relative w-full max-w-lg rounded-lg bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] shadow-xl p-6 flex flex-col gap-4',
-                    className
-                )}
+                className={cn(base, className)}
                 onClick={e => e.stopPropagation()}
             >
                 {title && (
