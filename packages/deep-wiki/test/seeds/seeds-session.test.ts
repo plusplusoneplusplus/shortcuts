@@ -140,6 +140,19 @@ describe('runSeedsSession', () => {
         expect(mockSendMessage).toHaveBeenCalledTimes(1);
     });
 
+    it('passes loadDefaultMcpConfig: false to avoid user MCP config', async () => {
+        mockSendMessage.mockResolvedValue({
+            success: true,
+            response: 'mock response',
+        });
+
+        await runSeedsSession('/repo', defaultOptions);
+
+        expect(mockSendMessage).toHaveBeenCalledTimes(1);
+        const sendOptions = mockSendMessage.mock.calls[0][0];
+        expect(sendOptions.loadDefaultMcpConfig).toBe(false);
+    });
+
     it('throws SeedsError when SDK is unavailable', async () => {
         mockIsAvailable.mockResolvedValue(false);
 

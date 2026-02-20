@@ -91,6 +91,7 @@ export async function runThemeProbe(
         availableTools: PROBE_TOOLS,
         onPermissionRequest: readOnlyPermissions,
         timeoutMs: options.timeout || DEFAULT_PROBE_TIMEOUT_MS,
+        loadDefaultMcpConfig: false,
     };
 
     // Set model if specified

@@ -133,6 +133,7 @@ export async function runSeedsSession(
         availableTools: SEEDS_TOOLS,
         onPermissionRequest: readOnlyPermissions,
         timeoutMs,
+        loadDefaultMcpConfig: false,
     };
 
     // Set model if specified

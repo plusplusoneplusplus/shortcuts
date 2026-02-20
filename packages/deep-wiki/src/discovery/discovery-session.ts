@@ -99,6 +99,7 @@ export async function runDiscoverySession(options: DiscoveryOptions): Promise<Di
         availableTools: DISCOVERY_TOOLS,
         onPermissionRequest: readOnlyPermissions,
         timeoutMs,
+        loadDefaultMcpConfig: false,
     };
 
     // Set model if specified

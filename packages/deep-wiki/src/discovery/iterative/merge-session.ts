@@ -87,6 +87,7 @@ export async function mergeProbeResults(
         availableTools: MERGE_TOOLS,
         onPermissionRequest: readOnlyPermissions,
         timeoutMs: options.timeout || DEFAULT_MERGE_TIMEOUT_MS,
+        loadDefaultMcpConfig: false,
     };
 
     // Set model if specified
