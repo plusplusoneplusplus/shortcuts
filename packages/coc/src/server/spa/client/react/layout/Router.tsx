@@ -96,7 +96,12 @@ export function Router() {
         const handleHash = () => {
             const hash = location.hash.replace(/^#/, '');
             const tab = tabFromHash('#' + hash);
-            if (tab) dispatch({ type: 'SET_ACTIVE_TAB', tab });
+            if (tab) {
+                dispatch({ type: 'SET_ACTIVE_TAB', tab });
+            } else if (!hash) {
+                location.hash = '#repos';
+                return;
+            }
 
             // Parse process deep links: #process/:id, #session/:id, #processes/:id
             if (tab === 'processes') {

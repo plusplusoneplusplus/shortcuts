@@ -2,11 +2,12 @@
  * TopBar — top navigation bar with tab switching and theme toggle.
  */
 
+import { useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { useTheme } from './ThemeProvider';
 import type { DashboardTab } from '../types/dashboard';
 
-const TABS: { label: string; tab: DashboardTab }[] = [
+export const TABS: { label: string; tab: DashboardTab }[] = [
     { label: 'Repos', tab: 'repos' },
     { label: 'Processes', tab: 'processes' },
     { label: 'Wiki', tab: 'wiki' },
@@ -21,6 +22,11 @@ const themeEmoji: Record<string, string> = {
 export function TopBar() {
     const { state, dispatch } = useApp();
     const { theme, toggleTheme } = useTheme();
+
+    const switchTab = useCallback((tab: DashboardTab) => {
+        dispatch({ type: 'SET_ACTIVE_TAB', tab });
+        location.hash = '#' + tab;
+    }, [dispatch]);
 
     return (
         <header
@@ -47,7 +53,7 @@ export function TopBar() {
                                     : 'text-[#1e1e1e] dark:text-[#cccccc] hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
                             }
                             data-tab={tab}
-                            onClick={() => dispatch({ type: 'SET_ACTIVE_TAB', tab })}
+                            onClick={() => switchTab(tab)}
                         >
                             {label}
                         </button>
