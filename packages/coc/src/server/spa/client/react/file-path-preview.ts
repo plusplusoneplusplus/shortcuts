@@ -30,6 +30,11 @@ const CACHE_TTL_MS = 5 * 60 * 1000;
 const WORKSPACE_CACHE_TTL_MS = 30 * 1000;
 const MAX_CACHE_ENTRIES = 50;
 const HOVER_DELAY_MS = 250;
+const TOOLTIP_GAP_PX = 6;
+const TOOLTIP_VIEWPORT_PADDING_PX = 16;
+const TOOLTIP_EDGE_MARGIN_PX = 8;
+const TOOLTIP_DEFAULT_MAX_WIDTH_PX = 960;
+const TOOLTIP_DEFAULT_MAX_HEIGHT_PX = 560;
 
 const previewCache = new Map<string, CacheEntry>();
 
@@ -162,20 +167,25 @@ function findPathLink(target: EventTarget | null): HTMLElement | null {
 function positionTooltip(target: HTMLElement): void {
     const tip = createTooltip();
     const rect = target.getBoundingClientRect();
-    const tipWidth = 500;
-    const tipHeight = 350;
+    const measured = tip.getBoundingClientRect();
+    const tipWidth = measured.width > 0
+        ? measured.width
+        : Math.min(window.innerWidth * 0.8, TOOLTIP_DEFAULT_MAX_WIDTH_PX);
+    const tipHeight = measured.height > 0
+        ? measured.height
+        : Math.min(window.innerHeight * 0.75, TOOLTIP_DEFAULT_MAX_HEIGHT_PX);
 
     let left = rect.left;
-    let top = rect.bottom + 6;
+    let top = rect.bottom + TOOLTIP_GAP_PX;
 
-    if (left + tipWidth > window.innerWidth - 16) {
-        left = window.innerWidth - tipWidth - 16;
+    if (left + tipWidth > window.innerWidth - TOOLTIP_VIEWPORT_PADDING_PX) {
+        left = window.innerWidth - tipWidth - TOOLTIP_VIEWPORT_PADDING_PX;
     }
-    if (left < 8) left = 8;
+    if (left < TOOLTIP_EDGE_MARGIN_PX) left = TOOLTIP_EDGE_MARGIN_PX;
 
-    if (top + tipHeight > window.innerHeight - 16) {
-        top = rect.top - tipHeight - 6;
-        if (top < 8) top = 8;
+    if (top + tipHeight > window.innerHeight - TOOLTIP_VIEWPORT_PADDING_PX) {
+        top = rect.top - tipHeight - TOOLTIP_GAP_PX;
+        if (top < TOOLTIP_EDGE_MARGIN_PX) top = TOOLTIP_EDGE_MARGIN_PX;
     }
 
     tip.style.left = `${left}px`;
@@ -255,6 +265,7 @@ async function showTooltip(target: HTMLElement): Promise<void> {
         if (activeTarget !== target || reqId !== activeRequestId) return;
         if (cached.error) renderError(cached.error);
         else if (cached.data) renderPreview(cached.data);
+        positionTooltip(target);
         return;
     }
 
@@ -263,11 +274,13 @@ async function showTooltip(target: HTMLElement): Promise<void> {
         setCache(fullPath, data, null);
         if (activeTarget !== target || reqId !== activeRequestId) return;
         renderPreview(data);
+        positionTooltip(target);
     } catch (err: any) {
         const msg = err?.message || 'Failed to load preview';
         setCache(fullPath, null, msg);
         if (activeTarget !== target || reqId !== activeRequestId) return;
         renderError(msg);
+        positionTooltip(target);
     }
 }
 

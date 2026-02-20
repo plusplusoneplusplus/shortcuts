@@ -42,6 +42,20 @@ async function hoverAndWait(link: HTMLElement) {
     await Promise.resolve();
 }
 
+function makeRect(left: number, top: number, width: number, height: number): DOMRect {
+    return {
+        x: left,
+        y: top,
+        left,
+        top,
+        width,
+        height,
+        right: left + width,
+        bottom: top + height,
+        toJSON: () => ({}),
+    } as DOMRect;
+}
+
 describe('file-path-preview delegation', () => {
     beforeEach(() => {
         vi.useFakeTimers();
@@ -237,9 +251,49 @@ describe('file-path-preview delegation', () => {
             })
         );
     });
+
+    it('positions tooltip using measured dimensions instead of hardcoded size', async () => {
+        const fullPath = '/Users/test/Documents/Projects/shortcuts/src/app.ts';
+        document.body.innerHTML = `
+            <div>
+                <span class="file-path-link" data-full-path="${fullPath}">app.ts</span>
+            </div>
+        `;
+
+        const fetchMock = vi.fn();
+        mockWorkspaceAndPreview(fetchMock);
+        vi.stubGlobal('fetch', fetchMock as any);
+
+        const originalInnerWidth = window.innerWidth;
+        const originalInnerHeight = window.innerHeight;
+        Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1000 });
+        Object.defineProperty(window, 'innerHeight', { configurable: true, value: 800 });
+
+        try {
+            const rectSpy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect');
+            rectSpy.mockImplementation(function(this: HTMLElement): DOMRect {
+                if (this.classList?.contains('file-path-link')) {
+                    return makeRect(780, 120, 200, 22);
+                }
+                if (this.classList?.contains('file-preview-tooltip')) {
+                    return makeRect(0, 0, 820, 320);
+                }
+                return makeRect(0, 0, 0, 0);
+            });
+
+            await import('../../../src/server/spa/client/react/file-path-preview');
+            await hoverAndWait(document.querySelector('.file-path-link') as HTMLElement);
+
+            const tooltip = document.querySelector('.file-preview-tooltip') as HTMLElement;
+            expect(tooltip.style.left).toBe('164px');
+        } finally {
+            Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalInnerWidth });
+            Object.defineProperty(window, 'innerHeight', { configurable: true, value: originalInnerHeight });
+        }
+    });
 });
 
-describe('file-path-link CSS rules', () => {
+describe('file-preview-tooltip CSS rules', () => {
     const cssPath = resolve(__dirname, '../../../src/server/spa/client/tailwind.css');
     const css = readFileSync(cssPath, 'utf-8');
 
@@ -250,25 +304,13 @@ describe('file-path-link CSS rules', () => {
         return m ? m[1] : '';
     }
 
-    it('uses inline-block display for wider click target', () => {
-        const block = extractBlock('.file-path-link');
-        expect(block).toContain('display: inline-block');
+    it('uses responsive 80vw width', () => {
+        const block = extractBlock('.file-preview-tooltip');
+        expect(block).toContain('width: min(80vw, 960px)');
     });
 
-    it('caps width at 80%', () => {
-        const block = extractBlock('.file-path-link');
-        expect(block).toContain('max-width: 80%');
-    });
-
-    it('truncates overflow with ellipsis', () => {
-        const block = extractBlock('.file-path-link');
-        expect(block).toContain('text-overflow: ellipsis');
-        expect(block).toContain('overflow: hidden');
-        expect(block).toContain('white-space: nowrap');
-    });
-
-    it('uses vertical-align bottom for proper inline alignment', () => {
-        const block = extractBlock('.file-path-link');
-        expect(block).toContain('vertical-align: bottom');
+    it('uses responsive max height to avoid viewport overflow', () => {
+        const block = extractBlock('.file-preview-tooltip');
+        expect(block).toContain('max-height: min(75vh, 560px)');
     });
 });
