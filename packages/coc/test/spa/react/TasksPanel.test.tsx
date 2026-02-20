@@ -390,6 +390,147 @@ describe('TasksPanel', () => {
 });
 
 // ============================================================================
+// Folder click clears markdown preview
+// ============================================================================
+
+describe('TasksPanel — folder click clears preview', () => {
+    let fetchSpy: ReturnType<typeof vi.fn>;
+
+    const twoFolderTree = {
+        name: 'tasks',
+        relativePath: '',
+        children: [
+            {
+                name: 'chat',
+                relativePath: 'chat',
+                children: [],
+                documentGroups: [],
+                singleDocuments: [
+                    { baseName: 'design', fileName: 'design.md', relativePath: 'chat', isArchived: false, status: 'pending' },
+                ],
+            },
+            {
+                name: 'repo-queue-tab',
+                relativePath: 'repo-queue-tab',
+                children: [],
+                documentGroups: [],
+                singleDocuments: [
+                    { baseName: 'spec', fileName: 'spec.md', relativePath: 'repo-queue-tab', isArchived: false },
+                ],
+            },
+        ],
+        documentGroups: [],
+        singleDocuments: [],
+    };
+
+    beforeEach(() => {
+        fetchSpy = vi.fn();
+        global.fetch = fetchSpy;
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('hides markdown preview when clicking a folder after a file was open', async () => {
+        fetchSpy.mockImplementation((url: string) => {
+            if (url.includes('tasks/content')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ content: '# Design\nBody' }) });
+            }
+            if (url.includes('/comments/')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ comments: [] }) });
+            }
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve(twoFolderTree) });
+        });
+
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree-item-chat')).toBeTruthy();
+        });
+
+        // Click "chat" folder to expand it
+        fireEvent.click(screen.getByTestId('task-tree-item-chat'));
+        await waitFor(() => {
+            expect(screen.getByTestId('miller-column-1')).toBeTruthy();
+        });
+
+        // Click the file inside "chat" to open the markdown preview
+        fireEvent.click(screen.getByTestId('task-tree-item-design'));
+        await waitFor(() => {
+            expect(screen.getByTestId('markdown-review-status-bar')).toBeTruthy();
+        });
+
+        // Now click "repo-queue-tab" folder — preview should disappear
+        fireEvent.click(screen.getByTestId('task-tree-item-repo-queue-tab'));
+        await waitFor(() => {
+            expect(screen.queryByTestId('markdown-review-status-bar')).toBeNull();
+        });
+    });
+
+    it('hides markdown preview when clicking the same folder level after file was open', async () => {
+        fetchSpy.mockImplementation((url: string) => {
+            if (url.includes('tasks/content')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ content: '# Spec' }) });
+            }
+            if (url.includes('/comments/')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ comments: [] }) });
+            }
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve(twoFolderTree) });
+        });
+
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree-item-repo-queue-tab')).toBeTruthy();
+        });
+
+        // Click "repo-queue-tab" folder to expand it
+        fireEvent.click(screen.getByTestId('task-tree-item-repo-queue-tab'));
+        await waitFor(() => {
+            expect(screen.getByTestId('miller-column-1')).toBeTruthy();
+        });
+
+        // Click the file inside to open preview
+        fireEvent.click(screen.getByTestId('task-tree-item-spec'));
+        await waitFor(() => {
+            expect(screen.getByTestId('markdown-review-status-bar')).toBeTruthy();
+        });
+
+        // Click "chat" folder — preview should disappear
+        fireEvent.click(screen.getByTestId('task-tree-item-chat'));
+        await waitFor(() => {
+            expect(screen.queryByTestId('markdown-review-status-bar')).toBeNull();
+        });
+    });
+
+    it('clicking a folder when no file is open does not break', async () => {
+        fetchSpy.mockImplementation((url: string) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve(twoFolderTree) });
+        });
+
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree-item-chat')).toBeTruthy();
+        });
+
+        // Click folder when no file is open — should not crash
+        fireEvent.click(screen.getByTestId('task-tree-item-chat'));
+        await waitFor(() => {
+            expect(screen.getByTestId('miller-column-1')).toBeTruthy();
+        });
+        expect(screen.queryByTestId('markdown-review-status-bar')).toBeNull();
+    });
+});
+
+// ============================================================================
 // parseTaskHashParams — URL parsing unit tests
 // ============================================================================
 

@@ -77,6 +77,8 @@ export function TaskTree({ tree, commentCounts, wsId, initialFolderPath, initial
         const newKeys = [...activeFolderKeys.slice(0, colIndex), getFolderKey(folder)];
         setActiveFolderKeys(newKeys);
 
+        setOpenFilePath(null);
+
         const folderPath = getFolderKey(folder);
         const encoded = folderPath.split('/').map(encodeURIComponent).join('/');
         history.replaceState(null, '', `#repos/${encodeURIComponent(wsId)}/tasks/${encoded}`);
