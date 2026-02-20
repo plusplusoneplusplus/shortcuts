@@ -145,6 +145,78 @@ describe('FollowPromptDialog', () => {
         });
     });
 
+    it('displays full skill name without truncation', async () => {
+        mockFetch.mockImplementation((url: string) => {
+            if (url.includes('/skills')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        skills: [
+                            { name: 'draft', description: 'Draft a user experience specification for a requested feature.' },
+                            { name: 'impl', description: 'Implement the requested code change and add comprehensive test coverage.' },
+                        ],
+                    }),
+                });
+            }
+            if (url.includes('/prompts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ prompts: [] }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+        });
+
+        await act(async () => {
+            renderDialog();
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('draft')).toBeDefined();
+            expect(screen.getByText('impl')).toBeDefined();
+        });
+
+        const draftBtn = screen.getByText('draft').closest('button')!;
+        const implBtn = screen.getByText('impl').closest('button')!;
+
+        // Skill name spans should not have truncate class
+        const draftNameSpan = screen.getByText('draft');
+        const implNameSpan = screen.getByText('impl');
+        expect(draftNameSpan.className).toContain('flex-shrink-0');
+        expect(draftNameSpan.className).not.toContain('truncate');
+        expect(implNameSpan.className).toContain('flex-shrink-0');
+        expect(implNameSpan.className).not.toContain('truncate');
+
+        // Description should be present
+        expect(draftBtn.textContent).toContain('Draft a user experience specification');
+        expect(implBtn.textContent).toContain('Implement the requested code change');
+    });
+
+    it('renders skill without description correctly', async () => {
+        mockFetch.mockImplementation((url: string) => {
+            if (url.includes('/skills')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        skills: [{ name: 'my-skill' }],
+                    }),
+                });
+            }
+            if (url.includes('/prompts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ prompts: [] }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+        });
+
+        await act(async () => {
+            renderDialog();
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('my-skill')).toBeDefined();
+        });
+
+        const btn = screen.getByText('my-skill').closest('button')!;
+        expect(btn.querySelectorAll('span').length).toBe(2); // icon + name only
+    });
+
     it('sends model inside config object, not at top level', async () => {
         const onClose = vi.fn();
 

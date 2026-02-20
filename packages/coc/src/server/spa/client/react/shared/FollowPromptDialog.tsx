@@ -211,7 +211,7 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
                                             onClick={() => handleSubmit('skill', s.name)}
                                         >
                                             <span>⚡</span>
-                                            <span className="truncate">{s.name}</span>
+                                            <span className="flex-shrink-0 font-medium">{s.name}</span>
                                             {s.description && (
                                                 <span className="text-xs text-[#848484] truncate">{s.description}</span>
                                             )}
