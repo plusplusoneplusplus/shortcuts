@@ -10,6 +10,7 @@ import { PipelinesTab } from './PipelinesTab';
 import { TasksPanel } from '../tasks/TasksPanel';
 import { RepoQueueTab } from './RepoQueueTab';
 import { RepoSchedulesTab } from './RepoSchedulesTab';
+import { RepoChatTab } from './RepoChatTab';
 import { AddRepoDialog } from './AddRepoDialog';
 import { getApiBase } from '../utils/config';
 import type { RepoData } from './repoGrouping';
@@ -21,12 +22,13 @@ interface RepoDetailProps {
     onRefresh: () => void;
 }
 
-const SUB_TABS: { key: RepoSubTab; label: string }[] = [
+export const SUB_TABS: { key: RepoSubTab; label: string }[] = [
     { key: 'info', label: 'Info' },
     { key: 'pipelines', label: 'Pipelines' },
     { key: 'tasks', label: 'Tasks' },
     { key: 'queue', label: 'Queue' },
     { key: 'schedules', label: 'Schedules' },
+    { key: 'chat', label: 'Chat' },
 ];
 
 export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
@@ -100,6 +102,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                         {activeSubTab === 'pipelines' && <PipelinesTab repo={repo} />}
                         {activeSubTab === 'queue' && <RepoQueueTab workspaceId={ws.id} />}
                         {activeSubTab === 'schedules' && <RepoSchedulesTab workspaceId={ws.id} />}
+                        {activeSubTab === 'chat' && <RepoChatTab workspaceId={ws.id} workspacePath={ws.path} />}
                     </div>
                 )}
             </div>

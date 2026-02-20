@@ -148,6 +148,22 @@ export function Router() {
         return () => window.removeEventListener('hashchange', handleHash);
     }, [dispatch, queueDispatch]);
 
+    // Keyboard shortcut: C → jump to Chat sub-tab (only when Repos tab is active + a repo is selected)
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => {
+            const target = e.target as HTMLElement;
+            if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+            if (e.ctrlKey || e.metaKey || e.altKey) return;
+            if (state.activeTab !== 'repos' || !state.selectedRepoId) return;
+            if (e.key === 'c' || e.key === 'C') {
+                dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chat' });
+                location.hash = '#repos/' + encodeURIComponent(state.selectedRepoId) + '/chat';
+            }
+        };
+        document.addEventListener('keydown', handler);
+        return () => document.removeEventListener('keydown', handler);
+    }, [dispatch, state.activeTab, state.selectedRepoId]);
+
     switch (state.activeTab) {
         case 'processes':
             return (
