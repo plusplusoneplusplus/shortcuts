@@ -660,10 +660,12 @@ describe('QueuePanel', () => {
         );
 
         const card = await screen.findByLabelText(/Task completed: Task with repo/);
-        expect(card.textContent).toContain('my-awesome-repo');
+        expect(card.textContent).toContain('[my-awesome-repo]');
         const repoSpan = card.querySelector('.queue-task-repo-name');
         expect(repoSpan).toBeTruthy();
         expect(repoSpan?.getAttribute('title')).toBe('/Users/dev/projects/my-awesome-repo');
+        const text = card.textContent || '';
+        expect(text.indexOf('[my-awesome-repo]')).toBeLessThan(text.indexOf('chat'));
     });
 
     it('does not show repo name when repoId is absent', async () => {
@@ -702,8 +704,10 @@ describe('QueuePanel', () => {
 
         const card = await screen.findByLabelText(/Task failed: Review the auth module/);
         expect(card.textContent).not.toContain('Failed');
-        expect(card.textContent).toContain('backend-api');
+        expect(card.textContent).toContain('[backend-api]');
         expect(card.textContent).toContain('Code Review');
+        const text = card.textContent || '';
+        expect(text.indexOf('[backend-api]')).toBeLessThan(text.indexOf('Code Review'));
     });
 });
 
