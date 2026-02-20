@@ -60,29 +60,29 @@ describe('CommentCard', () => {
         expect(screen.getByText('This is a test comment')).toBeTruthy();
     });
 
-    it('renders status badge for open comment', () => {
-        render(
+    it('shows status dot for open comment', () => {
+        const { container } = render(
             <CommentCard
                 comment={makeComment({ status: 'open' })}
                 onResolve={noop} onUnresolve={noop} onEdit={noop}
                 onDelete={noop} onAskAI={noop} onClick={noop}
             />
         );
-        expect(screen.getByText('🟢 Open')).toBeTruthy();
+        expect(container.querySelector('[title="Open"]')).toBeTruthy();
     });
 
-    it('renders status badge for resolved comment', () => {
-        render(
+    it('shows status dot for resolved comment', () => {
+        const { container } = render(
             <CommentCard
                 comment={makeComment({ status: 'resolved' })}
                 onResolve={noop} onUnresolve={noop} onEdit={noop}
                 onDelete={noop} onAskAI={noop} onClick={noop}
             />
         );
-        expect(screen.getByText('✅ Resolved')).toBeTruthy();
+        expect(container.querySelector('[title="Resolved"]')).toBeTruthy();
     });
 
-    it('renders category badge', () => {
+    it('renders category icon', () => {
         render(
             <CommentCard
                 comment={makeComment({ category: 'bug' })}
@@ -90,7 +90,7 @@ describe('CommentCard', () => {
                 onDelete={noop} onAskAI={noop} onClick={noop}
             />
         );
-        expect(screen.getByText('🐛 Bug')).toBeTruthy();
+        expect(screen.getByTitle('Bug')).toBeTruthy();
     });
 
     it('shows Resolve button for open comment', () => {
@@ -101,7 +101,7 @@ describe('CommentCard', () => {
                 onDelete={noop} onAskAI={noop} onClick={noop}
             />
         );
-        expect(screen.getByText('✅ Resolve')).toBeTruthy();
+        expect(screen.getByLabelText('Resolve')).toBeTruthy();
     });
 
     it('shows Reopen button for resolved comment', () => {
@@ -112,7 +112,7 @@ describe('CommentCard', () => {
                 onDelete={noop} onAskAI={noop} onClick={noop}
             />
         );
-        expect(screen.getByText('🔓 Reopen')).toBeTruthy();
+        expect(screen.getByLabelText('Reopen')).toBeTruthy();
     });
 
     it('calls onResolve when Resolve button is clicked', () => {
@@ -124,7 +124,7 @@ describe('CommentCard', () => {
                 onDelete={noop} onAskAI={noop} onClick={noop}
             />
         );
-        fireEvent.click(screen.getByText('✅ Resolve'));
+        fireEvent.click(screen.getByLabelText('Resolve'));
         expect(onResolve).toHaveBeenCalledOnce();
     });
 
@@ -137,7 +137,7 @@ describe('CommentCard', () => {
                 onDelete={noop} onAskAI={noop} onClick={noop}
             />
         );
-        fireEvent.click(screen.getByText('🔓 Reopen'));
+        fireEvent.click(screen.getByLabelText('Reopen'));
         expect(onUnresolve).toHaveBeenCalledOnce();
     });
 
@@ -149,7 +149,7 @@ describe('CommentCard', () => {
                 onDelete={noop} onAskAI={noop} onClick={noop}
             />
         );
-        fireEvent.click(screen.getByText('🗑️ Delete'));
+        fireEvent.click(screen.getByLabelText('Delete'));
         expect(screen.getByText('Confirm')).toBeTruthy();
     });
 
@@ -162,7 +162,7 @@ describe('CommentCard', () => {
                 onDelete={onDelete} onAskAI={noop} onClick={noop}
             />
         );
-        fireEvent.click(screen.getByText('🗑️ Delete'));
+        fireEvent.click(screen.getByLabelText('Delete'));
         fireEvent.click(screen.getByText('Confirm'));
         expect(onDelete).toHaveBeenCalledOnce();
     });
@@ -234,7 +234,7 @@ describe('CommentCard', () => {
                 onDelete={noop} onAskAI={onAskAI} onClick={noop}
             />
         );
-        fireEvent.click(screen.getByText('🤖 Ask AI'));
+        fireEvent.click(screen.getByLabelText('Ask AI'));
         expect(onAskAI).toHaveBeenCalledOnce();
     });
 });

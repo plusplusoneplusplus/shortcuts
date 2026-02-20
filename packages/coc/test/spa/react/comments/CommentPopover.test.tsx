@@ -57,7 +57,7 @@ describe('CommentPopover', () => {
         expect(screen.getByText('some selected text')).toBeTruthy();
     });
 
-    it('shows Open badge for open comments', () => {
+    it('shows status dot for open comments', () => {
         render(
             <CommentPopover
                 comment={makeComment({ status: 'open' })}
@@ -69,10 +69,11 @@ describe('CommentPopover', () => {
                 onEdit={noop}
             />,
         );
-        expect(screen.getByText(/Open/)).toBeTruthy();
+        const popover = screen.getByTestId('comment-popover');
+        expect(popover.querySelector('[title="Open"]')).toBeTruthy();
     });
 
-    it('shows Resolved badge for resolved comments', () => {
+    it('shows status dot for resolved comments', () => {
         render(
             <CommentPopover
                 comment={makeComment({ status: 'resolved' })}
@@ -84,7 +85,8 @@ describe('CommentPopover', () => {
                 onEdit={noop}
             />,
         );
-        expect(screen.getByText(/Resolved/)).toBeTruthy();
+        const popover = screen.getByTestId('comment-popover');
+        expect(popover.querySelector('[title="Resolved"]')).toBeTruthy();
     });
 
     it('calls onClose when close button is clicked', () => {
@@ -117,7 +119,7 @@ describe('CommentPopover', () => {
                 onEdit={noop}
             />,
         );
-        fireEvent.click(screen.getByText(/Resolve/));
+        fireEvent.click(screen.getByLabelText('Resolve'));
         expect(onResolve).toHaveBeenCalledWith('c1');
     });
 
@@ -134,7 +136,7 @@ describe('CommentPopover', () => {
                 onEdit={noop}
             />,
         );
-        fireEvent.click(screen.getByText(/Reopen/));
+        fireEvent.click(screen.getByLabelText('Reopen'));
         expect(onUnresolve).toHaveBeenCalledWith('c1');
     });
 
@@ -152,7 +154,7 @@ describe('CommentPopover', () => {
                 onEdit={noop}
             />,
         );
-        fireEvent.click(screen.getByText(/Delete/));
+        fireEvent.click(screen.getByLabelText('Delete'));
         expect(onDelete).toHaveBeenCalledWith('c1');
         expect(onClose).toHaveBeenCalled();
     });
@@ -171,7 +173,7 @@ describe('CommentPopover', () => {
             />,
         );
 
-        fireEvent.click(screen.getByText(/Edit/));
+        fireEvent.click(screen.getByLabelText('Edit'));
         expect(screen.getByTestId('popover-edit-textarea')).toBeTruthy();
 
         fireEvent.change(screen.getByTestId('popover-edit-textarea'), {
@@ -195,7 +197,7 @@ describe('CommentPopover', () => {
             />,
         );
 
-        fireEvent.click(screen.getByText(/Edit/));
+        fireEvent.click(screen.getByLabelText('Edit'));
         fireEvent.change(screen.getByTestId('popover-edit-textarea'), {
             target: { value: 'Changed text' },
         });
@@ -267,7 +269,7 @@ describe('CommentPopover', () => {
         expect(onClose).toHaveBeenCalledOnce();
     });
 
-    it('shows category badge', () => {
+    it('shows category icon', () => {
         render(
             <CommentPopover
                 comment={makeComment({ category: 'suggestion' })}
@@ -279,6 +281,6 @@ describe('CommentPopover', () => {
                 onEdit={noop}
             />,
         );
-        expect(screen.getByText(/Suggestion/)).toBeTruthy();
+        expect(screen.getByTitle('Suggestion')).toBeTruthy();
     });
 });

@@ -1,5 +1,8 @@
 /**
  * CommentCard — renders a single comment with quote, body, badges, replies, actions.
+ *
+ * Action buttons use a compact icon-only style (similar to Word/Google Docs)
+ * with tooltip titles for discoverability.
  */
 
 import { useState } from 'react';
@@ -7,6 +10,8 @@ import { cn, Badge, Button } from '../../shared';
 import { CommentReply } from './CommentReply';
 import type { TaskComment, TaskCommentCategory } from '../../../task-comments-types';
 import { CATEGORY_INFO, getCommentCategory } from '../../../task-comments-types';
+
+const ACTION_BTN = 'inline-flex items-center justify-center w-6 h-6 rounded transition-colors text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/[0.06] dark:hover:bg-white/[0.08]';
 
 function formatRelative(dateStr: string | null | undefined): string {
     if (!dateStr) return '';
@@ -64,7 +69,7 @@ export function CommentCard({
     return (
         <div
             className={cn(
-                'flex flex-col gap-2 p-3 rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-xs cursor-pointer transition-colors',
+                'group/card flex flex-col gap-1.5 p-2.5 rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-xs cursor-pointer transition-colors',
                 'hover:border-[#0078d4]/40 dark:hover:border-[#3794ff]/40',
                 isResolved && 'opacity-70',
             )}
@@ -73,6 +78,15 @@ export function CommentCard({
             role="article"
             aria-label={`Comment by ${comment.author || 'Anonymous'}`}
         >
+            {/* Header: status dot + category + author + time + actions */}
+            <div className="flex items-center gap-1.5">
+                <span className={cn('w-2 h-2 rounded-full shrink-0', isResolved ? 'bg-green-500' : 'bg-[#0078d4]')}
+                    title={isResolved ? 'Resolved' : 'Open'} />
+                <span className="text-[10px] text-[#848484]" title={info.label}>{info.icon}</span>
+                <span className="text-[10px] text-[#848484] truncate">{comment.author || 'Anonymous'}</span>
+                <span className="text-[10px] text-[#a0a0a0] ml-auto shrink-0">{formatRelative(comment.createdAt)}</span>
+            </div>
+
             {/* Selected text blockquote */}
             {comment.selectedText && (
                 <blockquote className="border-l-2 border-[#0078d4] dark:border-[#3794ff] pl-2 text-[11px] text-[#848484] italic truncate max-w-full">
@@ -98,36 +112,20 @@ export function CommentCard({
                     </div>
                 </div>
             ) : (
-                <div className="text-[#1e1e1e] dark:text-[#cccccc]">{comment.comment}</div>
+                <div className="text-[#1e1e1e] dark:text-[#cccccc] line-clamp-3">{comment.comment}</div>
             )}
-
-            {/* Badges row */}
-            <div className="flex items-center gap-1.5 flex-wrap">
-                <Badge status={isResolved ? 'completed' : 'running'}>
-                    {isResolved ? '✅ Resolved' : '🟢 Open'}
-                </Badge>
-                <Badge status="queued">
-                    {info.icon} {info.label}
-                </Badge>
-            </div>
-
-            {/* Author + timestamp */}
-            <div className="flex items-center gap-2 text-[10px] text-[#848484]">
-                <span>{comment.author || 'Anonymous'}</span>
-                <span>{formatRelative(comment.createdAt)}</span>
-            </div>
 
             {/* AI response */}
             {comment.aiResponse && (
-                <div className="mt-1 p-2 rounded bg-[#0078d4]/5 dark:bg-[#3794ff]/5 border-l-2 border-[#0078d4] dark:border-[#3794ff]" data-testid="ai-response">
-                    <div className="text-[10px] text-[#0078d4] dark:text-[#3794ff] font-medium mb-1">🤖 AI Response</div>
-                    <div className="text-[#1e1e1e] dark:text-[#cccccc]">{comment.aiResponse}</div>
+                <div className="p-1.5 rounded bg-[#0078d4]/5 dark:bg-[#3794ff]/5 border-l-2 border-[#0078d4] dark:border-[#3794ff]" data-testid="ai-response">
+                    <div className="text-[10px] text-[#0078d4] dark:text-[#3794ff] font-medium mb-0.5">🤖 AI</div>
+                    <div className="text-[#1e1e1e] dark:text-[#cccccc] line-clamp-2">{comment.aiResponse}</div>
                 </div>
             )}
 
             {/* Replies */}
             {replies.length > 0 && (
-                <div className="flex flex-col gap-1 mt-1">
+                <div className="flex flex-col gap-1">
                     {replies.length > 2 && !showAllReplies && (
                         <button
                             className="text-[10px] text-[#0078d4] dark:text-[#3794ff] text-left hover:underline"
@@ -143,25 +141,23 @@ export function CommentCard({
                 </div>
             )}
 
-            {/* Action row */}
-            <div className="flex gap-1 flex-wrap pt-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]" onClick={e => e.stopPropagation()}>
+            {/* Compact icon-only action row */}
+            <div className="flex items-center gap-0.5 pt-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]" onClick={e => e.stopPropagation()}>
                 {isResolved ? (
-                    <Button size="sm" variant="ghost" onClick={onUnresolve}>🔓 Reopen</Button>
+                    <button className={ACTION_BTN} onClick={onUnresolve} title="Reopen" aria-label="Reopen">🔓</button>
                 ) : (
-                    <Button size="sm" variant="ghost" onClick={onResolve}>✅ Resolve</Button>
+                    <button className={ACTION_BTN} onClick={onResolve} title="Resolve" aria-label="Resolve">✅</button>
                 )}
-                <Button size="sm" variant="ghost" onClick={() => { setEditing(true); setEditText(comment.comment); }}>
-                    ✏️ Edit
-                </Button>
+                <button className={ACTION_BTN} onClick={() => { setEditing(true); setEditText(comment.comment); }} title="Edit" aria-label="Edit">✏️</button>
                 {confirmDelete ? (
                     <>
-                        <Button size="sm" variant="danger" onClick={onDelete}>Confirm</Button>
-                        <Button size="sm" variant="secondary" onClick={() => setConfirmDelete(false)}>Cancel</Button>
+                        <Button size="sm" variant="danger" onClick={onDelete} className="!px-1.5 !py-0.5 !text-[10px]">Confirm</Button>
+                        <Button size="sm" variant="secondary" onClick={() => setConfirmDelete(false)} className="!px-1.5 !py-0.5 !text-[10px]">Cancel</Button>
                     </>
                 ) : (
-                    <Button size="sm" variant="ghost" onClick={() => setConfirmDelete(true)}>🗑️ Delete</Button>
+                    <button className={ACTION_BTN} onClick={() => setConfirmDelete(true)} title="Delete" aria-label="Delete">🗑️</button>
                 )}
-                <Button size="sm" variant="ghost" onClick={onAskAI}>🤖 Ask AI</Button>
+                <button className={ACTION_BTN} onClick={onAskAI} title="Ask AI" aria-label="Ask AI">🤖</button>
             </div>
         </div>
     );

@@ -5,10 +5,12 @@
 
 import { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
-import { Badge, Button } from '../../shared';
+import { cn, Button } from '../../shared';
 import { clampToViewport } from './InlineCommentPopup';
 import type { TaskComment, TaskCommentCategory } from '../../../task-comments-types';
 import { CATEGORY_INFO, getCommentCategory } from '../../../task-comments-types';
+
+const ACTION_BTN = 'inline-flex items-center justify-center w-6 h-6 rounded transition-colors text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/[0.06] dark:hover:bg-white/[0.08]';
 
 export interface CommentPopoverProps {
     comment: TaskComment;
@@ -79,20 +81,23 @@ export function CommentPopover({
     return ReactDOM.createPortal(
         <div
             ref={popoverRef}
-            className="fixed z-[10003] w-[320px] rounded-lg bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] shadow-xl p-3 flex flex-col gap-2"
+            className="fixed z-[10003] w-[300px] rounded-lg bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] shadow-xl p-2.5 flex flex-col gap-1.5"
             style={{ top: clampedPos.top, left: clampedPos.left }}
             data-testid="comment-popover"
         >
-            {/* Header with category + status */}
-            <div className="flex items-center gap-1.5 flex-wrap">
-                <Badge status={isResolved ? 'completed' : 'running'}>
-                    {isResolved ? '✅ Resolved' : '🟢 Open'}
-                </Badge>
-                <Badge status="queued">
-                    {info.icon} {info.label}
-                </Badge>
+            {/* Header: status dot + category + author + time + close */}
+            <div className="flex items-center gap-1.5">
+                <span className={cn('w-2 h-2 rounded-full shrink-0', isResolved ? 'bg-green-500' : 'bg-[#0078d4]')}
+                    title={isResolved ? 'Resolved' : 'Open'} />
+                <span className="text-[10px] text-[#848484]" title={info.label}>{info.icon}</span>
+                <span className="text-[10px] text-[#848484] truncate">{comment.author || 'Anonymous'}</span>
+                {comment.createdAt && (
+                    <span className="text-[10px] text-[#a0a0a0] ml-auto shrink-0">
+                        {new Date(comment.createdAt).toLocaleString()}
+                    </span>
+                )}
                 <button
-                    className="ml-auto text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] text-sm leading-none"
+                    className="shrink-0 w-5 h-5 inline-flex items-center justify-center rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/[0.06] dark:hover:bg-white/[0.08] text-sm leading-none"
                     onClick={onClose}
                     data-testid="popover-close"
                     aria-label="Close"
@@ -103,7 +108,7 @@ export function CommentPopover({
 
             {/* Selected text blockquote */}
             {comment.selectedText && (
-                <blockquote className="border-l-2 border-[#0078d4] dark:border-[#3794ff] pl-2 text-[11px] text-[#848484] italic">
+                <blockquote className="border-l-2 border-[#0078d4] dark:border-[#3794ff] pl-2 text-[11px] text-[#848484] italic line-clamp-2">
                     {comment.selectedText.length > 200
                         ? comment.selectedText.substring(0, 200) + '…'
                         : comment.selectedText}
@@ -132,36 +137,24 @@ export function CommentPopover({
                 </div>
             )}
 
-            {/* Author + timestamp */}
-            <div className="flex items-center gap-2 text-[10px] text-[#848484]">
-                <span>{comment.author || 'Anonymous'}</span>
-                {comment.createdAt && (
-                    <span>{new Date(comment.createdAt).toLocaleString()}</span>
-                )}
-            </div>
-
             {/* AI response */}
             {comment.aiResponse && (
-                <div className="p-2 rounded bg-[#0078d4]/5 dark:bg-[#3794ff]/5 border-l-2 border-[#0078d4] dark:border-[#3794ff]" data-testid="popover-ai-response">
-                    <div className="text-[10px] text-[#0078d4] dark:text-[#3794ff] font-medium mb-1">🤖 AI Response</div>
+                <div className="p-1.5 rounded bg-[#0078d4]/5 dark:bg-[#3794ff]/5 border-l-2 border-[#0078d4] dark:border-[#3794ff]" data-testid="popover-ai-response">
+                    <div className="text-[10px] text-[#0078d4] dark:text-[#3794ff] font-medium mb-0.5">🤖 AI</div>
                     <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc]">{comment.aiResponse}</div>
                 </div>
             )}
 
-            {/* Action row */}
+            {/* Compact icon-only action row */}
             {!editing && (
-                <div className="flex gap-1 flex-wrap pt-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]">
+                <div className="flex items-center gap-0.5 pt-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]">
                     {isResolved ? (
-                        <Button size="sm" variant="ghost" onClick={() => onUnresolve(comment.id)}>🔓 Reopen</Button>
+                        <button className={ACTION_BTN} onClick={() => onUnresolve(comment.id)} title="Reopen" aria-label="Reopen">🔓</button>
                     ) : (
-                        <Button size="sm" variant="ghost" onClick={() => onResolve(comment.id)}>✅ Resolve</Button>
+                        <button className={ACTION_BTN} onClick={() => onResolve(comment.id)} title="Resolve" aria-label="Resolve">✅</button>
                     )}
-                    <Button size="sm" variant="ghost" onClick={() => { setEditing(true); setEditText(comment.comment); }}>
-                        ✏️ Edit
-                    </Button>
-                    <Button size="sm" variant="danger" onClick={() => { onDelete(comment.id); onClose(); }}>
-                        🗑️ Delete
-                    </Button>
+                    <button className={ACTION_BTN} onClick={() => { setEditing(true); setEditText(comment.comment); }} title="Edit" aria-label="Edit">✏️</button>
+                    <button className={ACTION_BTN} onClick={() => { onDelete(comment.id); onClose(); }} title="Delete" aria-label="Delete">🗑️</button>
                 </div>
             )}
         </div>,
