@@ -260,6 +260,29 @@ describe('Queue Handler', () => {
             expect(res.status).toBe(400);
             expect(JSON.parse(res.body).error).toContain('prompt');
         });
+
+        it('should pass through folderPath in shorthand body', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(`${srv.url}/api/queue/enqueue`, {
+                prompt: 'test prompt',
+                folderPath: 'feature1/backlog',
+            });
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.payload.folderPath).toBe('feature1/backlog');
+        });
+
+        it('should omit folderPath when not provided in shorthand body', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(`${srv.url}/api/queue/enqueue`, {
+                prompt: 'test prompt',
+            });
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.payload.folderPath).toBeUndefined();
+        });
     });
 
     describe('GET /api/queue/models — Model list', () => {

@@ -10,6 +10,21 @@ import { Dialog, Button } from '../shared';
 import { fetchApi } from '../hooks/useApi';
 import { usePreferences } from '../hooks/usePreferences';
 
+interface FolderOption { label: string; value: string; }
+
+function flattenFolders(node: any, depth = 0): FolderOption[] {
+    const indent = '\u00a0\u00a0'.repeat(depth);
+    const options: FolderOption[] = [];
+    if (node.relativePath !== undefined) {
+        const label = node.relativePath === '' ? '(root)' : indent + node.name;
+        options.push({ label, value: node.relativePath });
+    }
+    for (const child of node.children ?? []) {
+        options.push(...flattenFolders(child, depth + 1));
+    }
+    return options;
+}
+
 export function EnqueueDialog() {
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { state: appState } = useApp();
@@ -18,6 +33,8 @@ export function EnqueueDialog() {
     const [model, setModel] = useState('');
     const [workspaceId, setWorkspaceId] = useState('');
     const [models, setModels] = useState<string[]>([]);
+    const [folders, setFolders] = useState<FolderOption[]>([]);
+    const [folderPath, setFolderPath] = useState<string>('');
     const [submitting, setSubmitting] = useState(false);
 
     // Sync model from preferences when loaded
@@ -25,16 +42,30 @@ export function EnqueueDialog() {
         if (savedModel && !model) setModel(savedModel);
     }, [savedModel]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Load available models
+    // Seed folderPath from dialogInitialFolderPath and load models when dialog opens
     useEffect(() => {
         if (!queueState.showDialog) return;
+        setFolderPath(queueState.dialogInitialFolderPath ?? '');
         fetchApi('/queue/models')
             .then((data: any) => {
                 if (Array.isArray(data)) setModels(data);
                 else if (data?.models && Array.isArray(data.models)) setModels(data.models);
             })
             .catch(() => { /* ignore */ });
-    }, [queueState.showDialog]);
+    }, [queueState.showDialog]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Fetch folders when workspaceId changes
+    useEffect(() => {
+        setFolders([]);
+        if (!workspaceId) return;
+        fetchApi('/workspaces/' + encodeURIComponent(workspaceId) + '/tasks')
+            .then((data: any) => {
+                if (data && typeof data === 'object') {
+                    setFolders(flattenFolders(data));
+                }
+            })
+            .catch(() => { /* ignore */ });
+    }, [workspaceId]);
 
     const handleModelChange = useCallback((value: string) => {
         setModel(value);
@@ -52,13 +83,14 @@ export function EnqueueDialog() {
                     prompt: prompt.trim(),
                     model: model || undefined,
                     workspaceId: workspaceId || undefined,
+                    folderPath: folderPath || undefined,
                 }),
             });
             setPrompt('');
             queueDispatch({ type: 'CLOSE_DIALOG' });
         } catch { /* ignore */ }
         finally { setSubmitting(false); }
-    }, [prompt, model, workspaceId, queueDispatch]);
+    }, [prompt, model, workspaceId, folderPath, queueDispatch]);
 
     return (
         <Dialog
@@ -116,6 +148,21 @@ export function EnqueueDialog() {
                             <option value="">None</option>
                             {appState.workspaces.map((ws: any) => (
                                 <option key={ws.id} value={ws.id}>{ws.name || ws.path || ws.id}</option>
+                            ))}
+                        </select>
+                    </div>
+                )}
+                {workspaceId && folders.length > 0 && (
+                    <div>
+                        <label className="block text-xs font-medium text-[#848484] mb-1">Folder</label>
+                        <select
+                            value={folderPath}
+                            onChange={e => setFolderPath(e.target.value)}
+                            className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]"
+                            data-testid="folder-select"
+                        >
+                            {folders.map(f => (
+                                <option key={f.value} value={f.value}>{f.label}</option>
                             ))}
                         </select>
                     </div>

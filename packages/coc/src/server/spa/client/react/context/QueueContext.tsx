@@ -24,6 +24,7 @@ export interface QueueContextState {
     history: any[];
     stats: QueueStats;
     showDialog: boolean;
+    dialogInitialFolderPath: string | null;
     showHistory: boolean;
     isFollowUpStreaming: boolean;
     currentStreamingTurnIndex: number | null;
@@ -39,6 +40,7 @@ const initialState: QueueContextState = {
     history: [],
     stats: { queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0, total: 0, isPaused: false, isDraining: false },
     showDialog: false,
+    dialogInitialFolderPath: null,
     showHistory: false,
     isFollowUpStreaming: false,
     currentStreamingTurnIndex: null,
@@ -58,6 +60,7 @@ export type QueueAction =
     | { type: 'DRAIN_COMPLETE' }
     | { type: 'DRAIN_TIMEOUT' }
     | { type: 'TOGGLE_DIALOG' }
+    | { type: 'OPEN_DIALOG'; folderPath?: string | null }
     | { type: 'CLOSE_DIALOG' }
     | { type: 'TOGGLE_HISTORY' }
     | { type: 'SET_FOLLOW_UP_STREAMING'; value: boolean; turnIndex: number | null }
@@ -95,8 +98,10 @@ export function queueReducer(state: QueueContextState, action: QueueAction): Que
             return { ...state, draining: false, drainQueued: 0, drainRunning: 0 };
         case 'TOGGLE_DIALOG':
             return { ...state, showDialog: !state.showDialog };
+        case 'OPEN_DIALOG':
+            return { ...state, showDialog: true, dialogInitialFolderPath: action.folderPath ?? null };
         case 'CLOSE_DIALOG':
-            return { ...state, showDialog: false };
+            return { ...state, showDialog: false, dialogInitialFolderPath: null };
         case 'TOGGLE_HISTORY':
             return { ...state, showHistory: !state.showHistory };
         case 'SET_FOLLOW_UP_STREAMING':

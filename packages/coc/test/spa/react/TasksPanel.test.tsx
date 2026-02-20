@@ -59,6 +59,7 @@ describe('taskReducer', () => {
         showContextFiles: true,
         lastTasksChangedWsId: null,
         tasksChangedAt: 0,
+        selectedFolderPath: null,
     };
 
     it('SET_OPEN_FILE_PATH sets the open file', () => {

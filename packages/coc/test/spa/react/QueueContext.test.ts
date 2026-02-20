@@ -12,6 +12,7 @@ function makeState(overrides: Partial<QueueContextState> = {}): QueueContextStat
         history: [],
         stats: { queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0, total: 0, isPaused: false, isDraining: false },
         showDialog: false,
+        dialogInitialFolderPath: null,
         showHistory: false,
         isFollowUpStreaming: false,
         currentStreamingTurnIndex: null,
@@ -148,6 +149,27 @@ describe('QueueContext reducer', () => {
         });
     });
 
+    // ── OPEN_DIALOG ─────────────────────────────────────────────────
+    describe('OPEN_DIALOG', () => {
+        it('sets showDialog true and dialogInitialFolderPath', () => {
+            const result = queueReducer(makeState(), { type: 'OPEN_DIALOG', folderPath: 'feature1' });
+            expect(result.showDialog).toBe(true);
+            expect(result.dialogInitialFolderPath).toBe('feature1');
+        });
+
+        it('sets dialogInitialFolderPath to null when folderPath is omitted', () => {
+            const result = queueReducer(makeState(), { type: 'OPEN_DIALOG' });
+            expect(result.showDialog).toBe(true);
+            expect(result.dialogInitialFolderPath).toBeNull();
+        });
+
+        it('sets dialogInitialFolderPath to null when folderPath is null', () => {
+            const result = queueReducer(makeState(), { type: 'OPEN_DIALOG', folderPath: null });
+            expect(result.showDialog).toBe(true);
+            expect(result.dialogInitialFolderPath).toBeNull();
+        });
+    });
+
     // ── Dialog and history toggles ─────────────────────────────────
     describe('dialog and history toggles', () => {
         it('TOGGLE_DIALOG toggles showDialog', () => {
@@ -157,10 +179,11 @@ describe('QueueContext reducer', () => {
             expect(result2.showDialog).toBe(false);
         });
 
-        it('CLOSE_DIALOG sets showDialog false', () => {
-            const state = makeState({ showDialog: true });
+        it('CLOSE_DIALOG sets showDialog false and resets dialogInitialFolderPath', () => {
+            const state = makeState({ showDialog: true, dialogInitialFolderPath: 'feature1' });
             const result = queueReducer(state, { type: 'CLOSE_DIALOG' });
             expect(result.showDialog).toBe(false);
+            expect(result.dialogInitialFolderPath).toBeNull();
         });
 
         it('TOGGLE_HISTORY toggles showHistory', () => {

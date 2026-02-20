@@ -45,7 +45,7 @@ function scrollToEnd(el: HTMLElement | null) {
 
 function TasksPanelInner({ wsId }: TasksPanelProps) {
     const { tree, commentCounts, loading, error } = useTaskTree(wsId);
-    const { openFilePath, selectedFilePaths, clearSelection } = useTaskPanel();
+    const { openFilePath, selectedFilePaths, clearSelection, selectedFolderPath } = useTaskPanel();
     const [initialParams] = useState(() => parseTaskHashParams(location.hash, wsId));
     const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -88,6 +88,7 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
                 openFilePath={openFilePath}
                 selectedFilePaths={Array.from(selectedFilePaths)}
                 tasksFolderPath=".vscode/tasks"
+                selectedFolderPath={selectedFolderPath}
                 onClearSelection={clearSelection}
             />
             <div

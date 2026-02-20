@@ -214,6 +214,9 @@ export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueMana
                         ...(typeof body?.workspaceId === 'string' && body.workspaceId.trim()
                             ? { workspaceId: body.workspaceId.trim() }
                             : {}),
+                        ...(typeof body?.folderPath === 'string' && body.folderPath.trim()
+                            ? { folderPath: body.folderPath.trim() }
+                            : {}),
                     },
                     config: {
                         ...(typeof body?.model === 'string' && body.model.trim()

@@ -99,7 +99,7 @@ export function QueuePanel() {
                 <Button
                     variant="primary"
                     size="sm"
-                    onClick={() => dispatch({ type: 'TOGGLE_DIALOG' })}
+                    onClick={() => dispatch({ type: 'OPEN_DIALOG' })}
                 >
                     + Enqueue
                 </Button>
