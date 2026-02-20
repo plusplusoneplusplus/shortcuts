@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { formatDuration, formatRelativeTime, escapeHtml, copyToClipboard, statusIcon, statusLabel, typeLabel } from '../../../src/server/spa/client/react/utils/format';
+import { formatDuration, formatRelativeTime, escapeHtml, copyToClipboard, statusIcon, statusLabel, typeLabel, repoName } from '../../../src/server/spa/client/react/utils/format';
 
 describe('formatDuration', () => {
     it('returns empty string for null', () => {
@@ -174,5 +174,47 @@ describe('typeLabel', () => {
 
     it('returns the type string for unknown type', () => {
         expect(typeLabel('custom')).toBe('custom');
+    });
+});
+
+describe('repoName', () => {
+    it('returns empty string for null', () => {
+        expect(repoName(null)).toBe('');
+    });
+
+    it('returns empty string for undefined', () => {
+        expect(repoName(undefined)).toBe('');
+    });
+
+    it('returns empty string for empty string', () => {
+        expect(repoName('')).toBe('');
+    });
+
+    it('extracts basename from Unix absolute path', () => {
+        expect(repoName('/Users/dev/projects/my-repo')).toBe('my-repo');
+    });
+
+    it('extracts basename from path with trailing slash', () => {
+        expect(repoName('/Users/dev/projects/my-repo/')).toBe('my-repo');
+    });
+
+    it('extracts basename from path with multiple trailing slashes', () => {
+        expect(repoName('/Users/dev/projects/my-repo///')).toBe('my-repo');
+    });
+
+    it('extracts basename from Windows-style forward-slash path', () => {
+        expect(repoName('C:/Users/dev/projects/my-repo')).toBe('my-repo');
+    });
+
+    it('returns the string itself when no slash present', () => {
+        expect(repoName('my-repo')).toBe('my-repo');
+    });
+
+    it('handles single segment with leading slash', () => {
+        expect(repoName('/root')).toBe('root');
+    });
+
+    it('handles deeply nested paths', () => {
+        expect(repoName('/a/b/c/d/e/repo-name')).toBe('repo-name');
     });
 });

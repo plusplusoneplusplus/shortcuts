@@ -622,7 +622,7 @@ describe('QueuePanel', () => {
         expect(window.location.hash).toBe('#process/queue_task-route-1');
     });
 
-    it('renders history cards in compact single-line format', async () => {
+    it('renders history cards in compact single-line format without status label', async () => {
         render(
             <Wrap>
                 <SeededQueuePanel
@@ -640,8 +640,70 @@ describe('QueuePanel', () => {
         expect(card.className).toContain('px-2');
         expect(card.className).toContain('py-1.5');
         expect((card as HTMLElement).querySelector('.line-clamp-1')).toBeNull();
-        expect(card.textContent).toContain('Completed');
+        expect(card.textContent).not.toContain('Completed');
         expect(card.textContent).toContain('follow-prompt');
+    });
+
+    it('shows repo name in compact history card when repoId is present', async () => {
+        render(
+            <Wrap>
+                <SeededQueuePanel
+                    historyItem={{
+                        id: 'task-repo-1',
+                        status: 'completed',
+                        type: 'chat',
+                        prompt: 'Task with repo',
+                        repoId: '/Users/dev/projects/my-awesome-repo',
+                    }}
+                />
+            </Wrap>
+        );
+
+        const card = await screen.findByLabelText(/Task completed: Task with repo/);
+        expect(card.textContent).toContain('my-awesome-repo');
+        const repoSpan = card.querySelector('.queue-task-repo-name');
+        expect(repoSpan).toBeTruthy();
+        expect(repoSpan?.getAttribute('title')).toBe('/Users/dev/projects/my-awesome-repo');
+    });
+
+    it('does not show repo name when repoId is absent', async () => {
+        render(
+            <Wrap>
+                <SeededQueuePanel
+                    historyItem={{
+                        id: 'task-no-repo-1',
+                        status: 'completed',
+                        type: 'follow-prompt',
+                        prompt: 'No repo task',
+                    }}
+                />
+            </Wrap>
+        );
+
+        const card = await screen.findByLabelText(/Task completed: No repo task/);
+        const repoSpan = card.querySelector('.queue-task-repo-name');
+        expect(repoSpan).toBeNull();
+    });
+
+    it('shows repo name for failed history items without status label', async () => {
+        render(
+            <Wrap>
+                <SeededQueuePanel
+                    historyItem={{
+                        id: 'task-failed-repo-1',
+                        status: 'failed',
+                        type: 'code-review',
+                        prompt: 'Review the auth module',
+                        repoId: '/home/user/workspace/backend-api',
+                    }}
+                />
+            </Wrap>
+        );
+
+        const card = await screen.findByLabelText(/Task failed: Review the auth module/);
+        expect(card.textContent).not.toContain('Failed');
+        expect(card.textContent).toContain('backend-api');
+        expect(card.textContent).toContain('Code Review');
     });
 });
 

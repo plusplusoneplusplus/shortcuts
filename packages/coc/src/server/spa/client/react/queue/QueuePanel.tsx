@@ -7,7 +7,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useQueue } from '../context/QueueContext';
 import { useApp } from '../context/AppContext';
 import { Badge, Card, Button, cn } from '../shared';
-import { formatDuration, statusIcon, statusLabel, typeLabel } from '../utils/format';
+import { formatDuration, statusIcon, statusLabel, typeLabel, repoName } from '../utils/format';
 
 function groupByFolder(tasks: any[]): { folder: string | null; tasks: any[] }[] {
     const map = new Map<string | null, any[]>();
@@ -183,10 +183,13 @@ function QueueTaskCard({ task, now, selected, onClick, compact = false }: {
             {compact ? (
                 <div className="flex items-center gap-1.5 min-w-0 text-[11px] leading-5">
                     <span className="shrink-0">{statusIcon(task.status)}</span>
-                    <span className="shrink-0 font-medium text-[#1e1e1e] dark:text-[#cccccc]">
-                        {statusLabel(task.status)}
-                    </span>
                     <span className="shrink-0 text-[#848484]">{typeLabel(task.type)}</span>
+                    {repoName(task.repoId) && (
+                        <span className="queue-task-repo-name shrink-0 text-[10px] text-[#0078d4] dark:text-[#3794ff] font-medium"
+                              title={task.repoId}>
+                            {repoName(task.repoId)}
+                        </span>
+                    )}
                     <span className="min-w-0 truncate text-[#1e1e1e] dark:text-[#cccccc]">{preview}</span>
                     {elapsed && <span className="shrink-0 text-[10px] text-[#848484]">{elapsed}</span>}
                 </div>

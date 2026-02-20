@@ -62,6 +62,13 @@ export function statusLabel(status: string): string {
     return map[status] || status || '';
 }
 
+export function repoName(repoId: string | null | undefined): string {
+    if (!repoId) return '';
+    const trimmed = repoId.replace(/\/+$/, '');
+    const lastSlash = trimmed.lastIndexOf('/');
+    return lastSlash >= 0 ? trimmed.substring(lastSlash + 1) : trimmed;
+}
+
 export function typeLabel(type: string): string {
     const map: Record<string, string> = {
         'code-review': 'Code Review',
