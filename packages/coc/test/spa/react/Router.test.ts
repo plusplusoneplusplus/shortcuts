@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { tabFromHash, VALID_REPO_SUB_TABS, VALID_WIKI_PROJECT_TABS, parseProcessDeepLink, parseWikiDeepLink } from '../../../src/server/spa/client/react/layout/Router';
+import { tabFromHash, VALID_REPO_SUB_TABS, VALID_WIKI_PROJECT_TABS, VALID_WIKI_ADMIN_TABS, parseProcessDeepLink, parseWikiDeepLink } from '../../../src/server/spa/client/react/layout/Router';
 
 // ─── tabFromHash ─────────────────────────────────────────────────
 
@@ -254,6 +254,7 @@ describe('parseWikiDeepLink', () => {
         expect(result.wikiId).toBe('my-wiki');
         expect(result.tab).toBeNull();
         expect(result.componentId).toBeNull();
+        expect(result.adminTab).toBeNull();
     });
 
     it('parses #wiki/my-wiki/browse', () => {
@@ -261,6 +262,7 @@ describe('parseWikiDeepLink', () => {
         expect(result.wikiId).toBe('my-wiki');
         expect(result.tab).toBe('browse');
         expect(result.componentId).toBeNull();
+        expect(result.adminTab).toBeNull();
     });
 
     it('parses #wiki/my-wiki/ask', () => {
@@ -268,6 +270,7 @@ describe('parseWikiDeepLink', () => {
         expect(result.wikiId).toBe('my-wiki');
         expect(result.tab).toBe('ask');
         expect(result.componentId).toBeNull();
+        expect(result.adminTab).toBeNull();
     });
 
     it('parses #wiki/my-wiki/graph', () => {
@@ -275,13 +278,15 @@ describe('parseWikiDeepLink', () => {
         expect(result.wikiId).toBe('my-wiki');
         expect(result.tab).toBe('graph');
         expect(result.componentId).toBeNull();
+        expect(result.adminTab).toBeNull();
     });
 
-    it('parses #wiki/my-wiki/admin', () => {
+    it('parses #wiki/my-wiki/admin with no sub-tab', () => {
         const result = parseWikiDeepLink('#wiki/my-wiki/admin');
         expect(result.wikiId).toBe('my-wiki');
         expect(result.tab).toBe('admin');
         expect(result.componentId).toBeNull();
+        expect(result.adminTab).toBeNull();
     });
 
     it('parses #wiki/my-wiki/component/comp-1', () => {
@@ -289,12 +294,14 @@ describe('parseWikiDeepLink', () => {
         expect(result.wikiId).toBe('my-wiki');
         expect(result.tab).toBe('browse');
         expect(result.componentId).toBe('comp-1');
+        expect(result.adminTab).toBeNull();
     });
 
     it('handles URL-encoded wiki IDs', () => {
         const result = parseWikiDeepLink('#wiki/my%20wiki/ask');
         expect(result.wikiId).toBe('my wiki');
         expect(result.tab).toBe('ask');
+        expect(result.adminTab).toBeNull();
     });
 
     it('handles URL-encoded component IDs', () => {
@@ -309,6 +316,7 @@ describe('parseWikiDeepLink', () => {
         expect(result.wikiId).toBe('my-wiki');
         expect(result.tab).toBeNull();
         expect(result.componentId).toBeNull();
+        expect(result.adminTab).toBeNull();
     });
 
     it('returns null wikiId for #wiki alone', () => {
@@ -352,6 +360,94 @@ describe('parseWikiDeepLink', () => {
     });
 });
 
+// ─── VALID_WIKI_ADMIN_TABS ──────────────────────────────────────
+
+describe('VALID_WIKI_ADMIN_TABS', () => {
+    it('includes "generate"', () => {
+        expect(VALID_WIKI_ADMIN_TABS.has('generate')).toBe(true);
+    });
+
+    it('includes "seeds"', () => {
+        expect(VALID_WIKI_ADMIN_TABS.has('seeds')).toBe(true);
+    });
+
+    it('includes "config"', () => {
+        expect(VALID_WIKI_ADMIN_TABS.has('config')).toBe(true);
+    });
+
+    it('includes "delete"', () => {
+        expect(VALID_WIKI_ADMIN_TABS.has('delete')).toBe(true);
+    });
+
+    it('does not include unknown tab', () => {
+        expect(VALID_WIKI_ADMIN_TABS.has('settings')).toBe(false);
+    });
+
+    it('has exactly 4 entries', () => {
+        expect(VALID_WIKI_ADMIN_TABS.size).toBe(4);
+    });
+});
+
+// ─── parseWikiDeepLink — admin sub-tabs ─────────────────────────
+
+describe('parseWikiDeepLink — admin sub-tabs', () => {
+    it('parses #wiki/w1/admin/generate', () => {
+        const result = parseWikiDeepLink('#wiki/w1/admin/generate');
+        expect(result.wikiId).toBe('w1');
+        expect(result.tab).toBe('admin');
+        expect(result.adminTab).toBe('generate');
+        expect(result.componentId).toBeNull();
+    });
+
+    it('parses #wiki/w1/admin/seeds', () => {
+        const result = parseWikiDeepLink('#wiki/w1/admin/seeds');
+        expect(result.wikiId).toBe('w1');
+        expect(result.tab).toBe('admin');
+        expect(result.adminTab).toBe('seeds');
+    });
+
+    it('parses #wiki/w1/admin/config', () => {
+        const result = parseWikiDeepLink('#wiki/w1/admin/config');
+        expect(result.wikiId).toBe('w1');
+        expect(result.tab).toBe('admin');
+        expect(result.adminTab).toBe('config');
+    });
+
+    it('parses #wiki/w1/admin/delete', () => {
+        const result = parseWikiDeepLink('#wiki/w1/admin/delete');
+        expect(result.wikiId).toBe('w1');
+        expect(result.tab).toBe('admin');
+        expect(result.adminTab).toBe('delete');
+    });
+
+    it('returns null adminTab for unknown admin sub-tab', () => {
+        const result = parseWikiDeepLink('#wiki/w1/admin/unknown');
+        expect(result.wikiId).toBe('w1');
+        expect(result.tab).toBe('admin');
+        expect(result.adminTab).toBeNull();
+    });
+
+    it('returns null adminTab for non-admin tab with sub-path', () => {
+        const result = parseWikiDeepLink('#wiki/w1/ask/seeds');
+        expect(result.wikiId).toBe('w1');
+        expect(result.tab).toBe('ask');
+        expect(result.adminTab).toBeNull();
+    });
+
+    it('handles URL-encoded wiki ID with admin sub-tab', () => {
+        const result = parseWikiDeepLink('#wiki/my%20wiki/admin/config');
+        expect(result.wikiId).toBe('my wiki');
+        expect(result.tab).toBe('admin');
+        expect(result.adminTab).toBe('config');
+    });
+
+    it('#wiki/w1/admin has null adminTab (defaults to generate in component)', () => {
+        const result = parseWikiDeepLink('#wiki/w1/admin');
+        expect(result.tab).toBe('admin');
+        expect(result.adminTab).toBeNull();
+    });
+});
+
 // ─── wiki tab deep-link integration ─────────────────────────────
 
 describe('wiki tab deep-link integration', () => {
@@ -366,6 +462,13 @@ describe('wiki tab deep-link integration', () => {
         expect(tabFromHash('#wiki/my-wiki/component/comp-1')).toBe('wiki');
     });
 
+    it('tabFromHash returns "wiki" for admin sub-tab routes', () => {
+        expect(tabFromHash('#wiki/my-wiki/admin/seeds')).toBe('wiki');
+        expect(tabFromHash('#wiki/my-wiki/admin/config')).toBe('wiki');
+        expect(tabFromHash('#wiki/my-wiki/admin/delete')).toBe('wiki');
+        expect(tabFromHash('#wiki/my-wiki/admin/generate')).toBe('wiki');
+    });
+
     it('tab and component can be parsed after tabFromHash', () => {
         const hash = '#wiki/w1/ask';
         const tab = tabFromHash(hash);
@@ -373,5 +476,15 @@ describe('wiki tab deep-link integration', () => {
         const detail = parseWikiDeepLink(hash);
         expect(detail.wikiId).toBe('w1');
         expect(detail.tab).toBe('ask');
+    });
+
+    it('admin sub-tab can be parsed after tabFromHash', () => {
+        const hash = '#wiki/w1/admin/seeds';
+        const tab = tabFromHash(hash);
+        expect(tab).toBe('wiki');
+        const detail = parseWikiDeepLink(hash);
+        expect(detail.wikiId).toBe('w1');
+        expect(detail.tab).toBe('admin');
+        expect(detail.adminTab).toBe('seeds');
     });
 });

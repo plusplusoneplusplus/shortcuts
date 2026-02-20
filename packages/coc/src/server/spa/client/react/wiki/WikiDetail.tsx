@@ -13,7 +13,7 @@ import { WikiComponent } from './WikiComponent';
 import { WikiGraph } from './WikiGraph';
 import { WikiAsk } from './WikiAsk';
 import { WikiAdmin } from './WikiAdmin';
-import type { WikiProjectTab } from '../types/dashboard';
+import type { WikiProjectTab, WikiAdminTab } from '../types/dashboard';
 
 interface ComponentGraph {
     components: any[];
@@ -37,12 +37,15 @@ const statusConfig: Record<WikiStatus, { label: string; badge: string }> = {
 
 const WIKI_TABS: WikiProjectTab[] = ['browse', 'ask', 'graph', 'admin'];
 
-function buildWikiHash(wikiId: string, tab: WikiProjectTab, componentId?: string | null): string {
+function buildWikiHash(wikiId: string, tab: WikiProjectTab, componentId?: string | null, adminTab?: WikiAdminTab | null): string {
     const base = '#wiki/' + encodeURIComponent(wikiId);
     if (componentId) {
         return base + '/component/' + encodeURIComponent(componentId);
     }
     if (tab === 'browse') return base;
+    if (tab === 'admin' && adminTab && adminTab !== 'generate') {
+        return base + '/admin/' + adminTab;
+    }
     return base + '/' + tab;
 }
 
@@ -51,6 +54,7 @@ export function WikiDetail({ wikiId }: WikiDetailProps) {
     const [graph, setGraph] = useState<ComponentGraph | null>(null);
     const [loadingGraph, setLoadingGraph] = useState(true);
     const [activeTab, setActiveTab] = useState<WikiProjectTab>('browse');
+    const [adminSubTab, setAdminSubTab] = useState<WikiAdminTab | null>(null);
 
     // Consume initial tab from context (e.g. from hash routing or "→ Setup" CTA)
     useEffect(() => {
@@ -58,6 +62,9 @@ export function WikiDetail({ wikiId }: WikiDetailProps) {
             const tab = state.wikiDetailInitialTab as WikiProjectTab;
             if (WIKI_TABS.includes(tab)) {
                 setActiveTab(tab);
+            }
+            if (state.wikiDetailInitialAdminTab) {
+                setAdminSubTab(state.wikiDetailInitialAdminTab as WikiAdminTab);
             }
             dispatch({ type: 'SELECT_WIKI', wikiId: wikiId });
         }
@@ -88,8 +95,14 @@ export function WikiDetail({ wikiId }: WikiDetailProps) {
 
     const changeTab = useCallback((tab: WikiProjectTab) => {
         setActiveTab(tab);
+        if (tab !== 'admin') setAdminSubTab(null);
         location.hash = buildWikiHash(wikiId, tab, tab === 'browse' ? state.selectedWikiComponentId : null);
     }, [wikiId, state.selectedWikiComponentId]);
+
+    const handleAdminTabChange = useCallback((subTab: WikiAdminTab) => {
+        setAdminSubTab(subTab);
+        location.hash = buildWikiHash(wikiId, 'admin', null, subTab);
+    }, [wikiId]);
 
     const handleSelectComponent = useCallback((componentId: string) => {
         dispatch({ type: 'SELECT_WIKI_COMPONENT', componentId });
@@ -112,7 +125,7 @@ export function WikiDetail({ wikiId }: WikiDetailProps) {
         if (!graph) {
             if (wikiStatus === 'pending') {
                 if (activeTab === 'admin') {
-                    return <WikiAdmin wikiId={wikiId} />;
+                    return <WikiAdmin wikiId={wikiId} initialTab={adminSubTab} onTabChange={handleAdminTabChange} />;
                 }
                 return (
                     <div className="flex flex-col items-center justify-center h-full text-center">
@@ -166,7 +179,7 @@ export function WikiDetail({ wikiId }: WikiDetailProps) {
                     />
                 );
             case 'admin':
-                return <WikiAdmin wikiId={wikiId} />;
+                return <WikiAdmin wikiId={wikiId} initialTab={adminSubTab} onTabChange={handleAdminTabChange} />;
         }
     };
 

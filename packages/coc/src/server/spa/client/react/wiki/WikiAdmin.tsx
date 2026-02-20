@@ -9,11 +9,14 @@ import { Button, Card, Spinner, Badge } from '../shared';
 import { cn } from '../shared/cn';
 import { getApiBase } from '../utils/config';
 import { fetchApi } from '../hooks/useApi';
+import type { WikiAdminTab } from '../types/dashboard';
 
-type WikiAdminTab = 'generate' | 'seeds' | 'config' | 'delete';
+const ADMIN_TABS: WikiAdminTab[] = ['generate', 'seeds', 'config', 'delete'];
 
 interface WikiAdminProps {
     wikiId: string;
+    initialTab?: WikiAdminTab | null;
+    onTabChange?: (tab: WikiAdminTab) => void;
 }
 
 const PHASE_NAMES: Record<number, { name: string; desc: string }> = {
@@ -24,14 +27,27 @@ const PHASE_NAMES: Record<number, { name: string; desc: string }> = {
     5: { name: 'Website', desc: 'Build static site output' },
 };
 
-export function WikiAdmin({ wikiId }: WikiAdminProps) {
-    const [tab, setTab] = useState<WikiAdminTab>('generate');
+export function WikiAdmin({ wikiId, initialTab, onTabChange }: WikiAdminProps) {
+    const [tab, setTab] = useState<WikiAdminTab>(
+        initialTab && ADMIN_TABS.includes(initialTab) ? initialTab : 'generate'
+    );
+
+    useEffect(() => {
+        if (initialTab && ADMIN_TABS.includes(initialTab)) {
+            setTab(initialTab);
+        }
+    }, [initialTab]);
+
+    const changeTab = useCallback((t: WikiAdminTab) => {
+        setTab(t);
+        onTabChange?.(t);
+    }, [onTabChange]);
 
     return (
         <div className="flex flex-col h-full">
             {/* Sub-tab bar */}
             <div className="flex gap-1 px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
-                {(['generate', 'seeds', 'config', 'delete'] as WikiAdminTab[]).map(t => (
+                {ADMIN_TABS.map(t => (
                     <button
                         key={t}
                         className={cn(
@@ -44,7 +60,8 @@ export function WikiAdmin({ wikiId }: WikiAdminProps) {
                                     ? 'bg-[#0078d4] text-white'
                                     : 'text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]'
                         )}
-                        onClick={() => setTab(t)}
+                        data-wiki-admin-tab={t}
+                        onClick={() => changeTab(t)}
                     >
                         {t.charAt(0).toUpperCase() + t.slice(1)}
                     </button>

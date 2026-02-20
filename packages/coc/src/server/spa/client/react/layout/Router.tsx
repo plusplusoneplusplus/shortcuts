@@ -11,7 +11,7 @@ import { QueueView } from '../queue/QueueView';
 import { ReposView } from '../repos';
 import { WikiView } from '../wiki/WikiView';
 import { AdminPanel } from '../admin/AdminPanel';
-import type { DashboardTab, RepoSubTab, WikiProjectTab } from '../types/dashboard';
+import type { DashboardTab, RepoSubTab, WikiProjectTab, WikiAdminTab } from '../types/dashboard';
 
 function StubView({ id, label }: { id: string; label: string }) {
     return <div id={id}>{label}</div>;
@@ -28,23 +28,36 @@ export function tabFromHash(hash: string): DashboardTab | null {
 }
 
 export const VALID_WIKI_PROJECT_TABS: Set<string> = new Set(['browse', 'ask', 'graph', 'admin']);
+export const VALID_WIKI_ADMIN_TABS: Set<string> = new Set(['generate', 'seeds', 'config', 'delete']);
 
-export function parseWikiDeepLink(hash: string): { wikiId: string | null; tab: WikiProjectTab | null; componentId: string | null } {
+export interface WikiDeepLink {
+    wikiId: string | null;
+    tab: WikiProjectTab | null;
+    componentId: string | null;
+    adminTab: WikiAdminTab | null;
+}
+
+export function parseWikiDeepLink(hash: string): WikiDeepLink {
     const cleaned = hash.replace(/^#/, '');
     const parts = cleaned.split('/');
-    if (parts[0] !== 'wiki' || !parts[1]) return { wikiId: null, tab: null, componentId: null };
+    if (parts[0] !== 'wiki' || !parts[1]) return { wikiId: null, tab: null, componentId: null, adminTab: null };
 
     const wikiId = decodeURIComponent(parts[1]);
 
     if (parts.length >= 4 && parts[2] === 'component' && parts[3]) {
-        return { wikiId, tab: 'browse', componentId: decodeURIComponent(parts[3]) };
+        return { wikiId, tab: 'browse', componentId: decodeURIComponent(parts[3]), adminTab: null };
     }
 
     if (parts.length >= 3 && VALID_WIKI_PROJECT_TABS.has(parts[2])) {
-        return { wikiId, tab: parts[2] as WikiProjectTab, componentId: null };
+        const tab = parts[2] as WikiProjectTab;
+        let adminTab: WikiAdminTab | null = null;
+        if (tab === 'admin' && parts.length >= 4 && VALID_WIKI_ADMIN_TABS.has(parts[3])) {
+            adminTab = parts[3] as WikiAdminTab;
+        }
+        return { wikiId, tab, componentId: null, adminTab };
     }
 
-    return { wikiId, tab: null, componentId: null };
+    return { wikiId, tab: null, componentId: null, adminTab: null };
 }
 
 export function parseProcessDeepLink(hash: string): string | null {
@@ -120,7 +133,7 @@ export function Router() {
                 const wikiLink = parseWikiDeepLink('#' + hash);
                 if (wikiLink.wikiId) {
                     if (wikiLink.tab) {
-                        dispatch({ type: 'SELECT_WIKI_WITH_TAB', wikiId: wikiLink.wikiId, tab: wikiLink.tab });
+                        dispatch({ type: 'SELECT_WIKI_WITH_TAB', wikiId: wikiLink.wikiId, tab: wikiLink.tab, adminTab: wikiLink.adminTab });
                     } else {
                         dispatch({ type: 'SELECT_WIKI', wikiId: wikiLink.wikiId });
                     }

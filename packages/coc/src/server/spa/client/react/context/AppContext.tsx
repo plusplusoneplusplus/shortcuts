@@ -23,6 +23,7 @@ export interface AppContextState {
     selectedWikiComponentId: string | null;
     wikiView: WikiViewMode;
     wikiDetailInitialTab: string | null;
+    wikiDetailInitialAdminTab: string | null;
     wikis: any[];
     conversationCache: Record<string, ConversationCacheEntry>;
 }
@@ -42,6 +43,7 @@ const initialState: AppContextState = {
     selectedWikiComponentId: null,
     wikiView: 'list',
     wikiDetailInitialTab: null,
+    wikiDetailInitialAdminTab: null,
     wikis: [],
     conversationCache: {},
 };
@@ -69,7 +71,7 @@ export type AppAction =
     | { type: 'SET_WIKI_VIEW'; wikiId: string | null; componentId: string | null; view: WikiViewMode }
     | { type: 'SET_WIKIS'; wikis: any[] }
     | { type: 'SELECT_WIKI'; wikiId: string | null }
-    | { type: 'SELECT_WIKI_WITH_TAB'; wikiId: string; tab: string }
+    | { type: 'SELECT_WIKI_WITH_TAB'; wikiId: string; tab: string; adminTab?: string | null }
     | { type: 'SELECT_WIKI_COMPONENT'; componentId: string | null }
     | { type: 'ADD_WIKI'; wiki: any }
     | { type: 'UPDATE_WIKI'; wiki: any }
@@ -136,9 +138,9 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
         case 'SET_WIKIS':
             return { ...state, wikis: action.wikis };
         case 'SELECT_WIKI':
-            return { ...state, selectedWikiId: action.wikiId, selectedWikiComponentId: null, wikiView: action.wikiId ? 'detail' : 'list', wikiDetailInitialTab: null };
+            return { ...state, selectedWikiId: action.wikiId, selectedWikiComponentId: null, wikiView: action.wikiId ? 'detail' : 'list', wikiDetailInitialTab: null, wikiDetailInitialAdminTab: null };
         case 'SELECT_WIKI_WITH_TAB':
-            return { ...state, selectedWikiId: action.wikiId, selectedWikiComponentId: null, wikiView: 'detail', wikiDetailInitialTab: action.tab };
+            return { ...state, selectedWikiId: action.wikiId, selectedWikiComponentId: null, wikiView: 'detail', wikiDetailInitialTab: action.tab, wikiDetailInitialAdminTab: action.adminTab ?? null };
         case 'SELECT_WIKI_COMPONENT':
             return { ...state, selectedWikiComponentId: action.componentId };
         case 'ADD_WIKI':

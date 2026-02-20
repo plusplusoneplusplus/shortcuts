@@ -60,6 +60,7 @@ describe('AppContext reducer — wiki actions', () => {
         selectedWikiComponentId: null,
         wikiView: 'list',
         wikiDetailInitialTab: null,
+        wikiDetailInitialAdminTab: null,
         wikis: [],
         conversationCache: {},
     };
@@ -153,12 +154,21 @@ describe('AppContext reducer — wiki actions', () => {
         expect(result.selectedWikiId).toBe('w1');
         expect(result.wikiView).toBe('detail');
         expect(result.wikiDetailInitialTab).toBe('admin');
+        expect(result.wikiDetailInitialAdminTab).toBeNull();
     });
 
-    it('SELECT_WIKI clears wikiDetailInitialTab', () => {
-        const withTab = { ...baseState, wikiDetailInitialTab: 'admin' };
+    it('SELECT_WIKI_WITH_TAB sets wikiDetailInitialAdminTab', () => {
+        const result = appReducer(baseState, { type: 'SELECT_WIKI_WITH_TAB', wikiId: 'w1', tab: 'admin', adminTab: 'seeds' });
+        expect(result.selectedWikiId).toBe('w1');
+        expect(result.wikiDetailInitialTab).toBe('admin');
+        expect(result.wikiDetailInitialAdminTab).toBe('seeds');
+    });
+
+    it('SELECT_WIKI clears wikiDetailInitialTab and adminTab', () => {
+        const withTab = { ...baseState, wikiDetailInitialTab: 'admin', wikiDetailInitialAdminTab: 'seeds' };
         const result = appReducer(withTab, { type: 'SELECT_WIKI', wikiId: 'w1' });
         expect(result.wikiDetailInitialTab).toBeNull();
+        expect(result.wikiDetailInitialAdminTab).toBeNull();
     });
 });
 
@@ -595,6 +605,94 @@ describe('WikiAdmin', () => {
 });
 
 // ============================================================================
+// WikiAdmin — sub-tab routing via props
+// ============================================================================
+
+describe('WikiAdmin sub-tab routing', () => {
+    beforeEach(() => {
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({}),
+        }));
+    });
+
+    it('defaults to Generate tab when no initialTab', async () => {
+        render(<WikiAdmin wikiId="w1" />);
+        await waitFor(() => {
+            expect(screen.getByText('Discovery')).toBeTruthy();
+        });
+    });
+
+    it('opens Seeds tab when initialTab="seeds"', async () => {
+        render(<WikiAdmin wikiId="w1" initialTab="seeds" />);
+        await waitFor(() => {
+            expect(screen.getByText('Generate Seeds')).toBeTruthy();
+        });
+    });
+
+    it('opens Config tab when initialTab="config"', async () => {
+        const mockFetch = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url.includes('/admin/config')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        exists: true,
+                        content: 'model: gpt-4o\n',
+                        path: '/tmp/deep-wiki.config.yaml',
+                    }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+        vi.stubGlobal('fetch', mockFetch);
+
+        render(<WikiAdmin wikiId="w1" initialTab="config" />);
+        await waitFor(() => {
+            expect(screen.getByText('/tmp/deep-wiki.config.yaml')).toBeTruthy();
+        });
+    });
+
+    it('opens Delete tab when initialTab="delete"', async () => {
+        render(<WikiAdmin wikiId="w1" initialTab="delete" />);
+        await waitFor(() => {
+            expect(screen.getByText('Danger Zone')).toBeTruthy();
+        });
+    });
+
+    it('calls onTabChange when switching sub-tabs', async () => {
+        const onTabChange = vi.fn();
+        render(<WikiAdmin wikiId="w1" onTabChange={onTabChange} />);
+        await waitFor(() => {
+            expect(screen.getByText('Seeds')).toBeTruthy();
+        });
+        fireEvent.click(screen.getByText('Seeds'));
+        expect(onTabChange).toHaveBeenCalledWith('seeds');
+    });
+
+    it('calls onTabChange with "config" when clicking Config', async () => {
+        const onTabChange = vi.fn();
+        render(<WikiAdmin wikiId="w1" onTabChange={onTabChange} />);
+        await waitFor(() => {
+            expect(screen.getByText('Config')).toBeTruthy();
+        });
+        fireEvent.click(screen.getByText('Config'));
+        expect(onTabChange).toHaveBeenCalledWith('config');
+    });
+
+    it('sub-tab buttons have data-wiki-admin-tab attribute', async () => {
+        render(<WikiAdmin wikiId="w1" />);
+        await waitFor(() => {
+            expect(screen.getByText('Generate')).toBeTruthy();
+        });
+        for (const t of ['generate', 'seeds', 'config', 'delete']) {
+            const btn = document.querySelector(`[data-wiki-admin-tab="${t}"]`);
+            expect(btn).toBeTruthy();
+        }
+    });
+});
+
+// ============================================================================
 // WikiDetail — pending setup/admin path
 // ============================================================================
 
@@ -820,6 +918,83 @@ describe('WikiDetail tab routing', () => {
 
         expect(location.hash).toBe('#wiki/my%20wiki/ask');
     });
+
+    it('updates hash to admin sub-tab when clicking Seeds in admin', async () => {
+        render(
+            <Wrap>
+                <SeededWikiDetail
+                    wiki={{ id: 'w1', name: 'My Wiki', status: 'loaded' }}
+                    initialTab="admin"
+                />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('Seeds')).toBeTruthy();
+        });
+
+        fireEvent.click(screen.getByText('Seeds'));
+
+        expect(location.hash).toBe('#wiki/w1/admin/seeds');
+    });
+
+    it('updates hash to admin/config when clicking Config in admin', async () => {
+        render(
+            <Wrap>
+                <SeededWikiDetail
+                    wiki={{ id: 'w1', name: 'My Wiki', status: 'loaded' }}
+                    initialTab="admin"
+                />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('Config')).toBeTruthy();
+        });
+
+        fireEvent.click(screen.getByText('Config'));
+
+        expect(location.hash).toBe('#wiki/w1/admin/config');
+    });
+
+    it('updates hash to admin/delete when clicking Delete in admin', async () => {
+        render(
+            <Wrap>
+                <SeededWikiDetail
+                    wiki={{ id: 'w1', name: 'My Wiki', status: 'loaded' }}
+                    initialTab="admin"
+                />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('Delete')).toBeTruthy();
+        });
+
+        fireEvent.click(screen.getByText('Delete'));
+
+        expect(location.hash).toBe('#wiki/w1/admin/delete');
+    });
+
+    it('updates hash to plain admin when clicking Generate (default sub-tab)', async () => {
+        render(
+            <Wrap>
+                <SeededWikiDetail
+                    wiki={{ id: 'w1', name: 'My Wiki', status: 'loaded' }}
+                    initialTab="admin"
+                />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('Seeds')).toBeTruthy();
+        });
+
+        fireEvent.click(screen.getByText('Seeds'));
+        fireEvent.click(screen.getByText('Generate'));
+
+        expect(location.hash).toBe('#wiki/w1/admin');
+    });
 });
 
 // ============================================================================
@@ -834,6 +1009,7 @@ describe('useWebSocket wiki event dispatching', () => {
             selectedRepoId: null, activeRepoSubTab: 'info',
             selectedWikiId: null, selectedWikiComponentId: null, wikiView: 'list',
             wikiDetailInitialTab: null,
+            wikiDetailInitialAdminTab: null,
             wikis: [{ id: 'w1', name: 'Old', status: 'generating' }],
             conversationCache: {},
         };
@@ -849,6 +1025,7 @@ describe('useWebSocket wiki event dispatching', () => {
             selectedRepoId: null, activeRepoSubTab: 'info',
             selectedWikiId: null, selectedWikiComponentId: null, wikiView: 'list',
             wikiDetailInitialTab: null,
+            wikiDetailInitialAdminTab: null,
             wikis: [{ id: 'w1', status: 'loaded' }],
             conversationCache: {},
         };
@@ -863,6 +1040,7 @@ describe('useWebSocket wiki event dispatching', () => {
             selectedRepoId: null, activeRepoSubTab: 'info',
             selectedWikiId: null, selectedWikiComponentId: null, wikiView: 'list',
             wikiDetailInitialTab: null,
+            wikiDetailInitialAdminTab: null,
             wikis: [{ id: 'w1', status: 'generating' }],
             conversationCache: {},
         };
