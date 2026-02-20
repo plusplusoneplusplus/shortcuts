@@ -221,8 +221,13 @@ function renderError(message: string): void {
 
 function renderPreview(data: FilePreviewResponse): void {
     const tip = createTooltip();
-    const lineNumbers = data.lines.map((_, i) => `<span class="line-number">${i + 1}</span>`).join('\n');
-    const lines = data.lines.map((line) => escapeHtml(line)).join('\n');
+    const gutterWidth = String(data.lines.length).length + 1;
+    const rows = data.lines.map((line, i) =>
+        '<div class="file-preview-line">' +
+        `<span class="file-preview-line-number" style="min-width:${gutterWidth}ch">${i + 1}</span>` +
+        `<span class="file-preview-line-content">${escapeHtml(line) || '\u200B'}</span>` +
+        '</div>'
+    ).join('');
     const totalLabel = data.truncated ? ` (${data.totalLines} total)` : '';
 
     tip.innerHTML =
@@ -231,7 +236,7 @@ function renderPreview(data: FilePreviewResponse): void {
         `<span class="file-preview-tooltip-info">${data.lines.length} lines${escapeHtml(totalLabel)}</span>` +
         '</div>' +
         '<div class="file-preview-tooltip-body">' +
-        `<pre class="file-preview-code"><code class="line-numbers">${lineNumbers}</code><code class="line-content">${lines}</code></pre>` +
+        `<div class="file-preview-lines">${rows}</div>` +
         '</div>';
     tip.style.display = 'block';
 }
