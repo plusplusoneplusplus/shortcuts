@@ -199,6 +199,7 @@ export function registerScheduleRoutes(routes: Route[], manager: ScheduleManager
 
             try {
                 const run = await manager.triggerRun(repoId, scheduleId);
+                process.stderr.write(`[Schedule] manual-run scheduleId=${scheduleId} repoId=${repoId}\n`);
                 sendJSON(res, 200, { run });
             } catch (err) {
                 const message = err instanceof Error ? err.message : 'Failed to trigger run';

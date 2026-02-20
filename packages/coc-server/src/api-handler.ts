@@ -616,6 +616,8 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                 endTime: new Date(),
             });
 
+            process.stderr.write(`[Process] cancel id=${id} prevStatus=${existing.status}\n`);
+
             const updated = await store.getProcess(id);
             sendJSON(res, 200, { process: updated });
         },
@@ -678,6 +680,8 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             bridge.executeFollowUp(id, body.content).catch(() => {
                 // Error handling is done inside executeFollowUp
             });
+
+            globalThis.process.stderr.write(`[Process] message id=${id} turnIndex=${turnIndex}\n`);
 
             sendJSON(res, 202, { processId: id, turnIndex });
         },

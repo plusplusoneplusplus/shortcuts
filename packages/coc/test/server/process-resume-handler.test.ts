@@ -196,5 +196,45 @@ describe('POST /api/processes/:id/resume-cli', () => {
         expect(JSON.parse(res.body).error).toContain('Process not found');
         expect(mockLauncher).not.toHaveBeenCalled();
     });
+
+    describe('Request logs', () => {
+        let stderrSpy: ReturnType<typeof vi.spyOn>;
+
+        beforeEach(() => {
+            stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+        });
+
+        afterEach(() => {
+            stderrSpy.mockRestore();
+        });
+
+        it('should log [Process] resume-cli on success', async () => {
+            const processRecord: AIProcess = {
+                id: 'proc-log-1',
+                type: 'clarification',
+                promptPreview: 'Prompt',
+                fullPrompt: 'Prompt full',
+                status: 'completed',
+                startTime: new Date(),
+                endTime: new Date(),
+                sdkSessionId: 'sess-log-1',
+                workingDirectory: dataDir,
+            };
+            await store.addProcess(processRecord);
+
+            mockLauncher.mockResolvedValue({
+                launched: true,
+                command: "cd '/tmp' && copilot --yolo --resume 'sess-log-1'",
+                terminal: 'Terminal',
+            });
+
+            await request(`${baseUrl}/api/processes/proc-log-1/resume-cli`, { method: 'POST' });
+
+            const lines = stderrSpy.mock.calls
+                .map(([msg]) => (typeof msg === 'string' ? msg : ''))
+                .filter(Boolean);
+            expect(lines.some(l => l.includes('[Process] resume-cli id=proc-log-1 sessionId=sess-log-1 launched=true'))).toBe(true);
+        });
+    });
 });
 

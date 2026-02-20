@@ -237,6 +237,8 @@ export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueMana
             try {
                 const taskId = queueManager.enqueue(validation.input!);
                 const task = queueManager.getTask(taskId);
+                const inp = validation.input!;
+                process.stderr.write(`[Queue] enqueue task=${taskId} type=${inp.type} priority=${inp.priority} repoId=${inp.repoId || '-'}\n`);
                 sendJSON(res, 201, { task: task ? serializeTask(task) : { id: taskId } });
             } catch (err) {
                 const message = err instanceof Error ? err.message : 'Failed to enqueue task';
@@ -295,6 +297,8 @@ export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueMana
         try {
             const taskId = queueManager.enqueue(validation.input!);
             const task = queueManager.getTask(taskId);
+            const inp = validation.input!;
+            process.stderr.write(`[Queue] enqueue task=${taskId} type=${inp.type} priority=${inp.priority} repoId=${inp.repoId || '-'}\n`);
             sendJSON(res, 201, { task: task ? serializeTask(task) : { id: taskId } });
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Failed to enqueue task';
@@ -395,6 +399,11 @@ export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueMana
                 }
             }
 
+            if (successResults.length > 0) {
+                const taskIds = successResults.map(r => r.taskId).join(',');
+                process.stderr.write(`[Queue] bulk-enqueue count=${successResults.length} taskIds=${taskIds}\n`);
+            }
+
             const response = {
                 success: successResults,
                 failed: enqueueErrors,
@@ -460,9 +469,11 @@ export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueMana
 
             if (repoId) {
                 queueManager.pauseRepo(repoId);
+                process.stderr.write(`[Queue] pause repoId=${repoId}\n`);
                 sendJSON(res, 200, { repoId, paused: true, stats: queueManager.getStats() });
             } else {
                 queueManager.pause();
+                process.stderr.write(`[Queue] pause repoId=global\n`);
                 sendJSON(res, 200, { paused: true, stats: queueManager.getStats() });
             }
         },
@@ -480,9 +491,11 @@ export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueMana
 
             if (repoId) {
                 queueManager.resumeRepo(repoId);
+                process.stderr.write(`[Queue] resume repoId=${repoId}\n`);
                 sendJSON(res, 200, { repoId, paused: false, stats: queueManager.getStats() });
             } else {
                 queueManager.resume();
+                process.stderr.write(`[Queue] resume repoId=global\n`);
                 sendJSON(res, 200, { paused: false, stats: queueManager.getStats() });
             }
         },
@@ -582,7 +595,7 @@ export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueMana
 
             const count = queueManager.forceFailRunning(error);
 
-            // Also update linked processes in the store
+            process.stderr.write(`[Queue] force-fail-running count=${count}\n`);
             if (store && processIds.length > 0) {
                 for (const pid of processIds) {
                     try {
@@ -628,7 +641,7 @@ export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueMana
                 return sendError(res, 404, 'Task not found or not running');
             }
 
-            // Also update the linked process in the store
+            process.stderr.write(`[Queue] force-fail task=${id}\n`);
             if (store && processId) {
                 try {
                     await store.updateProcess(processId, {
@@ -701,6 +714,7 @@ export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueMana
             if (!moved) {
                 return sendError(res, 404, 'Task not found in queue');
             }
+            process.stderr.write(`[Queue] move-to-top task=${id}\n`);
             sendJSON(res, 200, { moved: true, position: 1 });
         },
     });
@@ -718,6 +732,7 @@ export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueMana
                 return sendError(res, 404, 'Task not found or already at top');
             }
             const position = queueManager.getPosition(id);
+            process.stderr.write(`[Queue] move-up task=${id}\n`);
             sendJSON(res, 200, { moved: true, position });
         },
     });
@@ -735,6 +750,7 @@ export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueMana
                 return sendError(res, 404, 'Task not found or already at bottom');
             }
             const position = queueManager.getPosition(id);
+            process.stderr.write(`[Queue] move-down task=${id}\n`);
             sendJSON(res, 200, { moved: true, position });
         },
     });

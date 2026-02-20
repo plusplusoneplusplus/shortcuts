@@ -1659,4 +1659,42 @@ describe('API Handler', () => {
             expect(retrieved.conversationTurns[1].content).toBe('Turn 1');
         });
     });
+
+    // ========================================================================
+    // Request Logs
+    // ========================================================================
+
+    describe('Request logs', () => {
+        let stderrOutput: string[];
+        let originalWrite: typeof process.stderr.write;
+
+        beforeEach(() => {
+            stderrOutput = [];
+            originalWrite = process.stderr.write;
+            process.stderr.write = function (chunk: any, ...args: any[]): boolean {
+                if (typeof chunk === 'string') {
+                    stderrOutput.push(chunk);
+                } else if (Buffer.isBuffer(chunk)) {
+                    stderrOutput.push(chunk.toString());
+                }
+                return true;
+            } as any;
+        });
+
+        afterEach(() => {
+            process.stderr.write = originalWrite;
+        });
+
+        it('should log [Process] cancel on POST /api/processes/:id/cancel', async () => {
+            const srv = await startServer();
+            const proc = makeProcess({ id: 'log-cancel-1', status: 'running' });
+            const createRes = await postJSON(`${srv.url}/api/processes`, proc);
+            expect(createRes.status).toBe(201);
+            stderrOutput = [];
+
+            const cancelRes = await request(`${srv.url}/api/processes/log-cancel-1/cancel`, { method: 'POST' });
+            expect(cancelRes.status).toBe(200);
+            expect(stderrOutput.some(l => l.includes('[Process] cancel id=log-cancel-1 prevStatus=running'))).toBe(true);
+        });
+    });
 });

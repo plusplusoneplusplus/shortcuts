@@ -239,6 +239,7 @@ export function registerProcessResumeRoutes(
 
             try {
                 const result = await launcher({ sessionId, workingDirectory });
+                process.stderr.write(`[Process] resume-cli id=${id} sessionId=${sessionId} launched=${result.launched}\n`);
                 return sendJSON(res, 200, {
                     processId: id,
                     sessionId,

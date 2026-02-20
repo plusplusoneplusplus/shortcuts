@@ -1313,4 +1313,114 @@ describe('Queue Handler', () => {
             expect(JSON.parse(stats.body).stats.isPaused).toBe(false);
         });
     });
+
+    // ========================================================================
+    // Request Logs
+    // ========================================================================
+
+    describe('Request logs', () => {
+        let stderrSpy: ReturnType<typeof import('vitest').vi.spyOn>;
+
+        beforeEach(async () => {
+            const { vi } = await import('vitest');
+            stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+        });
+
+        afterEach(() => {
+            stderrSpy.mockRestore();
+        });
+
+        function stderrLines(): string[] {
+            return stderrSpy.mock.calls
+                .map(([msg]) => (typeof msg === 'string' ? msg : ''))
+                .filter(Boolean);
+        }
+
+        it('should log [Queue] enqueue on POST /api/queue', async () => {
+            const srv = await startServer();
+            await postJSON(`${srv.url}/api/queue`, makeTask());
+            const lines = stderrLines();
+            expect(lines.some(l => l.startsWith('[Queue] enqueue task='))).toBe(true);
+        });
+
+        it('should log [Queue] enqueue on POST /api/queue/enqueue', async () => {
+            const srv = await startServer();
+            await postJSON(`${srv.url}/api/queue/enqueue`, makeTask());
+            const lines = stderrLines();
+            expect(lines.some(l => l.startsWith('[Queue] enqueue task='))).toBe(true);
+        });
+
+        it('should log [Queue] bulk-enqueue on POST /api/queue/bulk', async () => {
+            const srv = await startServer();
+            const tasks = [makeTask({ displayName: 'A' }), makeTask({ displayName: 'B' })];
+            await postJSON(`${srv.url}/api/queue/bulk`, { tasks });
+            const lines = stderrLines();
+            expect(lines.some(l => l.startsWith('[Queue] bulk-enqueue count=2'))).toBe(true);
+        });
+
+        it('should log [Queue] pause on POST /api/queue/pause', async () => {
+            const srv = await startServer();
+            await postJSON(`${srv.url}/api/queue/pause`, {});
+            const lines = stderrLines();
+            expect(lines.some(l => l.startsWith('[Queue] pause repoId=global'))).toBe(true);
+        });
+
+        it('should log [Queue] pause with repoId', async () => {
+            const srv = await startServer();
+            await request(`${srv.url}/api/queue/pause?repoId=repo-123`, { method: 'POST' });
+            const lines = stderrLines();
+            expect(lines.some(l => l.includes('[Queue] pause repoId=repo-123'))).toBe(true);
+        });
+
+        it('should log [Queue] resume on POST /api/queue/resume', async () => {
+            const srv = await startServer();
+            await postJSON(`${srv.url}/api/queue/resume`, {});
+            const lines = stderrLines();
+            expect(lines.some(l => l.startsWith('[Queue] resume repoId=global'))).toBe(true);
+        });
+
+        it('should log [Queue] force-fail-running on POST /api/queue/force-fail-running', async () => {
+            const srv = await startServer();
+            await postJSON(`${srv.url}/api/queue/force-fail-running`, {});
+            const lines = stderrLines();
+            expect(lines.some(l => l.startsWith('[Queue] force-fail-running count='))).toBe(true);
+        });
+
+        it('should log [Queue] move-to-top on success', async () => {
+            const srv = await startServer();
+            // Enqueue two tasks to allow reordering
+            const r1 = await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'First' }));
+            const r2 = await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'Second' }));
+            const id2 = JSON.parse(r2.body).task.id;
+            stderrSpy.mockClear();
+
+            await request(`${srv.url}/api/queue/${id2}/move-to-top`, { method: 'POST' });
+            const lines = stderrLines();
+            expect(lines.some(l => l.startsWith(`[Queue] move-to-top task=${id2}`))).toBe(true);
+        });
+
+        it('should log [Queue] move-up on success', async () => {
+            const srv = await startServer();
+            const r1 = await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'First' }));
+            const r2 = await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'Second' }));
+            const id2 = JSON.parse(r2.body).task.id;
+            stderrSpy.mockClear();
+
+            await request(`${srv.url}/api/queue/${id2}/move-up`, { method: 'POST' });
+            const lines = stderrLines();
+            expect(lines.some(l => l.startsWith(`[Queue] move-up task=${id2}`))).toBe(true);
+        });
+
+        it('should log [Queue] move-down on success', async () => {
+            const srv = await startServer();
+            const r1 = await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'First' }));
+            const r2 = await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'Second' }));
+            const id1 = JSON.parse(r1.body).task.id;
+            stderrSpy.mockClear();
+
+            await request(`${srv.url}/api/queue/${id1}/move-down`, { method: 'POST' });
+            const lines = stderrLines();
+            expect(lines.some(l => l.startsWith(`[Queue] move-down task=${id1}`))).toBe(true);
+        });
+    });
 });

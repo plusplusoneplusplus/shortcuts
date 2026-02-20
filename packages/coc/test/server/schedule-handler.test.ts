@@ -400,4 +400,39 @@ describe('Schedule Handler', () => {
             expect(body.schedules[0].name).toBe('Persistent Schedule');
         });
     });
+
+    // ========================================================================
+    // Request Logs
+    // ========================================================================
+
+    describe('Request logs', () => {
+        let stderrSpy: ReturnType<typeof import('vitest').vi.spyOn>;
+
+        beforeEach(async () => {
+            const { vi } = await import('vitest');
+            stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+        });
+
+        afterEach(() => {
+            stderrSpy.mockRestore();
+        });
+
+        function stderrLines(): string[] {
+            return stderrSpy.mock.calls
+                .map(([msg]) => (typeof msg === 'string' ? msg : ''))
+                .filter(Boolean);
+        }
+
+        it('should log [Schedule] manual-run on POST .../run', async () => {
+            const srv = await startServer();
+            // Create a schedule first
+            const createRes = await postJSON(schedulesUrl(), makeSchedule());
+            const scheduleId = JSON.parse(createRes.body).schedule.id;
+            stderrSpy.mockClear();
+
+            await request(`${srv.url}/api/workspaces/${WORKSPACE_ID}/schedules/${scheduleId}/run`, { method: 'POST' });
+            const lines = stderrLines();
+            expect(lines.some(l => l.includes(`[Schedule] manual-run scheduleId=${scheduleId} repoId=${WORKSPACE_ID}`))).toBe(true);
+        });
+    });
 });
