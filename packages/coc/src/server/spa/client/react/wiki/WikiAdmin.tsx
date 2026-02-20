@@ -1,5 +1,5 @@
 /**
- * WikiAdmin — admin panel with Generate, Seeds, Config sub-tabs.
+ * WikiAdmin — admin panel with Generate, Seeds, Config, Delete sub-tabs.
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -10,7 +10,7 @@ import { cn } from '../shared/cn';
 import { getApiBase } from '../utils/config';
 import { fetchApi } from '../hooks/useApi';
 
-type WikiAdminTab = 'generate' | 'seeds' | 'config';
+type WikiAdminTab = 'generate' | 'seeds' | 'config' | 'delete';
 
 interface WikiAdminProps {
     wikiId: string;
@@ -31,14 +31,18 @@ export function WikiAdmin({ wikiId }: WikiAdminProps) {
         <div className="flex flex-col h-full">
             {/* Sub-tab bar */}
             <div className="flex gap-1 px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
-                {(['generate', 'seeds', 'config'] as WikiAdminTab[]).map(t => (
+                {(['generate', 'seeds', 'config', 'delete'] as WikiAdminTab[]).map(t => (
                     <button
                         key={t}
                         className={cn(
                             'px-3 py-1 text-xs rounded transition-colors',
-                            tab === t
-                                ? 'bg-[#0078d4] text-white'
-                                : 'text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]'
+                            t === 'delete'
+                                ? tab === t
+                                    ? 'bg-[#f14c4c] text-white'
+                                    : 'text-[#f14c4c] hover:bg-[#f14c4c]/10'
+                                : tab === t
+                                    ? 'bg-[#0078d4] text-white'
+                                    : 'text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]'
                         )}
                         onClick={() => setTab(t)}
                     >
@@ -52,9 +56,7 @@ export function WikiAdmin({ wikiId }: WikiAdminProps) {
                 {tab === 'generate' && <GenerateTab wikiId={wikiId} />}
                 {tab === 'seeds' && <EditorTab wikiId={wikiId} kind="seeds" />}
                 {tab === 'config' && <EditorTab wikiId={wikiId} kind="config" />}
-
-                {/* Danger zone */}
-                <DangerZone wikiId={wikiId} />
+                {tab === 'delete' && <DangerZone wikiId={wikiId} />}
             </div>
         </div>
     );

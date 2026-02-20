@@ -500,11 +500,31 @@ describe('WikiAdmin', () => {
         });
     });
 
-    it('shows Danger Zone with Delete Wiki button', async () => {
+    it('shows Danger Zone with Delete Wiki button on Delete tab', async () => {
         render(<WikiAdmin wikiId="w1" />);
+        await waitFor(() => {
+            expect(screen.getByText('Delete')).toBeTruthy();
+        });
+        fireEvent.click(screen.getByText('Delete'));
         await waitFor(() => {
             expect(screen.getByText('Danger Zone')).toBeTruthy();
             expect(screen.getByText('Delete Wiki')).toBeTruthy();
+        });
+    });
+
+    it('does not show Danger Zone on Generate tab', async () => {
+        render(<WikiAdmin wikiId="w1" />);
+        await waitFor(() => {
+            expect(screen.getByText('Discovery')).toBeTruthy();
+        });
+        expect(screen.queryByText('Danger Zone')).toBeNull();
+    });
+
+    it('Delete tab button has danger styling', async () => {
+        render(<WikiAdmin wikiId="w1" />);
+        await waitFor(() => {
+            const deleteBtn = screen.getByText('Delete');
+            expect(deleteBtn.className).toContain('f14c4c');
         });
     });
 
