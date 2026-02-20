@@ -20,6 +20,10 @@ const STREAM_DESTROYED_PATTERNS = [
     'ECONNRESET',
 ];
 
+vi.mock('../../src/utils/resolve-working-directory', () => ({
+    resolveWorkingDirectory: (p: string) => p,
+}));
+
 vi.mock('@plusplusoneplusplus/pipeline-core', () => ({
     getCopilotSDKService: () => ({
         sendMessage: mockSendMessage,

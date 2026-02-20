@@ -19,6 +19,7 @@ import { buildProbePrompt } from './probe-prompts';
 import { parseProbeResponse } from './probe-response-parser';
 import { printInfo, printWarning, gray } from '../../logger';
 import { getErrorMessage } from '../../utils/error-utils';
+import { resolveWorkingDirectory } from '../../utils/resolve-working-directory';
 
 // ============================================================================
 // Constants
@@ -87,7 +88,7 @@ export async function runThemeProbe(
     // Configure the SDK session
     const sendOptions: SendMessageOptions = {
         prompt,
-        workingDirectory: repoPath,
+        workingDirectory: resolveWorkingDirectory(repoPath),
         availableTools: PROBE_TOOLS,
         onPermissionRequest: readOnlyPermissions,
         timeoutMs: options.timeout || DEFAULT_PROBE_TIMEOUT_MS,

@@ -1114,6 +1114,13 @@ export class CopilotSDKService {
         // Create client with cwd option if specified
         const options: ICopilotClientOptions = {};
         if (cwd) {
+            if (!fs.existsSync(cwd)) {
+                const logger = getLogger();
+                logger.warn(LogCategory.AI,
+                    `CopilotSDKService: Working directory does not exist: ${cwd}. ` +
+                    'The SDK will fail with ERR_STREAM_DESTROYED because child_process.spawn ' +
+                    'requires an existing cwd. Ensure the caller passes a valid directory.');
+            }
             options.cwd = cwd;
             // Pre-register the working directory as trusted to bypass the
             // interactive folder trust confirmation dialog

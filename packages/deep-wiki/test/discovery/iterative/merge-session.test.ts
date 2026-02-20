@@ -12,6 +12,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const mockSendMessage = vi.fn();
 const mockIsAvailable = vi.fn();
 
+vi.mock('../../../src/utils/resolve-working-directory', () => ({
+    resolveWorkingDirectory: (p: string) => p,
+}));
+
 vi.mock('@plusplusoneplusplus/pipeline-core', () => ({
     getCopilotSDKService: () => ({
         sendMessage: mockSendMessage,

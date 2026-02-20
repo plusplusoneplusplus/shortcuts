@@ -17,6 +17,7 @@ import { buildOutlinePrompt } from './outline-prompts';
 import { parseAIJsonResponse } from '../utils/parse-ai-response';
 import { printInfo, printWarning, gray } from '../logger';
 import { getErrorMessage } from '../utils/error-utils';
+import { resolveWorkingDirectory } from '../utils/resolve-working-directory';
 
 // ============================================================================
 // Constants
@@ -69,7 +70,7 @@ export async function generateThemeOutline(
 
     const sendOptions: SendMessageOptions = {
         prompt,
-        workingDirectory: repoPath,
+        workingDirectory: resolveWorkingDirectory(repoPath),
         timeoutMs: timeout ?? DEFAULT_OUTLINE_TIMEOUT_MS,
     };
 

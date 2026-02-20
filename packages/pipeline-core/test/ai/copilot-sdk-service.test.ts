@@ -2338,4 +2338,5 @@ describe('CopilotSDKService - Client Invalidation on Stream Error', () => {
         serviceAny.invalidateClient();
         expect(serviceAny.streamErrorGuardHandler).toBeNull();
     });
+
 });

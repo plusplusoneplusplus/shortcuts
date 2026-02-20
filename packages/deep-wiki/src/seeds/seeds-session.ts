@@ -21,6 +21,7 @@ import { parseSeedsResponse } from './response-parser';
 import { generateHeuristicSeeds } from './heuristic-fallback';
 import { printInfo, printWarning, gray } from '../logger';
 import { getErrorMessage } from '../utils/error-utils';
+import { resolveWorkingDirectory } from '../utils/resolve-working-directory';
 
 // ============================================================================
 // Retry Constants
@@ -129,7 +130,7 @@ export async function runSeedsSession(
     const timeoutMs = options.timeout ? options.timeout * 1000 : DEFAULT_SEEDS_TIMEOUT_MS;
     const sendOptions: SendMessageOptions = {
         prompt,
-        workingDirectory: repoPath,
+        workingDirectory: resolveWorkingDirectory(repoPath),
         availableTools: SEEDS_TOOLS,
         onPermissionRequest: readOnlyPermissions,
         timeoutMs,

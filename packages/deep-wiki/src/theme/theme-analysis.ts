@@ -25,6 +25,7 @@ import { buildArticleAnalysisPrompt, buildCrossCuttingPrompt } from './analysis-
 import { parseAIJsonResponse } from '../utils/parse-ai-response';
 import { printInfo, printWarning, gray } from '../logger';
 import { getErrorMessage } from '../utils/error-utils';
+import { resolveWorkingDirectory } from '../utils/resolve-working-directory';
 
 // ============================================================================
 // Constants
@@ -218,7 +219,7 @@ export async function analyzeArticleScope(
 
     const sendOptions: SendMessageOptions = {
         prompt,
-        workingDirectory: repoPath,
+        workingDirectory: resolveWorkingDirectory(repoPath),
         timeoutMs: options.timeout ?? DEFAULT_ARTICLE_TIMEOUT_MS,
     };
 
@@ -267,7 +268,7 @@ export async function analyzeCrossCutting(
 
     const sendOptions: SendMessageOptions = {
         prompt,
-        workingDirectory: repoPath,
+        workingDirectory: resolveWorkingDirectory(repoPath),
         timeoutMs: options.timeout ?? DEFAULT_CROSS_CUTTING_TIMEOUT_MS,
     };
 

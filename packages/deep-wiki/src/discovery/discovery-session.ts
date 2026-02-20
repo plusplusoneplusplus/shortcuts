@@ -20,6 +20,7 @@ import { buildDiscoveryPrompt } from './prompts';
 import { parseComponentGraphResponse } from './response-parser';
 import { printInfo, printWarning, gray } from '../logger';
 import { getErrorMessage } from '../utils/error-utils';
+import { resolveWorkingDirectory } from '../utils/resolve-working-directory';
 
 // ============================================================================
 // Constants
@@ -95,7 +96,7 @@ export async function runDiscoverySession(options: DiscoveryOptions): Promise<Di
     const timeoutMs = options.timeout || DEFAULT_DISCOVERY_TIMEOUT_MS;
     const sendOptions: SendMessageOptions = {
         prompt,
-        workingDirectory: options.repoPath,
+        workingDirectory: resolveWorkingDirectory(options.repoPath),
         availableTools: DISCOVERY_TOOLS,
         onPermissionRequest: readOnlyPermissions,
         timeoutMs,

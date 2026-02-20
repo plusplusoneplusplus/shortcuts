@@ -20,6 +20,7 @@ import { buildMergePrompt } from './merge-prompts';
 import { parseMergeResponse } from './merge-response-parser';
 import { printInfo, printWarning, gray } from '../../logger';
 import { getErrorMessage } from '../../utils/error-utils';
+import { resolveWorkingDirectory } from '../../utils/resolve-working-directory';
 
 // ============================================================================
 // Constants
@@ -83,7 +84,7 @@ export async function mergeProbeResults(
     // Configure the SDK session
     const sendOptions: SendMessageOptions = {
         prompt,
-        workingDirectory: repoPath,
+        workingDirectory: resolveWorkingDirectory(repoPath),
         availableTools: MERGE_TOOLS,
         onPermissionRequest: readOnlyPermissions,
         timeoutMs: options.timeout || DEFAULT_MERGE_TIMEOUT_MS,

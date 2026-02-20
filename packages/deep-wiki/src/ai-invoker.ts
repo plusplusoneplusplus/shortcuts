@@ -17,6 +17,7 @@ import type {
     AIInvokerResult,
     SendMessageOptions,
 } from '@plusplusoneplusplus/pipeline-core';
+import { resolveWorkingDirectory } from './utils/resolve-working-directory';
 
 // ============================================================================
 // Types
@@ -114,7 +115,7 @@ export function createAnalysisInvoker(options: AnalysisInvokerOptions): AIInvoke
             const sendOptions: SendMessageOptions = {
                 prompt,
                 model,
-                workingDirectory: options.repoPath,
+                workingDirectory: resolveWorkingDirectory(options.repoPath),
                 timeoutMs,
                 availableTools: ANALYSIS_TOOLS,
                 onPermissionRequest: (req) =>
@@ -162,7 +163,7 @@ export function createWritingInvoker(options: WritingInvokerOptions): AIInvoker 
             const sendOptions: SendMessageOptions = {
                 prompt,
                 model,
-                workingDirectory: options.repoPath,
+                workingDirectory: options.repoPath ? resolveWorkingDirectory(options.repoPath) : undefined,
                 timeoutMs,
                 loadDefaultMcpConfig: false, // Writing doesn't need MCP; avoid user's global MCP config
             };
@@ -223,7 +224,7 @@ export function createConsolidationInvoker(options: ConsolidationInvokerOptions)
                 prompt,
                 model,
                 timeoutMs,
-                workingDirectory: options.workingDirectory,
+                workingDirectory: resolveWorkingDirectory(options.workingDirectory),
                 loadDefaultMcpConfig: false,
             };
 

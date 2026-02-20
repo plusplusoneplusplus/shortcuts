@@ -27,6 +27,7 @@ import { getErrorMessage } from '../utils/error-utils';
 import { buildStructuralScanPrompt, buildFocusedDiscoveryPrompt } from './prompts';
 import { parseStructuralScanResponse, parseComponentGraphResponse } from './response-parser';
 import { printInfo, printWarning, gray, cyan } from '../logger';
+import { resolveWorkingDirectory } from '../utils/resolve-working-directory';
 import {
     getCachedStructuralScan,
     getCachedStructuralScanAny,
@@ -82,7 +83,7 @@ export async function estimateFileCount(repoPath: string): Promise<number> {
     printInfo('Estimating repository file count...');
     const result = await service.sendMessage({
         prompt: `Count the approximate number of files in this repository. Run glob("**/*") and count the results. Respond with ONLY a single number, nothing else.`,
-        workingDirectory: repoPath,
+        workingDirectory: resolveWorkingDirectory(repoPath),
         availableTools: ['glob'],
         onPermissionRequest: readOnlyPermissions,
         timeoutMs: 1_800_000,
@@ -234,7 +235,7 @@ async function performStructuralScan(options: DiscoveryOptions): Promise<Structu
 
     const sendOptions: SendMessageOptions = {
         prompt,
-        workingDirectory: options.repoPath,
+        workingDirectory: resolveWorkingDirectory(options.repoPath),
         availableTools: DISCOVERY_TOOLS,
         onPermissionRequest: readOnlyPermissions,
         timeoutMs: STRUCTURAL_SCAN_TIMEOUT_MS,
@@ -276,7 +277,7 @@ async function discoverDomain(
 
     const sendOptions: SendMessageOptions = {
         prompt,
-        workingDirectory: options.repoPath,
+        workingDirectory: resolveWorkingDirectory(options.repoPath),
         availableTools: DISCOVERY_TOOLS,
         onPermissionRequest: readOnlyPermissions,
         timeoutMs: PER_DOMAIN_TIMEOUT_MS,
