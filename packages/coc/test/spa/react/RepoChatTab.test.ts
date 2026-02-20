@@ -1,0 +1,326 @@
+/**
+ * Tests for RepoChatTab component.
+ *
+ * Validates the component's source structure, exports, state management,
+ * API interactions, localStorage persistence, and SSE streaming logic.
+ */
+
+import { describe, it, expect, beforeAll } from 'vitest';
+import * as fs from 'fs';
+import * as path from 'path';
+
+const REPO_CHAT_TAB_PATH = path.join(
+    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoChatTab.tsx'
+);
+
+const INDEX_PATH = path.join(
+    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'index.ts'
+);
+
+describe('RepoChatTab', () => {
+    let source: string;
+
+    beforeAll(() => {
+        source = fs.readFileSync(REPO_CHAT_TAB_PATH, 'utf-8');
+    });
+
+    describe('exports', () => {
+        it('is exported from repos/index.ts', () => {
+            const indexSource = fs.readFileSync(INDEX_PATH, 'utf-8');
+            expect(indexSource).toContain("export { RepoChatTab }");
+            expect(indexSource).toContain("from './RepoChatTab'");
+        });
+
+        it('exports RepoChatTab as a named export', () => {
+            expect(source).toContain('export function RepoChatTab');
+        });
+    });
+
+    describe('component signature', () => {
+        it('accepts workspaceId prop', () => {
+            expect(source).toContain('workspaceId: string');
+        });
+
+        it('accepts optional workspacePath prop', () => {
+            expect(source).toContain('workspacePath?: string');
+        });
+
+        it('defines RepoChatTabProps interface', () => {
+            expect(source).toContain('interface RepoChatTabProps');
+        });
+    });
+
+    describe('localStorage persistence', () => {
+        it('uses workspace-scoped storage key', () => {
+            expect(source).toContain('`coc-chat-task-${workspaceId}`');
+        });
+
+        it('reads from localStorage on mount', () => {
+            expect(source).toContain('localStorage.getItem(STORAGE_KEY)');
+        });
+
+        it('writes to localStorage when task is created', () => {
+            expect(source).toContain('localStorage.setItem(STORAGE_KEY, newTaskId)');
+        });
+
+        it('clears localStorage on New Chat', () => {
+            expect(source).toContain('localStorage.removeItem(STORAGE_KEY)');
+        });
+    });
+
+    describe('empty state', () => {
+        it('renders "Chat with this repository" heading', () => {
+            expect(source).toContain('Chat with this repository');
+        });
+
+        it('renders textarea with placeholder', () => {
+            expect(source).toContain('Ask anything about this repository');
+        });
+
+        it('renders Start Chat button', () => {
+            expect(source).toContain('Start Chat');
+        });
+
+        it('disables Start Chat when input is empty', () => {
+            expect(source).toContain('disabled={!inputValue.trim() || sending}');
+        });
+    });
+
+    describe('Start Chat handler', () => {
+        it('POSTs to /queue endpoint', () => {
+            expect(source).toContain('`${getApiBase()}/queue`');
+            expect(source).toMatch(/method:\s*'POST'/);
+        });
+
+        it('sends type chat in the request body', () => {
+            expect(source).toContain("type: 'chat'");
+        });
+
+        it('sends workspaceId in the request body', () => {
+            // Check that workspaceId is in the JSON.stringify body
+            const bodyMatch = source.includes('workspaceId,') || source.includes('workspaceId:');
+            expect(bodyMatch).toBe(true);
+        });
+
+        it('sends prompt in the request body', () => {
+            expect(source).toContain('prompt,');
+        });
+
+        it('sends workingDirectory from workspacePath', () => {
+            expect(source).toContain('workingDirectory: workspacePath');
+        });
+
+        it('creates optimistic user turn after submit', () => {
+            expect(source).toContain("role: 'user', content: prompt");
+        });
+
+        it('creates streaming assistant placeholder after submit', () => {
+            expect(source).toContain("role: 'assistant', content: ''");
+            expect(source).toContain('streaming: true');
+        });
+    });
+
+    describe('active chat UI', () => {
+        it('renders Chat header', () => {
+            // Header text in the active chat view
+            const lines = source.split('\n');
+            const headerLine = lines.find(l => l.includes('>Chat<'));
+            expect(headerLine).toBeDefined();
+        });
+
+        it('renders Stop button when streaming', () => {
+            expect(source).toContain('isStreaming && <Button');
+            expect(source).toContain('>Stop<');
+        });
+
+        it('renders New Chat button', () => {
+            expect(source).toContain('>New Chat<');
+        });
+
+        it('renders ConversationTurnBubble for each turn', () => {
+            expect(source).toContain('ConversationTurnBubble');
+            expect(source).toContain('turns.map');
+        });
+
+        it('renders Spinner when loading', () => {
+            expect(source).toContain('loading ? <Spinner');
+        });
+    });
+
+    describe('follow-up send', () => {
+        it('POSTs to /processes/:id/message endpoint', () => {
+            expect(source).toContain('`${getApiBase()}/processes/${encodeURIComponent(processId)}/message`');
+        });
+
+        it('sends content in the body', () => {
+            expect(source).toContain('JSON.stringify({ content })');
+        });
+
+        it('handles Enter key without Shift for send', () => {
+            expect(source).toContain("e.key === 'Enter' && !e.shiftKey");
+        });
+    });
+
+    describe('session expiry (410)', () => {
+        it('detects 410 status on follow-up', () => {
+            expect(source).toContain('response.status === 410');
+        });
+
+        it('sets sessionExpired flag', () => {
+            expect(source).toContain('setSessionExpired(true)');
+        });
+
+        it('shows expiry message in placeholder', () => {
+            expect(source).toContain('Session expired. Start a new chat.');
+        });
+
+        it('disables textarea when session is expired', () => {
+            expect(source).toContain('disabled={sending || sessionExpired}');
+        });
+    });
+
+    describe('SSE streaming', () => {
+        it('creates EventSource for process stream', () => {
+            expect(source).toContain('new EventSource(');
+            expect(source).toContain('/stream');
+        });
+
+        it('listens for done event', () => {
+            expect(source).toContain("addEventListener('done'");
+        });
+
+        it('listens for status event', () => {
+            expect(source).toContain("addEventListener('status'");
+        });
+
+        it('has a 90-second timeout', () => {
+            expect(source).toContain('90_000');
+        });
+
+        it('stopStreaming closes the EventSource', () => {
+            expect(source).toContain('eventSourceRef.current?.close()');
+        });
+    });
+
+    describe('New Chat handler', () => {
+        it('calls stopStreaming', () => {
+            // handleNewChat calls stopStreaming as its first action
+            const newChatFn = source.substring(source.indexOf('const handleNewChat'));
+            expect(newChatFn).toContain('stopStreaming()');
+        });
+
+        it('clears localStorage', () => {
+            const newChatFn = source.substring(source.indexOf('const handleNewChat'));
+            expect(newChatFn).toContain("localStorage.removeItem(STORAGE_KEY)");
+        });
+
+        it('resets all state', () => {
+            const newChatFn = source.substring(source.indexOf('const handleNewChat'));
+            expect(newChatFn).toContain('setChatTaskId(null)');
+            expect(newChatFn).toContain('setTask(null)');
+            expect(newChatFn).toContain('setTurns([])');
+            expect(newChatFn).toContain('setError(null)');
+            expect(newChatFn).toContain('setSessionExpired(false)');
+            expect(newChatFn).toContain("setInputValue('')");
+        });
+    });
+
+    describe('cleanup on unmount', () => {
+        it('registers cleanup effect', () => {
+            expect(source).toContain('useEffect(() => () => stopStreaming(), [])');
+        });
+    });
+
+    describe('mount restore', () => {
+        it('fetches task from /queue/:id on mount', () => {
+            expect(source).toContain('fetchApi(`/queue/${encodeURIComponent(stored)}`)');
+        });
+
+        it('fetches process for conversation turns', () => {
+            expect(source).toContain('fetchApi(`/processes/${encodeURIComponent(pid)}`)');
+        });
+
+        it('clears localStorage on 404', () => {
+            expect(source).toContain("err?.message?.includes('404')");
+        });
+
+        it('derives processId from task or chatTaskId', () => {
+            expect(source).toContain("task?.processId ?? (chatTaskId ? `queue_${chatTaskId}` : null)");
+        });
+    });
+
+    describe('getConversationTurns helper', () => {
+        it('checks process.conversationTurns first', () => {
+            expect(source).toContain('process?.conversationTurns');
+        });
+
+        it('falls back to data.conversation', () => {
+            expect(source).toContain("data?.conversation");
+        });
+
+        it('falls back to data.turns', () => {
+            expect(source).toContain("data?.turns");
+        });
+
+        it('creates synthetic turns from fullPrompt and result', () => {
+            expect(source).toContain('process.fullPrompt || process.promptPreview');
+            expect(source).toContain('process.result');
+        });
+    });
+
+    describe('imports', () => {
+        it('imports from react', () => {
+            expect(source).toContain("from 'react'");
+            expect(source).toContain('useEffect');
+            expect(source).toContain('useRef');
+            expect(source).toContain('useState');
+        });
+
+        it('imports fetchApi from hooks/useApi', () => {
+            expect(source).toContain("import { fetchApi } from '../hooks/useApi'");
+        });
+
+        it('imports getApiBase from utils/config', () => {
+            expect(source).toContain("import { getApiBase } from '../utils/config'");
+        });
+
+        it('imports Button and Spinner from shared', () => {
+            expect(source).toContain("import { Button, Spinner } from '../shared'");
+        });
+
+        it('imports ConversationTurnBubble', () => {
+            expect(source).toContain("import { ConversationTurnBubble } from '../processes/ConversationTurnBubble'");
+        });
+
+        it('imports ClientConversationTurn type', () => {
+            expect(source).toContain("import type { ClientConversationTurn } from '../types/dashboard'");
+        });
+
+        it('does NOT import QueueContext or AppContext', () => {
+            expect(source).not.toContain('QueueContext');
+            expect(source).not.toContain('AppContext');
+        });
+    });
+
+    describe('refs', () => {
+        it('uses turnsRef for closure-safe turns access', () => {
+            expect(source).toContain('turnsRef');
+            expect(source).toContain('useRef<ClientConversationTurn[]>');
+        });
+
+        it('uses eventSourceRef for SSE connection', () => {
+            expect(source).toContain('eventSourceRef');
+            expect(source).toContain('useRef<EventSource | null>');
+        });
+    });
+
+    describe('SSE for initial running task', () => {
+        it('opens SSE when task status is running', () => {
+            expect(source).toContain("task?.status !== 'running'");
+        });
+
+        it('re-runs on chatTaskId or task status change', () => {
+            expect(source).toContain('[chatTaskId, task?.status]');
+        });
+    });
+});
