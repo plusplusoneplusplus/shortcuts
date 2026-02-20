@@ -3,7 +3,7 @@
  * Renders a two-zone flex layout: left = TaskTree, right = TaskPreview.
  */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { TaskProvider, useTaskPanel } from '../context/TaskContext';
 import { useTaskTree } from '../hooks/useTaskTree';
 import { TaskTree } from './TaskTree';
@@ -31,10 +31,31 @@ export function parseTaskHashParams(hash: string, wsId: string) {
     return { initialFolderPath: taskParts.join('/'), initialFilePath: null };
 }
 
+function scrollToEnd(el: HTMLElement | null) {
+    if (!el) return;
+    requestAnimationFrame(() => {
+        const target = el.scrollWidth - el.clientWidth;
+        if (typeof el.scrollTo === 'function') {
+            el.scrollTo({ left: target, behavior: 'smooth' });
+        } else {
+            el.scrollLeft = target;
+        }
+    });
+}
+
 function TasksPanelInner({ wsId }: TasksPanelProps) {
     const { tree, commentCounts, loading, error } = useTaskTree(wsId);
     const { openFilePath, selectedFilePaths, clearSelection } = useTaskPanel();
     const [initialParams] = useState(() => parseTaskHashParams(location.hash, wsId));
+    const scrollRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        scrollToEnd(scrollRef.current);
+    }, [openFilePath]);
+
+    const handleColumnsChange = () => {
+        scrollToEnd(scrollRef.current);
+    };
 
     if (loading) {
         return (
@@ -70,6 +91,7 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
                 onClearSelection={clearSelection}
             />
             <div
+                ref={scrollRef}
                 className="flex-1 overflow-x-auto overflow-y-hidden min-h-0 min-w-0"
                 data-testid="tasks-miller-scroll-container"
             >
@@ -81,6 +103,7 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
                             wsId={wsId}
                             initialFolderPath={initialParams.initialFolderPath}
                             initialFilePath={initialParams.initialFilePath}
+                            onColumnsChange={handleColumnsChange}
                         />
                     </div>
 

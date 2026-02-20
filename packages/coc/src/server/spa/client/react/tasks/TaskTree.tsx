@@ -15,6 +15,7 @@ interface TaskTreeProps {
     wsId: string;
     initialFolderPath?: string | null;
     initialFilePath?: string | null;
+    onColumnsChange?: () => void;
 }
 
 function getNodePath(node: TaskNode): string | null {
@@ -36,7 +37,7 @@ export function getFolderKey(folder: TaskFolder): string {
     return folder.relativePath || folder.name;
 }
 
-export function TaskTree({ tree, commentCounts, wsId, initialFolderPath, initialFilePath }: TaskTreeProps) {
+export function TaskTree({ tree, commentCounts, wsId, initialFolderPath, initialFilePath, onColumnsChange }: TaskTreeProps) {
     const { openFilePath, setOpenFilePath, selectedFilePaths, toggleSelectedFile, showContextFiles } = useTaskPanel();
     const queueActivity = useQueueActivity(wsId);
     const [columns, setColumns] = useState<TaskNode[][]>([]);
@@ -79,6 +80,8 @@ export function TaskTree({ tree, commentCounts, wsId, initialFolderPath, initial
         const folderPath = getFolderKey(folder);
         const encoded = folderPath.split('/').map(encodeURIComponent).join('/');
         history.replaceState(null, '', `#repos/${encodeURIComponent(wsId)}/tasks/${encoded}`);
+
+        onColumnsChange?.();
     };
 
     const handleFileClick = (path: string) => {

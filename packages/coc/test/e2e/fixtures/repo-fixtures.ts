@@ -105,3 +105,32 @@ export function createTasksFixture(repoDir: string): void {
         fs.writeFileSync(path.join(tasksDir, rel), content);
     }
 }
+
+/**
+ * Populate `.vscode/tasks/` with a deeply nested structure for scroll tests.
+ *
+ * Structure created:
+ *   .vscode/tasks/
+ *   ├── task-root.md
+ *   ├── level1/
+ *   │   ├── task-l1.md
+ *   │   └── level2/
+ *   │       ├── task-l2.md
+ *   │       └── level3/
+ *   │           └── deep-task.md
+ */
+export function createDeepTasksFixture(repoDir: string): void {
+    const tasksDir = path.join(repoDir, '.vscode', 'tasks');
+    fs.mkdirSync(path.join(tasksDir, 'level1', 'level2', 'level3'), { recursive: true });
+
+    const files: Record<string, string> = {
+        'task-root.md': '---\nstatus: pending\n---\n\n# Root Task\n\nRoot-level task.\n',
+        'level1/task-l1.md': '---\nstatus: pending\n---\n\n# Level 1 Task\n\nFirst level task.\n',
+        'level1/level2/task-l2.md': '---\nstatus: in-progress\n---\n\n# Level 2 Task\n\nSecond level task.\n',
+        'level1/level2/level3/deep-task.md': '---\nstatus: pending\n---\n\n# Deep Task\n\nDeeply nested task.\n',
+    };
+
+    for (const [rel, content] of Object.entries(files)) {
+        fs.writeFileSync(path.join(tasksDir, rel), content);
+    }
+}

@@ -51,9 +51,13 @@ describe('React TaskTree — Miller columns implementation', () => {
     });
 
     it('auto-scrolls to rightmost column', () => {
-        const content = fs.readFileSync(taskTreeFile, 'utf8');
-        expect(content).toContain('scrollLeft');
-        expect(content).toContain('scrollWidth');
+        const panelFile = path.join(CLIENT_DIR, 'react', 'tasks', 'TasksPanel.tsx');
+        const panelContent = fs.readFileSync(panelFile, 'utf8');
+        expect(panelContent).toContain('scrollTo');
+        expect(panelContent).toContain('scrollWidth');
+
+        const treeContent = fs.readFileSync(taskTreeFile, 'utf8');
+        expect(treeContent).toContain('onColumnsChange');
     });
 });
 
