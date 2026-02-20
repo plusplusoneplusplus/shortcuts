@@ -15,6 +15,7 @@ import { CommentSidebar } from '../tasks/comments/CommentSidebar';
 import { ContextMenu } from '../tasks/comments/ContextMenu';
 import { InlineCommentPopup } from '../tasks/comments/InlineCommentPopup';
 import { CommentHighlight } from '../tasks/comments/CommentHighlight';
+import { CommentPopover } from '../tasks/comments/CommentPopover';
 import type { TaskComment, TaskCommentCategory, CommentSelection } from '../../task-comments-types';
 import { CATEGORY_INFO, ALL_CATEGORIES, getCommentCategory } from '../../task-comments-types';
 import {
@@ -86,6 +87,8 @@ export function MarkdownReviewEditor({
     } | null>(null);
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
     const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
+    const [activePopoverComment, setActivePopoverComment] = useState<TaskComment | null>(null);
+    const [popoverPos, setPopoverPos] = useState({ top: 0, left: 0 });
 
     // Comments hook
     const {
@@ -250,13 +253,22 @@ export function MarkdownReviewEditor({
     }, []);
 
     const handleCommentClick = useCallback((comment: TaskComment) => {
-        // Scroll the highlight into view
-        if (previewRef.current) {
-            const mark = previewRef.current.querySelector(`mark[data-comment-id="${comment.id}"]`);
-            if (mark) {
-                mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }
+        if (!previewRef.current) return;
+
+        const mark = previewRef.current.querySelector(`mark[data-comment-id="${comment.id}"]`);
+        if (!mark) return;
+
+        const scrollContainer = mark.closest('.overflow-y-auto') ?? previewRef.current.parentElement;
+        if (scrollContainer) {
+            const containerRect = scrollContainer.getBoundingClientRect();
+            const markRect = mark.getBoundingClientRect();
+            const scrollTop = scrollContainer.scrollTop + (markRect.top - containerRect.top) - containerRect.height / 2 + markRect.height / 2;
+            scrollContainer.scrollTo({ top: Math.max(0, scrollTop), behavior: 'smooth' });
         }
+
+        const rect = mark.getBoundingClientRect();
+        setPopoverPos({ top: rect.bottom + 8, left: Math.max(8, rect.left) });
+        setActivePopoverComment(comment);
     }, []);
 
     if (loading) {
@@ -394,6 +406,18 @@ export function MarkdownReviewEditor({
                     position={popupPos}
                     onSubmit={handlePopupSubmit}
                     onCancel={handlePopupCancel}
+                />
+            )}
+
+            {activePopoverComment && (
+                <CommentPopover
+                    comment={activePopoverComment}
+                    position={popoverPos}
+                    onClose={() => setActivePopoverComment(null)}
+                    onResolve={(id) => { resolveComment(id); setActivePopoverComment(null); }}
+                    onUnresolve={(id) => { unresolveComment(id); setActivePopoverComment(null); }}
+                    onDelete={(id) => { deleteComment(id); setActivePopoverComment(null); }}
+                    onEdit={(id, text) => updateComment(id, { comment: text })}
                 />
             )}
         </div>
