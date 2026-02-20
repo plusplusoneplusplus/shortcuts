@@ -128,6 +128,7 @@ export function TaskTree({ tree, commentCounts, wsId, initialFolderPath, initial
                                         isActiveFolder={isTaskFolder(node) && activeFolderKeys[colIndex] === getFolderKey(node as TaskFolder)}
                                         commentCount={path ? (commentCounts[path] || 0) : 0}
                                         queueRunning={path ? (queueActivity[path] || 0) : 0}
+                                        folderQueueCount={isTaskFolder(node) ? (queueFolderActivity[getFolderKey(node as TaskFolder)] ?? 0) : 0}
                                         folderMdCount={folderMdCount}
                                         showContextFiles={showContextFiles}
                                         onFolderClick={(folder) => handleFolderClick(folder, colIndex)}

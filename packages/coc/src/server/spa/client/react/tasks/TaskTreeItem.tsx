@@ -15,6 +15,7 @@ export interface TaskTreeItemProps {
     isActiveFolder?: boolean;
     commentCount: number;
     queueRunning: number;
+    folderQueueCount?: number;
     folderMdCount: number;
     showContextFiles: boolean;
     onFolderClick: (folder: TaskFolder) => void;
@@ -68,6 +69,7 @@ export function TaskTreeItem({
     isActiveFolder,
     commentCount,
     queueRunning,
+    folderQueueCount,
     folderMdCount,
     showContextFiles,
     onFolderClick,
@@ -152,6 +154,16 @@ export function TaskTreeItem({
                     title={`In progress (${queueRunning})`}
                 >
                     in progress
+                </span>
+            )}
+
+            {/* Folder queue activity badge */}
+            {isFolder && (folderQueueCount ?? 0) > 0 && (
+                <span
+                    className="miller-queue-indicator miller-queue-indicator-running flex-shrink-0 text-[9px] font-medium px-1.5 py-px rounded-full bg-[#0078d4] text-white animate-pulse"
+                    title={`${folderQueueCount} task${folderQueueCount === 1 ? '' : 's'} in progress in this folder`}
+                >
+                    {folderQueueCount} in progress
                 </span>
             )}
 

@@ -9,6 +9,21 @@ import { useApp } from '../context/AppContext';
 import { Badge, Card, Button, cn } from '../shared';
 import { formatDuration, statusIcon, statusLabel, typeLabel } from '../utils/format';
 
+function groupByFolder(tasks: any[]): { folder: string | null; tasks: any[] }[] {
+    const map = new Map<string | null, any[]>();
+    for (const t of tasks) {
+        const key = t.folderPath ?? null;
+        if (!map.has(key)) map.set(key, []);
+        map.get(key)!.push(t);
+    }
+    const entries = [...map.entries()].sort((a, b) => {
+        if (a[0] === null) return 1;
+        if (b[0] === null) return -1;
+        return a[0].localeCompare(b[0]);
+    });
+    return entries.map(([folder, tasks]) => ({ folder, tasks }));
+}
+
 export function QueuePanel() {
     const { state, dispatch } = useQueue();
     const { dispatch: appDispatch } = useApp();
@@ -63,34 +78,44 @@ export function QueuePanel() {
             {running.length > 0 && (
                 <div>
                     <div className="text-[11px] uppercase text-[#848484] mb-1 font-medium">Running</div>
-                    <div className="flex flex-col gap-1">
-                        {running.map((task: any) => (
-                            <QueueTaskCard
-                                key={task.id}
-                                task={task}
-                                now={now}
-                                selected={state.selectedTaskId === task.id}
-                                onClick={() => openTaskInRoute(task)}
-                            />
-                        ))}
-                    </div>
+                    {groupByFolder(running).map(({ folder, tasks }) => (
+                        <div key={folder ?? '__unassigned__'}>
+                            {folder && (
+                                <div className="queue-folder-heading text-[10px] text-[#848484] dark:text-[#666] font-mono truncate mb-0.5 pl-0.5">
+                                    📂 {folder}
+                                </div>
+                            )}
+                            <div className="flex flex-col gap-1">
+                                {tasks.map((task: any) => (
+                                    <QueueTaskCard key={task.id} task={task} now={now}
+                                        selected={state.selectedTaskId === task.id}
+                                        onClick={() => openTaskInRoute(task)} />
+                                ))}
+                            </div>
+                        </div>
+                    ))}
                 </div>
             )}
 
             {queued.length > 0 && (
                 <div>
                     <div className="text-[11px] uppercase text-[#848484] mb-1 font-medium">Queued</div>
-                    <div className="flex flex-col gap-1">
-                        {queued.map((task: any) => (
-                            <QueueTaskCard
-                                key={task.id}
-                                task={task}
-                                now={now}
-                                selected={state.selectedTaskId === task.id}
-                                onClick={() => openTaskInRoute(task)}
-                            />
-                        ))}
-                    </div>
+                    {groupByFolder(queued).map(({ folder, tasks }) => (
+                        <div key={folder ?? '__unassigned__'}>
+                            {folder && (
+                                <div className="queue-folder-heading text-[10px] text-[#848484] dark:text-[#666] font-mono truncate mb-0.5 pl-0.5">
+                                    📂 {folder}
+                                </div>
+                            )}
+                            <div className="flex flex-col gap-1">
+                                {tasks.map((task: any) => (
+                                    <QueueTaskCard key={task.id} task={task} now={now}
+                                        selected={state.selectedTaskId === task.id}
+                                        onClick={() => openTaskInRoute(task)} />
+                                ))}
+                            </div>
+                        </div>
+                    ))}
                 </div>
             )}
 
@@ -178,6 +203,14 @@ function QueueTaskCard({ task, now, selected, onClick, compact = false }: {
                     <div className="text-[11px] text-[#1e1e1e] dark:text-[#cccccc] line-clamp-1 break-words">
                         {preview}
                     </div>
+                    {task.folderPath && (
+                        <div className="queue-task-folder-badge text-[10px] text-[#848484] font-mono truncate mt-0.5"
+                             title={task.folderPath}>
+                            📂 {task.folderPath.length > 32
+                                ? '…' + task.folderPath.slice(-32)
+                                : task.folderPath}
+                        </div>
+                    )}
                     {elapsed && (
                         <div className="text-[10px] text-[#848484] mt-0.5">{elapsed}</div>
                     )}
