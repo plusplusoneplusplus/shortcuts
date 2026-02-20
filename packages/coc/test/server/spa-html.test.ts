@@ -65,101 +65,19 @@ describe('generateDashboardHtml', () => {
         expect(html).toContain('</script>');
     });
 
-    it('contains top bar with title', () => {
+    it('does not contain legacy pre-React DOM elements', () => {
         const html = generateDashboardHtml();
-        expect(html).toContain('class="top-bar"');
-        expect(html).toContain('class="top-bar-logo"');
+        // Legacy DOM was removed — React renders all UI into #app-root
+        expect(html).not.toContain('id="view-repos"');
+        expect(html).not.toContain('id="view-processes"');
+        expect(html).not.toContain('id="hamburger-btn"');
+        expect(html).not.toContain('cleanupLegacyDom');
     });
 
-    it('top-bar contains tab navigation', () => {
-        const html = generateDashboardHtml();
-        expect(html).toContain('class="top-bar-tabs"');
-        expect(html).toContain('data-tab="repos"');
-        expect(html).toContain('data-tab="processes"');
-    });
-
-    it('top-bar does not contain legacy nav or workspace select', () => {
+    it('does not contain legacy nav or workspace select', () => {
         const html = generateDashboardHtml();
         expect(html).not.toContain('class="top-bar-nav"');
         expect(html).not.toContain('id="workspace-select"');
-    });
-
-    it('contains theme toggle button', () => {
-        const html = generateDashboardHtml();
-        expect(html).toContain('id="theme-toggle"');
-    });
-
-    it('contains tab bar with Repos, Processes, and Wiki tabs', () => {
-        const html = generateDashboardHtml();
-        expect(html).toContain('id="tab-bar"');
-        expect(html).toContain('data-tab="processes"');
-        expect(html).toContain('data-tab="repos"');
-        expect(html).toContain('data-tab="wiki"');
-        expect(html).toContain('>Processes<');
-        expect(html).toContain('>Repos<');
-        expect(html).toContain('>Wiki<');
-    });
-
-    it('contains repos view with sidebar list and add repo button', () => {
-        const html = generateDashboardHtml();
-        expect(html).toContain('id="view-repos"');
-        expect(html).toContain('id="repos-sidebar"');
-        expect(html).toContain('id="repos-list"');
-        expect(html).toContain('id="add-repo-btn"');
-    });
-
-    it('contains add repo dialog overlay', () => {
-        const html = generateDashboardHtml();
-        expect(html).toContain('id="add-repo-overlay"');
-        expect(html).toContain('id="repo-path"');
-        expect(html).toContain('id="repo-alias"');
-        expect(html).toContain('id="repo-color"');
-        expect(html).toContain('Add Repository');
-    });
-
-    it('contains repo detail panel with empty and content sections', () => {
-        const html = generateDashboardHtml();
-        expect(html).toContain('id="repo-detail-panel"');
-        expect(html).toContain('id="repo-detail-empty"');
-        expect(html).toContain('id="repo-detail-content"');
-        expect(html).toContain('Select a repo to view details');
-    });
-
-    it('contains reports placeholder view', () => {
-        const html = generateDashboardHtml();
-        expect(html).toContain('id="view-reports"');
-        expect(html).toContain('coming soon');
-    });
-
-    it('contains sidebar with filter bar and queue panel', () => {
-        const html = generateDashboardHtml();
-        expect(html).toContain('id="sidebar"');
-        expect(html).toContain('id="search-input"');
-        expect(html).toContain('id="status-filter"');
-        expect(html).toContain('id="queue-panel"');
-    });
-
-    it('contains status filter options', () => {
-        const html = generateDashboardHtml();
-        expect(html).toContain('All Statuses');
-        expect(html).toContain('Running');
-        expect(html).toContain('Queued');
-        expect(html).toContain('Completed');
-        expect(html).toContain('Failed');
-        expect(html).toContain('Cancelled');
-    });
-
-    it('contains detail panel', () => {
-        const html = generateDashboardHtml();
-        expect(html).toContain('id="detail-panel"');
-        expect(html).toContain('id="detail-empty"');
-        expect(html).toContain('id="detail-content"');
-        expect(html).toContain('Select a process to view details');
-    });
-
-    it('contains hamburger button for mobile', () => {
-        const html = generateDashboardHtml();
-        expect(html).toContain('id="hamburger-btn"');
     });
 
     it('applies dark theme attribute when theme is dark', () => {
@@ -178,28 +96,12 @@ describe('generateDashboardHtml', () => {
         expect(html).toMatch(/<html lang="en">/);
     });
 
-    it('contains review editor with rich UI elements', () => {
+    it('does not contain legacy review editor DOM', () => {
         const html = generateDashboardHtml();
-        // Mode toggle
-        expect(html).toContain('id="review-mode-toggle"');
-        expect(html).toContain('review-mode-review');
-        expect(html).toContain('review-mode-source');
-        // Stats
-        expect(html).toContain('id="review-open-count"');
-        expect(html).toContain('id="review-resolved-count"');
-        // Show resolved checkbox
-        expect(html).toContain('id="review-show-resolved"');
-        // Rich content container
-        expect(html).toContain('id="review-rendered-content"');
-        // Floating comment panel
-        expect(html).toContain('id="review-floating-panel"');
-        expect(html).toContain('id="review-floating-input"');
-    });
-
-    it('contains review file browser page', () => {
-        const html = generateDashboardHtml();
-        expect(html).toContain('id="page-review-browser"');
-        expect(html).toContain('id="review-browser-content"');
+        // Legacy review editor DOM was removed — React renders it
+        expect(html).not.toContain('id="review-mode-toggle"');
+        expect(html).not.toContain('id="review-floating-panel"');
+        expect(html).not.toContain('id="page-review-browser"');
     });
 
     it('injects __REVIEW_CONFIG__ when reviewFilePath is provided', () => {
