@@ -257,6 +257,8 @@ import {
     saveReduceArticles,
     restampArticles,
     getCachedReduceArticles,
+    getCachedConsolidation,
+    getCachedConsolidationAny,
 } from '../../src/cache';
 import { discoverComponentGraph } from '../../src/discovery';
 import { generateWebsite } from '../../src/writing/website-generator';
@@ -425,6 +427,140 @@ describe('executeGenerate — --phase option', () => {
 
         const exitCode = await executeGenerate(repoDir, defaultOptions({ phase: 3 }));
         expect(exitCode).toBe(EXIT_CODES.CONFIG_ERROR);
+    });
+
+    it('--phase 3 should use consolidated graph (25 components) when consolidation cache exists', async () => {
+        const rawComponents = Array.from({ length: 42 }, (_, i) => ({
+            id: `raw-mod-${i}`,
+            name: `Raw Module ${i}`,
+            path: `src/raw-${i}/`,
+            purpose: 'Raw',
+            keyFiles: [],
+            dependencies: [],
+            dependents: [],
+            complexity: 'low' as const,
+            category: 'core',
+        }));
+        const consolidatedComponents = Array.from({ length: 25 }, (_, i) => ({
+            id: `consolidated-mod-${i}`,
+            name: `Consolidated Module ${i}`,
+            path: `src/consolidated-${i}/`,
+            purpose: 'Consolidated',
+            keyFiles: [],
+            dependencies: [],
+            dependents: [],
+            complexity: 'low' as const,
+            category: 'core',
+        }));
+
+        vi.mocked(getCachedGraph).mockResolvedValue({
+            metadata: { gitHash: 'abc123', timestamp: Date.now(), version: '1.0.0' },
+            graph: {
+                project: { name: 'Proj', description: '', language: 'TypeScript', buildSystem: 'npm', entryPoints: [] },
+                components: rawComponents,
+                categories: [{ name: 'core', description: 'Core' }],
+                architectureNotes: '',
+            },
+        });
+        vi.mocked(getCachedConsolidation).mockResolvedValue({
+            metadata: { gitHash: 'abc123', timestamp: Date.now(), version: '1.0.0', inputComponentCount: 42 },
+            graph: {
+                project: { name: 'Proj', description: '', language: 'TypeScript', buildSystem: 'npm', entryPoints: [] },
+                components: consolidatedComponents,
+                categories: [{ name: 'core', description: 'Core' }],
+                architectureNotes: '',
+            },
+        });
+
+        // Return a valid analysis for each component in whatever graph is passed
+        vi.mocked(analyzeComponents).mockImplementation(async (opts) => ({
+            analyses: opts.graph.components.map(c => ({
+                componentId: c.id,
+                overview: '', keyConcepts: [], publicAPI: [], internalArchitecture: '',
+                dataFlow: '', patterns: [], errorHandling: '', codeExamples: [],
+                dependencies: { internal: [], external: [] }, suggestedDiagram: '',
+            })),
+            duration: 1000,
+        }));
+
+        const exitCode = await executeGenerate(repoDir, defaultOptions({ phase: 3, endPhase: 3 }));
+        expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+
+        // analyzeComponents should be called with the consolidated 25-component graph, not raw 42
+        const callArg = vi.mocked(analyzeComponents).mock.calls[0]?.[0];
+        expect(callArg?.graph.components).toHaveLength(25);
+        expect(callArg?.graph.components[0].id).toBe('consolidated-mod-0');
+    });
+
+    it('--phase 3 with --use-cache should use getCachedConsolidationAny for consolidation cache', async () => {
+        const rawComponents = [{ id: 'raw-1', name: 'Raw 1', path: 'src/', purpose: '', keyFiles: [], dependencies: [], dependents: [], complexity: 'low' as const, category: 'core' }];
+        const consolidatedComponents = [{ id: 'cons-1', name: 'Cons 1', path: 'src/', purpose: '', keyFiles: [], dependencies: [], dependents: [], complexity: 'low' as const, category: 'core' }];
+
+        vi.mocked(getCachedGraphAny).mockReturnValue({
+            metadata: { gitHash: 'abc123', timestamp: Date.now(), version: '1.0.0' },
+            graph: {
+                project: { name: 'P', description: '', language: 'TypeScript', buildSystem: 'npm', entryPoints: [] },
+                components: rawComponents,
+                categories: [],
+                architectureNotes: '',
+            },
+        });
+        vi.mocked(getCachedConsolidationAny).mockReturnValue({
+            metadata: { gitHash: 'abc123', timestamp: Date.now(), version: '1.0.0', inputComponentCount: 1 },
+            graph: {
+                project: { name: 'P', description: '', language: 'TypeScript', buildSystem: 'npm', entryPoints: [] },
+                components: consolidatedComponents,
+                categories: [],
+                architectureNotes: '',
+            },
+        });
+
+        vi.mocked(analyzeComponents).mockImplementation(async (opts) => ({
+            analyses: opts.graph.components.map(c => ({
+                componentId: c.id,
+                overview: '', keyConcepts: [], publicAPI: [], internalArchitecture: '',
+                dataFlow: '', patterns: [], errorHandling: '', codeExamples: [],
+                dependencies: { internal: [], external: [] }, suggestedDiagram: '',
+            })),
+            duration: 1000,
+        }));
+
+        const exitCode = await executeGenerate(repoDir, defaultOptions({ phase: 3, endPhase: 3, useCache: true }));
+        expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+
+        expect(getCachedConsolidationAny).toHaveBeenCalled();
+        const callArg = vi.mocked(analyzeComponents).mock.calls[0]?.[0];
+        expect(callArg?.graph.components[0].id).toBe('cons-1');
+    });
+
+    it('--phase 3 should fall back to raw discovery graph when no consolidation cache exists', async () => {
+        vi.mocked(getCachedGraph).mockResolvedValue({
+            metadata: { gitHash: 'abc123', timestamp: Date.now(), version: '1.0.0' },
+            graph: {
+                project: { name: 'P', description: '', language: 'TypeScript', buildSystem: 'npm', entryPoints: [] },
+                components: [{ id: 'raw-mod', name: 'Raw', path: 'src/', purpose: '', keyFiles: [], dependencies: [], dependents: [], complexity: 'low' as const, category: 'core' }],
+                categories: [],
+                architectureNotes: '',
+            },
+        });
+        vi.mocked(getCachedConsolidation).mockResolvedValue(null);
+
+        vi.mocked(analyzeComponents).mockImplementation(async (opts) => ({
+            analyses: opts.graph.components.map(c => ({
+                componentId: c.id,
+                overview: '', keyConcepts: [], publicAPI: [], internalArchitecture: '',
+                dataFlow: '', patterns: [], errorHandling: '', codeExamples: [],
+                dependencies: { internal: [], external: [] }, suggestedDiagram: '',
+            })),
+            duration: 1000,
+        }));
+
+        const exitCode = await executeGenerate(repoDir, defaultOptions({ phase: 3, endPhase: 3 }));
+        expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+
+        // Should fall back to raw graph
+        const callArg = vi.mocked(analyzeComponents).mock.calls[0]?.[0];
+        expect(callArg?.graph.components[0].id).toBe('raw-mod');
     });
 
     it('--phase 4 should error when no cached analyses exist', async () => {

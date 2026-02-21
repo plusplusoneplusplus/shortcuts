@@ -23,6 +23,8 @@ import {
     getCachedGraphAny,
     getCachedGraph,
     getCachedAnalyses,
+    getCachedConsolidation,
+    getCachedConsolidationAny,
 } from '../cache';
 import {
     printSuccess,
@@ -209,6 +211,15 @@ export async function executeGenerate(
             const phase2Result = await runPhase2Consolidation(absoluteRepoPath, graph, options, usageTracker);
             graph = phase2Result.graph;
             phase2Duration = phase2Result.duration;
+        } else if (!options.noCluster && startPhase > 2) {
+            // When skipping Phase 2 (jumping to a later phase), load the consolidated graph from
+            // cache so downstream phases operate on the reduced component set, not the raw discovery.
+            const consolidatedCache = options.useCache
+                ? getCachedConsolidationAny(options.output, graph.components.length)
+                : await getCachedConsolidation(absoluteRepoPath, options.output, graph.components.length);
+            if (consolidatedCache) {
+                graph = consolidatedCache.graph;
+            }
         }
 
         if (isCancelled()) {
