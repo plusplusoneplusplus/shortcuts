@@ -224,6 +224,33 @@ describe('Queue Handler', () => {
             expect(body.task.type).toBe('chat');
         });
 
+        it('should promote top-level workingDirectory into payload', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(`${srv.url}/api/queue`, {
+                type: 'chat',
+                workingDirectory: '/Users/dev/projects/my-repo',
+                displayName: 'Chat',
+            });
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.payload.workingDirectory).toBe('/Users/dev/projects/my-repo');
+        });
+
+        it('should not overwrite payload.workingDirectory with top-level value', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(`${srv.url}/api/queue`, {
+                type: 'chat',
+                workingDirectory: '/top-level/path',
+                payload: { workingDirectory: '/payload/path', prompt: 'test' },
+                displayName: 'Chat',
+            });
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.payload.workingDirectory).toBe('/payload/path');
+        });
+
         it('should enqueue resolve-comments type', async () => {
             const srv = await startServer();
 
