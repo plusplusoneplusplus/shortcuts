@@ -2,7 +2,7 @@
  * Tests for TasksPanel, TaskTree, TaskTreeItem, and TaskActions React components.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
@@ -13,6 +13,7 @@ import { taskReducer, type TaskContextState, type TaskAction } from '../../../sr
 import { TasksPanel, parseTaskHashParams } from '../../../src/server/spa/client/react/tasks/TasksPanel';
 import { getFolderKey } from '../../../src/server/spa/client/react/tasks/TaskTree';
 import type { TaskFolder } from '../../../src/server/spa/client/react/hooks/useTaskTree';
+import { useTaskGeneration } from '../../../src/server/spa/client/react/hooks/useTaskGeneration';
 
 function Wrap({ children }: { children: ReactNode }) {
     return (
@@ -645,5 +646,96 @@ describe('getFolderKey', () => {
             singleDocuments: [],
         };
         expect(getFolderKey(folder)).toBe('feature1');
+    });
+});
+
+// ============================================================================
+// TasksPanel — GenerateTaskDialog integration
+// ============================================================================
+
+vi.mock('../../../src/server/spa/client/react/hooks/useTaskGeneration', () => ({
+    useTaskGeneration: vi.fn(),
+}));
+
+const mockUseTaskGeneration = useTaskGeneration as Mock;
+
+function makeGenHookReturn(overrides: Record<string, unknown> = {}) {
+    return {
+        status: 'idle',
+        chunks: [],
+        progressMessage: null,
+        result: null,
+        error: null,
+        generate: vi.fn(),
+        cancel: vi.fn(),
+        reset: vi.fn(),
+        ...overrides,
+    };
+}
+
+describe('TasksPanel — GenerateTaskDialog', () => {
+    let fetchSpy: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+        fetchSpy = vi.fn();
+        global.fetch = fetchSpy;
+        mockUseTaskGeneration.mockReturnValue(makeGenHookReturn());
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    function setupFetch() {
+        fetchSpy.mockImplementation((url: string) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            if (url.includes('queue/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ models: [] }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
+        });
+    }
+
+    it('does not show GenerateTaskDialog initially', async () => {
+        setupFetch();
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree')).toBeTruthy();
+        });
+        expect(document.getElementById('generate-task-overlay')).toBeNull();
+    });
+
+    it('clicking generate button opens the dialog', async () => {
+        setupFetch();
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('generate-with-ai-btn')).toBeTruthy();
+        });
+        fireEvent.click(screen.getByTestId('generate-with-ai-btn'));
+        await waitFor(() => {
+            expect(document.getElementById('generate-task-overlay')).toBeTruthy();
+        });
+    });
+
+    it('closing the dialog hides it without refreshing', async () => {
+        setupFetch();
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('generate-with-ai-btn')).toBeTruthy();
+        });
+        fireEvent.click(screen.getByTestId('generate-with-ai-btn'));
+        await waitFor(() => {
+            expect(document.getElementById('generate-task-overlay')).toBeTruthy();
+        });
+
+        // Click Cancel/Close button
+        const cancelBtn = document.getElementById('gen-task-cancel');
+        expect(cancelBtn).toBeTruthy();
+        fireEvent.click(cancelBtn!);
+        await waitFor(() => {
+            expect(document.getElementById('generate-task-overlay')).toBeNull();
+        });
     });
 });

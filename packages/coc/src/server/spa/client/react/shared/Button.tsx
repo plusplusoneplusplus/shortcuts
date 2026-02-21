@@ -6,6 +6,7 @@ export interface ButtonProps {
     variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
     size?: 'sm' | 'md' | 'lg';
     id?: string;
+    'data-testid'?: string;
     disabled?: boolean;
     loading?: boolean;
     onClick?: MouseEventHandler<HTMLButtonElement>;
@@ -27,20 +28,22 @@ const sizeMap = {
     lg: 'px-4 py-2 text-base rounded-md',
 };
 
-export function Button({
-    variant = 'primary',
-    size = 'md',
-    id,
-    disabled,
-    loading,
-    onClick,
-    type = 'button',
-    className,
-    children,
-}: ButtonProps) {
+export function Button(props: ButtonProps) {
+    const {
+        variant = 'primary',
+        size = 'md',
+        id,
+        disabled,
+        loading,
+        onClick,
+        type = 'button',
+        className,
+        children,
+    } = props;
     return (
         <button
             id={id}
+            data-testid={props['data-testid']}
             type={type}
             onClick={onClick}
             disabled={disabled || loading}

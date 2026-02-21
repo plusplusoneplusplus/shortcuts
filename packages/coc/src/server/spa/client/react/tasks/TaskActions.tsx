@@ -15,6 +15,7 @@ interface TaskActionsProps {
     tasksFolderPath: string;
     selectedFolderPath?: string | null;
     onClearSelection: () => void;
+    onGenerateWithAI?: () => void;
 }
 
 function copyToClipboard(text: string): void {
@@ -23,7 +24,7 @@ function copyToClipboard(text: string): void {
     }
 }
 
-export function TaskActions({ wsId, openFilePath, selectedFilePaths, tasksFolderPath, selectedFolderPath, onClearSelection }: TaskActionsProps) {
+export function TaskActions({ wsId, openFilePath, selectedFilePaths, tasksFolderPath, selectedFolderPath, onClearSelection, onGenerateWithAI }: TaskActionsProps) {
     const { showContextFiles, toggleShowContextFiles } = useTaskPanel();
     const { dispatch: queueDispatch } = useQueue();
 
@@ -52,6 +53,10 @@ export function TaskActions({ wsId, openFilePath, selectedFilePaths, tasksFolder
 
     return (
         <div className="flex items-center gap-2 px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c] text-xs">
+            <Button variant="secondary" size="sm" data-testid="generate-with-ai-btn" onClick={onGenerateWithAI}>
+                ✨ Generate with AI
+            </Button>
+
             {openFilePath && (
                 <>
                     <Button variant="ghost" size="sm" onClick={handleCopyPath}>

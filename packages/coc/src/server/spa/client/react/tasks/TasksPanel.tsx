@@ -21,6 +21,7 @@ import { FolderMoveDialog } from './FolderMoveDialog';
 import { Dialog } from '../shared/Dialog';
 import { Button } from '../shared/Button';
 import { FollowPromptDialog } from '../shared/FollowPromptDialog';
+import { GenerateTaskDialog } from './GenerateTaskDialog';
 import { Spinner } from '../shared';
 
 interface TasksPanelProps {
@@ -60,6 +61,7 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
     const { openFilePath, selectedFilePaths, clearSelection, selectedFolderPath } = useTaskPanel();
     const [initialParams] = useState(() => parseTaskHashParams(location.hash, wsId));
     const scrollRef = useRef<HTMLDivElement>(null);
+    const [generateDialogOpen, setGenerateDialogOpen] = useState(false);
 
     const { state: appState } = useApp();
     const { dispatch: queueDispatch } = useQueue();
@@ -287,6 +289,7 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
                 tasksFolderPath=".vscode/tasks"
                 selectedFolderPath={selectedFolderPath}
                 onClearSelection={clearSelection}
+                onGenerateWithAI={() => setGenerateDialogOpen(true)}
             />
             <div
                 ref={scrollRef}
@@ -409,6 +412,19 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
                     sourceFolder={moveSourceFolder}
                     tree={tree}
                     onConfirm={handleMoveConfirm}
+                />
+            )}
+
+            {/* Generate Task with AI dialog */}
+            {generateDialogOpen && (
+                <GenerateTaskDialog
+                    wsId={wsId}
+                    initialFolder={selectedFolderPath ?? undefined}
+                    onClose={() => setGenerateDialogOpen(false)}
+                    onSuccess={() => {
+                        setGenerateDialogOpen(false);
+                        refresh();
+                    }}
                 />
             )}
         </div>
