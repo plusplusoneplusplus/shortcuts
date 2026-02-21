@@ -4,8 +4,6 @@
  * Produces:
  *   src/server/spa/client/dist/bundle.js        (IIFE, for <script> inlining)
  *   src/server/spa/client/dist/bundle.css        (for <style> inlining)
- *   src/server/wiki/spa/client/dist/bundle.js    (IIFE, wiki SPA)
- *   src/server/wiki/spa/client/dist/bundle.css   (wiki SPA styles)
  */
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { dirname } from 'path';
@@ -46,25 +44,3 @@ await buildTailwindBundle(
     'src/server/spa/client/tailwind.css',
     'src/server/spa/client/dist/bundle.css'
 );
-
-// Wiki SPA
-await esbuild.build({
-    entryPoints: ['src/server/wiki/spa/client/index.ts'],
-    outfile: 'src/server/wiki/spa/client/dist/bundle.js',
-    bundle: true,
-    format: 'iife',
-    jsx: 'automatic',
-    platform: 'browser',
-    target: ['es2020'],
-    minify: false,
-    sourcemap: false,
-    logLevel: 'info',
-});
-
-await esbuild.build({
-    entryPoints: ['src/server/wiki/spa/client/styles.css'],
-    outfile: 'src/server/wiki/spa/client/dist/bundle.css',
-    bundle: true,
-    minify: false,
-    logLevel: 'info',
-});

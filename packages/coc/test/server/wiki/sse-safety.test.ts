@@ -13,7 +13,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventEmitter } from 'events';
 import type { ServerResponse, IncomingMessage } from 'http';
 import { sendSSE } from '../../../src/server/wiki/ask-handler';
-import { sendSSE as dwSendSSE } from '../../../src/server/wiki/dw-ask-handler';
 
 // Mock deep-wiki modules to avoid hitting the real Copilot SDK in handler tests
 vi.mock('@plusplusoneplusplus/deep-wiki/dist/ai-invoker', () => ({
@@ -147,41 +146,6 @@ describe('sendSSE (ask-handler)', () => {
         const res = createMockResponse({ destroyed: true, writableEnded: true });
         expect(sendSSE(res, { type: 'test' })).toBe(false);
         expect(res._chunks).toHaveLength(0);
-    });
-});
-
-// ============================================================================
-// sendSSE (dw-ask-handler)
-// ============================================================================
-
-describe('sendSSE (dw-ask-handler)', () => {
-    it('writes SSE data to a healthy response', () => {
-        const res = createMockResponse();
-        const result = dwSendSSE(res, { type: 'chunk', content: 'hello' });
-        expect(result).toBe(true);
-        expect(res._chunks).toHaveLength(1);
-    });
-
-    it('returns false when response is destroyed', () => {
-        const res = createMockResponse({ destroyed: true });
-
-        const result = dwSendSSE(res, { type: 'error', message: 'late' });
-        expect(result).toBe(false);
-    });
-
-    it('returns false when response writableEnded', () => {
-        const res = createMockResponse({ writableEnded: true });
-
-        const result = dwSendSSE(res, { type: 'error', message: 'late' });
-        expect(result).toBe(false);
-    });
-
-    it('returns false when write throws', () => {
-        const res = createMockResponse();
-        (res as any).write = () => { throw new Error('boom'); };
-
-        const result = dwSendSSE(res, { type: 'status', message: 'fail' });
-        expect(result).toBe(false);
     });
 });
 
