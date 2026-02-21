@@ -373,9 +373,9 @@ body.source-mode .toolbar-review-only {
     display: none;
     position: absolute;
     top: 100%;
-    left: 0;
-    min-width: 240px;
-    max-width: 320px;
+    right: 0;
+    min-width: 160px;
+    max-width: 240px;
     margin-top: 4px;
     background: var(--comment-bg);
     border: 1px solid var(--comment-border);
@@ -531,24 +531,14 @@ body.source-mode .toolbar-review-only {
     cursor: pointer;
 }
 
-.toolbar-stats {
-    margin-left: auto;
+/* ==============================
+ * Editor + Sidebar Layout
+ * ============================== */
+.editor-and-sidebar {
+    flex: 1;
     display: flex;
-    gap: 6px;
-    font-size: 11px;
-}
-
-.stat {
-    padding: 2px 6px;
-    border-radius: 3px;
-}
-
-.open-stat {
-    background: var(--highlight-open);
-}
-
-.resolved-stat {
-    background: var(--highlight-resolved);
+    overflow: hidden;
+    min-height: 0;
 }
 
 /* ==============================
@@ -559,12 +549,296 @@ body.source-mode .toolbar-review-only {
     overflow: auto;
     padding: 16px;
     position: relative;
+    min-width: 0;
 }
 
 .editor-wrapper {
     display: flex;
     flex-direction: column;
     min-height: 100%;
+}
+
+/* ==============================
+ * Comments Sidebar
+ * ============================== */
+.comments-sidebar {
+    width: 300px;
+    min-width: 240px;
+    max-width: 400px;
+    border-left: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-color);
+    overflow: hidden;
+}
+
+.comments-sidebar-header {
+    padding: 10px 12px 8px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--vscode-titleBar-activeBackground);
+    flex-shrink: 0;
+}
+
+.comments-sidebar-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.comments-sidebar-title {
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.comments-sidebar-badge {
+    font-size: 11px;
+    font-weight: 400;
+    opacity: 0.7;
+}
+
+.comments-sidebar-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.comments-sidebar-action-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 10px;
+    opacity: 0.7;
+    color: var(--text-color);
+    transition: opacity 0.2s, background-color 0.2s;
+}
+
+.comments-sidebar-action-btn:hover {
+    opacity: 1;
+    background: var(--vscode-toolbar-hoverBackground);
+}
+
+.comments-sidebar-filters {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.comments-sidebar-status-tabs {
+    display: flex;
+    gap: 2px;
+    background: var(--vscode-input-background);
+    border-radius: 4px;
+    padding: 2px;
+}
+
+.comments-status-tab {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 3px 8px;
+    font-size: 11px;
+    border-radius: 3px;
+    color: var(--text-color);
+    opacity: 0.7;
+    transition: opacity 0.2s, background-color 0.2s;
+}
+
+.comments-status-tab:hover {
+    opacity: 1;
+}
+
+.comments-status-tab.active {
+    background: var(--button-bg);
+    color: var(--button-fg);
+    opacity: 1;
+}
+
+.comments-sidebar-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    cursor: pointer;
+    white-space: nowrap;
+    opacity: 0.8;
+}
+
+.comments-sidebar-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+}
+
+.comments-sidebar-body::-webkit-scrollbar {
+    width: 6px;
+}
+
+.comments-sidebar-body::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.comments-sidebar-body::-webkit-scrollbar-thumb {
+    background-color: var(--vscode-scrollbarSlider-background, rgba(100, 100, 100, 0.4));
+    border-radius: 3px;
+}
+
+.comments-sidebar-body::-webkit-scrollbar-thumb:hover {
+    background-color: var(--vscode-scrollbarSlider-hoverBackground, rgba(100, 100, 100, 0.6));
+}
+
+.comments-sidebar-empty {
+    padding: 20px 12px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+    font-style: italic;
+}
+
+/* Comment Card in Sidebar */
+.comment-card {
+    padding: 10px 12px;
+    margin-bottom: 6px;
+    border-radius: 6px;
+    border: 1px solid var(--comment-border);
+    background: var(--comment-bg);
+    cursor: pointer;
+    transition: background-color 0.15s, border-color 0.15s;
+    border-left: 3px solid var(--comment-border-user);
+}
+
+.comment-card:hover {
+    background: var(--vscode-list-hoverBackground);
+    border-color: var(--vscode-focusBorder);
+}
+
+.comment-card.resolved {
+    border-left-color: var(--comment-border-resolved);
+    opacity: 0.75;
+}
+
+.comment-card.ai-suggestion {
+    border-left-color: var(--comment-border-ai-suggestion);
+}
+
+.comment-card.ai-clarification {
+    border-left-color: var(--comment-border-ai-clarification);
+}
+
+.comment-card.ai-critique {
+    border-left-color: var(--comment-border-ai-critique);
+}
+
+.comment-card.ai-question {
+    border-left-color: var(--comment-border-ai-question);
+}
+
+.comment-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+}
+
+.comment-card-author {
+    font-size: 12px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.comment-card-author-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--comment-border-user);
+    flex-shrink: 0;
+}
+
+.comment-card.resolved .comment-card-author-dot {
+    background: var(--comment-border-resolved);
+}
+
+.comment-card.ai-suggestion .comment-card-author-dot {
+    background: var(--comment-border-ai-suggestion);
+}
+
+.comment-card.ai-clarification .comment-card-author-dot {
+    background: var(--comment-border-ai-clarification);
+}
+
+.comment-card.ai-critique .comment-card-author-dot {
+    background: var(--comment-border-ai-critique);
+}
+
+.comment-card.ai-question .comment-card-author-dot {
+    background: var(--comment-border-ai-question);
+}
+
+.comment-card-time {
+    font-size: 10px;
+    color: var(--vscode-descriptionForeground);
+}
+
+.comment-card-selection {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    padding: 4px 6px;
+    background: var(--vscode-textBlockQuote-background);
+    border-radius: 3px;
+    margin-bottom: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-family: var(--vscode-editor-font-family, monospace);
+    border-left: 2px solid var(--vscode-textBlockQuote-border);
+}
+
+.comment-card-text {
+    font-size: 12px;
+    line-height: 1.4;
+    margin-bottom: 6px;
+    word-wrap: break-word;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.comment-card-actions {
+    display: flex;
+    gap: 2px;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+.comment-card:hover .comment-card-actions {
+    opacity: 1;
+}
+
+.comment-card-action-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-size: 11px;
+    opacity: 0.7;
+    transition: opacity 0.2s, background-color 0.2s;
+}
+
+.comment-card-action-btn:hover {
+    opacity: 1;
+    background: var(--vscode-toolbar-hoverBackground);
+}
+
+/* Hide sidebar in source mode */
+body.source-mode .comments-sidebar {
+    display: none !important;
 }
 
 .line-row {

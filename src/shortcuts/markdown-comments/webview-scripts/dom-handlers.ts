@@ -15,13 +15,14 @@ import {
     closeFloatingPanel,
     closeInlineEditPanel,
     showCommentBubble,
-    showFloatingPanel
+    showFloatingPanel,
+    showInlineEditPanel
 } from './panel-manager';
 import { render } from './render';
 import { getSelectionPosition } from './selection-handler';
 import { state } from './state';
 import { AICommandMode, PromptFileInfo, RecentItem, RecentPrompt, SkillInfo } from './types';
-import { openFile, requestAskAI, requestAskAIInteractive, requestAskAIQueued, requestCopyPrompt, requestDeleteAll, requestExecuteWorkPlan, requestExecuteWorkPlanWithSkill, requestPromptFiles, requestPromptSearch, requestRefreshPlan, requestResolveAll, requestSendToChat, requestSendToCLIBackground, requestSendToCLIInteractive, requestSkills, requestUpdateDocument, updateContent } from './vscode-bridge';
+import { deleteCommentMessage, openFile, reopenComment, requestAskAI, requestAskAIInteractive, requestAskAIQueued, requestCopyPrompt, requestDeleteAll, requestExecuteWorkPlan, requestExecuteWorkPlanWithSkill, requestPromptFiles, requestPromptSearch, requestRefreshPlan, requestResolveAll, requestSendCommentToChat, requestSendToChat, requestSendToCLIBackground, requestSendToCLIInteractive, requestSkills, requestUpdateDocument, resolveComment, updateContent } from './vscode-bridge';
 import { DEFAULT_MARKDOWN_PREDEFINED_COMMENTS, serializePredefinedComments } from '../../shared/predefined-comment-types';
 import { initSearch, SearchController } from '../../shared/webview/search-handler';
 import {
@@ -541,7 +542,7 @@ export function updateActionItemsSubmenu(promptFiles: PromptFileInfo[], skills: 
  * Setup toolbar event listeners
  */
 function setupToolbarEventListeners(): void {
-    // Comments dropdown (contains Resolve All and Sign Off)
+    // Comments dropdown (contains Resolve All and Sign Off) - now in sidebar
     setupCommentsDropdown();
 
     // AI Action dropdown
@@ -554,6 +555,9 @@ function setupToolbarEventListeners(): void {
 
     // Mode toggle buttons
     setupModeToggle();
+
+    // Sidebar status tabs
+    setupSidebarStatusTabs();
 }
 
 /**
@@ -639,80 +643,232 @@ function hideCommentsMenu(): void {
 }
 
 /**
- * Update the comments dropdown list with active (open) comments
+ * Update the comments dropdown list (now a no-op since comments are in the sidebar)
  */
 function updateCommentsDropdownList(): void {
-    const commentsList = document.getElementById('commentsList');
-    const commentsListEmpty = document.getElementById('commentsListEmpty');
-    if (!commentsList) return;
-
-    // Get open comments
-    const openComments = state.comments.filter(c => c.status === 'open');
-
-    // Clear existing list items (but keep the empty message)
-    const existingItems = commentsList.querySelectorAll('.comments-list-item');
-    existingItems.forEach(item => item.remove());
-
-    if (openComments.length === 0) {
-        if (commentsListEmpty) {
-            commentsListEmpty.style.display = 'block';
-        }
-        return;
-    }
-
-    // Hide empty message
-    if (commentsListEmpty) {
-        commentsListEmpty.style.display = 'none';
-    }
-
-    // Add comment items
-    openComments.forEach(comment => {
-        const item = document.createElement('div');
-        item.className = 'comments-list-item';
-        item.dataset.commentId = comment.id;
-
-        // Truncate comment text for display
-        const displayText = comment.comment.length > 40 
-            ? comment.comment.substring(0, 40) + '...' 
-            : comment.comment;
-
-        item.innerHTML = `
-            <span class="comments-list-item-icon">💬</span>
-            <div class="comments-list-item-content">
-                <span class="comments-list-item-text">${escapeHtml(displayText)}</span>
-                <span class="comments-list-item-line">Line ${comment.selection.startLine}</span>
-            </div>
-        `;
-
-        // Click to navigate to comment
-        item.addEventListener('click', (e) => {
-            e.stopPropagation();
-            hideCommentsMenu();
-            navigateToComment(comment.id);
-        });
-
-        // Hover preview
-        item.addEventListener('mouseenter', (e) => {
-            showCommentPreviewTooltip(comment, e.currentTarget as HTMLElement);
-        });
-
-        item.addEventListener('mouseleave', () => {
-            hideCommentPreviewTooltip();
-        });
-
-        commentsList.appendChild(item);
-    });
+    // Comments list is now rendered in the sidebar via updateCommentsSidebar()
 }
 
 /**
  * Update the comments badge count
  */
 export function updateCommentsBadge(): void {
-    const badge = document.getElementById('commentsBadge');
+    const badge = document.getElementById('commentsSidebarBadge');
     if (badge) {
-        const openCount = state.comments.filter(c => c.status === 'open').length;
-        badge.textContent = `(${openCount})`;
+        const totalCount = state.comments.length;
+        badge.textContent = `(${totalCount})`;
     }
+}
+
+// Current sidebar filter state
+let sidebarStatusFilter: 'all' | 'open' | 'resolved' = 'all';
+
+/**
+ * Update the comments sidebar visibility and content.
+ * Shows the sidebar when comments exist, hides when empty.
+ */
+export function updateCommentsSidebar(): void {
+    const sidebar = document.getElementById('commentsSidebar');
+    const sidebarBody = document.getElementById('commentsSidebarBody');
+    const sidebarEmpty = document.getElementById('commentsSidebarEmpty');
+    if (!sidebar || !sidebarBody) return;
+
+    const totalComments = state.comments.length;
+
+    if (totalComments === 0) {
+        sidebar.style.display = 'none';
+        return;
+    }
+
+    sidebar.style.display = 'flex';
+
+    // Filter comments based on current status tab
+    let filteredComments = state.comments;
+    if (sidebarStatusFilter === 'open') {
+        filteredComments = state.comments.filter(c => c.status === 'open');
+    } else if (sidebarStatusFilter === 'resolved') {
+        filteredComments = state.comments.filter(c => c.status === 'resolved');
+    }
+
+    // Sort by line number
+    filteredComments = [...filteredComments].sort(
+        (a, b) => a.selection.startLine - b.selection.startLine
+    );
+
+    // Update badge
+    updateCommentsBadge();
+
+    // Update status tab counts
+    updateStatusTabCounts();
+
+    if (filteredComments.length === 0) {
+        sidebarBody.innerHTML = '';
+        if (sidebarEmpty) {
+            sidebarEmpty.style.display = 'block';
+            sidebarEmpty.textContent = sidebarStatusFilter === 'all'
+                ? 'No comments yet'
+                : `No ${sidebarStatusFilter} comments`;
+        }
+        return;
+    }
+
+    if (sidebarEmpty) {
+        sidebarEmpty.style.display = 'none';
+    }
+
+    // Render comment cards
+    sidebarBody.innerHTML = '';
+    filteredComments.forEach(comment => {
+        const card = createCommentCard(comment);
+        sidebarBody.appendChild(card);
+    });
+}
+
+/**
+ * Update status tab button text with counts
+ */
+function updateStatusTabCounts(): void {
+    const allTab = document.getElementById('statusTabAll');
+    const openTab = document.getElementById('statusTabOpen');
+    const resolvedTab = document.getElementById('statusTabResolved');
+
+    const total = state.comments.length;
+    const openCount = state.comments.filter(c => c.status === 'open').length;
+    const resolvedCount = state.comments.filter(c => c.status === 'resolved').length;
+
+    if (allTab) allTab.textContent = `All (${total})`;
+    if (openTab) openTab.textContent = `Open (${openCount})`;
+    if (resolvedTab) resolvedTab.textContent = `Resolved (${resolvedCount})`;
+}
+
+/**
+ * Create a comment card element for the sidebar
+ */
+function createCommentCard(comment: import('../types').MarkdownComment): HTMLElement {
+    const card = document.createElement('div');
+    const typeClass = comment.type && comment.type !== 'user' ? comment.type : '';
+    const statusClass = comment.status === 'resolved' ? 'resolved' : '';
+    card.className = ['comment-card', statusClass, typeClass].filter(c => c).join(' ');
+    card.dataset.commentId = comment.id;
+
+    const authorLabel = comment.type && comment.type !== 'user' ? getTypeAuthorLabel(comment.type) : 'Comment';
+    const timeAgo = formatTimeAgo(comment.createdAt);
+
+    const selectionText = comment.selectedText.length > 50
+        ? comment.selectedText.substring(0, 50) + '...'
+        : comment.selectedText;
+
+    const resolveBtn = comment.status === 'open'
+        ? '<button class="comment-card-action-btn" data-action="resolve" title="Resolve">✅</button>'
+        : '<button class="comment-card-action-btn" data-action="reopen" title="Reopen">🔄</button>';
+
+    card.innerHTML =
+        '<div class="comment-card-header">' +
+            '<span class="comment-card-author"><span class="comment-card-author-dot"></span>' + escapeHtml(authorLabel) + '</span>' +
+            '<span class="comment-card-time">' + escapeHtml(timeAgo) + '</span>' +
+        '</div>' +
+        '<div class="comment-card-selection">' + escapeHtml(selectionText) + '</div>' +
+        '<div class="comment-card-text">' + escapeHtml(comment.comment) + '</div>' +
+        '<div class="comment-card-actions">' +
+            resolveBtn +
+            '<button class="comment-card-action-btn" data-action="edit" title="Edit">✏️</button>' +
+            '<button class="comment-card-action-btn" data-action="delete" title="Delete">🗑️</button>' +
+            '<button class="comment-card-action-btn" data-action="chat" title="Send to Chat">💬</button>' +
+        '</div>';
+
+    // Click card to navigate to comment in editor
+    card.addEventListener('click', (e) => {
+        if ((e.target as HTMLElement).closest('.comment-card-action-btn')) return;
+        navigateToComment(comment.id);
+    });
+
+    // Setup action button handlers
+    card.querySelectorAll('.comment-card-action-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const action = (btn as HTMLElement).dataset.action;
+            switch (action) {
+                case 'resolve':
+                    resolveComment(comment.id);
+                    break;
+                case 'reopen':
+                    reopenComment(comment.id);
+                    break;
+                case 'edit':
+                    closeActiveCommentBubble();
+                    showInlineEditPanel(comment, (btn as HTMLElement).getBoundingClientRect());
+                    break;
+                case 'delete':
+                    deleteCommentMessage(comment.id);
+                    break;
+                case 'chat':
+                    requestSendCommentToChat(comment.id, true);
+                    break;
+            }
+        });
+    });
+
+    return card;
+}
+
+/**
+ * Get author label for AI comment types
+ */
+function getTypeAuthorLabel(type: string): string {
+    switch (type) {
+        case 'ai-suggestion': return 'AI Suggestion';
+        case 'ai-clarification': return 'AI Clarification';
+        case 'ai-critique': return 'AI Critique';
+        case 'ai-question': return 'AI Question';
+        default: return 'Comment';
+    }
+}
+
+/**
+ * Format a timestamp as relative time (e.g., "2h ago", "yesterday")
+ */
+function formatTimeAgo(dateInput: Date | string | number): string {
+    const date = typeof dateInput === 'string' || typeof dateInput === 'number'
+        ? new Date(dateInput)
+        : dateInput;
+    if (isNaN(date.getTime())) return '';
+
+    const now = Date.now();
+    const diffMs = now - date.getTime();
+    const diffSec = Math.floor(diffMs / 1000);
+    const diffMin = Math.floor(diffSec / 60);
+    const diffHr = Math.floor(diffMin / 60);
+    const diffDay = Math.floor(diffHr / 24);
+
+    if (diffSec < 60) return 'just now';
+    if (diffMin < 60) return `${diffMin}m ago`;
+    if (diffHr < 24) return `${diffHr}h ago`;
+    if (diffDay === 1) return 'yesterday';
+    if (diffDay < 7) return `${diffDay}d ago`;
+    return date.toLocaleDateString();
+}
+
+/**
+ * Setup sidebar status tab click handlers
+ */
+function setupSidebarStatusTabs(): void {
+    document.querySelectorAll('.comments-status-tab').forEach(tab => {
+        tab.addEventListener('click', (e) => {
+            const status = (tab as HTMLElement).dataset.status as 'all' | 'open' | 'resolved';
+            if (!status) return;
+
+            sidebarStatusFilter = status;
+
+            // Update active tab
+            document.querySelectorAll('.comments-status-tab').forEach(t =>
+                t.classList.remove('active')
+            );
+            tab.classList.add('active');
+
+            // Re-render sidebar
+            updateCommentsSidebar();
+        });
+    });
 }
 
 /**
@@ -2235,15 +2391,15 @@ function getPlainTextContent(): string {
  * Setup toolbar event listeners (called after render to re-attach)
  */
 export function setupToolbarInteractions(): void {
-    // Update comments badge (called after render when comments change)
+    // Update comments badge and sidebar (called after render when comments change)
     updateCommentsBadge();
+    updateCommentsSidebar();
     
     // Re-attach click listeners for comments dropdown items
     const resolveAllBtn = document.getElementById('resolveAllBtn');
     const deleteAllBtn = document.getElementById('deleteAllBtn');
     
     if (resolveAllBtn) {
-        // Remove old listener by cloning the node (this removes all event listeners)
         const newResolveAllBtn = resolveAllBtn.cloneNode(true);
         resolveAllBtn.parentNode?.replaceChild(newResolveAllBtn, resolveAllBtn);
         newResolveAllBtn.addEventListener('click', (e) => {

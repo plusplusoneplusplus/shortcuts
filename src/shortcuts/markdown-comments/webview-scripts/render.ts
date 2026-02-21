@@ -301,8 +301,6 @@ function restoreCursorPosition(
  */
 function renderSourceMode(): void {
     const editorWrapper = document.getElementById('editorWrapper')!;
-    const openCount = document.getElementById('openCount')!;
-    const resolvedCount = document.getElementById('resolvedCount')!;
 
     // Normalize line endings
     const normalizedContent = state.currentContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
@@ -335,12 +333,6 @@ function renderSourceMode(): void {
     });
 
     editorWrapper.innerHTML = html;
-
-    // Update stats (still show counts even in source mode)
-    const open = state.comments.filter(c => c.status === 'open').length;
-    const resolved = state.comments.filter(c => c.status === 'resolved').length;
-    openCount.textContent = String(open);
-    resolvedCount.textContent = String(resolved);
 }
 
 
@@ -389,9 +381,6 @@ export function render(isExternalChange: boolean = false): void {
             }
         }
     }
-    const openCount = document.getElementById('openCount')!;
-    const resolvedCount = document.getElementById('resolvedCount')!;
-
     // Log for debugging
     if (isExternalChange) {
         console.log('[Webview] External change detected, skipping cursor save/restore');
@@ -707,12 +696,6 @@ export function render(isExternalChange: boolean = false): void {
     });
 
     editorWrapper.innerHTML = html;
-
-    // Update stats
-    const open = state.comments.filter(c => c.status === 'open').length;
-    const resolved = state.comments.filter(c => c.status === 'resolved').length;
-    openCount.textContent = String(open);
-    resolvedCount.textContent = String(resolved);
 
     // Setup click handlers for commented text and gutter icons
     setupCommentInteractions();

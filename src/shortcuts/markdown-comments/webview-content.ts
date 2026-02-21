@@ -128,29 +128,6 @@ export function getWebviewContent(
             </div>
         </div>
         <div class="toolbar-group toolbar-review-only">
-            <div class="comments-dropdown" id="commentsDropdown">
-                <button id="commentsBtn" class="toolbar-btn comments-btn" title="Comments Actions">
-                    <span class="icon">💬</span> Comments <span class="comments-badge" id="commentsBadge">(0)</span>
-                    <span class="dropdown-arrow">▼</span>
-                </button>
-                <div class="comments-menu" id="commentsMenu">
-                    <div class="comments-menu-item" id="resolveAllBtn">
-                        <span class="comments-menu-icon">✅</span>
-                        <span class="comments-menu-label">Resolve All</span>
-                    </div>
-                    <div class="comments-menu-item comments-menu-item-danger" id="deleteAllBtn">
-                        <span class="comments-menu-icon">🗑️</span>
-                        <span class="comments-menu-label">Sign Off</span>
-                    </div>
-                    <div class="comments-menu-divider"></div>
-                    <div class="comments-menu-header">Active Comments</div>
-                    <div class="comments-list" id="commentsList">
-                        <div class="comments-list-empty" id="commentsListEmpty">No open comments</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="toolbar-group toolbar-review-only">
             <div class="ai-action-dropdown" id="aiActionDropdown">
                 <button id="aiActionBtn" class="toolbar-btn ai-action-btn" title="AI Actions">
                     <span class="icon">🤖</span> AI Action
@@ -214,20 +191,50 @@ export function getWebviewContent(
                 </div>
             </div>
         </div>
-        <div class="toolbar-group toolbar-review-only">
-            <label class="toolbar-checkbox">
-                <input type="checkbox" id="showResolvedCheckbox" checked>
-                Show Resolved
-            </label>
-        </div>
-        <div class="toolbar-stats toolbar-review-only" id="statsDisplay">
-            <span class="stat open-stat">Open: <span id="openCount">0</span></span>
-            <span class="stat resolved-stat">Resolved: <span id="resolvedCount">0</span></span>
-        </div>
     </div>
     
-    <div class="editor-container" id="editorContainer">
-        <div class="editor-wrapper" id="editorWrapper" contenteditable="true" spellcheck="true"></div>
+    <div class="editor-and-sidebar" id="editorAndSidebar">
+        <div class="editor-container" id="editorContainer">
+            <div class="editor-wrapper" id="editorWrapper" contenteditable="true" spellcheck="true"></div>
+        </div>
+        <div class="comments-sidebar" id="commentsSidebar" style="display: none;">
+            <div class="comments-sidebar-header" id="commentsSidebarHeader">
+                <div class="comments-sidebar-title-row">
+                    <span class="comments-sidebar-title">Comments <span class="comments-sidebar-badge" id="commentsSidebarBadge">(0)</span></span>
+                    <div class="comments-sidebar-actions">
+                        <div class="comments-dropdown" id="commentsDropdown">
+                            <button id="commentsBtn" class="comments-sidebar-action-btn" title="Comments Actions">
+                                <span class="dropdown-arrow">▼</span>
+                            </button>
+                            <div class="comments-menu" id="commentsMenu">
+                                <div class="comments-menu-item" id="resolveAllBtn">
+                                    <span class="comments-menu-icon">✅</span>
+                                    <span class="comments-menu-label">Resolve All</span>
+                                </div>
+                                <div class="comments-menu-item comments-menu-item-danger" id="deleteAllBtn">
+                                    <span class="comments-menu-icon">🗑️</span>
+                                    <span class="comments-menu-label">Sign Off</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="comments-sidebar-filters">
+                    <div class="comments-sidebar-status-tabs">
+                        <button class="comments-status-tab active" data-status="all" id="statusTabAll">All</button>
+                        <button class="comments-status-tab" data-status="open" id="statusTabOpen">Open</button>
+                        <button class="comments-status-tab" data-status="resolved" id="statusTabResolved">Resolved</button>
+                    </div>
+                    <label class="comments-sidebar-checkbox">
+                        <input type="checkbox" id="showResolvedCheckbox" checked>
+                        Show in editor
+                    </label>
+                </div>
+            </div>
+            <div class="comments-sidebar-body" id="commentsSidebarBody">
+                <div class="comments-sidebar-empty" id="commentsSidebarEmpty">No comments yet</div>
+            </div>
+        </div>
     </div>
 
     <!-- Floating comment input panel -->
