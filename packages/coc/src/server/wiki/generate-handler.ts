@@ -591,7 +591,7 @@ export interface CacheMetadataStats {
     projectLanguage?: string;
 }
 
-function collectCacheMetadata(
+export function collectCacheMetadata(
     wiki: { wikiData: { graph: any } },
     outputDir: string,
 ): CacheMetadataStats {
@@ -621,8 +621,20 @@ function collectCacheMetadata(
     try {
         const analysesDir = path.join(outputDir, '.wiki-cache', 'analyses');
         if (fs.existsSync(analysesDir) && fs.statSync(analysesDir).isDirectory()) {
-            stats.analyses = fs.readdirSync(analysesDir)
-                .filter(f => f.endsWith('.json') && f !== '_metadata.json').length;
+            const graphComponentIds = new Set(
+                Array.isArray(wiki.wikiData?.graph?.components)
+                    ? wiki.wikiData.graph.components.map((m: any) => m.id as string)
+                    : []
+            );
+            const analysisFiles = fs.readdirSync(analysesDir)
+                .filter(f => f.endsWith('.json') && f !== '_metadata.json');
+
+            if (graphComponentIds.size > 0) {
+                stats.analyses = analysisFiles
+                    .filter(f => graphComponentIds.has(f.slice(0, -5))).length;
+            } else {
+                stats.analyses = analysisFiles.length;
+            }
         }
     } catch { /* ignore */ }
 

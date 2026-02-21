@@ -138,6 +138,7 @@ export function saveAnalysis(
 
 /**
  * Save all analyses to the cache (bulk save with metadata).
+ * Prunes stale analysis files that no longer correspond to current components.
  *
  * @param analyses - All module analyses
  * @param outputDir - Output directory
@@ -158,6 +159,11 @@ export async function saveAllAnalyses(
         saveAnalysis(analysis.componentId, analysis, outputDir, currentHash);
     }
 
+    // Prune stale analysis files from previous runs (e.g. after consolidation
+    // reduced the component set)
+    const validIds = new Set(analyses.map(a => a.componentId));
+    pruneStaleAnalyses(outputDir, validIds);
+
     // Write metadata
     writeCacheFile<AnalysisCacheMetadata>(getAnalysesMetadataPath(outputDir), {
         gitHash: currentHash,
@@ -165,6 +171,47 @@ export async function saveAllAnalyses(
         version: CACHE_VERSION,
         componentCount: analyses.length,
     });
+}
+
+/**
+ * Remove analysis cache files whose component IDs are not in the valid set.
+ *
+ * After consolidation merges components (e.g. 42 → 25), the analyses directory
+ * retains orphaned files for the old component IDs. This function deletes them
+ * so that cache counts and scans reflect the actual component set.
+ *
+ * @param outputDir - Output directory
+ * @param validComponentIds - Set of component IDs that should be kept
+ * @returns Number of stale files removed
+ */
+export function pruneStaleAnalyses(outputDir: string, validComponentIds: Set<string>): number {
+    const analysesDir = getAnalysesCacheDir(outputDir);
+    let removed = 0;
+
+    try {
+        if (!fs.existsSync(analysesDir)) {
+            return 0;
+        }
+        const files = fs.readdirSync(analysesDir);
+        for (const file of files) {
+            if (!file.endsWith('.json') || file === ANALYSES_METADATA_FILE) {
+                continue;
+            }
+            const componentId = file.slice(0, -5); // strip .json
+            if (!validComponentIds.has(componentId)) {
+                try {
+                    fs.unlinkSync(path.join(analysesDir, file));
+                    removed++;
+                } catch {
+                    // Non-fatal: file may already be gone
+                }
+            }
+        }
+    } catch {
+        // Non-fatal: directory may not exist
+    }
+
+    return removed;
 }
 
 // ============================================================================

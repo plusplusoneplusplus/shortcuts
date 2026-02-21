@@ -33,6 +33,7 @@ import {
     getAnalysesCacheDir,
     getAnalysesMetadataPath,
     scanIndividualAnalysesCache,
+    pruneStaleAnalyses,
 } from '../../src/cache';
 import { getChangedFiles, getRepoHeadHash, getFolderHeadHash } from '../../src/cache/git-utils';
 
@@ -506,5 +507,94 @@ describe('scanIndividualAnalysesCache', () => {
         expect(result.found).toHaveLength(1);
         expect(result.found[0].componentId).toBe('valid');
         expect(result.missing.sort()).toEqual(['corrupted', 'missing', 'stale']);
+    });
+});
+
+// ============================================================================
+// pruneStaleAnalyses
+// ============================================================================
+
+describe('pruneStaleAnalyses', () => {
+    it('should remove analysis files not in the valid set', () => {
+        saveAnalysis('auth', createTestAnalysis('auth'), outputDir, 'h1');
+        saveAnalysis('db', createTestAnalysis('db'), outputDir, 'h1');
+        saveAnalysis('old-module', createTestAnalysis('old-module'), outputDir, 'h1');
+
+        const removed = pruneStaleAnalyses(outputDir, new Set(['auth', 'db']));
+
+        expect(removed).toBe(1);
+        expect(getCachedAnalysis('auth', outputDir)).not.toBeNull();
+        expect(getCachedAnalysis('db', outputDir)).not.toBeNull();
+        expect(getCachedAnalysis('old-module', outputDir)).toBeNull();
+    });
+
+    it('should not remove metadata file', async () => {
+        await saveAllAnalyses([createTestAnalysis('auth')], outputDir, '/repo');
+
+        pruneStaleAnalyses(outputDir, new Set(['auth']));
+
+        const metadataPath = getAnalysesMetadataPath(outputDir);
+        expect(fs.existsSync(metadataPath)).toBe(true);
+    });
+
+    it('should return 0 when no stale files exist', () => {
+        saveAnalysis('auth', createTestAnalysis('auth'), outputDir, 'h1');
+
+        const removed = pruneStaleAnalyses(outputDir, new Set(['auth']));
+        expect(removed).toBe(0);
+    });
+
+    it('should return 0 when cache directory does not exist', () => {
+        const removed = pruneStaleAnalyses(outputDir, new Set(['auth']));
+        expect(removed).toBe(0);
+    });
+
+    it('should handle empty valid set (removes all)', () => {
+        saveAnalysis('auth', createTestAnalysis('auth'), outputDir, 'h1');
+        saveAnalysis('db', createTestAnalysis('db'), outputDir, 'h1');
+
+        const removed = pruneStaleAnalyses(outputDir, new Set());
+
+        expect(removed).toBe(2);
+        expect(getCachedAnalysis('auth', outputDir)).toBeNull();
+        expect(getCachedAnalysis('db', outputDir)).toBeNull();
+    });
+});
+
+// ============================================================================
+// saveAllAnalyses — stale file pruning
+// ============================================================================
+
+describe('saveAllAnalyses stale pruning', () => {
+    it('should prune stale files after saving', async () => {
+        // Simulate a previous run with 3 components
+        saveAnalysis('auth', createTestAnalysis('auth'), outputDir, 'old');
+        saveAnalysis('db', createTestAnalysis('db'), outputDir, 'old');
+        saveAnalysis('old-module', createTestAnalysis('old-module'), outputDir, 'old');
+
+        // Now save only 2 components (consolidation removed old-module)
+        const analyses = [createTestAnalysis('auth'), createTestAnalysis('db')];
+        await saveAllAnalyses(analyses, outputDir, '/repo');
+
+        expect(getCachedAnalysis('auth', outputDir)).not.toBeNull();
+        expect(getCachedAnalysis('db', outputDir)).not.toBeNull();
+        expect(getCachedAnalysis('old-module', outputDir)).toBeNull();
+
+        // Verify file count matches
+        const analysesDir = getAnalysesCacheDir(outputDir);
+        const jsonFiles = fs.readdirSync(analysesDir)
+            .filter(f => f.endsWith('.json') && f !== '_metadata.json');
+        expect(jsonFiles).toHaveLength(2);
+    });
+
+    it('should not prune when all components are present', async () => {
+        saveAnalysis('auth', createTestAnalysis('auth'), outputDir, 'old');
+        saveAnalysis('db', createTestAnalysis('db'), outputDir, 'old');
+
+        const analyses = [createTestAnalysis('auth'), createTestAnalysis('db')];
+        await saveAllAnalyses(analyses, outputDir, '/repo');
+
+        expect(getCachedAnalysis('auth', outputDir)).not.toBeNull();
+        expect(getCachedAnalysis('db', outputDir)).not.toBeNull();
     });
 });
