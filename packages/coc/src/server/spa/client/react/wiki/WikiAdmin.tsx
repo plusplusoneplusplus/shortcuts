@@ -393,8 +393,16 @@ function EditorTab({ wikiId, kind }: { wikiId: string; kind: 'seeds' | 'config' 
                         if (data.type === 'status' || data.type === 'log') {
                             setGenLogs(prev => [...prev, data.message || '']);
                         } else if (data.type === 'done' && data.success && Array.isArray(data.seeds)) {
-                            // Write seeds to the editor
-                            const yaml = data.seeds.map((s: any) => `- name: ${s.name || s}\n  description: ${s.description || ''}`).join('\n');
+                            // Build YAML matching ThemeSeed shape (theme/description/hints)
+                            const normalized = data.seeds.map((s: any) => ({
+                                theme: typeof s.theme === 'string' ? s.theme : String(s.theme ?? ''),
+                                description: typeof s.description === 'string' ? s.description : '',
+                                hints: Array.isArray(s.hints) ? s.hints : [],
+                            }));
+                            const jsyaml = (window as any).jsyaml;
+                            const yaml = jsyaml
+                                ? jsyaml.dump({ themes: normalized })
+                                : JSON.stringify({ themes: normalized }, null, 2);
                             setContent(yaml);
                             setGenLogs(prev => [...prev, `✓ Generated ${data.seeds.length} seeds`]);
                         } else if (data.type === 'error') {

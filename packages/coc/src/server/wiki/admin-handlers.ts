@@ -326,6 +326,18 @@ export async function handleGenerateSeeds(
 
         if (clientDisconnected) { safeEnd(); return; }
 
+        // Auto-save seeds.yaml to wiki directory
+        try {
+            const seedsPath = path.join(wiki.registration.wikiDir, SEEDS_FILE);
+            fs.mkdirSync(wiki.registration.wikiDir, { recursive: true });
+            const yaml = await import('js-yaml');
+            fs.writeFileSync(seedsPath, yaml.dump({ themes: seeds }), 'utf-8');
+            safeSend({ type: 'log', message: `Seeds saved to ${seedsPath}` });
+        } catch (saveErr: unknown) {
+            const saveMsg = saveErr instanceof Error ? saveErr.message : String(saveErr);
+            safeSend({ type: 'log', message: `Warning: failed to auto-save seeds — ${saveMsg}` });
+        }
+
         safeSend({ type: 'log', message: `Generated ${seeds.length} theme seeds` });
         safeSend({ type: 'done', success: true, seeds });
     } catch (error: unknown) {

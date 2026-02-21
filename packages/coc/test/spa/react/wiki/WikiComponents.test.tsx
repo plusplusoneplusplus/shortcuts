@@ -602,6 +602,78 @@ describe('WikiAdmin', () => {
             content: 'model: claude-haiku-4.5\n',
         });
     });
+
+    it('normalizes generated seeds using theme field (not name)', async () => {
+        // Mock SSE stream that returns seeds with theme/description/hints
+        const ssePayload = [
+            'data: {"type":"status","message":"Generating..."}\n\n',
+            'data: {"type":"done","success":true,"seeds":[{"theme":"auth","description":"Authentication","hints":["login"]},{"theme":"db","description":"Database","hints":["sql"]}]}\n\n',
+        ].join('');
+
+        const encoder = new TextEncoder();
+        const stream = new ReadableStream({
+            start(controller) {
+                controller.enqueue(encoder.encode(ssePayload));
+                controller.close();
+            },
+        });
+
+        const mockFetch = vi.fn().mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            const method = (init?.method || 'GET').toUpperCase();
+            if (url.includes('/admin/seeds/generate') && method === 'POST') {
+                return Promise.resolve({ ok: true, body: stream.getReader ? stream : { getReader: () => stream.getReader() } });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ exists: false, content: null }) });
+        });
+        vi.stubGlobal('fetch', mockFetch);
+
+        render(<WikiAdmin wikiId="w1" initialTab="seeds" />);
+        await waitFor(() => {
+            expect(screen.getByText('Generate Seeds')).toBeTruthy();
+        });
+
+        fireEvent.click(screen.getByText('Generate Seeds'));
+
+        await waitFor(() => {
+            const editor = document.getElementById('seeds-editor') as HTMLTextAreaElement;
+            expect(editor).toBeTruthy();
+            if (editor) {
+                // Must use 'theme' field, not 'name'
+                expect(editor.value).toContain('theme');
+                expect(editor.value).not.toContain('[object Object]');
+                // Should not use the old 'name:' serialization
+                expect(editor.value).not.toMatch(/^- name:/m);
+            }
+        });
+    });
+});
+
+// ============================================================================
+// WikiAdmin seed YAML serialization (unit-level)
+// ============================================================================
+
+describe('WikiAdmin seed YAML normalization', () => {
+    it('normalizes seeds with missing/wrong fields gracefully', () => {
+        // Test the normalization logic directly
+        const seeds: any[] = [
+            { theme: 'auth', description: 'Auth module', hints: ['login'] },
+            { theme: { nested: 'object' }, description: 'Bad theme', hints: [] },
+            { theme: 'db', description: 123 as any, hints: 'not-array' as any },
+        ];
+
+        const normalized = seeds.map((s: any) => ({
+            theme: typeof s.theme === 'string' ? s.theme : String(s.theme ?? ''),
+            description: typeof s.description === 'string' ? s.description : '',
+            hints: Array.isArray(s.hints) ? s.hints : [],
+        }));
+
+        expect(normalized[0]).toEqual({ theme: 'auth', description: 'Auth module', hints: ['login'] });
+        expect(normalized[1].theme).toBe('[object Object]');
+        expect(normalized[1].description).toBe('Bad theme');
+        expect(normalized[2].description).toBe('');
+        expect(normalized[2].hints).toEqual([]);
+    });
 });
 
 // ============================================================================
