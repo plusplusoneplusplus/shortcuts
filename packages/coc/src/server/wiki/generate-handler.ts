@@ -216,7 +216,7 @@ async function runGeneration(
             sendSSE(res, { type: 'done', success: false, error: 'Phase 1 failed' }); return;
         }
     } else if (startPhase > 1) {
-        const cached = options.useCache ? getCachedGraphAny(outputDir) : await getCachedGraph(repoPath, outputDir);
+        const cached = getCachedGraphAny(outputDir) ?? await getCachedGraph(repoPath, outputDir);
         if (!cached) {
             sendSSE(res, { type: 'error', message: 'No cached component graph found. Run Discovery first.' });
             sendSSE(res, { type: 'done', success: false, error: 'Missing prerequisite: Discovery' }); return;
