@@ -1,9 +1,10 @@
 /**
- * PipelinesTab — lists pipeline packages for a workspace.
+ * PipelinesTab — two-panel layout: left list + right detail/placeholder.
  */
 
 import { useState } from 'react';
 import { Button } from '../shared';
+import { useApp } from '../context/AppContext';
 import type { RepoData, PipelineInfo } from './repoGrouping';
 import { PipelineDetail } from './PipelineDetail';
 import { AddPipelineDialog } from './AddPipelineDialog';
@@ -13,60 +14,86 @@ interface PipelinesTabProps {
 }
 
 export function PipelinesTab({ repo }: PipelinesTabProps) {
+    const { state, dispatch } = useApp();
     const pipelines = repo.pipelines || [];
-    const [selectedPipeline, setSelectedPipeline] = useState<PipelineInfo | null>(null);
     const [showAddDialog, setShowAddDialog] = useState(false);
 
-    if (selectedPipeline) {
-        return (
-            <PipelineDetail
-                workspaceId={repo.workspace.id}
-                pipeline={selectedPipeline}
-                onClose={() => setSelectedPipeline(null)}
-                onDeleted={() => setSelectedPipeline(null)}
-            />
-        );
-    }
+    const selectedPipeline: PipelineInfo | null =
+        pipelines.find(p => p.name === state.selectedPipelineName) ?? null;
 
-    if (pipelines.length === 0) {
-        return (
-            <div className="p-4 text-center">
-                <div className="text-2xl mb-2">📋</div>
-                <div className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]">No pipelines found</div>
-                <div className="text-xs text-[#848484] mt-1 mb-3">
-                    Add pipeline YAML files to .vscode/pipelines/ in this repository.
-                </div>
-                <Button variant="secondary" size="sm" onClick={() => setShowAddDialog(true)}>+ New Pipeline</Button>
-                {showAddDialog && (
-                    <AddPipelineDialog
-                        workspaceId={repo.workspace.id}
-                        onCreated={() => setShowAddDialog(false)}
-                        onClose={() => setShowAddDialog(false)}
-                    />
-                )}
-            </div>
-        );
-    }
+    const handleSelect = (p: PipelineInfo) => {
+        dispatch({ type: 'SET_SELECTED_PIPELINE', name: p.name });
+        location.hash = '#repos/' + encodeURIComponent(repo.workspace.id) + '/pipelines/' + encodeURIComponent(p.name);
+    };
+
+    const handleClose = () => {
+        dispatch({ type: 'SET_SELECTED_PIPELINE', name: null });
+        location.hash = '#repos/' + encodeURIComponent(repo.workspace.id) + '/pipelines';
+    };
+
+    const handleDeleted = () => {
+        handleClose();
+    };
 
     return (
-        <div className="flex flex-col h-full">
-            <div className="flex items-center justify-between px-4 pt-3 pb-2">
-                <span className="text-xs text-[#848484]">{pipelines.length} pipeline{pipelines.length !== 1 ? 's' : ''}</span>
-                <Button variant="secondary" size="sm" onClick={() => setShowAddDialog(true)}>+ New Pipeline</Button>
+        <div className="flex h-full overflow-hidden">
+            {/* Left panel — pipeline list */}
+            <div className="w-72 flex-shrink-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c] flex flex-col overflow-hidden">
+                <div className="flex items-center justify-between px-4 pt-3 pb-2">
+                    <span className="text-xs text-[#848484]">
+                        {pipelines.length} pipeline{pipelines.length !== 1 ? 's' : ''}
+                    </span>
+                    <Button variant="secondary" size="sm" onClick={() => setShowAddDialog(true)}>+ New Pipeline</Button>
+                </div>
+                {pipelines.length === 0 ? (
+                    <div className="p-4 text-center">
+                        <div className="text-2xl mb-2">📋</div>
+                        <div className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]">No pipelines found</div>
+                        <div className="text-xs text-[#848484] mt-1">
+                            Add pipeline YAML files to .vscode/pipelines/ in this repository.
+                        </div>
+                    </div>
+                ) : (
+                    <ul className="px-4 pb-4 flex flex-col gap-1 overflow-y-auto">
+                        {pipelines.map(p => {
+                            const isActive = p.name === state.selectedPipelineName;
+                            return (
+                                <li
+                                    key={p.name}
+                                    className={
+                                        'flex items-center py-1.5 px-2 rounded cursor-pointer hover:bg-[#e8e8e8] dark:hover:bg-[#333]'
+                                        + (isActive ? ' bg-[#e8e8e8] dark:bg-[#2a2d2e] border-l-2 border-[#0078d4]' : '')
+                                    }
+                                    role="option"
+                                    aria-selected={isActive}
+                                    onClick={() => handleSelect(p)}
+                                >
+                                    <span className={'text-sm text-[#1e1e1e] dark:text-[#cccccc]' + (isActive ? ' font-medium' : '')}>
+                                        📋 {p.name}
+                                    </span>
+                                </li>
+                            );
+                        })}
+                    </ul>
+                )}
             </div>
-            <ul className="px-4 pb-4 flex flex-col gap-1">
-                {pipelines.map(p => (
-                    <li key={p.name} className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-[#e8e8e8] dark:hover:bg-[#333]">
-                        <span className="text-sm text-[#1e1e1e] dark:text-[#cccccc]">📋 {p.name}</span>
-                        <button
-                            className="text-xs text-[#0078d4] dark:text-[#3794ff] hover:underline"
-                            onClick={() => setSelectedPipeline(p)}
-                        >
-                            View
-                        </button>
-                    </li>
-                ))}
-            </ul>
+
+            {/* Right panel — detail or placeholder */}
+            <div className="flex-1 min-w-0 overflow-hidden">
+                {selectedPipeline ? (
+                    <PipelineDetail
+                        workspaceId={repo.workspace.id}
+                        pipeline={selectedPipeline}
+                        onClose={handleClose}
+                        onDeleted={handleDeleted}
+                    />
+                ) : (
+                    <div className="flex items-center justify-center h-full text-sm text-[#848484]">
+                        Select a pipeline
+                    </div>
+                )}
+            </div>
+
             {showAddDialog && (
                 <AddPipelineDialog
                     workspaceId={repo.workspace.id}

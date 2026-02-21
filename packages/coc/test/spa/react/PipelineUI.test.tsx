@@ -400,11 +400,27 @@ describe('AddPipelineDialog', () => {
 });
 
 // ============================================================================
-// PipelinesTab integration
+// PipelinesTab split-panel layout
 // ============================================================================
 
-describe('PipelinesTab (with pipeline detail)', () => {
-    it('View click renders PipelineDetail', async () => {
+describe('PipelinesTab (split-panel layout)', () => {
+    beforeEach(() => {
+        location.hash = '';
+    });
+
+    it('renders both left list and right placeholder simultaneously', () => {
+        const repo = makeRepo({
+            workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
+            pipelines: [samplePipeline],
+        });
+        render(<Wrap><PipelinesTab repo={repo} /></Wrap>);
+        // Left panel has the pipeline name
+        expect(screen.getByText(/my-pipeline/)).toBeDefined();
+        // Right panel shows placeholder
+        expect(screen.getByText('Select a pipeline')).toBeDefined();
+    });
+
+    it('clicking a pipeline row selects it and renders PipelineDetail', async () => {
         vi.spyOn(pipelineApi, 'fetchPipelineContent').mockResolvedValue({
             content: sampleYaml,
             path: samplePipeline.path,
@@ -414,10 +430,69 @@ describe('PipelinesTab (with pipeline detail)', () => {
             pipelines: [samplePipeline],
         });
         render(<Wrap><PipelinesTab repo={repo} /></Wrap>);
-        fireEvent.click(screen.getByText('View'));
+        // Click the pipeline row (not a View button — row is clickable)
+        const row = screen.getByRole('option');
+        fireEvent.click(row);
         await waitFor(() => {
             expect(screen.getByText(/name: my-pipeline/)).toBeDefined();
         });
+        // URL updated
+        expect(location.hash).toBe('#repos/ws-1/pipelines/my-pipeline');
+    });
+
+    it('updates location.hash on pipeline selection', () => {
+        const repo = makeRepo({
+            workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
+            pipelines: [samplePipeline],
+        });
+        render(<Wrap><PipelinesTab repo={repo} /></Wrap>);
+        fireEvent.click(screen.getByRole('option'));
+        expect(location.hash).toBe('#repos/ws-1/pipelines/my-pipeline');
+    });
+
+    it('Close button clears selection and resets hash', async () => {
+        vi.spyOn(pipelineApi, 'fetchPipelineContent').mockResolvedValue({
+            content: sampleYaml,
+            path: samplePipeline.path,
+        });
+        const repo = makeRepo({
+            workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
+            pipelines: [samplePipeline],
+        });
+        render(<Wrap><PipelinesTab repo={repo} /></Wrap>);
+        // Select pipeline
+        fireEvent.click(screen.getByRole('option'));
+        await waitFor(() => screen.getByText('Close'));
+        // Close detail
+        fireEvent.click(screen.getByText('Close'));
+        // Placeholder returns
+        expect(screen.getByText('Select a pipeline')).toBeDefined();
+        expect(location.hash).toBe('#repos/ws-1/pipelines');
+    });
+
+    it('onDeleted clears selection and resets hash', async () => {
+        vi.spyOn(pipelineApi, 'fetchPipelineContent').mockResolvedValue({
+            content: sampleYaml,
+            path: samplePipeline.path,
+        });
+        vi.spyOn(pipelineApi, 'deletePipeline').mockResolvedValue();
+        const repo = makeRepo({
+            workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
+            pipelines: [samplePipeline],
+        });
+        render(<Wrap><PipelinesTab repo={repo} /></Wrap>);
+        // Select pipeline
+        fireEvent.click(screen.getByRole('option'));
+        await waitFor(() => screen.getByText('Delete'));
+        // Delete pipeline
+        fireEvent.click(screen.getByText('Delete'));
+        await waitFor(() => screen.getByText('Confirm'));
+        await act(async () => {
+            fireEvent.click(screen.getByText('Confirm'));
+        });
+        // Selection cleared
+        expect(screen.getByText('Select a pipeline')).toBeDefined();
+        expect(location.hash).toBe('#repos/ws-1/pipelines');
     });
 
     it('shows "New Pipeline" button when pipelines exist', () => {
@@ -456,5 +531,67 @@ describe('PipelinesTab (with pipeline detail)', () => {
         });
         render(<Wrap><PipelinesTab repo={repo} /></Wrap>);
         expect(screen.getByText('2 pipelines')).toBeDefined();
+    });
+
+    it('empty state renders within split layout without collapsing', () => {
+        const repo = makeRepo({
+            workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
+            pipelines: [],
+        });
+        render(<Wrap><PipelinesTab repo={repo} /></Wrap>);
+        // Empty state message in left panel
+        expect(screen.getByText('No pipelines found')).toBeDefined();
+        // Placeholder still visible in right panel
+        expect(screen.getByText('Select a pipeline')).toBeDefined();
+        // + New Pipeline visible
+        expect(screen.getByText('+ New Pipeline')).toBeDefined();
+    });
+
+    it('pipeline list remains visible when detail is shown', async () => {
+        vi.spyOn(pipelineApi, 'fetchPipelineContent').mockResolvedValue({
+            content: sampleYaml,
+            path: samplePipeline.path,
+        });
+        const secondPipeline: PipelineInfo = { name: 'second-pipe', path: 'second.yaml' };
+        const repo = makeRepo({
+            workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
+            pipelines: [samplePipeline, secondPipeline],
+        });
+        render(<Wrap><PipelinesTab repo={repo} /></Wrap>);
+        const rows = screen.getAllByRole('option');
+        fireEvent.click(rows[0]);
+        await waitFor(() => {
+            expect(screen.getByText(/name: my-pipeline/)).toBeDefined();
+        });
+        // Both pipelines still visible in the list
+        expect(screen.getByText(/second-pipe/)).toBeDefined();
+        expect(screen.getByText('2 pipelines')).toBeDefined();
+    });
+
+    it('active row has aria-selected true', () => {
+        vi.spyOn(pipelineApi, 'fetchPipelineContent').mockResolvedValue({
+            content: sampleYaml,
+            path: samplePipeline.path,
+        });
+        const repo = makeRepo({
+            workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
+            pipelines: [samplePipeline],
+        });
+        render(<Wrap><PipelinesTab repo={repo} /></Wrap>);
+        const row = screen.getByRole('option');
+        expect(row.getAttribute('aria-selected')).toBe('false');
+        fireEvent.click(row);
+        expect(row.getAttribute('aria-selected')).toBe('true');
+    });
+
+    it('encodes special chars in URL hash', () => {
+        const specialPipeline: PipelineInfo = { name: 'my pipeline', path: 'pipe.yaml' };
+        const repo = makeRepo({
+            workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
+            pipelines: [specialPipeline],
+        });
+        render(<Wrap><PipelinesTab repo={repo} /></Wrap>);
+        fireEvent.click(screen.getByRole('option'));
+        expect(location.hash).toBe('#repos/ws-1/pipelines/my%20pipeline');
     });
 });
