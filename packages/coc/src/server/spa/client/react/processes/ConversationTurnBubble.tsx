@@ -7,6 +7,7 @@ import type { ClientConversationTurn } from '../types/dashboard';
 import { MarkdownView } from './MarkdownView';
 import { ToolCallView } from './ToolCallView';
 import { renderMarkdownToHtml } from '../../markdown-renderer';
+import { useDisplaySettings } from '../hooks/useDisplaySettings';
 
 interface ConversationTurnBubbleProps {
     turn: ClientConversationTurn;
@@ -283,6 +284,7 @@ export function ConversationTurnBubble({ turn }: ConversationTurnBubbleProps) {
     const assistantRender = !isUser ? buildAssistantRender(turn) : null;
     const userContentHtml = isUser ? toContentHtml(turn.content || '') : '';
     const [collapsedTaskIds, setCollapsedTaskIds] = useState<Record<string, boolean>>({});
+    const { showReportIntent } = useDisplaySettings();
 
     const isToolHiddenByCollapsedTask = useMemo(() => {
         if (!assistantRender) return (_toolId: string) => false;
@@ -333,6 +335,27 @@ export function ConversationTurnBubble({ turn }: ConversationTurnBubbleProps) {
                             const toolCall = assistantRender.toolById.get(chunk.toolId);
                             if (!toolCall) return null;
                             if (isToolHiddenByCollapsedTask(toolCall.id)) return null;
+
+                            // Handle report_intent tool calls
+                            if (toolCall.toolName === 'report_intent') {
+                                if (!showReportIntent) return null;
+                                const intentText = typeof toolCall.args === 'object' && toolCall.args?.intent
+                                    ? String(toolCall.args.intent)
+                                    : typeof toolCall.args === 'string'
+                                        ? (() => { try { return JSON.parse(toolCall.args).intent || ''; } catch { return ''; } })()
+                                        : '';
+                                return (
+                                    <div
+                                        key={chunk.key}
+                                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#f0f0f0] dark:bg-[#2d2d2d] text-xs italic text-[#848484] max-w-full"
+                                        title="report_intent"
+                                    >
+                                        <span>🏷</span>
+                                        <span className="truncate">{intentText || 'Intent logged'}</span>
+                                    </div>
+                                );
+                            }
+
                             const depth = assistantRender.toolDepthById.get(chunk.toolId) || 0;
                             const hasSubtools = toolCall.toolName === 'task' && assistantRender.toolsWithChildren.has(toolCall.id);
 

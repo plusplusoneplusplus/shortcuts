@@ -201,6 +201,11 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
                     errors.push(`output must be one of: ${VALID_OUTPUT_VALUES.join(', ')}`);
                 }
             }
+            if ('showReportIntent' in body) {
+                if (typeof body.showReportIntent !== 'boolean') {
+                    errors.push('showReportIntent must be a boolean');
+                }
+            }
 
             if (errors.length > 0) {
                 return handleAPIError(res, badRequest(errors.join('; ')));
@@ -212,6 +217,7 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             if ('parallel' in body) { existing.parallel = body.parallel as number; }
             if ('timeout' in body) { existing.timeout = body.timeout as number; }
             if ('output' in body) { existing.output = body.output as CLIConfig['output']; }
+            if ('showReportIntent' in body) { existing.showReportIntent = body.showReportIntent as boolean; }
 
             writeConfigFile(resolvedConfigPath, existing);
 

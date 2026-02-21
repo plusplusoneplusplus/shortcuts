@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Card, Button, Spinner, useToast, ToastContainer } from '../shared';
 import { getApiBase } from '../utils/config';
 import { escapeHtml } from '../utils/format';
+import { invalidateDisplaySettings } from '../hooks/useDisplaySettings';
 
 function formatBytes(bytes: number): string {
     if (bytes === 0) return '0 B';
@@ -37,6 +38,10 @@ export function AdminPanel() {
     const [configError, setConfigError] = useState<string | null>(null);
     const [configForm, setConfigForm] = useState<Record<string, string>>({});
     const [configSaving, setConfigSaving] = useState(false);
+
+    // Display settings
+    const [showReportIntent, setShowReportIntent] = useState(false);
+    const [displaySaving, setDisplaySaving] = useState(false);
 
     // Export
     const [exportStatus, setExportStatus] = useState<string>('');
@@ -86,6 +91,7 @@ export function AdminPanel() {
                 timeout: String(resolved.timeout ?? 30),
                 output: resolved.output ?? 'table',
             });
+            setShowReportIntent(resolved.showReportIntent ?? false);
         } catch (err: any) {
             setConfigError(err.message || 'Failed to load configuration');
         } finally {
@@ -131,6 +137,30 @@ export function AdminPanel() {
             setConfigSaving(false);
         }
     }, [configForm, addToast, loadConfig]);
+
+    const handleToggleShowReportIntent = useCallback(async (newValue: boolean) => {
+        const prevValue = showReportIntent;
+        setShowReportIntent(newValue);
+        setDisplaySaving(true);
+        try {
+            const res = await fetch(getApiBase() + '/admin/config', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ showReportIntent: newValue }),
+            });
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(body.error || 'Save failed');
+            }
+            addToast('Settings saved', 'success');
+            invalidateDisplaySettings();
+        } catch (err: any) {
+            setShowReportIntent(prevValue);
+            addToast(err.message || 'Could not persist setting. Config may be read-only.', 'error');
+        } finally {
+            setDisplaySaving(false);
+        }
+    }, [showReportIntent, addToast]);
 
     const handleExport = useCallback(async () => {
         setExportStatus('Exporting…');
@@ -378,6 +408,33 @@ export function AdminPanel() {
                         <Button size="sm" onClick={handleSaveConfig} loading={configSaving}>Save</Button>
                     </>
                 )}
+            </Card>
+
+            {/* Display Settings */}
+            <Card className="p-4">
+                <h3 className="text-sm font-semibold mb-3 text-[#1e1e1e] dark:text-[#cccccc]">Display</h3>
+                <div className="flex items-center justify-between">
+                    <div>
+                        <div className="text-sm text-[#1e1e1e] dark:text-[#cccccc]">Show intent announcements</div>
+                        <div className="text-xs text-[#616161] dark:text-[#999]">
+                            Show or hide <code className="bg-black/5 dark:bg-white/5 px-1 rounded">report_intent</code> tool calls in the conversation view.
+                        </div>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer ml-4">
+                        <input
+                            type="checkbox"
+                            className="sr-only peer"
+                            checked={showReportIntent}
+                            disabled={displaySaving}
+                            onChange={e => void handleToggleShowReportIntent(e.target.checked)}
+                            data-testid="toggle-show-report-intent"
+                        />
+                        <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
+                    </label>
+                </div>
+                <div className="mt-1">
+                    <SourceBadge source={sources['showReportIntent']} />
+                </div>
             </Card>
 
             {/* Export Data */}

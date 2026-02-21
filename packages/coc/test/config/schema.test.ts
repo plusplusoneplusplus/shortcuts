@@ -165,6 +165,30 @@ describe('CLIConfigSchema', () => {
         expect(() => CLIConfigSchema.parse({ serve: { unknownPort: 8080 } }))
             .toThrow();
     });
+
+    // ========================================================================
+    // showReportIntent
+    // ========================================================================
+
+    it('validates showReportIntent true', () => {
+        const result = CLIConfigSchema.parse({ showReportIntent: true });
+        expect(result.showReportIntent).toBe(true);
+    });
+
+    it('validates showReportIntent false', () => {
+        const result = CLIConfigSchema.parse({ showReportIntent: false });
+        expect(result.showReportIntent).toBe(false);
+    });
+
+    it('rejects string showReportIntent', () => {
+        expect(() => CLIConfigSchema.parse({ showReportIntent: 'yes' }))
+            .toThrow();
+    });
+
+    it('rejects numeric showReportIntent', () => {
+        expect(() => CLIConfigSchema.parse({ showReportIntent: 1 }))
+            .toThrow();
+    });
 });
 
 describe('validateConfigWithSchema', () => {

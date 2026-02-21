@@ -35,6 +35,8 @@ export interface CLIConfig {
     timeout?: number;
     /** Save CLI run results to process store (default: true) */
     persist?: boolean;
+    /** Show report_intent tool calls in conversation views (default: false) */
+    showReportIntent?: boolean;
     /** Serve command defaults */
     serve?: {
         port?: number;
@@ -55,6 +57,7 @@ export interface ResolvedCLIConfig {
     mcpConfig?: string;
     timeout?: number;
     persist: boolean;
+    showReportIntent: boolean;
     serve?: {
         port: number;
         host: string;
@@ -82,6 +85,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     output: 'table',
     approvePermissions: false,
     persist: true,
+    showReportIntent: false,
     serve: {
         port: 4000,
         host: 'localhost',
@@ -100,7 +104,7 @@ export type ConfigFieldSource = 'default' | 'file';
  */
 export const CONFIG_SOURCE_KEYS = [
     'model', 'parallel', 'output', 'approvePermissions', 'mcpConfig',
-    'timeout', 'persist', 'serve.port', 'serve.host', 'serve.dataDir', 'serve.theme',
+    'timeout', 'persist', 'showReportIntent', 'serve.port', 'serve.host', 'serve.dataDir', 'serve.theme',
 ] as const;
 
 export type ConfigSourceKey = typeof CONFIG_SOURCE_KEYS[number];
@@ -251,6 +255,7 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
         mcpConfig: override.mcpConfig ?? base.mcpConfig,
         timeout: override.timeout ?? base.timeout,
         persist: override.persist ?? base.persist,
+        showReportIntent: override.showReportIntent ?? base.showReportIntent,
         serve: {
             port: override.serve?.port ?? base.serve?.port ?? 4000,
             host: override.serve?.host ?? base.serve?.host ?? 'localhost',

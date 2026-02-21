@@ -55,6 +55,7 @@ describe('Config', () => {
             expect(DEFAULT_CONFIG.output).toBe('table');
             expect(DEFAULT_CONFIG.approvePermissions).toBe(false);
             expect(DEFAULT_CONFIG.persist).toBe(true);
+            expect(DEFAULT_CONFIG.showReportIntent).toBe(false);
             expect(DEFAULT_CONFIG.model).toBeUndefined();
             expect(DEFAULT_CONFIG.mcpConfig).toBeUndefined();
             expect(DEFAULT_CONFIG.timeout).toBeUndefined();
@@ -364,12 +365,26 @@ timeout: 300
                 output: 'json',
                 approvePermissions: true,
                 persist: false,
+                showReportIntent: true,
             };
             const override: CLIConfig = {};
             const result = mergeConfig(base, override);
             expect(result.model).toBe('gpt-4');
             expect(result.parallel).toBe(10);
             expect(result.persist).toBe(false);
+            expect(result.showReportIntent).toBe(true);
+        });
+
+        it('should override showReportIntent', () => {
+            const override: CLIConfig = { showReportIntent: true };
+            const result = mergeConfig(DEFAULT_CONFIG, override);
+            expect(result.showReportIntent).toBe(true);
+        });
+
+        it('should preserve showReportIntent default when not overridden', () => {
+            const override: CLIConfig = { model: 'test' };
+            const result = mergeConfig(DEFAULT_CONFIG, override);
+            expect(result.showReportIntent).toBe(false);
         });
     });
 
@@ -484,6 +499,7 @@ timeout: 300
                 'mcpConfig: /tmp/mcp.json',
                 'timeout: 600',
                 'persist: false',
+                'showReportIntent: true',
                 'serve:',
                 '  port: 9000',
                 '  host: 0.0.0.0',

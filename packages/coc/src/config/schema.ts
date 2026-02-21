@@ -18,6 +18,8 @@ export const CLIConfigSchema = z.object({
     mcpConfig: z.string().optional(),
     timeout: z.number().positive().optional(),
     persist: z.boolean().optional(),
+    /** Show report_intent tool calls in conversation views (default: false) */
+    showReportIntent: z.boolean().optional(),
     serve: z.object({
         port: z.number().int().positive().max(65535).optional(),
         host: z.string().optional(),

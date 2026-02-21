@@ -171,4 +171,74 @@ describe('AdminPanel', () => {
         expect(deleteCalls.length).toBe(1);
         expect(deleteCalls[0][0]).toContain('confirm=abc');
     });
+
+    it('renders Display section with show intent announcements toggle', async () => {
+        mockFetch.mockImplementation((url: string) => {
+            if (url.includes('/admin/config')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        resolved: { model: 'gpt-4', parallel: 2, timeout: 60, output: 'json', showReportIntent: false },
+                        sources: { showReportIntent: 'default' },
+                    }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        await act(async () => {
+            renderWithProviders();
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('Display')).toBeDefined();
+            expect(screen.getByText('Show intent announcements')).toBeDefined();
+        });
+
+        const toggle = screen.getByTestId('toggle-show-report-intent') as HTMLInputElement;
+        expect(toggle.checked).toBe(false);
+    });
+
+    it('Display toggle sends PUT with showReportIntent when clicked', async () => {
+        mockFetch.mockImplementation((url: string, options?: any) => {
+            if (url.includes('/admin/config') && options?.method === 'PUT') {
+                const body = JSON.parse(options.body);
+                expect(body.showReportIntent).toBe(true);
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        resolved: { showReportIntent: true },
+                        sources: { showReportIntent: 'file' },
+                    }),
+                });
+            }
+            if (url.includes('/admin/config')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        resolved: { model: 'gpt-4', parallel: 2, timeout: 60, output: 'json', showReportIntent: false },
+                        sources: { showReportIntent: 'default' },
+                    }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        await act(async () => {
+            renderWithProviders();
+        });
+
+        await waitFor(() => {
+            expect(screen.getByTestId('toggle-show-report-intent')).toBeDefined();
+        });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('toggle-show-report-intent'));
+        });
+
+        const putCalls = mockFetch.mock.calls.filter(
+            ([url, opts]: [string, any]) => url.includes('/admin/config') && opts?.method === 'PUT'
+        );
+        expect(putCalls.length).toBe(1);
+    });
 });

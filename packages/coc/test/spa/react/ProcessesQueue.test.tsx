@@ -19,6 +19,13 @@ import { QueuePanel } from '../../../src/server/spa/client/react/queue/QueuePane
 import { QueueView } from '../../../src/server/spa/client/react/queue/QueueView';
 import { QueueTaskDetail } from '../../../src/server/spa/client/react/queue/QueueTaskDetail';
 
+// Mock useDisplaySettings — controls report_intent visibility
+const mockDisplaySettings = { showReportIntent: false };
+vi.mock('../../../src/server/spa/client/react/hooks/useDisplaySettings', () => ({
+    useDisplaySettings: () => mockDisplaySettings,
+    invalidateDisplaySettings: vi.fn(),
+}));
+
 function Wrap({ children }: { children: ReactNode }) {
     return <AppProvider><QueueProvider>{children}</QueueProvider></AppProvider>;
 }
@@ -436,6 +443,80 @@ describe('ConversationTurnBubble', () => {
         expect(screen.queryByText('view')).toBeNull();
         fireEvent.click(screen.getByRole('button', { name: 'Expand subtools' }));
         expect(screen.getByText('view')).toBeDefined();
+    });
+
+    describe('report_intent filtering', () => {
+        const turnWithReportIntent = {
+            role: 'assistant' as const,
+            content: '',
+            timeline: [
+                {
+                    type: 'tool-start',
+                    timestamp: '2026-02-19T00:00:00.000Z',
+                    toolCall: {
+                        id: 'ri-1',
+                        toolName: 'report_intent',
+                        args: { intent: 'Exploring codebase' },
+                        result: 'Intent logged',
+                        startTime: '2026-02-19T00:00:00.000Z',
+                        endTime: '2026-02-19T00:00:00.100Z',
+                        status: 'completed',
+                    },
+                },
+                {
+                    type: 'tool-start',
+                    timestamp: '2026-02-19T00:00:01.000Z',
+                    toolCall: {
+                        id: 'bash-1',
+                        toolName: 'bash',
+                        args: { command: 'ls' },
+                        startTime: '2026-02-19T00:00:01.000Z',
+                        endTime: '2026-02-19T00:00:02.000Z',
+                        status: 'completed',
+                    },
+                },
+            ],
+        };
+
+        it('hides report_intent tool calls when showReportIntent is false', () => {
+            mockDisplaySettings.showReportIntent = false;
+            render(
+                <Wrap>
+                    <ConversationTurnBubble turn={turnWithReportIntent} />
+                </Wrap>
+            );
+            expect(screen.getByText('bash')).toBeDefined();
+            expect(screen.queryByText('Exploring codebase')).toBeNull();
+            expect(screen.queryByText('report_intent')).toBeNull();
+        });
+
+        it('shows report_intent as compact chip when showReportIntent is true', () => {
+            mockDisplaySettings.showReportIntent = true;
+            render(
+                <Wrap>
+                    <ConversationTurnBubble turn={turnWithReportIntent} />
+                </Wrap>
+            );
+            expect(screen.getByText('bash')).toBeDefined();
+            expect(screen.getByText('Exploring codebase')).toBeDefined();
+            // Should render as chip with 🏷 emoji
+            expect(screen.getByText('🏷')).toBeDefined();
+        });
+
+        it('renders other tool calls normally regardless of showReportIntent setting', () => {
+            mockDisplaySettings.showReportIntent = false;
+            render(
+                <Wrap>
+                    <ConversationTurnBubble turn={turnWithReportIntent} />
+                </Wrap>
+            );
+            expect(screen.getByText('bash')).toBeDefined();
+        });
+
+        // Reset to default after tests
+        afterEach(() => {
+            mockDisplaySettings.showReportIntent = false;
+        });
     });
 });
 

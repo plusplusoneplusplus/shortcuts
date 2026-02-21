@@ -735,6 +735,69 @@ describe('Admin Handler', () => {
             expect(body.resolved.parallel).toBe(7);
             expect(body.resolved.timeout).toBe(180);
         });
+
+        it('should accept showReportIntent boolean true', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ showReportIntent: true }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.showReportIntent).toBe(true);
+            expect(body.sources.showReportIntent).toBe('file');
+        });
+
+        it('should accept showReportIntent boolean false', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ showReportIntent: false }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.showReportIntent).toBe(false);
+        });
+
+        it('should reject non-boolean showReportIntent', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ showReportIntent: 'yes' }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('showReportIntent');
+        });
+
+        it('should persist showReportIntent and not lose other config', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            fs.writeFileSync(configPath, 'model: test-model\n', 'utf-8');
+            const srv = await startServerWithConfig(configPath);
+
+            await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ showReportIntent: true }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            const getRes = await request(`${srv.url}/api/admin/config`);
+            const body = JSON.parse(getRes.body);
+            expect(body.resolved.showReportIntent).toBe(true);
+            expect(body.resolved.model).toBe('test-model');
+        });
     });
 
     // ========================================================================
