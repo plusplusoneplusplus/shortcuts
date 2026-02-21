@@ -5,6 +5,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import * as yaml from 'js-yaml';
 import { Button, Card, Spinner, Badge } from '../shared';
 import { cn } from '../shared/cn';
 import { getApiBase } from '../utils/config';
@@ -320,7 +321,7 @@ function EditorTab({ wikiId, kind }: { wikiId: string; kind: 'seeds' | 'config' 
                     if (typeof data?.content === 'string') {
                         text = data.content;
                     } else if (data?.content !== null && data?.content !== undefined) {
-                        text = JSON.stringify(data.content, null, 2);
+                        text = yaml.dump(data.content);
                     }
                 }
 
@@ -399,11 +400,8 @@ function EditorTab({ wikiId, kind }: { wikiId: string; kind: 'seeds' | 'config' 
                                 description: typeof s.description === 'string' ? s.description : '',
                                 hints: Array.isArray(s.hints) ? s.hints : [],
                             }));
-                            const jsyaml = (window as any).jsyaml;
-                            const yaml = jsyaml
-                                ? jsyaml.dump({ themes: normalized })
-                                : JSON.stringify({ themes: normalized }, null, 2);
-                            setContent(yaml);
+                            const yamlContent = yaml.dump({ themes: normalized });
+                            setContent(yamlContent);
                             setGenLogs(prev => [...prev, `✓ Generated ${data.seeds.length} seeds`]);
                         } else if (data.type === 'error') {
                             setGenLogs(prev => [...prev, '❌ ' + (data.message || 'Error')]);

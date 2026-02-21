@@ -674,6 +674,78 @@ describe('WikiAdmin seed YAML normalization', () => {
         expect(normalized[2].description).toBe('');
         expect(normalized[2].hints).toEqual([]);
     });
+
+    it('loads existing seeds as YAML (not JSON) when API returns an object', async () => {
+        const mockFetch = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url.includes('/admin/seeds')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        exists: true,
+                        content: { themes: [{ theme: 'auth', description: 'Auth module', hints: ['login'] }] },
+                        path: '/test/repo/seeds.yaml',
+                    }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+        vi.stubGlobal('fetch', mockFetch);
+
+        const { unmount } = render(<WikiAdmin wikiId="w1" initialTab="seeds" />);
+
+        await waitFor(() => {
+            const editor = document.getElementById('seeds-editor') as HTMLTextAreaElement;
+            expect(editor).toBeTruthy();
+            if (editor) {
+                // Content must be YAML, not JSON
+                expect(editor.value).not.toContain('{');
+                expect(editor.value).toContain('theme: auth');
+                expect(editor.value).toContain('hints:');
+            }
+        });
+
+        unmount();
+    });
+
+    it('generated seeds content is YAML (not JSON)', async () => {
+        const ssePayload = [
+            'data: {"type":"done","success":true,"seeds":[{"theme":"auth","description":"Auth","hints":["login"]}]}\n\n',
+        ].join('');
+
+        const encoder = new TextEncoder();
+        const stream = new ReadableStream({
+            start(controller) {
+                controller.enqueue(encoder.encode(ssePayload));
+                controller.close();
+            },
+        });
+
+        const mockFetch = vi.fn().mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            const method = (init?.method || 'GET').toUpperCase();
+            if (url.includes('/admin/seeds/generate') && method === 'POST') {
+                return Promise.resolve({ ok: true, body: stream.getReader ? stream : { getReader: () => stream.getReader() } });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ exists: false, content: null }) });
+        });
+        vi.stubGlobal('fetch', mockFetch);
+
+        const { unmount } = render(<WikiAdmin wikiId="w1" initialTab="seeds" />);
+        await waitFor(() => expect(screen.getByText('Generate Seeds')).toBeTruthy());
+        fireEvent.click(screen.getByText('Generate Seeds'));
+
+        await waitFor(() => {
+            const editor = document.getElementById('seeds-editor') as HTMLTextAreaElement;
+            expect(editor).toBeTruthy();
+            if (editor) {
+                expect(editor.value).not.toContain('{');
+                expect(editor.value).toContain('theme: auth');
+            }
+        });
+
+        unmount();
+    });
 });
 
 // ============================================================================
