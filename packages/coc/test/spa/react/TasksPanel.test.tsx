@@ -7,6 +7,7 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import type { ReactNode } from 'react';
 import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
 import { QueueProvider } from '../../../src/server/spa/client/react/context/QueueContext';
+import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
 import { TaskProvider } from '../../../src/server/spa/client/react/context/TaskContext';
 import { taskReducer, type TaskContextState, type TaskAction } from '../../../src/server/spa/client/react/context/TaskContext';
 import { TasksPanel, parseTaskHashParams } from '../../../src/server/spa/client/react/tasks/TasksPanel';
@@ -14,7 +15,15 @@ import { getFolderKey } from '../../../src/server/spa/client/react/tasks/TaskTre
 import type { TaskFolder } from '../../../src/server/spa/client/react/hooks/useTaskTree';
 
 function Wrap({ children }: { children: ReactNode }) {
-    return <AppProvider><QueueProvider>{children}</QueueProvider></AppProvider>;
+    return (
+        <AppProvider>
+            <QueueProvider>
+                <ToastProvider value={{ addToast: vi.fn(), removeToast: vi.fn(), toasts: [] }}>
+                    {children}
+                </ToastProvider>
+            </QueueProvider>
+        </AppProvider>
+    );
 }
 
 const mockTree = {

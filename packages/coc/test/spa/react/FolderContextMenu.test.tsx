@@ -9,12 +9,21 @@ import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/re
 import type { ReactNode } from 'react';
 import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
 import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/context/QueueContext';
+import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
 import { TasksPanel } from '../../../src/server/spa/client/react/tasks/TasksPanel';
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
 function Wrap({ children }: { children: ReactNode }) {
-    return <AppProvider><QueueProvider>{children}</QueueProvider></AppProvider>;
+    return (
+        <AppProvider>
+            <QueueProvider>
+                <ToastProvider value={{ addToast: vi.fn(), removeToast: vi.fn(), toasts: [] }}>
+                    {children}
+                </ToastProvider>
+            </QueueProvider>
+        </AppProvider>
+    );
 }
 
 const mockTree = {
@@ -271,7 +280,7 @@ describe('Folder context menu', () => {
         expect(screen.queryByTestId('context-menu')).toBeNull();
     });
 
-    it('context menu shows all four items', async () => {
+    it('context menu shows all nine items', async () => {
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
         await waitFor(() => {
             expect(screen.getByTestId('task-tree-item-feature1')).toBeTruthy();
@@ -282,6 +291,11 @@ describe('Folder context menu', () => {
         expect(screen.getByText('Copy Absolute Path')).toBeTruthy();
         expect(screen.getByText('Queue All Tasks')).toBeTruthy();
         expect(screen.getByText('Archive Folder')).toBeTruthy();
+        expect(screen.getByText('Rename Folder')).toBeTruthy();
+        expect(screen.getByText('Create Subfolder')).toBeTruthy();
+        expect(screen.getByText('Create Task in Folder')).toBeTruthy();
+        expect(screen.getByText('Delete Folder')).toBeTruthy();
+        expect(screen.getByText('Bulk Follow Prompt')).toBeTruthy();
     });
 
     it('does not render context menu when right-clicking a document group row', async () => {

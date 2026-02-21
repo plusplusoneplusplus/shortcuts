@@ -9,13 +9,22 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { useEffect, type ReactNode } from 'react';
 import { AppProvider, useApp } from '../../../src/server/spa/client/react/context/AppContext';
 import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/context/QueueContext';
+import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
 import { TaskProvider } from '../../../src/server/spa/client/react/context/TaskContext';
 import { QueuePanel } from '../../../src/server/spa/client/react/queue/QueuePanel';
 import { TaskTreeItem, type TaskTreeItemProps } from '../../../src/server/spa/client/react/tasks/TaskTreeItem';
 import { TasksPanel } from '../../../src/server/spa/client/react/tasks/TasksPanel';
 
 function Wrap({ children }: { children: ReactNode }) {
-    return <AppProvider><QueueProvider>{children}</QueueProvider></AppProvider>;
+    return (
+        <AppProvider>
+            <QueueProvider>
+                <ToastProvider value={{ addToast: vi.fn(), removeToast: vi.fn(), toasts: [] }}>
+                    {children}
+                </ToastProvider>
+            </QueueProvider>
+        </AppProvider>
+    );
 }
 
 // Seed queue state with running/queued tasks
@@ -341,9 +350,11 @@ describe('TaskTree folderMap wiring', () => {
             return (
                 <AppProvider>
                     <QueueProvider>
-                        <SeedWorkspaceAndQueue wsId="ws1" rootPath="/workspace">
-                            {children}
-                        </SeedWorkspaceAndQueue>
+                        <ToastProvider value={{ addToast: vi.fn(), removeToast: vi.fn(), toasts: [] }}>
+                            <SeedWorkspaceAndQueue wsId="ws1" rootPath="/workspace">
+                                {children}
+                            </SeedWorkspaceAndQueue>
+                        </ToastProvider>
                     </QueueProvider>
                 </AppProvider>
             );

@@ -10,11 +10,16 @@ import type { TaskFolder } from '../hooks/useTaskTree';
 import { useFolderActions } from '../hooks/useFolderActions';
 import { useApp } from '../context/AppContext';
 import { useQueue } from '../context/QueueContext';
+import { useGlobalToast } from '../context/ToastContext';
 import { TaskTree } from './TaskTree';
 import { TaskPreview } from './TaskPreview';
 import { TaskActions } from './TaskActions';
 import { ContextMenu } from './comments/ContextMenu';
 import type { ContextMenuItem } from './comments/ContextMenu';
+import { FolderActionDialog } from './FolderActionDialog';
+import { Dialog } from '../shared/Dialog';
+import { Button } from '../shared/Button';
+import { FollowPromptDialog } from '../shared/FollowPromptDialog';
 import { Spinner } from '../shared';
 
 interface TasksPanelProps {
@@ -57,6 +62,7 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
 
     const { state: appState } = useApp();
     const { dispatch: queueDispatch } = useQueue();
+    const { addToast } = useGlobalToast();
     const folderActions = useFolderActions(wsId);
 
     // ── Folder context-menu state ──────────────────────────────────────
@@ -67,6 +73,84 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
         (folder: TaskFolder, x: number, y: number) => setFolderCtxMenu({ folder, x, y }),
         []
     );
+
+    // ── Folder dialog state ────────────────────────────────────────────
+    type FolderDialogAction = 'rename' | 'create-subfolder' | 'create-task' | 'delete' | 'follow-prompt' | null;
+
+    const [folderDialog, setFolderDialog] = useState<{
+        action: FolderDialogAction;
+        folder: TaskFolder | null;
+        submitting: boolean;
+    }>({ action: null, folder: null, submitting: false });
+
+    const closeFolderDialog = useCallback(
+        () => setFolderDialog({ action: null, folder: null, submitting: false }),
+        []
+    );
+
+    const handleFolderContextMenuAction = useCallback(
+        (actionKey: string, folder: TaskFolder) => {
+            setFolderCtxMenu(null);
+            if (actionKey === 'rename') setFolderDialog({ action: 'rename', folder, submitting: false });
+            if (actionKey === 'create-subfolder') setFolderDialog({ action: 'create-subfolder', folder, submitting: false });
+            if (actionKey === 'create-task') setFolderDialog({ action: 'create-task', folder, submitting: false });
+            if (actionKey === 'delete') setFolderDialog({ action: 'delete', folder, submitting: false });
+            if (actionKey === 'follow-prompt') setFolderDialog({ action: 'follow-prompt', folder, submitting: false });
+        },
+        []
+    );
+
+    const handleRename = useCallback(async (newName: string) => {
+        if (!folderDialog.folder) return;
+        setFolderDialog(s => ({ ...s, submitting: true }));
+        try {
+            await folderActions.renameFolder(folderDialog.folder.relativePath, newName);
+            refresh();
+            closeFolderDialog();
+        } catch (err: any) {
+            addToast(err.message || 'Rename failed', 'error');
+            setFolderDialog(s => ({ ...s, submitting: false }));
+        }
+    }, [folderDialog.folder, folderActions, refresh, closeFolderDialog, addToast]);
+
+    const handleCreateSubfolder = useCallback(async (name: string) => {
+        if (!folderDialog.folder) return;
+        setFolderDialog(s => ({ ...s, submitting: true }));
+        try {
+            await folderActions.createSubfolder(folderDialog.folder.relativePath, name);
+            refresh();
+            closeFolderDialog();
+        } catch (err: any) {
+            addToast(err.message || 'Create subfolder failed', 'error');
+            setFolderDialog(s => ({ ...s, submitting: false }));
+        }
+    }, [folderDialog.folder, folderActions, refresh, closeFolderDialog, addToast]);
+
+    const handleCreateTask = useCallback(async (taskName: string) => {
+        if (!folderDialog.folder) return;
+        setFolderDialog(s => ({ ...s, submitting: true }));
+        try {
+            await folderActions.createTask(folderDialog.folder.relativePath, taskName);
+            refresh();
+            closeFolderDialog();
+        } catch (err: any) {
+            addToast(err.message || 'Create task failed', 'error');
+            setFolderDialog(s => ({ ...s, submitting: false }));
+        }
+    }, [folderDialog.folder, folderActions, refresh, closeFolderDialog, addToast]);
+
+    const handleDelete = useCallback(async () => {
+        if (!folderDialog.folder) return;
+        setFolderDialog(s => ({ ...s, submitting: true }));
+        try {
+            await folderActions.deleteFolder(folderDialog.folder.relativePath);
+            refresh();
+            closeFolderDialog();
+        } catch (err: any) {
+            addToast(err.message || 'Delete failed', 'error');
+            setFolderDialog(s => ({ ...s, submitting: false }));
+        }
+    }, [folderDialog.folder, folderActions, refresh, closeFolderDialog, addToast]);
 
     useEffect(() => {
         scrollToEnd(scrollRef.current);
@@ -103,8 +187,9 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
     // ── Build folder context-menu items ────────────────────────────────
     const ws = appState.workspaces.find((w: any) => w.id === wsId);
     const folderMenuItems: ContextMenuItem[] = folderCtxMenu ? (() => {
-        const folderPath = folderCtxMenu.folder.relativePath || folderCtxMenu.folder.name;
-        const isArchived = (folderCtxMenu.folder.relativePath ?? '').startsWith('archive');
+        const folder = folderCtxMenu.folder;
+        const folderPath = folder.relativePath || folder.name;
+        const isArchived = (folder.relativePath ?? '').startsWith('archive');
         return [
             {
                 label: 'Copy Path',
@@ -126,7 +211,7 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
             {
                 label: 'Queue All Tasks',
                 icon: '▶',
-                disabled: countMarkdownFilesInFolder(folderCtxMenu.folder) === 0,
+                disabled: countMarkdownFilesInFolder(folder) === 0,
                 onClick: () => {
                     queueDispatch({ type: 'OPEN_DIALOG', folderPath });
                 },
@@ -142,6 +227,31 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
                     }
                     refresh();
                 },
+            },
+            {
+                label: 'Rename Folder',
+                icon: '✏️',
+                onClick: () => handleFolderContextMenuAction('rename', folder),
+            },
+            {
+                label: 'Create Subfolder',
+                icon: '📁',
+                onClick: () => handleFolderContextMenuAction('create-subfolder', folder),
+            },
+            {
+                label: 'Create Task in Folder',
+                icon: '📄',
+                onClick: () => handleFolderContextMenuAction('create-task', folder),
+            },
+            {
+                label: 'Delete Folder',
+                icon: '🗑️',
+                onClick: () => handleFolderContextMenuAction('delete', folder),
+            },
+            {
+                label: 'Bulk Follow Prompt',
+                icon: '🤖',
+                onClick: () => handleFolderContextMenuAction('follow-prompt', folder),
             },
         ];
     })() : [];
@@ -186,6 +296,86 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
                     position={{ x: folderCtxMenu.x, y: folderCtxMenu.y }}
                     items={folderMenuItems}
                     onClose={() => setFolderCtxMenu(null)}
+                />
+            )}
+
+            {/* Rename Folder dialog */}
+            {folderDialog.action === 'rename' && folderDialog.folder && (
+                <FolderActionDialog
+                    open
+                    title="Rename Folder"
+                    label="New name"
+                    initialValue={folderDialog.folder.name}
+                    placeholder="Enter new folder name"
+                    confirmLabel="Rename"
+                    submitting={folderDialog.submitting}
+                    onClose={closeFolderDialog}
+                    onConfirm={handleRename}
+                />
+            )}
+
+            {/* Create Subfolder dialog */}
+            {folderDialog.action === 'create-subfolder' && folderDialog.folder && (
+                <FolderActionDialog
+                    open
+                    title="Create Subfolder"
+                    label="Subfolder name"
+                    initialValue=""
+                    placeholder="Enter subfolder name"
+                    confirmLabel="Create"
+                    submitting={folderDialog.submitting}
+                    onClose={closeFolderDialog}
+                    onConfirm={handleCreateSubfolder}
+                />
+            )}
+
+            {/* Create Task in Folder dialog */}
+            {folderDialog.action === 'create-task' && folderDialog.folder && (
+                <FolderActionDialog
+                    open
+                    title="Create Task in Folder"
+                    label="Task name"
+                    initialValue=""
+                    placeholder="Enter task name"
+                    confirmLabel="Create"
+                    submitting={folderDialog.submitting}
+                    onClose={closeFolderDialog}
+                    onConfirm={handleCreateTask}
+                />
+            )}
+
+            {/* Delete Folder confirmation dialog */}
+            {folderDialog.action === 'delete' && folderDialog.folder && (
+                <Dialog
+                    open
+                    onClose={closeFolderDialog}
+                    title="Delete Folder"
+                    footer={
+                        <>
+                            <Button variant="secondary" onClick={closeFolderDialog}>Cancel</Button>
+                            <Button
+                                variant="danger"
+                                loading={folderDialog.submitting}
+                                onClick={handleDelete}
+                            >
+                                Delete
+                            </Button>
+                        </>
+                    }
+                >
+                    Are you sure you want to delete{' '}
+                    <strong>{folderDialog.folder.name}</strong> and all its contents?
+                    This cannot be undone.
+                </Dialog>
+            )}
+
+            {/* Bulk Follow Prompt dialog */}
+            {folderDialog.action === 'follow-prompt' && folderDialog.folder && (
+                <FollowPromptDialog
+                    wsId={wsId}
+                    taskPath={folderDialog.folder.relativePath}
+                    taskName={folderDialog.folder.name}
+                    onClose={closeFolderDialog}
                 />
             )}
         </div>

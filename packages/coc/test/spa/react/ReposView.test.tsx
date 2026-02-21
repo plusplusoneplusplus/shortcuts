@@ -7,6 +7,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
 import { QueueProvider } from '../../../src/server/spa/client/react/context/QueueContext';
+import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
 import {
     normalizeRemoteUrl,
     remoteUrlLabel,
@@ -26,7 +27,15 @@ import { ReposGrid } from '../../../src/server/spa/client/react/repos/ReposGrid'
 import { RepoDetail } from '../../../src/server/spa/client/react/repos/RepoDetail';
 
 function Wrap({ children }: { children: ReactNode }) {
-    return <AppProvider><QueueProvider>{children}</QueueProvider></AppProvider>;
+    return (
+        <AppProvider>
+            <QueueProvider>
+                <ToastProvider value={{ addToast: vi.fn(), removeToast: vi.fn(), toasts: [] }}>
+                    {children}
+                </ToastProvider>
+            </QueueProvider>
+        </AppProvider>
+    );
 }
 
 function makeRepo(overrides: Partial<RepoData> & { workspace: any }): RepoData {
