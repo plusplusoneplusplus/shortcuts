@@ -251,6 +251,87 @@ describe('Queue Handler', () => {
             expect(body.task.payload.workingDirectory).toBe('/payload/path');
         });
 
+        it('should promote top-level prompt into payload', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(`${srv.url}/api/queue`, {
+                type: 'chat',
+                prompt: 'What does this repo do?',
+                workingDirectory: '/some/path',
+                displayName: 'Chat',
+            });
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.payload.prompt).toBe('What does this repo do?');
+        });
+
+        it('should not overwrite payload.prompt with top-level value', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(`${srv.url}/api/queue`, {
+                type: 'chat',
+                prompt: 'top-level prompt',
+                payload: { prompt: 'payload prompt' },
+                displayName: 'Chat',
+            });
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.payload.prompt).toBe('payload prompt');
+        });
+
+        it('should promote both prompt and workingDirectory into payload for chat tasks', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(`${srv.url}/api/queue`, {
+                type: 'chat',
+                prompt: 'Explain the architecture',
+                workingDirectory: '/Users/dev/repo',
+                displayName: 'Chat',
+            });
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.payload.prompt).toBe('Explain the architecture');
+            expect(body.task.payload.workingDirectory).toBe('/Users/dev/repo');
+        });
+
+        it('should trim whitespace from promoted prompt', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(`${srv.url}/api/queue`, {
+                type: 'chat',
+                prompt: '  hello world  ',
+                displayName: 'Chat',
+            });
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.payload.prompt).toBe('hello world');
+        });
+
+        it('should not promote empty or whitespace-only prompt', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(`${srv.url}/api/queue`, {
+                type: 'chat',
+                prompt: '   ',
+                displayName: 'Chat',
+            });
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.payload.prompt).toBeUndefined();
+        });
+
+        it('should promote top-level prompt for ai-clarification type', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(`${srv.url}/api/queue`, {
+                type: 'ai-clarification',
+                prompt: 'Explain this function',
+            });
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.payload.prompt).toBe('Explain this function');
+        });
+
         it('should enqueue resolve-comments type', async () => {
             const srv = await startServer();
 

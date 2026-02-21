@@ -129,7 +129,13 @@ function validateAndParseTask(taskSpec: any): TaskValidationResult {
         ? taskSpec.priority
         : 'normal';
 
-    const payload = taskSpec.payload || { data: {} };
+    const payload = taskSpec.payload || {};
+
+    // Promote top-level prompt into payload when not already present
+    if (typeof taskSpec.prompt === 'string' && taskSpec.prompt.trim()
+        && !payload.prompt) {
+        payload.prompt = taskSpec.prompt.trim();
+    }
 
     // Promote top-level workingDirectory into payload when not already present
     if (typeof taskSpec.workingDirectory === 'string' && taskSpec.workingDirectory.trim()

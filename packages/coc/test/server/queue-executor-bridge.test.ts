@@ -221,6 +221,102 @@ describe('CLITaskExecutor', () => {
     });
 
     // ========================================================================
+    // Chat Tasks (promoted prompt from top-level)
+    // ========================================================================
+
+    describe('chat tasks with promoted prompt', () => {
+        it('should use promoted prompt from payload for chat tasks', async () => {
+            const executor = new CLITaskExecutor(store);
+
+            const task: QueuedTask = {
+                id: 'chat-1',
+                type: 'chat',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: { prompt: 'What does this repo do?' },
+                config: {},
+                displayName: 'Chat',
+            };
+
+            const result = await executor.execute(task);
+
+            expect(result.success).toBe(true);
+            expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+                prompt: 'What does this repo do?',
+            }));
+
+            const addedProcess = (store.addProcess as any).mock.calls[0][0];
+            expect(addedProcess.fullPrompt).toBe('What does this repo do?');
+        });
+
+        it('should use promoted prompt with workingDirectory for chat tasks', async () => {
+            const executor = new CLITaskExecutor(store);
+
+            const task: QueuedTask = {
+                id: 'chat-2',
+                type: 'chat',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: { prompt: 'Explain the architecture', workingDirectory: '/my/repo' },
+                config: {},
+                displayName: 'Chat',
+            };
+
+            await executor.execute(task);
+
+            expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+                prompt: 'Explain the architecture',
+                workingDirectory: '/my/repo',
+            }));
+        });
+
+        it('should store correct user turn content for chat tasks', async () => {
+            const executor = new CLITaskExecutor(store);
+
+            const task: QueuedTask = {
+                id: 'chat-3',
+                type: 'chat',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: { prompt: 'How do I build this project?' },
+                config: {},
+                displayName: 'Chat',
+            };
+
+            await executor.execute(task);
+
+            const addedProcess = (store.addProcess as any).mock.calls[0][0];
+            expect(addedProcess.conversationTurns).toHaveLength(1);
+            expect(addedProcess.conversationTurns[0].role).toBe('user');
+            expect(addedProcess.conversationTurns[0].content).toBe('How do I build this project?');
+        });
+
+        it('should fall back to displayName when chat payload has no prompt', async () => {
+            const executor = new CLITaskExecutor(store);
+
+            const task: QueuedTask = {
+                id: 'chat-4',
+                type: 'chat',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: {},
+                config: {},
+                displayName: 'Chat',
+            };
+
+            const result = await executor.execute(task);
+
+            expect(result.success).toBe(true);
+            const addedProcess = (store.addProcess as any).mock.calls[0][0];
+            expect(addedProcess.fullPrompt).toBe('Chat');
+        });
+    });
+
+    // ========================================================================
     // Follow-Prompt Tasks
     // ========================================================================
 
