@@ -32,15 +32,13 @@ const STATUS_ICONS: Record<string, string> = {
 const MAX_RESULT_LENGTH = 5000;
 const TRUNCATED_LENGTH = 4900;
 
-/* ── Duration formatting ──────────────────────────────────── */
+/* ── Timestamp formatting ─────────────────────────────────── */
 
-function formatToolDuration(startTime?: string, endTime?: string): string {
+function formatToolTimestamp(startTime?: string): string {
     if (!startTime) return '';
-    const start = new Date(startTime).getTime();
-    const end = endTime ? new Date(endTime).getTime() : Date.now();
-    const ms = end - start;
-    if (ms < 1000) return ms + 'ms';
-    return (ms / 1000).toFixed(1) + 's';
+    const d = new Date(startTime);
+    if (!Number.isFinite(d.getTime())) return '';
+    return d.toLocaleTimeString();
 }
 
 /* ── Syntax highlighting (simple regex) ───────────────────── */
@@ -298,16 +296,8 @@ function renderGroupHTML(calls: ClientToolCall[]): string {
     }
     const sIcon = STATUS_ICONS[groupStatus] || '';
 
-    // Total duration: first start to last end
-    let totalDuration = '';
-    const starts = calls.filter(c => c.startTime).map(c => new Date(c.startTime!).getTime());
-    const ends = calls.filter(c => c.endTime).map(c => new Date(c.endTime!).getTime());
-    if (starts.length > 0) {
-        const start = Math.min(...starts);
-        const end = ends.length > 0 ? Math.max(...ends) : Date.now();
-        const ms = end - start;
-        totalDuration = ms < 1000 ? ms + 'ms' : (ms / 1000).toFixed(1) + 's';
-    }
+    // Timestamp: start time of the first call
+    const groupTimestamp = formatToolTimestamp(first.startTime);
 
     // Build sub-item labels
     const labels: string[] = [];
@@ -329,8 +319,8 @@ function renderGroupHTML(calls: ClientToolCall[]): string {
     }
     html += '</span>';
     html += '<span class="tool-call-status ' + groupStatus + '">' + sIcon + ' ' + groupStatus + '</span>';
-    if (totalDuration) {
-        html += '<span class="tool-call-duration">' + totalDuration + '</span>';
+    if (groupTimestamp) {
+        html += '<span class="tool-call-duration">' + groupTimestamp + '</span>';
     }
     html += '<button class="tool-call-toggle" aria-label="Expand tool details">\u25BC</button>';
     html += '</div>';
@@ -339,14 +329,14 @@ function renderGroupHTML(calls: ClientToolCall[]): string {
     html += '<div class="tool-call-body collapsed">';
     for (const c of calls) {
         const label = getGroupItemLabel(c);
-        const dur = formatToolDuration(c.startTime, c.endTime);
+        const ts = formatToolTimestamp(c.startTime);
         const si = STATUS_ICONS[c.status] || '';
 
         html += '<div class="tool-call-group-item" data-tool-id="' + escapeHtmlClient(c.id) + '">';
         html += '<div class="tool-call-group-item-header">';
         html += '<span class="tool-call-group-item-label">' + escapeHtmlClient(label || first.toolName) + '</span>';
         html += '<span class="tool-call-status ' + c.status + '">' + si + '</span>';
-        if (dur) html += '<span class="tool-call-duration">' + dur + '</span>';
+        if (ts) html += '<span class="tool-call-duration">' + ts + '</span>';
         html += '</div>';
 
         // Expandable detail for each sub-item
@@ -518,7 +508,7 @@ export function renderToolCallHTML(toolCall: ClientToolCall | any): string {
     const tc = normalizeToolCall(toolCall);
     const icon = TOOL_ICONS[tc.toolName] || DEFAULT_TOOL_ICON;
     const statusIcon = STATUS_ICONS[tc.status] || '';
-    const duration = formatToolDuration(tc.startTime, tc.endTime);
+    const duration = formatToolTimestamp(tc.startTime);
 
     let html = '<div class="tool-call-card" data-tool-id="' + escapeHtmlClient(tc.id) + '" data-status="' + tc.status + '">';
 
@@ -626,9 +616,9 @@ export function updateToolCallStatus(element: HTMLElement, toolCall: ClientToolC
         statusEl.textContent = statusIcon + ' ' + tc.status;
     }
 
-    // Update duration
+    // Update timestamp
     const durationEl = element.querySelector('.tool-call-duration');
-    const duration = formatToolDuration(tc.startTime, tc.endTime);
+    const duration = formatToolTimestamp(tc.startTime);
     if (durationEl) {
         durationEl.textContent = duration;
     } else if (duration) {

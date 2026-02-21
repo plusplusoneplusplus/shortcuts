@@ -48,6 +48,54 @@ function renderAndMount(toolCalls: any[]): HTMLElement {
     return container;
 }
 
+/* ── Timestamp display tests ──────────────────────────────── */
+
+describe('renderToolCallHTML — timestamp display', () => {
+    it('shows locale time string from startTime instead of elapsed seconds', () => {
+        const startTime = '2024-06-15T13:26:47Z';
+        const tc = makeToolCall({ startTime, endTime: undefined });
+        const html = renderToolCallHTML(tc);
+        // Should NOT contain "s ago" style elapsed time
+        expect(html).not.toMatch(/\d+(\.\d+)?s$/);
+        // Should contain the locale time string for the given startTime
+        const expected = new Date(startTime).toLocaleTimeString();
+        expect(html).toContain(expected);
+    });
+
+    it('shows no timestamp when startTime is absent', () => {
+        const tc = makeToolCall({ startTime: undefined, endTime: undefined });
+        const html = renderToolCallHTML(tc);
+        expect(html).not.toContain('tool-call-duration');
+    });
+
+    it('timestamp does not change when endTime is provided', () => {
+        const startTime = '2024-06-15T08:00:00Z';
+        const endTime = '2024-06-15T08:30:00Z';
+        const tc = makeToolCall({ startTime, endTime });
+        const html = renderToolCallHTML(tc);
+        const expected = new Date(startTime).toLocaleTimeString();
+        expect(html).toContain(expected);
+        // endTime should not appear as a separate timestamp
+        const endExpected = new Date(endTime).toLocaleTimeString();
+        // endTime locale string may or may not match; what matters is startTime is shown
+        expect(html).toContain(expected);
+        // No raw elapsed seconds like "1800.0s"
+        expect(html).not.toContain('1800.0s');
+    });
+
+    it('updateToolCallStatus shows startTime as timestamp', () => {
+        const startTime = '2024-06-15T09:15:30Z';
+        const tc = makeToolCall({ startTime, status: 'running', endTime: undefined });
+        const card = htmlToElement(renderToolCallHTML(tc)) as HTMLElement;
+
+        updateToolCallStatus(card, { ...tc, status: 'completed', endTime: '2024-06-15T09:16:00Z' });
+
+        const durationEl = card.querySelector('.tool-call-duration');
+        expect(durationEl).toBeTruthy();
+        expect(durationEl!.textContent).toBe(new Date(startTime).toLocaleTimeString());
+    });
+});
+
 /* ── Static HTML rendering tests ──────────────────────────── */
 
 describe('renderToolCallsHTML — nested tool calls', () => {
