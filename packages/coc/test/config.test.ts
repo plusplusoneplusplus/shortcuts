@@ -18,13 +18,10 @@ vi.mock('os', async (importOriginal) => {
 import {
     CONFIG_FILE_NAME,
     COC_DIR,
-    LEGACY_CONFIG_FILE_NAME,
     DEFAULT_CONFIG,
     CONFIG_SOURCE_KEYS,
     getConfigFilePath,
-    getLegacyConfigFilePath,
     loadConfigFile,
-    migrateConfigIfNeeded,
     resolveConfig,
     mergeConfig,
     getResolvedConfigWithSource,
@@ -40,10 +37,6 @@ describe('Config', () => {
     describe('Constants', () => {
         it('should have correct config file name', () => {
             expect(CONFIG_FILE_NAME).toBe('config.yaml');
-        });
-
-        it('should have correct legacy config file name', () => {
-            expect(LEGACY_CONFIG_FILE_NAME).toBe('.coc.yaml');
         });
 
         it('should have correct coc directory name', () => {
@@ -70,17 +63,6 @@ describe('Config', () => {
         it('should return path in ~/.coc/ directory', () => {
             const result = getConfigFilePath();
             expect(result).toBe(path.join(os.homedir(), '.coc', 'config.yaml'));
-        });
-    });
-
-    // ========================================================================
-    // getLegacyConfigFilePath
-    // ========================================================================
-
-    describe('getLegacyConfigFilePath', () => {
-        it('should return legacy path in home directory', () => {
-            const result = getLegacyConfigFilePath();
-            expect(result).toBe(path.join(os.homedir(), '.coc.yaml'));
         });
     });
 
@@ -258,60 +240,16 @@ timeout: 300
             expect(result!.model).toBe('new-location');
         });
 
-        it('should fall back to legacy location (~/.coc.yaml) when new location absent', () => {
+        it('should ignore ~/.coc.yaml (legacy path no longer supported)', () => {
             fs.writeFileSync(path.join(fakeHome, '.coc.yaml'), 'model: legacy-location\n');
 
-            const result = loadConfigFile();
-            expect(result).toBeDefined();
-            expect(result!.model).toBe('legacy-location');
-        });
-
-        it('should prefer new location over legacy when both exist', () => {
-            const cocDir = path.join(fakeHome, '.coc');
-            fs.mkdirSync(cocDir, { recursive: true });
-            fs.writeFileSync(path.join(cocDir, 'config.yaml'), 'model: from-new\n');
-            fs.writeFileSync(path.join(fakeHome, '.coc.yaml'), 'model: from-legacy\n');
-
-            const result = loadConfigFile();
-            expect(result).toBeDefined();
-            expect(result!.model).toBe('from-new');
-        });
-
-        it('should auto-migrate legacy config to new location', () => {
-            fs.writeFileSync(path.join(fakeHome, '.coc.yaml'), 'model: migrated\ntimeout: 60\n');
-
-            loadConfigFile();
-
-            const newPath = path.join(fakeHome, '.coc', 'config.yaml');
-            expect(fs.existsSync(newPath)).toBe(true);
-            const content = fs.readFileSync(newPath, 'utf-8');
-            expect(content).toContain('model: migrated');
-            expect(content).toContain('timeout: 60');
-        });
-
-        it('should not overwrite new config during migration when both exist', () => {
-            const cocDir = path.join(fakeHome, '.coc');
-            fs.mkdirSync(cocDir, { recursive: true });
-            fs.writeFileSync(path.join(cocDir, 'config.yaml'), 'model: keep-this\n');
-            fs.writeFileSync(path.join(fakeHome, '.coc.yaml'), 'model: do-not-overwrite\n');
-
-            migrateConfigIfNeeded();
-
-            const content = fs.readFileSync(path.join(cocDir, 'config.yaml'), 'utf-8');
-            expect(content).toContain('model: keep-this');
-        });
-
-        it('should return undefined when neither location has config', () => {
             const result = loadConfigFile();
             expect(result).toBeUndefined();
         });
 
-        it('should preserve legacy file after migration (copy, not move)', () => {
-            fs.writeFileSync(path.join(fakeHome, '.coc.yaml'), 'model: preserved\n');
-
-            loadConfigFile();
-
-            expect(fs.existsSync(path.join(fakeHome, '.coc.yaml'))).toBe(true);
+        it('should return undefined when no config exists', () => {
+            const result = loadConfigFile();
+            expect(result).toBeUndefined();
         });
     });
 

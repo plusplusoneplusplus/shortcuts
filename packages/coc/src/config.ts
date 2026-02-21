@@ -3,7 +3,6 @@
  *
  * Resolves CLI configuration from config files and environment variables.
  * Configuration file: ~/.coc/config.yaml
- * Legacy fallback: ~/.coc.yaml (auto-migrated on first load)
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
@@ -76,9 +75,6 @@ export const COC_DIR = '.coc';
 /** Default configuration file name (within COC_DIR) */
 export const CONFIG_FILE_NAME = 'config.yaml';
 
-/** Legacy configuration file name (in home root) */
-export const LEGACY_CONFIG_FILE_NAME = '.coc.yaml';
-
 /** Default configuration values */
 export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     parallel: 5,
@@ -133,53 +129,12 @@ export function getConfigFilePath(): string {
 }
 
 /**
- * Get the path to the legacy config file (~/.coc.yaml)
- */
-export function getLegacyConfigFilePath(): string {
-    return path.join(os.homedir(), LEGACY_CONFIG_FILE_NAME);
-}
-
-/**
- * Migrate config from legacy location (~/.coc.yaml) to new location (~/.coc/config.yaml)
- * if the old file exists and the new one does not. Copies (not moves) the old file.
- */
-export function migrateConfigIfNeeded(): void {
-    const newPath = getConfigFilePath();
-    const legacyPath = getLegacyConfigFilePath();
-    try {
-        if (fs.existsSync(legacyPath) && !fs.existsSync(newPath)) {
-            const dir = path.dirname(newPath);
-            fs.mkdirSync(dir, { recursive: true });
-            fs.copyFileSync(legacyPath, newPath);
-        }
-    } catch {
-        // Silently ignore migration errors — fallback will still work
-    }
-}
-
-/**
- * Load CLI configuration from the config file
+ * Load CLI configuration from the config file (~/.coc/config.yaml).
  * Returns undefined if the file doesn't exist or can't be parsed.
- * When no explicit configPath is provided, tries ~/.coc/config.yaml first,
- * falls back to ~/.coc.yaml, and auto-migrates the legacy file.
+ * When no explicit configPath is provided, loads from ~/.coc/config.yaml.
  */
 export function loadConfigFile(configPath?: string): CLIConfig | undefined {
-    if (configPath) {
-        return loadConfigFromPath(configPath);
-    }
-
-    // Auto-migrate legacy config if needed
-    migrateConfigIfNeeded();
-
-    // Try new location first — if it exists but is invalid, fail fast
-    const newPath = getConfigFilePath();
-    const result = loadConfigFromPath(newPath);
-    if (result !== undefined) {
-        return result;
-    }
-
-    // Fall back to legacy location
-    return loadConfigFromPath(getLegacyConfigFilePath());
+    return loadConfigFromPath(configPath ?? getConfigFilePath());
 }
 
 /**
