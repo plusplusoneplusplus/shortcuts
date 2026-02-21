@@ -311,35 +311,37 @@ export class PipelinePreviewEditorProvider implements vscode.CustomTextEditorPro
 
             try {
                 // Support both inline items, CSV source, and inline array from
-                if (isCSVSource(config.input?.from)) {
-                    const csvPath = resolveCSVPath(config.input.from.path, packagePath);
+                if (config.input) {
+                    if (isCSVSource(config.input.from)) {
+                        const csvPath = resolveCSVPath(config.input.from.path, packagePath);
 
-                    if (fs.existsSync(csvPath)) {
-                        csvInfo = await readCSVFile(csvPath, {
-                            delimiter: config.input.from.delimiter
-                        });
+                        if (fs.existsSync(csvPath)) {
+                            csvInfo = await readCSVFile(csvPath, {
+                                delimiter: config.input.from.delimiter
+                            });
+                            csvPreview = getCSVPreview(csvInfo, 5);
+                        }
+                    } else if (Array.isArray(config.input.from) && config.input.from.length > 0) {
+                        // For inline array from, create pseudo-CSV info for preview
+                        const items = config.input.from as PromptItem[];
+                        const headers = Object.keys(items[0]);
+                        csvInfo = {
+                            items: items,
+                            headers: headers,
+                            rowCount: items.length
+                        };
                         csvPreview = getCSVPreview(csvInfo, 5);
+                    } else if (config.input.items && config.input.items.length > 0) {
+                        // For inline items, we can create a pseudo-CSV info for preview
+                        const items = config.input.items;
+                        const headers = Object.keys(items[0]);
+                        csvInfo = {
+                            items: items,
+                            headers: headers,
+                            rowCount: items.length
+                        };
+                        csvPreview = items.slice(0, 5);
                     }
-                } else if (Array.isArray(config.input?.from) && config.input.from.length > 0) {
-                    // For inline array from, create pseudo-CSV info for preview
-                    const items = config.input.from as PromptItem[];
-                    const headers = Object.keys(items[0]);
-                    csvInfo = {
-                        items: items,
-                        headers: headers,
-                        rowCount: items.length
-                    };
-                    csvPreview = getCSVPreview(csvInfo, 5);
-                } else if (config.input?.items && config.input.items.length > 0) {
-                    // For inline items, we can create a pseudo-CSV info for preview
-                    const items = config.input.items;
-                    const headers = Object.keys(items[0]);
-                    csvInfo = {
-                        items: items,
-                        headers: headers,
-                        rowCount: items.length
-                    };
-                    csvPreview = items.slice(0, 5);
                 }
             } catch (csvError) {
                 console.warn('Failed to read input:', csvError);

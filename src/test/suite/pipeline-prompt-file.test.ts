@@ -66,6 +66,7 @@ reduce:
       const config = await parsePipelineYAML(yaml);
 
       assert.strictEqual(config.name, 'Test Pipeline');
+      assert.ok(config.map);
       assert.strictEqual(config.map.promptFile, 'analyze.prompt.md');
       assert.strictEqual(config.map.prompt, undefined);
     });
@@ -85,6 +86,7 @@ reduce:
 `;
       const config = await parsePipelineYAML(yaml);
 
+      assert.ok(config.map);
       assert.strictEqual(config.map.prompt, 'Analyze {{title}}');
       assert.strictEqual(config.map.promptFile, undefined);
     });
@@ -107,6 +109,7 @@ reduce:
 `;
       const config = await parsePipelineYAML(yaml);
 
+      assert.ok(config.reduce);
       assert.strictEqual(config.reduce.type, 'ai');
       assert.strictEqual(config.reduce.promptFile, 'prompts/reduce.prompt.md');
       assert.strictEqual(config.reduce.prompt, undefined);
@@ -220,6 +223,7 @@ reduce:
   type: json
 `;
       const config = await parsePipelineYAML(yaml);
+      assert.ok(config.reduce);
       assert.strictEqual(config.reduce.type, 'json');
       assert.strictEqual(config.reduce.prompt, undefined);
       assert.strictEqual(config.reduce.promptFile, undefined);
@@ -242,6 +246,7 @@ reduce:
 `;
       const config = parsePipelineYAMLSync(yaml);
 
+      assert.ok(config.map);
       assert.strictEqual(config.map.promptFile, 'analyze.prompt.md');
     });
 
@@ -287,6 +292,7 @@ reduce:
   type: list
 `;
       const config = await parsePipelineYAML(yaml);
+      assert.ok(config.map);
       assert.strictEqual(config.map.promptFile, 'run-test.prompt.md');
     });
 
@@ -307,6 +313,8 @@ reduce:
     - summary
 `;
       const config = await parsePipelineYAML(yaml);
+      assert.ok(config.map);
+      assert.ok(config.reduce);
       assert.strictEqual(config.map.promptFile, 'prompts/analyze.prompt.md');
       assert.strictEqual(config.reduce.promptFile, 'prompts/summarize.prompt.md');
     });
@@ -325,6 +333,7 @@ reduce:
   type: json
 `;
       const config = await parsePipelineYAML(yaml);
+      assert.ok(config.map);
       assert.strictEqual(config.map.promptFile, '../shared/prompts/code-review.prompt.md');
     });
   });
@@ -344,6 +353,7 @@ reduce:
   type: json
 `;
       const config = await parsePipelineYAML(yaml);
+      assert.ok(config.map);
       assert.strictEqual(config.map.promptFile, 'prompts/my-special_prompt.v2.prompt.md');
     });
 
@@ -360,6 +370,7 @@ reduce:
   type: text
 `;
       const config = await parsePipelineYAML(yaml);
+      assert.ok(config.map);
       assert.strictEqual(config.map.promptFile, 'analyze.prompt.md');
       assert.deepStrictEqual(config.map.output, []);
     });
@@ -376,6 +387,7 @@ reduce:
   type: text
 `;
       const config = await parsePipelineYAML(yaml);
+      assert.ok(config.map);
       assert.strictEqual(config.map.promptFile, 'analyze.prompt.md');
       assert.strictEqual(config.map.output, undefined);
     });

@@ -92,6 +92,9 @@ export function generatePipelineMermaid(
     resources?: ResourceFileInfo[],
     options?: MermaidGenerationOptions
 ): string {
+    if (!config.input || !config.map || !config.reduce) {
+        return 'graph TB\n    INPUT["No valid config"]';
+    }
     const opts = { ...DEFAULT_OPTIONS, ...options };
     const lines: string[] = [];
 
@@ -99,7 +102,7 @@ export function generatePipelineMermaid(
     lines.push('graph TB');
 
     // Check if this is a generate pipeline
-    const hasGenerateConfig = config.input?.generate && 
+    const hasGenerateConfig = config.input.generate && 
         typeof config.input.generate === 'object' &&
         'prompt' in config.input.generate &&
         'schema' in config.input.generate;
@@ -236,6 +239,7 @@ function buildInputNodeLabel(
     csvInfo?: CSVParseResult,
     opts?: MermaidGenerationOptions
 ): string {
+    if (!config.input) return escapeMermaidLabel('📥 INPUT<br/>UNKNOWN');
     const parts: string[] = ['📥 INPUT'];
     
     // Determine input type based on new config structure
@@ -292,6 +296,7 @@ function buildMapNodeLabel(
     config: PipelineConfig,
     opts?: MermaidGenerationOptions
 ): string {
+    if (!config.map) return escapeMermaidLabel('🔄 MAP<br/>Unknown');
     const parts: string[] = ['🔄 MAP'];
     parts.push('AI Processing');
 
@@ -307,6 +312,7 @@ function buildMapNodeLabel(
  * Build the label for the REDUCE node
  */
 function buildReduceNodeLabel(config: PipelineConfig): string {
+    if (!config.reduce) return escapeMermaidLabel('📤 REDUCE<br/>Unknown');
     const parts: string[] = ['📤 REDUCE'];
     parts.push(`Type: ${config.reduce.type}`);
 
@@ -390,6 +396,9 @@ export function generatePipelineTextDiagram(
     config: PipelineConfig,
     csvInfo?: CSVParseResult
 ): string {
+    if (!config.input || !config.map || !config.reduce) {
+        return 'Pipeline Flow:\n\n  No valid config';
+    }
     const lines: string[] = [];
     
     // Determine input type based on new config structure

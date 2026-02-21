@@ -395,6 +395,10 @@ export class PipelineResultViewerProvider {
             vscode.window.showErrorMessage('Pipeline configuration not available. Cannot retry.');
             return;
         }
+        if (!data.pipelineConfig.map) {
+            vscode.window.showErrorMessage('Map configuration not available. Cannot retry.');
+            return;
+        }
 
         // Get max retry attempts from settings
         const maxRetryAttempts = vscode.workspace.getConfiguration('workspaceShortcuts.pipeline')
@@ -594,6 +598,16 @@ export class PipelineResultViewerProvider {
         config: PipelineConfig,
         aiInvoker: AIInvoker
     ): Promise<PipelineItemResultNode> {
+        if (!config.map) {
+            return {
+                ...item,
+                success: false,
+                error: 'Map configuration not available',
+                retryCount: (item.retryCount ?? 0) + 1,
+                originalError: item.originalError || item.error,
+                retriedAt: new Date()
+            };
+        }
         const timeoutMs = config.map.timeoutMs ?? DEFAULT_AI_TIMEOUT_MS;
         const outputFields = config.map.output || [];
         const isTextMode = outputFields.length === 0;

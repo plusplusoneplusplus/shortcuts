@@ -563,6 +563,7 @@ export function getInputDetails(
     csvAllItems?: PromptItem[],
     showAllRows?: boolean
 ): string {
+    if (!config.input) return '';
     const headers = csvInfo?.headers || [];
     const rowCount = csvInfo?.rowCount || 0;
     
@@ -688,6 +689,7 @@ function getCSVPreviewTable(
  * Generate MAP node details
  */
 export function getMapDetails(config: PipelineConfig, csvHeaders?: string[]): string {
+    if (!config.map) return '';
     const parallel = config.map.parallel || 5;
     const promptContent = config.map.prompt || (config.map.promptFile ? `[From file: ${config.map.promptFile}]` : '');
     const variables = extractTemplateVariables(promptContent);
@@ -745,6 +747,7 @@ export function getMapDetails(config: PipelineConfig, csvHeaders?: string[]): st
  * Generate REDUCE node details
  */
 export function getReduceDetails(config: PipelineConfig, rowCount?: number): string {
+    if (!config.reduce) return '';
     const reduceDescriptions: Record<string, string> = {
         'json': 'Outputs all results as a JSON array',
         'list': 'Outputs results as a formatted list',
@@ -819,6 +822,7 @@ export function getReduceDetails(config: PipelineConfig, rowCount?: number): str
  * Generate output schema preview
  */
 function getOutputSchemaPreview(config: PipelineConfig): string {
+    if (!config.map) return '"raw text output"';
     const outputFields = config.map.output || [];
     if (outputFields.length === 0) {
         // Text mode - no structured schema
