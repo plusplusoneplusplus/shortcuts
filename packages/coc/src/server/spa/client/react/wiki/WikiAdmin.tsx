@@ -156,7 +156,7 @@ function GenerateTab({ wikiId }: { wikiId: string }) {
 
     useEffect(() => { loadCacheStatus(); }, [loadCacheStatus]);
 
-    const runPhase = useCallback((startPhase: number, endPhase: number) => {
+    const runPhase = useCallback((startPhase: number, endPhase: number, force = false) => {
         if (runningPhase !== null) return;
         setRunningPhase(startPhase);
         setLogs(prev => {
@@ -173,7 +173,7 @@ function GenerateTab({ wikiId }: { wikiId: string }) {
         fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ startPhase, endPhase }),
+            body: JSON.stringify({ startPhase, endPhase, ...(force ? { force: true } : {}) }),
             signal: controller.signal,
         }).then(async res => {
             if (!res.ok) {
@@ -239,8 +239,8 @@ function GenerateTab({ wikiId }: { wikiId: string }) {
         });
     }, [wikiId, runningPhase, loadCacheStatus]);
 
-    const runAll = useCallback(() => {
-        runPhase(fromPhase, 5);
+    const runAll = useCallback((force = false) => {
+        runPhase(fromPhase, 5, force);
     }, [runPhase, fromPhase]);
 
     const handleAbort = useCallback(() => {
@@ -274,7 +274,10 @@ function GenerateTab({ wikiId }: { wikiId: string }) {
                 {runningPhase !== null ? (
                     <Button variant="danger" size="sm" onClick={handleAbort}>Abort</Button>
                 ) : (
-                    <Button size="sm" onClick={runAll}>Run All</Button>
+                    <>
+                        <Button size="sm" onClick={() => runAll(false)}>Run All</Button>
+                        <Button size="sm" variant="secondary" onClick={() => runAll(true)} id="force-run-all">Force All</Button>
+                    </>
                 )}
             </div>
 
@@ -296,6 +299,18 @@ function GenerateTab({ wikiId }: { wikiId: string }) {
                                 <div className="text-[10px] text-[#848484]">{p.desc}</div>
                             </div>
                             <Badge status={cacheBadge.status} id={`phase-cache-${phase}`}>{cacheBadge.label}</Badge>
+                            {cacheBadge.label === 'Cached' && (
+                                <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    disabled={runningPhase !== null}
+                                    loading={isRunning}
+                                    onClick={() => runPhase(phase, phase, true)}
+                                    id={`phase-force-${phase}`}
+                                >
+                                    Force
+                                </Button>
+                            )}
                             <Button
                                 size="sm"
                                 variant="secondary"
