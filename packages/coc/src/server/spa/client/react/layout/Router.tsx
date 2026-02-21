@@ -75,6 +75,15 @@ export function parseProcessDeepLink(hash: string): string | null {
     return null;
 }
 
+export function parsePipelineDeepLink(hash: string): string | null {
+    const cleaned = hash.replace(/^#/, '');
+    const parts = cleaned.split('/');
+    if (parts[0] === 'repos' && parts[1] && parts[2] === 'pipelines' && parts[3]) {
+        return decodeURIComponent(parts[3]);
+    }
+    return null;
+}
+
 export const VALID_REPO_SUB_TABS: Set<string> = new Set(['info', 'pipelines', 'tasks', 'queue', 'schedules', 'chat']);
 
 export function Router() {
@@ -129,6 +138,14 @@ export function Router() {
                     dispatch({ type: 'SET_SELECTED_REPO', id: repoId });
                     if (parts.length >= 3 && VALID_REPO_SUB_TABS.has(parts[2])) {
                         dispatch({ type: 'SET_REPO_SUB_TAB', tab: parts[2] as RepoSubTab });
+                    }
+                    // Pipeline deep-link handling
+                    if (parts[2] === 'pipelines' && parts[3]) {
+                        dispatch({ type: 'SET_SELECTED_PIPELINE', name: decodeURIComponent(parts[3]) });
+                    } else if (parts[2] === 'pipelines') {
+                        dispatch({ type: 'SET_SELECTED_PIPELINE', name: null });
+                    } else if (parts[2] && parts[2] !== 'pipelines') {
+                        dispatch({ type: 'SET_SELECTED_PIPELINE', name: null });
                     }
                 }
             }

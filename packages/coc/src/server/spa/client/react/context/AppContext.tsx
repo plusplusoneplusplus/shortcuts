@@ -25,6 +25,7 @@ export interface AppContextState {
     wikiDetailInitialTab: string | null;
     wikiDetailInitialAdminTab: string | null;
     wikis: any[];
+    selectedPipelineName: string | null;
     conversationCache: Record<string, ConversationCacheEntry>;
 }
 
@@ -45,6 +46,7 @@ const initialState: AppContextState = {
     wikiDetailInitialTab: null,
     wikiDetailInitialAdminTab: null,
     wikis: [],
+    selectedPipelineName: null,
     conversationCache: {},
 };
 
@@ -82,7 +84,8 @@ export type AppAction =
     | { type: 'TOGGLE_GROUP'; key: string }
     | { type: 'CACHE_CONVERSATION'; processId: string; turns: any[] }
     | { type: 'APPEND_TURN'; processId: string; turn: any }
-    | { type: 'INVALIDATE_CONVERSATION'; processId: string };
+    | { type: 'INVALIDATE_CONVERSATION'; processId: string }
+    | { type: 'SET_SELECTED_PIPELINE'; name: string | null };
 
 // ── Reducer ────────────────────────────────────────────────────────────
 
@@ -220,6 +223,8 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             delete cache[action.processId];
             return { ...state, conversationCache: cache };
         }
+        case 'SET_SELECTED_PIPELINE':
+            return { ...state, selectedPipelineName: action.name };
         default:
             return state;
     }

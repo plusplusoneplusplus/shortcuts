@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { tabFromHash, VALID_REPO_SUB_TABS, VALID_WIKI_PROJECT_TABS, VALID_WIKI_ADMIN_TABS, parseProcessDeepLink, parseWikiDeepLink } from '../../../src/server/spa/client/react/layout/Router';
+import { tabFromHash, VALID_REPO_SUB_TABS, VALID_WIKI_PROJECT_TABS, VALID_WIKI_ADMIN_TABS, parseProcessDeepLink, parseWikiDeepLink, parsePipelineDeepLink } from '../../../src/server/spa/client/react/layout/Router';
 
 // ─── tabFromHash ─────────────────────────────────────────────────
 
@@ -486,5 +486,92 @@ describe('wiki tab deep-link integration', () => {
         expect(detail.wikiId).toBe('w1');
         expect(detail.tab).toBe('admin');
         expect(detail.adminTab).toBe('seeds');
+    });
+});
+
+// ─── parsePipelineDeepLink ──────────────────────────────────────
+
+describe('parsePipelineDeepLink', () => {
+    it('parses #repos/my-repo/pipelines/my-pipe', () => {
+        expect(parsePipelineDeepLink('#repos/my-repo/pipelines/my-pipe')).toBe('my-pipe');
+    });
+
+    it('URL-decodes the pipeline name', () => {
+        expect(parsePipelineDeepLink('#repos/my-repo/pipelines/my%20pipe')).toBe('my pipe');
+    });
+
+    it('returns null when pipeline name is missing', () => {
+        expect(parsePipelineDeepLink('#repos/my-repo/pipelines')).toBeNull();
+    });
+
+    it('returns null for non-pipelines sub-tab', () => {
+        expect(parsePipelineDeepLink('#repos/my-repo/info')).toBeNull();
+    });
+
+    it('returns null for non-repo hash', () => {
+        expect(parsePipelineDeepLink('#wiki/something')).toBeNull();
+    });
+
+    it('returns null for empty hash', () => {
+        expect(parsePipelineDeepLink('#')).toBeNull();
+    });
+
+    it('returns null for empty string', () => {
+        expect(parsePipelineDeepLink('')).toBeNull();
+    });
+
+    it('handles URL-encoded repo ID', () => {
+        expect(parsePipelineDeepLink('#repos/my%20repo/pipelines/pipe1')).toBe('pipe1');
+    });
+});
+
+// ─── handleHash pipeline integration (dispatch simulation) ──────
+
+describe('handleHash pipeline dispatch simulation', () => {
+    // Mirrors the repos-branch logic from Router's handleHash effect
+    function simulateHandleHash(rawHash: string): Array<{ type: string; [key: string]: any }> {
+        const dispatches: Array<{ type: string; [key: string]: any }> = [];
+        const hash = rawHash.replace(/^#/, '');
+        const tab = tabFromHash('#' + hash);
+        if (tab === 'repos') {
+            const parts = hash.split('/');
+            if (parts.length >= 2 && parts[0] === 'repos' && parts[1]) {
+                dispatches.push({ type: 'SET_SELECTED_REPO', id: decodeURIComponent(parts[1]) });
+                if (parts.length >= 3 && VALID_REPO_SUB_TABS.has(parts[2])) {
+                    dispatches.push({ type: 'SET_REPO_SUB_TAB', tab: parts[2] });
+                }
+                if (parts[2] === 'pipelines' && parts[3]) {
+                    dispatches.push({ type: 'SET_SELECTED_PIPELINE', name: decodeURIComponent(parts[3]) });
+                } else if (parts[2] === 'pipelines') {
+                    dispatches.push({ type: 'SET_SELECTED_PIPELINE', name: null });
+                } else if (parts[2] && parts[2] !== 'pipelines') {
+                    dispatches.push({ type: 'SET_SELECTED_PIPELINE', name: null });
+                }
+            }
+        }
+        return dispatches;
+    }
+
+    it('dispatches SET_SELECTED_PIPELINE with name for #repos/r1/pipelines/pipe1', () => {
+        const dispatches = simulateHandleHash('#repos/r1/pipelines/pipe1');
+        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'pipelines' });
+        expect(dispatches).toContainEqual({ type: 'SET_SELECTED_PIPELINE', name: 'pipe1' });
+    });
+
+    it('dispatches SET_SELECTED_PIPELINE with null for #repos/r1/pipelines (no name)', () => {
+        const dispatches = simulateHandleHash('#repos/r1/pipelines');
+        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'pipelines' });
+        expect(dispatches).toContainEqual({ type: 'SET_SELECTED_PIPELINE', name: null });
+    });
+
+    it('dispatches SET_SELECTED_PIPELINE with null for #repos/r1/tasks (different sub-tab)', () => {
+        const dispatches = simulateHandleHash('#repos/r1/tasks');
+        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'tasks' });
+        expect(dispatches).toContainEqual({ type: 'SET_SELECTED_PIPELINE', name: null });
+    });
+
+    it('does not dispatch SET_SELECTED_PIPELINE when no sub-tab', () => {
+        const dispatches = simulateHandleHash('#repos/r1');
+        expect(dispatches.find(d => d.type === 'SET_SELECTED_PIPELINE')).toBeUndefined();
     });
 });

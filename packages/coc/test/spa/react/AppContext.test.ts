@@ -21,6 +21,7 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         selectedWikiComponentId: null,
         wikiView: 'list',
         wikis: [],
+        selectedPipelineName: null,
         conversationCache: {},
         ...overrides,
     };
@@ -277,6 +278,26 @@ describe('AppContext reducer', () => {
         it('SELECT_PROCESS updates selectedId', () => {
             const result = appReducer(makeState(), { type: 'SELECT_PROCESS', id: 'p1' });
             expect(result.selectedId).toBe('p1');
+        });
+    });
+
+    // ── SET_SELECTED_PIPELINE ──────────────────────────────────────
+    describe('SET_SELECTED_PIPELINE', () => {
+        it('sets selectedPipelineName to a string', () => {
+            const result = appReducer(makeState(), { type: 'SET_SELECTED_PIPELINE', name: 'foo' });
+            expect(result.selectedPipelineName).toBe('foo');
+        });
+
+        it('clears selectedPipelineName to null', () => {
+            const state = makeState({ selectedPipelineName: 'bar' });
+            const result = appReducer(state, { type: 'SET_SELECTED_PIPELINE', name: null });
+            expect(result.selectedPipelineName).toBeNull();
+        });
+
+        it('overwrites existing selectedPipelineName', () => {
+            const state = makeState({ selectedPipelineName: 'old' });
+            const result = appReducer(state, { type: 'SET_SELECTED_PIPELINE', name: 'new' });
+            expect(result.selectedPipelineName).toBe('new');
         });
     });
 });
