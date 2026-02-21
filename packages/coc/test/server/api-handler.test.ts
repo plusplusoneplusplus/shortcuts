@@ -18,6 +18,7 @@ import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { createMockSDKService } from '../helpers/mock-sdk-service';
 
 // ============================================================================
 // Helpers
@@ -112,7 +113,8 @@ describe('API Handler', () => {
 
     async function startServer(): Promise<ExecutionServer> {
         const store = new FileProcessStore({ dataDir });
-        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+        const { service: mockAiService } = createMockSDKService();
+        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir, aiService: mockAiService as any });
         return server;
     }
 

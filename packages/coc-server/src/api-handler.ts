@@ -634,6 +634,19 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                 return handleAPIError(res, notFound('Process'));
             }
 
+            // Parse and validate body first so malformed requests get 400
+            // regardless of session state
+            let body: any;
+            try {
+                body = await parseBody(req);
+            } catch {
+                return handleAPIError(res, invalidJSON());
+            }
+
+            if (!body.content || typeof body.content !== 'string') {
+                return handleAPIError(res, missingFields(['content']));
+            }
+
             // Validate the process has an SDK session to follow up on
             if (!process.sdkSessionId) {
                 return handleAPIError(res, new APIError(409, 'Process has no SDK session — follow-up not supported', 'CONFLICT'));
@@ -646,17 +659,6 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
 
             if (!bridge) {
                 return handleAPIError(res, new APIError(501, 'Follow-up execution not available', 'NOT_IMPLEMENTED'));
-            }
-
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                return handleAPIError(res, invalidJSON());
-            }
-
-            if (!body.content || typeof body.content !== 'string') {
-                return handleAPIError(res, missingFields(['content']));
             }
 
             // Append user turn to conversationTurns

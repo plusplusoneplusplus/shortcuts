@@ -38,6 +38,18 @@ function supportsRecursiveWatch(): boolean {
 const HAS_RECURSIVE_WATCH = supportsRecursiveWatch();
 const itIfRecursive = HAS_RECURSIVE_WATCH ? it : it.skip;
 
+async function waitForCondition(
+    predicate: () => boolean,
+    timeoutMs = 3000,
+    intervalMs = 50,
+): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        if (predicate()) return;
+        await new Promise(resolve => setTimeout(resolve, intervalMs));
+    }
+}
+
 function createTestGraph(): ComponentGraph {
     return {
         project: {
@@ -168,7 +180,7 @@ describe('FileWatcher', () => {
                 repoPath: tmpDir,
                 wikiDir: tmpDir,
                 componentGraph: graph,
-                debounceMs: 100, // Short debounce for testing
+                debounceMs: 100,
                 onChange,
             });
 
@@ -180,8 +192,8 @@ describe('FileWatcher', () => {
                 'export function login() { /* updated */ }',
             );
 
-            // Wait for debounce
-            await new Promise(resolve => setTimeout(resolve, 500));
+            // Poll until onChange fires (fs.watch delivery can be slow under load)
+            await waitForCondition(() => onChange.mock.calls.length > 0, 5000);
 
             expect(onChange).toHaveBeenCalled();
             const affectedIds = onChange.mock.calls[0][0];
@@ -209,8 +221,8 @@ describe('FileWatcher', () => {
             await new Promise(resolve => setTimeout(resolve, 50));
             fs.writeFileSync(path.join(tmpDir, 'src', 'api', 'routes.ts'), 'change3');
 
-            // Wait for debounce
-            await new Promise(resolve => setTimeout(resolve, 500));
+            // Poll until onChange fires at least once
+            await waitForCondition(() => onChange.mock.calls.length > 0, 5000);
 
             // Should be called once (debounced)
             expect(onChange).toHaveBeenCalledTimes(1);
