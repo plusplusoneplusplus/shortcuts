@@ -298,7 +298,7 @@ describe('Folder context menu', () => {
         expect(screen.queryByTestId('context-menu')).toBeNull();
     });
 
-    it('context menu shows all eleven items', async () => {
+    it('context menu shows all eleven items with separators', async () => {
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
         await waitFor(() => {
             expect(screen.getByTestId('task-tree-item-feature1')).toBeTruthy();
@@ -316,6 +316,10 @@ describe('Folder context menu', () => {
         expect(screen.getByText('Delete Folder')).toBeTruthy();
         expect(screen.getByText('Move Folder')).toBeTruthy();
         expect(screen.getByText('Bulk Follow Prompt')).toBeTruthy();
+
+        // Separators between groups
+        const separators = screen.getAllByRole('separator');
+        expect(separators.length).toBe(4);
     });
 
     it('does not render context menu when right-clicking a document group row', async () => {

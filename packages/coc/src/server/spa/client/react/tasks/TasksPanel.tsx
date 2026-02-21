@@ -213,12 +213,14 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
     }
 
     // ── Build folder context-menu items ────────────────────────────────
+    const noop = () => {};
     const ws = appState.workspaces.find((w: any) => w.id === wsId);
     const folderMenuItems: ContextMenuItem[] = folderCtxMenu ? (() => {
         const folder = folderCtxMenu.folder;
         const folderPath = folder.relativePath || folder.name;
         const isArchived = (folder.relativePath ?? '').startsWith('archive');
         return [
+            // ── Clipboard ──
             {
                 label: 'Copy Path',
                 icon: '📋',
@@ -236,6 +238,8 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
                     navigator.clipboard.writeText(abs);
                 },
             },
+            { separator: true, label: '', onClick: noop },
+            // ── Queue & Archive ──
             {
                 label: 'Queue All Tasks',
                 icon: '▶',
@@ -256,6 +260,8 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
                     refresh();
                 },
             },
+            { separator: true, label: '', onClick: noop },
+            // ── Create / Rename / Move ──
             {
                 label: 'Rename Folder',
                 icon: '✏️',
@@ -272,24 +278,28 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
                 onClick: () => handleFolderContextMenuAction('create-task', folder),
             },
             {
+                label: 'Move Folder',
+                icon: '📦',
+                onClick: () => handleFolderContextMenuAction('move', folder),
+            },
+            { separator: true, label: '', onClick: noop },
+            // ── AI Actions ──
+            {
                 label: 'Generate Task with AI…',
                 icon: '✨',
                 onClick: () => handleFolderContextMenuAction('generate-task-ai', folder),
             },
             {
-                label: 'Delete Folder',
-                icon: '🗑️',
-                onClick: () => handleFolderContextMenuAction('delete', folder),
-            },
-            {
-                label: 'Move Folder',
-                icon: '📦',
-                onClick: () => handleFolderContextMenuAction('move', folder),
-            },
-            {
                 label: 'Bulk Follow Prompt',
                 icon: '🤖',
                 onClick: () => handleFolderContextMenuAction('follow-prompt', folder),
+            },
+            { separator: true, label: '', onClick: noop },
+            // ── Danger ──
+            {
+                label: 'Delete Folder',
+                icon: '🗑️',
+                onClick: () => handleFolderContextMenuAction('delete', folder),
             },
         ];
     })() : [];
