@@ -322,15 +322,17 @@ export class CLITaskExecutor implements TaskExecutor {
                     const timelineType = event.type === 'tool-start' ? 'tool-start'
                         : event.type === 'tool-complete' ? 'tool-complete'
                         : 'tool-failed';
+                    const now = new Date();
                     this.appendTimelineItem(processId, {
                         type: timelineType,
-                        timestamp: new Date(),
+                        timestamp: now,
                         toolCall: {
                             id: event.toolCallId,
                             name: event.toolName || 'unknown',
                             status: event.type === 'tool-start' ? 'running'
                                 : event.type === 'tool-complete' ? 'completed' : 'failed',
-                            startTime: new Date(),
+                            startTime: now,
+                            ...(event.type !== 'tool-start' ? { endTime: now } : {}),
                             args: event.parameters || {},
                             result: event.result,
                             error: event.error,
@@ -563,15 +565,17 @@ export class CLITaskExecutor implements TaskExecutor {
                 const timelineType = event.type === 'tool-start' ? 'tool-start'
                     : event.type === 'tool-complete' ? 'tool-complete'
                     : 'tool-failed';
+                const now = new Date();
                 this.appendTimelineItem(processId, {
                     type: timelineType,
-                    timestamp: new Date(),
+                    timestamp: now,
                     toolCall: {
                         id: event.toolCallId,
                         name: event.toolName || 'unknown',
                         status: event.type === 'tool-start' ? 'running'
                             : event.type === 'tool-complete' ? 'completed' : 'failed',
-                        startTime: new Date(),
+                        startTime: now,
+                        ...(event.type !== 'tool-start' ? { endTime: now } : {}),
                         args: event.parameters || {},
                         result: event.result,
                         error: event.error,
