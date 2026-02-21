@@ -257,7 +257,13 @@ export async function executeGenerate(
                 printError(`No cached analyses found. Run with --phase 3 (or without --phase) first.`);
                 return EXIT_CODES.CONFIG_ERROR;
             }
-            analyses = cached;
+            // Filter to only analyses whose component IDs exist in the current
+            // (possibly consolidated) graph — stale files from pre-consolidation
+            // runs may still be on disk.
+            const graphIds = new Set(graph.components.map(m => m.id));
+            analyses = graphIds.size > 0
+                ? cached.filter(a => graphIds.has(a.componentId))
+                : cached;
             printSuccess(`Loaded ${analyses.length} cached component analyses`);
             usageTracker.markCached('analysis');
         }

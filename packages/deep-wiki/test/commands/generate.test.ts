@@ -283,6 +283,8 @@ beforeEach(() => {
     vi.mocked(checkAIAvailability).mockResolvedValue({ available: true });
     vi.mocked(getCachedGraph).mockResolvedValue(null);
     vi.mocked(getCachedAnalyses).mockReturnValue(null);
+    vi.mocked(getCachedConsolidationAny).mockReturnValue(null);
+    vi.mocked(getCachedConsolidation).mockResolvedValue(null);
 
     // Re-set analysis mock (default: all succeed)
     vi.mocked(analyzeComponents).mockResolvedValue({

@@ -281,7 +281,13 @@ async function runGeneration(
             sendSSE(res, { type: 'error', message: 'No cached analyses found. Run Analysis first.' });
             sendSSE(res, { type: 'done', success: false, error: 'Missing prerequisite: Analysis' }); return;
         }
-        analyses = cached;
+        // Filter to only analyses whose component IDs exist in the current
+        // (possibly consolidated) graph — stale files from pre-consolidation
+        // runs may still be on disk.
+        const graphIds = new Set(graph.components.map((m: any) => m.id));
+        analyses = graphIds.size > 0
+            ? cached.filter((a: any) => graphIds.has(a.componentId))
+            : cached;
         sendSSE(res, { type: 'log', phase: startPhase, message: `Loaded ${analyses!.length} cached analyses` });
     }
 
