@@ -17,6 +17,7 @@ import { TaskActions } from './TaskActions';
 import { ContextMenu } from './comments/ContextMenu';
 import type { ContextMenuItem } from './comments/ContextMenu';
 import { FolderActionDialog } from './FolderActionDialog';
+import { FolderMoveDialog } from './FolderMoveDialog';
 import { Dialog } from '../shared/Dialog';
 import { Button } from '../shared/Button';
 import { FollowPromptDialog } from '../shared/FollowPromptDialog';
@@ -83,6 +84,10 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
         submitting: boolean;
     }>({ action: null, folder: null, submitting: false });
 
+    // ── Move dialog state ──────────────────────────────────────────────
+    const [moveDialogOpen, setMoveDialogOpen] = useState(false);
+    const [moveSourceFolder, setMoveSourceFolder] = useState<TaskFolder | null>(null);
+
     const closeFolderDialog = useCallback(
         () => setFolderDialog({ action: null, folder: null, submitting: false }),
         []
@@ -96,6 +101,10 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
             if (actionKey === 'create-task') setFolderDialog({ action: 'create-task', folder, submitting: false });
             if (actionKey === 'delete') setFolderDialog({ action: 'delete', folder, submitting: false });
             if (actionKey === 'follow-prompt') setFolderDialog({ action: 'follow-prompt', folder, submitting: false });
+            if (actionKey === 'move') {
+                setMoveSourceFolder(folder);
+                setMoveDialogOpen(true);
+            }
         },
         []
     );
@@ -151,6 +160,14 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
             setFolderDialog(s => ({ ...s, submitting: false }));
         }
     }, [folderDialog.folder, folderActions, refresh, closeFolderDialog, addToast]);
+
+    const handleMoveConfirm = useCallback(async (destinationRelativePath: string) => {
+        if (!moveSourceFolder) return;
+        await folderActions.moveFolder(moveSourceFolder.relativePath, destinationRelativePath);
+        refresh();
+        setMoveDialogOpen(false);
+        setMoveSourceFolder(null);
+    }, [moveSourceFolder, folderActions, refresh]);
 
     useEffect(() => {
         scrollToEnd(scrollRef.current);
@@ -247,6 +264,11 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
                 label: 'Delete Folder',
                 icon: '🗑️',
                 onClick: () => handleFolderContextMenuAction('delete', folder),
+            },
+            {
+                label: 'Move Folder',
+                icon: '📦',
+                onClick: () => handleFolderContextMenuAction('move', folder),
             },
             {
                 label: 'Bulk Follow Prompt',
@@ -376,6 +398,17 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
                     taskPath={folderDialog.folder.relativePath}
                     taskName={folderDialog.folder.name}
                     onClose={closeFolderDialog}
+                />
+            )}
+
+            {/* Move Folder dialog */}
+            {tree && (
+                <FolderMoveDialog
+                    open={moveDialogOpen}
+                    onClose={() => { setMoveDialogOpen(false); setMoveSourceFolder(null); }}
+                    sourceFolder={moveSourceFolder}
+                    tree={tree}
+                    onConfirm={handleMoveConfirm}
                 />
             )}
         </div>

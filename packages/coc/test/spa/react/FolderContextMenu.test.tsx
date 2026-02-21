@@ -280,7 +280,7 @@ describe('Folder context menu', () => {
         expect(screen.queryByTestId('context-menu')).toBeNull();
     });
 
-    it('context menu shows all nine items', async () => {
+    it('context menu shows all ten items', async () => {
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
         await waitFor(() => {
             expect(screen.getByTestId('task-tree-item-feature1')).toBeTruthy();
@@ -295,6 +295,7 @@ describe('Folder context menu', () => {
         expect(screen.getByText('Create Subfolder')).toBeTruthy();
         expect(screen.getByText('Create Task in Folder')).toBeTruthy();
         expect(screen.getByText('Delete Folder')).toBeTruthy();
+        expect(screen.getByText('Move Folder')).toBeTruthy();
         expect(screen.getByText('Bulk Follow Prompt')).toBeTruthy();
     });
 
