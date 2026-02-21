@@ -24,6 +24,8 @@ import { registerAdminRoutes } from './admin-handler';
 import { registerTaskCommentsRoutes } from './task-comments-handler';
 import { registerWikiRoutes } from './wiki';
 import { registerProcessResumeRoutes } from './process-resume-handler';
+import { registerPipelineRoutes, registerPipelineWriteRoutes } from './pipelines-handler';
+import { PipelineWatcher } from './pipeline-watcher';
 import { ProcessWebSocketServer, toProcessSummary } from '@plusplusoneplusplus/coc-server';
 import { generateDashboardHtml } from './spa';
 import type { ExecutionServerOptions, ExecutionServer } from '@plusplusoneplusplus/coc-server';
@@ -203,6 +205,14 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     registerQueueRoutes(routes, queueManager, store);
     registerTaskRoutes(routes, store);
     registerTaskWriteRoutes(routes, store);
+    registerPipelineRoutes(routes, store);
+    registerPipelineWriteRoutes(routes, store, (workspaceId) => {
+        wsServer.broadcastProcessEvent({
+            type: 'pipelines-changed',
+            workspaceId,
+            timestamp: Date.now(),
+        });
+    });
     registerTaskGenerationRoutes(routes, store);
     registerPromptRoutes(routes, store);
     registerPreferencesRoutes(routes, dataDir);
@@ -374,10 +384,20 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         });
     });
 
-    // Watch tasks directories for already-registered workspaces (handles server restart)
+    // Bridge pipeline file changes to WebSocket
+    const pipelineWatcher = new PipelineWatcher((workspaceId) => {
+        wsServer.broadcastProcessEvent({
+            type: 'pipelines-changed',
+            workspaceId,
+            timestamp: Date.now(),
+        });
+    });
+
+    // Watch tasks and pipelines directories for already-registered workspaces (handles server restart)
     const existingWorkspaces = await store.getWorkspaces();
     for (const ws of existingWorkspaces) {
         taskWatcher.watchWorkspace(ws.id, ws.rootPath);
+        pipelineWatcher.watchWorkspace(ws.id, ws.rootPath);
     }
 
     // Intercept workspace registration/removal to manage task watchers
@@ -387,10 +407,12 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     store.registerWorkspace = async (workspace: any) => {
         await originalRegister(workspace);
         taskWatcher.watchWorkspace(workspace.id, workspace.rootPath);
+        pipelineWatcher.watchWorkspace(workspace.id, workspace.rootPath);
     };
 
     store.removeWorkspace = async (id: string) => {
         taskWatcher.unwatchWorkspace(id);
+        pipelineWatcher.unwatchWorkspace(id);
         return originalRemove(id);
     };
 
@@ -426,6 +448,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             outputPruner.stopListening();
             // Close task file watchers
             taskWatcher.closeAll();
+            // Close pipeline file watchers
+            pipelineWatcher.closeAll();
             // Dispose wiki manager (stop file watchers, destroy sessions)
             wikiManager?.disposeAll();
             // Dispose schedule manager (cancel timers)
@@ -490,6 +514,9 @@ export { StaleTaskDetector } from './stale-task-detector';
 export type { StaleTaskDetectorOptions } from './stale-task-detector';
 export { TaskWatcher } from './task-watcher';
 export type { TasksChangedCallback } from './task-watcher';
+export { PipelineWatcher } from './pipeline-watcher';
+export type { PipelinesChangedCallback } from './pipeline-watcher';
+export { registerPipelineRoutes, registerPipelineWriteRoutes } from './pipelines-handler';
 export { registerWikiRoutes } from './wiki';
 export type { WikiRouteOptions } from './wiki';
 export { discoverPromptFiles, readPromptFileContent } from './prompt-utils';

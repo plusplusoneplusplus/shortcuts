@@ -314,28 +314,6 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         },
     });
 
-    // GET /api/workspaces/:id/pipelines — Discover pipelines in repo
-    routes.push({
-        method: 'GET',
-        pattern: /^\/api\/workspaces\/([^/]+)\/pipelines$/,
-        handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const workspaces = await store.getWorkspaces();
-            const ws = workspaces.find(w => w.id === id);
-            if (!ws) {
-                return handleAPIError(res, notFound('Workspace'));
-            }
-
-            const parsed = url.parse(req.url || '/', true);
-            const folder = (typeof parsed.query.folder === 'string' && parsed.query.folder)
-                ? parsed.query.folder
-                : '.vscode/pipelines';
-            const pipelinesDir = path.resolve(ws.rootPath, folder);
-            const pipelines = discoverPipelines(pipelinesDir);
-            sendJSON(res, 200, { pipelines });
-        },
-    });
-
     // ------------------------------------------------------------------
     // Filesystem browse endpoint
     // ------------------------------------------------------------------
