@@ -15,6 +15,7 @@ Use this skill when the user wants to:
 - Set up batch classification or analysis
 - Build a multi-agent research system
 - Generate pipeline configuration from requirements
+- Run a **single one-shot AI prompt** (no CSV/batch required)
 
 ## Generation Process
 
@@ -28,9 +29,9 @@ Use the `ask_user` tool to gather requirements:
 
 1. **Task Type**
    - "What is the main goal of this pipeline?"
-   - Options: Classification, Research/Analysis, Data Extraction, Document Generation, Custom
+   - Options: Classification, Research/Analysis, Data Extraction, Document Generation, **Single one-shot AI call (no input data)**, Custom
 
-2. **Data Source**
+2. **Data Source** *(skip if Single one-shot AI call)*
    - "Where will the input data come from?"
    - Options: CSV file (ask for path), Inline data (small dataset), AI-generated items, Multiple AI models (comparison)
 
@@ -68,6 +69,12 @@ Based on answers, choose the appropriate pattern:
 - Use when: Reusable general-purpose processing
 - Characteristics: Parameterized prompts, runtime data input
 - Example: Documentation generation, code review checklist
+
+**Pattern D: Single AI Job** *(new)*
+- Use when: One-shot AI task — no CSV, no batch, no map-reduce cycle
+- Characteristics: `job:` key only, top-level `parameters:`, no `input`/`map`/`reduce`
+- Example: Summarize a PR diff, answer a Q&A question, generate a report from a pasted snippet
+- Key constraint: `job:` and `map:` are mutually exclusive
 
 ### Step 3: Design Input Phase
 
@@ -110,6 +117,49 @@ input:
     - name: sharedData
       value: "[user's data]"
 ```
+
+### Step 3b: Design Single Job (Pattern D only)
+
+If Pattern D was selected, skip Steps 3–6 and generate a `job:` pipeline instead:
+
+```yaml
+name: "[Descriptive Name]"
+description: "[What this job does]"
+
+job:
+  prompt: |
+    [Task instructions]
+    {{param1}}
+    {{param2}}
+
+  # Optional: structured output fields (omit for raw text)
+  output:
+    - field1
+    - field2
+
+  model: "gpt-4o"       # Optional, falls back to default
+  timeoutMs: 60000      # Optional, default: 30 min
+
+# Top-level parameters (not nested under input)
+parameters:
+  - name: param1
+    value: "..."         # Or supplied via --param param1="..." at CLI
+  - name: param2
+    value: "..."
+```
+
+**Single-job design decisions:**
+- `output:` omitted → raw AI text returned (text mode)
+- `output:` specified → AI response parsed as JSON, extract those fields
+- Parameters supplied at YAML authoring time OR overridden via `--param` at CLI
+- `promptFile:` and `skill:` are supported identically to map phase
+- No `input:`, `map:`, `reduce:` sections — these are forbidden alongside `job:`
+
+**Use `coc run` to execute:** `coc run path/to/pipeline.yaml --param param1="value"`
+
+After designing the job, skip to **Step 7: Validate**.
+
+---
 
 ### Step 4: Design Map Phase
 
@@ -212,17 +262,24 @@ reduce:
 
 Check for anti-patterns and issues:
 
-**Schema Validation:**
+**Schema Validation (Map-Reduce pipelines):**
 - ✓ Exactly ONE input source (items/from/generate)
 - ✓ Map has exactly ONE of prompt/promptFile
 - ✓ Output is array of valid identifiers
 - ✓ If reduce type='ai', has prompt/promptFile
+
+**Schema Validation (Single-job pipelines):**
+- ✓ `job:` and `map:` are mutually exclusive — error if both present
+- ✓ `job:` has exactly ONE of prompt/promptFile
+- ✓ No `input:`, `map:`, or `reduce:` sections present
+- ✓ All `{{variable}}` in job prompt are listed in top-level `parameters:`
 
 **Anti-Pattern Detection:**
 - ⚠️ Timeout < 60000ms → Warn: too aggressive
 - ⚠️ Parallel > 10 → Warn: may hit rate limits
 - ⚠️ Large CSV without limit → Suggest: add `limit: 100` for testing
 - ⚠️ batchSize > 1 without {{ITEMS}} → Error: must include {{ITEMS}} in prompt
+- ❌ `job:` + `map:` together → Error: mutually exclusive
 
 ### Step 8: Generate Complete YAML
 
@@ -292,6 +349,7 @@ See [patterns reference](references/patterns.md) for detailed examples of:
 - Template-Based (doc generation, reusable workflows)
 - Multi-Model Fanout (consensus analysis)
 - Hybrid Filtering (rule + AI filtering)
+- **Single AI Job** (one-shot prompts, Q&A, summaries — no input/map/reduce)
 
 ## Schema Reference
 

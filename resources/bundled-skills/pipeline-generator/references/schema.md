@@ -4,13 +4,62 @@ Complete specification for pipeline YAML configuration.
 
 ## Root Configuration
 
+Two mutually exclusive pipeline modes:
+
+**Map-Reduce mode** (batch processing):
 ```yaml
 name: string                    # Required: Pipeline identifier
+workingDirectory?: string       # Optional: AI session working directory
 input: InputConfig              # Required: Data source
 filter?: FilterConfig           # Optional: Pre-processing phase
 map: MapConfig                  # Required: Processing phase
 reduce: ReduceConfig            # Required: Aggregation phase
+parameters?: PipelineParameter[] # Optional: Top-level parameters
 ```
+
+**Single-job mode** (one-shot AI call):
+```yaml
+name: string                    # Required: Pipeline identifier
+workingDirectory?: string       # Optional: AI session working directory
+job: JobConfig                  # Required: Single AI job definition
+parameters?: PipelineParameter[] # Optional: Template variable values
+```
+
+**Constraint:** `job` and `map` are mutually exclusive. Validation error if both are present.
+
+---
+
+## Job Configuration (Single-Job Mode)
+
+```yaml
+job:
+  # Exactly ONE of:
+  prompt: string                # Inline prompt with {{templates}}
+  promptFile: string            # Path to .md file (relative/absolute/bare name)
+
+  # Optional fields:
+  skill?: string                # Prepend skill from .github/skills/{skill}/SKILL.md
+
+  output?: string[]             # Field names for JSON parsing (omit for text mode)
+
+  model?: string                # AI model override
+
+  timeoutMs?: number            # Timeout in milliseconds (default: 1800000 = 30 min)
+```
+
+### Template Variables (Job Phase)
+- `{{paramName}}` - Values from top-level `parameters` array
+
+### Top-Level Parameters (Single-Job Mode)
+```yaml
+parameters:
+  - name: string                # Parameter name (available as {{name}} in job.prompt)
+    value: string               # Default value (can be overridden via --param at CLI)
+```
+
+### Output Modes
+- **Text mode** (`output:` omitted): raw AI response string returned as-is
+- **Structured mode** (`output: [field1, field2]`): AI response parsed as JSON, extract specified fields
 
 ---
 
@@ -187,14 +236,22 @@ filter:
 
 ## Validation Rules
 
-### Required Fields
+### Required Fields (All Pipelines)
 - ✓ `name` must be non-empty string
+- ✓ `job` and `map` are mutually exclusive (cannot both be present)
+
+### Required Fields (Map-Reduce Mode — when `job` is absent)
 - ✓ `input` must have exactly ONE of: items, from, generate
 - ✓ `map` must exist
 - ✓ `map` must have exactly ONE of: prompt, promptFile
 - ✓ `reduce` must exist
 - ✓ `reduce.type` must be valid type
 - ✓ If `reduce.type='ai'`, must have prompt or promptFile
+
+### Required Fields (Single-Job Mode — when `job` is present)
+- ✓ `job` must have exactly ONE of: prompt, promptFile
+- ✓ All `{{variable}}` in `job.prompt` must be defined in top-level `parameters`
+- ✓ No `input`, `map`, or `reduce` sections allowed (they will be ignored/rejected)
 
 ### Field Constraints
 - `name`: any non-empty string
@@ -221,6 +278,9 @@ filter:
 | Error Message | Cause | Fix |
 |--------------|-------|-----|
 | `Pipeline config missing "name"` | No name field | Add name |
+| `Cannot use \`job\` and \`map\` in the same pipeline` | Both job and map present | Use either `job:` (single-job) or `map:` (map-reduce), not both |
+| `Job config must have either "job.prompt" or "job.promptFile"` | job missing prompt | Add `prompt` or `promptFile` under `job:` |
+| `Job config cannot have both "job.prompt" and "job.promptFile"` | Both specified | Remove one |
 | `Pipeline config missing "input"` | No input config | Add input section |
 | `Input must have one of "items", "from", or "generate"` | No input source | Choose one source type |
 | `Input can only have one of "items", "from", or "generate"` | Multiple sources | Remove extra sources |
@@ -238,6 +298,17 @@ filter:
 ---
 
 ## Anti-Patterns to Avoid
+
+### ❌ Anti-Pattern 0: Mixing `job:` and `map:`
+```yaml
+job:
+  prompt: "Summarize {{text}}"  # ERROR: Can't combine with map
+map:
+  prompt: "Process {{item}}"
+```
+**Fix:** Use `job:` alone for one-shot tasks, or `map:` + `input:` + `reduce:` for batch processing.
+
+---
 
 ### ❌ Anti-Pattern 1: Multiple Input Sources
 ```yaml
@@ -389,11 +460,13 @@ map:
 
 ## Quick Reference Table
 
-| Task | Input | Map Parallel | Map Timeout | Reduce Type |
-|------|-------|--------------|-------------|-------------|
-| Bug classification | CSV | 5 | 300s | ai |
-| Document extraction | CSV | 5 | 300s | json |
-| Code analysis | Inline | 3 | 600s | ai |
-| Research | Generate | 5 | 900s | ai |
-| Multi-model comparison | Array | 3 | 300s | ai |
-| Large batch (1000+) | CSV + filter | 5 | 300s | table |
+| Task | Mode | Input | Map Parallel | Map Timeout | Reduce Type |
+|------|------|-------|--------------|-------------|-------------|
+| Bug classification | map-reduce | CSV | 5 | 300s | ai |
+| Document extraction | map-reduce | CSV | 5 | 300s | json |
+| Code analysis | map-reduce | Inline | 3 | 600s | ai |
+| Research | map-reduce | Generate | 5 | 900s | ai |
+| Multi-model comparison | map-reduce | Array | 3 | 300s | ai |
+| Large batch (1000+) | map-reduce | CSV + filter | 5 | 300s | table |
+| PR summary / Q&A / one-shot | **single-job** | *(none)* | *(none)* | *(none)* |
+| Generate release notes | **single-job** | *(none)* | *(none)* | *(none)* |

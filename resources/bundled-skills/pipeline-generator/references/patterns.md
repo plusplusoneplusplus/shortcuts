@@ -369,6 +369,100 @@ reduce:
 
 ---
 
+---
+
+## Pattern 6: Single AI Job
+
+**Use Case:** One-shot AI prompt — no batch, no CSV, no map-reduce cycle
+
+### Example 1: PR Summarizer
+
+```yaml
+name: "Summarize PR"
+description: "Generate a summary for a pull request"
+
+job:
+  prompt: |
+    Summarize the following git diff in 3 bullet points:
+    {{diff}}
+  output:
+    - summary
+  model: gpt-4o
+  timeoutMs: 60000
+
+parameters:
+  - name: diff
+    value: "..."  # Or supplied via --param diff="..." at CLI
+```
+
+### Example 2: Q&A / Code Generation (text mode)
+
+```yaml
+name: "Generate Release Notes"
+description: "Generate release notes from a list of commits"
+
+job:
+  prompt: |
+    You are a technical writer. Given the following commits, write concise release notes
+    for version {{version}}:
+
+    {{commits}}
+
+    Format as markdown with sections: Features, Bug Fixes, Breaking Changes.
+  # No output: field → raw AI text returned (text mode)
+  model: gpt-4o
+  timeoutMs: 120000
+
+parameters:
+  - name: version
+    value: "2.5.0"
+  - name: commits
+    value: |
+      feat: add single AI job support
+      fix: guard config.map accesses
+      feat: export JobConfig type
+```
+
+### Example 3: With Skill and PromptFile
+
+```yaml
+name: "Deep Code Review"
+description: "Review a code snippet using the go-deep skill"
+
+job:
+  promptFile: review.prompt.md   # Loaded from pipeline directory
+  skill: go-deep                  # Prepends .github/skills/go-deep/SKILL.md
+  output:
+    - issues
+    - suggestions
+    - overall_rating
+  model: gpt-4o
+  timeoutMs: 180000
+
+parameters:
+  - name: code
+    value: |
+      function add(a, b) { return a + b; }
+  - name: language
+    value: JavaScript
+```
+
+**Key Characteristics:**
+- Uses `job:` key instead of `input:`/`map:`/`reduce:`
+- Top-level `parameters:` (not under `input`)
+- `job:` and `map:` are mutually exclusive — validation error if both present
+- `output:` optional: omit for raw AI text, specify fields for JSON parsing
+- Supports `promptFile:` and `skill:` same as map phase
+- Parameters overridable at runtime via `--param name=value`
+
+**When to Use:**
+- Single document/snippet to process (not a batch)
+- Q&A, summarization, code generation, one-off analysis
+- Tasks that don't iterate over items
+- Quick AI utilities with configurable parameters
+
+---
+
 ## Pattern Selection Guide
 
 | User Need | Pattern |
@@ -379,6 +473,8 @@ reduce:
 | "Compare AI models" | Multi-Model Fanout |
 | "Process large dataset efficiently" | Hybrid Filtering + Classification |
 | "Batch analysis with custom rules" | Map-Reduce + Rule Filter |
+| "One-shot prompt, no input data" | Single AI Job |
+| "Summarize a document/diff/snippet" | Single AI Job |
 
 ---
 
