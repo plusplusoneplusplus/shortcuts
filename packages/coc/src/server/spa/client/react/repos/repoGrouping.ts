@@ -3,6 +3,14 @@
  * Ported from repos.ts.
  */
 
+export interface PipelineInfo {
+    name: string;
+    path: string;
+    description?: string;
+    isValid?: boolean;
+    validationErrors?: string[];
+}
+
 export interface RepoData {
     workspace: any;
     gitInfo?: {
@@ -13,7 +21,7 @@ export interface RepoData {
         ahead?: number;
         behind?: number;
     };
-    pipelines?: Array<{ name: string; path: string }>;
+    pipelines?: PipelineInfo[];
     stats?: { success: number; failed: number; running: number };
     taskCount?: number;
 }

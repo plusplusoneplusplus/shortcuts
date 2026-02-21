@@ -6,9 +6,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { fetchApi } from '../hooks/useApi';
+import { useWebSocket } from '../hooks/useWebSocket';
 import { ReposGrid } from './ReposGrid';
 import { RepoDetail } from './RepoDetail';
 import { countTasks } from './repoGrouping';
+import { fetchPipelines } from './pipeline-api';
 import type { RepoData } from './repoGrouping';
 
 export function ReposView() {
@@ -69,8 +71,29 @@ export function ReposView() {
         setLoading(false);
     }, [dispatch, state.selectedRepoId]);
 
+    // Targeted pipeline refresh for a single workspace
+    const refreshPipelinesForWorkspace = useCallback(async (wsId: string) => {
+        try {
+            const updated = await fetchPipelines(wsId);
+            setRepos(prev => prev.map(r =>
+                r.workspace.id === wsId ? { ...r, pipelines: updated } : r
+            ));
+        } catch { /* fire-and-forget */ }
+    }, []);
+
+    // WebSocket: auto-refresh pipelines on mutation events
+    const { connect, disconnect } = useWebSocket({
+        onMessage: useCallback((msg: any) => {
+            if (msg.type === 'pipelines-changed' && msg.workspaceId) {
+                refreshPipelinesForWorkspace(msg.workspaceId);
+            }
+        }, [refreshPipelinesForWorkspace]),
+    });
+
     useEffect(() => {
         fetchRepos();
+        connect();
+        return () => disconnect();
     }, []);
 
     const selectedRepo = repos.find(r => r.workspace.id === state.selectedRepoId) || null;
