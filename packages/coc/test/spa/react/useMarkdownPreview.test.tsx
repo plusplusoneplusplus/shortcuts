@@ -142,4 +142,72 @@ describe('useMarkdownPreview', () => {
 
         expect(result.current.html).toContain('const x = 1;');
     });
+
+    it('does not call hljs.highlightElement on code blocks inside .code-block-container', () => {
+        const highlightElementSpy = vi.fn();
+        (window as any).hljs = {
+            highlight: vi.fn((_code: string) => ({ value: _code })),
+            highlightAuto: vi.fn((_code: string) => ({ value: _code, language: 'js' })),
+            highlightElement: highlightElementSpy,
+        };
+
+        const container = document.createElement('div');
+        const codeBlockContainer = document.createElement('div');
+        codeBlockContainer.className = 'code-block-container';
+        const pre = document.createElement('pre');
+        const code = document.createElement('code');
+        pre.appendChild(code);
+        codeBlockContainer.appendChild(pre);
+        container.appendChild(codeBlockContainer);
+
+        const containerRef = createRef(container);
+        const content = '```yaml\n- name: test\n  description: hello\n```';
+
+        renderHook(() =>
+            useMarkdownPreview({ content, containerRef })
+        );
+
+        expect(highlightElementSpy).not.toHaveBeenCalled();
+
+        delete (window as any).hljs;
+    });
+
+    it('calls hljs.highlightElement on code blocks NOT inside .code-block-container', () => {
+        const highlightElementSpy = vi.fn();
+        (window as any).hljs = {
+            highlight: vi.fn((_code: string) => ({ value: _code })),
+            highlightAuto: vi.fn((_code: string) => ({ value: _code, language: 'js' })),
+            highlightElement: highlightElementSpy,
+        };
+
+        const container = document.createElement('div');
+        const pre = document.createElement('pre');
+        const code = document.createElement('code');
+        pre.appendChild(code);
+        container.appendChild(pre);
+
+        const containerRef = createRef(container);
+        const content = '# Hello';
+
+        renderHook(() =>
+            useMarkdownPreview({ content, containerRef })
+        );
+
+        expect(highlightElementSpy).toHaveBeenCalledWith(code);
+
+        delete (window as any).hljs;
+    });
+
+    it('preserves code-line structure in rendered code blocks', () => {
+        const containerRef = createRef();
+        const content = '```yaml\n- name: test\n  description: hello\n```';
+        const { result } = renderHook(() =>
+            useMarkdownPreview({ content, containerRef })
+        );
+
+        expect(result.current.html).toContain('class="code-line"');
+        expect(result.current.html).toContain('class="line-number"');
+        expect(result.current.html).toContain('data-line="1"');
+        expect(result.current.html).toContain('data-line="2"');
+    });
 });
