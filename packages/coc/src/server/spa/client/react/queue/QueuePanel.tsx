@@ -174,6 +174,8 @@ function QueueTaskCard({ task, now, selected, onClick, compact = false }: {
         ? (task.prompt.length > 60 ? task.prompt.slice(0, 60) + '…' : task.prompt)
         : task.id;
 
+    const repo = repoName(task.repoId) || repoName(task.workingDirectory) || repoName(task.payload?.workingDirectory);
+
     return (
         <Card
             onClick={onClick}
@@ -183,10 +185,10 @@ function QueueTaskCard({ task, now, selected, onClick, compact = false }: {
             {compact ? (
                 <div className="flex items-center gap-1.5 min-w-0 text-[11px] leading-5">
                     <span className="shrink-0">{statusIcon(task.status)}</span>
-                    {repoName(task.repoId) && (
+                    {repo && (
                         <span className="queue-task-repo-name shrink-0 text-[10px] text-[#0078d4] dark:text-[#3794ff] font-medium"
-                              title={task.repoId}>
-                            [{repoName(task.repoId)}]
+                              title={task.repoId || task.workingDirectory || task.payload?.workingDirectory}>
+                            [{repo}]
                         </span>
                     )}
                     <span className="shrink-0 text-[#848484]">{typeLabel(task.type)}</span>

@@ -323,6 +323,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                     status: t.status,
                     displayName: t.displayName,
                     createdAt: t.createdAt,
+                    workingDirectory: (t.payload as any)?.workingDirectory,
                 })),
                 running: running.map(t => ({
                     id: t.id,
@@ -333,6 +334,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                     displayName: t.displayName,
                     createdAt: t.createdAt,
                     startedAt: t.startedAt,
+                    workingDirectory: (t.payload as any)?.workingDirectory,
                 })),
                 history: history.map(t => ({
                     id: t.id,
@@ -345,6 +347,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                     startedAt: t.startedAt,
                     completedAt: t.completedAt,
                     error: t.error,
+                    workingDirectory: (t.payload as any)?.workingDirectory,
                 })),
                 stats,
             },

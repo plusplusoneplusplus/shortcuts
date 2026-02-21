@@ -709,6 +709,65 @@ describe('QueuePanel', () => {
         const text = card.textContent || '';
         expect(text.indexOf('[backend-api]')).toBeLessThan(text.indexOf('Code Review'));
     });
+
+    it('falls back to workingDirectory when repoId is absent', async () => {
+        render(
+            <Wrap>
+                <SeededQueuePanel
+                    historyItem={{
+                        id: 'task-wd-1',
+                        status: 'completed',
+                        type: 'follow-prompt',
+                        prompt: 'Task with working dir',
+                        workingDirectory: '/Users/dev/projects/frontend-app',
+                    }}
+                />
+            </Wrap>
+        );
+
+        const card = await screen.findByLabelText(/Task completed: Task with working dir/);
+        expect(card.textContent).toContain('[frontend-app]');
+    });
+
+    it('falls back to payload.workingDirectory when both repoId and workingDirectory are absent', async () => {
+        render(
+            <Wrap>
+                <SeededQueuePanel
+                    historyItem={{
+                        id: 'task-payload-wd-1',
+                        status: 'completed',
+                        type: 'chat',
+                        prompt: 'Task with payload wd',
+                        payload: { workingDirectory: '/home/user/code/api-server' },
+                    }}
+                />
+            </Wrap>
+        );
+
+        const card = await screen.findByLabelText(/Task completed: Task with payload wd/);
+        expect(card.textContent).toContain('[api-server]');
+    });
+
+    it('prefers repoId over workingDirectory', async () => {
+        render(
+            <Wrap>
+                <SeededQueuePanel
+                    historyItem={{
+                        id: 'task-prefer-repo-1',
+                        status: 'completed',
+                        type: 'chat',
+                        prompt: 'Task with both',
+                        repoId: '/path/to/repo-from-id',
+                        workingDirectory: '/path/to/repo-from-wd',
+                    }}
+                />
+            </Wrap>
+        );
+
+        const card = await screen.findByLabelText(/Task completed: Task with both/);
+        expect(card.textContent).toContain('[repo-from-id]');
+        expect(card.textContent).not.toContain('repo-from-wd');
+    });
 });
 
 describe('QueueTaskDetail metadata popover', () => {
