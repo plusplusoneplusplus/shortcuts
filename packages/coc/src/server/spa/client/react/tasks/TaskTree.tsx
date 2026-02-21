@@ -16,6 +16,7 @@ interface TaskTreeProps {
     initialFolderPath?: string | null;
     initialFilePath?: string | null;
     onColumnsChange?: () => void;
+    onFolderContextMenu?: (folder: TaskFolder, x: number, y: number) => void;
 }
 
 function getNodePath(node: TaskNode): string | null {
@@ -37,7 +38,7 @@ export function getFolderKey(folder: TaskFolder): string {
     return folder.relativePath || folder.name;
 }
 
-export function TaskTree({ tree, commentCounts, wsId, initialFolderPath, initialFilePath, onColumnsChange }: TaskTreeProps) {
+export function TaskTree({ tree, commentCounts, wsId, initialFolderPath, initialFilePath, onColumnsChange, onFolderContextMenu }: TaskTreeProps) {
     const { openFilePath, setOpenFilePath, selectedFilePaths, toggleSelectedFile, showContextFiles, setSelectedFolderPath } = useTaskPanel();
     const { fileMap: queueActivity, folderMap: queueFolderActivity } = useQueueActivity(wsId);
     const [columns, setColumns] = useState<TaskNode[][]>([]);
@@ -134,6 +135,7 @@ export function TaskTree({ tree, commentCounts, wsId, initialFolderPath, initial
                                         onFolderClick={(folder) => handleFolderClick(folder, colIndex)}
                                         onFileClick={handleFileClick}
                                         onCheckboxChange={handleCheckboxChange}
+                                        onFolderContextMenu={onFolderContextMenu}
                                     />
                                 );
                             })}

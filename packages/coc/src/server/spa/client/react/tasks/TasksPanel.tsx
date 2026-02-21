@@ -3,12 +3,18 @@
  * Renders a two-zone flex layout: left = TaskTree, right = TaskPreview.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { TaskProvider, useTaskPanel } from '../context/TaskContext';
-import { useTaskTree } from '../hooks/useTaskTree';
+import { useTaskTree, countMarkdownFilesInFolder } from '../hooks/useTaskTree';
+import type { TaskFolder } from '../hooks/useTaskTree';
+import { useFolderActions } from '../hooks/useFolderActions';
+import { useApp } from '../context/AppContext';
+import { useQueue } from '../context/QueueContext';
 import { TaskTree } from './TaskTree';
 import { TaskPreview } from './TaskPreview';
 import { TaskActions } from './TaskActions';
+import { ContextMenu } from './comments/ContextMenu';
+import type { ContextMenuItem } from './comments/ContextMenu';
 import { Spinner } from '../shared';
 
 interface TasksPanelProps {
@@ -44,10 +50,23 @@ function scrollToEnd(el: HTMLElement | null) {
 }
 
 function TasksPanelInner({ wsId }: TasksPanelProps) {
-    const { tree, commentCounts, loading, error } = useTaskTree(wsId);
+    const { tree, commentCounts, loading, error, refresh } = useTaskTree(wsId);
     const { openFilePath, selectedFilePaths, clearSelection, selectedFolderPath } = useTaskPanel();
     const [initialParams] = useState(() => parseTaskHashParams(location.hash, wsId));
     const scrollRef = useRef<HTMLDivElement>(null);
+
+    const { state: appState } = useApp();
+    const { dispatch: queueDispatch } = useQueue();
+    const folderActions = useFolderActions(wsId);
+
+    // ── Folder context-menu state ──────────────────────────────────────
+    interface FolderCtxMenu { folder: TaskFolder; x: number; y: number }
+    const [folderCtxMenu, setFolderCtxMenu] = useState<FolderCtxMenu | null>(null);
+
+    const handleFolderContextMenu = useCallback(
+        (folder: TaskFolder, x: number, y: number) => setFolderCtxMenu({ folder, x, y }),
+        []
+    );
 
     useEffect(() => {
         scrollToEnd(scrollRef.current);
@@ -81,6 +100,52 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
         );
     }
 
+    // ── Build folder context-menu items ────────────────────────────────
+    const ws = appState.workspaces.find((w: any) => w.id === wsId);
+    const folderMenuItems: ContextMenuItem[] = folderCtxMenu ? (() => {
+        const folderPath = folderCtxMenu.folder.relativePath || folderCtxMenu.folder.name;
+        const isArchived = (folderCtxMenu.folder.relativePath ?? '').startsWith('archive');
+        return [
+            {
+                label: 'Copy Path',
+                icon: '📋',
+                onClick: () => {
+                    navigator.clipboard.writeText(folderPath);
+                },
+            },
+            {
+                label: 'Copy Absolute Path',
+                icon: '📂',
+                onClick: () => {
+                    const rootPath = ws?.rootPath ?? '';
+                    const tasksFolder = '.vscode/tasks';
+                    const abs = [rootPath, tasksFolder, folderPath].filter(Boolean).join('/');
+                    navigator.clipboard.writeText(abs);
+                },
+            },
+            {
+                label: 'Queue All Tasks',
+                icon: '▶',
+                disabled: countMarkdownFilesInFolder(folderCtxMenu.folder) === 0,
+                onClick: () => {
+                    queueDispatch({ type: 'OPEN_DIALOG', folderPath });
+                },
+            },
+            {
+                label: isArchived ? 'Unarchive Folder' : 'Archive Folder',
+                icon: isArchived ? '📤' : '🗄️',
+                onClick: async () => {
+                    if (isArchived) {
+                        await folderActions.unarchiveFolder(folderPath);
+                    } else {
+                        await folderActions.archiveFolder(folderPath);
+                    }
+                    refresh();
+                },
+            },
+        ];
+    })() : [];
+
     return (
         <div className="flex flex-col h-full">
             <TaskActions
@@ -105,6 +170,7 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
                             initialFolderPath={initialParams.initialFolderPath}
                             initialFilePath={initialParams.initialFilePath}
                             onColumnsChange={handleColumnsChange}
+                            onFolderContextMenu={handleFolderContextMenu}
                         />
                     </div>
 
@@ -115,6 +181,13 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
                     )}
                 </div>
             </div>
+            {folderCtxMenu && (
+                <ContextMenu
+                    position={{ x: folderCtxMenu.x, y: folderCtxMenu.y }}
+                    items={folderMenuItems}
+                    onClose={() => setFolderCtxMenu(null)}
+                />
+            )}
         </div>
     );
 }

@@ -21,6 +21,7 @@ export interface TaskTreeItemProps {
     onFolderClick: (folder: TaskFolder) => void;
     onFileClick: (path: string) => void;
     onCheckboxChange: (path: string, checked: boolean) => void;
+    onFolderContextMenu?: (folder: TaskFolder, x: number, y: number) => void;
 }
 
 function getItemFileName(item: TaskNode): string {
@@ -75,6 +76,7 @@ export function TaskTreeItem({
     onFolderClick,
     onFileClick,
     onCheckboxChange,
+    onFolderContextMenu,
 }: TaskTreeItemProps) {
     const isFolder = isTaskFolder(item);
     const fileName = getItemFileName(item);
@@ -115,6 +117,13 @@ export function TaskTreeItem({
                 !isFolder && 'miller-file-row',
             )}
             onClick={handleClick}
+            onContextMenu={(e) => {
+                if (isFolder && onFolderContextMenu) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onFolderContextMenu(item as TaskFolder, e.clientX, e.clientY);
+                }
+            }}
             data-testid={`task-tree-item-${displayName}`}
             data-file-path={!isFolder && path ? path : undefined}
         >
