@@ -126,10 +126,12 @@ out/
 dist/
 
 .vscode/
-.wiki/
 
 # SPA client build output (esbuild)
 **/spa/client/dist/
 # Playwright
 playwright-report/
 test-results/
+
+# Deep Wiki output
+wiki/
