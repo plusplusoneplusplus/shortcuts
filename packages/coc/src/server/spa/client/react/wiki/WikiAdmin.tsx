@@ -131,8 +131,20 @@ export function WikiAdmin({ wikiId, initialTab, onTabChange }: WikiAdminProps) {
 
 // ── Generate Tab ─────────────────────────────────────────────────────
 
+interface CacheMetadata {
+    components: number;
+    categories: number;
+    themes: number;
+    domains: number;
+    analyses: number;
+    articles: number;
+    projectName?: string;
+    projectLanguage?: string;
+}
+
 function GenerateTab({ wikiId }: { wikiId: string }) {
     const [cache, setCache] = useState<Record<number, string>>({});
+    const [metadata, setMetadata] = useState<CacheMetadata | null>(null);
     const [runningPhase, setRunningPhase] = useState<number | null>(null);
     const [logs, setLogs] = useState<Record<number, string[]>>({});
     const [fromPhase, setFromPhase] = useState(1);
@@ -149,6 +161,9 @@ function GenerateTab({ wikiId }: { wikiId: string }) {
                         m[parseInt(k)] = v.cached ? 'cached' : 'none';
                     }
                     setCache(m);
+                }
+                if (data?.metadata) {
+                    setMetadata(data.metadata);
                 }
             })
             .catch(() => {});
@@ -281,6 +296,11 @@ function GenerateTab({ wikiId }: { wikiId: string }) {
                 )}
             </div>
 
+            {/* Cache metadata summary */}
+            {metadata && hasCachedPhases(cache) && (
+                <MetadataSummary metadata={metadata} />
+            )}
+
             {/* Phase cards */}
             {[1, 2, 3, 4, 5].map(phase => {
                 const p = PHASE_NAMES[phase];
@@ -355,6 +375,61 @@ function GenerateTab({ wikiId }: { wikiId: string }) {
                 );
             })}
         </div>
+    );
+}
+
+// ── Metadata Summary ─────────────────────────────────────────────────
+
+function hasCachedPhases(cache: Record<number, string>): boolean {
+    return Object.values(cache).some(v => v === 'cached' || v === 'valid');
+}
+
+const METADATA_ITEMS: Array<{ key: keyof CacheMetadata; label: string; icon: string }> = [
+    { key: 'components', label: 'Components', icon: '📦' },
+    { key: 'themes', label: 'Themes', icon: '🎨' },
+    { key: 'categories', label: 'Categories', icon: '📂' },
+    { key: 'domains', label: 'Domains', icon: '🌐' },
+    { key: 'analyses', label: 'Analyses', icon: '🔬' },
+    { key: 'articles', label: 'Articles', icon: '📝' },
+];
+
+function MetadataSummary({ metadata }: { metadata: CacheMetadata }) {
+    const items = METADATA_ITEMS.filter(item => {
+        const val = metadata[item.key];
+        return typeof val === 'number' && val > 0;
+    });
+
+    if (items.length === 0) return null;
+
+    return (
+        <Card className="p-3" id="cache-metadata-summary">
+            <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc]">
+                    Cache Summary
+                </span>
+                {metadata.projectName && (
+                    <span className="text-[10px] text-[#848484]" id="metadata-project-name">
+                        {metadata.projectName}
+                        {metadata.projectLanguage ? ` · ${metadata.projectLanguage}` : ''}
+                    </span>
+                )}
+            </div>
+            <div className="grid grid-cols-3 gap-2" id="metadata-grid">
+                {items.map(item => (
+                    <div
+                        key={item.key}
+                        className="flex items-center gap-1.5 px-2 py-1 rounded bg-[#f5f5f5] dark:bg-[#2d2d2d]"
+                        data-metadata-item={item.key}
+                    >
+                        <span className="text-[10px]">{item.icon}</span>
+                        <span className="text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc]" data-metadata-value={item.key}>
+                            {metadata[item.key] as number}
+                        </span>
+                        <span className="text-[10px] text-[#848484]">{item.label}</span>
+                    </div>
+                ))}
+            </div>
+        </Card>
     );
 }
 

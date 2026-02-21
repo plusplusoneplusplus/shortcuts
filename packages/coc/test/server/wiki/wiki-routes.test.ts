@@ -515,6 +515,19 @@ describe('Wiki Routes Integration', () => {
             expect(res.status).toBe(404);
         });
 
+        it('GET /api/wikis/:wikiId/admin/generate/status includes metadata', async () => {
+            const res = await getJSON(`${server.url}/api/wikis/test-wiki/admin/generate/status`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.metadata).toBeDefined();
+            expect(body.metadata.components).toBe(2);
+            expect(body.metadata.categories).toBe(2);
+            expect(body.metadata.themes).toBe(0);
+            expect(body.metadata.domains).toBe(0);
+            expect(body.metadata.projectName).toBe('test-project');
+            expect(body.metadata.projectLanguage).toBe('TypeScript');
+        });
+
         it('POST /api/wikis/:wikiId/admin/generate rejects without repoPath', async () => {
             const res = await postJSON(`${server.url}/api/wikis/test-wiki/admin/generate`, {
                 startPhase: 1,
@@ -813,6 +826,17 @@ describe('Admin handlers with repoPath', () => {
         expect(body.phases).toBeDefined();
     });
 
+    it('GET /api/wikis/:wikiId/admin/generate/status includes metadata with repoPath', async () => {
+        const res = await getJSON(`${server.url}/api/wikis/repo-wiki/admin/generate/status`);
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.metadata).toBeDefined();
+        expect(body.metadata.components).toBe(2);
+        expect(body.metadata.categories).toBe(2);
+        expect(typeof body.metadata.analyses).toBe('number');
+        expect(typeof body.metadata.articles).toBe('number');
+    });
+
     it('GET /api/wikis/:wikiId/admin/seeds reads seeds from repoPath when repoPath is set', async () => {
         const yaml = await import('js-yaml');
         const seedsData = { themes: [{ theme: 'auth', description: 'Auth module', hints: ['login'] }] };
@@ -1013,6 +1037,228 @@ describe('POST /api/wikis/:wikiId/admin/seeds/generate', () => {
         // Should be 200 (SSE started) — deep-wiki import may fail but SSE headers are sent first
         expect(res.status).toBe(200);
         expect(res.headers['content-type']).toBe('text/event-stream');
+    });
+});
+
+// ============================================================================
+// Generate Status Metadata Tests
+// ============================================================================
+
+describe('Generate Status Metadata', () => {
+    let server: ExecutionServer;
+    let tempDirs: string[] = [];
+
+    function makeTempWikiDirWithCache(options?: {
+        themes?: any[];
+        domains?: any[];
+        analysisIds?: string[];
+        articleIds?: string[];
+        articleDomains?: Record<string, string[]>;
+    }): string {
+        const graph = makeComponentGraph({
+            themes: options?.themes,
+            domains: options?.domains,
+        });
+        const tmpDir = createTempWikiDir(graph);
+        tempDirs.push(tmpDir);
+
+        const cacheDir = path.join(tmpDir, '.wiki-cache');
+
+        if (options?.analysisIds) {
+            const analysesDir = path.join(cacheDir, 'analyses');
+            fs.mkdirSync(analysesDir, { recursive: true });
+            fs.writeFileSync(path.join(analysesDir, '_metadata.json'), JSON.stringify({
+                gitHash: 'abc123', timestamp: Date.now(), componentCount: options.analysisIds.length,
+            }));
+            for (const id of options.analysisIds) {
+                fs.writeFileSync(path.join(analysesDir, `${id}.json`), JSON.stringify({
+                    analysis: { componentId: id, overview: 'test' }, gitHash: 'abc123', timestamp: Date.now(),
+                }));
+            }
+        }
+
+        if (options?.articleIds) {
+            const articlesDir = path.join(cacheDir, 'articles');
+            fs.mkdirSync(articlesDir, { recursive: true });
+            fs.writeFileSync(path.join(articlesDir, '_metadata.json'), JSON.stringify({
+                gitHash: 'abc123', timestamp: Date.now(), componentCount: options.articleIds.length,
+            }));
+            for (const id of options.articleIds) {
+                fs.writeFileSync(path.join(articlesDir, `${id}.json`), JSON.stringify({
+                    article: { slug: id, title: id, content: 'test' }, gitHash: 'abc123', timestamp: Date.now(),
+                }));
+            }
+        }
+
+        if (options?.articleDomains) {
+            const articlesDir = path.join(cacheDir, 'articles');
+            fs.mkdirSync(articlesDir, { recursive: true });
+            for (const [domain, ids] of Object.entries(options.articleDomains)) {
+                const domainDir = path.join(articlesDir, domain);
+                fs.mkdirSync(domainDir, { recursive: true });
+                for (const id of ids) {
+                    fs.writeFileSync(path.join(domainDir, `${id}.json`), JSON.stringify({
+                        article: { slug: id, title: id, content: 'test' }, gitHash: 'abc123', timestamp: Date.now(),
+                    }));
+                }
+            }
+        }
+
+        return tmpDir;
+    }
+
+    afterEach(async () => {
+        await server.close();
+        for (const dir of tempDirs) removeTempDir(dir);
+        tempDirs = [];
+    });
+
+    it('returns analysis count from cache directory', async () => {
+        const wikiDir = makeTempWikiDirWithCache({
+            analysisIds: ['auth-module', 'db-layer'],
+        });
+        const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-meta-repo-'));
+        tempDirs.push(repoDir);
+
+        server = await createExecutionServer({
+            port: 0,
+            wiki: { enabled: true, wikis: { 'meta-wiki': { wikiDir, repoPath: repoDir } }, aiEnabled: false },
+        });
+
+        const res = await getJSON(`${server.url}/api/wikis/meta-wiki/admin/generate/status`);
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.metadata.analyses).toBe(2);
+    });
+
+    it('returns article count from flat cache directory', async () => {
+        const wikiDir = makeTempWikiDirWithCache({
+            articleIds: ['auth-module', 'db-layer'],
+        });
+        const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-meta-repo-'));
+        tempDirs.push(repoDir);
+
+        server = await createExecutionServer({
+            port: 0,
+            wiki: { enabled: true, wikis: { 'art-wiki': { wikiDir, repoPath: repoDir } }, aiEnabled: false },
+        });
+
+        const res = await getJSON(`${server.url}/api/wikis/art-wiki/admin/generate/status`);
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.metadata.articles).toBe(2);
+    });
+
+    it('returns article count from nested domain directories', async () => {
+        const wikiDir = makeTempWikiDirWithCache({
+            articleDomains: {
+                'core': ['auth-module'],
+                'infra': ['db-layer', 'cache-layer'],
+            },
+        });
+        const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-meta-repo-'));
+        tempDirs.push(repoDir);
+
+        server = await createExecutionServer({
+            port: 0,
+            wiki: { enabled: true, wikis: { 'nested-wiki': { wikiDir, repoPath: repoDir } }, aiEnabled: false },
+        });
+
+        const res = await getJSON(`${server.url}/api/wikis/nested-wiki/admin/generate/status`);
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.metadata.articles).toBe(3);
+    });
+
+    it('returns theme count from graph', async () => {
+        const wikiDir = makeTempWikiDirWithCache({
+            themes: [
+                { id: 'auth-theme', title: 'Auth', description: 'Auth theme', layout: 'single', articles: [], involvedComponentIds: [], directoryPath: '', generatedAt: Date.now() },
+                { id: 'data-theme', title: 'Data', description: 'Data theme', layout: 'area', articles: [], involvedComponentIds: [], directoryPath: '', generatedAt: Date.now() },
+            ],
+        });
+        const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-meta-repo-'));
+        tempDirs.push(repoDir);
+
+        server = await createExecutionServer({
+            port: 0,
+            wiki: { enabled: true, wikis: { 'theme-wiki': { wikiDir, repoPath: repoDir } }, aiEnabled: false },
+        });
+
+        const res = await getJSON(`${server.url}/api/wikis/theme-wiki/admin/generate/status`);
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.metadata.themes).toBe(2);
+    });
+
+    it('returns domain count from graph', async () => {
+        const wikiDir = makeTempWikiDirWithCache({
+            domains: [
+                { id: 'core', name: 'Core', path: 'src/core', description: 'Core domain', components: ['auth-module'] },
+                { id: 'infra', name: 'Infra', path: 'src/infra', description: 'Infra domain', components: ['db-layer'] },
+            ],
+        });
+        const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-meta-repo-'));
+        tempDirs.push(repoDir);
+
+        server = await createExecutionServer({
+            port: 0,
+            wiki: { enabled: true, wikis: { 'domain-wiki': { wikiDir, repoPath: repoDir } }, aiEnabled: false },
+        });
+
+        const res = await getJSON(`${server.url}/api/wikis/domain-wiki/admin/generate/status`);
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.metadata.domains).toBe(2);
+    });
+
+    it('returns zero counts when no cache files exist', async () => {
+        const wikiDir = createTempWikiDir();
+        tempDirs.push(wikiDir);
+        const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-meta-repo-'));
+        tempDirs.push(repoDir);
+
+        server = await createExecutionServer({
+            port: 0,
+            wiki: { enabled: true, wikis: { 'empty-wiki': { wikiDir, repoPath: repoDir } }, aiEnabled: false },
+        });
+
+        const res = await getJSON(`${server.url}/api/wikis/empty-wiki/admin/generate/status`);
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.metadata.analyses).toBe(0);
+        expect(body.metadata.articles).toBe(0);
+        expect(body.metadata.themes).toBe(0);
+        expect(body.metadata.domains).toBe(0);
+        expect(body.metadata.components).toBe(2);
+        expect(body.metadata.categories).toBe(2);
+    });
+
+    it('excludes _metadata.json and _reduce files from article count', async () => {
+        const graph = makeComponentGraph();
+        const tmpDir = createTempWikiDir(graph);
+        tempDirs.push(tmpDir);
+
+        const articlesDir = path.join(tmpDir, '.wiki-cache', 'articles');
+        fs.mkdirSync(articlesDir, { recursive: true });
+        fs.writeFileSync(path.join(articlesDir, '_metadata.json'), '{}');
+        fs.writeFileSync(path.join(articlesDir, '_reduce-summary.json'), '{}');
+        fs.writeFileSync(path.join(articlesDir, 'auth-module.json'), JSON.stringify({
+            article: { slug: 'auth', title: 'Auth', content: 'test' },
+        }));
+
+        const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-meta-repo-'));
+        tempDirs.push(repoDir);
+
+        server = await createExecutionServer({
+            port: 0,
+            wiki: { enabled: true, wikis: { 'filter-wiki': { wikiDir: tmpDir, repoPath: repoDir } }, aiEnabled: false },
+        });
+
+        const res = await getJSON(`${server.url}/api/wikis/filter-wiki/admin/generate/status`);
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.metadata.articles).toBe(1);
     });
 });
 

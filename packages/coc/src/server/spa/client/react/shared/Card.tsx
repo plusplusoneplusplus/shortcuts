@@ -6,11 +6,13 @@ export interface CardProps {
     children?: ReactNode;
     onClick?: MouseEventHandler<HTMLDivElement>;
     'aria-label'?: string;
+    id?: string;
 }
 
-export function Card({ className, children, onClick, 'aria-label': ariaLabel }: CardProps) {
+export function Card({ className, children, onClick, 'aria-label': ariaLabel, id }: CardProps) {
     return (
         <div
+            id={id}
             role={onClick ? 'button' : undefined}
             tabIndex={onClick ? 0 : undefined}
             aria-label={ariaLabel}

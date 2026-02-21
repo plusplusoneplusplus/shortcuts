@@ -27,12 +27,28 @@ afterEach(() => {
     vi.restoreAllMocks();
 });
 
-function makeCacheStatus(cached: Record<number, boolean>) {
+interface MetadataOverrides {
+    components?: number;
+    categories?: number;
+    themes?: number;
+    domains?: number;
+    analyses?: number;
+    articles?: number;
+    projectName?: string;
+    projectLanguage?: string;
+}
+
+function makeCacheStatus(cached: Record<number, boolean>, metadata?: MetadataOverrides) {
     const phases: Record<string, { cached: boolean }> = {};
     for (const [k, v] of Object.entries(cached)) {
         phases[k] = { cached: v };
     }
-    return { phases };
+    return {
+        phases,
+        metadata: metadata ?? {
+            components: 0, categories: 0, themes: 0, domains: 0, analyses: 0, articles: 0,
+        },
+    };
 }
 
 function mockSSEResponse(events: Array<{ type: string; [key: string]: any }>) {
@@ -455,6 +471,133 @@ describe('WikiAdmin GenerateTab — Force Rerun', () => {
             expect(body.force).toBe(true);
             expect(body.startPhase).toBe(5);
             expect(body.endPhase).toBe(5);
+        });
+    });
+});
+
+// ============================================================================
+// Metadata Summary Display Tests
+// ============================================================================
+
+describe('WikiAdmin GenerateTab — Cache Metadata Summary', () => {
+    describe('Metadata visibility', () => {
+        it('shows metadata summary when phases are cached and metadata has values', async () => {
+            mockFetchApi.mockResolvedValue(makeCacheStatus(
+                { 1: true, 2: true, 3: true, 4: false, 5: false },
+                { components: 15, categories: 4, themes: 3, domains: 2, analyses: 12, articles: 10, projectName: 'TestProject', projectLanguage: 'TypeScript' },
+            ));
+
+            await act(async () => {
+                render(<WikiAdmin wikiId="test-wiki" initialTab="generate" />);
+            });
+
+            await waitFor(() => {
+                expect(document.getElementById('cache-metadata-summary')).not.toBeNull();
+            });
+
+            expect(document.getElementById('metadata-project-name')).not.toBeNull();
+            expect(document.getElementById('metadata-project-name')!.textContent).toContain('TestProject');
+            expect(document.getElementById('metadata-project-name')!.textContent).toContain('TypeScript');
+
+            const grid = document.getElementById('metadata-grid');
+            expect(grid).not.toBeNull();
+
+            expect(document.querySelector('[data-metadata-value="components"]')!.textContent).toBe('15');
+            expect(document.querySelector('[data-metadata-value="themes"]')!.textContent).toBe('3');
+            expect(document.querySelector('[data-metadata-value="categories"]')!.textContent).toBe('4');
+            expect(document.querySelector('[data-metadata-value="domains"]')!.textContent).toBe('2');
+            expect(document.querySelector('[data-metadata-value="analyses"]')!.textContent).toBe('12');
+            expect(document.querySelector('[data-metadata-value="articles"]')!.textContent).toBe('10');
+        });
+
+        it('hides metadata summary when no phases are cached', async () => {
+            mockFetchApi.mockResolvedValue(makeCacheStatus(
+                { 1: false, 2: false, 3: false, 4: false, 5: false },
+                { components: 15, categories: 4, themes: 3, domains: 0, analyses: 0, articles: 0 },
+            ));
+
+            await act(async () => {
+                render(<WikiAdmin wikiId="test-wiki" initialTab="generate" />);
+            });
+
+            await waitFor(() => {
+                expect(screen.getByText('Discovery')).toBeDefined();
+            });
+
+            expect(document.getElementById('cache-metadata-summary')).toBeNull();
+        });
+
+        it('hides metadata summary when all counts are zero', async () => {
+            mockFetchApi.mockResolvedValue(makeCacheStatus(
+                { 1: true, 2: false, 3: false, 4: false, 5: false },
+                { components: 0, categories: 0, themes: 0, domains: 0, analyses: 0, articles: 0 },
+            ));
+
+            await act(async () => {
+                render(<WikiAdmin wikiId="test-wiki" initialTab="generate" />);
+            });
+
+            await waitFor(() => {
+                expect(screen.getByText('Discovery')).toBeDefined();
+            });
+
+            expect(document.getElementById('cache-metadata-summary')).toBeNull();
+        });
+
+        it('only shows metadata items with non-zero values', async () => {
+            mockFetchApi.mockResolvedValue(makeCacheStatus(
+                { 1: true, 2: false, 3: false, 4: false, 5: false },
+                { components: 5, categories: 2, themes: 0, domains: 0, analyses: 0, articles: 0 },
+            ));
+
+            await act(async () => {
+                render(<WikiAdmin wikiId="test-wiki" initialTab="generate" />);
+            });
+
+            await waitFor(() => {
+                expect(document.getElementById('cache-metadata-summary')).not.toBeNull();
+            });
+
+            expect(document.querySelector('[data-metadata-item="components"]')).not.toBeNull();
+            expect(document.querySelector('[data-metadata-item="categories"]')).not.toBeNull();
+            expect(document.querySelector('[data-metadata-item="themes"]')).toBeNull();
+            expect(document.querySelector('[data-metadata-item="domains"]')).toBeNull();
+            expect(document.querySelector('[data-metadata-item="analyses"]')).toBeNull();
+            expect(document.querySelector('[data-metadata-item="articles"]')).toBeNull();
+        });
+
+        it('omits project name when not provided', async () => {
+            mockFetchApi.mockResolvedValue(makeCacheStatus(
+                { 1: true, 2: false, 3: false, 4: false, 5: false },
+                { components: 5, categories: 2, themes: 0, domains: 0, analyses: 0, articles: 0 },
+            ));
+
+            await act(async () => {
+                render(<WikiAdmin wikiId="test-wiki" initialTab="generate" />);
+            });
+
+            await waitFor(() => {
+                expect(document.getElementById('cache-metadata-summary')).not.toBeNull();
+            });
+
+            expect(document.getElementById('metadata-project-name')).toBeNull();
+        });
+
+        it('shows project name without language when language is not provided', async () => {
+            mockFetchApi.mockResolvedValue(makeCacheStatus(
+                { 1: true, 2: false, 3: false, 4: false, 5: false },
+                { components: 5, categories: 2, themes: 0, domains: 0, analyses: 0, articles: 0, projectName: 'MyProject' },
+            ));
+
+            await act(async () => {
+                render(<WikiAdmin wikiId="test-wiki" initialTab="generate" />);
+            });
+
+            await waitFor(() => {
+                expect(document.getElementById('metadata-project-name')).not.toBeNull();
+            });
+
+            expect(document.getElementById('metadata-project-name')!.textContent).toBe('MyProject');
         });
     });
 });

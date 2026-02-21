@@ -402,6 +402,8 @@ export function handleGetGenerateStatus(
             phases['5'] = checkWebsiteCacheStatus(outputDir);
         }
 
+        const metadata = collectCacheMetadata(wiki, path.resolve(outputDir));
+
         const state = generationStates.get(wikiId);
         sendJson(res, {
             running: state?.running ?? false,
@@ -409,6 +411,7 @@ export function handleGetGenerateStatus(
             phases,
             repoPath: wiki.registration.repoPath,
             available,
+            metadata,
         });
     } catch (error) {
         send500(res, `Failed to get generation status: ${error instanceof Error ? error.message : String(error)}`);
@@ -571,6 +574,81 @@ async function runComponentRegeneration(
     }
 
     sendSSE(res, { type: 'done', success: true, componentId, duration: Date.now() - startTime, message: 'Article regenerated' });
+}
+
+// ============================================================================
+// Cache Metadata Collection
+// ============================================================================
+
+export interface CacheMetadataStats {
+    components: number;
+    categories: number;
+    themes: number;
+    domains: number;
+    analyses: number;
+    articles: number;
+    projectName?: string;
+    projectLanguage?: string;
+}
+
+function collectCacheMetadata(
+    wiki: { wikiData: { graph: any } },
+    outputDir: string,
+): CacheMetadataStats {
+    const stats: CacheMetadataStats = {
+        components: 0,
+        categories: 0,
+        themes: 0,
+        domains: 0,
+        analyses: 0,
+        articles: 0,
+    };
+
+    try {
+        const graph = wiki.wikiData.graph;
+        if (graph) {
+            stats.components = Array.isArray(graph.components) ? graph.components.length : 0;
+            stats.categories = Array.isArray(graph.categories) ? graph.categories.length : 0;
+            stats.themes = Array.isArray(graph.themes) ? graph.themes.length : 0;
+            stats.domains = Array.isArray(graph.domains) ? graph.domains.length : 0;
+            if (graph.project) {
+                if (graph.project.name) stats.projectName = graph.project.name;
+                if (graph.project.language) stats.projectLanguage = graph.project.language;
+            }
+        }
+    } catch { /* graph may not be loaded */ }
+
+    try {
+        const analysesDir = path.join(outputDir, '.wiki-cache', 'analyses');
+        if (fs.existsSync(analysesDir) && fs.statSync(analysesDir).isDirectory()) {
+            stats.analyses = fs.readdirSync(analysesDir)
+                .filter(f => f.endsWith('.json') && f !== '_metadata.json').length;
+        }
+    } catch { /* ignore */ }
+
+    try {
+        const articlesDir = path.join(outputDir, '.wiki-cache', 'articles');
+        if (fs.existsSync(articlesDir) && fs.statSync(articlesDir).isDirectory()) {
+            stats.articles = countArticleFiles(articlesDir);
+        }
+    } catch { /* ignore */ }
+
+    return stats;
+}
+
+function countArticleFiles(dir: string): number {
+    let count = 0;
+    try {
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
+        for (const entry of entries) {
+            if (entry.isFile() && entry.name.endsWith('.json') && !entry.name.startsWith('_')) {
+                count++;
+            } else if (entry.isDirectory()) {
+                count += countArticleFiles(path.join(dir, entry.name));
+            }
+        }
+    } catch { /* ignore */ }
+    return count;
 }
 
 // ============================================================================
