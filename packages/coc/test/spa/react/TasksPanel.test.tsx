@@ -233,7 +233,7 @@ describe('TasksPanel', () => {
 
         fireEvent.click(screen.getByTestId('task-tree-item-design'));
         await waitFor(() => {
-            expect(screen.getByTestId('markdown-review-status-bar')).toBeTruthy();
+            expect(document.querySelector('#task-preview-body')).toBeTruthy();
         });
 
         expect(screen.getByTestId('miller-column-0')).toBeTruthy();
@@ -461,13 +461,13 @@ describe('TasksPanel — folder click clears preview', () => {
         // Click the file inside "chat" to open the markdown preview
         fireEvent.click(screen.getByTestId('task-tree-item-design'));
         await waitFor(() => {
-            expect(screen.getByTestId('markdown-review-status-bar')).toBeTruthy();
+            expect(document.querySelector('#task-preview-body')).toBeTruthy();
         });
 
         // Now click "repo-queue-tab" folder — preview should disappear
         fireEvent.click(screen.getByTestId('task-tree-item-repo-queue-tab'));
         await waitFor(() => {
-            expect(screen.queryByTestId('markdown-review-status-bar')).toBeNull();
+            expect(document.querySelector('#task-preview-body')).toBeNull();
         });
     });
 
@@ -499,13 +499,13 @@ describe('TasksPanel — folder click clears preview', () => {
         // Click the file inside to open preview
         fireEvent.click(screen.getByTestId('task-tree-item-spec'));
         await waitFor(() => {
-            expect(screen.getByTestId('markdown-review-status-bar')).toBeTruthy();
+            expect(document.querySelector('#task-preview-body')).toBeTruthy();
         });
 
         // Click "chat" folder — preview should disappear
         fireEvent.click(screen.getByTestId('task-tree-item-chat'));
         await waitFor(() => {
-            expect(screen.queryByTestId('markdown-review-status-bar')).toBeNull();
+            expect(document.querySelector('#task-preview-body')).toBeNull();
         });
     });
 
@@ -527,7 +527,7 @@ describe('TasksPanel — folder click clears preview', () => {
         await waitFor(() => {
             expect(screen.getByTestId('miller-column-1')).toBeTruthy();
         });
-        expect(screen.queryByTestId('markdown-review-status-bar')).toBeNull();
+        expect(document.querySelector('#task-preview-body')).toBeNull();
     });
 });
 

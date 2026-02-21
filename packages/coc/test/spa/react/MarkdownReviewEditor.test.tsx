@@ -29,7 +29,7 @@ describe('MarkdownReviewEditor', () => {
         vi.restoreAllMocks();
     });
 
-    it('renders markdown headings with top status bar and without empty comment pane', async () => {
+    it('renders markdown headings without status bar and without empty comment sidebar', async () => {
         fetchSpy.mockImplementation((input: RequestInfo | URL) => {
             const url = String(input);
             if (url.includes('/tasks/content?')) {
@@ -60,8 +60,7 @@ describe('MarkdownReviewEditor', () => {
 
         expect(document.querySelector('#task-preview-body .md-h2')).toBeTruthy();
         expect(document.querySelector('#task-preview-body .code-block-container')).toBeTruthy();
-        expect(screen.getByTestId('markdown-review-status-bar')).toBeTruthy();
-        expect(screen.getByTestId('editor-status-filter-all')).toBeTruthy();
+        expect(screen.queryByTestId('markdown-review-status-bar')).toBeNull();
         expect(screen.queryByTestId('comment-sidebar')).toBeNull();
     });
 
