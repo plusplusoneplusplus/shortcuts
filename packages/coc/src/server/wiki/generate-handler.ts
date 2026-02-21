@@ -177,7 +177,7 @@ async function runGeneration(
     const phases = await importDeepWiki('commands/phases');
     const { runPhase1, runPhase2Consolidation, runPhase3Analysis, runPhase4Writing, runPhase5Website } = phases;
     const cacheModule = await importDeepWiki('cache');
-    const { getCachedGraphAny, getCachedGraph, getCachedAnalyses } = cacheModule;
+    const { getCachedGraphAny, getCachedGraph, getCachedAnalyses, getCachedConsolidationAny, getCachedConsolidation } = cacheModule;
     const { UsageTracker } = await importDeepWiki('usage-tracker');
     const { checkAIAvailability } = await importDeepWiki('ai-invoker');
 
@@ -243,6 +243,16 @@ async function runGeneration(
         } catch (error) {
             sendSSE(res, { type: 'error', phase: 2, message: error instanceof Error ? error.message : String(error) });
             sendSSE(res, { type: 'done', success: false, error: 'Phase 2 failed' }); return;
+        }
+    } else if (startPhase > 2 && graph.components.length > 0) {
+        // When skipping Phase 2, load the consolidated graph from cache so
+        // downstream phases operate on the reduced component set.
+        const consolidatedCache = getCachedConsolidationAny(outputDir, graph.components.length)
+            ?? await getCachedConsolidation(repoPath, outputDir, graph.components.length);
+        if (consolidatedCache) {
+            const prevCount = graph.components.length;
+            graph = consolidatedCache.graph;
+            sendSSE(res, { type: 'log', phase: startPhase, message: `Loaded consolidated graph (${prevCount} → ${graph.components.length} components)` });
         }
     }
 
