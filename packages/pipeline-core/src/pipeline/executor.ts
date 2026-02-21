@@ -31,7 +31,8 @@ import {
     PipelineConfig,
     PipelineParameter,
     ProcessTracker,
-    FilterResult
+    FilterResult,
+    JobConfig
 } from './types';
 import { validateGenerateConfig } from './input-generator';
 import { executeFilter } from './filter-executor';
@@ -48,11 +49,11 @@ export { DEFAULT_PARALLEL_LIMIT } from '../config/defaults';
  */
 export class PipelineExecutionError extends PipelineCoreError {
     /** Phase where the error occurred */
-    readonly phase?: 'input' | 'filter' | 'map' | 'reduce';
+    readonly phase?: 'input' | 'filter' | 'map' | 'reduce' | 'job';
 
     constructor(
         message: string,
-        phase?: 'input' | 'filter' | 'map' | 'reduce'
+        phase?: 'input' | 'filter' | 'map' | 'reduce' | 'job'
     ) {
         super(message, {
             code: ErrorCode.PIPELINE_EXECUTION_FAILED,
@@ -62,6 +63,15 @@ export class PipelineExecutionError extends PipelineCoreError {
         this.phase = phase;
     }
 }
+
+/**
+ * Pipeline config narrowed to map-reduce mode (input, map, reduce are required)
+ */
+type MapReducePipelineConfig = PipelineConfig & {
+    input: NonNullable<PipelineConfig['input']>;
+    map: NonNullable<PipelineConfig['map']>;
+    reduce: NonNullable<PipelineConfig['reduce']>;
+};
 
 /**
  * Options for executing a pipeline
@@ -118,25 +128,296 @@ export async function executePipeline(
     // Validate config
     validatePipelineConfig(config);
 
+    // Single-job mode
+    if (config.job) {
+        return executeSingleJob(config, options);
+    }
+
+    // After validation, we know input/map/reduce are present in map-reduce mode
+    const mrConfig = config as MapReducePipelineConfig;
+
     // Resolve prompts (from inline, files, or skills)
-    const prompts = await resolvePrompts(config, options.pipelineDirectory, options.workspaceRoot);
+    const prompts = await resolvePrompts(mrConfig, options.pipelineDirectory, options.workspaceRoot);
 
     // Load items from input source
-    let items = await loadInputItems(config, options.pipelineDirectory);
+    let items = await loadInputItems(mrConfig, options.pipelineDirectory);
 
     // Apply limit and merge parameters
-    items = prepareItems(items, config, prompts.mapPrompt);
+    items = prepareItems(items, mrConfig, prompts.mapPrompt);
 
     // Execute the pipeline with resolved prompts and items
-    return executeWithItems(config, items, prompts, options);
+    return executeWithItems(mrConfig, items, prompts, options);
+}
+
+/**
+ * Execute a single AI job (no map-reduce cycle)
+ */
+async function executeSingleJob(
+    config: PipelineConfig,
+    options: ExecutePipelineOptions
+): Promise<PipelineExecutionResult> {
+    const startTime = Date.now();
+    const job = config.job!;
+
+    try {
+        // 1. Resolve prompt from inline or file
+        let prompt: string;
+        if (job.prompt) {
+            prompt = job.prompt;
+        } else if (job.promptFile) {
+            prompt = await resolvePromptFile(job.promptFile, options.pipelineDirectory);
+        } else {
+            throw new PipelineExecutionError('Job config must have either "job.prompt" or "job.promptFile"', 'job');
+        }
+
+        // 2. Attach skill context if set
+        if (job.skill) {
+            const effectiveWorkspaceRoot = deriveWorkspaceRoot(options.pipelineDirectory, options.workspaceRoot);
+            try {
+                const skillContent = await resolveSkill(job.skill, effectiveWorkspaceRoot);
+                prompt = buildPromptWithSkill(prompt, skillContent, job.skill);
+            } catch (error) {
+                throw new PipelineExecutionError(
+                    `Failed to resolve job skill "${job.skill}": ${error instanceof Error ? error.message : String(error)}`,
+                    'job'
+                );
+            }
+        }
+
+        // 3. Collect parameters and substitute template variables
+        if (config.parameters && config.parameters.length > 0) {
+            const paramValues = convertParametersToObject(config.parameters);
+
+            // Validate that all template variables are provided
+            const templateVars = extractVariables(prompt);
+            const missingVars = templateVars.filter(v => !(v in paramValues));
+            if (missingVars.length > 0) {
+                throw new PipelineExecutionError(
+                    `Job prompt has missing required variables: ${missingVars.join(', ')}`,
+                    'job'
+                );
+            }
+
+            prompt = substituteVariables(prompt, paramValues, {
+                strict: false,
+                missingValueBehavior: 'empty',
+                preserveSpecialVariables: false
+            });
+        } else {
+            // Even without parameters, validate no unresolved variables remain
+            const templateVars = extractVariables(prompt);
+            if (templateVars.length > 0) {
+                throw new PipelineExecutionError(
+                    `Job prompt has missing required variables: ${templateVars.join(', ')}`,
+                    'job'
+                );
+            }
+        }
+
+        // 4. Set up timeout
+        const timeoutMs = job.timeoutMs ?? DEFAULT_AI_TIMEOUT_MS;
+
+        // 5. Call AI with timeout and retry
+        let aiResult = await Promise.race([
+            options.aiInvoker(prompt, { model: job.model }),
+            new Promise<never>((_, reject) =>
+                setTimeout(() => reject(new Error(`Job timed out after ${timeoutMs}ms`)), timeoutMs)
+            )
+        ]);
+
+        // Retry on timeout with doubled timeout
+        if (!aiResult.success) {
+            // Not a timeout, just a failure - fall through
+        }
+
+        // 6. Process result
+        if (!aiResult.success || !aiResult.response) {
+            const executionTimeMs = Date.now() - startTime;
+            const errorMsg = aiResult.error || 'AI invocation failed';
+            return {
+                success: false,
+                output: {
+                    results: [],
+                    formattedOutput: '',
+                    summary: { totalItems: 1, successfulItems: 0, failedItems: 1, outputFields: job.output || [] }
+                },
+                mapResults: [{
+                    workItemId: 'job-0',
+                    success: false,
+                    output: {} as any,
+                    error: errorMsg,
+                    executionTimeMs
+                }],
+                reduceStats: { inputCount: 1, outputCount: 0, mergedCount: 0, reduceTimeMs: 0, usedAIReduce: false },
+                totalTimeMs: executionTimeMs,
+                executionStats: { totalItems: 1, successfulMaps: 0, failedMaps: 1, mapPhaseTimeMs: executionTimeMs, reducePhaseTimeMs: 0, maxConcurrency: 1 },
+                error: errorMsg
+            };
+        }
+
+        // 7. Parse output
+        const executionTimeMs = Date.now() - startTime;
+        let parsedOutput: Record<string, unknown> = {};
+        let formattedOutput: string = aiResult.response;
+
+        if (job.output && job.output.length > 0) {
+            // Structured output mode - parse JSON
+            try {
+                const jsonMatch = aiResult.response.match(/\{[\s\S]*\}/);
+                if (!jsonMatch) {
+                    throw new Error('Response does not contain a JSON object');
+                }
+                const parsed = JSON.parse(jsonMatch[0]);
+                for (const field of job.output) {
+                    parsedOutput[field] = field in parsed ? parsed[field] : null;
+                }
+                formattedOutput = JSON.stringify(parsedOutput, null, 2);
+            } catch (error) {
+                const parseError = `Failed to parse AI response: ${error instanceof Error ? error.message : String(error)}`;
+                return {
+                    success: false,
+                    output: {
+                        results: [],
+                        formattedOutput: '',
+                        summary: { totalItems: 1, successfulItems: 0, failedItems: 1, outputFields: job.output }
+                    },
+                    mapResults: [{
+                        workItemId: 'job-0',
+                        success: false,
+                        output: {} as any,
+                        error: parseError,
+                        executionTimeMs
+                    }],
+                    reduceStats: { inputCount: 1, outputCount: 0, mergedCount: 0, reduceTimeMs: 0, usedAIReduce: false },
+                    totalTimeMs: executionTimeMs,
+                    executionStats: { totalItems: 1, successfulMaps: 0, failedMaps: 1, mapPhaseTimeMs: executionTimeMs, reducePhaseTimeMs: 0, maxConcurrency: 1 },
+                    error: parseError
+                };
+            }
+        }
+
+        // 8. Return success result
+        return {
+            success: true,
+            output: {
+                results: [],
+                formattedOutput,
+                summary: { totalItems: 1, successfulItems: 1, failedItems: 0, outputFields: job.output || [] }
+            },
+            mapResults: [{
+                workItemId: 'job-0',
+                success: true,
+                output: parsedOutput as any,
+                executionTimeMs
+            }],
+            reduceStats: { inputCount: 1, outputCount: 1, mergedCount: 1, reduceTimeMs: 0, usedAIReduce: false },
+            totalTimeMs: executionTimeMs,
+            executionStats: { totalItems: 1, successfulMaps: 1, failedMaps: 0, mapPhaseTimeMs: executionTimeMs, reducePhaseTimeMs: 0, maxConcurrency: 1 }
+        };
+    } catch (error) {
+        if (error instanceof PipelineExecutionError) {
+            throw error;
+        }
+
+        const executionTimeMs = Date.now() - startTime;
+        const errorMsg = error instanceof Error ? error.message : String(error);
+
+        // Handle timeout with retry
+        if (errorMsg.includes('timed out')) {
+            const job = config.job!;
+            const timeoutMs = job.timeoutMs ?? DEFAULT_AI_TIMEOUT_MS;
+
+            try {
+                let prompt: string;
+                if (job.prompt) {
+                    prompt = job.prompt;
+                } else {
+                    prompt = await resolvePromptFile(job.promptFile!, options.pipelineDirectory);
+                }
+
+                if (config.parameters && config.parameters.length > 0) {
+                    const paramValues = convertParametersToObject(config.parameters);
+                    prompt = substituteVariables(prompt, paramValues, {
+                        strict: false,
+                        missingValueBehavior: 'empty',
+                        preserveSpecialVariables: false
+                    });
+                }
+
+                const retryResult = await Promise.race([
+                    options.aiInvoker(prompt, { model: job.model }),
+                    new Promise<never>((_, reject) =>
+                        setTimeout(() => reject(new Error(`Job retry timed out after ${timeoutMs * 2}ms`)), timeoutMs * 2)
+                    )
+                ]);
+
+                if (retryResult.success && retryResult.response) {
+                    const retryTimeMs = Date.now() - startTime;
+                    let parsedOutput: Record<string, unknown> = {};
+                    let formattedOutput: string = retryResult.response;
+
+                    if (job.output && job.output.length > 0) {
+                        const jsonMatch = retryResult.response.match(/\{[\s\S]*\}/);
+                        if (jsonMatch) {
+                            const parsed = JSON.parse(jsonMatch[0]);
+                            for (const field of job.output) {
+                                parsedOutput[field] = field in parsed ? parsed[field] : null;
+                            }
+                            formattedOutput = JSON.stringify(parsedOutput, null, 2);
+                        }
+                    }
+
+                    return {
+                        success: true,
+                        output: {
+                            results: [],
+                            formattedOutput,
+                            summary: { totalItems: 1, successfulItems: 1, failedItems: 0, outputFields: job.output || [] }
+                        },
+                        mapResults: [{
+                            workItemId: 'job-0',
+                            success: true,
+                            output: parsedOutput as any,
+                            executionTimeMs: retryTimeMs
+                        }],
+                        reduceStats: { inputCount: 1, outputCount: 1, mergedCount: 1, reduceTimeMs: 0, usedAIReduce: false },
+                        totalTimeMs: retryTimeMs,
+                        executionStats: { totalItems: 1, successfulMaps: 1, failedMaps: 0, mapPhaseTimeMs: retryTimeMs, reducePhaseTimeMs: 0, maxConcurrency: 1 }
+                    };
+                }
+            } catch {
+                // Retry also failed, fall through to error return
+            }
+        }
+
+        return {
+            success: false,
+            output: {
+                results: [],
+                formattedOutput: '',
+                summary: { totalItems: 1, successfulItems: 0, failedItems: 1, outputFields: config.job?.output || [] }
+            },
+            mapResults: [{
+                workItemId: 'job-0',
+                success: false,
+                output: {} as any,
+                error: errorMsg,
+                executionTimeMs
+            }],
+            reduceStats: { inputCount: 1, outputCount: 0, mergedCount: 0, reduceTimeMs: 0, usedAIReduce: false },
+            totalTimeMs: executionTimeMs,
+            executionStats: { totalItems: 1, successfulMaps: 0, failedMaps: 1, mapPhaseTimeMs: executionTimeMs, reducePhaseTimeMs: 0, maxConcurrency: 1 },
+            error: errorMsg
+        };
+    }
 }
 
 /**
  * Execute a pipeline with pre-approved items
- * 
+ *
  * This function bypasses the normal input loading and uses provided items directly.
  * Used when items have been generated via AI and approved by the user.
- * 
+ *
  * @param config Pipeline configuration (parsed from YAML)
  * @param items Pre-approved items to process
  * @param options Execution options
@@ -150,14 +431,17 @@ export async function executePipelineWithItems(
     // Validate basic config structure (but skip input validation since we're using pre-approved items)
     validatePipelineConfigForExecution(config);
 
+    // After validation, we know map/reduce are present in map-reduce mode
+    const mrConfig = config as MapReducePipelineConfig;
+
     // Resolve prompts (from inline, files, or skills)
-    const prompts = await resolvePrompts(config, options.pipelineDirectory, options.workspaceRoot);
+    const prompts = await resolvePrompts(mrConfig, options.pipelineDirectory, options.workspaceRoot);
 
     // Apply limit and merge parameters to provided items
-    const processItems = prepareItems(items, config, prompts.mapPrompt);
+    const processItems = prepareItems(items, mrConfig, prompts.mapPrompt);
 
     // Execute the pipeline with resolved prompts and items
-    return executeWithItems(config, processItems, prompts, options);
+    return executeWithItems(mrConfig, processItems, prompts, options);
 }
 
 /**
@@ -167,6 +451,12 @@ export async function executePipelineWithItems(
 function validatePipelineConfigForExecution(config: PipelineConfig): void {
     if (!config.name) {
         throw new PipelineExecutionError('Pipeline config missing "name"');
+    }
+
+    // Job mode doesn't need map/reduce validation
+    if (config.job) {
+        validateJobConfig(config);
+        return;
     }
 
     validateMapConfig(config);
@@ -219,7 +509,7 @@ ${mainPrompt}`;
  * Resolve all prompts from config (either inline or from files, with optional skill context)
  */
 async function resolvePrompts(
-    config: PipelineConfig,
+    config: MapReducePipelineConfig,
     pipelineDirectory: string,
     workspaceRoot?: string
 ): Promise<ResolvedPrompts> {
@@ -305,7 +595,7 @@ async function resolvePrompts(
 /**
  * Load items from input source (inline items, CSV, or inline array)
  */
-async function loadInputItems(config: PipelineConfig, pipelineDirectory: string): Promise<PromptItem[]> {
+async function loadInputItems(config: MapReducePipelineConfig, pipelineDirectory: string): Promise<PromptItem[]> {
     try {
         if (config.input.items) {
             return config.input.items;
@@ -342,7 +632,7 @@ async function loadInputItems(config: PipelineConfig, pipelineDirectory: string)
 /**
  * Prepare items by applying limit, merging parameters, and validating template variables
  */
-function prepareItems(items: PromptItem[], config: PipelineConfig, mapPrompt: string): PromptItem[] {
+function prepareItems(items: PromptItem[], config: MapReducePipelineConfig, mapPrompt: string): PromptItem[] {
     // Apply limit
     const limit = config.input.limit ?? items.length;
     let result = items.slice(0, limit);
@@ -374,7 +664,7 @@ function prepareItems(items: PromptItem[], config: PipelineConfig, mapPrompt: st
  * This is the core execution logic shared by both executePipeline and executePipelineWithItems
  */
 async function executeWithItems(
-    config: PipelineConfig,
+    config: MapReducePipelineConfig,
     items: PromptItem[],
     prompts: ResolvedPrompts,
     options: ExecutePipelineOptions
@@ -438,7 +728,7 @@ async function executeWithItems(
  * Execute pipeline in standard mode (one item per AI call)
  */
 async function executeStandardMode(
-    config: PipelineConfig,
+    config: MapReducePipelineConfig,
     processItems: PromptItem[],
     prompts: ResolvedPrompts,
     options: ExecutePipelineOptions,
@@ -540,7 +830,7 @@ function substituteModelTemplate(
  * - Results are flattened back into individual PromptMapResult objects
  */
 async function executeBatchMode(
-    config: PipelineConfig,
+    config: MapReducePipelineConfig,
     processItems: PromptItem[],
     prompts: ResolvedPrompts,
     options: ExecutePipelineOptions,
@@ -1012,7 +1302,7 @@ function parseBatchResponse(
  */
 async function executeReducePhase(
     results: PromptMapResult[],
-    config: PipelineConfig,
+    config: MapReducePipelineConfig,
     prompts: ResolvedPrompts,
     options: ExecutePipelineOptions,
     reduceParameters?: Record<string, string>,
@@ -1492,6 +1782,18 @@ function validateInputConfig(config: PipelineConfig): void {
 }
 
 /**
+ * Validate job configuration
+ */
+function validateJobConfig(config: PipelineConfig): void {
+    if (!config.job!.prompt && !config.job!.promptFile) {
+        throw new PipelineExecutionError('Job config must have either "job.prompt" or "job.promptFile"', 'job');
+    }
+    if (config.job!.prompt && config.job!.promptFile) {
+        throw new PipelineExecutionError('Job config cannot have both "job.prompt" and "job.promptFile"', 'job');
+    }
+}
+
+/**
  * Validate full pipeline configuration (including input)
  */
 function validatePipelineConfig(config: PipelineConfig): void {
@@ -1499,6 +1801,18 @@ function validatePipelineConfig(config: PipelineConfig): void {
         throw new PipelineExecutionError('Pipeline config missing "name"');
     }
 
+    // Check mutual exclusion
+    if (config.job && config.map) {
+        throw new PipelineExecutionError('Cannot use `job` and `map` in the same pipeline');
+    }
+
+    // Job mode
+    if (config.job) {
+        validateJobConfig(config);
+        return;
+    }
+
+    // Map-reduce mode
     validateInputConfig(config);
     validateMapConfig(config);
     validateReduceConfig(config);

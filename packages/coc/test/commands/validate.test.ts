@@ -597,6 +597,125 @@ reduce:
     });
 
     // ========================================================================
+    // Single-Job Pipeline Validation
+    // ========================================================================
+
+    describe('validatePipeline - single-job pipelines', () => {
+        it('should validate a minimal job pipeline', () => {
+            const yamlPath = path.join(tmpDir, 'job.yaml');
+            fs.writeFileSync(yamlPath, `
+name: "Simple Job"
+job:
+  prompt: "Summarize this"
+`);
+            const result = validatePipeline(yamlPath);
+            expect(result.valid).toBe(true);
+            expect(result.checks.some(c => c.label.includes('Job: prompt configured'))).toBe(true);
+            expect(result.checks.some(c => c.label.includes('Job: text mode output'))).toBe(true);
+        });
+
+        it('should validate job pipeline with template variables', () => {
+            const yamlPath = path.join(tmpDir, 'job-vars.yaml');
+            fs.writeFileSync(yamlPath, `
+name: "Job With Vars"
+job:
+  prompt: "Summarize: {{diff}}"
+  output:
+    - summary
+parameters:
+  - name: diff
+    value: "some content"
+`);
+            const result = validatePipeline(yamlPath);
+            expect(result.valid).toBe(true);
+            expect(result.checks.some(c => c.label.includes('diff'))).toBe(true);
+            expect(result.checks.some(c => c.label.includes('Job output fields: summary'))).toBe(true);
+        });
+
+        it('should validate job pipeline with model', () => {
+            const yamlPath = path.join(tmpDir, 'job-model.yaml');
+            fs.writeFileSync(yamlPath, `
+name: "Job With Model"
+job:
+  prompt: "Analyze this"
+  model: gpt-4
+`);
+            const result = validatePipeline(yamlPath);
+            expect(result.valid).toBe(true);
+            expect(result.checks.some(c => c.label.includes('Job model: gpt-4'))).toBe(true);
+        });
+
+        it('should validate job pipeline with skill', () => {
+            const yamlPath = path.join(tmpDir, 'job-skill.yaml');
+            fs.writeFileSync(yamlPath, `
+name: "Job With Skill"
+job:
+  prompt: "Deep analyze"
+  skill: "go-deep"
+`);
+            const result = validatePipeline(yamlPath);
+            expect(result.valid).toBe(true);
+            expect(result.checks.some(c => c.label.includes('Job skill: "go-deep"'))).toBe(true);
+        });
+
+        it('should validate job pipeline with promptFile', () => {
+            const yamlPath = path.join(tmpDir, 'job-promptfile.yaml');
+            fs.writeFileSync(yamlPath, `
+name: "Job Prompt File"
+job:
+  promptFile: "analyze.prompt.md"
+`);
+            const result = validatePipeline(yamlPath);
+            expect(result.valid).toBe(true);
+            expect(result.checks.some(c => c.label.includes('prompt from file'))).toBe(true);
+        });
+
+        it('should fail on job without prompt or promptFile', () => {
+            const yamlPath = path.join(tmpDir, 'job-no-prompt.yaml');
+            fs.writeFileSync(yamlPath, `
+name: "Job No Prompt"
+job:
+  output:
+    - result
+`);
+            const result = validatePipeline(yamlPath);
+            expect(result.valid).toBe(false);
+            expect(result.checks.some(c => c.status === 'fail' && c.label.includes('Job prompt'))).toBe(true);
+        });
+
+        it('should fail on job with both prompt and promptFile', () => {
+            const yamlPath = path.join(tmpDir, 'job-both.yaml');
+            fs.writeFileSync(yamlPath, `
+name: "Job Both Prompts"
+job:
+  prompt: "Inline prompt"
+  promptFile: "also-a-file.md"
+`);
+            const result = validatePipeline(yamlPath);
+            expect(result.valid).toBe(false);
+            expect(result.checks.some(c => c.status === 'fail' && c.detail?.includes('cannot have both'))).toBe(true);
+        });
+
+        it('should fail on mutual exclusion of job and map', () => {
+            const yamlPath = path.join(tmpDir, 'job-and-map.yaml');
+            fs.writeFileSync(yamlPath, `
+name: "Job And Map"
+job:
+  prompt: "Job prompt"
+map:
+  prompt: "Map prompt"
+  output:
+    - result
+reduce:
+  type: json
+`);
+            const result = validatePipeline(yamlPath);
+            expect(result.valid).toBe(false);
+            expect(result.checks.some(c => c.status === 'fail' && c.detail?.includes('Cannot use "job" and "map"'))).toBe(true);
+        });
+    });
+
+    // ========================================================================
     // executeValidate
     // ========================================================================
 

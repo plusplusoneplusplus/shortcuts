@@ -8,6 +8,7 @@
 // Types
 export type {
     PipelineConfig,
+    JobConfig,
     InputConfig,
     MapConfig,
     ReduceConfig,

@@ -103,6 +103,7 @@ export function validatePipeline(yamlPath: string): ValidationResult {
     const checks: ValidationCheck[] = [];
     let pipelineName = 'Unknown';
     let config: PipelineConfig | undefined;
+    let isJobPipeline = false;
 
     // 1. Parse YAML (raw parse without pipeline-core's strict validation)
     try {
@@ -125,6 +126,7 @@ export function validatePipeline(yamlPath: string): ValidationResult {
                 status: 'fail',
                 detail: 'Pipeline config missing "name"',
             });
+            return { valid: false, pipelineName, checks };
         } else {
             checks.push({
                 label: `Pipeline "${config.name}" is valid YAML`,
@@ -132,33 +134,48 @@ export function validatePipeline(yamlPath: string): ValidationResult {
             });
         }
 
-        if (!config.map) {
-            checks.push({
-                label: 'Map configuration',
-                status: 'fail',
-                detail: 'Pipeline config missing "map"',
-            });
-        }
+        // Detect pipeline mode
+        isJobPipeline = !!config.job;
 
-        if (!config.reduce) {
+        // Mutual exclusion check
+        if (config.job && config.map) {
             checks.push({
-                label: 'Reduce configuration',
+                label: 'Pipeline mode',
                 status: 'fail',
-                detail: 'Pipeline config missing "reduce"',
+                detail: 'Cannot use "job" and "map" in the same pipeline',
             });
-        }
-
-        if (!config.input) {
-            checks.push({
-                label: 'Input configuration',
-                status: 'fail',
-                detail: 'Pipeline config missing "input"',
-            });
-        }
-
-        // If any core sections are missing, return early
-        if (!config.name || !config.map || !config.reduce || !config.input) {
             return { valid: false, pipelineName, checks };
+        }
+
+        // For map-reduce pipelines, require map/reduce/input
+        if (!isJobPipeline) {
+            if (!config.map) {
+                checks.push({
+                    label: 'Map configuration',
+                    status: 'fail',
+                    detail: 'Pipeline config missing "map"',
+                });
+            }
+
+            if (!config.reduce) {
+                checks.push({
+                    label: 'Reduce configuration',
+                    status: 'fail',
+                    detail: 'Pipeline config missing "reduce"',
+                });
+            }
+
+            if (!config.input) {
+                checks.push({
+                    label: 'Input configuration',
+                    status: 'fail',
+                    detail: 'Pipeline config missing "input"',
+                });
+            }
+
+            if (!config.map || !config.reduce || !config.input) {
+                return { valid: false, pipelineName, checks };
+            }
         }
     } catch (error) {
         checks.push({
@@ -171,18 +188,24 @@ export function validatePipeline(yamlPath: string): ValidationResult {
 
     const pipelineDir = path.dirname(yamlPath);
 
-    // 2. Validate input configuration
-    validateInput(config, pipelineDir, checks);
+    if (isJobPipeline) {
+        // Single-job pipeline validation
+        validateJob(config, checks);
+    } else {
+        // Map-reduce pipeline validation
+        // 2. Validate input configuration
+        validateInput(config, pipelineDir, checks);
 
-    // 3. Validate map configuration
-    validateMap(config, checks);
+        // 3. Validate map configuration
+        validateMap(config, checks);
 
-    // 4. Validate reduce configuration
-    validateReduce(config, checks);
+        // 4. Validate reduce configuration
+        validateReduce(config, checks);
 
-    // 5. Validate filter configuration (if present)
-    if (config.filter) {
-        validateFilter(config.filter, checks);
+        // 5. Validate filter configuration (if present)
+        if (config.filter) {
+            validateFilter(config.filter, checks);
+        }
     }
 
     const hasFailure = checks.some(c => c.status === 'fail');
@@ -383,6 +406,57 @@ function validateReduce(config: PipelineConfig, checks: ValidationCheck[]): void
                 detail: 'AI reduce requires either "prompt" or "promptFile"',
             });
         }
+    }
+}
+
+function validateJob(config: PipelineConfig, checks: ValidationCheck[]): void {
+    const { job } = config;
+    if (!job) { return; }
+
+    if (!job.prompt && !job.promptFile) {
+        checks.push({
+            label: 'Job prompt',
+            status: 'fail',
+            detail: 'Job config must have either "prompt" or "promptFile"',
+        });
+    } else if (job.prompt && job.promptFile) {
+        checks.push({
+            label: 'Job prompt',
+            status: 'fail',
+            detail: 'Job config cannot have both "prompt" and "promptFile"',
+        });
+    } else if (job.prompt) {
+        const variables = extractTemplateVars(job.prompt);
+        if (variables.length > 0) {
+            checks.push({
+                label: `Job: prompt uses variables {{${variables.join('}}, {{')}}}`,
+                status: 'pass',
+            });
+        } else {
+            checks.push({ label: 'Job: prompt configured', status: 'pass' });
+        }
+    } else if (job.promptFile) {
+        checks.push({
+            label: `Job: prompt from file "${job.promptFile}"`,
+            status: 'pass',
+        });
+    }
+
+    if (job.output && job.output.length > 0) {
+        checks.push({
+            label: `Job output fields: ${job.output.join(', ')}`,
+            status: 'pass',
+        });
+    } else {
+        checks.push({ label: 'Job: text mode output', status: 'pass' });
+    }
+
+    if (job.model) {
+        checks.push({ label: `Job model: ${job.model}`, status: 'pass' });
+    }
+
+    if (job.skill) {
+        checks.push({ label: `Job skill: "${job.skill}"`, status: 'pass' });
     }
 }
 

@@ -113,24 +113,47 @@ export async function executeRun(
     }
 
     // 3. Apply CLI overrides
+    const isJobPipeline = !!config.job;
+
     if (options.model) {
-        config.map.model = options.model;
+        if (config.map) {
+            config.map.model = options.model;
+        }
+        if (config.job) {
+            config.job.model = options.model;
+        }
     }
-    if (options.parallel) {
+    if (options.parallel && config.map) {
         config.map.parallel = options.parallel;
     }
 
     // Apply parameter overrides
     if (Object.keys(options.params).length > 0) {
-        if (!config.input.parameters) {
-            config.input.parameters = [];
-        }
-        for (const [key, value] of Object.entries(options.params)) {
-            const existing = config.input.parameters.find(p => p.name === key);
-            if (existing) {
-                existing.value = value;
-            } else {
-                config.input.parameters.push({ name: key, value });
+        if (isJobPipeline) {
+            // For job pipelines, parameters are at top level
+            if (!config.parameters) {
+                config.parameters = [];
+            }
+            for (const [key, value] of Object.entries(options.params)) {
+                const existing = config.parameters.find(p => p.name === key);
+                if (existing) {
+                    existing.value = value;
+                } else {
+                    config.parameters.push({ name: key, value });
+                }
+            }
+        } else {
+            // For map-reduce pipelines, parameters are under input
+            if (!config.input!.parameters) {
+                config.input!.parameters = [];
+            }
+            for (const [key, value] of Object.entries(options.params)) {
+                const existing = config.input!.parameters!.find(p => p.name === key);
+                if (existing) {
+                    existing.value = value;
+                } else {
+                    config.input!.parameters!.push({ name: key, value });
+                }
             }
         }
     }
@@ -138,10 +161,17 @@ export async function executeRun(
     // 4. Print pipeline info
     printHeader(`Pipeline: ${config.name}`);
     printKeyValue('File', yamlPath);
-    if (config.map.model || options.model) {
-        printKeyValue('Model', config.map.model || options.model || 'default');
+    if (isJobPipeline) {
+        printKeyValue('Mode', 'Single Job');
+        if (config.job!.model || options.model) {
+            printKeyValue('Model', config.job!.model || options.model || 'default');
+        }
+    } else {
+        if (config.map?.model || options.model) {
+            printKeyValue('Model', config.map!.model || options.model || 'default');
+        }
+        printKeyValue('Parallel', String(config.map!.parallel || 5));
     }
-    printKeyValue('Parallel', String(config.map.parallel || 5));
     if (options.dryRun) {
         printKeyValue('Mode', 'Dry Run');
     }
@@ -165,7 +195,7 @@ export async function executeRun(
     }
 
     const invokerOptions: CLIAIInvokerOptions = {
-        model: config.map.model || options.model,
+        model: config.job?.model || config.map?.model || options.model,
         approvePermissions: options.approvePermissions,
         workingDirectory,
         timeoutMs: options.timeout ? options.timeout * 1000 : undefined,
@@ -216,7 +246,7 @@ export async function executeRun(
 
         // 8. Handle results
         const elapsed = Date.now() - startTime;
-        const exitCode = handleResults(result, options, elapsed, cancelled);
+        const exitCode = handleResults(result, options, elapsed, cancelled, isJobPipeline);
 
         // 9. Persist to process store
         if (options.persist) {
@@ -266,7 +296,8 @@ function handleResults(
     result: PipelineExecutionResult,
     options: RunCommandOptions,
     elapsed: number,
-    cancelled: boolean
+    cancelled: boolean,
+    isJobPipeline: boolean
 ): number {
     // Print summary to stderr
     const summary = formatSummary(result);
@@ -278,7 +309,13 @@ function handleResults(
     }
 
     // Format and write results
-    const formatted = formatResults(result, options.output);
+    let formatted: string;
+    if (isJobPipeline) {
+        // For single-job, output the AI response directly
+        formatted = result.output?.formattedOutput ?? result.error ?? 'No output';
+    } else {
+        formatted = formatResults(result, options.output);
+    }
 
     if (options.outputFile) {
         try {

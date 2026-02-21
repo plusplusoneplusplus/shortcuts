@@ -32,6 +32,24 @@ export type {
 } from '../map-reduce';
 
 /**
+ * Single AI job configuration (alternative to map-reduce pipeline)
+ */
+export interface JobConfig {
+    /** Inline prompt template with {{variable}} placeholders */
+    prompt?: string;
+    /** Path to a prompt file (mutually exclusive with prompt) */
+    promptFile?: string;
+    /** Optional skill to attach as additional context/guidance */
+    skill?: string;
+    /** Output field names expected from AI. If omitted, text mode is used (raw AI response) */
+    output?: string[];
+    /** Model to use for the AI call */
+    model?: string;
+    /** Timeout for the AI call in milliseconds (default: DEFAULT_AI_TIMEOUT_MS) */
+    timeoutMs?: number;
+}
+
+/**
  * Pipeline configuration as defined in YAML file
  */
 export interface PipelineConfig {
@@ -40,20 +58,24 @@ export interface PipelineConfig {
     /**
      * Optional working directory for AI SDK sessions.
      * Controls the file access context for AI calls (not CSV/prompt resolution).
-     * 
+     *
      * - Absolute paths are used as-is
      * - Relative paths are resolved relative to the pipeline package directory
      * - If omitted, callers use their own default (VS Code uses workspaceRoot, CLI uses --workspace-root or pipeline dir)
      */
     workingDirectory?: string;
-    /** Input configuration */
-    input: InputConfig;
+    /** Input configuration (required for map-reduce mode, optional for job mode) */
+    input?: InputConfig;
     /** Optional filter phase configuration */
     filter?: FilterConfig;
-    /** Map phase configuration */
-    map: MapConfig;
-    /** Reduce phase configuration */
-    reduce: ReduceConfig;
+    /** Map phase configuration (required for map-reduce mode, mutually exclusive with job) */
+    map?: MapConfig;
+    /** Reduce phase configuration (required for map-reduce mode, optional for job mode) */
+    reduce?: ReduceConfig;
+    /** Single AI job configuration (mutually exclusive with map) */
+    job?: JobConfig;
+    /** Top-level parameters available for template substitution in job mode */
+    parameters?: PipelineParameter[];
 }
 
 /**

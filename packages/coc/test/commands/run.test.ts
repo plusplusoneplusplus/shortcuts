@@ -328,6 +328,66 @@ reduce:
     });
 
     // ========================================================================
+    // Single-Job Pipeline
+    // ========================================================================
+
+    describe('Single-job pipeline', () => {
+        it('should execute a single-job pipeline in dry-run mode', async () => {
+            const yamlPath = createPipeline(`
+name: "Summarize PR"
+job:
+  prompt: "Summarize this: {{diff}}"
+  output:
+    - summary
+parameters:
+  - name: diff
+    value: "some diff content"
+`);
+            const exitCode = await executeRun(yamlPath, defaultOptions);
+            expect(exitCode).toBe(0);
+        });
+
+        it('should apply model override to job config', async () => {
+            const yamlPath = createPipeline(`
+name: "Job Model Override"
+job:
+  prompt: "Analyze this code"
+`);
+            const exitCode = await executeRun(yamlPath, {
+                ...defaultOptions,
+                model: 'gpt-4',
+            });
+            expect(exitCode).toBe(0);
+        });
+
+        it('should apply parameter overrides to top-level parameters', async () => {
+            const yamlPath = createPipeline(`
+name: "Job Params"
+job:
+  prompt: "Review: {{code}}"
+parameters:
+  - name: code
+    value: "default code"
+`);
+            const exitCode = await executeRun(yamlPath, {
+                ...defaultOptions,
+                params: { code: 'overridden code' },
+            });
+            expect(exitCode).toBe(0);
+        });
+
+        it('should handle job pipeline without output fields (text mode)', async () => {
+            const yamlPath = createPipeline(`
+name: "Text Job"
+job:
+  prompt: "Just tell me something"
+`);
+            const exitCode = await executeRun(yamlPath, defaultOptions);
+            expect(exitCode).toBe(0);
+        });
+    });
+
+    // ========================================================================
     // CSV Input
     // ========================================================================
 
