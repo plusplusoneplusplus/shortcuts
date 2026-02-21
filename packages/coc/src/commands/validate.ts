@@ -223,13 +223,13 @@ function validateInput(
 ): void {
     const { input } = config;
 
-    if (input.items) {
+    if (input?.items) {
         const count = input.items.length;
         checks.push({
             label: `Input: ${count} inline item${count !== 1 ? 's' : ''}`,
             status: 'pass',
         });
-    } else if (input.from && isCSVSource(input.from)) {
+    } else if (input?.from && isCSVSource(input.from)) {
         try {
             const csvPath = resolveCSVPath(input.from.path, pipelineDir);
             if (!fs.existsSync(csvPath)) {
@@ -254,12 +254,12 @@ function validateInput(
                 detail: error instanceof Error ? error.message : String(error),
             });
         }
-    } else if (input.from && Array.isArray(input.from)) {
+    } else if (input?.from && Array.isArray(input.from)) {
         checks.push({
             label: `Input: ${input.from.length} inline list item${input.from.length !== 1 ? 's' : ''}`,
             status: 'pass',
         });
-    } else if (input.generate && isGenerateConfig(input.generate)) {
+    } else if (input?.generate && isGenerateConfig(input.generate)) {
         checks.push({
             label: `Input: AI-generated (schema: ${input.generate.schema.join(', ')})`,
             status: 'pass',
@@ -272,7 +272,7 @@ function validateInput(
         });
     }
 
-    if (input.limit !== undefined) {
+    if (input?.limit !== undefined) {
         if (input.limit > 0) {
             checks.push({
                 label: `Input limit: ${input.limit}`,
@@ -287,7 +287,7 @@ function validateInput(
         }
     }
 
-    if (input.parameters && input.parameters.length > 0) {
+    if (input?.parameters && input.parameters.length > 0) {
         const paramNames = input.parameters.map(p => p.name).join(', ');
         checks.push({
             label: `Parameters: ${paramNames}`,
@@ -300,7 +300,7 @@ function validateMap(config: PipelineConfig, checks: ValidationCheck[]): void {
     const { map } = config;
 
     // Check prompt source
-    if (map.prompt) {
+    if (map?.prompt) {
         // Extract template variables
         const variables = extractTemplateVars(map.prompt);
         if (variables.length > 0) {
@@ -315,7 +315,7 @@ function validateMap(config: PipelineConfig, checks: ValidationCheck[]): void {
                 detail: 'No {{variable}} placeholders found in prompt',
             });
         }
-    } else if (map.promptFile) {
+    } else if (map?.promptFile) {
         checks.push({
             label: `Map: prompt from file "${map.promptFile}"`,
             status: 'pass',
@@ -329,7 +329,7 @@ function validateMap(config: PipelineConfig, checks: ValidationCheck[]): void {
     }
 
     // Check output fields
-    if (map.output && map.output.length > 0) {
+    if (map?.output && map.output.length > 0) {
         checks.push({
             label: `Map output fields: ${map.output.join(', ')}`,
             status: 'pass',
@@ -342,7 +342,7 @@ function validateMap(config: PipelineConfig, checks: ValidationCheck[]): void {
     }
 
     // Check batch size
-    if (map.batchSize !== undefined) {
+    if (map?.batchSize !== undefined) {
         if (map.batchSize > 1) {
             checks.push({
                 label: `Map: batch mode (${map.batchSize} items per call)`,
@@ -358,7 +358,7 @@ function validateMap(config: PipelineConfig, checks: ValidationCheck[]): void {
     }
 
     // Check parallel
-    if (map.parallel !== undefined && map.parallel < 1) {
+    if (map?.parallel !== undefined && map.parallel < 1) {
         checks.push({
             label: 'Map: parallel',
             status: 'warn',
@@ -367,7 +367,7 @@ function validateMap(config: PipelineConfig, checks: ValidationCheck[]): void {
     }
 
     // Check skill
-    if (map.skill) {
+    if (map?.skill) {
         checks.push({
             label: `Map: skill "${map.skill}"`,
             status: 'pass',
@@ -379,7 +379,7 @@ function validateReduce(config: PipelineConfig, checks: ValidationCheck[]): void
     const { reduce } = config;
     const validTypes = ['list', 'table', 'json', 'csv', 'ai', 'text'];
 
-    if (validTypes.includes(reduce.type)) {
+    if (reduce && validTypes.includes(reduce.type)) {
         checks.push({
             label: `Reduce: ${reduce.type} format`,
             status: 'pass',
@@ -388,12 +388,12 @@ function validateReduce(config: PipelineConfig, checks: ValidationCheck[]): void
         checks.push({
             label: 'Reduce type',
             status: 'fail',
-            detail: `Invalid reduce type: "${reduce.type}". Valid: ${validTypes.join(', ')}`,
+            detail: `Invalid reduce type: "${reduce?.type}". Valid: ${validTypes.join(', ')}`,
         });
     }
 
     // AI reduce requires prompt
-    if (reduce.type === 'ai') {
+    if (reduce?.type === 'ai') {
         if (reduce.prompt || reduce.promptFile) {
             checks.push({
                 label: 'Reduce: AI prompt configured',

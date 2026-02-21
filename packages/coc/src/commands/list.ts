@@ -139,10 +139,10 @@ function buildPackageInfo(
 
     const { input } = config;
 
-    if (input.items) {
+    if (input?.items) {
         inputType = 'inline';
         itemCount = input.items.length;
-    } else if (input.from && isCSVSource(input.from)) {
+    } else if (input?.from && isCSVSource(input.from)) {
         inputType = 'CSV';
         try {
             const csvPath = resolveCSVPath(input.from.path, pipelineDir);
@@ -155,10 +155,10 @@ function buildPackageInfo(
         } catch {
             // Count not available
         }
-    } else if (input.from && Array.isArray(input.from)) {
+    } else if (input?.from && Array.isArray(input.from)) {
         inputType = 'list';
         itemCount = input.from.length;
-    } else if (input.generate && isGenerateConfig(input.generate)) {
+    } else if (input?.generate && isGenerateConfig(input.generate)) {
         inputType = 'generate';
     }
 
