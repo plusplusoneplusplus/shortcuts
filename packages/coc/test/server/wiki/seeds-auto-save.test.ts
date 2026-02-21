@@ -9,6 +9,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventEmitter } from 'events';
+import * as path from 'path';
 import type { ServerResponse, IncomingMessage } from 'http';
 
 // Mock fs at module level so mkdirSync/writeFileSync are mockable
@@ -70,11 +71,11 @@ function createMockRequest(body: string = '{}'): IncomingMessage & EventEmitter 
 
 describe('handleGenerateSeeds auto-save', () => {
     beforeEach(() => {
-        vi.mocked(fs.mkdirSync).mockReturnValue(undefined);
-        vi.mocked(fs.writeFileSync).mockReturnValue(undefined);
+        vi.mocked(fs.mkdirSync).mockClear().mockReturnValue(undefined);
+        vi.mocked(fs.writeFileSync).mockClear().mockReturnValue(undefined);
     });
 
-    it('auto-saves seeds.yaml to wikiDir after successful generation', async () => {
+    it('auto-saves seeds.yaml to repoPath when repoPath is available', async () => {
         const { handleGenerateSeeds } = await import('../../../src/server/wiki/admin-handlers');
 
         const req = createMockRequest('{}');
@@ -87,15 +88,36 @@ describe('handleGenerateSeeds auto-save', () => {
 
         await handleGenerateSeeds(req, res, 'test-wiki', mockManager as any);
 
-        expect(fs.mkdirSync).toHaveBeenCalledWith('/test/wiki-output', { recursive: true });
+        // Seeds should go to repoPath, not wikiDir
+        expect(fs.mkdirSync).toHaveBeenCalledWith('/test/repo', { recursive: true });
         expect(fs.writeFileSync).toHaveBeenCalledWith(
-            expect.stringContaining('seeds.yaml'),
+            path.join('/test/repo', 'seeds.yaml'),
             expect.stringContaining('theme'),
             'utf-8',
         );
 
         const allChunks = res._chunks.join('');
         expect(allChunks).toContain('Seeds saved to');
+    });
+
+    it('handlePutSeeds falls back to wikiDir when repoPath is not set', async () => {
+        const { handlePutSeeds } = await import('../../../src/server/wiki/admin-handlers');
+
+        const req = createMockRequest(JSON.stringify({ content: { themes: [{ theme: 'api' }] } }));
+        const res = createMockResponse();
+        const mockManager = {
+            get: vi.fn().mockReturnValue({
+                registration: { wikiDir: '/test/wiki-output' },
+            }),
+        };
+
+        await handlePutSeeds(req, res, 'test-wiki', mockManager as any);
+
+        expect(fs.writeFileSync).toHaveBeenCalledWith(
+            path.join('/test/wiki-output', 'seeds.yaml'),
+            expect.any(String),
+            'utf-8',
+        );
     });
 
     it('continues SSE flow when auto-save fails', async () => {

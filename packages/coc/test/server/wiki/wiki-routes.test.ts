@@ -736,6 +736,7 @@ describe('Generate handler per-wiki state', () => {
 describe('Admin handlers with repoPath', () => {
     let server: ExecutionServer;
     let tempDirs: string[] = [];
+    let repoDir: string;
 
     function makeTempWikiDir(graph?: ComponentGraph): string {
         const dir = createTempWikiDir(graph);
@@ -745,7 +746,7 @@ describe('Admin handlers with repoPath', () => {
 
     beforeEach(async () => {
         const wikiDir = makeTempWikiDir();
-        const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-wikiroutes-repo-'));
+        repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-wikiroutes-repo-'));
         tempDirs.push(repoDir);
 
         server = await createExecutionServer({
@@ -810,6 +811,31 @@ describe('Admin handlers with repoPath', () => {
         expect(body.available).toBe(true);
         expect(body.running).toBe(false);
         expect(body.phases).toBeDefined();
+    });
+
+    it('GET /api/wikis/:wikiId/admin/seeds reads seeds from repoPath when repoPath is set', async () => {
+        const yaml = await import('js-yaml');
+        const seedsData = { themes: [{ theme: 'auth', description: 'Auth module', hints: ['login'] }] };
+        fs.writeFileSync(path.join(repoDir, 'seeds.yaml'), yaml.dump(seedsData), 'utf-8');
+
+        const res = await getJSON(`${server.url}/api/wikis/repo-wiki/admin/seeds`);
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.exists).toBe(true);
+        expect(body.content.themes[0].theme).toBe('auth');
+        expect(body.path).toContain(repoDir);
+    });
+
+    it('PUT /api/wikis/:wikiId/admin/seeds writes seeds to repoPath when repoPath is set', async () => {
+        const seedData = { themes: [{ theme: 'api', description: 'API layer', hints: ['rest'] }] };
+        const put = await putJSON(`${server.url}/api/wikis/repo-wiki/admin/seeds`, { content: seedData });
+        expect(put.status).toBe(200);
+        const putBody = JSON.parse(put.body);
+        expect(putBody.success).toBe(true);
+        expect(putBody.path).toContain(repoDir);
+
+        const written = fs.readFileSync(path.join(repoDir, 'seeds.yaml'), 'utf-8');
+        expect(written).toContain('theme: api');
     });
 });
 

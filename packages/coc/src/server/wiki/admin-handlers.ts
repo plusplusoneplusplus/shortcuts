@@ -22,6 +22,15 @@ import type { WikiManager } from './wiki-manager';
 const SEEDS_FILE = 'seeds.yaml';
 
 /**
+ * Resolve the path where seeds.yaml should be stored.
+ * Prefers repoPath (alongside deep-wiki.config.yaml) when available,
+ * otherwise falls back to wikiDir.
+ */
+function resolveSeedsPath(wikiDir: string, repoPath?: string): string {
+    return repoPath ? path.join(repoPath, SEEDS_FILE) : path.join(wikiDir, SEEDS_FILE);
+}
+
+/**
  * GET /api/wikis/:wikiId/admin/seeds — Read seeds.yaml from the wiki directory.
  */
 export async function handleGetSeeds(
@@ -36,7 +45,7 @@ export async function handleGetSeeds(
     }
 
     try {
-        const seedsPath = path.join(wiki.registration.wikiDir, SEEDS_FILE);
+        const seedsPath = resolveSeedsPath(wiki.registration.wikiDir, wiki.registration.repoPath);
         if (!fs.existsSync(seedsPath)) {
             sendJson(res, { exists: false, content: null, path: seedsPath });
             return;
@@ -97,7 +106,7 @@ export async function handlePutSeeds(
             }
         }
 
-        const seedsPath = path.join(wiki.registration.wikiDir, SEEDS_FILE);
+        const seedsPath = resolveSeedsPath(wiki.registration.wikiDir, wiki.registration.repoPath);
         const yaml = await import('js-yaml');
         const content = typeof seeds === 'string' ? seeds : yaml.dump(seeds);
         fs.writeFileSync(seedsPath, content, 'utf-8');
@@ -326,10 +335,10 @@ export async function handleGenerateSeeds(
 
         if (clientDisconnected) { safeEnd(); return; }
 
-        // Auto-save seeds.yaml to wiki directory
+        // Auto-save seeds.yaml — prefer repoPath (alongside deep-wiki.config.yaml), fall back to wikiDir
         try {
-            const seedsPath = path.join(wiki.registration.wikiDir, SEEDS_FILE);
-            fs.mkdirSync(wiki.registration.wikiDir, { recursive: true });
+            const seedsPath = resolveSeedsPath(wiki.registration.wikiDir, wiki.registration.repoPath);
+            fs.mkdirSync(path.dirname(seedsPath), { recursive: true });
             const yaml = await import('js-yaml');
             fs.writeFileSync(seedsPath, yaml.dump({ themes: seeds }), 'utf-8');
             safeSend({ type: 'log', message: `Seeds saved to ${seedsPath}` });
