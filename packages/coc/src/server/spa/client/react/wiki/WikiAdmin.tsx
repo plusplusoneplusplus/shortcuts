@@ -20,6 +20,55 @@ interface WikiAdminProps {
     onTabChange?: (tab: WikiAdminTab) => void;
 }
 
+const DEFAULT_CONFIG_TEMPLATE = `# deep-wiki configuration
+# This file is optional — remove any lines you don't need.
+# CLI flags always take precedence over values set here.
+
+# AI model to use (e.g. claude-sonnet-4-5, gpt-4o)
+# model: claude-sonnet-4-5
+
+# Number of parallel AI sessions (default: 3)
+# concurrency: 3
+
+# Timeout per phase in seconds (default: 300)
+# timeout: 300
+
+# Article detail level: shallow | normal | deep (default: normal)
+# depth: normal
+
+# Use cached results when available (default: true)
+# useCache: true
+
+# Force regeneration, ignoring all caches (default: false)
+# force: false
+
+# Focus analysis on a specific subdirectory (e.g. src/auth)
+# focus:
+
+# Website output directory (default: ./wiki)
+# output: ./wiki
+
+# Website theme: light | dark | auto (default: auto)
+# theme: auto
+
+# Override the project title shown on the website
+# title:
+
+# Skip website generation phase (default: false)
+# skipWebsite: false
+
+# Per-phase overrides (optional)
+# phases:
+#   discovery:
+#     model: claude-haiku-4-5
+#     concurrency: 5
+#   analysis:
+#     depth: deep
+#     concurrency: 2
+#   writing:
+#     depth: normal
+`;
+
 const PHASE_NAMES: Record<number, { name: string; desc: string }> = {
     1: { name: 'Discovery', desc: 'Discover component graph structure' },
     2: { name: 'Consolidation', desc: 'Merge and consolidate discovery output' },
@@ -300,6 +349,7 @@ function EditorTab({ wikiId, kind }: { wikiId: string; kind: 'seeds' | 'config' 
     const [content, setContent] = useState('');
     const [original, setOriginal] = useState('');
     const [resourcePath, setResourcePath] = useState<string | null>(null);
+    const [isNewFile, setIsNewFile] = useState(false);
     const [saving, setSaving] = useState(false);
     const [status, setStatus] = useState<string | null>(null);
     const [generating, setGenerating] = useState(false);
@@ -315,6 +365,9 @@ function EditorTab({ wikiId, kind }: { wikiId: string; kind: 'seeds' | 'config' 
                     resolvedPath = typeof data?.path === 'string' ? data.path : null;
                     if (typeof data?.content === 'string') {
                         text = data.content;
+                    } else if (data?.exists === false) {
+                        text = DEFAULT_CONFIG_TEMPLATE;
+                        setIsNewFile(true);
                     }
                 } else {
                     resolvedPath = typeof data?.path === 'string' ? data.path : null;
@@ -344,6 +397,7 @@ function EditorTab({ wikiId, kind }: { wikiId: string; kind: 'seeds' | 'config' 
             });
             if (res.ok) {
                 setOriginal(content);
+                setIsNewFile(false);
                 setStatus('Saved');
             } else {
                 setStatus('Failed to save');
@@ -435,6 +489,11 @@ function EditorTab({ wikiId, kind }: { wikiId: string; kind: 'seeds' | 'config' 
                     <span className="text-xs text-[#848484]" id={`${kind}-path`}>
                         {resourcePath || (kind === 'config' ? 'deep-wiki.config.yaml' : 'seeds.yaml')}
                     </span>
+                    {isNewFile && (
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-[#0078d4]/10 text-[#0078d4]" id={`${kind}-new-badge`}>
+                            New file — save to create
+                        </span>
+                    )}
                     {status && (
                         <span className={cn('text-xs', status === 'Saved' ? 'text-green-600' : 'text-[#f14c4c]')} id={`${kind}-status`}>
                             {status}
