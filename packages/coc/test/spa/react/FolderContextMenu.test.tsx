@@ -11,6 +11,14 @@ import { AppProvider } from '../../../src/server/spa/client/react/context/AppCon
 import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/context/QueueContext';
 import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
 import { TasksPanel } from '../../../src/server/spa/client/react/tasks/TasksPanel';
+import { useTaskGeneration } from '../../../src/server/spa/client/react/hooks/useTaskGeneration';
+import type { Mock } from 'vitest';
+
+vi.mock('../../../src/server/spa/client/react/hooks/useTaskGeneration', () => ({
+    useTaskGeneration: vi.fn(),
+}));
+
+const mockUseTaskGeneration = useTaskGeneration as Mock;
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -99,6 +107,16 @@ describe('Folder context menu', () => {
         global.fetch = fetchSpy;
         clipboardSpy = vi.fn().mockResolvedValue(undefined);
         Object.assign(navigator, { clipboard: { writeText: clipboardSpy } });
+        mockUseTaskGeneration.mockReturnValue({
+            status: 'idle',
+            chunks: [],
+            progressMessage: null,
+            result: null,
+            error: null,
+            generate: vi.fn(),
+            cancel: vi.fn(),
+            reset: vi.fn(),
+        });
     });
 
     afterEach(() => {
@@ -280,7 +298,7 @@ describe('Folder context menu', () => {
         expect(screen.queryByTestId('context-menu')).toBeNull();
     });
 
-    it('context menu shows all ten items', async () => {
+    it('context menu shows all eleven items', async () => {
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
         await waitFor(() => {
             expect(screen.getByTestId('task-tree-item-feature1')).toBeTruthy();
@@ -294,6 +312,7 @@ describe('Folder context menu', () => {
         expect(screen.getByText('Rename Folder')).toBeTruthy();
         expect(screen.getByText('Create Subfolder')).toBeTruthy();
         expect(screen.getByText('Create Task in Folder')).toBeTruthy();
+        expect(screen.getByText('Generate Task with AI…')).toBeTruthy();
         expect(screen.getByText('Delete Folder')).toBeTruthy();
         expect(screen.getByText('Move Folder')).toBeTruthy();
         expect(screen.getByText('Bulk Follow Prompt')).toBeTruthy();
@@ -333,5 +352,71 @@ describe('Folder context menu', () => {
         fireEvent.contextMenu(screen.getByTestId('task-tree-item-feature1'));
         fireEvent.click(screen.getByText('Copy Path'));
         expect(clipboardSpy).toHaveBeenCalledWith('feature1');
+    });
+
+    it('"Generate Task with AI" opens GenerateTaskDialog and closes context menu', async () => {
+        global.fetch = vi.fn().mockImplementation((url: string) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            if (url.includes('queue/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ models: [] }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
+        });
+
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree-item-feature1')).toBeTruthy();
+        });
+
+        fireEvent.contextMenu(screen.getByTestId('task-tree-item-feature1'));
+        expect(screen.getByTestId('context-menu')).toBeTruthy();
+
+        fireEvent.click(screen.getByText('Generate Task with AI…'));
+
+        // Context menu should close
+        expect(screen.queryByTestId('context-menu')).toBeNull();
+
+        // GenerateTaskDialog should open
+        await waitFor(() => {
+            expect(document.getElementById('generate-task-overlay')).toBeTruthy();
+        });
+    });
+
+    it('"Generate Task with AI" does not call any folder mutation', async () => {
+        const fetchTracker = vi.fn().mockImplementation((url: string) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            if (url.includes('queue/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ models: [] }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
+        });
+        global.fetch = fetchTracker;
+
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree-item-feature1')).toBeTruthy();
+        });
+
+        const callsBefore = fetchTracker.mock.calls.length;
+
+        fireEvent.contextMenu(screen.getByTestId('task-tree-item-feature1'));
+        fireEvent.click(screen.getByText('Generate Task with AI…'));
+
+        // Wait for dialog to appear
+        await waitFor(() => {
+            expect(document.getElementById('generate-task-overlay')).toBeTruthy();
+        });
+
+        // Only models fetch should be new — no mutation calls (rename, delete, archive, etc.)
+        const newCalls = fetchTracker.mock.calls.slice(callsBefore);
+        const mutationCalls = newCalls.filter((call: any[]) => {
+            const url = call[0] as string;
+            return url.includes('/rename') || url.includes('/delete') || url.includes('/archive') || url.includes('/create');
+        });
+        expect(mutationCalls.length).toBe(0);
     });
 });

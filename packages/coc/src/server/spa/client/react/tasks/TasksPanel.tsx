@@ -61,7 +61,10 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
     const { openFilePath, selectedFilePaths, clearSelection, selectedFolderPath } = useTaskPanel();
     const [initialParams] = useState(() => parseTaskHashParams(location.hash, wsId));
     const scrollRef = useRef<HTMLDivElement>(null);
-    const [generateDialogOpen, setGenerateDialogOpen] = useState(false);
+    const [generateDialog, setGenerateDialog] = useState<{
+        open: boolean;
+        targetFolder: string | undefined;
+    }>({ open: false, targetFolder: undefined });
 
     const { state: appState } = useApp();
     const { dispatch: queueDispatch } = useQueue();
@@ -103,6 +106,12 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
             if (actionKey === 'create-task') setFolderDialog({ action: 'create-task', folder, submitting: false });
             if (actionKey === 'delete') setFolderDialog({ action: 'delete', folder, submitting: false });
             if (actionKey === 'follow-prompt') setFolderDialog({ action: 'follow-prompt', folder, submitting: false });
+            if (actionKey === 'generate-task-ai') {
+                setGenerateDialog({
+                    open: true,
+                    targetFolder: folder.relativePath || folder.name,
+                });
+            }
             if (actionKey === 'move') {
                 setMoveSourceFolder(folder);
                 setMoveDialogOpen(true);
@@ -263,6 +272,11 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
                 onClick: () => handleFolderContextMenuAction('create-task', folder),
             },
             {
+                label: 'Generate Task with AI…',
+                icon: '✨',
+                onClick: () => handleFolderContextMenuAction('generate-task-ai', folder),
+            },
+            {
                 label: 'Delete Folder',
                 icon: '🗑️',
                 onClick: () => handleFolderContextMenuAction('delete', folder),
@@ -289,7 +303,7 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
                 tasksFolderPath=".vscode/tasks"
                 selectedFolderPath={selectedFolderPath}
                 onClearSelection={clearSelection}
-                onGenerateWithAI={() => setGenerateDialogOpen(true)}
+                onGenerateWithAI={() => setGenerateDialog({ open: true, targetFolder: undefined })}
             />
             <div
                 ref={scrollRef}
@@ -416,13 +430,13 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
             )}
 
             {/* Generate Task with AI dialog */}
-            {generateDialogOpen && (
+            {generateDialog.open && (
                 <GenerateTaskDialog
                     wsId={wsId}
-                    initialFolder={selectedFolderPath ?? undefined}
-                    onClose={() => setGenerateDialogOpen(false)}
+                    initialFolder={generateDialog.targetFolder ?? selectedFolderPath ?? undefined}
+                    onClose={() => setGenerateDialog({ open: false, targetFolder: undefined })}
                     onSuccess={() => {
-                        setGenerateDialogOpen(false);
+                        setGenerateDialog({ open: false, targetFolder: undefined });
                         refresh();
                     }}
                 />
