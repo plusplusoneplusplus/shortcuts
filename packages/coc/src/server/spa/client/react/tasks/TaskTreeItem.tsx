@@ -62,6 +62,18 @@ function getStatusIcon(status?: string): string {
     }
 }
 
+export function buildFileTooltip(
+    path: string | null,
+    commentCount: number,
+    status?: string,
+): string {
+    const lines: string[] = [];
+    if (path) lines.push(path);
+    if (status) lines.push(`Status: ${status}`);
+    if (commentCount > 0) lines.push(`Comments: ${commentCount}`);
+    return lines.join('\n');
+}
+
 export function TaskTreeItem({
     item,
     wsId,
@@ -88,6 +100,7 @@ export function TaskTreeItem({
     const path = getItemPath(item);
     const status = isTaskDocument(item) ? item.status : undefined;
     const isArchived = isTaskDocument(item) ? item.isArchived : isTaskDocumentGroup(item) ? item.isArchived : false;
+    const tooltip = !isFolder ? buildFileTooltip(path, commentCount, status) : undefined;
 
     const handleClick = () => {
         if (isFolder) {
@@ -124,6 +137,7 @@ export function TaskTreeItem({
                     onFolderContextMenu(item as TaskFolder, e.clientX, e.clientY);
                 }
             }}
+            title={tooltip}
             data-testid={`task-tree-item-${displayName}`}
             data-file-path={!isFolder && path ? path : undefined}
         >

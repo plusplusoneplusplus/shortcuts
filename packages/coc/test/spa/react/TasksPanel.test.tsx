@@ -12,6 +12,7 @@ import { TaskProvider } from '../../../src/server/spa/client/react/context/TaskC
 import { taskReducer, type TaskContextState, type TaskAction } from '../../../src/server/spa/client/react/context/TaskContext';
 import { TasksPanel, parseTaskHashParams } from '../../../src/server/spa/client/react/tasks/TasksPanel';
 import { getFolderKey } from '../../../src/server/spa/client/react/tasks/TaskTree';
+import { buildFileTooltip } from '../../../src/server/spa/client/react/tasks/TaskTreeItem';
 import type { TaskFolder } from '../../../src/server/spa/client/react/hooks/useTaskTree';
 import { useTaskGeneration } from '../../../src/server/spa/client/react/hooks/useTaskGeneration';
 
@@ -924,5 +925,211 @@ describe('TasksPanel — GenerateTaskDialog', () => {
         await waitFor(() => {
             expect(document.getElementById('generate-task-overlay')).toBeNull();
         });
+    });
+});
+
+// ============================================================================
+// buildFileTooltip — unit tests
+// ============================================================================
+
+describe('buildFileTooltip', () => {
+    it('returns path only when no status or comments', () => {
+        expect(buildFileTooltip('feature1/design.md', 0)).toBe('feature1/design.md');
+    });
+
+    it('includes status when provided', () => {
+        expect(buildFileTooltip('task.md', 0, 'pending')).toBe('task.md\nStatus: pending');
+    });
+
+    it('includes comment count when > 0', () => {
+        expect(buildFileTooltip('task.md', 5)).toBe('task.md\nComments: 5');
+    });
+
+    it('includes both status and comments', () => {
+        const result = buildFileTooltip('feature1/task.plan.md', 3, 'in-progress');
+        expect(result).toBe('feature1/task.plan.md\nStatus: in-progress\nComments: 3');
+    });
+
+    it('returns empty string when path is null and no metadata', () => {
+        expect(buildFileTooltip(null, 0)).toBe('');
+    });
+
+    it('returns only status when path is null but status exists', () => {
+        expect(buildFileTooltip(null, 0, 'done')).toBe('Status: done');
+    });
+
+    it('returns only comments when path is null but comments > 0', () => {
+        expect(buildFileTooltip(null, 2)).toBe('Comments: 2');
+    });
+
+    it('omits comments line when count is 0', () => {
+        const result = buildFileTooltip('task.md', 0, 'future');
+        expect(result).not.toContain('Comments');
+    });
+
+    it('handles all statuses correctly', () => {
+        for (const status of ['done', 'in-progress', 'pending', 'future']) {
+            const result = buildFileTooltip('x.md', 0, status);
+            expect(result).toContain(`Status: ${status}`);
+        }
+    });
+});
+
+// ============================================================================
+// TaskTreeItem — hover tooltip integration tests
+// ============================================================================
+
+describe('TaskTreeItem — hover tooltip', () => {
+    let fetchSpy: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+        fetchSpy = vi.fn();
+        global.fetch = fetchSpy;
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('shows full path in title for a single document', async () => {
+        const tree = {
+            name: 'tasks',
+            relativePath: '',
+            children: [],
+            documentGroups: [],
+            singleDocuments: [
+                { baseName: 'design', fileName: 'design.md', relativePath: 'feature1', isArchived: false, status: 'pending' },
+            ],
+        };
+        fetchSpy.mockImplementation((url: string) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve(tree) });
+        });
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree-item-design')).toBeTruthy();
+        });
+        const item = screen.getByTestId('task-tree-item-design');
+        expect(item.getAttribute('title')).toBe('feature1/design.md\nStatus: pending');
+    });
+
+    it('shows path with comments count in title', async () => {
+        const tree = {
+            name: 'tasks',
+            relativePath: '',
+            children: [],
+            documentGroups: [],
+            singleDocuments: [
+                { baseName: 'spec', fileName: 'spec.md', relativePath: '', isArchived: false },
+            ],
+        };
+        fetchSpy.mockImplementation((url: string) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ 'spec.md': 7 }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve(tree) });
+        });
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree-item-spec')).toBeTruthy();
+        });
+        const item = screen.getByTestId('task-tree-item-spec');
+        expect(item.getAttribute('title')).toBe('spec.md\nComments: 7');
+    });
+
+    it('shows path, status, and comments in title', async () => {
+        const tree = {
+            name: 'tasks',
+            relativePath: '',
+            children: [],
+            documentGroups: [],
+            singleDocuments: [
+                { baseName: 'task', fileName: 'task.md', relativePath: 'coc', isArchived: false, status: 'done' },
+            ],
+        };
+        fetchSpy.mockImplementation((url: string) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ 'coc/task.md': 2 }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve(tree) });
+        });
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree-item-task')).toBeTruthy();
+        });
+        const item = screen.getByTestId('task-tree-item-task');
+        expect(item.getAttribute('title')).toBe('coc/task.md\nStatus: done\nComments: 2');
+    });
+
+    it('does not add title to folder items', async () => {
+        fetchSpy.mockImplementation((url: string) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
+        });
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree-item-feature1')).toBeTruthy();
+        });
+        const folder = screen.getByTestId('task-tree-item-feature1');
+        expect(folder.getAttribute('title')).toBeNull();
+    });
+
+    it('shows tooltip for document group items', async () => {
+        const tree = {
+            name: 'tasks',
+            relativePath: '',
+            children: [],
+            documentGroups: [
+                {
+                    baseName: 'task1',
+                    isArchived: false,
+                    documents: [
+                        { baseName: 'task1', docType: 'plan', fileName: 'task1.plan.md', relativePath: 'proj', isArchived: false, status: 'in-progress' },
+                        { baseName: 'task1', docType: 'spec', fileName: 'task1.spec.md', relativePath: 'proj', isArchived: false },
+                    ],
+                },
+            ],
+            singleDocuments: [],
+        };
+        fetchSpy.mockImplementation((url: string) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve(tree) });
+        });
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree-item-task1')).toBeTruthy();
+        });
+        const item = screen.getByTestId('task-tree-item-task1');
+        expect(item.getAttribute('title')).toBe('proj/task1.plan.md');
+    });
+
+    it('shows path-only tooltip when no status or comments', async () => {
+        const tree = {
+            name: 'tasks',
+            relativePath: '',
+            children: [],
+            documentGroups: [],
+            singleDocuments: [
+                { baseName: 'notes', fileName: 'notes.md', relativePath: 'misc', isArchived: false },
+            ],
+        };
+        fetchSpy.mockImplementation((url: string) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve(tree) });
+        });
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree-item-notes')).toBeTruthy();
+        });
+        const item = screen.getByTestId('task-tree-item-notes');
+        expect(item.getAttribute('title')).toBe('misc/notes.md');
     });
 });
