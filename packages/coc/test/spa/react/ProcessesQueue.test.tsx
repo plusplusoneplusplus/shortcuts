@@ -565,10 +565,11 @@ describe('ConversationTurnBubble', () => {
 
         const text = document.body.textContent || '';
         expect(text.indexOf('SEGMENT_ONE')).toBeLessThan(text.indexOf('task'));
-        expect(text.indexOf('task')).toBeLessThan(text.indexOf('SEGMENT_TWO'));
-        expect(text.indexOf('SEGMENT_TWO')).toBeLessThan(text.indexOf('view'));
+        // view and glob are now nested inside the task card (hierarchical rendering)
+        expect(text.indexOf('task')).toBeLessThan(text.indexOf('view'));
         expect(text.indexOf('view')).toBeLessThan(text.indexOf('glob'));
-        expect(text.indexOf('glob')).toBeLessThan(text.indexOf('SEGMENT_THREE'));
+        expect(text.indexOf('glob')).toBeLessThan(text.indexOf('SEGMENT_TWO'));
+        expect(text.indexOf('SEGMENT_TWO')).toBeLessThan(text.indexOf('SEGMENT_THREE'));
     });
 
     it('renders child tool calls under parent task depth', () => {
@@ -656,9 +657,10 @@ describe('ConversationTurnBubble', () => {
 
         expect(screen.getByText('view')).toBeDefined();
         fireEvent.click(screen.getByRole('button', { name: 'Collapse subtools' }));
-        expect(screen.queryByText('view')).toBeNull();
+        const childrenContainer = screen.getByText('view').closest('.tool-call-children');
+        expect(childrenContainer?.classList.contains('subtree-collapsed')).toBe(true);
         fireEvent.click(screen.getByRole('button', { name: 'Expand subtools' }));
-        expect(screen.getByText('view')).toBeDefined();
+        expect(childrenContainer?.classList.contains('subtree-collapsed')).toBe(false);
     });
 
     describe('report_intent filtering', () => {
@@ -811,11 +813,12 @@ describe('ToolCallView', () => {
 
     it('toggles collapsed state', () => {
         render(<Wrap><ToolCallView toolCall={{ toolName: 'edit', args: { a: 1 }, status: 'completed' }} /></Wrap>);
-        expect(screen.queryByText('Arguments')).toBeNull();
+        const body = screen.getByText('Arguments').closest('.tool-call-body');
+        expect(body?.classList.contains('collapsed')).toBe(true);
         fireEvent.click(screen.getByText('edit'));
-        expect(screen.getByText('Arguments')).toBeDefined();
+        expect(body?.classList.contains('collapsed')).toBe(false);
         fireEvent.click(screen.getByText('edit'));
-        expect(screen.queryByText('Arguments')).toBeNull();
+        expect(body?.classList.contains('collapsed')).toBe(true);
     });
 
     it('shows inline summary for view tool calls', () => {

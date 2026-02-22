@@ -3,7 +3,7 @@
  * Replaces renderToolCall / normalizeToolCall from tool-renderer.ts.
  */
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { cn } from '../shared';
 
 interface ToolCallData {
@@ -26,6 +26,7 @@ interface ToolCallProps {
     hasSubtools?: boolean;
     subtoolsCollapsed?: boolean;
     onToggleSubtools?: () => void;
+    children?: React.ReactNode;
 }
 
 const MAX_RESULT_LENGTH = 5000;
@@ -159,6 +160,7 @@ export function ToolCallView({
     hasSubtools = false,
     subtoolsCollapsed = false,
     onToggleSubtools,
+    children,
 }: ToolCallProps) {
     const [expanded, setExpanded] = useState(false);
     if (depth > 20) return null;
@@ -190,14 +192,15 @@ export function ToolCallView({
     return (
         <div
             className={cn(
-                'my-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#1e1e1e] text-xs',
+                'tool-call-card my-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#1e1e1e] text-xs',
                 depthLevel > 0 && 'border-l-2'
             )}
+            data-tool-id={toolCall.id || toolCall.toolName || 'unknown'}
             style={depthLevel > 0 ? { marginLeft: `${depthLevel * 12}px` } : undefined}
         >
             <div
                 className={cn(
-                    'flex items-center gap-2 px-2.5 py-1.5 cursor-pointer select-none',
+                    'tool-call-header flex items-center gap-2 px-2.5 py-1.5 cursor-pointer select-none',
                     hasDetails && 'hover:bg-black/[0.03] dark:hover:bg-white/[0.03]'
                 )}
                 onClick={() => hasDetails && setExpanded(!expanded)}
@@ -217,7 +220,7 @@ export function ToolCallView({
                         {subtoolsCollapsed ? '▶' : '▼'}
                     </button>
                 )}
-                <span className="font-medium text-[#0078d4] dark:text-[#3794ff]">{name}</span>
+                <span className="tool-call-name font-medium text-[#0078d4] dark:text-[#3794ff]">{name}</span>
                 {summary && (
                     <span className="text-[#848484] truncate min-w-0" title={summary}>
                         {summary}
@@ -230,8 +233,12 @@ export function ToolCallView({
                     <span className={cn('text-[#848484]', !duration && 'ml-auto')}>{expanded ? '▼' : '▶'}</span>
                 )}
             </div>
-            {expanded && hasDetails && (
-                <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] px-2.5 py-2 space-y-2">
+            {hasDetails && (
+                <div className={cn(
+                    'tool-call-body border-t border-[#e0e0e0] dark:border-[#3c3c3c] px-2.5 py-2 space-y-2',
+                    !expanded && 'collapsed',
+                    !expanded && 'hidden'
+                )}>
                     {name === 'bash' && bashDescription && (
                         <div>
                             <div className="text-[10px] uppercase text-[#848484] mb-0.5">Description</div>
@@ -280,6 +287,11 @@ export function ToolCallView({
                             </pre>
                         </div>
                     )}
+                </div>
+            )}
+            {children && (
+                <div className={cn('tool-call-children', subtoolsCollapsed && 'subtree-collapsed')}>
+                    {children}
                 </div>
             )}
         </div>

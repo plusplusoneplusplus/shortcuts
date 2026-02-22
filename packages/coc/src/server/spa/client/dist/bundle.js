@@ -2384,9 +2384,9 @@
           if (typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ !== "undefined" && typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart === "function") {
             __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(new Error());
           }
-          var React = require_react();
+          var React3 = require_react();
           var Scheduler = require_scheduler();
-          var ReactSharedInternals = React.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
+          var ReactSharedInternals = React3.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
           var suppressWarning = false;
           function setSuppressWarning(newSuppressWarning) {
             {
@@ -3991,7 +3991,7 @@
             {
               if (props.value == null) {
                 if (typeof props.children === "object" && props.children !== null) {
-                  React.Children.forEach(props.children, function(child) {
+                  React3.Children.forEach(props.children, function(child) {
                     if (child == null) {
                       return;
                     }
@@ -23531,7 +23531,7 @@
       if (true) {
         (function() {
           "use strict";
-          var React = require_react();
+          var React3 = require_react();
           var REACT_ELEMENT_TYPE = Symbol.for("react.element");
           var REACT_PORTAL_TYPE = Symbol.for("react.portal");
           var REACT_FRAGMENT_TYPE = Symbol.for("react.fragment");
@@ -23557,7 +23557,7 @@
             }
             return null;
           }
-          var ReactSharedInternals = React.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
+          var ReactSharedInternals = React3.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
           function error(format) {
             {
               {
@@ -27756,7 +27756,8 @@
     depth = 0,
     hasSubtools = false,
     subtoolsCollapsed = false,
-    onToggleSubtools
+    onToggleSubtools,
+    children
   }) {
     const [expanded, setExpanded] = (0, import_react11.useState)(false);
     if (depth > 20) return null;
@@ -27781,16 +27782,17 @@
       "div",
       {
         className: cn(
-          "my-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#1e1e1e] text-xs",
+          "tool-call-card my-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#1e1e1e] text-xs",
           depthLevel > 0 && "border-l-2"
         ),
+        "data-tool-id": toolCall.id || toolCall.toolName || "unknown",
         style: depthLevel > 0 ? { marginLeft: `${depthLevel * 12}px` } : void 0,
         children: [
           /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)(
             "div",
             {
               className: cn(
-                "flex items-center gap-2 px-2.5 py-1.5 cursor-pointer select-none",
+                "tool-call-header flex items-center gap-2 px-2.5 py-1.5 cursor-pointer select-none",
                 hasDetails && "hover:bg-black/[0.03] dark:hover:bg-white/[0.03]"
               ),
               onClick: () => hasDetails && setExpanded(!expanded),
@@ -27810,14 +27812,18 @@
                     children: subtoolsCollapsed ? "\u25B6" : "\u25BC"
                   }
                 ),
-                /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("span", { className: "font-medium text-[#0078d4] dark:text-[#3794ff]", children: name }),
+                /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("span", { className: "tool-call-name font-medium text-[#0078d4] dark:text-[#3794ff]", children: name }),
                 summary && /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("span", { className: "text-[#848484] truncate min-w-0", title: summary, children: summary }),
                 duration && /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("span", { className: "text-[#848484] ml-auto", children: duration }),
                 hasDetails && /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("span", { className: cn("text-[#848484]", !duration && "ml-auto"), children: expanded ? "\u25BC" : "\u25B6" })
               ]
             }
           ),
-          expanded && hasDetails && /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("div", { className: "border-t border-[#e0e0e0] dark:border-[#3c3c3c] px-2.5 py-2 space-y-2", children: [
+          hasDetails && /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("div", { className: cn(
+            "tool-call-body border-t border-[#e0e0e0] dark:border-[#3c3c3c] px-2.5 py-2 space-y-2",
+            !expanded && "collapsed",
+            !expanded && "hidden"
+          ), children: [
             name === "bash" && bashDescription && /* @__PURE__ */ (0, import_jsx_runtime15.jsxs)("div", { children: [
               /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: "text-[10px] uppercase text-[#848484] mb-0.5", children: "Description" }),
               /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: "text-[11px] whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc]", children: bashDescription })
@@ -27842,7 +27848,8 @@
               /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: "text-[10px] uppercase text-[#f14c4c] mb-0.5", children: "Error" }),
               /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("pre", { className: "overflow-x-auto text-[11px] whitespace-pre-wrap break-words text-[#f14c4c]", children: /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("code", { children: toolCall.error }) })
             ] })
-          ] })
+          ] }),
+          children && /* @__PURE__ */ (0, import_jsx_runtime15.jsx)("div", { className: cn("tool-call-children", subtoolsCollapsed && "subtree-collapsed"), children })
         ]
       }
     );
@@ -28229,17 +28236,59 @@
     const userContentHtml = isUser ? toContentHtml(turn.content || "") : "";
     const [collapsedTaskIds, setCollapsedTaskIds] = (0, import_react13.useState)({});
     const { showReportIntent } = useDisplaySettings();
-    const isToolHiddenByCollapsedTask = (0, import_react13.useMemo)(() => {
-      if (!assistantRender) return (_toolId) => false;
-      return (toolId) => {
-        let current = assistantRender.toolParentById.get(toolId);
-        while (current) {
-          if (collapsedTaskIds[current]) return true;
-          current = assistantRender.toolParentById.get(current);
+    const childrenByParent = (0, import_react13.useMemo)(() => {
+      if (!assistantRender) return /* @__PURE__ */ new Map();
+      const map2 = /* @__PURE__ */ new Map();
+      for (const [toolId] of assistantRender.toolById) {
+        const parentId = assistantRender.toolParentById.get(toolId);
+        if (parentId) {
+          if (!map2.has(parentId)) map2.set(parentId, []);
+          map2.get(parentId).push(toolId);
         }
-        return false;
-      };
-    }, [assistantRender, collapsedTaskIds]);
+      }
+      return map2;
+    }, [assistantRender]);
+    function renderToolTree(toolId, depth) {
+      const toolCall = assistantRender.toolById.get(toolId);
+      if (!toolCall) return null;
+      if (toolCall.toolName === "report_intent") {
+        if (!showReportIntent) return null;
+        const intentText = typeof toolCall.args === "object" && toolCall.args?.intent ? String(toolCall.args.intent) : typeof toolCall.args === "string" ? (() => {
+          try {
+            return JSON.parse(toolCall.args).intent || "";
+          } catch {
+            return "";
+          }
+        })() : "";
+        return /* @__PURE__ */ (0, import_jsx_runtime16.jsxs)(
+          "div",
+          {
+            className: "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#f0f0f0] dark:bg-[#2d2d2d] text-xs italic text-[#848484] max-w-full",
+            title: "report_intent",
+            children: [
+              /* @__PURE__ */ (0, import_jsx_runtime16.jsx)("span", { children: "\u{1F3F7}" }),
+              /* @__PURE__ */ (0, import_jsx_runtime16.jsx)("span", { className: "truncate", children: intentText || "Intent logged" })
+            ]
+          },
+          toolId
+        );
+      }
+      const childIds = childrenByParent.get(toolId) ?? [];
+      const hasSubtools = childIds.length > 0;
+      const isCollapsed = !!collapsedTaskIds[toolId];
+      return /* @__PURE__ */ (0, import_jsx_runtime16.jsx)(
+        ToolCallView,
+        {
+          toolCall,
+          depth,
+          hasSubtools,
+          subtoolsCollapsed: isCollapsed,
+          onToggleSubtools: () => setCollapsedTaskIds((prev) => ({ ...prev, [toolId]: !prev[toolId] })),
+          children: childIds.map((childId) => renderToolTree(childId, depth + 1))
+        },
+        toolId
+      );
+    }
     return /* @__PURE__ */ (0, import_jsx_runtime16.jsx)("div", { className: cn(
       "flex",
       isUser ? "justify-end" : "justify-start",
@@ -28288,47 +28337,8 @@
                 return /* @__PURE__ */ (0, import_jsx_runtime16.jsx)(MarkdownView, { html: chunk.html }, chunk.key);
               }
               if (chunk.kind === "tool" && chunk.toolId) {
-                const toolCall = assistantRender.toolById.get(chunk.toolId);
-                if (!toolCall) return null;
-                if (isToolHiddenByCollapsedTask(toolCall.id)) return null;
-                if (toolCall.toolName === "report_intent") {
-                  if (!showReportIntent) return null;
-                  const intentText = typeof toolCall.args === "object" && toolCall.args?.intent ? String(toolCall.args.intent) : typeof toolCall.args === "string" ? (() => {
-                    try {
-                      return JSON.parse(toolCall.args).intent || "";
-                    } catch {
-                      return "";
-                    }
-                  })() : "";
-                  return /* @__PURE__ */ (0, import_jsx_runtime16.jsxs)(
-                    "div",
-                    {
-                      className: "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#f0f0f0] dark:bg-[#2d2d2d] text-xs italic text-[#848484] max-w-full",
-                      title: "report_intent",
-                      children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime16.jsx)("span", { children: "\u{1F3F7}" }),
-                        /* @__PURE__ */ (0, import_jsx_runtime16.jsx)("span", { className: "truncate", children: intentText || "Intent logged" })
-                      ]
-                    },
-                    chunk.key
-                  );
-                }
-                const depth = assistantRender.toolDepthById.get(chunk.toolId) || 0;
-                const hasSubtools = toolCall.toolName === "task" && assistantRender.toolsWithChildren.has(toolCall.id);
-                return /* @__PURE__ */ (0, import_jsx_runtime16.jsx)(
-                  ToolCallView,
-                  {
-                    toolCall,
-                    depth,
-                    hasSubtools,
-                    subtoolsCollapsed: !!collapsedTaskIds[toolCall.id],
-                    onToggleSubtools: () => setCollapsedTaskIds((prev) => ({
-                      ...prev,
-                      [toolCall.id]: !prev[toolCall.id]
-                    }))
-                  },
-                  chunk.key
-                );
+                if (assistantRender.toolParentById.has(chunk.toolId)) return null;
+                return renderToolTree(chunk.toolId, 0);
               }
               return null;
             })

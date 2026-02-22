@@ -1,7 +1,7 @@
 /**
  * ConversationTurnBubble — role-aware chat bubble for conversation turns.
  */
-import { useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { cn } from '../shared';
 import type { ClientConversationTurn } from '../types/dashboard';
 import { MarkdownView } from './MarkdownView';
@@ -286,17 +286,61 @@ export function ConversationTurnBubble({ turn }: ConversationTurnBubbleProps) {
     const [collapsedTaskIds, setCollapsedTaskIds] = useState<Record<string, boolean>>({});
     const { showReportIntent } = useDisplaySettings();
 
-    const isToolHiddenByCollapsedTask = useMemo(() => {
-        if (!assistantRender) return (_toolId: string) => false;
-        return (toolId: string): boolean => {
-            let current = assistantRender.toolParentById.get(toolId);
-            while (current) {
-                if (collapsedTaskIds[current]) return true;
-                current = assistantRender.toolParentById.get(current);
+    const childrenByParent = useMemo(() => {
+        if (!assistantRender) return new Map<string, string[]>();
+        const map = new Map<string, string[]>();
+        for (const [toolId] of assistantRender.toolById) {
+            const parentId = assistantRender.toolParentById.get(toolId);
+            if (parentId) {
+                if (!map.has(parentId)) map.set(parentId, []);
+                map.get(parentId)!.push(toolId);
             }
-            return false;
-        };
-    }, [assistantRender, collapsedTaskIds]);
+        }
+        return map;
+    }, [assistantRender]);
+
+    function renderToolTree(toolId: string, depth: number): React.ReactNode {
+        const toolCall = assistantRender!.toolById.get(toolId);
+        if (!toolCall) return null;
+
+        // Handle report_intent tool calls
+        if (toolCall.toolName === 'report_intent') {
+            if (!showReportIntent) return null;
+            const intentText = typeof toolCall.args === 'object' && toolCall.args?.intent
+                ? String(toolCall.args.intent)
+                : typeof toolCall.args === 'string'
+                    ? (() => { try { return JSON.parse(toolCall.args).intent || ''; } catch { return ''; } })()
+                    : '';
+            return (
+                <div
+                    key={toolId}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#f0f0f0] dark:bg-[#2d2d2d] text-xs italic text-[#848484] max-w-full"
+                    title="report_intent"
+                >
+                    <span>🏷</span>
+                    <span className="truncate">{intentText || 'Intent logged'}</span>
+                </div>
+            );
+        }
+
+        const childIds = childrenByParent.get(toolId) ?? [];
+        const hasSubtools = childIds.length > 0;
+        const isCollapsed = !!collapsedTaskIds[toolId];
+        return (
+            <ToolCallView
+                key={toolId}
+                toolCall={toolCall}
+                depth={depth}
+                hasSubtools={hasSubtools}
+                subtoolsCollapsed={isCollapsed}
+                onToggleSubtools={() =>
+                    setCollapsedTaskIds((prev) => ({ ...prev, [toolId]: !prev[toolId] }))
+                }
+            >
+                {childIds.map((childId) => renderToolTree(childId, depth + 1))}
+            </ToolCallView>
+        );
+    }
 
     return (
         <div className={cn(
@@ -348,48 +392,9 @@ export function ConversationTurnBubble({ turn }: ConversationTurnBubbleProps) {
                             return <MarkdownView key={chunk.key} html={chunk.html} />;
                         }
                         if (chunk.kind === 'tool' && chunk.toolId) {
-                            const toolCall = assistantRender.toolById.get(chunk.toolId);
-                            if (!toolCall) return null;
-                            if (isToolHiddenByCollapsedTask(toolCall.id)) return null;
-
-                            // Handle report_intent tool calls
-                            if (toolCall.toolName === 'report_intent') {
-                                if (!showReportIntent) return null;
-                                const intentText = typeof toolCall.args === 'object' && toolCall.args?.intent
-                                    ? String(toolCall.args.intent)
-                                    : typeof toolCall.args === 'string'
-                                        ? (() => { try { return JSON.parse(toolCall.args).intent || ''; } catch { return ''; } })()
-                                        : '';
-                                return (
-                                    <div
-                                        key={chunk.key}
-                                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#f0f0f0] dark:bg-[#2d2d2d] text-xs italic text-[#848484] max-w-full"
-                                        title="report_intent"
-                                    >
-                                        <span>🏷</span>
-                                        <span className="truncate">{intentText || 'Intent logged'}</span>
-                                    </div>
-                                );
-                            }
-
-                            const depth = assistantRender.toolDepthById.get(chunk.toolId) || 0;
-                            const hasSubtools = toolCall.toolName === 'task' && assistantRender.toolsWithChildren.has(toolCall.id);
-
-                            return (
-                                <ToolCallView
-                                    key={chunk.key}
-                                    toolCall={toolCall}
-                                    depth={depth}
-                                    hasSubtools={hasSubtools}
-                                    subtoolsCollapsed={!!collapsedTaskIds[toolCall.id]}
-                                    onToggleSubtools={() =>
-                                        setCollapsedTaskIds((prev) => ({
-                                            ...prev,
-                                            [toolCall.id]: !prev[toolCall.id],
-                                        }))
-                                    }
-                                />
-                            );
+                            // Skip children — they are rendered inside their parent's .tool-call-children
+                            if (assistantRender.toolParentById.has(chunk.toolId)) return null;
+                            return renderToolTree(chunk.toolId, 0);
                         }
                         return null;
                     })}
