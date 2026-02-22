@@ -9,7 +9,7 @@ import { useQueue } from '../context/QueueContext';
 import { useApp } from '../context/AppContext';
 import { fetchApi } from '../hooks/useApi';
 import { getApiBase } from '../utils/config';
-import { Badge, Spinner, Button } from '../shared';
+import { Badge, Spinner, Button, cn } from '../shared';
 import { ConversationTurnBubble } from '../processes/ConversationTurnBubble';
 import { ConversationMetadataPopover, getSessionIdFromProcess } from '../processes/ConversationMetadataPopover';
 import { formatDuration, statusIcon, statusLabel } from '../utils/format';
@@ -82,6 +82,8 @@ export function QueueTaskDetail() {
     const [followUpSending, setFollowUpSending] = useState(false);
     const [followUpError, setFollowUpError] = useState<string | null>(null);
     const [followUpSessionExpired, setFollowUpSessionExpired] = useState(false);
+    const lastFailedMessageRef = useRef<string>('');
+    const [isScrolledUp, setIsScrolledUp] = useState(false);
     const [resumeLaunching, setResumeLaunching] = useState(false);
     const [resumeFeedback, setResumeFeedback] = useState<{ type: 'success' | 'error'; message: string; command?: string } | null>(null);
 
@@ -177,10 +179,11 @@ export function QueueTaskDetail() {
         });
     };
 
-    const sendFollowUp = async () => {
-        const content = followUpInput.trim();
+    const sendFollowUp = async (overrideContent?: string) => {
+        const content = (overrideContent ?? followUpInput).trim();
         if (!content || !selectedProcessId || followUpInputDisabled) return;
 
+        lastFailedMessageRef.current = content;
         setFollowUpInput('');
         setFollowUpError(null);
         setFollowUpSending(true);
@@ -239,6 +242,28 @@ export function QueueTaskDetail() {
     useEffect(() => {
         turnsRef.current = turns;
     }, [turns]);
+
+    // Auto-scroll on new turns (only when near bottom).
+    useEffect(() => {
+        const el = document.getElementById('queue-task-conversation');
+        if (!el) return;
+        const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+        if (distFromBottom < 100) {
+            el.scrollTop = el.scrollHeight;
+        }
+    }, [turns]);
+
+    // Track scroll position for scroll-to-bottom button.
+    useEffect(() => {
+        const el = document.getElementById('queue-task-conversation');
+        if (!el) return;
+        const onScroll = () => {
+            const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+            setIsScrolledUp(distFromBottom > 100);
+        };
+        el.addEventListener('scroll', onScroll);
+        return () => el.removeEventListener('scroll', onScroll);
+    }, [selectedTaskId]);
 
     // Determine task object from queue state
     useEffect(() => {
@@ -351,6 +376,16 @@ export function QueueTaskDetail() {
     const handleMoveToTop = async () => {
         await fetch(getApiBase() + '/queue/' + encodeURIComponent(selectedTaskId) + '/move-to-top', { method: 'POST' });
     };
+
+    const retryLastMessage = () => {
+        if (!lastFailedMessageRef.current) return;
+        void sendFollowUp(lastFailedMessageRef.current);
+    };
+
+    const scrollToBottom = () => {
+        const el = document.getElementById('queue-task-conversation');
+        if (el) el.scrollTop = el.scrollHeight;
+    };
     const metadataProcess = processDetails || fullTask || task;
     const resumeSessionId = getSessionIdFromProcess(metadataProcess);
 
@@ -391,7 +426,7 @@ export function QueueTaskDetail() {
     };
 
     return (
-        <div className="flex-1 flex flex-col min-h-0">
+        <div id="detail-panel" className="chat-layout flex-1 flex flex-col min-h-0">
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
                 <div className="flex items-center gap-2">
@@ -442,7 +477,7 @@ export function QueueTaskDetail() {
             )}
 
             {/* Content area */}
-            <div id="queue-task-conversation" className="flex-1 min-h-0 overflow-y-auto p-4">
+            <div id="queue-task-conversation" className="relative flex-1 min-h-0 overflow-y-auto p-4">
                 {isPending ? (
                     <PendingTaskInfoPanel task={fullTask || task} onCancel={handleCancel} onMoveToTop={handleMoveToTop} />
                 ) : loading ? (
@@ -453,11 +488,29 @@ export function QueueTaskDetail() {
                     <div className="text-[#848484] text-sm">No conversation data available.</div>
                 ) : (
                     <div className="space-y-3">
-                        {turns.map((turn, i) => (
-                            <ConversationTurnBubble key={i} turn={turn} />
-                        ))}
+                        {(() => {
+                            const hasStreaming = turns.some(t => t.streaming);
+                            const renderTurns =
+                                task?.status === 'running' && !hasStreaming && turns.length > 0
+                                    ? [...turns, { role: 'assistant' as const, content: '', streaming: true, timeline: [] }]
+                                    : turns;
+                            return renderTurns.map((turn, i) => (
+                                <ConversationTurnBubble key={i} turn={turn} />
+                            ));
+                        })()}
                     </div>
                 )}
+                <button
+                    id="scroll-to-bottom-btn"
+                    className={cn(
+                        "absolute bottom-4 right-4 z-10 flex items-center justify-center w-8 h-8 rounded-full bg-[#0078d4] text-white shadow-md hover:bg-[#106ebe] text-sm pointer-events-none opacity-0 transition-opacity",
+                        isScrolledUp && "visible pointer-events-auto opacity-100"
+                    )}
+                    onClick={scrollToBottom}
+                    title="Scroll to bottom"
+                >
+                    ↓
+                </button>
             </div>
 
             {!isPending && (
@@ -473,9 +526,17 @@ export function QueueTaskDetail() {
                         </div>
                     )}
                     {followUpError && (
-                        <div className="text-xs text-[#f14c4c]">
+                        <div className="chat-error-bubble bubble-error text-xs text-[#f14c4c]">
                             {followUpError}
                         </div>
+                    )}
+                    {followUpError && lastFailedMessageRef.current && (
+                        <button
+                            className="retry-btn text-xs underline text-[#f14c4c]"
+                            onClick={() => retryLastMessage()}
+                        >
+                            Retry
+                        </button>
                     )}
                     <div className="flex items-end gap-2">
                         <textarea

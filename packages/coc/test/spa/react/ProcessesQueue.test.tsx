@@ -1303,6 +1303,323 @@ describe('QueueTaskDetail follow-up input', () => {
     });
 });
 
+describe('QueueTaskDetail semantic hooks', () => {
+    beforeEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('renders root div with id="detail-panel" and class "chat-layout"', async () => {
+        const processId = 'queue_task-hooks-1';
+        (global as any).fetch = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url.endsWith(`/api/processes/${processId}`)) {
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: async () => ({
+                        process: {
+                            id: processId,
+                            status: 'completed',
+                            conversationTurns: [
+                                { role: 'user', content: 'Hello', timeline: [] },
+                                { role: 'assistant', content: 'Hi', timeline: [] },
+                            ],
+                        },
+                    }),
+                });
+            }
+            return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+        });
+        (global as any).EventSource = undefined;
+
+        const { container } = render(
+            <Wrap>
+                <SeededQueueTaskDetail
+                    task={{ id: 'task-hooks-1', processId, status: 'completed', type: 'ai-clarification', prompt: 'Hello' }}
+                />
+            </Wrap>
+        );
+
+        await screen.findByText('Hi');
+        const panel = container.querySelector('#detail-panel');
+        expect(panel).toBeDefined();
+        expect(panel!.classList.contains('chat-layout')).toBe(true);
+    });
+
+    it('shows chat-error-bubble and bubble-error classes on follow-up error', async () => {
+        const processId = 'queue_task-err-1';
+        (global as any).fetch = vi.fn().mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            const method = init?.method || 'GET';
+            if (url.endsWith(`/api/processes/${processId}`) && method === 'GET') {
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: async () => ({
+                        process: {
+                            id: processId,
+                            status: 'completed',
+                            conversationTurns: [
+                                { role: 'user', content: 'Q', timeline: [] },
+                                { role: 'assistant', content: 'A', timeline: [] },
+                            ],
+                        },
+                    }),
+                });
+            }
+            if (url.endsWith(`/api/processes/${processId}/message`) && method === 'POST') {
+                return Promise.resolve({
+                    ok: false,
+                    status: 500,
+                    json: async () => ({ error: 'Internal server error' }),
+                });
+            }
+            return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+        });
+        (global as any).EventSource = undefined;
+
+        const { container } = render(
+            <Wrap>
+                <SeededQueueTaskDetail
+                    task={{ id: 'task-err-1', processId, status: 'completed', type: 'ai-clarification', prompt: 'Q' }}
+                />
+            </Wrap>
+        );
+
+        await screen.findByText('A');
+        const input = screen.getByPlaceholderText('Continue this conversation...');
+        fireEvent.change(input, { target: { value: 'follow up' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+        await waitFor(() => {
+            const errorBubble = container.querySelector('.chat-error-bubble');
+            expect(errorBubble).toBeDefined();
+            expect(errorBubble!.classList.contains('bubble-error')).toBe(true);
+        });
+    });
+
+    it('shows retry-btn after follow-up network error', async () => {
+        const processId = 'queue_task-retry-1';
+        (global as any).fetch = vi.fn().mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            const method = init?.method || 'GET';
+            if (url.endsWith(`/api/processes/${processId}`) && method === 'GET') {
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: async () => ({
+                        process: {
+                            id: processId,
+                            status: 'completed',
+                            conversationTurns: [
+                                { role: 'user', content: 'Q', timeline: [] },
+                                { role: 'assistant', content: 'A', timeline: [] },
+                            ],
+                        },
+                    }),
+                });
+            }
+            if (url.endsWith(`/api/processes/${processId}/message`) && method === 'POST') {
+                return Promise.reject(new Error('Network error'));
+            }
+            return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+        });
+        (global as any).EventSource = undefined;
+
+        const { container } = render(
+            <Wrap>
+                <SeededQueueTaskDetail
+                    task={{ id: 'task-retry-1', processId, status: 'completed', type: 'ai-clarification', prompt: 'Q' }}
+                />
+            </Wrap>
+        );
+
+        await screen.findByText('A');
+        const input = screen.getByPlaceholderText('Continue this conversation...');
+        fireEvent.change(input, { target: { value: 'retry me' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+        await waitFor(() => {
+            const retryBtn = container.querySelector('.retry-btn');
+            expect(retryBtn).toBeDefined();
+            expect(retryBtn!.textContent).toBe('Retry');
+        });
+    });
+
+    it('renders scroll-to-bottom-btn in DOM (hidden by default)', async () => {
+        const processId = 'queue_task-scroll-1';
+        (global as any).fetch = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url.endsWith(`/api/processes/${processId}`)) {
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: async () => ({
+                        process: {
+                            id: processId,
+                            status: 'completed',
+                            conversationTurns: [
+                                { role: 'user', content: 'X', timeline: [] },
+                                { role: 'assistant', content: 'Y', timeline: [] },
+                            ],
+                        },
+                    }),
+                });
+            }
+            return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+        });
+        (global as any).EventSource = undefined;
+
+        const { container } = render(
+            <Wrap>
+                <SeededQueueTaskDetail
+                    task={{ id: 'task-scroll-1', processId, status: 'completed', type: 'ai-clarification', prompt: 'X' }}
+                />
+            </Wrap>
+        );
+
+        await screen.findByText('Y');
+        const btn = container.querySelector('#scroll-to-bottom-btn');
+        expect(btn).toBeDefined();
+        // Not scrolled up so should not have visible class
+        expect(btn!.classList.contains('visible')).toBe(false);
+    });
+
+    it('renders conversation container with relative class', async () => {
+        const processId = 'queue_task-rel-1';
+        (global as any).fetch = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url.endsWith(`/api/processes/${processId}`)) {
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: async () => ({
+                        process: {
+                            id: processId,
+                            status: 'completed',
+                            conversationTurns: [
+                                { role: 'user', content: 'Hi', timeline: [] },
+                                { role: 'assistant', content: 'There', timeline: [] },
+                            ],
+                        },
+                    }),
+                });
+            }
+            return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+        });
+        (global as any).EventSource = undefined;
+
+        const { container } = render(
+            <Wrap>
+                <SeededQueueTaskDetail
+                    task={{ id: 'task-rel-1', processId, status: 'completed', type: 'ai-clarification', prompt: 'Hi' }}
+                />
+            </Wrap>
+        );
+
+        await screen.findByText('There');
+        const conv = container.querySelector('#queue-task-conversation');
+        expect(conv).toBeDefined();
+        expect(conv!.classList.contains('relative')).toBe(true);
+    });
+
+    it('shows streaming placeholder when task is running with non-streaming turns', async () => {
+        const processId = 'queue_task-stream-1';
+        (global as any).fetch = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url.endsWith(`/api/processes/${processId}`)) {
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: async () => ({
+                        process: {
+                            id: processId,
+                            status: 'running',
+                            conversationTurns: [
+                                { role: 'user', content: 'Go', timeline: [] },
+                            ],
+                        },
+                    }),
+                });
+            }
+            return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+        });
+        (global as any).EventSource = vi.fn().mockImplementation(() => ({
+            addEventListener: vi.fn(),
+            close: vi.fn(),
+            onmessage: null,
+            onerror: null,
+        }));
+
+        const { container } = render(
+            <Wrap>
+                <SeededQueueTaskDetail
+                    task={{ id: 'task-stream-1', processId, status: 'running', type: 'ai-clarification', prompt: 'Go' }}
+                />
+            </Wrap>
+        );
+
+        await screen.findByText('Go');
+        // Should render 2 bubbles: user + streaming placeholder
+        await waitFor(() => {
+            const bubbles = container.querySelectorAll('.space-y-3 > *');
+            expect(bubbles.length).toBe(2);
+        });
+    });
+
+    it('shows chat-error-bubble with Session text on 410 response', async () => {
+        const processId = 'queue_task-410-1';
+        (global as any).fetch = vi.fn().mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            const method = init?.method || 'GET';
+            if (url.endsWith(`/api/processes/${processId}`) && method === 'GET') {
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: async () => ({
+                        process: {
+                            id: processId,
+                            status: 'completed',
+                            conversationTurns: [
+                                { role: 'user', content: 'Q', timeline: [] },
+                                { role: 'assistant', content: 'A', timeline: [] },
+                            ],
+                        },
+                    }),
+                });
+            }
+            if (url.endsWith(`/api/processes/${processId}/message`) && method === 'POST') {
+                return Promise.resolve({
+                    ok: false,
+                    status: 410,
+                    json: async () => ({ error: 'session_expired' }),
+                });
+            }
+            return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+        });
+        (global as any).EventSource = undefined;
+
+        const { container } = render(
+            <Wrap>
+                <SeededQueueTaskDetail
+                    task={{ id: 'task-410-1', processId, status: 'completed', type: 'ai-clarification', prompt: 'Q' }}
+                />
+            </Wrap>
+        );
+
+        await screen.findByText('A');
+        const input = screen.getByPlaceholderText('Continue this conversation...');
+        fireEvent.change(input, { target: { value: 'More' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+        await waitFor(() => {
+            const errorBubble = container.querySelector('.chat-error-bubble');
+            expect(errorBubble).toBeDefined();
+            expect(errorBubble!.textContent).toContain('Session');
+        });
+    });
+});
+
 describe('QueueView', () => {
     beforeEach(() => {
         global.fetch = vi.fn().mockResolvedValue({
