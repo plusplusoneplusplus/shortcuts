@@ -447,10 +447,10 @@ describe('Folder context menu', () => {
         const followPrompt = screen.getAllByText('Follow Prompt')[0];
         fireEvent.click(followPrompt);
 
-        // FollowPromptDialog should open
+        // BulkFollowPromptDialog should open
         await waitFor(() => {
             expect(screen.getByText('Follow Prompt')).toBeTruthy();
-            expect(document.getElementById('follow-prompt-submenu')).toBeTruthy();
+            expect(document.getElementById('bulk-follow-prompt-dialog')).toBeTruthy();
         });
     });
 

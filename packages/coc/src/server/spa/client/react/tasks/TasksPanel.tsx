@@ -21,6 +21,7 @@ import { FolderMoveDialog } from './FolderMoveDialog';
 import { Dialog } from '../shared/Dialog';
 import { Button } from '../shared/Button';
 import { FollowPromptDialog } from '../shared/FollowPromptDialog';
+import { BulkFollowPromptDialog } from '../shared/BulkFollowPromptDialog';
 import { GenerateTaskDialog } from './GenerateTaskDialog';
 import { Spinner } from '../shared';
 
@@ -435,10 +436,9 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
 
             {/* Bulk Follow Prompt dialog */}
             {folderDialog.action === 'follow-prompt' && folderDialog.folder && (
-                <FollowPromptDialog
+                <BulkFollowPromptDialog
                     wsId={wsId}
-                    taskPath={folderDialog.folder.relativePath}
-                    taskName={folderDialog.folder.name}
+                    folder={folderDialog.folder}
                     onClose={closeFolderDialog}
                 />
             )}
