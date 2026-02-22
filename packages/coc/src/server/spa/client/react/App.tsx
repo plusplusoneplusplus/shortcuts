@@ -75,6 +75,13 @@ function AppInner() {
         fetchMode: 'auto',
     });
 
+    const handleConnect = useCallback(async () => {
+        const data = await fetchApi('/queue').catch(() => null);
+        if (data && Array.isArray(data.queued) && Array.isArray(data.running)) {
+            queueDispatch({ type: 'QUEUE_UPDATED', queue: data });
+        }
+    }, [queueDispatch]);
+
     const onMessage = useCallback((msg: any) => {
         if (!msg || !msg.type) return;
 
@@ -142,26 +149,31 @@ function AppInner() {
         }
     }, [appDispatch, queueDispatch]);
 
-    const { connect } = useWebSocket({ onMessage });
+    const { connect } = useWebSocket({ onMessage, onConnect: handleConnect });
 
     // Bootstrap: fetch initial data and connect WebSocket
     useEffect(() => {
         async function bootstrap() {
             try {
-                const [wsRes, pRes] = await Promise.all([
+                const [wsRes, pRes, qRes] = await Promise.all([
                     fetchApi('/workspaces').catch(() => null),
                     fetchApi('/processes').catch(() => null),
+                    fetchApi('/queue').catch(() => null),
                 ]);
                 if (wsRes?.workspaces) appDispatch({ type: 'WORKSPACES_LOADED', workspaces: wsRes.workspaces });
                 else if (Array.isArray(wsRes)) appDispatch({ type: 'WORKSPACES_LOADED', workspaces: wsRes });
 
                 if (pRes?.processes && Array.isArray(pRes.processes)) appDispatch({ type: 'SET_PROCESSES', processes: pRes.processes });
                 else if (Array.isArray(pRes)) appDispatch({ type: 'SET_PROCESSES', processes: pRes });
+
+                if (qRes && Array.isArray(qRes.queued) && Array.isArray(qRes.running)) {
+                    queueDispatch({ type: 'SEED_QUEUE', queue: qRes });
+                }
             } catch { /* ignore */ }
             connect();
         }
         bootstrap();
-    }, [connect, appDispatch]);
+    }, [connect, appDispatch, queueDispatch]);
 
     useEffect(() => {
         const handleOpenMarkdownReview = (event: Event) => {

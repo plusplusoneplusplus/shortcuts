@@ -20,6 +20,7 @@ function makeState(overrides: Partial<QueueContextState> = {}): QueueContextStat
         drainQueued: 0,
         drainRunning: 0,
         selectedTaskId: null,
+        queueInitialized: false,
         ...overrides,
     };
 }
@@ -40,6 +41,19 @@ describe('QueueContext reducer', () => {
             expect(result.queued).toHaveLength(1);
             expect(result.running).toHaveLength(1);
             expect(result.stats.queued).toBe(1);
+        });
+
+        it('sets queueInitialized to true', () => {
+            const state = makeState({ queueInitialized: false });
+            const result = queueReducer(state, {
+                type: 'QUEUE_UPDATED',
+                queue: {
+                    queued: [],
+                    running: [],
+                    stats: { queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0, total: 0, isPaused: false, isDraining: false },
+                },
+            });
+            expect(result.queueInitialized).toBe(true);
         });
 
         it('sets history when present in queue data', () => {
@@ -115,6 +129,159 @@ describe('QueueContext reducer', () => {
                 },
             });
             expect(result.showHistory).toBe(false);
+        });
+    });
+
+    // ── SEED_QUEUE ─────────────────────────────────────────────────
+    describe('SEED_QUEUE', () => {
+        it('populates state when queueInitialized is false', () => {
+            const state = makeState({ queueInitialized: false });
+            const result = queueReducer(state, {
+                type: 'SEED_QUEUE',
+                queue: {
+                    queued: [{ id: 'q1' }],
+                    running: [{ id: 'r1' }],
+                },
+            });
+            expect(result.queued).toHaveLength(1);
+            expect(result.running).toHaveLength(1);
+        });
+
+        it('merges stats when provided', () => {
+            const state = makeState({ queueInitialized: false });
+            const result = queueReducer(state, {
+                type: 'SEED_QUEUE',
+                queue: {
+                    queued: [],
+                    running: [],
+                    stats: { queued: 2, running: 1, completed: 5, failed: 0, cancelled: 0, total: 8, isPaused: false, isDraining: false },
+                },
+            });
+            expect(result.stats.queued).toBe(2);
+            expect(result.stats.completed).toBe(5);
+        });
+
+        it('keeps existing stats when stats not provided', () => {
+            const existingStats = { queued: 3, running: 1, completed: 10, failed: 2, cancelled: 0, total: 16, isPaused: false, isDraining: false };
+            const state = makeState({ queueInitialized: false, stats: existingStats });
+            const result = queueReducer(state, {
+                type: 'SEED_QUEUE',
+                queue: { queued: [{ id: 'q1' }], running: [] },
+            });
+            expect(result.stats).toEqual(existingStats);
+        });
+
+        it('is a no-op after QUEUE_UPDATED has been received', () => {
+            const state = makeState({ queueInitialized: true, queued: [{ id: 'ws1' }], running: [] });
+            const result = queueReducer(state, {
+                type: 'SEED_QUEUE',
+                queue: {
+                    queued: [{ id: 'rest1' }, { id: 'rest2' }],
+                    running: [{ id: 'rest3' }],
+                },
+            });
+            expect(result).toBe(state);
+            expect(result.queued).toHaveLength(1);
+            expect(result.queued[0].id).toBe('ws1');
+        });
+
+        it('does not set queueInitialized to true', () => {
+            const state = makeState({ queueInitialized: false });
+            const result = queueReducer(state, {
+                type: 'SEED_QUEUE',
+                queue: { queued: [{ id: 'q1' }], running: [] },
+            });
+            expect(result.queueInitialized).toBe(false);
+        });
+
+        it('handles null/undefined arrays gracefully', () => {
+            const state = makeState({ queueInitialized: false });
+            const result = queueReducer(state, {
+                type: 'SEED_QUEUE',
+                queue: { queued: null as any, running: undefined as any },
+            });
+            expect(result.queued).toEqual([]);
+            expect(result.running).toEqual([]);
+        });
+
+        it('does not affect history, showHistory, or other unrelated state', () => {
+            const state = makeState({
+                queueInitialized: false,
+                history: [{ id: 'h1' }],
+                showHistory: true,
+                draining: true,
+            });
+            const result = queueReducer(state, {
+                type: 'SEED_QUEUE',
+                queue: { queued: [{ id: 'q1' }], running: [] },
+            });
+            expect(result.history).toEqual([{ id: 'h1' }]);
+            expect(result.showHistory).toBe(true);
+            expect(result.draining).toBe(true);
+        });
+    });
+
+    // ── SEED_QUEUE / QUEUE_UPDATED interaction ────────────────────
+    describe('SEED_QUEUE / QUEUE_UPDATED interaction', () => {
+        it('QUEUE_UPDATED after SEED_QUEUE overwrites with fresh data', () => {
+            let state = makeState({ queueInitialized: false });
+            state = queueReducer(state, {
+                type: 'SEED_QUEUE',
+                queue: { queued: [{ id: 'seed1' }], running: [] },
+            });
+            expect(state.queued).toHaveLength(1);
+            expect(state.queueInitialized).toBe(false);
+
+            state = queueReducer(state, {
+                type: 'QUEUE_UPDATED',
+                queue: {
+                    queued: [{ id: 'ws1' }, { id: 'ws2' }],
+                    running: [{ id: 'ws3' }],
+                    stats: { queued: 2, running: 1, completed: 0, failed: 0, cancelled: 0, total: 3, isPaused: false, isDraining: false },
+                },
+            });
+            expect(state.queued).toHaveLength(2);
+            expect(state.running).toHaveLength(1);
+            expect(state.queueInitialized).toBe(true);
+        });
+
+        it('SEED_QUEUE after QUEUE_UPDATED is ignored', () => {
+            let state = makeState({ queueInitialized: false });
+            state = queueReducer(state, {
+                type: 'QUEUE_UPDATED',
+                queue: {
+                    queued: [{ id: 'ws1' }],
+                    running: [],
+                    stats: { queued: 1, running: 0, completed: 0, failed: 0, cancelled: 0, total: 1, isPaused: false, isDraining: false },
+                },
+            });
+            expect(state.queueInitialized).toBe(true);
+
+            const stateAfterSeed = queueReducer(state, {
+                type: 'SEED_QUEUE',
+                queue: { queued: [{ id: 'stale1' }, { id: 'stale2' }], running: [] },
+            });
+            expect(stateAfterSeed).toBe(state);
+        });
+
+        it('empty queue seed followed by WS update shows correct data', () => {
+            let state = makeState({ queueInitialized: false });
+            state = queueReducer(state, {
+                type: 'SEED_QUEUE',
+                queue: { queued: [], running: [] },
+            });
+            expect(state.queued).toHaveLength(0);
+
+            state = queueReducer(state, {
+                type: 'QUEUE_UPDATED',
+                queue: {
+                    queued: [{ id: 'new1' }],
+                    running: [],
+                    stats: { queued: 1, running: 0, completed: 0, failed: 0, cancelled: 0, total: 1, isPaused: false, isDraining: false },
+                },
+            });
+            expect(state.queued).toHaveLength(1);
+            expect(state.queueInitialized).toBe(true);
         });
     });
 

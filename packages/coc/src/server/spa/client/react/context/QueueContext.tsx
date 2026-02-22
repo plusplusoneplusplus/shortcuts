@@ -32,6 +32,7 @@ export interface QueueContextState {
     drainQueued: number;
     drainRunning: number;
     selectedTaskId: string | null;
+    queueInitialized: boolean;
 }
 
 const initialState: QueueContextState = {
@@ -48,12 +49,14 @@ const initialState: QueueContextState = {
     drainQueued: 0,
     drainRunning: 0,
     selectedTaskId: null,
+    queueInitialized: false,
 };
 
 // ── Actions ────────────────────────────────────────────────────────────
 
 export type QueueAction =
     | { type: 'QUEUE_UPDATED'; queue: { queued: any[]; running: any[]; history?: any[]; stats: any } }
+    | { type: 'SEED_QUEUE'; queue: { queued: any[]; running: any[]; stats?: any } }
     | { type: 'SET_HISTORY'; history: any[] }
     | { type: 'DRAIN_START'; queued: number; running: number }
     | { type: 'DRAIN_PROGRESS'; queued: number; running: number }
@@ -85,6 +88,18 @@ export function queueReducer(state: QueueContextState, action: QueueAction): Que
                 history: action.queue.history ?? state.history,
                 stats: newStats,
                 showHistory: autoShowHistory,
+                queueInitialized: true,
+            };
+        }
+        case 'SEED_QUEUE': {
+            if (state.queueInitialized) return state;
+            return {
+                ...state,
+                queued: action.queue.queued || [],
+                running: action.queue.running || [],
+                stats: action.queue.stats
+                    ? { ...state.stats, ...action.queue.stats }
+                    : state.stats,
             };
         }
         case 'SET_HISTORY':

@@ -10,9 +10,10 @@ export type WsStatus = 'connecting' | 'open' | 'closed';
 
 interface UseWebSocketOptions {
     onMessage: (msg: any) => void;
+    onConnect?: () => void;
 }
 
-export function useWebSocket({ onMessage }: UseWebSocketOptions) {
+export function useWebSocket({ onMessage, onConnect }: UseWebSocketOptions) {
     const [status, setStatus] = useState<WsStatus>('closed');
     const wsRef = useRef<WebSocket | null>(null);
     const reconnectDelayRef = useRef(1000);
@@ -20,10 +21,15 @@ export function useWebSocket({ onMessage }: UseWebSocketOptions) {
     const pingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const manualCloseRef = useRef(false);
     const onMessageRef = useRef(onMessage);
+    const onConnectRef = useRef(onConnect);
 
     useEffect(() => {
         onMessageRef.current = onMessage;
     }, [onMessage]);
+
+    useEffect(() => {
+        onConnectRef.current = onConnect;
+    }, [onConnect]);
 
     const cleanup = useCallback(() => {
         if (pingIntervalRef.current) {
@@ -57,6 +63,7 @@ export function useWebSocket({ onMessage }: UseWebSocketOptions) {
                     ws.send(JSON.stringify({ type: 'ping' }));
                 }
             }, 30000);
+            onConnectRef.current?.();
         };
 
         ws.onmessage = (event) => {
