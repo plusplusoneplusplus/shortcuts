@@ -8,6 +8,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Dialog, Button, Spinner } from '../shared';
 import { useTaskGeneration } from '../hooks/useTaskGeneration';
+import { usePreferences } from '../hooks/usePreferences';
 import { type TaskFolder } from '../hooks/useTaskTree';
 import { getApiBase } from '../utils/config';
 
@@ -40,11 +41,18 @@ export function GenerateTaskDialog({
     onSuccess,
     onClose,
 }: GenerateTaskDialogProps) {
+    // --- preferences (persisted model) ---
+    const { model: savedModel, setModel: persistModel } = usePreferences();
+
     // --- form state ---
     const [prompt, setPrompt] = useState('');
     const [name, setName] = useState('');
     const [targetFolder, setTargetFolder] = useState(initialFolder);
     const [model, setModel] = useState('');
+
+    useEffect(() => {
+        if (savedModel && !model) setModel(savedModel);
+    }, [savedModel]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // --- data ---
     const [models, setModels] = useState<string[]>([]);
@@ -217,7 +225,10 @@ export function GenerateTaskDialog({
                         id="gen-task-model"
                         className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
                         value={model}
-                        onChange={e => setModel(e.target.value)}
+                        onChange={e => {
+                            setModel(e.target.value);
+                            persistModel(e.target.value);
+                        }}
                         disabled={isGenerating || isComplete}
                     >
                         <option value="">Default</option>

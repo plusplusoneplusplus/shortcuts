@@ -4,6 +4,7 @@ import { AppProvider } from '../../../src/server/spa/client/react/context/AppCon
 import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
 import { GenerateTaskDialog } from '../../../src/server/spa/client/react/tasks/GenerateTaskDialog';
 import { useTaskGeneration } from '../../../src/server/spa/client/react/hooks/useTaskGeneration';
+import { usePreferences } from '../../../src/server/spa/client/react/hooks/usePreferences';
 
 // ── mock useTaskGeneration ──────────────────────────────────────────────────
 
@@ -11,7 +12,12 @@ vi.mock('../../../src/server/spa/client/react/hooks/useTaskGeneration', () => ({
     useTaskGeneration: vi.fn(),
 }));
 
+vi.mock('../../../src/server/spa/client/react/hooks/usePreferences', () => ({
+    usePreferences: vi.fn(),
+}));
+
 const mockUseTaskGeneration = useTaskGeneration as Mock;
+const mockUsePreferences = usePreferences as Mock;
 
 function makeHookReturn(overrides: Record<string, unknown> = {}) {
     return {
@@ -31,11 +37,19 @@ function makeHookReturn(overrides: Record<string, unknown> = {}) {
 
 const mockFetch = vi.fn();
 
+const mockPersistModel = vi.fn();
+
 beforeEach(() => {
     vi.restoreAllMocks();
     mockFetch.mockReset();
+    mockPersistModel.mockReset();
     global.fetch = mockFetch;
     mockUseTaskGeneration.mockReturnValue(makeHookReturn());
+    mockUsePreferences.mockReturnValue({
+        model: '',
+        setModel: mockPersistModel,
+        loaded: true,
+    });
 
     // Default fetch: models + tasks
     mockFetch.mockImplementation((url: string) => {
@@ -351,5 +365,243 @@ describe('GenerateTaskDialog', () => {
             expect(options).toContain('feature1');
             expect(options).toContain('feature2');
         });
+    });
+
+    // ── model persistence tests ──────────────────────────────────────────────
+
+    it('restores saved model from preferences on mount', async () => {
+        mockUsePreferences.mockReturnValue({
+            model: 'gpt-4',
+            setModel: mockPersistModel,
+            loaded: true,
+        });
+
+        mockFetch.mockImplementation((url: string) => {
+            if (url.includes('/queue/models')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ models: ['gpt-4', 'claude-3'] }),
+                });
+            }
+            if (url.includes('/tasks')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () =>
+                        Promise.resolve({
+                            name: 'root',
+                            relativePath: '',
+                            children: [],
+                            documentGroups: [],
+                            singleDocuments: [],
+                        }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        await act(async () => { renderDialog(); });
+
+        await waitFor(() => {
+            const select = document.getElementById('gen-task-model') as HTMLSelectElement;
+            expect(select.value).toBe('gpt-4');
+        });
+    });
+
+    it('persists model selection when user changes model', async () => {
+        mockFetch.mockImplementation((url: string) => {
+            if (url.includes('/queue/models')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ models: ['gpt-4', 'claude-3'] }),
+                });
+            }
+            if (url.includes('/tasks')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () =>
+                        Promise.resolve({
+                            name: 'root',
+                            relativePath: '',
+                            children: [],
+                            documentGroups: [],
+                            singleDocuments: [],
+                        }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        await act(async () => { renderDialog(); });
+
+        await waitFor(() => {
+            const select = document.getElementById('gen-task-model') as HTMLSelectElement;
+            expect(Array.from(select.options).map(o => o.value)).toContain('gpt-4');
+        });
+
+        const select = document.getElementById('gen-task-model') as HTMLSelectElement;
+        fireEvent.change(select, { target: { value: 'claude-3' } });
+
+        expect(mockPersistModel).toHaveBeenCalledWith('claude-3');
+        expect(select.value).toBe('claude-3');
+    });
+
+    it('persists empty string when user selects Default model', async () => {
+        mockUsePreferences.mockReturnValue({
+            model: 'gpt-4',
+            setModel: mockPersistModel,
+            loaded: true,
+        });
+
+        mockFetch.mockImplementation((url: string) => {
+            if (url.includes('/queue/models')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ models: ['gpt-4', 'claude-3'] }),
+                });
+            }
+            if (url.includes('/tasks')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () =>
+                        Promise.resolve({
+                            name: 'root',
+                            relativePath: '',
+                            children: [],
+                            documentGroups: [],
+                            singleDocuments: [],
+                        }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        await act(async () => { renderDialog(); });
+
+        await waitFor(() => {
+            const select = document.getElementById('gen-task-model') as HTMLSelectElement;
+            expect(select.value).toBe('gpt-4');
+        });
+
+        const select = document.getElementById('gen-task-model') as HTMLSelectElement;
+        fireEvent.change(select, { target: { value: '' } });
+
+        expect(mockPersistModel).toHaveBeenCalledWith('');
+        expect(select.value).toBe('');
+    });
+
+    it('submit sends persisted model in generate call', async () => {
+        const generateSpy = vi.fn();
+        mockUseTaskGeneration.mockReturnValue(makeHookReturn({ generate: generateSpy }));
+        mockUsePreferences.mockReturnValue({
+            model: 'claude-3',
+            setModel: mockPersistModel,
+            loaded: true,
+        });
+
+        mockFetch.mockImplementation((url: string) => {
+            if (url.includes('/queue/models')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ models: ['gpt-4', 'claude-3'] }),
+                });
+            }
+            if (url.includes('/tasks')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () =>
+                        Promise.resolve({
+                            name: 'root',
+                            relativePath: '',
+                            children: [],
+                            documentGroups: [],
+                            singleDocuments: [],
+                        }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        await act(async () => { renderDialog(); });
+
+        await waitFor(() => {
+            const select = document.getElementById('gen-task-model') as HTMLSelectElement;
+            expect(select.value).toBe('claude-3');
+        });
+
+        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
+        fireEvent.change(textarea, { target: { value: 'test prompt' } });
+
+        await act(async () => {
+            fireEvent.click(screen.getByText('Generate'));
+        });
+
+        expect(generateSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ model: 'claude-3' }),
+        );
+    });
+
+    it('does not override user-selected model when preferences load later', async () => {
+        mockUsePreferences.mockReturnValue({
+            model: '',
+            setModel: mockPersistModel,
+            loaded: true,
+        });
+
+        mockFetch.mockImplementation((url: string) => {
+            if (url.includes('/queue/models')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ models: ['gpt-4', 'claude-3'] }),
+                });
+            }
+            if (url.includes('/tasks')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () =>
+                        Promise.resolve({
+                            name: 'root',
+                            relativePath: '',
+                            children: [],
+                            documentGroups: [],
+                            singleDocuments: [],
+                        }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        const { rerender } = await act(async () =>
+            renderDialog(),
+        );
+
+        await waitFor(() => {
+            const select = document.getElementById('gen-task-model') as HTMLSelectElement;
+            expect(Array.from(select.options).map(o => o.value)).toContain('gpt-4');
+        });
+
+        const select = document.getElementById('gen-task-model') as HTMLSelectElement;
+        fireEvent.change(select, { target: { value: 'gpt-4' } });
+        expect(select.value).toBe('gpt-4');
+
+        // Simulate preferences loading with a different saved model
+        mockUsePreferences.mockReturnValue({
+            model: 'claude-3',
+            setModel: mockPersistModel,
+            loaded: true,
+        });
+
+        await act(async () => {
+            rerender(
+                <AppProvider>
+                    <ToastProvider value={{ addToast: vi.fn(), removeToast: vi.fn(), toasts: [] }}>
+                        <GenerateTaskDialog wsId="ws-1" onSuccess={vi.fn()} onClose={vi.fn()} />
+                    </ToastProvider>
+                </AppProvider>,
+            );
+        });
+
+        // User's manual selection should not be overridden
+        const selectAfter = document.getElementById('gen-task-model') as HTMLSelectElement;
+        expect(selectAfter.value).toBe('gpt-4');
     });
 });
