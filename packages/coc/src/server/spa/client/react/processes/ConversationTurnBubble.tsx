@@ -325,7 +325,7 @@ export function ConversationTurnBubble({ turn }: ConversationTurnBubbleProps) {
 
         const childIds = childrenByParent.get(toolId) ?? [];
         const hasSubtools = childIds.length > 0;
-        const isCollapsed = !!collapsedTaskIds[toolId];
+        const isCollapsed = collapsedTaskIds[toolId] ?? true;
         return (
             <ToolCallView
                 key={toolId}
@@ -334,10 +334,10 @@ export function ConversationTurnBubble({ turn }: ConversationTurnBubbleProps) {
                 hasSubtools={hasSubtools}
                 subtoolsCollapsed={isCollapsed}
                 onToggleSubtools={() =>
-                    setCollapsedTaskIds((prev) => ({ ...prev, [toolId]: !prev[toolId] }))
+                    setCollapsedTaskIds((prev) => ({ ...prev, [toolId]: !(prev[toolId] ?? true) }))
                 }
             >
-                {childIds.map((childId) => renderToolTree(childId, depth + 1))}
+                {hasSubtools ? childIds.map((childId) => renderToolTree(childId, depth + 1)) : undefined}
             </ToolCallView>
         );
     }

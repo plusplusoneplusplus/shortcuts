@@ -28275,7 +28275,7 @@
       }
       const childIds = childrenByParent.get(toolId) ?? [];
       const hasSubtools = childIds.length > 0;
-      const isCollapsed = !!collapsedTaskIds[toolId];
+      const isCollapsed = collapsedTaskIds[toolId] ?? true;
       return /* @__PURE__ */ (0, import_jsx_runtime16.jsx)(
         ToolCallView,
         {
@@ -28283,8 +28283,8 @@
           depth,
           hasSubtools,
           subtoolsCollapsed: isCollapsed,
-          onToggleSubtools: () => setCollapsedTaskIds((prev) => ({ ...prev, [toolId]: !prev[toolId] })),
-          children: childIds.map((childId) => renderToolTree(childId, depth + 1))
+          onToggleSubtools: () => setCollapsedTaskIds((prev) => ({ ...prev, [toolId]: !(prev[toolId] ?? true) })),
+          children: hasSubtools ? childIds.map((childId) => renderToolTree(childId, depth + 1)) : void 0
         },
         toolId
       );
@@ -29160,14 +29160,73 @@
       const processId = selectedProcessId || `queue_${selectedTaskId}`;
       const es = new EventSource(`/api/processes/${encodeURIComponent(processId)}/stream`);
       eventSourceRef.current = es;
-      es.onmessage = (event) => {
+      const ensureAssistantTurn = (prev) => {
+        const last = prev[prev.length - 1];
+        if (last && last.role === "assistant") return prev;
+        return [...prev, { role: "assistant", content: "", streaming: true, timeline: [] }];
+      };
+      es.addEventListener("chunk", (event) => {
         try {
-          const turn = JSON.parse(event.data);
-          appDispatch({ type: "APPEND_TURN", processId: selectedTaskId, turn });
-          setTurns((prev) => [...prev, turn]);
+          const data = JSON.parse(event.data);
+          const chunk = data.content || "";
+          setTurnsAndCache((prev) => {
+            const turns2 = ensureAssistantTurn(prev);
+            const last = turns2[turns2.length - 1];
+            turns2[turns2.length - 1] = {
+              ...last,
+              content: (last.content || "") + chunk,
+              streaming: true,
+              timeline: [...last.timeline || [], { type: "content", timestamp: (/* @__PURE__ */ new Date()).toISOString(), content: chunk }]
+            };
+            return [...turns2];
+          });
+        } catch {
+        }
+      });
+      const handleToolSSE = (eventType) => (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          setTurnsAndCache((prev) => {
+            const turns2 = ensureAssistantTurn(prev);
+            const last = turns2[turns2.length - 1];
+            const toolCall = {
+              id: data.toolCallId,
+              toolName: data.toolName || "unknown",
+              args: data.parameters || {},
+              status: eventType === "tool-start" ? "running" : eventType === "tool-complete" ? "completed" : "failed",
+              startTime: (/* @__PURE__ */ new Date()).toISOString(),
+              ...eventType !== "tool-start" ? { endTime: (/* @__PURE__ */ new Date()).toISOString(), result: data.result, error: data.error } : {},
+              ...data.parentToolCallId ? { parentToolCallId: data.parentToolCallId } : {}
+            };
+            turns2[turns2.length - 1] = {
+              ...last,
+              streaming: true,
+              timeline: [...last.timeline || [], { type: eventType, timestamp: (/* @__PURE__ */ new Date()).toISOString(), toolCall }]
+            };
+            return [...turns2];
+          });
         } catch {
         }
       };
+      es.addEventListener("tool-start", handleToolSSE("tool-start"));
+      es.addEventListener("tool-complete", handleToolSSE("tool-complete"));
+      es.addEventListener("tool-failed", handleToolSSE("tool-failed"));
+      const handleDone = () => {
+        es.close();
+        eventSourceRef.current = null;
+        void refreshConversation();
+      };
+      es.addEventListener("done", handleDone);
+      es.addEventListener("status", (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.status === "completed" || data.status === "failed" || data.status === "cancelled") {
+            handleDone();
+          }
+        } catch {
+          handleDone();
+        }
+      });
       es.onerror = () => {
         es.close();
         eventSourceRef.current = null;
@@ -29337,7 +29396,7 @@
             {
               id: "chat-send-btn",
               type: "button",
-              disabled: followUpInputDisabled || !followUpInput.trim(),
+              disabled: followUpInputDisabled,
               className: "h-[34px] px-3 rounded bg-[#0078d4] text-white text-sm font-medium hover:bg-[#106ebe] disabled:opacity-50 disabled:cursor-not-allowed",
               onClick: () => {
                 void sendFollowUp();

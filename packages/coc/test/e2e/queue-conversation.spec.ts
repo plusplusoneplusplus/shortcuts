@@ -319,8 +319,8 @@ test.describe('Queue Task Conversation – Tool Calls', () => {
 
         await gotoQueueTask(page, serverUrl, taskId);
 
-        // Wait for tool call cards (tool-start + tool-complete each render a card in timeline)
-        await expect(page.locator('.tool-call-card')).toHaveCount(2, { timeout: 5000 });
+        // Wait for tool call card (tool-start + tool-complete merge into one card per unique toolCallId)
+        await expect(page.locator('.tool-call-card')).toHaveCount(1, { timeout: 5000 });
 
         // Tool name should be visible
         await expect(page.locator('.tool-call-card .tool-call-name').first()).toContainText('view');
@@ -369,8 +369,8 @@ test.describe('Queue Task Conversation – Tool Calls', () => {
 
         await gotoQueueTask(page, serverUrl, taskId);
 
-        // At least 4 tool call cards (2 tools × tool-start + tool-complete timeline items)
-        await expect(page.locator('.tool-call-card')).toHaveCount(4, { timeout: 5000 });
+        // 2 tool call cards (2 unique tools: view + grep, each merges start+complete)
+        await expect(page.locator('.tool-call-card')).toHaveCount(2, { timeout: 5000 });
     });
 
     test('tool call card body starts collapsed and can be expanded', async ({ page, serverUrl, mockAI }) => {
@@ -400,19 +400,19 @@ test.describe('Queue Task Conversation – Tool Calls', () => {
 
         await gotoQueueTask(page, serverUrl, taskId);
 
-        // Tool cards should exist (tool-start + tool-complete as separate timeline items)
-        await expect(page.locator('.tool-call-card')).toHaveCount(2, { timeout: 3000 });
+        // Tool card should exist (tool-start + tool-complete merge into one card)
+        await expect(page.locator('.tool-call-card')).toHaveCount(1, { timeout: 3000 });
 
-        // Bodies start collapsed
-        await expect(page.locator('.tool-call-card .tool-call-body.collapsed')).toHaveCount(2);
+        // Body starts collapsed
+        await expect(page.locator('.tool-call-card .tool-call-body.collapsed')).toHaveCount(1);
 
         // Click first header to expand
         await page.locator('.tool-call-card .tool-call-header').first().click();
-        await expect(page.locator('.tool-call-card .tool-call-body.collapsed')).toHaveCount(1);
+        await expect(page.locator('.tool-call-card .tool-call-body.collapsed')).toHaveCount(0);
 
         // Click first header to collapse again
         await page.locator('.tool-call-card .tool-call-header').first().click();
-        await expect(page.locator('.tool-call-card .tool-call-body.collapsed')).toHaveCount(2);
+        await expect(page.locator('.tool-call-card .tool-call-body.collapsed')).toHaveCount(1);
     });
 
     test('collapsing parent task hides nested subtool cards', async ({ page, serverUrl, mockAI }) => {
@@ -474,20 +474,20 @@ test.describe('Queue Task Conversation – Tool Calls', () => {
         // Wait for parent tool card
         await expect(page.locator('.tool-call-card[data-tool-id="tc-task-parent"]')).toHaveCount(1, { timeout: 5000 });
 
-        // Children container should exist and start collapsed
-        const childrenContainer = page.locator('.tool-call-card[data-tool-id="tc-task-parent"] .tool-call-children');
+        // Children container should exist and start collapsed (use direct-child to avoid matching child cards' containers)
+        const childrenContainer = page.locator('.tool-call-card[data-tool-id="tc-task-parent"] > .tool-call-children');
         await expect(childrenContainer).toHaveCount(1);
         await expect(childrenContainer).toHaveClass(/subtree-collapsed/);
 
         // Child cards should exist in DOM but be hidden
         await expect(childrenContainer.locator('.tool-call-card')).toHaveCount(2);
 
-        // Expand parent — children become visible
-        await page.locator('.tool-call-card[data-tool-id="tc-task-parent"] > .tool-call-header').click();
+        // Expand parent — children become visible (click the subtool toggle button, not header)
+        await page.locator('.tool-call-card[data-tool-id="tc-task-parent"] > .tool-call-header button[aria-label*="subtools"]').click();
         await expect(childrenContainer).not.toHaveClass(/subtree-collapsed/);
 
         // Collapse parent again — children hidden
-        await page.locator('.tool-call-card[data-tool-id="tc-task-parent"] > .tool-call-header').click();
+        await page.locator('.tool-call-card[data-tool-id="tc-task-parent"] > .tool-call-header button[aria-label*="subtools"]').click();
         await expect(childrenContainer).toHaveClass(/subtree-collapsed/);
     });
 });

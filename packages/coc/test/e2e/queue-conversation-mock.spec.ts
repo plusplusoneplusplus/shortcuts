@@ -248,15 +248,18 @@ test.describe('Mock AI: Tool Call Rendering', () => {
         const childCards = exploreCard.locator('.tool-call-children .tool-call-card');
         await expect(childCards).toHaveCount(2);
 
-        // Collapse children by clicking the subtool toggle button
+        // Subtree starts collapsed by default
         const subtoolToggle = exploreCard.locator(':scope > .tool-call-header button[aria-label]');
-        await subtoolToggle.click();
         await expect(exploreCard.locator('.subtree-collapsed')).toHaveCount(1);
 
-        // Expand again
+        // Expand children by clicking the subtool toggle button
         await subtoolToggle.click();
         await expect(exploreCard.locator('.subtree-collapsed')).toHaveCount(0);
         await expect(childCards).toHaveCount(2);
+
+        // Collapse again
+        await subtoolToggle.click();
+        await expect(exploreCard.locator('.subtree-collapsed')).toHaveCount(1);
     });
 });
 

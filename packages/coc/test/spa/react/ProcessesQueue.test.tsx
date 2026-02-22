@@ -656,11 +656,15 @@ describe('ConversationTurnBubble', () => {
         );
 
         expect(screen.getByText('view')).toBeDefined();
-        fireEvent.click(screen.getByRole('button', { name: 'Collapse subtools' }));
+        // Subtools default to collapsed — verify initial state
         const childrenContainer = screen.getByText('view').closest('.tool-call-children');
         expect(childrenContainer?.classList.contains('subtree-collapsed')).toBe(true);
+        // Click to expand
         fireEvent.click(screen.getByRole('button', { name: 'Expand subtools' }));
         expect(childrenContainer?.classList.contains('subtree-collapsed')).toBe(false);
+        // Click to collapse again
+        fireEvent.click(screen.getByRole('button', { name: 'Collapse subtools' }));
+        expect(childrenContainer?.classList.contains('subtree-collapsed')).toBe(true);
     });
 
     describe('report_intent filtering', () => {
