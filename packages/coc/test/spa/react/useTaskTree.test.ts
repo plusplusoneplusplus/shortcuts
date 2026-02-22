@@ -8,6 +8,7 @@ import {
     isTaskFolder,
     isTaskDocumentGroup,
     isTaskDocument,
+    isContextFile,
     folderToNodes,
     type TaskFolder,
     type TaskDocumentGroup,
@@ -211,5 +212,128 @@ describe('rebuildColumnsFromKeys', () => {
         };
         const cols = rebuildColumnsFromKeys(rootWithNameChild, ['misc']);
         expect(cols).toHaveLength(2);
+    });
+});
+
+// ── folderToNodes with contextDocuments ─────────────────────────────────
+
+describe('folderToNodes with contextDocuments', () => {
+    const contextDoc: TaskDocument = {
+        baseName: 'CONTEXT',
+        fileName: 'CONTEXT.md',
+        isArchived: false,
+    };
+
+    const readmeDoc: TaskDocument = {
+        baseName: 'README',
+        fileName: 'README.md',
+        isArchived: false,
+    };
+
+    it('includes contextDocuments in the output', () => {
+        const folder: TaskFolder = {
+            name: 'feature',
+            relativePath: 'feature',
+            children: [],
+            documentGroups: [],
+            singleDocuments: [mockDoc],
+        };
+        (folder as any).contextDocuments = [contextDoc];
+
+        const nodes = folderToNodes(folder);
+        expect(nodes).toHaveLength(2);
+        expect(nodes).toContain(mockDoc);
+        expect(nodes).toContain(contextDoc);
+    });
+
+    it('places contextDocuments after singleDocuments', () => {
+        const folder: TaskFolder = {
+            name: 'feature',
+            relativePath: 'feature',
+            children: [],
+            documentGroups: [],
+            singleDocuments: [mockDoc],
+        };
+        (folder as any).contextDocuments = [contextDoc];
+
+        const nodes = folderToNodes(folder);
+        const taskIndex = nodes.indexOf(mockDoc);
+        const contextIndex = nodes.indexOf(contextDoc);
+        expect(contextIndex).toBeGreaterThan(taskIndex);
+    });
+
+    it('handles folder without contextDocuments (undefined)', () => {
+        const folder: TaskFolder = {
+            name: 'feature',
+            relativePath: 'feature',
+            children: [],
+            documentGroups: [],
+            singleDocuments: [mockDoc],
+        };
+
+        const nodes = folderToNodes(folder);
+        expect(nodes).toHaveLength(1);
+        expect(nodes[0]).toBe(mockDoc);
+    });
+
+    it('handles folder with empty contextDocuments array', () => {
+        const folder: TaskFolder = {
+            name: 'feature',
+            relativePath: 'feature',
+            children: [],
+            documentGroups: [],
+            singleDocuments: [mockDoc],
+        };
+        (folder as any).contextDocuments = [];
+
+        const nodes = folderToNodes(folder);
+        expect(nodes).toHaveLength(1);
+    });
+
+    it('includes multiple context documents', () => {
+        const folder: TaskFolder = {
+            name: 'feature',
+            relativePath: 'feature',
+            children: [],
+            documentGroups: [],
+            singleDocuments: [],
+        };
+        (folder as any).contextDocuments = [contextDoc, readmeDoc];
+
+        const nodes = folderToNodes(folder);
+        expect(nodes).toHaveLength(2);
+        expect(nodes).toContain(contextDoc);
+        expect(nodes).toContain(readmeDoc);
+    });
+
+    it('context documents are identified by isContextFile', () => {
+        expect(isContextFile('CONTEXT.md')).toBe(true);
+        expect(isContextFile('README.md')).toBe(true);
+        expect(isContextFile('task.md')).toBe(false);
+    });
+
+    it('full ordering: children, documentGroups, singleDocuments, contextDocuments', () => {
+        const childFolder: TaskFolder = {
+            name: 'sub',
+            relativePath: 'feature/sub',
+            children: [],
+            documentGroups: [],
+            singleDocuments: [],
+        };
+        const folder: TaskFolder = {
+            name: 'feature',
+            relativePath: 'feature',
+            children: [childFolder],
+            documentGroups: [mockGroup],
+            singleDocuments: [mockDoc],
+        };
+        (folder as any).contextDocuments = [contextDoc];
+
+        const nodes = folderToNodes(folder);
+        expect(nodes).toHaveLength(4);
+        expect(nodes[0]).toBe(childFolder);
+        expect(nodes[1]).toBe(mockGroup);
+        expect(nodes[2]).toBe(mockDoc);
+        expect(nodes[3]).toBe(contextDoc);
     });
 });

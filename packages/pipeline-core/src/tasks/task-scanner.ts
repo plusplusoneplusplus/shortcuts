@@ -175,6 +175,45 @@ export function scanFoldersRecursively(
 }
 
 /**
+ * Scan a single directory for context/documentation .md files (non-recursive).
+ * Returns TaskDocument[] for files that match isContextFile().
+ */
+export function scanContextDocumentsInFolder(dirPath: string, relativePath: string, isArchived: boolean): TaskDocument[] {
+    const documents: TaskDocument[] = [];
+
+    const readResult = safeReadDir(dirPath);
+    if (!readResult.success || !readResult.data) {
+        return documents;
+    }
+
+    for (const item of readResult.data) {
+        if (!item.endsWith('.md') || !isContextFile(item)) {
+            continue;
+        }
+
+        const itemPath = path.join(dirPath, item);
+        const statsResult = safeStats(itemPath);
+
+        if (!statsResult.success || !statsResult.data || !statsResult.data.isFile()) {
+            continue;
+        }
+
+        const { baseName, docType } = parseFileName(item);
+        documents.push({
+            baseName,
+            docType,
+            fileName: item,
+            filePath: itemPath,
+            modifiedTime: statsResult.data.mtime,
+            isArchived,
+            relativePath: relativePath || undefined,
+        });
+    }
+
+    return documents;
+}
+
+/**
  * Group documents by composite key: baseName|archived/active|relativePath.
  * Documents sharing a key with count > 1 become a TaskDocumentGroup; singletons go to singles.
  */
@@ -303,6 +342,14 @@ export function buildTaskFolderHierarchy(
         const folder = folderMap.get(folderPath);
         if (folder) {
             folder.singleDocuments.push(doc);
+        }
+    }
+
+    // Scan context documents for each folder
+    for (const [relPath, folder] of folderMap) {
+        const contextDocs = scanContextDocumentsInFolder(folder.folderPath, relPath, folder.isArchived);
+        if (contextDocs.length > 0) {
+            folder.contextDocuments = contextDocs;
         }
     }
 

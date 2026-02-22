@@ -58,8 +58,10 @@ export {
     scanTasksRecursively,
     scanDocumentsRecursively,
     scanFoldersRecursively,
+    scanContextDocumentsInFolder,
     groupTaskDocuments,
     buildTaskFolderHierarchy,
+    isContextFile,
 } from './task-scanner';
 
 export {

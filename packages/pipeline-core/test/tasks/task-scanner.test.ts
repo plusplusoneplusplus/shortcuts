@@ -10,6 +10,7 @@ import {
     scanTasksRecursively,
     scanDocumentsRecursively,
     scanFoldersRecursively,
+    scanContextDocumentsInFolder,
     groupTaskDocuments,
     buildTaskFolderHierarchy,
     isContextFile,
@@ -647,6 +648,218 @@ describe('buildTaskFolderHierarchy', () => {
         const sub = root.children.find(c => c.name === 'sub')!;
         expect(sub.documentGroups).toHaveLength(1);
         expect(sub.singleDocuments).toHaveLength(0);
+    });
+});
+
+// ============================================================================
+// scanContextDocumentsInFolder
+// ============================================================================
+
+describe('scanContextDocumentsInFolder', () => {
+    it('returns empty array for empty directory', () => {
+        const result = scanContextDocumentsInFolder(tmpDir, '', false);
+        expect(result).toEqual([]);
+    });
+
+    it('finds CONTEXT.md in a directory', () => {
+        createMd('CONTEXT.md');
+
+        const result = scanContextDocumentsInFolder(tmpDir, '', false);
+        expect(result).toHaveLength(1);
+        expect(result[0].fileName).toBe('CONTEXT.md');
+    });
+
+    it('finds README.md in a directory', () => {
+        createMd('README.md');
+
+        const result = scanContextDocumentsInFolder(tmpDir, '', false);
+        expect(result).toHaveLength(1);
+        expect(result[0].fileName).toBe('README.md');
+    });
+
+    it('finds multiple context files', () => {
+        createMd('CONTEXT.md');
+        createMd('README.md');
+        createMd('CLAUDE.md');
+
+        const result = scanContextDocumentsInFolder(tmpDir, '', false);
+        expect(result).toHaveLength(3);
+        const fileNames = result.map(d => d.fileName).sort();
+        expect(fileNames).toEqual(['CLAUDE.md', 'CONTEXT.md', 'README.md']);
+    });
+
+    it('ignores non-context .md files', () => {
+        createMd('task.md');
+        createMd('feature-plan.md');
+        createMd('CONTEXT.md');
+
+        const result = scanContextDocumentsInFolder(tmpDir, '', false);
+        expect(result).toHaveLength(1);
+        expect(result[0].fileName).toBe('CONTEXT.md');
+    });
+
+    it('ignores non-.md context files', () => {
+        createFile('some content', '.gitignore');
+        createFile('some content', '.gitattributes');
+        createMd('CONTEXT.md');
+
+        const result = scanContextDocumentsInFolder(tmpDir, '', false);
+        expect(result).toHaveLength(1);
+        expect(result[0].fileName).toBe('CONTEXT.md');
+    });
+
+    it('is case-insensitive for matching', () => {
+        createMd('context.md');
+
+        const result = scanContextDocumentsInFolder(tmpDir, '', false);
+        expect(result).toHaveLength(1);
+        expect(result[0].fileName).toBe('context.md');
+    });
+
+    it('does NOT scan subdirectories (non-recursive)', () => {
+        createMd('CONTEXT.md');
+        createMd('CONTEXT.md', 'subfolder');
+
+        const result = scanContextDocumentsInFolder(tmpDir, '', false);
+        expect(result).toHaveLength(1);
+        expect(result[0].fileName).toBe('CONTEXT.md');
+    });
+
+    it('sets relativePath correctly', () => {
+        createMd('CONTEXT.md');
+
+        const result = scanContextDocumentsInFolder(tmpDir, 'feature1', false);
+        expect(result[0].relativePath).toBe('feature1');
+    });
+
+    it('sets isArchived correctly', () => {
+        createMd('CONTEXT.md');
+
+        const activeResult = scanContextDocumentsInFolder(tmpDir, '', false);
+        expect(activeResult[0].isArchived).toBe(false);
+
+        const archivedResult = scanContextDocumentsInFolder(tmpDir, '', true);
+        expect(archivedResult[0].isArchived).toBe(true);
+    });
+
+    it('handles nonexistent directory gracefully', () => {
+        const result = scanContextDocumentsInFolder(path.join(tmpDir, 'nonexistent'), '', false);
+        expect(result).toEqual([]);
+    });
+
+    it('returns empty when no context files exist', () => {
+        createMd('task.md');
+        createMd('feature.plan.md');
+
+        const result = scanContextDocumentsInFolder(tmpDir, '', false);
+        expect(result).toEqual([]);
+    });
+
+    it('sets baseName from parseFileName', () => {
+        createMd('CONTEXT.md');
+
+        const result = scanContextDocumentsInFolder(tmpDir, '', false);
+        expect(result[0].baseName).toBeDefined();
+    });
+});
+
+// ============================================================================
+// buildTaskFolderHierarchy — contextDocuments population
+// ============================================================================
+
+describe('buildTaskFolderHierarchy contextDocuments', () => {
+    it('populates contextDocuments on root folder when CONTEXT.md exists', () => {
+        createMd('CONTEXT.md');
+        createMd('task.md');
+
+        const docs = scanDocumentsRecursively(tmpDir, '', false);
+        const { root } = buildTaskFolderHierarchy(tmpDir, docs, false);
+
+        expect(root.contextDocuments).toBeDefined();
+        expect(root.contextDocuments).toHaveLength(1);
+        expect(root.contextDocuments![0].fileName).toBe('CONTEXT.md');
+    });
+
+    it('populates contextDocuments on child folders', () => {
+        createDir('feature1');
+        createMd('CONTEXT.md', 'feature1');
+        createMd('task.md', 'feature1');
+
+        const docs = scanDocumentsRecursively(tmpDir, '', false);
+        const { root } = buildTaskFolderHierarchy(tmpDir, docs, false);
+
+        const feature1 = root.children.find(c => c.name === 'feature1');
+        expect(feature1).toBeDefined();
+        expect(feature1!.contextDocuments).toBeDefined();
+        expect(feature1!.contextDocuments).toHaveLength(1);
+        expect(feature1!.contextDocuments![0].fileName).toBe('CONTEXT.md');
+    });
+
+    it('does not set contextDocuments when no context files exist', () => {
+        createDir('feature1');
+        createMd('task.md', 'feature1');
+
+        const docs = scanDocumentsRecursively(tmpDir, '', false);
+        const { root } = buildTaskFolderHierarchy(tmpDir, docs, false);
+
+        const feature1 = root.children.find(c => c.name === 'feature1');
+        expect(feature1).toBeDefined();
+        expect(feature1!.contextDocuments).toBeUndefined();
+    });
+
+    it('context files are NOT in singleDocuments or documentGroups', () => {
+        createMd('CONTEXT.md');
+        createMd('README.md');
+        createMd('task.md');
+
+        const docs = scanDocumentsRecursively(tmpDir, '', false);
+        const { root } = buildTaskFolderHierarchy(tmpDir, docs, false);
+
+        expect(root.singleDocuments).toHaveLength(1);
+        expect(root.singleDocuments[0].fileName).toBe('task.md');
+
+        expect(root.contextDocuments).toBeDefined();
+        expect(root.contextDocuments!.length).toBeGreaterThanOrEqual(1);
+        const contextFileNames = root.contextDocuments!.map(d => d.fileName).sort();
+        expect(contextFileNames).toContain('CONTEXT.md');
+        expect(contextFileNames).toContain('README.md');
+    });
+
+    it('handles multiple context files in different folders', () => {
+        createDir('feature1');
+        createDir('feature2');
+        createMd('CONTEXT.md');
+        createMd('CONTEXT.md', 'feature1');
+        createMd('README.md', 'feature2');
+
+        const docs = scanDocumentsRecursively(tmpDir, '', false);
+        const { root, folderMap } = buildTaskFolderHierarchy(tmpDir, docs, false);
+
+        expect(root.contextDocuments).toHaveLength(1);
+        expect(root.contextDocuments![0].fileName).toBe('CONTEXT.md');
+
+        const f1 = folderMap.get('feature1');
+        expect(f1!.contextDocuments).toHaveLength(1);
+        expect(f1!.contextDocuments![0].fileName).toBe('CONTEXT.md');
+
+        const f2 = folderMap.get('feature2');
+        expect(f2!.contextDocuments).toHaveLength(1);
+        expect(f2!.contextDocuments![0].fileName).toBe('README.md');
+    });
+
+    it('context files in nested folders are correctly placed', () => {
+        createDir('a');
+        createDir('a', 'b');
+        createMd('CONTEXT.md', path.join('a', 'b'));
+        createMd('task.md', path.join('a', 'b'));
+
+        const docs = scanDocumentsRecursively(tmpDir, '', false);
+        const { folderMap } = buildTaskFolderHierarchy(tmpDir, docs, false);
+
+        const ab = folderMap.get(path.join('a', 'b'));
+        expect(ab).toBeDefined();
+        expect(ab!.contextDocuments).toHaveLength(1);
+        expect(ab!.contextDocuments![0].fileName).toBe('CONTEXT.md');
     });
 });
 

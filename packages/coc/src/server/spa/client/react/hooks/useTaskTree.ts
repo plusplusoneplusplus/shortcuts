@@ -63,7 +63,8 @@ export function isTaskDocument(node: TaskNode): node is TaskDocument {
 // ── Helper ─────────────────────────────────────────────────────────────
 
 export function folderToNodes(folder: TaskFolder): TaskNode[] {
-    return [...folder.children, ...folder.documentGroups, ...folder.singleDocuments];
+    const contextDocs = (folder as any).contextDocuments ?? [];
+    return [...folder.children, ...folder.documentGroups, ...folder.singleDocuments, ...contextDocs];
 }
 
 export function countMarkdownFilesInFolder(folder: TaskFolder): number {

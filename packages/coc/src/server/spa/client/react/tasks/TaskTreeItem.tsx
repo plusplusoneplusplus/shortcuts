@@ -127,8 +127,8 @@ export function TaskTreeItem({
             data-testid={`task-tree-item-${displayName}`}
             data-file-path={!isFolder && path ? path : undefined}
         >
-            {/* Checkbox for files */}
-            {!isFolder && path && (
+            {/* Checkbox for files (hidden for context files) */}
+            {!isFolder && path && !isContext && (
                 <input
                     type="checkbox"
                     className="task-checkbox flex-shrink-0 accent-[#0078d4]"
@@ -141,7 +141,7 @@ export function TaskTreeItem({
 
             {/* Icon */}
             <span className="flex-shrink-0 text-[11px]">
-                {isFolder ? '📁' : isTaskDocumentGroup(item) ? '📄' : '📝'}
+                {isFolder ? '📁' : isContext ? 'ℹ️' : isTaskDocumentGroup(item) ? '📄' : '📝'}
             </span>
 
             {/* Status */}

@@ -91,6 +91,8 @@ export interface TaskFolder {
     documentGroups: TaskDocumentGroup[];
     /** Single task documents in this folder (not grouped) */
     singleDocuments: TaskDocument[];
+    /** Context/documentation files in this folder (e.g., CONTEXT.md, README.md) */
+    contextDocuments?: TaskDocument[];
     /** Related items from related.yaml (if exists) */
     relatedItems?: RelatedItemsConfig;
 }
