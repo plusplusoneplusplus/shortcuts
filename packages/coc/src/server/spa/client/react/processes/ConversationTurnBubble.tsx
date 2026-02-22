@@ -299,10 +299,14 @@ export function ConversationTurnBubble({ turn }: ConversationTurnBubbleProps) {
     }, [assistantRender, collapsedTaskIds]);
 
     return (
-        <div className={cn('flex', isUser ? 'justify-end' : 'justify-start')}>
+        <div className={cn(
+            'flex', isUser ? 'justify-end' : 'justify-start',
+            'chat-message', isUser ? 'user' : 'assistant',
+            turn.streaming && 'streaming'
+        )}>
             <div
                 className={cn(
-                    'w-full max-w-[95%] rounded-lg border px-3 py-2 shadow-sm',
+                    'group w-full max-w-[95%] rounded-lg border px-3 py-2 shadow-sm',
                     isUser
                         ? 'bg-[#e8f3ff] dark:bg-[#0f2a42] border-[#b3d7ff] dark:border-[#2a4a66]'
                         : 'bg-[#f8f8f8] dark:bg-[#252526] border-[#e0e0e0] dark:border-[#3c3c3c]'
@@ -311,21 +315,33 @@ export function ConversationTurnBubble({ turn }: ConversationTurnBubbleProps) {
                 <div className="flex items-center gap-2 text-[11px] text-[#848484] mb-2">
                     <span
                         className={cn(
-                            'font-medium uppercase tracking-wide',
+                            'font-medium uppercase tracking-wide role-label',
                             isUser ? 'text-[#005a9e] dark:text-[#7bbef3]' : 'text-[#5f6a7a] dark:text-[#b0b8c3]'
                         )}
                     >
                         {isUser ? 'You' : 'Assistant'}
                     </span>
                     {turn.timestamp && (
-                        <span className="ml-auto">{new Date(turn.timestamp).toLocaleTimeString()}</span>
+                        <span className="ml-auto timestamp">{new Date(turn.timestamp).toLocaleTimeString()}</span>
                     )}
                     {turn.streaming && (
-                        <span className="text-[#f14c4c]">Live</span>
+                        <span className="text-[#f14c4c] streaming-indicator">Live</span>
+                    )}
+                    {!isUser && (
+                        <button
+                            className="bubble-copy-btn ml-auto text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] opacity-0 group-hover:opacity-100 transition-opacity text-[10px]"
+                            title="Copy to clipboard"
+                            onClick={() => {
+                                const text = turn.content || '';
+                                navigator.clipboard?.writeText(text).catch(() => {});
+                            }}
+                        >
+                            📋
+                        </button>
                     )}
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-2 chat-message-content">
                     {isUser && userContentHtml && <MarkdownView html={userContentHtml} />}
                     {!isUser && assistantRender && assistantRender.chunks.map((chunk) => {
                         if (chunk.kind === 'content' && chunk.html) {
