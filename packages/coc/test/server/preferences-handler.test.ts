@@ -156,6 +156,23 @@ describe('readPreferences / writePreferences', () => {
         const prefs = readPreferences(tmpDir);
         expect(prefs.lastModel).toBe('');
     });
+
+    it('round-trips theme through write and read', () => {
+        const original = { lastModel: 'gpt-5.2', theme: 'dark' as const };
+        writePreferences(tmpDir, original);
+        const loaded = readPreferences(tmpDir);
+        expect(loaded).toEqual(original);
+    });
+
+    it('strips invalid theme on read', () => {
+        fs.writeFileSync(
+            path.join(tmpDir, PREFERENCES_FILE_NAME),
+            JSON.stringify({ theme: 'invalid' }),
+            'utf-8'
+        );
+        const prefs = readPreferences(tmpDir);
+        expect(prefs.theme).toBeUndefined();
+    });
 });
 
 describe('validatePreferences', () => {
@@ -191,6 +208,27 @@ describe('validatePreferences', () => {
         const result = validatePreferences({ lastModel: 'x', bogus: true, extra: 42 });
         expect(result).toEqual({ lastModel: 'x' });
         expect(Object.keys(result)).toEqual(['lastModel']);
+    });
+
+    // -- theme field --
+
+    it('accepts valid theme values', () => {
+        expect(validatePreferences({ theme: 'dark' })).toEqual({ theme: 'dark' });
+        expect(validatePreferences({ theme: 'light' })).toEqual({ theme: 'light' });
+        expect(validatePreferences({ theme: 'auto' })).toEqual({ theme: 'auto' });
+    });
+
+    it('rejects invalid theme values', () => {
+        expect(validatePreferences({ theme: 'blue' })).toEqual({});
+        expect(validatePreferences({ theme: 42 })).toEqual({});
+        expect(validatePreferences({ theme: true })).toEqual({});
+        expect(validatePreferences({ theme: null })).toEqual({});
+        expect(validatePreferences({ theme: '' })).toEqual({});
+    });
+
+    it('accepts theme alongside lastModel', () => {
+        const result = validatePreferences({ lastModel: 'gpt-5.2', theme: 'dark' });
+        expect(result).toEqual({ lastModel: 'gpt-5.2', theme: 'dark' });
     });
 });
 
@@ -354,5 +392,47 @@ describe('Preferences REST API', () => {
     it('responses have JSON content type', async () => {
         const res = await getJSON(`${baseUrl}/api/preferences`);
         expect(res.headers['content-type']).toContain('application/json');
+    });
+
+    // -- Theme persistence via API --
+
+    it('PUT persists theme field', async () => {
+        const res = await putJSON(`${baseUrl}/api/preferences`, { theme: 'dark' });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body)).toEqual({ theme: 'dark' });
+
+        const get = await getJSON(`${baseUrl}/api/preferences`);
+        expect(JSON.parse(get.body)).toEqual({ theme: 'dark' });
+    });
+
+    it('PATCH merges theme into existing preferences', async () => {
+        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'gpt-5.2' });
+        const res = await patchJSON(`${baseUrl}/api/preferences`, { theme: 'light' });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body)).toEqual({ lastModel: 'gpt-5.2', theme: 'light' });
+    });
+
+    it('PATCH updates theme without affecting lastModel', async () => {
+        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'claude-sonnet-4.6', theme: 'dark' });
+        const res = await patchJSON(`${baseUrl}/api/preferences`, { theme: 'auto' });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body)).toEqual({ lastModel: 'claude-sonnet-4.6', theme: 'auto' });
+    });
+
+    it('PUT strips invalid theme values', async () => {
+        const res = await putJSON(`${baseUrl}/api/preferences`, { theme: 'blue' });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body)).toEqual({});
+    });
+
+    it('theme survives server restart', async () => {
+        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'gpt-5.2', theme: 'dark' });
+        await server.close();
+
+        server = await createExecutionServer({ port: 0, dataDir: tmpDir });
+        baseUrl = server.url;
+
+        const res = await getJSON(`${baseUrl}/api/preferences`);
+        expect(JSON.parse(res.body)).toEqual({ lastModel: 'gpt-5.2', theme: 'dark' });
     });
 });

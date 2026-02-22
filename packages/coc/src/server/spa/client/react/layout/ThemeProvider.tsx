@@ -1,9 +1,11 @@
 /**
  * ThemeProvider — replicates legacy theme.ts behaviour inside React.
  * Reads/writes localStorage['ai-dash-theme'], toggles dark class on <html>.
+ * Also persists theme to server via PATCH /api/preferences for cross-session persistence.
  */
 
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
+import { getApiBase } from '../utils/config';
 
 type Theme = 'auto' | 'dark' | 'light';
 
@@ -30,11 +32,41 @@ function applyTheme(isDark: boolean) {
     if (hljsDark) hljsDark.disabled = !isDark;
 }
 
+/** Persist theme to server (fire-and-forget). */
+function persistThemeToServer(theme: Theme) {
+    fetch(getApiBase() + '/preferences', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ theme }),
+    }).catch(() => {});
+}
+
 export function ThemeProvider({ children }: { children: ReactNode }) {
     const [theme, setTheme] = useState<Theme>(() => {
         const stored = localStorage.getItem('ai-dash-theme');
         return (stored === 'dark' || stored === 'light') ? stored : 'auto';
     });
+
+    // On mount, fetch persisted theme from server and apply if it differs
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                const res = await fetch(getApiBase() + '/preferences');
+                if (!res.ok) return;
+                const prefs = await res.json();
+                if (cancelled) return;
+                const serverTheme = prefs.theme;
+                if (serverTheme === 'dark' || serverTheme === 'light' || serverTheme === 'auto') {
+                    setTheme(serverTheme);
+                    localStorage.setItem('ai-dash-theme', serverTheme);
+                }
+            } catch {
+                // Preferences are optional — keep localStorage / default
+            }
+        })();
+        return () => { cancelled = true; };
+    }, []);
 
     useEffect(() => {
         applyTheme(resolveIsDark(theme));
@@ -52,6 +84,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         setTheme(prev => {
             const next: Theme = prev === 'auto' ? 'dark' : prev === 'dark' ? 'light' : 'auto';
             localStorage.setItem('ai-dash-theme', next);
+            persistThemeToServer(next);
             return next;
         });
     }, []);
