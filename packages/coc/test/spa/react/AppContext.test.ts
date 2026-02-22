@@ -369,6 +369,40 @@ describe('AppContext reducer', () => {
         });
     });
 
+    describe('CLEAR_WIKI_INITIAL_TAB', () => {
+        it('clears wikiDetailInitialTab and wikiDetailInitialAdminTab', () => {
+            const state = makeState({
+                wikiDetailInitialTab: 'browse',
+                wikiDetailInitialAdminTab: 'seeds',
+                selectedWikiComponentId: 'comp-1',
+                selectedWikiId: 'w1',
+            });
+            const result = appReducer(state, { type: 'CLEAR_WIKI_INITIAL_TAB' });
+            expect(result.wikiDetailInitialTab).toBeNull();
+            expect(result.wikiDetailInitialAdminTab).toBeNull();
+        });
+
+        it('preserves selectedWikiComponentId', () => {
+            const state = makeState({
+                wikiDetailInitialTab: 'browse',
+                selectedWikiComponentId: 'comp-1',
+                selectedWikiId: 'w1',
+            });
+            const result = appReducer(state, { type: 'CLEAR_WIKI_INITIAL_TAB' });
+            expect(result.selectedWikiComponentId).toBe('comp-1');
+            expect(result.selectedWikiId).toBe('w1');
+        });
+
+        it('preserves wikiView', () => {
+            const state = makeState({
+                wikiDetailInitialTab: 'admin',
+                wikiView: 'detail' as const,
+            });
+            const result = appReducer(state, { type: 'CLEAR_WIKI_INITIAL_TAB' });
+            expect(result.wikiView).toBe('detail');
+        });
+    });
+
     // ── Wiki CRUD ─────────────────────────────────────────────────────
     describe('wiki CRUD', () => {
         it('ADD_WIKI appends a wiki', () => {

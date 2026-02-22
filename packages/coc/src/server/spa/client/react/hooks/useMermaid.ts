@@ -87,12 +87,16 @@ function applyTransform(svgWrapper: HTMLElement, state: ZoomState, container: El
 }
 
 function transformContainer(container: HTMLElement): void {
+    if (container.getAttribute('data-mermaid-transformed')) return;
+
     const sourceEl = container.querySelector('.mermaid-source code');
     const source = sourceEl?.textContent || '';
     if (!source.trim()) return;
 
     const contentDiv = container.querySelector('.mermaid-content') as HTMLElement;
     if (!contentDiv) return;
+
+    container.setAttribute('data-mermaid-transformed', '1');
 
     const header = container.querySelector('.mermaid-header');
     if (header) {
@@ -226,7 +230,7 @@ function setupCollapse(container: HTMLElement): void {
 }
 
 async function initMermaid(root: HTMLElement): Promise<void> {
-    const containers = root.querySelectorAll('.mermaid-container');
+    const containers = root.querySelectorAll('.mermaid-container:not([data-mermaid-ready])');
     if (containers.length === 0) return;
 
     containers.forEach((c) => transformContainer(c as HTMLElement));
@@ -243,13 +247,14 @@ async function initMermaid(root: HTMLElement): Promise<void> {
         return;
     }
 
-    const mermaidPres = root.querySelectorAll('.mermaid-container .mermaid');
+    const mermaidPres = root.querySelectorAll('.mermaid-container:not([data-mermaid-ready]) .mermaid');
     if (mermaidPres.length > 0) {
         await mermaid.run({ nodes: mermaidPres });
     }
 
     containers.forEach((c) => {
         const el = c as HTMLElement;
+        el.setAttribute('data-mermaid-ready', '1');
         setupZoomPan(el);
         setupSourceToggle(el);
         setupCollapse(el);
@@ -290,6 +295,10 @@ export function useMermaid(rootRef: React.RefObject<HTMLElement | null>, content
                     reinitMermaidTheme();
                     const el = rootRef.current;
                     if (el && initDone.current) {
+                        el.querySelectorAll('.mermaid-container[data-mermaid-ready]').forEach(c => {
+                            c.removeAttribute('data-mermaid-ready');
+                            c.removeAttribute('data-mermaid-transformed');
+                        });
                         initMermaid(el).catch(() => {});
                     }
                     break;

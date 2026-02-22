@@ -657,16 +657,17 @@
     overflow: auto;
 }
 
-.mermaid-source {
-    display: none;
+.mermaid-source,
+.mermaid-container .mermaid-source {
+    display: none !important;
 }
 
 /* Toolbar injected by useMermaid transformContainer */
 .task-mermaid-toolbar {
     display: flex;
     align-items: center;
-    gap: 4px;
-    padding: 4px 10px;
+    gap: 6px;
+    padding: 5px 10px;
     border-bottom: 1px solid #e0e0e0;
     background: #f3f3f3;
     font-size: 11px;
@@ -678,18 +679,20 @@
 }
 
 .task-mermaid-btn {
-    border: 1px solid #d0d0d0;
+    border: 1px solid #c0c0c0;
     background: #fff;
     border-radius: 4px;
     font-size: 11px;
     cursor: pointer;
-    padding: 2px 6px;
+    padding: 3px 8px;
     line-height: 1.4;
     color: #1e1e1e;
+    white-space: nowrap;
+    user-select: none;
 }
 
 .dark .task-mermaid-btn {
-    border-color: #4a4a4a;
+    border-color: #555;
     background: #2d2d2d;
     color: #d4d4d4;
 }
@@ -707,6 +710,7 @@
     min-width: 36px;
     text-align: center;
     color: #848484;
+    user-select: none;
 }
 
 .task-mermaid-viewport {

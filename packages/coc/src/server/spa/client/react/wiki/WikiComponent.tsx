@@ -11,6 +11,13 @@ import { useMermaid } from '../hooks/useMermaid';
 declare const marked: { parse(md: string): string } | undefined;
 declare const hljs: { highlightElement(el: Element): void } | undefined;
 
+function preserveMermaidBlocks(md: string): string {
+    return md.replace(/```mermaid\n([\s\S]*?)```/g, (_match, code: string) => {
+        const preserved = code.replace(/\n\n/g, '\n \n');
+        return '```mermaid\n' + preserved + '```';
+    });
+}
+
 interface ComponentInfo {
     id: string;
     name: string;
@@ -68,7 +75,7 @@ export function WikiComponent({ wikiId, componentId, graph, onSelectComponent }:
         fetchApi('/wikis/' + encodeURIComponent(wikiId) + '/components/' + encodeURIComponent(componentId))
             .then(data => {
                 if (data?.markdown && typeof marked !== 'undefined') {
-                    const rendered = marked.parse(data.markdown);
+                    const rendered = marked.parse(preserveMermaidBlocks(data.markdown));
                     cacheRef.current[componentId] = rendered;
                     setHtml(rendered);
                 } else if (data?.markdown) {

@@ -26776,6 +26776,8 @@
         return { ...state, selectedWikiId: action.wikiId, selectedWikiComponentId: action.componentId ?? null, wikiView: "detail", wikiDetailInitialTab: action.tab, wikiDetailInitialAdminTab: action.adminTab ?? null };
       case "SELECT_WIKI_COMPONENT":
         return { ...state, selectedWikiComponentId: action.componentId };
+      case "CLEAR_WIKI_INITIAL_TAB":
+        return { ...state, wikiDetailInitialTab: null, wikiDetailInitialAdminTab: null };
       case "ADD_WIKI":
         return { ...state, wikis: [...state.wikis, action.wiki] };
       case "UPDATE_WIKI": {
@@ -31570,11 +31572,13 @@
     if (display) display.textContent = Math.round(state.scale * 100) + "%";
   }
   function transformContainer(container2) {
+    if (container2.getAttribute("data-mermaid-transformed")) return;
     const sourceEl = container2.querySelector(".mermaid-source code");
     const source = sourceEl?.textContent || "";
     if (!source.trim()) return;
     const contentDiv = container2.querySelector(".mermaid-content");
     if (!contentDiv) return;
+    container2.setAttribute("data-mermaid-transformed", "1");
     const header = container2.querySelector(".mermaid-header");
     if (header) {
       header.insertAdjacentHTML("afterend", buildToolbarHTML());
@@ -31690,7 +31694,7 @@
     });
   }
   async function initMermaid(root2) {
-    const containers = root2.querySelectorAll(".mermaid-container");
+    const containers = root2.querySelectorAll(".mermaid-container:not([data-mermaid-ready])");
     if (containers.length === 0) return;
     containers.forEach((c) => transformContainer(c));
     try {
@@ -31704,12 +31708,13 @@
       });
       return;
     }
-    const mermaidPres = root2.querySelectorAll(".mermaid-container .mermaid");
+    const mermaidPres = root2.querySelectorAll(".mermaid-container:not([data-mermaid-ready]) .mermaid");
     if (mermaidPres.length > 0) {
       await mermaid.run({ nodes: mermaidPres });
     }
     containers.forEach((c) => {
       const el = c;
+      el.setAttribute("data-mermaid-ready", "1");
       setupZoomPan(el);
       setupSourceToggle(el);
       setupCollapse(el);
@@ -31743,6 +31748,10 @@
             reinitMermaidTheme();
             const el = rootRef.current;
             if (el && initDone.current) {
+              el.querySelectorAll(".mermaid-container[data-mermaid-ready]").forEach((c) => {
+                c.removeAttribute("data-mermaid-ready");
+                c.removeAttribute("data-mermaid-transformed");
+              });
               initMermaid(el).catch(() => {
               });
             }
@@ -35840,6 +35849,12 @@
   // src/server/spa/client/react/wiki/WikiComponent.tsx
   var import_react60 = __toESM(require_react());
   var import_jsx_runtime58 = __toESM(require_jsx_runtime());
+  function preserveMermaidBlocks(md) {
+    return md.replace(/```mermaid\n([\s\S]*?)```/g, (_match, code) => {
+      const preserved = code.replace(/\n\n/g, "\n \n");
+      return "```mermaid\n" + preserved + "```";
+    });
+  }
   function WikiComponent({ wikiId, componentId, graph, onSelectComponent }) {
     const [html, setHtml] = (0, import_react60.useState)("");
     const [loading, setLoading] = (0, import_react60.useState)(false);
@@ -35861,7 +35876,7 @@
       setLoading(true);
       fetchApi("/wikis/" + encodeURIComponent(wikiId) + "/components/" + encodeURIComponent(componentId)).then((data) => {
         if (data?.markdown && typeof marked !== "undefined") {
-          const rendered = marked.parse(data.markdown);
+          const rendered = marked.parse(preserveMermaidBlocks(data.markdown));
           cacheRef.current[componentId] = rendered;
           setHtml(rendered);
         } else if (data?.markdown) {
@@ -39527,7 +39542,7 @@
         if (state.wikiDetailInitialAdminTab) {
           setAdminSubTab(state.wikiDetailInitialAdminTab);
         }
-        dispatch({ type: "SELECT_WIKI", wikiId });
+        dispatch({ type: "CLEAR_WIKI_INITIAL_TAB" });
       }
     }, [state.wikiDetailInitialTab]);
     const wiki = (0, import_react64.useMemo)(

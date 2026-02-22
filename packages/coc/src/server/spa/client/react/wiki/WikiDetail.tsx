@@ -66,7 +66,7 @@ export function WikiDetail({ wikiId }: WikiDetailProps) {
             if (state.wikiDetailInitialAdminTab) {
                 setAdminSubTab(state.wikiDetailInitialAdminTab as WikiAdminTab);
             }
-            dispatch({ type: 'SELECT_WIKI', wikiId: wikiId });
+            dispatch({ type: 'CLEAR_WIKI_INITIAL_TAB' });
         }
     }, [state.wikiDetailInitialTab]);  // eslint-disable-line react-hooks/exhaustive-deps
 

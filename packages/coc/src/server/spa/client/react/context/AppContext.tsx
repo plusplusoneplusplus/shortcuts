@@ -75,6 +75,7 @@ export type AppAction =
     | { type: 'SELECT_WIKI'; wikiId: string | null }
     | { type: 'SELECT_WIKI_WITH_TAB'; wikiId: string; tab: string; adminTab?: string | null; componentId?: string | null }
     | { type: 'SELECT_WIKI_COMPONENT'; componentId: string | null }
+    | { type: 'CLEAR_WIKI_INITIAL_TAB' }
     | { type: 'ADD_WIKI'; wiki: any }
     | { type: 'UPDATE_WIKI'; wiki: any }
     | { type: 'REMOVE_WIKI'; wikiId: string }
@@ -146,6 +147,8 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             return { ...state, selectedWikiId: action.wikiId, selectedWikiComponentId: action.componentId ?? null, wikiView: 'detail', wikiDetailInitialTab: action.tab, wikiDetailInitialAdminTab: action.adminTab ?? null };
         case 'SELECT_WIKI_COMPONENT':
             return { ...state, selectedWikiComponentId: action.componentId };
+        case 'CLEAR_WIKI_INITIAL_TAB':
+            return { ...state, wikiDetailInitialTab: null, wikiDetailInitialAdminTab: null };
         case 'ADD_WIKI':
             return { ...state, wikis: [...state.wikis, action.wiki] };
         case 'UPDATE_WIKI': {
