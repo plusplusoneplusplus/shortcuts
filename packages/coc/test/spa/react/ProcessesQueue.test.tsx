@@ -30,20 +30,26 @@ function Wrap({ children }: { children: ReactNode }) {
     return <AppProvider><QueueProvider>{children}</QueueProvider></AppProvider>;
 }
 
-function SeededProcessList({ processes }: { processes: any[] }) {
+function SeededProcessList({ processes, workspaces }: { processes: any[]; workspaces?: any[] }) {
     const { dispatch } = useApp();
     useEffect(() => {
         dispatch({ type: 'SET_PROCESSES', processes });
-    }, [dispatch, processes]);
+        if (workspaces) {
+            dispatch({ type: 'WORKSPACES_LOADED', workspaces });
+        }
+    }, [dispatch, processes, workspaces]);
     return <ProcessList />;
 }
 
-function SeededProcessDetail({ process }: { process: any }) {
+function SeededProcessDetail({ process, workspaces }: { process: any; workspaces?: any[] }) {
     const { dispatch } = useApp();
     useEffect(() => {
         dispatch({ type: 'SET_PROCESSES', processes: [process] });
         dispatch({ type: 'SELECT_PROCESS', id: process.id });
-    }, [dispatch, process]);
+        if (workspaces) {
+            dispatch({ type: 'WORKSPACES_LOADED', workspaces });
+        }
+    }, [dispatch, process, workspaces]);
     return <ProcessDetail />;
 }
 
@@ -98,6 +104,103 @@ describe('ProcessList', () => {
         const processCardText = await screen.findByText('Route me to process detail');
         fireEvent.click(processCardText);
         expect(window.location.hash).toBe('#process/proc-route-1');
+    });
+
+    it('shows repo name when process has workspaceId and workspaces are loaded', async () => {
+        render(
+            <Wrap>
+                <SeededProcessList
+                    processes={[
+                        { id: 'proc-ws-1', status: 'completed', promptPreview: 'Test with repo', workspaceId: 'ws-abc' },
+                    ]}
+                    workspaces={[
+                        { id: 'ws-abc', name: 'my-project', rootPath: '/home/user/my-project' },
+                    ]}
+                />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('my-project')).toBeDefined();
+        });
+        const repoButton = screen.getByTitle('Go to repo: my-project');
+        expect(repoButton).toBeDefined();
+    });
+
+    it('repo name click navigates to repo page without selecting process', async () => {
+        window.location.hash = '#processes';
+        render(
+            <Wrap>
+                <SeededProcessList
+                    processes={[
+                        { id: 'proc-ws-nav', status: 'completed', promptPreview: 'Nav test', workspaceId: 'ws-nav' },
+                    ]}
+                    workspaces={[
+                        { id: 'ws-nav', name: 'nav-project', rootPath: '/tmp/nav' },
+                    ]}
+                />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('nav-project')).toBeDefined();
+        });
+        fireEvent.click(screen.getByTitle('Go to repo: nav-project'));
+        expect(window.location.hash).toBe('#repos/ws-nav');
+    });
+
+    it('does not show repo name when process has no workspaceId', async () => {
+        render(
+            <Wrap>
+                <SeededProcessList
+                    processes={[
+                        { id: 'proc-no-ws', status: 'completed', promptPreview: 'No workspace' },
+                    ]}
+                    workspaces={[
+                        { id: 'ws-abc', name: 'my-project', rootPath: '/home/user/my-project' },
+                    ]}
+                />
+            </Wrap>
+        );
+
+        await screen.findByText('No workspace');
+        expect(screen.queryByTitle(/Go to repo/)).toBeNull();
+    });
+
+    it('falls back to metadata.workspaceId for repo name', async () => {
+        render(
+            <Wrap>
+                <SeededProcessList
+                    processes={[
+                        { id: 'proc-meta-ws', status: 'completed', promptPreview: 'Metadata ws', metadata: { workspaceId: 'ws-meta' } },
+                    ]}
+                    workspaces={[
+                        { id: 'ws-meta', name: 'meta-project', rootPath: '/tmp/meta' },
+                    ]}
+                />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('meta-project')).toBeDefined();
+        });
+    });
+
+    it('falls back to raw workspace ID when workspace not in list', async () => {
+        render(
+            <Wrap>
+                <SeededProcessList
+                    processes={[
+                        { id: 'proc-unknown-ws', status: 'completed', promptPreview: 'Unknown ws', workspaceId: 'ws-unknown-id' },
+                    ]}
+                    workspaces={[]}
+                />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('ws-unknown-id')).toBeDefined();
+        });
     });
 });
 
@@ -199,6 +302,119 @@ describe('ProcessDetail', () => {
         await waitFor(() => {
             expect(screen.queryByText('Conversation metadata')).toBeNull();
         });
+    });
+
+    it('shows repo name link in detail header when process has workspaceId', async () => {
+        const processId = 'proc-detail-ws-1';
+        (global as any).fetch = vi.fn().mockResolvedValue({
+            ok: true,
+            status: 200,
+            json: async () => ({
+                process: {
+                    id: processId,
+                    status: 'completed',
+                    workspaceId: 'ws-detail',
+                    metadata: { workspaceName: 'detail-project' },
+                    conversationTurns: [
+                        { role: 'user', content: 'Hello', timeline: [] },
+                    ],
+                },
+            }),
+        });
+
+        render(
+            <Wrap>
+                <SeededProcessDetail
+                    process={{
+                        id: processId,
+                        status: 'completed',
+                        promptPreview: 'Hello',
+                        workspaceId: 'ws-detail',
+                    }}
+                    workspaces={[
+                        { id: 'ws-detail', name: 'detail-project', rootPath: '/tmp/detail' },
+                    ]}
+                />
+            </Wrap>
+        );
+
+        await screen.findByText('Hello');
+        const repoLink = screen.getByTitle('Go to repo: detail-project');
+        expect(repoLink).toBeDefined();
+        expect(repoLink.tagName.toLowerCase()).toBe('a');
+        expect(repoLink.getAttribute('href')).toBe('#repos/ws-detail');
+    });
+
+    it('repo link in detail navigates to repo page on click', async () => {
+        const processId = 'proc-detail-nav-1';
+        window.location.hash = '#process/' + processId;
+        (global as any).fetch = vi.fn().mockResolvedValue({
+            ok: true,
+            status: 200,
+            json: async () => ({
+                process: {
+                    id: processId,
+                    status: 'completed',
+                    workspaceId: 'ws-nav-detail',
+                    conversationTurns: [
+                        { role: 'user', content: 'Navigate test', timeline: [] },
+                    ],
+                },
+            }),
+        });
+
+        render(
+            <Wrap>
+                <SeededProcessDetail
+                    process={{
+                        id: processId,
+                        status: 'completed',
+                        promptPreview: 'Navigate test',
+                        workspaceId: 'ws-nav-detail',
+                    }}
+                    workspaces={[
+                        { id: 'ws-nav-detail', name: 'nav-detail-project', rootPath: '/tmp/nav-detail' },
+                    ]}
+                />
+            </Wrap>
+        );
+
+        await screen.findByText('Navigate test');
+        const link = screen.getByTitle('Go to repo: nav-detail-project');
+        fireEvent.click(link);
+        expect(window.location.hash).toBe('#repos/ws-nav-detail');
+    });
+
+    it('does not show repo link when process has no workspaceId', async () => {
+        const processId = 'proc-detail-no-ws';
+        (global as any).fetch = vi.fn().mockResolvedValue({
+            ok: true,
+            status: 200,
+            json: async () => ({
+                process: {
+                    id: processId,
+                    status: 'completed',
+                    conversationTurns: [
+                        { role: 'user', content: 'No repo', timeline: [] },
+                    ],
+                },
+            }),
+        });
+
+        render(
+            <Wrap>
+                <SeededProcessDetail
+                    process={{
+                        id: processId,
+                        status: 'completed',
+                        promptPreview: 'No repo',
+                    }}
+                />
+            </Wrap>
+        );
+
+        await screen.findByText('No repo');
+        expect(screen.queryByTitle(/Go to repo/)).toBeNull();
     });
 
     it('launches interactive resume from process detail', async () => {

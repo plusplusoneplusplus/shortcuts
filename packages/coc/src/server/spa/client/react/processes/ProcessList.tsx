@@ -3,16 +3,22 @@
  * Replaces renderQueuePanel process items from queue.ts / sidebar.ts.
  */
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { useQueue } from '../context/QueueContext';
 import { Card, Badge, cn } from '../shared';
 import { formatDuration, statusIcon, statusLabel } from '../utils/format';
+import { resolveWorkspaceName, getProcessWorkspaceId, getProcessWorkspaceName } from '../utils/workspace';
 
 export function ProcessList() {
     const { state, dispatch } = useApp();
     const { dispatch: queueDispatch } = useQueue();
     const [now, setNow] = useState(Date.now());
+
+    const navigateToRepo = useCallback((e: React.MouseEvent, workspaceId: string) => {
+        e.stopPropagation();
+        location.hash = '#repos/' + encodeURIComponent(workspaceId);
+    }, []);
 
     // Live timer for running processes
     const hasRunning = useMemo(
@@ -73,6 +79,8 @@ export function ProcessList() {
                 const preview = p.promptPreview
                     ? (p.promptPreview.length > 80 ? p.promptPreview.slice(0, 80) + '…' : p.promptPreview)
                     : p.id;
+                const wsId = getProcessWorkspaceId(p);
+                const wsName = resolveWorkspaceName(wsId, getProcessWorkspaceName(p), state.workspaces);
 
                 return (
                     <Card
@@ -82,7 +90,6 @@ export function ProcessList() {
                             if (location.hash !== nextHash) {
                                 location.hash = nextHash;
                             } else {
-                                // Hash won't emit change when unchanged; update local state directly.
                                 dispatch({ type: 'SELECT_PROCESS', id: p.id });
                                 queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null });
                             }
@@ -100,6 +107,19 @@ export function ProcessList() {
                                 <span className="text-[11px] text-[#848484] whitespace-nowrap">{duration}</span>
                             )}
                         </div>
+                        {wsName && wsId && (
+                            <div className="mb-1">
+                                <button
+                                    type="button"
+                                    onClick={(e) => navigateToRepo(e, wsId)}
+                                    className="inline-flex items-center gap-1 text-[11px] text-[#0078d4] dark:text-[#3794ff] hover:underline cursor-pointer bg-transparent border-none p-0"
+                                    title={`Go to repo: ${wsName}`}
+                                >
+                                    <span>📂</span>
+                                    <span className="truncate max-w-[200px]">{wsName}</span>
+                                </button>
+                            </div>
+                        )}
                         <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc] line-clamp-2 break-words">
                             {preview}
                         </div>

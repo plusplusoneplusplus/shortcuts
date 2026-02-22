@@ -3,7 +3,7 @@
  * Replaces renderProcessDetail from detail.ts.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { fetchApi } from '../hooks/useApi';
 import { getApiBase } from '../utils/config';
@@ -11,6 +11,7 @@ import { Badge, Button, Spinner } from '../shared';
 import { ConversationTurnBubble } from './ConversationTurnBubble';
 import { ConversationMetadataPopover, getSessionIdFromProcess } from './ConversationMetadataPopover';
 import { formatDuration, statusIcon, statusLabel } from '../utils/format';
+import { resolveWorkspaceName, getProcessWorkspaceId, getProcessWorkspaceName } from '../utils/workspace';
 import type { ClientConversationTurn } from '../types/dashboard';
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
@@ -148,6 +149,15 @@ export function ProcessDetail() {
         };
     }, [selectedId, process?.status, dispatch]);
 
+    const metadataProcess = processDetails || process;
+    const wsId = getProcessWorkspaceId(metadataProcess);
+    const wsName = resolveWorkspaceName(wsId, getProcessWorkspaceName(metadataProcess), state.workspaces);
+
+    const navigateToRepo = useCallback((e: React.MouseEvent) => {
+        e.preventDefault();
+        if (wsId) location.hash = '#repos/' + encodeURIComponent(wsId);
+    }, [wsId]);
+
     if (!selectedId || !process) {
         return (
             <div className="flex-1 flex flex-col items-center justify-center text-[#848484]">
@@ -162,7 +172,6 @@ export function ProcessDetail() {
         : process.duration != null
             ? formatDuration(process.duration)
             : '';
-    const metadataProcess = processDetails || process;
     const resumeSessionId = getSessionIdFromProcess(metadataProcess);
 
     const launchInteractiveResume = async () => {
@@ -228,6 +237,19 @@ export function ProcessDetail() {
                         <ConversationMetadataPopover process={metadataProcess} turnsCount={turns.length} />
                     </div>
                 </div>
+                {wsName && wsId && (
+                    <div className="mb-1">
+                        <a
+                            href={`#repos/${encodeURIComponent(wsId)}`}
+                            onClick={navigateToRepo}
+                            className="inline-flex items-center gap-1 text-xs text-[#0078d4] dark:text-[#3794ff] hover:underline no-underline"
+                            title={`Go to repo: ${wsName}`}
+                        >
+                            <span>📂</span>
+                            <span>{wsName}</span>
+                        </a>
+                    </div>
+                )}
                 <div className="text-sm text-[#1e1e1e] dark:text-[#cccccc] break-words">
                     {process.fullPrompt || process.promptPreview || process.id}
                 </div>
