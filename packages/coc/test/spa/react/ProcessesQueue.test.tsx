@@ -762,6 +762,66 @@ describe('ProcessesView', () => {
         expect(aside!.className).toContain('shrink-0');
         expect(main!.className).toContain('min-w-0');
     });
+
+    it('wraps ProcessList and QueuePanel in a single scrollable container', () => {
+        const { container } = render(<Wrap><ProcessesView /></Wrap>);
+        const aside = container.querySelector('#view-processes > aside');
+        expect(aside).not.toBeNull();
+
+        // The scrollable wrapper is the flex-1 div after ProcessFilters
+        const scrollable = aside!.querySelector(':scope > div.overflow-y-auto');
+        expect(scrollable).not.toBeNull();
+        expect(scrollable!.className).toContain('flex-1');
+        expect(scrollable!.className).toContain('min-h-0');
+        expect(scrollable!.className).toContain('flex');
+        expect(scrollable!.className).toContain('flex-col');
+    });
+
+    it('does not have a separate border-t wrapper around QueuePanel', () => {
+        const { container } = render(<Wrap><ProcessesView /></Wrap>);
+        const aside = container.querySelector('#view-processes > aside');
+        // There should be no direct child div with border-t wrapping QueuePanel
+        const borderTDivs = Array.from(aside!.querySelectorAll(':scope > div.border-t'));
+        expect(borderTDivs.length).toBe(0);
+    });
+});
+
+describe('ProcessList – unified layout', () => {
+    it('empty state uses compact non-expanding style', () => {
+        const { container } = render(<Wrap><ProcessList /></Wrap>);
+        const emptyDiv = screen.getByText('No processes found').closest('div');
+        expect(emptyDiv).not.toBeNull();
+        expect(emptyDiv!.className).toContain('py-6');
+        expect(emptyDiv!.className).toContain('text-center');
+        // Should NOT have flex-1 that expands to fill container
+        expect(emptyDiv!.className).not.toContain('flex-1');
+    });
+
+    it('list container does not have flex-1 or overflow-y-auto', () => {
+        render(
+            <Wrap>
+                <SeededProcessList
+                    processes={[{ id: 'p1', status: 'completed', promptPreview: 'test' }]}
+                />
+            </Wrap>
+        );
+        // The list container wrapping cards should not have flex-1 or overflow
+        const cards = screen.getByText('test').closest('div.flex.flex-col');
+        expect(cards).not.toBeNull();
+        expect(cards!.className).not.toContain('flex-1');
+        expect(cards!.className).not.toContain('overflow-y-auto');
+    });
+});
+
+describe('QueuePanel – border-t styling', () => {
+    it('has border-t on its root element', () => {
+        const { container } = render(<Wrap><QueuePanel /></Wrap>);
+        // The root div of QueuePanel should have border-t styling
+        const root = container.firstElementChild as HTMLElement;
+        expect(root).not.toBeNull();
+        expect(root!.className).toContain('border-t');
+        expect(root!.className).toContain('p-2');
+    });
 });
 
 describe('ToolCallView', () => {

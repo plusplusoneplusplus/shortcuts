@@ -58,7 +58,7 @@ export function QueuePanel() {
     };
 
     return (
-        <div className="flex flex-col gap-3 min-h-0">
+        <div className="flex flex-col gap-3 min-h-0 border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-2">
             {/* Drain banner */}
             {draining && (
                 <div className="rounded bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 px-3 py-2 text-xs font-medium">

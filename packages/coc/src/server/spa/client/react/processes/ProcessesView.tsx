@@ -18,8 +18,8 @@ export function ProcessesView() {
             {/* Left panel: filters + list */}
             <aside className="w-[320px] min-w-[320px] max-w-[320px] shrink-0 min-h-0 flex flex-col border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]">
                 <ProcessFilters />
-                <ProcessList />
-                <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-2 min-h-0">
+                <div className="flex-1 min-h-0 overflow-y-auto flex flex-col">
+                    <ProcessList />
                     <QueuePanel />
                 </div>
             </aside>

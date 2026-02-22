@@ -61,14 +61,14 @@ export function ProcessList() {
 
     if (filtered.length === 0) {
         return (
-            <div className="flex-1 flex items-center justify-center text-[#848484] text-sm p-4">
+            <div className="py-6 text-center text-sm text-[#848484]">
                 No processes found
             </div>
         );
     }
 
     return (
-        <div className="flex-1 overflow-y-auto flex flex-col gap-1 p-2">
+        <div className="flex flex-col gap-1 p-2">
             {filtered.map((p: any) => {
                 const isActive = state.selectedId === p.id;
                 const duration = p.status === 'running' && p.startTime
