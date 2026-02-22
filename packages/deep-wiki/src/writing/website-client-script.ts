@@ -649,10 +649,11 @@ ${enableSearch ? `
                 }
             });
 
-            // Add anchor links to headings
+            // Add anchor links to headings (GitHub-style slug)
             body.querySelectorAll('h1, h2, h3, h4').forEach(function(heading) {
                 var id = heading.textContent.toLowerCase()
-                    .replace(/[^a-z0-9]+/g, '-')
+                    .replace(/[^a-z0-9 -]/g, '')
+                    .replace(/ /g, '-')
                     .replace(/^-+|-+$/g, '');
                 heading.id = id;
                 var anchor = document.createElement('a');

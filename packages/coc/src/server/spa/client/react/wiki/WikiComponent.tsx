@@ -103,10 +103,13 @@ export function WikiComponent({ wikiId, componentId, graph, onSelectComponent }:
         }
 
         // Add heading IDs and build TOC
+        // GitHub-style slug: lowercase, strip non-alphanumeric/space/hyphen, spaces→hyphens.
+        // Preserves consecutive dashes so AI-generated TOC anchors like #purpose--scope match.
         const headings: TocItem[] = [];
         container.querySelectorAll('h1, h2, h3, h4').forEach(heading => {
             const id = (heading.textContent || '').toLowerCase()
-                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/[^a-z0-9 -]/g, '')
+                .replace(/ /g, '-')
                 .replace(/^-+|-+$/g, '');
             heading.id = id;
             const level = parseInt(heading.tagName.charAt(1));
@@ -144,6 +147,26 @@ export function WikiComponent({ wikiId, componentId, graph, onSelectComponent }:
         };
         scrollEl.addEventListener('scroll', onScroll);
         return () => scrollEl.removeEventListener('scroll', onScroll);
+    }, [html]);
+
+    // Intercept in-article anchor clicks so they scroll instead of replacing the hash route
+    useEffect(() => {
+        const container = contentRef.current;
+        if (!container) return;
+        const handleClick = (e: MouseEvent) => {
+            const anchor = (e.target as HTMLElement).closest('a');
+            if (!anchor) return;
+            const href = anchor.getAttribute('href');
+            if (!href || !href.startsWith('#') || href === '#') return;
+            const targetId = href.slice(1);
+            const target = container.querySelector('#' + CSS.escape(targetId));
+            if (target) {
+                e.preventDefault();
+                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        };
+        container.addEventListener('click', handleClick);
+        return () => container.removeEventListener('click', handleClick);
     }, [html]);
 
     // Mermaid zoom/pan/source-toggle/collapse via shared hook

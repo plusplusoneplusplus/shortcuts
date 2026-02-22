@@ -35898,7 +35898,7 @@
       }
       const headings = [];
       container2.querySelectorAll("h1, h2, h3, h4").forEach((heading) => {
-        const id = (heading.textContent || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+        const id = (heading.textContent || "").toLowerCase().replace(/[^a-z0-9 -]/g, "").replace(/ /g, "-").replace(/^-+|-+$/g, "");
         heading.id = id;
         const level = parseInt(heading.tagName.charAt(1));
         headings.push({ id, text: (heading.textContent || "").replace(/#$/, "").trim(), level });
@@ -35926,6 +35926,24 @@
       };
       scrollEl.addEventListener("scroll", onScroll);
       return () => scrollEl.removeEventListener("scroll", onScroll);
+    }, [html]);
+    (0, import_react60.useEffect)(() => {
+      const container2 = contentRef.current;
+      if (!container2) return;
+      const handleClick = (e) => {
+        const anchor = e.target.closest("a");
+        if (!anchor) return;
+        const href = anchor.getAttribute("href");
+        if (!href || !href.startsWith("#") || href === "#") return;
+        const targetId = href.slice(1);
+        const target = container2.querySelector("#" + CSS.escape(targetId));
+        if (target) {
+          e.preventDefault();
+          target.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      };
+      container2.addEventListener("click", handleClick);
+      return () => container2.removeEventListener("click", handleClick);
     }, [html]);
     useMermaid(contentRef, html);
     (0, import_react60.useEffect)(() => {
