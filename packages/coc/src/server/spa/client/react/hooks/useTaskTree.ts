@@ -3,7 +3,7 @@
  * Fetches the task folder hierarchy and comment counts, auto-refreshes on WS events.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchApi } from './useApi';
 
 // ── Types ──────────────────────────────────────────────────────────────
@@ -97,10 +97,13 @@ export function useTaskTree(wsId: string): UseTaskTreeResult {
     const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const hasLoadedOnce = useRef(false);
 
     const refresh = useCallback(() => {
         if (!wsId) return;
-        setLoading(true);
+        if (!hasLoadedOnce.current) {
+            setLoading(true);
+        }
         setError(null);
 
         Promise.all([
@@ -111,6 +114,7 @@ export function useTaskTree(wsId: string): UseTaskTreeResult {
             if (countsData && typeof countsData === 'object') {
                 setCommentCounts(countsData as Record<string, number>);
             }
+            hasLoadedOnce.current = true;
             setLoading(false);
         }).catch((err) => {
             setError(err instanceof Error ? err.message : 'Failed to load tasks');

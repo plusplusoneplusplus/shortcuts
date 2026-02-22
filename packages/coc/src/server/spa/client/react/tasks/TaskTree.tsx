@@ -2,7 +2,7 @@
  * TaskTree — Miller-columns file browser for workspace tasks.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTaskPanel } from '../context/TaskContext';
 import { useQueueActivity } from '../hooks/useQueueActivity';
 import type { TaskFolder, TaskNode } from '../hooks/useTaskTree';
@@ -38,37 +38,69 @@ export function getFolderKey(folder: TaskFolder): string {
     return folder.relativePath || folder.name;
 }
 
+function findFolderByKey(tree: TaskFolder, key: string): TaskFolder | null {
+    for (const child of tree.children) {
+        if (getFolderKey(child) === key) return child;
+        const found = findFolderByKey(child, key);
+        if (found) return found;
+    }
+    return null;
+}
+
+export function rebuildColumnsFromKeys(tree: TaskFolder, keys: (string | null)[]): TaskNode[][] {
+    const rootNodes = folderToNodes(tree);
+    const cols: TaskNode[][] = [rootNodes];
+    for (const key of keys) {
+        if (!key) break;
+        const folder = findFolderByKey(tree, key);
+        if (!folder) break;
+        cols.push(folderToNodes(folder));
+    }
+    return cols;
+}
+
 export function TaskTree({ tree, commentCounts, wsId, initialFolderPath, initialFilePath, onColumnsChange, onFolderContextMenu }: TaskTreeProps) {
     const { openFilePath, setOpenFilePath, selectedFilePaths, toggleSelectedFile, showContextFiles, setSelectedFolderPath } = useTaskPanel();
     const { fileMap: queueActivity, folderMap: queueFolderActivity } = useQueueActivity(wsId);
     const [columns, setColumns] = useState<TaskNode[][]>([]);
     const [activeFolderKeys, setActiveFolderKeys] = useState<(string | null)[]>([]);
+    const activeFolderKeysRef = useRef<(string | null)[]>([]);
+    const isInitialMount = useRef(true);
 
-    // Initialize root column from tree
+    // Initialize or rebuild columns from tree
     useEffect(() => {
         if (!tree) return;
         const rootNodes = folderToNodes(tree);
 
-        if (initialFolderPath || initialFilePath) {
-            const folderPath = initialFolderPath ?? (initialFilePath ? initialFilePath.split('/').slice(0, -1).join('/') : '');
-            const segments = folderPath.split('/').filter(Boolean);
-            const cols: TaskNode[][] = [rootNodes];
-            const keys: (string | null)[] = [];
-            let cur = tree;
-            for (const seg of segments) {
-                const found = cur.children.find(f => f.name === seg);
-                if (!found) break;
-                cols.push(folderToNodes(found));
-                keys.push(getFolderKey(found));
-                cur = found;
+        if (isInitialMount.current) {
+            isInitialMount.current = false;
+            if (initialFolderPath || initialFilePath) {
+                const folderPath = initialFolderPath ?? (initialFilePath ? initialFilePath.split('/').slice(0, -1).join('/') : '');
+                const segments = folderPath.split('/').filter(Boolean);
+                const cols: TaskNode[][] = [rootNodes];
+                const keys: (string | null)[] = [];
+                let cur = tree;
+                for (const seg of segments) {
+                    const found = cur.children.find(f => f.name === seg);
+                    if (!found) break;
+                    cols.push(folderToNodes(found));
+                    keys.push(getFolderKey(found));
+                    cur = found;
+                }
+                setColumns(cols);
+                setActiveFolderKeys(keys);
+                activeFolderKeysRef.current = keys;
+                if (initialFilePath) setOpenFilePath(initialFilePath);
+                return;
             }
-            setColumns(cols);
-            setActiveFolderKeys(keys);
-            if (initialFilePath) setOpenFilePath(initialFilePath);
-        } else {
             setColumns([rootNodes]);
             setActiveFolderKeys([]);
+            activeFolderKeysRef.current = [];
+            return;
         }
+
+        // Subsequent tree updates: rebuild columns preserving current navigation
+        setColumns(rebuildColumnsFromKeys(tree, activeFolderKeysRef.current));
     }, [tree]);
 
     const handleFolderClick = (folder: TaskFolder, colIndex: number) => {
@@ -77,6 +109,7 @@ export function TaskTree({ tree, commentCounts, wsId, initialFolderPath, initial
 
         const newKeys = [...activeFolderKeys.slice(0, colIndex), getFolderKey(folder)];
         setActiveFolderKeys(newKeys);
+        activeFolderKeysRef.current = newKeys;
 
         setOpenFilePath(null);
 

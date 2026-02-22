@@ -650,6 +650,193 @@ describe('getFolderKey', () => {
 });
 
 // ============================================================================
+// TasksPanel — miller columns preserved after refresh (archive/unarchive)
+// ============================================================================
+
+describe('TasksPanel — preserves navigation on refresh', () => {
+    let fetchSpy: ReturnType<typeof vi.fn>;
+
+    const deepTree = {
+        name: 'tasks',
+        relativePath: '',
+        children: [
+            {
+                name: 'coc',
+                relativePath: 'coc',
+                children: [
+                    {
+                        name: 'backlog',
+                        relativePath: 'coc/backlog',
+                        children: [],
+                        documentGroups: [],
+                        singleDocuments: [
+                            { baseName: 'item', fileName: 'item.md', relativePath: 'coc/backlog', isArchived: false },
+                        ],
+                    },
+                ],
+                documentGroups: [],
+                singleDocuments: [
+                    { baseName: 'design', fileName: 'design.md', relativePath: 'coc', isArchived: false },
+                ],
+            },
+            {
+                name: 'misc',
+                relativePath: 'misc',
+                children: [],
+                documentGroups: [],
+                singleDocuments: [
+                    { baseName: 'note', fileName: 'note.md', relativePath: 'misc', isArchived: false },
+                ],
+            },
+        ],
+        documentGroups: [],
+        singleDocuments: [],
+    };
+
+    const deepTreeAfterArchive = {
+        ...deepTree,
+        children: [
+            deepTree.children[0],
+            {
+                name: 'archive',
+                relativePath: 'archive',
+                children: [
+                    {
+                        name: 'misc',
+                        relativePath: 'archive/misc',
+                        children: [],
+                        documentGroups: [],
+                        singleDocuments: [
+                            { baseName: 'note', fileName: 'note.md', relativePath: 'archive/misc', isArchived: true },
+                        ],
+                    },
+                ],
+                documentGroups: [],
+                singleDocuments: [],
+            },
+        ],
+    };
+
+    beforeEach(() => {
+        fetchSpy = vi.fn();
+        global.fetch = fetchSpy;
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('keeps miller columns at navigated depth after tree data refreshes', async () => {
+        let fetchCount = 0;
+        fetchSpy.mockImplementation((url: string) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            fetchCount++;
+            const data = fetchCount <= 1 ? deepTree : deepTreeAfterArchive;
+            return Promise.resolve({ ok: true, json: () => Promise.resolve(data) });
+        });
+
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree-item-coc')).toBeTruthy();
+        });
+
+        // Navigate into coc folder
+        fireEvent.click(screen.getByTestId('task-tree-item-coc'));
+        await waitFor(() => {
+            expect(screen.getByTestId('miller-column-1')).toBeTruthy();
+        });
+
+        // Navigate into coc/backlog
+        fireEvent.click(screen.getByTestId('task-tree-item-backlog'));
+        await waitFor(() => {
+            expect(screen.getByTestId('miller-column-2')).toBeTruthy();
+        });
+
+        // Simulate a refresh (e.g. after archive) by dispatching tasks-changed event
+        window.dispatchEvent(new CustomEvent('tasks-changed', { detail: { wsId: 'ws1' } }));
+
+        // Wait for re-fetch to complete
+        await waitFor(() => {
+            expect(fetchCount).toBeGreaterThanOrEqual(2);
+        });
+
+        // Miller columns should still be at depth 3 (root + coc + backlog)
+        expect(screen.getByTestId('miller-column-0')).toBeTruthy();
+        expect(screen.getByTestId('miller-column-1')).toBeTruthy();
+        expect(screen.getByTestId('miller-column-2')).toBeTruthy();
+    });
+
+    it('does not show loading spinner on subsequent refreshes', async () => {
+        let fetchCount = 0;
+        fetchSpy.mockImplementation((url: string) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            fetchCount++;
+            return Promise.resolve({ ok: true, json: () => Promise.resolve(deepTree) });
+        });
+
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+
+        // Initial load shows loading then tree
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree')).toBeTruthy();
+        });
+
+        // Trigger a refresh
+        window.dispatchEvent(new CustomEvent('tasks-changed', { detail: { wsId: 'ws1' } }));
+
+        // The tree should remain visible (no loading spinner)
+        await waitFor(() => {
+            expect(fetchCount).toBeGreaterThanOrEqual(2);
+        });
+        expect(screen.getByTestId('task-tree')).toBeTruthy();
+        expect(screen.queryByText(/Loading tasks/)).toBeNull();
+    });
+
+    it('gracefully collapses to root when navigated folder is removed', async () => {
+        let fetchCount = 0;
+        const treeWithoutMisc = {
+            ...deepTree,
+            children: [deepTree.children[0]],
+        };
+
+        fetchSpy.mockImplementation((url: string) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            fetchCount++;
+            const data = fetchCount <= 1 ? deepTree : treeWithoutMisc;
+            return Promise.resolve({ ok: true, json: () => Promise.resolve(data) });
+        });
+
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree-item-misc')).toBeTruthy();
+        });
+
+        // Navigate into misc folder
+        fireEvent.click(screen.getByTestId('task-tree-item-misc'));
+        await waitFor(() => {
+            expect(screen.getByTestId('miller-column-1')).toBeTruthy();
+        });
+
+        // Trigger refresh where misc is gone (archived/deleted)
+        window.dispatchEvent(new CustomEvent('tasks-changed', { detail: { wsId: 'ws1' } }));
+
+        await waitFor(() => {
+            expect(fetchCount).toBeGreaterThanOrEqual(2);
+        });
+
+        // Should fall back to root column only since misc no longer exists
+        expect(screen.getByTestId('miller-column-0')).toBeTruthy();
+        expect(screen.queryByTestId('miller-column-1')).toBeNull();
+    });
+});
+
+// ============================================================================
 // TasksPanel — GenerateTaskDialog integration
 // ============================================================================
 
