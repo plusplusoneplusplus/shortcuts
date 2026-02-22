@@ -26773,7 +26773,7 @@
       case "SELECT_WIKI":
         return { ...state, selectedWikiId: action.wikiId, selectedWikiComponentId: null, wikiView: action.wikiId ? "detail" : "list", wikiDetailInitialTab: null, wikiDetailInitialAdminTab: null };
       case "SELECT_WIKI_WITH_TAB":
-        return { ...state, selectedWikiId: action.wikiId, selectedWikiComponentId: null, wikiView: "detail", wikiDetailInitialTab: action.tab, wikiDetailInitialAdminTab: action.adminTab ?? null };
+        return { ...state, selectedWikiId: action.wikiId, selectedWikiComponentId: action.componentId ?? null, wikiView: "detail", wikiDetailInitialTab: action.tab, wikiDetailInitialAdminTab: action.adminTab ?? null };
       case "SELECT_WIKI_COMPONENT":
         return { ...state, selectedWikiComponentId: action.componentId };
       case "ADD_WIKI":
@@ -40357,12 +40357,9 @@
           const wikiLink = parseWikiDeepLink("#" + hash);
           if (wikiLink.wikiId) {
             if (wikiLink.tab) {
-              dispatch({ type: "SELECT_WIKI_WITH_TAB", wikiId: wikiLink.wikiId, tab: wikiLink.tab, adminTab: wikiLink.adminTab });
+              dispatch({ type: "SELECT_WIKI_WITH_TAB", wikiId: wikiLink.wikiId, tab: wikiLink.tab, adminTab: wikiLink.adminTab, componentId: wikiLink.componentId });
             } else {
               dispatch({ type: "SELECT_WIKI", wikiId: wikiLink.wikiId });
-            }
-            if (wikiLink.componentId) {
-              dispatch({ type: "SELECT_WIKI_COMPONENT", componentId: wikiLink.componentId });
             }
           }
         }

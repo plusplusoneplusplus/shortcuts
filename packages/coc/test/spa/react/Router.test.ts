@@ -537,6 +537,98 @@ describe('parsePipelineDeepLink', () => {
     });
 });
 
+// ─── handleHash wiki dispatch simulation ────────────────────────
+// Mirrors the wiki-branch logic from Router's handleHash effect to verify
+// that component deep-links dispatch atomically (no intermediate clearing).
+
+describe('handleHash wiki dispatch simulation', () => {
+    function simulateWikiHashDispatch(rawHash: string): Array<{ type: string; [key: string]: any }> {
+        const dispatches: Array<{ type: string; [key: string]: any }> = [];
+        const hash = rawHash.replace(/^#/, '');
+        const tab = tabFromHash('#' + hash);
+        if (tab === 'wiki') {
+            const wikiLink = parseWikiDeepLink('#' + hash);
+            if (wikiLink.wikiId) {
+                if (wikiLink.tab) {
+                    dispatches.push({
+                        type: 'SELECT_WIKI_WITH_TAB',
+                        wikiId: wikiLink.wikiId,
+                        tab: wikiLink.tab,
+                        adminTab: wikiLink.adminTab,
+                        componentId: wikiLink.componentId,
+                    });
+                } else {
+                    dispatches.push({ type: 'SELECT_WIKI', wikiId: wikiLink.wikiId });
+                }
+            }
+        }
+        return dispatches;
+    }
+
+    it('dispatches single SELECT_WIKI_WITH_TAB with componentId for component deep-link', () => {
+        const dispatches = simulateWikiHashDispatch('#wiki/w1/component/comp-1');
+        expect(dispatches).toHaveLength(1);
+        expect(dispatches[0]).toEqual({
+            type: 'SELECT_WIKI_WITH_TAB',
+            wikiId: 'w1',
+            tab: 'browse',
+            adminTab: null,
+            componentId: 'comp-1',
+        });
+    });
+
+    it('does not dispatch separate SELECT_WIKI_COMPONENT for component deep-link', () => {
+        const dispatches = simulateWikiHashDispatch('#wiki/w1/component/comp-1');
+        expect(dispatches.find(d => d.type === 'SELECT_WIKI_COMPONENT')).toBeUndefined();
+    });
+
+    it('dispatches SELECT_WIKI_WITH_TAB with null componentId for tab-only link', () => {
+        const dispatches = simulateWikiHashDispatch('#wiki/w1/ask');
+        expect(dispatches).toHaveLength(1);
+        expect(dispatches[0]).toEqual({
+            type: 'SELECT_WIKI_WITH_TAB',
+            wikiId: 'w1',
+            tab: 'ask',
+            adminTab: null,
+            componentId: null,
+        });
+    });
+
+    it('dispatches SELECT_WIKI for wiki without tab', () => {
+        const dispatches = simulateWikiHashDispatch('#wiki/w1');
+        expect(dispatches).toHaveLength(1);
+        expect(dispatches[0]).toEqual({ type: 'SELECT_WIKI', wikiId: 'w1' });
+    });
+
+    it('dispatches SELECT_WIKI_WITH_TAB with adminTab for admin deep-link', () => {
+        const dispatches = simulateWikiHashDispatch('#wiki/w1/admin/seeds');
+        expect(dispatches).toHaveLength(1);
+        expect(dispatches[0]).toEqual({
+            type: 'SELECT_WIKI_WITH_TAB',
+            wikiId: 'w1',
+            tab: 'admin',
+            adminTab: 'seeds',
+            componentId: null,
+        });
+    });
+
+    it('handles URL-encoded component IDs', () => {
+        const dispatches = simulateWikiHashDispatch('#wiki/w1/component/comp%2Fone');
+        expect(dispatches).toHaveLength(1);
+        expect(dispatches[0].componentId).toBe('comp/one');
+    });
+
+    it('dispatches nothing for plain #wiki (no wikiId)', () => {
+        const dispatches = simulateWikiHashDispatch('#wiki');
+        expect(dispatches).toHaveLength(0);
+    });
+
+    it('dispatches nothing for non-wiki hash', () => {
+        const dispatches = simulateWikiHashDispatch('#repos/my-repo');
+        expect(dispatches).toHaveLength(0);
+    });
+});
+
 // ─── pipeline deep-link integration ────────────────────────────
 
 describe('pipeline deep-link integration', () => {

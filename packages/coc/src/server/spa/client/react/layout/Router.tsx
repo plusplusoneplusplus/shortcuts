@@ -155,12 +155,9 @@ export function Router() {
                 const wikiLink = parseWikiDeepLink('#' + hash);
                 if (wikiLink.wikiId) {
                     if (wikiLink.tab) {
-                        dispatch({ type: 'SELECT_WIKI_WITH_TAB', wikiId: wikiLink.wikiId, tab: wikiLink.tab, adminTab: wikiLink.adminTab });
+                        dispatch({ type: 'SELECT_WIKI_WITH_TAB', wikiId: wikiLink.wikiId, tab: wikiLink.tab, adminTab: wikiLink.adminTab, componentId: wikiLink.componentId });
                     } else {
                         dispatch({ type: 'SELECT_WIKI', wikiId: wikiLink.wikiId });
-                    }
-                    if (wikiLink.componentId) {
-                        dispatch({ type: 'SELECT_WIKI_COMPONENT', componentId: wikiLink.componentId });
                     }
                 }
             }

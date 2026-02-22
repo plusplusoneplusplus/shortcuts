@@ -221,6 +221,75 @@ describe('Mermaid rendering in task preview', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Mermaid CSS in SPA tailwind.css
+// ---------------------------------------------------------------------------
+
+describe('Mermaid CSS in SPA stylesheet', () => {
+    const cssPath = path.resolve(__dirname, '../../../../src/server/spa/client/tailwind.css');
+    const css = fs.readFileSync(cssPath, 'utf8');
+
+    it('defines .mermaid-container styles', () => {
+        expect(css).toContain('.mermaid-container');
+    });
+
+    it('defines .mermaid-header styles', () => {
+        expect(css).toContain('.mermaid-header');
+    });
+
+    it('defines .mermaid-content styles', () => {
+        expect(css).toContain('.mermaid-content');
+    });
+
+    it('defines .task-mermaid-toolbar styles', () => {
+        expect(css).toContain('.task-mermaid-toolbar');
+    });
+
+    it('defines .task-mermaid-btn styles', () => {
+        expect(css).toContain('.task-mermaid-btn');
+    });
+
+    it('defines .task-mermaid-zoom-level styles', () => {
+        expect(css).toContain('.task-mermaid-zoom-level');
+    });
+
+    it('defines .task-mermaid-viewport styles', () => {
+        expect(css).toContain('.task-mermaid-viewport');
+    });
+
+    it('defines .task-mermaid-svg-wrapper styles', () => {
+        expect(css).toContain('.task-mermaid-svg-wrapper');
+    });
+
+    it('defines .task-mermaid-source-view styles', () => {
+        expect(css).toContain('.task-mermaid-source-view');
+    });
+
+    it('defines .task-mermaid-error styles', () => {
+        expect(css).toContain('.task-mermaid-error');
+    });
+
+    it('defines dark mode variants for mermaid-container', () => {
+        expect(css).toContain('.dark .mermaid-container');
+    });
+
+    it('defines dark mode variants for mermaid-header', () => {
+        expect(css).toContain('.dark .mermaid-header');
+    });
+
+    it('defines dark mode variants for task-mermaid-toolbar', () => {
+        expect(css).toContain('.dark .task-mermaid-toolbar');
+    });
+
+    it('defines dark mode variants for task-mermaid-btn', () => {
+        expect(css).toContain('.dark .task-mermaid-btn');
+    });
+
+    it('defines dragging cursor style', () => {
+        expect(css).toContain('.task-mermaid-dragging');
+    });
+});
+
+// ---------------------------------------------------------------------------
 // Tests for useMermaid hook (replaces task-mermaid.ts module)
 // ---------------------------------------------------------------------------
 

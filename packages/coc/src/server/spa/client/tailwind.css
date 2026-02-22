@@ -617,3 +617,143 @@
 .dark .wiki-body hr {
     border-top-color: #3c3c3c;
 }
+
+/* ── Mermaid diagram containers (wiki articles via useMermaid hook) ── */
+
+.mermaid-container {
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    overflow: hidden;
+    margin: 0.75rem 0;
+    background: #ffffff;
+}
+
+.dark .mermaid-container {
+    border-color: #3c3c3c;
+    background: #1e1e1e;
+}
+
+.mermaid-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-bottom: 1px solid #e0e0e0;
+    background: #f8f8f8;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #1e1e1e;
+}
+
+.dark .mermaid-header {
+    border-bottom-color: #3c3c3c;
+    background: #252526;
+    color: #cccccc;
+}
+
+.mermaid-content {
+    overflow: auto;
+}
+
+.mermaid-source {
+    display: none;
+}
+
+/* Toolbar injected by useMermaid transformContainer */
+.task-mermaid-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-bottom: 1px solid #e0e0e0;
+    background: #f3f3f3;
+    font-size: 11px;
+}
+
+.dark .task-mermaid-toolbar {
+    border-bottom-color: #3c3c3c;
+    background: #252526;
+}
+
+.task-mermaid-btn {
+    border: 1px solid #d0d0d0;
+    background: #fff;
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+    padding: 2px 6px;
+    line-height: 1.4;
+    color: #1e1e1e;
+}
+
+.dark .task-mermaid-btn {
+    border-color: #4a4a4a;
+    background: #2d2d2d;
+    color: #d4d4d4;
+}
+
+.task-mermaid-btn:hover {
+    background: #e8e8e8;
+}
+
+.dark .task-mermaid-btn:hover {
+    background: #3c3c3c;
+}
+
+.task-mermaid-zoom-level {
+    font-size: 11px;
+    min-width: 36px;
+    text-align: center;
+    color: #848484;
+}
+
+.task-mermaid-viewport {
+    overflow: hidden;
+    position: relative;
+    min-height: 100px;
+    cursor: grab;
+}
+
+.task-mermaid-viewport.task-mermaid-dragging {
+    cursor: grabbing;
+}
+
+.task-mermaid-svg-wrapper {
+    transform-origin: 0 0;
+    display: flex;
+    justify-content: center;
+    padding: 16px;
+}
+
+.task-mermaid-svg-wrapper .mermaid {
+    margin: 0;
+}
+
+.task-mermaid-svg-wrapper .mermaid svg {
+    max-width: none;
+}
+
+.task-mermaid-source-view {
+    padding: 12px 14px;
+    overflow: auto;
+}
+
+.task-mermaid-source-view pre {
+    margin: 0;
+}
+
+.task-mermaid-source-view code {
+    display: block;
+    white-space: pre;
+    font-size: 12px;
+    line-height: 1.55;
+}
+
+.task-mermaid-error {
+    padding: 16px;
+    text-align: center;
+    color: #f14c4c;
+    font-size: 12px;
+}

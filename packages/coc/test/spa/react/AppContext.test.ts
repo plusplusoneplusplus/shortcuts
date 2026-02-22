@@ -20,6 +20,8 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         selectedWikiId: null,
         selectedWikiComponentId: null,
         wikiView: 'list',
+        wikiDetailInitialTab: null,
+        wikiDetailInitialAdminTab: null,
         wikis: [],
         selectedPipelineName: null,
         conversationCache: {},
@@ -298,6 +300,97 @@ describe('AppContext reducer', () => {
             const state = makeState({ selectedPipelineName: 'old' });
             const result = appReducer(state, { type: 'SET_SELECTED_PIPELINE', name: 'new' });
             expect(result.selectedPipelineName).toBe('new');
+        });
+    });
+
+    // ── Wiki selection ────────────────────────────────────────────────
+    describe('SELECT_WIKI', () => {
+        it('sets selectedWikiId and clears component', () => {
+            const state = makeState({ selectedWikiComponentId: 'comp-1' });
+            const result = appReducer(state, { type: 'SELECT_WIKI', wikiId: 'w1' });
+            expect(result.selectedWikiId).toBe('w1');
+            expect(result.selectedWikiComponentId).toBeNull();
+            expect(result.wikiView).toBe('detail');
+        });
+
+        it('clears wiki selection with null', () => {
+            const state = makeState({ selectedWikiId: 'w1', wikiView: 'detail' as const });
+            const result = appReducer(state, { type: 'SELECT_WIKI', wikiId: null });
+            expect(result.selectedWikiId).toBeNull();
+            expect(result.wikiView).toBe('list');
+        });
+    });
+
+    describe('SELECT_WIKI_WITH_TAB', () => {
+        it('sets wiki and tab, clears component when no componentId', () => {
+            const state = makeState({ selectedWikiComponentId: 'old-comp' });
+            const result = appReducer(state, { type: 'SELECT_WIKI_WITH_TAB', wikiId: 'w1', tab: 'browse' });
+            expect(result.selectedWikiId).toBe('w1');
+            expect(result.selectedWikiComponentId).toBeNull();
+            expect(result.wikiDetailInitialTab).toBe('browse');
+        });
+
+        it('preserves componentId when provided', () => {
+            const state = makeState();
+            const result = appReducer(state, { type: 'SELECT_WIKI_WITH_TAB', wikiId: 'w1', tab: 'browse', componentId: 'comp-1' });
+            expect(result.selectedWikiId).toBe('w1');
+            expect(result.selectedWikiComponentId).toBe('comp-1');
+            expect(result.wikiView).toBe('detail');
+        });
+
+        it('sets componentId to null when explicitly passed null', () => {
+            const state = makeState({ selectedWikiComponentId: 'comp-1' });
+            const result = appReducer(state, { type: 'SELECT_WIKI_WITH_TAB', wikiId: 'w1', tab: 'ask', componentId: null });
+            expect(result.selectedWikiComponentId).toBeNull();
+        });
+
+        it('sets adminTab when provided', () => {
+            const result = appReducer(makeState(), { type: 'SELECT_WIKI_WITH_TAB', wikiId: 'w1', tab: 'admin', adminTab: 'seeds' });
+            expect(result.wikiDetailInitialTab).toBe('admin');
+            expect(result.wikiDetailInitialAdminTab).toBe('seeds');
+        });
+
+        it('defaults adminTab to null when not provided', () => {
+            const result = appReducer(makeState(), { type: 'SELECT_WIKI_WITH_TAB', wikiId: 'w1', tab: 'browse' });
+            expect(result.wikiDetailInitialAdminTab).toBeNull();
+        });
+    });
+
+    describe('SELECT_WIKI_COMPONENT', () => {
+        it('sets selectedWikiComponentId', () => {
+            const result = appReducer(makeState(), { type: 'SELECT_WIKI_COMPONENT', componentId: 'comp-1' });
+            expect(result.selectedWikiComponentId).toBe('comp-1');
+        });
+
+        it('clears selectedWikiComponentId with null', () => {
+            const state = makeState({ selectedWikiComponentId: 'comp-1' });
+            const result = appReducer(state, { type: 'SELECT_WIKI_COMPONENT', componentId: null });
+            expect(result.selectedWikiComponentId).toBeNull();
+        });
+    });
+
+    // ── Wiki CRUD ─────────────────────────────────────────────────────
+    describe('wiki CRUD', () => {
+        it('ADD_WIKI appends a wiki', () => {
+            const result = appReducer(makeState(), { type: 'ADD_WIKI', wiki: { id: 'w1', name: 'Test' } });
+            expect(result.wikis).toHaveLength(1);
+            expect(result.wikis[0].id).toBe('w1');
+        });
+
+        it('UPDATE_WIKI merges fields', () => {
+            const state = makeState({ wikis: [{ id: 'w1', name: 'Old', status: 'loaded' }] });
+            const result = appReducer(state, { type: 'UPDATE_WIKI', wiki: { id: 'w1', name: 'New' } });
+            expect(result.wikis[0].name).toBe('New');
+            expect(result.wikis[0].status).toBe('loaded');
+        });
+
+        it('REMOVE_WIKI removes and clears selection if matched', () => {
+            const state = makeState({ wikis: [{ id: 'w1' }], selectedWikiId: 'w1', selectedWikiComponentId: 'c1', wikiView: 'detail' as const });
+            const result = appReducer(state, { type: 'REMOVE_WIKI', wikiId: 'w1' });
+            expect(result.wikis).toHaveLength(0);
+            expect(result.selectedWikiId).toBeNull();
+            expect(result.selectedWikiComponentId).toBeNull();
+            expect(result.wikiView).toBe('list');
         });
     });
 });
