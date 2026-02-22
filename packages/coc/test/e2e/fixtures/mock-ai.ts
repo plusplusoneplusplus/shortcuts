@@ -72,6 +72,22 @@ function createMockFn<TReturn = unknown>(defaultImpl: (...args: unknown[]) => TR
 }
 
 // ---------------------------------------------------------------------------
+// Mock Tool Event
+// ---------------------------------------------------------------------------
+
+export interface MockToolEvent {
+    type: 'tool-start' | 'tool-complete' | 'tool-failed';
+    toolCallId: string;
+    toolName: string;
+    parameters?: Record<string, unknown>;
+    result?: string;
+    error?: string;
+    parentToolCallId?: string;
+    /** Optional milliseconds to wait before firing this event */
+    delayMsBefore?: number;
+}
+
+// ---------------------------------------------------------------------------
 // Mock AI Service
 // ---------------------------------------------------------------------------
 
@@ -90,6 +106,24 @@ export interface E2EMockAIControls {
     mockCanResumeSession: MockFn;
     /** Reset all mocks to their default state */
     resetAll: () => void;
+    /**
+     * Returns a sendMessage/sendFollowUp implementation that calls
+     * onStreamingChunk for each chunk with an optional inter-chunk delay,
+     * then resolves with a success result.
+     */
+    createStreamingResponse(
+        chunks: string[],
+        options?: { delayMs?: number; finalResponse?: string; sessionId?: string },
+    ): (...args: unknown[]) => Promise<unknown>;
+    /**
+     * Returns a sendMessage/sendFollowUp implementation that fires
+     * onToolEvent for each MockToolEvent (with optional per-event delay),
+     * then resolves with a success result.
+     */
+    createToolCallResponse(
+        events: MockToolEvent[],
+        options?: { finalResponse?: string; sessionId?: string },
+    ): (...args: unknown[]) => Promise<unknown>;
 }
 
 export interface E2EMockAIOptions {
@@ -111,6 +145,7 @@ export interface E2EMockAIOptions {
  * - canResumeSession → true
  */
 export function createE2EMockSDKService(options?: E2EMockAIOptions): E2EMockAIControls {
+    const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
     const defaultAvailability = { available: options?.available ?? true };
     const defaultSendMessage = options?.sendMessageResponse ?? {
         success: true,
@@ -155,6 +190,51 @@ export function createE2EMockSDKService(options?: E2EMockAIOptions): E2EMockAICo
         mockCanResumeSession.mockReset();
     };
 
+    function createStreamingResponse(
+        chunks: string[],
+        streamOpts?: { delayMs?: number; finalResponse?: string; sessionId?: string },
+    ): (...args: unknown[]) => Promise<unknown> {
+        return async (...args: unknown[]) => {
+            // opts is first arg for sendMessage, third arg for sendFollowUp
+            const opts = (args.length >= 3 ? args[2] : args[0]) as Record<string, unknown> | undefined;
+            const onChunk = opts?.onStreamingChunk as ((chunk: string) => void) | undefined;
+            const delayMs = streamOpts?.delayMs ?? 0;
+
+            for (const chunk of chunks) {
+                if (delayMs > 0) await sleep(delayMs);
+                onChunk?.(chunk);
+            }
+
+            return {
+                success: true,
+                response: streamOpts?.finalResponse ?? chunks.join(''),
+                sessionId: streamOpts?.sessionId ?? 'session-123',
+            };
+        };
+    }
+
+    function createToolCallResponse(
+        events: MockToolEvent[],
+        toolOpts?: { finalResponse?: string; sessionId?: string },
+    ): (...args: unknown[]) => Promise<unknown> {
+        return async (...args: unknown[]) => {
+            const opts = (args.length >= 3 ? args[2] : args[0]) as Record<string, unknown> | undefined;
+            const onEvent = opts?.onToolEvent as ((event: Record<string, unknown>) => void) | undefined;
+
+            for (const evt of events) {
+                if (evt.delayMsBefore && evt.delayMsBefore > 0) await sleep(evt.delayMsBefore);
+                const { delayMsBefore: _dropped, ...eventPayload } = evt;
+                onEvent?.(eventPayload as Record<string, unknown>);
+            }
+
+            return {
+                success: true,
+                response: toolOpts?.finalResponse ?? '',
+                sessionId: toolOpts?.sessionId ?? 'session-123',
+            };
+        };
+    }
+
     return {
         service,
         mockSendMessage,
@@ -163,5 +243,7 @@ export function createE2EMockSDKService(options?: E2EMockAIOptions): E2EMockAICo
         mockHasKeptAliveSession,
         mockCanResumeSession,
         resetAll,
+        createStreamingResponse,
+        createToolCallResponse,
     };
 }
