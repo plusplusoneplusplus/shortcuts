@@ -247,6 +247,21 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
                 onClick: () => {
                     queueDispatch({ type: 'OPEN_DIALOG', folderPath });
                 },
+                children: [
+                    {
+                        label: 'Queue All Tasks',
+                        icon: '▶',
+                        disabled: countMarkdownFilesInFolder(folder) === 0,
+                        onClick: () => {
+                            queueDispatch({ type: 'OPEN_DIALOG', folderPath });
+                        },
+                    },
+                    {
+                        label: 'Follow Prompt',
+                        icon: '📝',
+                        onClick: () => handleFolderContextMenuAction('follow-prompt', folder),
+                    },
+                ],
             },
             {
                 label: isArchived ? 'Unarchive Folder' : 'Archive Folder',

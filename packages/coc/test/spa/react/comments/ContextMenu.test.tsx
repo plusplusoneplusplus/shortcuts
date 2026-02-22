@@ -179,6 +179,167 @@ describe('ContextMenu', () => {
         expect(screen.getAllByRole('separator')).toHaveLength(2);
         expect(screen.getAllByRole('menuitem')).toHaveLength(3);
     });
+
+    // ── Submenu support ──────────────────────────────────────────────
+
+    it('renders a submenu indicator arrow for items with children', () => {
+        render(
+            <ContextMenu
+                position={{ x: 0, y: 0 }}
+                items={[
+                    {
+                        label: 'Parent',
+                        icon: '▶',
+                        onClick: vi.fn(),
+                        children: [
+                            { label: 'Child A', onClick: vi.fn() },
+                            { label: 'Child B', onClick: vi.fn() },
+                        ],
+                    },
+                ]}
+                onClose={vi.fn()}
+            />
+        );
+        const parent = screen.getByTestId('context-menu-item-0');
+        expect(parent).toBeTruthy();
+        expect(parent.textContent).toContain('Parent');
+        expect(parent.querySelector('[aria-haspopup="true"]')).toBeTruthy();
+    });
+
+    it('shows submenu on hover', () => {
+        render(
+            <ContextMenu
+                position={{ x: 0, y: 0 }}
+                items={[
+                    {
+                        label: 'Parent',
+                        onClick: vi.fn(),
+                        children: [
+                            { label: 'Child A', onClick: vi.fn() },
+                            { label: 'Child B', onClick: vi.fn() },
+                        ],
+                    },
+                ]}
+                onClose={vi.fn()}
+            />
+        );
+        const parent = screen.getByTestId('context-menu-item-0');
+        fireEvent.mouseEnter(parent);
+        expect(screen.getByTestId('context-submenu-0')).toBeTruthy();
+        expect(screen.getByTestId('context-submenu-0-item-0').textContent).toContain('Child A');
+        expect(screen.getByTestId('context-submenu-0-item-1').textContent).toContain('Child B');
+    });
+
+    it('calls child onClick and onClose when submenu item is clicked', () => {
+        const childClick = vi.fn();
+        const onClose = vi.fn();
+        render(
+            <ContextMenu
+                position={{ x: 0, y: 0 }}
+                items={[
+                    {
+                        label: 'Parent',
+                        onClick: vi.fn(),
+                        children: [
+                            { label: 'Child A', onClick: childClick },
+                        ],
+                    },
+                ]}
+                onClose={onClose}
+            />
+        );
+        fireEvent.mouseEnter(screen.getByTestId('context-menu-item-0'));
+        fireEvent.click(screen.getByTestId('context-submenu-0-item-0'));
+        expect(childClick).toHaveBeenCalledOnce();
+        expect(onClose).toHaveBeenCalledOnce();
+    });
+
+    it('does not call onClick for disabled submenu children', () => {
+        const childClick = vi.fn();
+        const onClose = vi.fn();
+        render(
+            <ContextMenu
+                position={{ x: 0, y: 0 }}
+                items={[
+                    {
+                        label: 'Parent',
+                        onClick: vi.fn(),
+                        children: [
+                            { label: 'Disabled Child', disabled: true, onClick: childClick },
+                        ],
+                    },
+                ]}
+                onClose={onClose}
+            />
+        );
+        fireEvent.mouseEnter(screen.getByTestId('context-menu-item-0'));
+        fireEvent.click(screen.getByTestId('context-submenu-0-item-0'));
+        expect(childClick).not.toHaveBeenCalled();
+        expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('submenu is not visible before hover', () => {
+        render(
+            <ContextMenu
+                position={{ x: 0, y: 0 }}
+                items={[
+                    {
+                        label: 'Parent',
+                        onClick: vi.fn(),
+                        children: [
+                            { label: 'Child', onClick: vi.fn() },
+                        ],
+                    },
+                ]}
+                onClose={vi.fn()}
+            />
+        );
+        expect(screen.queryByTestId('context-submenu-0')).toBeNull();
+    });
+
+    it('items without children render as regular buttons (no submenu arrow)', () => {
+        render(
+            <ContextMenu
+                position={{ x: 0, y: 0 }}
+                items={[
+                    { label: 'Regular', onClick: vi.fn() },
+                    {
+                        label: 'With Sub',
+                        onClick: vi.fn(),
+                        children: [{ label: 'Child', onClick: vi.fn() }],
+                    },
+                ]}
+                onClose={vi.fn()}
+            />
+        );
+        const regular = screen.getByTestId('context-menu-item-0');
+        expect(regular.tagName).toBe('BUTTON');
+        expect(regular.querySelector('[aria-haspopup]')).toBeNull();
+
+        const withSub = screen.getByTestId('context-menu-item-1');
+        expect(withSub.querySelector('[aria-haspopup="true"]')).toBeTruthy();
+    });
+
+    it('submenu items count correctly alongside regular items', () => {
+        render(
+            <ContextMenu
+                position={{ x: 0, y: 0 }}
+                items={[
+                    { label: 'First', onClick: vi.fn() },
+                    {
+                        label: 'Parent',
+                        onClick: vi.fn(),
+                        children: [{ label: 'Child', onClick: vi.fn() }],
+                    },
+                    { label: 'Last', onClick: vi.fn() },
+                ]}
+                onClose={vi.fn()}
+            />
+        );
+        expect(screen.getByTestId('context-menu-item-0').textContent).toContain('First');
+        expect(screen.getByTestId('context-menu-item-1').textContent).toContain('Parent');
+        expect(screen.getByTestId('context-menu-item-2').textContent).toContain('Last');
+    });
 });
 
 // ── clampMenuPosition unit tests ───────────────────────────────────────

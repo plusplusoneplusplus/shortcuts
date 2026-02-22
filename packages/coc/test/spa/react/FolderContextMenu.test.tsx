@@ -298,7 +298,7 @@ describe('Folder context menu', () => {
         expect(screen.queryByTestId('context-menu')).toBeNull();
     });
 
-    it('context menu shows all eleven items with separators', async () => {
+    it('context menu shows all items with separators', async () => {
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
         await waitFor(() => {
             expect(screen.getByTestId('task-tree-item-feature1')).toBeTruthy();
@@ -307,7 +307,7 @@ describe('Folder context menu', () => {
         fireEvent.contextMenu(screen.getByTestId('task-tree-item-feature1'));
         expect(screen.getByText('Copy Path')).toBeTruthy();
         expect(screen.getByText('Copy Absolute Path')).toBeTruthy();
-        expect(screen.getByText('Queue All Tasks')).toBeTruthy();
+        expect(screen.getAllByText('Queue All Tasks').length).toBeGreaterThanOrEqual(1);
         expect(screen.getByText('Archive Folder')).toBeTruthy();
         expect(screen.getByText('Rename Folder')).toBeTruthy();
         expect(screen.getByText('Create Subfolder')).toBeTruthy();
@@ -385,6 +385,72 @@ describe('Folder context menu', () => {
         // GenerateTaskDialog should open
         await waitFor(() => {
             expect(document.getElementById('generate-task-overlay')).toBeTruthy();
+        });
+    });
+
+    it('"Queue All Tasks" has a submenu with Follow Prompt', async () => {
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree-item-feature1')).toBeTruthy();
+        });
+
+        fireEvent.contextMenu(screen.getByTestId('task-tree-item-feature1'));
+        expect(screen.getByTestId('context-menu')).toBeTruthy();
+
+        // "Queue All Tasks" is a submenu parent — find its wrapper and hover
+        const queueItems = screen.getAllByText('Queue All Tasks');
+        expect(queueItems.length).toBeGreaterThanOrEqual(1);
+
+        // The parent item should have aria-haspopup
+        const parentItem = queueItems[0].closest('[data-testid^="context-menu-item-"]');
+        expect(parentItem).toBeTruthy();
+        const parentButton = parentItem!.querySelector('[aria-haspopup="true"]');
+        expect(parentButton).toBeTruthy();
+
+        // Hover to open submenu
+        fireEvent.mouseEnter(parentItem!);
+
+        // Submenu should contain "Follow Prompt"
+        const followPromptItems = screen.getAllByText('Follow Prompt');
+        expect(followPromptItems.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('"Follow Prompt" in Queue submenu opens FollowPromptDialog', async () => {
+        global.fetch = vi.fn().mockImplementation((url: string) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            if (url.includes('queue/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ models: [] }) });
+            }
+            if (url.includes('/prompts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ prompts: [] }) });
+            }
+            if (url.includes('/skills')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ skills: [] }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
+        });
+
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree-item-feature1')).toBeTruthy();
+        });
+
+        fireEvent.contextMenu(screen.getByTestId('task-tree-item-feature1'));
+
+        // Hover the Queue All Tasks parent to open submenu
+        const parentItem = screen.getAllByText('Queue All Tasks')[0].closest('[data-testid^="context-menu-item-"]');
+        fireEvent.mouseEnter(parentItem!);
+
+        // Click "Follow Prompt" in the submenu
+        const followPrompt = screen.getAllByText('Follow Prompt')[0];
+        fireEvent.click(followPrompt);
+
+        // FollowPromptDialog should open
+        await waitFor(() => {
+            expect(screen.getByText('Follow Prompt')).toBeTruthy();
+            expect(document.getElementById('follow-prompt-submenu')).toBeTruthy();
         });
     });
 

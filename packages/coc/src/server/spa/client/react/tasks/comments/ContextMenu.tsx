@@ -5,7 +5,7 @@
  * visual separators between logical groups of items.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 
 const VIEWPORT_MARGIN = 8;
@@ -15,6 +15,7 @@ export interface ContextMenuItem {
     icon?: string;
     disabled?: boolean;
     separator?: boolean;
+    children?: ContextMenuItem[];
     onClick: () => void;
 }
 
@@ -48,6 +49,106 @@ export function clampMenuPosition(
     if (y < margin) y = margin;
 
     return { x, y };
+}
+
+function SubmenuItem({
+    item,
+    idx,
+    onClose,
+}: {
+    item: ContextMenuItem;
+    idx: number;
+    onClose: () => void;
+}) {
+    const [open, setOpen] = useState(false);
+    const rowRef = useRef<HTMLDivElement>(null);
+    const subRef = useRef<HTMLDivElement>(null);
+
+    const handleEnter = useCallback(() => setOpen(true), []);
+    const handleLeave = useCallback((e: React.MouseEvent) => {
+        const related = e.relatedTarget as Node | null;
+        if (
+            subRef.current?.contains(related) ||
+            rowRef.current?.contains(related)
+        ) return;
+        setOpen(false);
+    }, []);
+
+    return (
+        <div
+            ref={rowRef}
+            className="relative"
+            onMouseEnter={handleEnter}
+            onMouseLeave={handleLeave}
+            data-testid={`context-menu-item-${idx}`}
+        >
+            <button
+                className={`w-full text-left px-3 py-1.5 text-xs transition-colors flex items-center justify-between ${
+                    item.disabled
+                        ? 'text-[#a0a0a0] dark:text-[#5a5a5a] cursor-default'
+                        : 'text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer'
+                }`}
+                disabled={item.disabled}
+                role="menuitem"
+                aria-haspopup="true"
+                aria-expanded={open}
+                onClick={(e) => {
+                    e.stopPropagation();
+                    setOpen(prev => !prev);
+                }}
+            >
+                <span>
+                    {item.icon && <span className="mr-1.5">{item.icon}</span>}
+                    {item.label}
+                </span>
+                <span className="ml-2 text-[10px] text-[#848484]">▶</span>
+            </button>
+            {open && item.children && (
+                <div
+                    ref={subRef}
+                    className="absolute left-full top-0 z-[10005] min-w-[160px] max-w-[240px] bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] shadow-xl rounded-md py-1"
+                    onMouseLeave={handleLeave}
+                    data-testid={`context-submenu-${idx}`}
+                    role="menu"
+                >
+                    {item.children.map((child, ci) => {
+                        if (child.separator) {
+                            return (
+                                <div
+                                    key={`sub-sep-${ci}`}
+                                    className="my-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]"
+                                    role="separator"
+                                />
+                            );
+                        }
+                        return (
+                            <button
+                                key={ci}
+                                className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
+                                    child.disabled
+                                        ? 'text-[#a0a0a0] dark:text-[#5a5a5a] cursor-default'
+                                        : 'text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer'
+                                }`}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (!child.disabled) {
+                                        child.onClick();
+                                        onClose();
+                                    }
+                                }}
+                                disabled={child.disabled}
+                                role="menuitem"
+                                data-testid={`context-submenu-${idx}-item-${ci}`}
+                            >
+                                {child.icon && <span className="mr-1.5">{child.icon}</span>}
+                                {child.label}
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
+        </div>
+    );
 }
 
 export function ContextMenu({ position, items, onClose }: ContextMenuProps) {
@@ -106,6 +207,16 @@ export function ContextMenu({ position, items, onClose }: ContextMenuProps) {
                     );
                 }
                 const idx = itemIndex++;
+                if (item.children && item.children.length > 0) {
+                    return (
+                        <SubmenuItem
+                            key={i}
+                            item={item}
+                            idx={idx}
+                            onClose={onClose}
+                        />
+                    );
+                }
                 return (
                     <button
                         key={i}
