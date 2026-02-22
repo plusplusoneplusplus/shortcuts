@@ -27545,9 +27545,9 @@
       });
     }, [state.processes, state.workspace, state.statusFilter, state.searchQuery]);
     if (filtered.length === 0) {
-      return /* @__PURE__ */ (0, import_jsx_runtime13.jsx)("div", { className: "flex-1 flex items-center justify-center text-[#848484] text-sm p-4", children: "No processes found" });
+      return /* @__PURE__ */ (0, import_jsx_runtime13.jsx)("div", { className: "py-6 text-center text-sm text-[#848484]", children: "No processes found" });
     }
-    return /* @__PURE__ */ (0, import_jsx_runtime13.jsx)("div", { className: "flex-1 overflow-y-auto flex flex-col gap-1 p-2", children: filtered.map((p) => {
+    return /* @__PURE__ */ (0, import_jsx_runtime13.jsx)("div", { className: "flex flex-col gap-1 p-2", children: filtered.map((p) => {
       const isActive = state.selectedId === p.id;
       const duration = p.status === "running" && p.startTime ? formatDuration(now - new Date(p.startTime).getTime()) : p.duration != null ? formatDuration(p.duration) : "";
       const preview = p.promptPreview ? p.promptPreview.length > 80 ? p.promptPreview.slice(0, 80) + "\u2026" : p.promptPreview : p.id;
@@ -28726,7 +28726,7 @@
       dispatch({ type: "SELECT_QUEUE_TASK", id: task.id });
       appDispatch({ type: "SELECT_PROCESS", id: null });
     };
-    return /* @__PURE__ */ (0, import_jsx_runtime19.jsxs)("div", { className: "flex flex-col gap-3 min-h-0", children: [
+    return /* @__PURE__ */ (0, import_jsx_runtime19.jsxs)("div", { className: "flex flex-col gap-3 min-h-0 border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-2", children: [
       draining && /* @__PURE__ */ (0, import_jsx_runtime19.jsxs)("div", { className: "rounded bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 px-3 py-2 text-xs font-medium", children: [
         "\u26A0\uFE0F Server shutting down \u2014 draining ",
         drainRunning,
@@ -29514,8 +29514,10 @@
     return /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { id: "view-processes", className: "flex h-[calc(100vh-48px)] overflow-hidden", children: [
       /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("aside", { className: "w-[320px] min-w-[320px] max-w-[320px] shrink-0 min-h-0 flex flex-col border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]", children: [
         /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(ProcessFilters, {}),
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(ProcessList, {}),
-        /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { className: "border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-2 min-h-0", children: /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(QueuePanel, {}) })
+        /* @__PURE__ */ (0, import_jsx_runtime21.jsxs)("div", { className: "flex-1 min-h-0 overflow-y-auto flex flex-col", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(ProcessList, {}),
+          /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(QueuePanel, {})
+        ] })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("main", { className: "flex-1 min-w-0 min-h-0 flex flex-col bg-white dark:bg-[#1e1e1e]", children: queueState.selectedTaskId ? /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(QueueTaskDetail, {}) : /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(ProcessDetail, {}) })
     ] });
