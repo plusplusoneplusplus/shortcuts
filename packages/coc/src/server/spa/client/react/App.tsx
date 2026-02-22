@@ -14,6 +14,7 @@ import { useWebSocket } from './hooks/useWebSocket';
 import { fetchApi } from './hooks/useApi';
 import { ToastContainer, useToast } from './shared';
 import { MarkdownReviewDialog } from './processes/MarkdownReviewDialog';
+import { EnqueueDialog } from './queue/EnqueueDialog';
 
 interface MarkdownReviewDialogState {
     open: boolean;
@@ -208,6 +209,7 @@ function AppInner() {
             <TopBar />
             <Router />
             <ToastContainer toasts={toasts} removeToast={removeToast} />
+            <EnqueueDialog />
             <MarkdownReviewDialog
                 open={reviewDialog.open}
                 onClose={() => setReviewDialog(prev => ({ ...prev, open: false }))}

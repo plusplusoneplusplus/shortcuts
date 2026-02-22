@@ -1,12 +1,12 @@
 /**
  * QueueView — top-level Queue sub-tab.
- * Mounts queue overlays (enqueue dialog) and hydrates queue state.
+ * Hydrates queue state on mount.
  * The sidebar queue summary is rendered inside ProcessesView.
+ * EnqueueDialog is rendered at the App level so it's accessible from any tab.
  */
 
 import { useEffect } from 'react';
 import { useQueue } from '../context/QueueContext';
-import { EnqueueDialog } from './EnqueueDialog';
 import { fetchApi } from '../hooks/useApi';
 
 export function QueueView() {
@@ -34,9 +34,5 @@ export function QueueView() {
         });
     }, [dispatch]);
 
-    return (
-        <>
-            <EnqueueDialog />
-        </>
-    );
+    return null;
 }
