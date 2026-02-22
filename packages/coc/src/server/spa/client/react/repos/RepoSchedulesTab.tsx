@@ -244,6 +244,90 @@ function StatusDot({ status, isRunning }: { status: string; isRunning: boolean }
     }
 }
 
+interface ScheduleTemplateParam {
+    key: string;
+    placeholder: string;
+}
+
+interface ScheduleTemplate {
+    id: string;
+    label: string;
+    emoji: string;
+    name: string;
+    target: string;
+    cronExpr: string;
+    intervalValue: string;
+    intervalUnit: string;
+    mode: 'cron' | 'interval';
+    params: ScheduleTemplateParam[];
+    hint: string;
+}
+
+export const SCHEDULE_TEMPLATES: ScheduleTemplate[] = [
+    {
+        id: 'auto-commit',
+        label: 'Auto-commit directory',
+        emoji: '💾',
+        name: 'Auto-commit',
+        target: '.vscode/schedules/auto-commit.md',
+        cronExpr: '0 * * * *',
+        intervalValue: '1',
+        intervalUnit: 'hours',
+        mode: 'interval',
+        params: [
+            { key: 'directory', placeholder: './src' },
+            { key: 'message', placeholder: 'chore: auto-save' },
+        ],
+        hint: 'Target file must exist at .vscode/schedules/auto-commit.md',
+    },
+    {
+        id: 'run-pipeline',
+        label: 'Run pipeline',
+        emoji: '🚀',
+        name: 'Run Pipeline',
+        target: 'pipelines/my-pipeline/pipeline.yaml',
+        cronExpr: '0 9 * * *',
+        intervalValue: '1',
+        intervalUnit: 'days',
+        mode: 'cron',
+        params: [
+            { key: 'pipeline', placeholder: 'pipelines/my-pipeline/pipeline.yaml' },
+        ],
+        hint: 'Ensure the pipeline YAML file exists at the specified target path',
+    },
+    {
+        id: 'pull-sync',
+        label: 'Pull & sync',
+        emoji: '🔄',
+        name: 'Pull & Sync',
+        target: '.vscode/schedules/pull-sync.md',
+        cronExpr: '*/30 * * * *',
+        intervalValue: '30',
+        intervalUnit: 'minutes',
+        mode: 'interval',
+        params: [
+            { key: 'directory', placeholder: '.' },
+        ],
+        hint: 'Target file must exist at .vscode/schedules/pull-sync.md',
+    },
+    {
+        id: 'clean-outputs',
+        label: 'Clean old outputs',
+        emoji: '🧹',
+        name: 'Clean Old Outputs',
+        target: '.vscode/schedules/clean-outputs.md',
+        cronExpr: '0 0 * * 0',
+        intervalValue: '7',
+        intervalUnit: 'days',
+        mode: 'cron',
+        params: [
+            { key: 'directory', placeholder: './dist' },
+            { key: 'maxAgeDays', placeholder: '7' },
+        ],
+        hint: 'Target file must exist at .vscode/schedules/clean-outputs.md',
+    },
+];
+
 function CreateScheduleForm({ workspaceId, onCreated, onCancel }: {
     workspaceId: string;
     onCreated: () => void;
@@ -258,6 +342,36 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel }: {
     const [onFailure, setOnFailure] = useState('notify');
     const [error, setError] = useState('');
     const [submitting, setSubmitting] = useState(false);
+    const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
+    const [params, setParams] = useState<Record<string, string>>({});
+
+    const applyTemplate = (templateId: string) => {
+        if (selectedTemplate === templateId) {
+            setSelectedTemplate(null);
+            setName('');
+            setTarget('');
+            setMode('interval');
+            setCron('0 9 * * *');
+            setIntervalValue('1');
+            setIntervalUnit('hours');
+            setParams({});
+            return;
+        }
+        const tpl = SCHEDULE_TEMPLATES.find(t => t.id === templateId);
+        if (!tpl) return;
+        setSelectedTemplate(templateId);
+        setName(tpl.name);
+        setTarget(tpl.target);
+        setMode(tpl.mode);
+        setCron(tpl.cronExpr);
+        setIntervalValue(tpl.intervalValue);
+        setIntervalUnit(tpl.intervalUnit);
+        const defaults: Record<string, string> = {};
+        for (const p of tpl.params) {
+            defaults[p.key] = p.placeholder;
+        }
+        setParams(defaults);
+    };
 
     const intervalToCron = (): string => {
         const val = parseInt(intervalValue, 10) || 1;
@@ -288,7 +402,7 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel }: {
                     name: name.trim(),
                     target: target.trim(),
                     cron: cronExpr,
-                    params: {},
+                    params,
                     onFailure,
                 }),
             });
@@ -309,6 +423,26 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel }: {
         <Card className="p-3">
             <form onSubmit={handleSubmit} className="flex flex-col gap-2">
                 <div className="text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc]">New Schedule</div>
+
+                {/* Template picker */}
+                <div className="flex gap-1.5 overflow-x-auto pb-1" data-testid="template-picker">
+                    {SCHEDULE_TEMPLATES.map(tpl => (
+                        <button
+                            key={tpl.id}
+                            type="button"
+                            className={cn(
+                                'flex-shrink-0 text-[10px] px-2 py-1 rounded border whitespace-nowrap transition-colors',
+                                selectedTemplate === tpl.id
+                                    ? 'border-[#0078d4] bg-[#0078d4]/10 text-[#0078d4] ring-1 ring-[#0078d4]'
+                                    : 'border-[#d0d0d0] dark:border-[#555] text-[#616161] dark:text-[#999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2a2a]'
+                            )}
+                            onClick={() => applyTemplate(tpl.id)}
+                            data-testid={`template-${tpl.id}`}
+                        >
+                            {tpl.emoji} {tpl.label}
+                        </button>
+                    ))}
+                </div>
 
                 <input
                     className="text-xs px-2 py-1.5 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc]"
@@ -378,6 +512,40 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel }: {
                         <option value="stop">Stop</option>
                     </select>
                 </div>
+
+                {/* Dynamic params fields */}
+                {selectedTemplate && (() => {
+                    const tpl = SCHEDULE_TEMPLATES.find(t => t.id === selectedTemplate);
+                    if (!tpl || tpl.params.length === 0) return null;
+                    return (
+                        <div className="flex flex-col gap-1.5" data-testid="template-params">
+                            <div className="text-[10px] uppercase text-[#848484] font-medium">Parameters</div>
+                            {tpl.params.map(p => (
+                                <div key={p.key} className="flex items-center gap-1.5 text-xs">
+                                    <span className="text-[#616161] dark:text-[#999] w-20 text-right flex-shrink-0">{p.key}:</span>
+                                    <input
+                                        className="flex-1 px-2 py-1 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc]"
+                                        placeholder={p.placeholder}
+                                        value={params[p.key] ?? ''}
+                                        onChange={e => setParams(prev => ({ ...prev, [p.key]: e.target.value }))}
+                                        data-testid={`param-${p.key}`}
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    );
+                })()}
+
+                {/* Template hint */}
+                {selectedTemplate && (() => {
+                    const tpl = SCHEDULE_TEMPLATES.find(t => t.id === selectedTemplate);
+                    if (!tpl) return null;
+                    return (
+                        <div className="text-[10px] italic text-[#848484]" data-testid="template-hint">
+                            {tpl.hint}
+                        </div>
+                    );
+                })()}
 
                 {error && <div className="text-[10px] text-red-500">{error}</div>}
 
