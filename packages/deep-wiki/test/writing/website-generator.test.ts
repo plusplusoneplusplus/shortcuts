@@ -1561,6 +1561,36 @@ describe('generateHtmlTemplate — domain-based sidebar', () => {
         const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
         expect(html).toContain('.nav-domain-children { padding-left: 8px; }');
     });
+
+    it('buildDomainSidebar should use nav-domain-* classes matching CSS (not nav-area-*)', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        // The DOM-building JS must use the same class names as the CSS selectors
+        expect(html).not.toContain("'nav-area-group'");
+        expect(html).not.toContain("'nav-area-item'");
+        expect(html).not.toContain("'nav-area-children'");
+        expect(html).not.toContain("'nav-area-component'");
+        // Verify correct classes are used in DOM building
+        expect(html).toContain("'nav-domain-group'");
+        expect(html).toContain("'nav-domain-item'");
+        expect(html).toContain("'nav-domain-children'");
+        expect(html).toContain("'nav-domain-component'");
+    });
+
+    it('setActive should query nav-domain-component matching DOM classes', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        // setActive queries must match the classes used in DOM building
+        expect(html).toContain(".nav-domain-component[data-id=");
+        expect(html).not.toContain(".nav-area-component[data-id=");
+    });
+
+    it('sidebar search should query nav-domain-* classes matching DOM classes', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        // Search queries must match actual DOM classes
+        expect(html).toContain('.nav-domain-component[data-id]');
+        expect(html).toContain('.nav-domain-group');
+        expect(html).not.toContain('.nav-area-component[data-id]');
+        expect(html).not.toContain('.nav-area-group');
+    });
 });
 
 // ============================================================================

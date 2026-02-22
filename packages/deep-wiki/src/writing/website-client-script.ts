@@ -244,20 +244,20 @@ ${enableSearch ? `
                 if (components.length === 0) return;
 
                 var group = document.createElement('div');
-                group.className = 'nav-area-group';
+                group.className = 'nav-domain-group';
 
                 var domainItem = document.createElement('div');
-                domainItem.className = 'nav-area-item';
+                domainItem.className = 'nav-domain-item';
                 domainItem.setAttribute('data-domain-id', area.id);
                 domainItem.innerHTML = escapeHtml(area.name);
                 group.appendChild(domainItem);
 
                 var childrenEl = document.createElement('div');
-                childrenEl.className = 'nav-area-children';
+                childrenEl.className = 'nav-domain-children';
 
                 components.forEach(function(mod) {
                     var item = document.createElement('div');
-                    item.className = 'nav-area-component';
+                    item.className = 'nav-domain-component';
                     item.setAttribute('data-id', mod.id);
                     item.innerHTML = escapeHtml(mod.name);
                     item.onclick = function() { loadComponent(mod.id); };
@@ -271,17 +271,17 @@ ${enableSearch ? `
             var otherComponents = domainComponents['__other'] || [];
             if (otherComponents.length > 0) {
                 var group = document.createElement('div');
-                group.className = 'nav-area-group';
+                group.className = 'nav-domain-group';
                 var domainItem = document.createElement('div');
-                domainItem.className = 'nav-area-item';
+                domainItem.className = 'nav-domain-item';
                 domainItem.innerHTML = 'Other';
                 group.appendChild(domainItem);
 
                 var childrenEl = document.createElement('div');
-                childrenEl.className = 'nav-area-children';
+                childrenEl.className = 'nav-domain-children';
                 otherComponents.forEach(function(mod) {
                     var item = document.createElement('div');
-                    item.className = 'nav-area-component';
+                    item.className = 'nav-domain-component';
                     item.setAttribute('data-id', mod.id);
                     item.innerHTML = escapeHtml(mod.name);
                     item.onclick = function() { loadComponent(mod.id); };
@@ -303,19 +303,19 @@ ${enableSearch ? `
 
             Object.keys(categories).sort().forEach(function(category) {
                 var group = document.createElement('div');
-                group.className = 'nav-area-group';
+                group.className = 'nav-domain-group';
 
                 var catItem = document.createElement('div');
-                catItem.className = 'nav-area-item';
+                catItem.className = 'nav-domain-item';
                 catItem.innerHTML = escapeHtml(category);
                 group.appendChild(catItem);
 
                 var childrenEl = document.createElement('div');
-                childrenEl.className = 'nav-area-children';
+                childrenEl.className = 'nav-domain-children';
 
                 categories[category].forEach(function(mod) {
                     var item = document.createElement('div');
-                    item.className = 'nav-area-component';
+                    item.className = 'nav-domain-component';
                     item.setAttribute('data-id', mod.id);
                     item.innerHTML = escapeHtml(mod.name);
                     item.onclick = function() { loadComponent(mod.id); };
