@@ -6,13 +6,10 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Spinner } from '../shared';
 import { cn } from '../shared/cn';
 import { fetchApi } from '../hooks/useApi';
+import { useMermaid } from '../hooks/useMermaid';
 
 declare const marked: { parse(md: string): string } | undefined;
 declare const hljs: { highlightElement(el: Element): void } | undefined;
-declare const mermaid: {
-    initialize(config: Record<string, unknown>): void;
-    run(opts: { nodes: NodeListOf<Element> }): Promise<void>;
-} | undefined;
 
 interface ComponentInfo {
     id: string;
@@ -44,17 +41,6 @@ interface TocItem {
     id: string;
     text: string;
     level: number;
-}
-
-const MERMAID_MIN_ZOOM = 0.25;
-const MERMAID_MAX_ZOOM = 4;
-const MERMAID_ZOOM_STEP = 0.25;
-
-function isDarkTheme(): boolean {
-    const theme = document.documentElement.getAttribute('data-theme');
-    if (theme === 'dark') return true;
-    if (theme === 'light') return false;
-    return window.matchMedia('(prefers-color-scheme: dark)').matches;
 }
 
 export function WikiComponent({ wikiId, componentId, graph, onSelectComponent }: WikiComponentProps) {
@@ -121,36 +107,21 @@ export function WikiComponent({ wikiId, componentId, graph, onSelectComponent }:
         });
         setToc(headings);
 
-        // Mermaid
-        if (typeof mermaid !== 'undefined') {
-            const blocks = container.querySelectorAll('pre code.language-mermaid');
-            if (blocks.length > 0) {
-                blocks.forEach(block => {
-                    const pre = block.parentElement;
-                    if (!pre) return;
-                    const code = block.textContent || '';
-                    const wrapper = document.createElement('div');
-                    wrapper.className = 'mermaid-container';
-                    wrapper.innerHTML =
-                        '<div class="mermaid-viewport"><div class="mermaid-svg-wrapper"><pre class="mermaid">' +
-                        code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') +
-                        '</pre></div></div>';
-                    pre.parentNode!.replaceChild(wrapper, pre);
-                });
-
-                mermaid!.initialize({
-                    startOnLoad: false,
-                    theme: isDarkTheme() ? 'dark' : 'default',
-                    securityLevel: 'loose',
-                    flowchart: { useMaxWidth: false, htmlLabels: true, curve: 'basis' },
-                    fontSize: 14,
-                });
-                const mermaidNodes = container.querySelectorAll('.mermaid');
-                if (mermaidNodes.length > 0) {
-                    mermaid!.run({ nodes: mermaidNodes }).catch(() => {});
-                }
-            }
-        }
+        // Transform mermaid blocks to structure expected by useMermaid hook
+        container.querySelectorAll('pre code.language-mermaid').forEach(block => {
+            const pre = block.parentElement;
+            if (!pre) return;
+            const code = block.textContent || '';
+            const wrapper = document.createElement('div');
+            wrapper.className = 'mermaid-container';
+            wrapper.innerHTML =
+                '<div class="mermaid-header">Diagram</div>' +
+                '<div class="mermaid-source" style="display:none"><code>' +
+                code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') +
+                '</code></div>' +
+                '<div class="mermaid-content"></div>';
+            pre.parentNode!.replaceChild(wrapper, pre);
+        });
 
         // Scroll spy
         const scrollEl = scrollRef.current;
@@ -167,6 +138,9 @@ export function WikiComponent({ wikiId, componentId, graph, onSelectComponent }:
         scrollEl.addEventListener('scroll', onScroll);
         return () => scrollEl.removeEventListener('scroll', onScroll);
     }, [html]);
+
+    // Mermaid zoom/pan/source-toggle/collapse via shared hook
+    useMermaid(contentRef, html);
 
     // Scroll to top on component change
     useEffect(() => {

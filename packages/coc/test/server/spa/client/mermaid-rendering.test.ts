@@ -231,6 +231,12 @@ describe('useMermaid hook module', () => {
         expect(content).toContain('export function useMermaid');
     });
 
+    it('accepts optional contentKey parameter for re-triggering', () => {
+        const hookPath = path.resolve(__dirname, '../../../../src/server/spa/client/react/hooks/useMermaid.ts');
+        const content = fs.readFileSync(hookPath, 'utf8');
+        expect(content).toMatch(/useMermaid\(rootRef.*contentKey/);
+    });
+
     it('handles mermaid CDN loading', async () => {
         const hookPath = path.resolve(__dirname, '../../../../src/server/spa/client/react/hooks/useMermaid.ts');
         const content = fs.readFileSync(hookPath, 'utf8');
@@ -241,5 +247,51 @@ describe('useMermaid hook module', () => {
         const hookPath = path.resolve(__dirname, '../../../../src/server/spa/client/react/hooks/useMermaid.ts');
         const content = fs.readFileSync(hookPath, 'utf8');
         expect(content).toContain('theme');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// WikiComponent mermaid integration
+// ---------------------------------------------------------------------------
+
+describe('WikiComponent mermaid integration', () => {
+    const wikiComponentPath = path.resolve(
+        __dirname,
+        '../../../../src/server/spa/client/react/wiki/WikiComponent.tsx',
+    );
+    const tsx = fs.readFileSync(wikiComponentPath, 'utf8');
+
+    it('imports useMermaid hook', () => {
+        expect(tsx).toContain("import { useMermaid } from '../hooks/useMermaid'");
+    });
+
+    it('calls useMermaid with contentRef and html as contentKey', () => {
+        expect(tsx).toMatch(/useMermaid\(contentRef,\s*html\)/);
+    });
+
+    it('does not call mermaid.initialize directly', () => {
+        expect(tsx).not.toContain('mermaid.initialize');
+        expect(tsx).not.toContain('mermaid!.initialize');
+    });
+
+    it('does not call mermaid.run directly', () => {
+        expect(tsx).not.toContain('mermaid.run');
+        expect(tsx).not.toContain('mermaid!.run');
+    });
+
+    it('does not declare mermaid global type', () => {
+        expect(tsx).not.toMatch(/declare const mermaid/);
+    });
+
+    it('produces mermaid-container with header, source, and content divs', () => {
+        expect(tsx).toContain('mermaid-container');
+        expect(tsx).toContain('mermaid-header');
+        expect(tsx).toContain('mermaid-source');
+        expect(tsx).toContain('mermaid-content');
+    });
+
+    it('does not produce old viewport/svg-wrapper structure', () => {
+        expect(tsx).not.toContain('mermaid-viewport');
+        expect(tsx).not.toContain('mermaid-svg-wrapper');
     });
 });

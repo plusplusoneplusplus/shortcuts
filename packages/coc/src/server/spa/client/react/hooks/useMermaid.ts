@@ -269,7 +269,7 @@ function reinitMermaidTheme(): void {
 
 // ── Hook ───────────────────────────────────────────────────────────────
 
-export function useMermaid(rootRef: React.RefObject<HTMLElement | null>): void {
+export function useMermaid(rootRef: React.RefObject<HTMLElement | null>, contentKey?: unknown): void {
     const initDone = useRef(false);
 
     useEffect(() => {
@@ -280,7 +280,7 @@ export function useMermaid(rootRef: React.RefObject<HTMLElement | null>): void {
         initMermaid(el).then(() => {
             initDone.current = true;
         }).catch(() => { /* error already shown in container */ });
-    }, [rootRef.current]);
+    }, [rootRef.current, contentKey]);
 
     // Theme change observer
     useEffect(() => {
