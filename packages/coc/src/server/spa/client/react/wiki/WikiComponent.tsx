@@ -239,7 +239,7 @@ export function WikiComponent({ wikiId, componentId, graph, onSelectComponent }:
                 )}
                 <div
                     ref={contentRef}
-                    className="markdown-body text-sm text-[#1e1e1e] dark:text-[#cccccc]"
+                    className="wiki-body markdown-body text-sm text-[#1e1e1e] dark:text-[#cccccc]"
                     dangerouslySetInnerHTML={{ __html: html }}
                 />
             </div>
