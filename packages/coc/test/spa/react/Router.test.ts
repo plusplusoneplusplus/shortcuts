@@ -523,6 +523,32 @@ describe('parsePipelineDeepLink', () => {
     it('handles URL-encoded repo ID', () => {
         expect(parsePipelineDeepLink('#repos/my%20repo/pipelines/pipe1')).toBe('pipe1');
     });
+
+    it('returns null from bare #repos', () => {
+        expect(parsePipelineDeepLink('#repos')).toBeNull();
+    });
+
+    it('returns null from #repos/ws-abc with no sub-tab', () => {
+        expect(parsePipelineDeepLink('#repos/ws-abc')).toBeNull();
+    });
+
+    it('returns null from #processes/some-id', () => {
+        expect(parsePipelineDeepLink('#processes/some-id')).toBeNull();
+    });
+});
+
+// ─── pipeline deep-link integration ────────────────────────────
+
+describe('pipeline deep-link integration', () => {
+    it('tabFromHash returns "repos" for #repos/ws-abc/pipelines/my-pipeline', () => {
+        expect(tabFromHash('#repos/ws-abc/pipelines/my-pipeline')).toBe('repos');
+    });
+
+    it('parsePipelineDeepLink and tabFromHash compose correctly for a pipeline deep link', () => {
+        const hash = '#repos/ws-abc/pipelines/my-pipeline';
+        expect(tabFromHash(hash)).toBe('repos');
+        expect(parsePipelineDeepLink(hash)).toBe('my-pipeline');
+    });
 });
 
 // ─── handleHash pipeline integration (dispatch simulation) ──────
