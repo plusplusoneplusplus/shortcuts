@@ -1113,7 +1113,7 @@
             var dispatcher = resolveDispatcher();
             return dispatcher.useCallback(callback, deps);
           }
-          function useMemo11(create, deps) {
+          function useMemo10(create, deps) {
             var dispatcher = resolveDispatcher();
             return dispatcher.useMemo(create, deps);
           }
@@ -1885,7 +1885,7 @@
           exports.useImperativeHandle = useImperativeHandle;
           exports.useInsertionEffect = useInsertionEffect;
           exports.useLayoutEffect = useLayoutEffect;
-          exports.useMemo = useMemo11;
+          exports.useMemo = useMemo10;
           exports.useReducer = useReducer4;
           exports.useRef = useRef24;
           exports.useState = useState54;
@@ -28363,6 +28363,12 @@
       target.parentToolCallId = incoming.parentToolCallId;
     }
   }
+  function removeFromTaskStack(activeTaskStack, toolCallId) {
+    const idx = activeTaskStack.lastIndexOf(toolCallId);
+    if (idx >= 0) {
+      activeTaskStack.splice(idx, 1);
+    }
+  }
   function toMillis(iso) {
     if (!iso) return null;
     const ms = new Date(iso).getTime();
@@ -28458,6 +28464,7 @@
     let hasContent = false;
     const callsById = /* @__PURE__ */ new Map();
     const callOrder = [];
+    const activeTaskStack = [];
     const renderedContentTexts = /* @__PURE__ */ new Set();
     for (let i = 0; i < timeline.length; i++) {
       const item = timeline[i];
@@ -28465,7 +28472,8 @@
       if (item.type === "content") {
         const html = toContentHtml(item.content || "");
         if (html) {
-          chunks.push({ kind: "content", key: `content-${i}`, html });
+          const parentToolId = activeTaskStack.length > 0 ? activeTaskStack[activeTaskStack.length - 1] : void 0;
+          chunks.push({ kind: "content", key: `content-${i}`, html, parentToolId });
           hasContent = true;
           if (item.content) renderedContentTexts.add(item.content.trim());
         }
@@ -28480,6 +28488,12 @@
           callsById.set(incoming.id, incoming);
           callOrder.push(incoming.id);
           chunks.push({ kind: "tool", key: `tool-${incoming.id}`, toolId: incoming.id });
+        }
+        if (item.type === "tool-start" && incoming.toolName === "task") {
+          removeFromTaskStack(activeTaskStack, incoming.id);
+          activeTaskStack.push(incoming.id);
+        } else if ((item.type === "tool-complete" || item.type === "tool-failed") && incoming.toolName === "task") {
+          removeFromTaskStack(activeTaskStack, incoming.id);
         }
       }
     }
@@ -28509,6 +28523,16 @@
         toolsWithChildren.add(parentId);
       }
     }
+    const chunksByParent = /* @__PURE__ */ new Map();
+    for (const chunk of chunks) {
+      const parentId = chunk.kind === "tool" ? chunk.toolId ? toolParentById.get(chunk.toolId) : void 0 : chunk.parentToolId && inferredById.has(chunk.parentToolId) ? chunk.parentToolId : void 0;
+      if (!parentId) continue;
+      if (!chunksByParent.has(parentId)) {
+        chunksByParent.set(parentId, []);
+      }
+      chunksByParent.get(parentId).push(chunk);
+      toolsWithChildren.add(parentId);
+    }
     if (!hasContent) {
       const fallbackHtml = toContentHtml(turn.content || "");
       if (fallbackHtml) {
@@ -28520,7 +28544,14 @@
         chunks.push({ kind: "tool", key: `tool-${call.id}`, toolId: call.id });
       }
     }
-    return { chunks, toolById: inferredById, toolDepthById, toolParentById, toolsWithChildren };
+    return {
+      chunks,
+      chunksByParent,
+      toolById: inferredById,
+      toolDepthById,
+      toolParentById,
+      toolsWithChildren
+    };
   }
   function ConversationTurnBubble({ turn }) {
     const isUser = turn.role === "user";
@@ -28528,19 +28559,8 @@
     const userContentHtml = isUser ? toContentHtml(turn.content || "") : "";
     const [collapsedTaskIds, setCollapsedTaskIds] = (0, import_react13.useState)({});
     const { showReportIntent } = useDisplaySettings();
-    const childrenByParent = (0, import_react13.useMemo)(() => {
-      if (!assistantRender) return /* @__PURE__ */ new Map();
-      const map2 = /* @__PURE__ */ new Map();
-      for (const [toolId] of assistantRender.toolById) {
-        const parentId = assistantRender.toolParentById.get(toolId);
-        if (parentId) {
-          if (!map2.has(parentId)) map2.set(parentId, []);
-          map2.get(parentId).push(toolId);
-        }
-      }
-      return map2;
-    }, [assistantRender]);
     function renderToolTree(toolId, depth) {
+      if (depth > 20) return null;
       const toolCall = assistantRender.toolById.get(toolId);
       if (!toolCall) return null;
       if (toolCall.toolName === "report_intent") {
@@ -28565,8 +28585,8 @@
           toolId
         );
       }
-      const childIds = childrenByParent.get(toolId) ?? [];
-      const hasSubtools = childIds.length > 0;
+      const childChunks = assistantRender.chunksByParent.get(toolId) ?? [];
+      const hasSubtools = childChunks.length > 0;
       const isCollapsed = collapsedTaskIds[toolId] ?? true;
       return /* @__PURE__ */ (0, import_jsx_runtime16.jsx)(
         ToolCallView,
@@ -28576,7 +28596,15 @@
           hasSubtools,
           subtoolsCollapsed: isCollapsed,
           onToggleSubtools: () => setCollapsedTaskIds((prev) => ({ ...prev, [toolId]: !(prev[toolId] ?? true) })),
-          children: hasSubtools ? childIds.map((childId) => renderToolTree(childId, depth + 1)) : void 0
+          children: hasSubtools ? childChunks.map((childChunk) => {
+            if (childChunk.kind === "content" && childChunk.html) {
+              return /* @__PURE__ */ (0, import_jsx_runtime16.jsx)(MarkdownView, { html: childChunk.html }, childChunk.key);
+            }
+            if (childChunk.kind === "tool" && childChunk.toolId) {
+              return renderToolTree(childChunk.toolId, depth + 1);
+            }
+            return null;
+          }) : void 0
         },
         toolId
       );
@@ -28626,6 +28654,9 @@
             isUser && userContentHtml && /* @__PURE__ */ (0, import_jsx_runtime16.jsx)(MarkdownView, { html: userContentHtml }),
             !isUser && assistantRender && assistantRender.chunks.map((chunk) => {
               if (chunk.kind === "content" && chunk.html) {
+                if (chunk.parentToolId && assistantRender.toolById.has(chunk.parentToolId)) {
+                  return null;
+                }
                 return /* @__PURE__ */ (0, import_jsx_runtime16.jsx)(MarkdownView, { html: chunk.html }, chunk.key);
               }
               if (chunk.kind === "tool" && chunk.toolId) {
@@ -35715,6 +35746,18 @@
     error: { label: "Error", badge: "failed" },
     pending: { label: "Setup Required", badge: "warning" }
   };
+  function shortenPath2(fullPath) {
+    if (!fullPath) return fullPath;
+    const home = typeof process !== "undefined" && process.env?.HOME ? process.env.HOME : typeof process !== "undefined" && process.env?.USERPROFILE ? process.env.USERPROFILE : null;
+    if (home && fullPath.startsWith(home)) {
+      return "~" + fullPath.slice(home.length);
+    }
+    const homeMatch = fullPath.match(/^(\/(?:Users|home)\/[^/]+)/);
+    if (homeMatch) {
+      return "~" + fullPath.slice(homeMatch[1].length);
+    }
+    return fullPath;
+  }
   function relativeTime(dateStr) {
     const d = new Date(dateStr);
     const now = Date.now();
@@ -35807,6 +35850,18 @@
                   }
                 )
               ] }),
+              wiki.repoPath && /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(
+                "div",
+                {
+                  className: "text-xs text-[#848484] truncate mt-1",
+                  style: { direction: "rtl", textAlign: "left" },
+                  title: wiki.repoPath,
+                  children: /* @__PURE__ */ (0, import_jsx_runtime55.jsxs)("span", { style: { direction: "ltr", unicodeBidi: "embed" }, children: [
+                    "\u{1F4C2} ",
+                    shortenPath2(wiki.repoPath)
+                  ] })
+                }
+              ),
               /* @__PURE__ */ (0, import_jsx_runtime55.jsxs)("div", { className: "flex justify-end gap-1 mt-2", onClick: (e) => e.stopPropagation(), children: [
                 /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(
                   "button",

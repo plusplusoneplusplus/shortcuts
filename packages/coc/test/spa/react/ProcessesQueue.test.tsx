@@ -508,7 +508,7 @@ describe('ConversationTurnBubble', () => {
         expect(screen.getByText('bash')).toBeDefined();
     });
 
-    it('interleaves content and tool calls based on timeline order', () => {
+    it('keeps task-scoped content ordered inside the task subtree', () => {
         render(
             <Wrap>
                 <ConversationTurnBubble
@@ -565,11 +565,63 @@ describe('ConversationTurnBubble', () => {
 
         const text = document.body.textContent || '';
         expect(text.indexOf('SEGMENT_ONE')).toBeLessThan(text.indexOf('task'));
-        // view and glob are now nested inside the task card (hierarchical rendering)
-        expect(text.indexOf('task')).toBeLessThan(text.indexOf('view'));
+        // SEGMENT_TWO and SEGMENT_THREE should stay inside task scope, not drift to conversation end.
+        expect(text.indexOf('task')).toBeLessThan(text.indexOf('SEGMENT_TWO'));
+        expect(text.indexOf('SEGMENT_TWO')).toBeLessThan(text.indexOf('view'));
         expect(text.indexOf('view')).toBeLessThan(text.indexOf('glob'));
-        expect(text.indexOf('glob')).toBeLessThan(text.indexOf('SEGMENT_TWO'));
-        expect(text.indexOf('SEGMENT_TWO')).toBeLessThan(text.indexOf('SEGMENT_THREE'));
+        expect(text.indexOf('glob')).toBeLessThan(text.indexOf('SEGMENT_THREE'));
+
+        const taskCard = document.querySelector('[data-tool-id="task-1"]') as HTMLElement | null;
+        const taskChildrenText = taskCard?.querySelector('.tool-call-children')?.textContent || '';
+        expect(taskChildrenText).toContain('SEGMENT_TWO');
+        expect(taskChildrenText).toContain('SEGMENT_THREE');
+    });
+
+    it('renders content after task completion at root level', () => {
+        render(
+            <Wrap>
+                <ConversationTurnBubble
+                    turn={{
+                        role: 'assistant',
+                        content: '',
+                        timeline: [
+                            {
+                                type: 'tool-start',
+                                timestamp: '2026-02-19T00:00:00.000Z',
+                                toolCall: {
+                                    id: 'task-complete-1',
+                                    toolName: 'task',
+                                    args: { agent_type: 'explore', description: 'Trace renderer flow' },
+                                    startTime: '2026-02-19T00:00:00.000Z',
+                                    status: 'running',
+                                },
+                            },
+                            { type: 'content', timestamp: '2026-02-19T00:00:01.000Z', content: 'INSIDE_TASK' },
+                            {
+                                type: 'tool-complete',
+                                timestamp: '2026-02-19T00:00:02.000Z',
+                                toolCall: {
+                                    id: 'task-complete-1',
+                                    toolName: 'task',
+                                    args: { agent_type: 'explore', description: 'Trace renderer flow' },
+                                    startTime: '2026-02-19T00:00:00.000Z',
+                                    endTime: '2026-02-19T00:00:02.000Z',
+                                    status: 'completed',
+                                },
+                            },
+                            { type: 'content', timestamp: '2026-02-19T00:00:03.000Z', content: 'OUTSIDE_TASK' },
+                        ],
+                    }}
+                />
+            </Wrap>
+        );
+
+        const taskCard = document.querySelector('[data-tool-id="task-complete-1"]') as HTMLElement | null;
+        const taskChildrenText = taskCard?.querySelector('.tool-call-children')?.textContent || '';
+        expect(taskChildrenText).toContain('INSIDE_TASK');
+        expect(taskChildrenText).not.toContain('OUTSIDE_TASK');
+
+        expect(screen.getByText('OUTSIDE_TASK')).toBeDefined();
     });
 
     it('renders child tool calls under parent task depth', () => {

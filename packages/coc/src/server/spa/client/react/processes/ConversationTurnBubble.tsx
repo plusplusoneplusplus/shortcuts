@@ -1,7 +1,7 @@
 /**
  * ConversationTurnBubble — role-aware chat bubble for conversation turns.
  */
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { cn } from '../shared';
 import type { ClientConversationTurn } from '../types/dashboard';
 import { MarkdownView } from './MarkdownView';
@@ -31,6 +31,7 @@ interface RenderChunk {
     key: string;
     html?: string;
     toolId?: string;
+    parentToolId?: string;
 }
 
 const HTML_LIKE_RE = /<[a-z][\s\S]*>/i;
@@ -81,6 +82,13 @@ function mergeToolCall(target: RenderToolCall, incoming: RenderToolCall): void {
     if (incoming.endTime) target.endTime = incoming.endTime;
     if (incoming.parentToolCallId && !target.parentToolCallId) {
         target.parentToolCallId = incoming.parentToolCallId;
+    }
+}
+
+function removeFromTaskStack(activeTaskStack: string[], toolCallId: string): void {
+    const idx = activeTaskStack.lastIndexOf(toolCallId);
+    if (idx >= 0) {
+        activeTaskStack.splice(idx, 1);
     }
 }
 
@@ -199,6 +207,7 @@ function buildToolDepthMap(calls: RenderToolCall[]): Map<string, number> {
 
 function buildAssistantRender(turn: ClientConversationTurn): {
     chunks: RenderChunk[];
+    chunksByParent: Map<string, RenderChunk[]>;
     toolById: Map<string, RenderToolCall>;
     toolDepthById: Map<string, number>;
     toolParentById: Map<string, string>;
@@ -210,6 +219,7 @@ function buildAssistantRender(turn: ClientConversationTurn): {
 
     const callsById = new Map<string, RenderToolCall>();
     const callOrder: string[] = [];
+    const activeTaskStack: string[] = [];
     // Track content texts rendered inline so we can suppress duplicate tool results.
     // This handles the case where a sub-agent (e.g. explore task) streams its output as a
     // content event and the SDK also surfaces the same text as the tool-complete result.
@@ -222,7 +232,10 @@ function buildAssistantRender(turn: ClientConversationTurn): {
         if (item.type === 'content') {
             const html = toContentHtml(item.content || '');
             if (html) {
-                chunks.push({ kind: 'content', key: `content-${i}`, html });
+                const parentToolId = activeTaskStack.length > 0
+                    ? activeTaskStack[activeTaskStack.length - 1]
+                    : undefined;
+                chunks.push({ kind: 'content', key: `content-${i}`, html, parentToolId });
                 hasContent = true;
                 if (item.content) renderedContentTexts.add((item.content as string).trim());
             }
@@ -238,6 +251,13 @@ function buildAssistantRender(turn: ClientConversationTurn): {
                 callsById.set(incoming.id, incoming);
                 callOrder.push(incoming.id);
                 chunks.push({ kind: 'tool', key: `tool-${incoming.id}`, toolId: incoming.id });
+            }
+
+            if (item.type === 'tool-start' && incoming.toolName === 'task') {
+                removeFromTaskStack(activeTaskStack, incoming.id);
+                activeTaskStack.push(incoming.id);
+            } else if ((item.type === 'tool-complete' || item.type === 'tool-failed') && incoming.toolName === 'task') {
+                removeFromTaskStack(activeTaskStack, incoming.id);
             }
         }
     }
@@ -275,6 +295,19 @@ function buildAssistantRender(turn: ClientConversationTurn): {
         }
     }
 
+    const chunksByParent = new Map<string, RenderChunk[]>();
+    for (const chunk of chunks) {
+        const parentId = chunk.kind === 'tool'
+            ? (chunk.toolId ? toolParentById.get(chunk.toolId) : undefined)
+            : (chunk.parentToolId && inferredById.has(chunk.parentToolId) ? chunk.parentToolId : undefined);
+        if (!parentId) continue;
+        if (!chunksByParent.has(parentId)) {
+            chunksByParent.set(parentId, []);
+        }
+        chunksByParent.get(parentId)!.push(chunk);
+        toolsWithChildren.add(parentId);
+    }
+
     if (!hasContent) {
         const fallbackHtml = toContentHtml(turn.content || '');
         if (fallbackHtml) {
@@ -288,7 +321,14 @@ function buildAssistantRender(turn: ClientConversationTurn): {
         }
     }
 
-    return { chunks, toolById: inferredById, toolDepthById, toolParentById, toolsWithChildren };
+    return {
+        chunks,
+        chunksByParent,
+        toolById: inferredById,
+        toolDepthById,
+        toolParentById,
+        toolsWithChildren,
+    };
 }
 
 export function ConversationTurnBubble({ turn }: ConversationTurnBubbleProps) {
@@ -298,20 +338,8 @@ export function ConversationTurnBubble({ turn }: ConversationTurnBubbleProps) {
     const [collapsedTaskIds, setCollapsedTaskIds] = useState<Record<string, boolean>>({});
     const { showReportIntent } = useDisplaySettings();
 
-    const childrenByParent = useMemo(() => {
-        if (!assistantRender) return new Map<string, string[]>();
-        const map = new Map<string, string[]>();
-        for (const [toolId] of assistantRender.toolById) {
-            const parentId = assistantRender.toolParentById.get(toolId);
-            if (parentId) {
-                if (!map.has(parentId)) map.set(parentId, []);
-                map.get(parentId)!.push(toolId);
-            }
-        }
-        return map;
-    }, [assistantRender]);
-
     function renderToolTree(toolId: string, depth: number): React.ReactNode {
+        if (depth > 20) return null;
         const toolCall = assistantRender!.toolById.get(toolId);
         if (!toolCall) return null;
 
@@ -335,8 +363,8 @@ export function ConversationTurnBubble({ turn }: ConversationTurnBubbleProps) {
             );
         }
 
-        const childIds = childrenByParent.get(toolId) ?? [];
-        const hasSubtools = childIds.length > 0;
+        const childChunks = assistantRender!.chunksByParent.get(toolId) ?? [];
+        const hasSubtools = childChunks.length > 0;
         const isCollapsed = collapsedTaskIds[toolId] ?? true;
         return (
             <ToolCallView
@@ -349,7 +377,17 @@ export function ConversationTurnBubble({ turn }: ConversationTurnBubbleProps) {
                     setCollapsedTaskIds((prev) => ({ ...prev, [toolId]: !(prev[toolId] ?? true) }))
                 }
             >
-                {hasSubtools ? childIds.map((childId) => renderToolTree(childId, depth + 1)) : undefined}
+                {hasSubtools
+                    ? childChunks.map((childChunk) => {
+                        if (childChunk.kind === 'content' && childChunk.html) {
+                            return <MarkdownView key={childChunk.key} html={childChunk.html} />;
+                        }
+                        if (childChunk.kind === 'tool' && childChunk.toolId) {
+                            return renderToolTree(childChunk.toolId, depth + 1);
+                        }
+                        return null;
+                    })
+                    : undefined}
             </ToolCallView>
         );
     }
@@ -401,6 +439,10 @@ export function ConversationTurnBubble({ turn }: ConversationTurnBubbleProps) {
                     {isUser && userContentHtml && <MarkdownView html={userContentHtml} />}
                     {!isUser && assistantRender && assistantRender.chunks.map((chunk) => {
                         if (chunk.kind === 'content' && chunk.html) {
+                            // Content emitted while a sub-task is active should render under that task.
+                            if (chunk.parentToolId && assistantRender.toolById.has(chunk.parentToolId)) {
+                                return null;
+                            }
                             return <MarkdownView key={chunk.key} html={chunk.html} />;
                         }
                         if (chunk.kind === 'tool' && chunk.toolId) {
