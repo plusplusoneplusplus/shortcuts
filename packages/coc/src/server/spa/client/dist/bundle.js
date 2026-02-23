@@ -35915,19 +35915,18 @@
         wrapper.innerHTML = '<div class="mermaid-header">Diagram</div><div class="mermaid-source" style="display:none"><code>' + code.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") + '</code></div><div class="mermaid-content"></div>';
         pre.parentNode.replaceChild(wrapper, pre);
       });
-      const scrollEl = scrollRef.current;
-      if (!scrollEl) return;
       const onScroll = () => {
         let activeId = null;
         container2.querySelectorAll("h2, h3, h4").forEach((h) => {
-          if (h.offsetTop - 80 <= scrollEl.scrollTop) {
+          if (h.getBoundingClientRect().top <= 120) {
             activeId = h.id;
           }
         });
         setActiveHeading(activeId);
       };
-      scrollEl.addEventListener("scroll", onScroll);
-      return () => scrollEl.removeEventListener("scroll", onScroll);
+      onScroll();
+      window.addEventListener("scroll", onScroll);
+      return () => window.removeEventListener("scroll", onScroll);
     }, [html]);
     (0, import_react60.useEffect)(() => {
       const container2 = contentRef.current;
@@ -35949,7 +35948,9 @@
     }, [html]);
     useMermaid(contentRef, html);
     (0, import_react60.useEffect)(() => {
-      if (scrollRef.current) scrollRef.current.scrollTop = 0;
+      if (typeof scrollRef.current?.scrollIntoView === "function") {
+        scrollRef.current.scrollIntoView({ block: "start" });
+      }
     }, [componentId]);
     const scrollToHeading = (0, import_react60.useCallback)((id) => {
       const el = contentRef.current?.querySelector("#" + CSS.escape(id));
@@ -35963,7 +35964,7 @@
       medium: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400",
       high: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
     };
-    return /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("div", { className: "h-full overflow-y-auto", ref: scrollRef, id: "wiki-article-content", children: /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)("div", { className: "flex items-start", id: "wiki-content-scroll", children: [
+    return /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("div", { className: "h-full", ref: scrollRef, id: "wiki-article-content", children: /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)("div", { className: "flex items-start", id: "wiki-content-scroll", children: [
       /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)("div", { className: "flex-1 min-w-0 p-4 wiki-content-scroll", children: [
         comp && /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)("div", { className: "mb-4 space-y-2", children: [
           /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)("div", { className: "flex items-center gap-2 flex-wrap", children: [
@@ -39698,7 +39699,7 @@
             onSelect: handleSelectComponent
           }
         ) }),
-        /* @__PURE__ */ (0, import_jsx_runtime62.jsx)("div", { className: "flex-1 min-w-0 overflow-hidden", children: renderContent() })
+        /* @__PURE__ */ (0, import_jsx_runtime62.jsx)("div", { className: "flex-1 min-w-0", children: renderContent() })
       ] })
     ] });
   }
