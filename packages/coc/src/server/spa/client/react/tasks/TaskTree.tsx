@@ -121,7 +121,17 @@ export function TaskTree({ tree, commentCounts, wsId, initialFolderPath, initial
         onColumnsChange?.();
     };
 
-    const handleFileClick = (path: string) => {
+    const handleFileClick = (path: string, colIndex: number) => {
+        // Collapse any deeper stale folder columns when opening a file.
+        setColumns(prev => prev.slice(0, colIndex + 1));
+
+        const newKeys = activeFolderKeysRef.current.slice(0, colIndex);
+        setActiveFolderKeys(newKeys);
+        activeFolderKeysRef.current = newKeys;
+
+        const parentFolderPath = path.includes('/') ? path.split('/').slice(0, -1).join('/') : null;
+        setSelectedFolderPath(parentFolderPath);
+
         setOpenFilePath(path);
         const encoded = path.split('/').map(encodeURIComponent).join('/');
         history.replaceState(null, '', `#repos/${encodeURIComponent(wsId)}/tasks/${encoded}`);
@@ -166,7 +176,7 @@ export function TaskTree({ tree, commentCounts, wsId, initialFolderPath, initial
                                         folderMdCount={folderMdCount}
                                         showContextFiles={showContextFiles}
                                         onFolderClick={(folder) => handleFolderClick(folder, colIndex)}
-                                        onFileClick={handleFileClick}
+                                        onFileClick={(path) => handleFileClick(path, colIndex)}
                                         onCheckboxChange={handleCheckboxChange}
                                         onFolderContextMenu={onFolderContextMenu}
                                     />

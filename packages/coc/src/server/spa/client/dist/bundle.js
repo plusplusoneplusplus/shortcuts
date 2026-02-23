@@ -28374,7 +28374,8 @@
     const ms = new Date(iso).getTime();
     return Number.isFinite(ms) ? ms : null;
   }
-  function inferParentToolCalls(calls) {
+  function inferParentToolCalls(calls, options) {
+    const enableTrailingTaskFallback = options?.enableTrailingTaskFallback ?? true;
     const cloned = calls.map((call) => ({ ...call }));
     const ordered = cloned.map((call, originalIndex) => ({
       call,
@@ -28414,14 +28415,16 @@
         activeTaskStack.push({ id: call.id, endMs: item.endMs });
       }
     }
-    let lastTaskId;
-    for (const call of cloned) {
-      if (call.toolName === "task") {
-        lastTaskId = call.id;
-        continue;
-      }
-      if (!call.parentToolCallId && lastTaskId) {
-        call.parentToolCallId = lastTaskId;
+    if (enableTrailingTaskFallback) {
+      let lastTaskId;
+      for (const call of cloned) {
+        if (call.toolName === "task") {
+          lastTaskId = call.id;
+          continue;
+        }
+        if (!call.parentToolCallId && lastTaskId) {
+          call.parentToolCallId = lastTaskId;
+        }
       }
     }
     return cloned;
@@ -28465,6 +28468,7 @@
     const callsById = /* @__PURE__ */ new Map();
     const callOrder = [];
     const activeTaskStack = [];
+    let hasTimelineToolEvents = false;
     const renderedContentTexts = /* @__PURE__ */ new Set();
     for (let i = 0; i < timeline.length; i++) {
       const item = timeline[i];
@@ -28480,7 +28484,18 @@
         continue;
       }
       if (typeof item.type === "string" && item.type.startsWith("tool-") && item.toolCall) {
+        hasTimelineToolEvents = true;
         const incoming = normalizeToolCall(item.toolCall, `tool-${i}`);
+        const activeParent = activeTaskStack.length > 0 ? activeTaskStack[activeTaskStack.length - 1] : void 0;
+        if (!incoming.parentToolCallId && activeParent) {
+          if (incoming.toolName === "task") {
+            if (item.type === "tool-start" && incoming.id !== activeParent) {
+              incoming.parentToolCallId = activeParent;
+            }
+          } else {
+            incoming.parentToolCallId = activeParent;
+          }
+        }
         const existing = callsById.get(incoming.id);
         if (existing) {
           mergeToolCall(existing, incoming);
@@ -28510,7 +28525,9 @@
       }
     }
     const orderedCalls = callOrder.map((id) => callsById.get(id)).filter((call) => Boolean(call));
-    const inferred = inferParentToolCalls(orderedCalls);
+    const inferred = inferParentToolCalls(orderedCalls, {
+      enableTrailingTaskFallback: !hasTimelineToolEvents
+    });
     const inferredById = /* @__PURE__ */ new Map();
     inferred.forEach((call) => inferredById.set(call.id, call));
     const toolDepthById = buildToolDepthMap(inferred);
@@ -31583,7 +31600,13 @@
       setSelectedFolderPath(getFolderKey(folder));
       onColumnsChange?.();
     };
-    const handleFileClick = (path) => {
+    const handleFileClick = (path, colIndex) => {
+      setColumns((prev) => prev.slice(0, colIndex + 1));
+      const newKeys = activeFolderKeysRef.current.slice(0, colIndex);
+      setActiveFolderKeys(newKeys);
+      activeFolderKeysRef.current = newKeys;
+      const parentFolderPath = path.includes("/") ? path.split("/").slice(0, -1).join("/") : null;
+      setSelectedFolderPath(parentFolderPath);
       setOpenFilePath(path);
       const encoded = path.split("/").map(encodeURIComponent).join("/");
       history.replaceState(null, "", `#repos/${encodeURIComponent(wsId)}/tasks/${encoded}`);
@@ -31619,7 +31642,7 @@
                     folderMdCount,
                     showContextFiles,
                     onFolderClick: (folder) => handleFolderClick(folder, colIndex),
-                    onFileClick: handleFileClick,
+                    onFileClick: (path2) => handleFileClick(path2, colIndex),
                     onCheckboxChange: handleCheckboxChange,
                     onFolderContextMenu
                   },

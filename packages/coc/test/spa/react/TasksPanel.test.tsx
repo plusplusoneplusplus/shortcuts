@@ -435,6 +435,34 @@ describe('TasksPanel — folder click clears preview', () => {
         singleDocuments: [],
     };
 
+    const nestedSiblingTree = {
+        name: 'tasks',
+        relativePath: '',
+        children: [
+            {
+                name: 'coc',
+                relativePath: 'coc',
+                children: [
+                    {
+                        name: 'chat',
+                        relativePath: 'coc/chat',
+                        children: [],
+                        documentGroups: [],
+                        singleDocuments: [],
+                    },
+                ],
+                documentGroups: [],
+                singleDocuments: [
+                    { baseName: 'fix-wiki-graph', fileName: 'fix-wiki-graph.md', relativePath: 'coc', isArchived: false },
+                ],
+            },
+        ],
+        documentGroups: [],
+        singleDocuments: [
+            { baseName: 'README', fileName: 'README.md', relativePath: '', isArchived: false },
+        ],
+    };
+
     beforeEach(() => {
         fetchSpy = vi.fn();
         global.fetch = fetchSpy;
@@ -539,6 +567,84 @@ describe('TasksPanel — folder click clears preview', () => {
             expect(screen.getByTestId('miller-column-1')).toBeTruthy();
         });
         expect(document.querySelector('#task-preview-body')).toBeNull();
+    });
+
+    it('collapses stale deeper column when opening a sibling file', async () => {
+        fetchSpy.mockImplementation((url: string) => {
+            if (url.includes('tasks/content')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ content: '# Fix wiki graph' }) });
+            }
+            if (url.includes('/comments/')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ comments: [] }) });
+            }
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve(nestedSiblingTree) });
+        });
+
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree-item-coc')).toBeTruthy();
+        });
+
+        // Open coc folder in column 1.
+        fireEvent.click(screen.getByTestId('task-tree-item-coc'));
+        await waitFor(() => {
+            expect(screen.getByTestId('miller-column-1')).toBeTruthy();
+        });
+
+        // Open nested chat folder in column 2.
+        fireEvent.click(screen.getByTestId('task-tree-item-chat'));
+        await waitFor(() => {
+            expect(screen.getByTestId('miller-column-2')).toBeTruthy();
+        });
+
+        // Open sibling file from the same column as "chat".
+        fireEvent.click(screen.getByTestId('task-tree-item-fix-wiki-graph'));
+        await waitFor(() => {
+            expect(document.querySelector('#task-preview-body')).toBeTruthy();
+        });
+        await waitFor(() => {
+            expect(screen.queryByTestId('miller-column-2')).toBeNull();
+        });
+        expect(screen.getByTestId('miller-column-1')).toBeTruthy();
+    });
+
+    it('collapses child column when opening a root-level file', async () => {
+        fetchSpy.mockImplementation((url: string) => {
+            if (url.includes('tasks/content')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ content: '# Root readme' }) });
+            }
+            if (url.includes('/comments/')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ comments: [] }) });
+            }
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve(nestedSiblingTree) });
+        });
+
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree-item-coc')).toBeTruthy();
+        });
+
+        // Open coc folder first.
+        fireEvent.click(screen.getByTestId('task-tree-item-coc'));
+        await waitFor(() => {
+            expect(screen.getByTestId('miller-column-1')).toBeTruthy();
+        });
+
+        // Open root-level README; child folder column should collapse.
+        fireEvent.click(screen.getByTestId('task-tree-item-README'));
+        await waitFor(() => {
+            expect(document.querySelector('#task-preview-body')).toBeTruthy();
+        });
+        await waitFor(() => {
+            expect(screen.queryByTestId('miller-column-1')).toBeNull();
+        });
+        expect(screen.getByTestId('miller-column-0')).toBeTruthy();
     });
 });
 
