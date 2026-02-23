@@ -34,6 +34,19 @@ export interface UpdateCommentRequest {
     anchor?: CommentAnchor;
 }
 
+export interface DocumentContext {
+    surroundingLines?: string;
+    nearestHeading?: string;
+    allHeadings?: string[];
+    filePath?: string;
+}
+
+export interface AskAIOptions {
+    commandId?: string;
+    customQuestion?: string;
+    documentContext?: DocumentContext;
+}
+
 export interface SelectionCapture {
     selection: {
         text: string;
@@ -73,7 +86,10 @@ export interface UseTaskCommentsReturn {
     deleteComment: (id: string) => Promise<void>;
     resolveComment: (id: string) => Promise<TaskComment>;
     unresolveComment: (id: string) => Promise<TaskComment>;
-    askAI: (id: string, question?: string) => Promise<void>;
+    askAI: (id: string, options?: AskAIOptions) => Promise<void>;
+    aiLoadingIds: Set<string>;
+    aiErrors: Map<string, string>;
+    clearAiError: (id: string) => void;
     refresh: () => Promise<void>;
 }
 
@@ -82,6 +98,8 @@ export function useTaskComments(wsId: string, taskPath: string): UseTaskComments
     const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [aiLoadingIds, setAiLoadingIds] = useState<Set<string>>(new Set());
+    const [aiErrors, setAiErrors] = useState<Map<string, string>>(new Map());
     const mountedRef = useRef(true);
 
     useEffect(() => {
@@ -173,19 +191,37 @@ export function useTaskComments(wsId: string, taskPath: string): UseTaskComments
         return updateCommentFn(id, { status: 'open' });
     }, [updateCommentFn]);
 
-    const askAI = useCallback(async (id: string, question?: string): Promise<void> => {
-        const url = commentUrl(wsId, taskPath, id) + '/ask-ai';
-        const res = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ question }),
-        });
-        if (!res.ok) throw new Error('AI request failed');
-        const data = await res.json();
-        if (mountedRef.current) {
-            setComments(prev => prev.map(c => c.id === id ? { ...c, aiResponse: data.aiResponse } : c));
+    const askAI = useCallback(async (id: string, options: AskAIOptions = {}): Promise<void> => {
+        const { commandId, customQuestion, documentContext } = options;
+        setAiLoadingIds(prev => new Set(prev).add(id));
+        setAiErrors(prev => { const m = new Map(prev); m.delete(id); return m; });
+        try {
+            const url = commentUrl(wsId, taskPath, id) + '/ask-ai';
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ commandId, customQuestion, documentContext }),
+            });
+            if (!res.ok) throw new Error('AI request failed');
+            const data = await res.json();
+            if (mountedRef.current) {
+                setComments(prev => prev.map(c => c.id === id ? { ...c, aiResponse: data.aiResponse } : c));
+            }
+        } catch (err) {
+            if (mountedRef.current) {
+                const msg = err instanceof Error ? err.message : 'AI request failed';
+                setAiErrors(prev => new Map(prev).set(id, msg));
+            }
+        } finally {
+            if (mountedRef.current) {
+                setAiLoadingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+            }
         }
     }, [wsId, taskPath]);
+
+    const clearAiError = useCallback((id: string) => {
+        setAiErrors(prev => { const m = new Map(prev); m.delete(id); return m; });
+    }, []);
 
     const refresh = useCallback(async () => {
         await Promise.all([fetchComments(), fetchCounts()]);
@@ -202,6 +238,9 @@ export function useTaskComments(wsId: string, taskPath: string): UseTaskComments
         resolveComment,
         unresolveComment,
         askAI,
+        aiLoadingIds,
+        aiErrors,
+        clearAiError,
         refresh,
     };
 }

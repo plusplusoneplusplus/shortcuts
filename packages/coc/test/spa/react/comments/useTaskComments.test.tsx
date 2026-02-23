@@ -195,6 +195,281 @@ describe('useTaskComments', () => {
         expect(result.current.comments[0].aiResponse).toBe('AI says hello');
     });
 
+    // ======================================================================
+    // askAI: extended signature, loading/error states
+    // ======================================================================
+
+    it('askAI forwards commandId in POST body', async () => {
+        const comment = makeComment({ id: 'c1' });
+        let capturedBody: any;
+
+        fetchSpy.mockImplementation((url: string, opts?: any) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ counts: {} }) });
+            }
+            if (opts?.method === 'POST' && url.includes('ask-ai')) {
+                capturedBody = JSON.parse(opts.body);
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ aiResponse: 'ok' }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ comments: [comment] }) });
+        });
+
+        const { result } = renderHook(() => useTaskComments('ws1', 'task1.md'));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        await act(async () => {
+            await result.current.askAI('c1', { commandId: 'clarify' });
+        });
+
+        expect(capturedBody.commandId).toBe('clarify');
+        expect(capturedBody.customQuestion).toBeUndefined();
+    });
+
+    it('askAI forwards customQuestion in POST body', async () => {
+        const comment = makeComment({ id: 'c1' });
+        let capturedBody: any;
+
+        fetchSpy.mockImplementation((url: string, opts?: any) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ counts: {} }) });
+            }
+            if (opts?.method === 'POST' && url.includes('ask-ai')) {
+                capturedBody = JSON.parse(opts.body);
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ aiResponse: 'ok' }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ comments: [comment] }) });
+        });
+
+        const { result } = renderHook(() => useTaskComments('ws1', 'task1.md'));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        await act(async () => {
+            await result.current.askAI('c1', { customQuestion: 'Why?' });
+        });
+
+        expect(capturedBody.customQuestion).toBe('Why?');
+        expect(capturedBody.commandId).toBeUndefined();
+    });
+
+    it('askAI forwards documentContext in POST body', async () => {
+        const comment = makeComment({ id: 'c1' });
+        let capturedBody: any;
+        const ctx = { filePath: 'foo.md', nearestHeading: '## Intro' };
+
+        fetchSpy.mockImplementation((url: string, opts?: any) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ counts: {} }) });
+            }
+            if (opts?.method === 'POST' && url.includes('ask-ai')) {
+                capturedBody = JSON.parse(opts.body);
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ aiResponse: 'ok' }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ comments: [comment] }) });
+        });
+
+        const { result } = renderHook(() => useTaskComments('ws1', 'task1.md'));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        await act(async () => {
+            await result.current.askAI('c1', { documentContext: ctx });
+        });
+
+        expect(capturedBody.documentContext).toEqual(ctx);
+    });
+
+    it('askAI sets aiLoadingIds during fetch', async () => {
+        const comment = makeComment({ id: 'c1' });
+        let resolveFetch!: (v: any) => void;
+
+        fetchSpy.mockImplementation((url: string, opts?: any) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ counts: {} }) });
+            }
+            if (opts?.method === 'POST' && url.includes('ask-ai')) {
+                return new Promise(r => { resolveFetch = r; });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ comments: [comment] }) });
+        });
+
+        const { result } = renderHook(() => useTaskComments('ws1', 'task1.md'));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        // Start the request but don't resolve it
+        let askPromise: Promise<void>;
+        act(() => {
+            askPromise = result.current.askAI('c1', { commandId: 'clarify' });
+        });
+
+        // Loading should be true while pending
+        await waitFor(() => expect(result.current.aiLoadingIds.has('c1')).toBe(true));
+
+        // Resolve the fetch
+        await act(async () => {
+            resolveFetch({ ok: true, json: () => Promise.resolve({ aiResponse: 'done' }) });
+            await askPromise!;
+        });
+
+        expect(result.current.aiLoadingIds.has('c1')).toBe(false);
+    });
+
+    it('askAI clears aiLoadingIds after failure', async () => {
+        const comment = makeComment({ id: 'c1' });
+
+        fetchSpy.mockImplementation((url: string, opts?: any) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ counts: {} }) });
+            }
+            if (opts?.method === 'POST' && url.includes('ask-ai')) {
+                return Promise.reject(new Error('Network error'));
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ comments: [comment] }) });
+        });
+
+        const { result } = renderHook(() => useTaskComments('ws1', 'task1.md'));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        await act(async () => {
+            await result.current.askAI('c1');
+        });
+
+        expect(result.current.aiLoadingIds.has('c1')).toBe(false);
+    });
+
+    it('askAI sets aiErrors on fetch rejection', async () => {
+        const comment = makeComment({ id: 'c1' });
+
+        fetchSpy.mockImplementation((url: string, opts?: any) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ counts: {} }) });
+            }
+            if (opts?.method === 'POST' && url.includes('ask-ai')) {
+                return Promise.reject(new Error('Network error'));
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ comments: [comment] }) });
+        });
+
+        const { result } = renderHook(() => useTaskComments('ws1', 'task1.md'));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        await act(async () => {
+            await result.current.askAI('c1');
+        });
+
+        expect(result.current.aiErrors.get('c1')).toBe('Network error');
+    });
+
+    it('askAI sets aiErrors on non-ok response', async () => {
+        const comment = makeComment({ id: 'c1' });
+
+        fetchSpy.mockImplementation((url: string, opts?: any) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ counts: {} }) });
+            }
+            if (opts?.method === 'POST' && url.includes('ask-ai')) {
+                return Promise.resolve({ ok: false, status: 500 });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ comments: [comment] }) });
+        });
+
+        const { result } = renderHook(() => useTaskComments('ws1', 'task1.md'));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        await act(async () => {
+            await result.current.askAI('c1');
+        });
+
+        expect(result.current.aiErrors.has('c1')).toBe(true);
+    });
+
+    it('askAI clears previous error on retry', async () => {
+        const comment = makeComment({ id: 'c1' });
+        let callCount = 0;
+
+        fetchSpy.mockImplementation((url: string, opts?: any) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ counts: {} }) });
+            }
+            if (opts?.method === 'POST' && url.includes('ask-ai')) {
+                callCount++;
+                if (callCount === 1) {
+                    return Promise.reject(new Error('first failure'));
+                }
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ aiResponse: 'ok' }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ comments: [comment] }) });
+        });
+
+        const { result } = renderHook(() => useTaskComments('ws1', 'task1.md'));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        // First call: fails
+        await act(async () => {
+            await result.current.askAI('c1');
+        });
+        expect(result.current.aiErrors.has('c1')).toBe(true);
+
+        // Retry: succeeds, error should be gone
+        await act(async () => {
+            await result.current.askAI('c1');
+        });
+        expect(result.current.aiErrors.has('c1')).toBe(false);
+    });
+
+    it('clearAiError removes the entry from aiErrors', async () => {
+        const comment = makeComment({ id: 'c1' });
+
+        fetchSpy.mockImplementation((url: string, opts?: any) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ counts: {} }) });
+            }
+            if (opts?.method === 'POST' && url.includes('ask-ai')) {
+                return Promise.reject(new Error('oops'));
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ comments: [comment] }) });
+        });
+
+        const { result } = renderHook(() => useTaskComments('ws1', 'task1.md'));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        await act(async () => {
+            await result.current.askAI('c1');
+        });
+        expect(result.current.aiErrors.has('c1')).toBe(true);
+
+        act(() => {
+            result.current.clearAiError('c1');
+        });
+        expect(result.current.aiErrors.has('c1')).toBe(false);
+    });
+
+    it('askAI with no options does not throw (backward compat)', async () => {
+        const comment = makeComment({ id: 'c1' });
+        let capturedBody: any;
+
+        fetchSpy.mockImplementation((url: string, opts?: any) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ counts: {} }) });
+            }
+            if (opts?.method === 'POST' && url.includes('ask-ai')) {
+                capturedBody = JSON.parse(opts.body);
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ aiResponse: 'ok' }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ comments: [comment] }) });
+        });
+
+        const { result } = renderHook(() => useTaskComments('ws1', 'task1.md'));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        await act(async () => {
+            await result.current.askAI('c1');
+        });
+
+        expect(capturedBody).toBeDefined();
+        expect(capturedBody.commandId).toBeUndefined();
+        expect(capturedBody.customQuestion).toBeUndefined();
+        expect(capturedBody.documentContext).toBeUndefined();
+    });
+
     it('fetches comment counts', async () => {
         fetchSpy.mockImplementation((url: string) => {
             if (url.includes('comment-counts')) {
