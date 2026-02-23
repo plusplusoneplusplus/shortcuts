@@ -23,6 +23,9 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
 
     const { state: queueState, dispatch: queueDispatch } = useQueue();
 
+    // Live-update from per-repo WebSocket events via repoQueueMap
+    const repoQueue = queueState.repoQueueMap[workspaceId];
+
     const fetchQueue = async () => {
         try {
             const data = await fetchApi('/queue?repoId=' + encodeURIComponent(workspaceId));
@@ -38,15 +41,20 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
         setLoading(false);
     };
 
+    // Initial HTTP fetch on mount (authoritative load)
     useEffect(() => {
         setLoading(true);
         fetchQueue();
     }, [workspaceId]);
 
-    // Live-update from queue context WebSocket events
+    // Apply per-repo WS updates directly without HTTP round-trip
     useEffect(() => {
-        fetchQueue();
-    }, [queueState.stats]);
+        if (!repoQueue) return;
+        setRunning(repoQueue.running);
+        setQueued(repoQueue.queued);
+        setHistory(repoQueue.history);
+        setLoading(false);
+    }, [repoQueue]);
 
     // Live timer for running tasks
     const hasActive = useMemo(() => running.length > 0, [running]);

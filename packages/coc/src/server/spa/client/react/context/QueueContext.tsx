@@ -23,6 +23,7 @@ export interface QueueContextState {
     running: any[];
     history: any[];
     stats: QueueStats;
+    repoQueueMap: Record<string, { queued: any[]; running: any[]; history: any[]; stats: QueueStats }>;
     showDialog: boolean;
     dialogInitialFolderPath: string | null;
     showHistory: boolean;
@@ -40,6 +41,7 @@ const initialState: QueueContextState = {
     running: [],
     history: [],
     stats: { queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0, total: 0, isPaused: false, isDraining: false },
+    repoQueueMap: {},
     showDialog: false,
     dialogInitialFolderPath: null,
     showHistory: false,
@@ -56,6 +58,7 @@ const initialState: QueueContextState = {
 
 export type QueueAction =
     | { type: 'QUEUE_UPDATED'; queue: { queued: any[]; running: any[]; history?: any[]; stats: any } }
+    | { type: 'REPO_QUEUE_UPDATED'; repoId: string; queue: { queued: any[]; running: any[]; history?: any[]; stats: any } }
     | { type: 'SEED_QUEUE'; queue: { queued: any[]; running: any[]; stats?: any } }
     | { type: 'SET_HISTORY'; history: any[] }
     | { type: 'DRAIN_START'; queued: number; running: number }
@@ -89,6 +92,18 @@ export function queueReducer(state: QueueContextState, action: QueueAction): Que
                 stats: newStats,
                 showHistory: autoShowHistory,
                 queueInitialized: true,
+            };
+        }
+        case 'REPO_QUEUE_UPDATED': {
+            const repoData = {
+                queued: action.queue.queued || [],
+                running: action.queue.running || [],
+                history: action.queue.history ?? state.repoQueueMap[action.repoId]?.history ?? [],
+                stats: action.queue.stats || { queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0, total: 0, isPaused: false, isDraining: false },
+            };
+            return {
+                ...state,
+                repoQueueMap: { ...state.repoQueueMap, [action.repoId]: repoData },
             };
         }
         case 'SEED_QUEUE': {

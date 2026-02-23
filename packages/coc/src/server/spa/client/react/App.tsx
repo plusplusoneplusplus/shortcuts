@@ -101,12 +101,16 @@ function AppInner() {
                 break;
             case 'queue-updated':
                 if (msg.queue) {
-                    queueDispatch({ type: 'QUEUE_UPDATED', queue: msg.queue });
-                    // Fetch history if not included
-                    if (!msg.queue.history) {
-                        fetchApi('/queue/history').then(data => {
-                            if (data?.history) queueDispatch({ type: 'SET_HISTORY', history: data.history });
-                        }).catch(() => { /* ignore */ });
+                    if (msg.queue.repoId) {
+                        queueDispatch({ type: 'REPO_QUEUE_UPDATED', repoId: msg.queue.repoId, queue: msg.queue });
+                    } else {
+                        queueDispatch({ type: 'QUEUE_UPDATED', queue: msg.queue });
+                        // Fetch history if not included
+                        if (!msg.queue.history) {
+                            fetchApi('/queue/history').then(data => {
+                                if (data?.history) queueDispatch({ type: 'SET_HISTORY', history: data.history });
+                            }).catch(() => { /* ignore */ });
+                        }
                     }
                 }
                 break;

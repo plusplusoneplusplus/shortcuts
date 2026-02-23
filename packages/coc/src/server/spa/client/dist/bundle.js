@@ -26878,6 +26878,7 @@
     running: [],
     history: [],
     stats: { queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0, total: 0, isPaused: false, isDraining: false },
+    repoQueueMap: {},
     showDialog: false,
     dialogInitialFolderPath: null,
     showHistory: false,
@@ -26906,6 +26907,18 @@
           stats: newStats,
           showHistory: autoShowHistory,
           queueInitialized: true
+        };
+      }
+      case "REPO_QUEUE_UPDATED": {
+        const repoData = {
+          queued: action.queue.queued || [],
+          running: action.queue.running || [],
+          history: action.queue.history ?? state.repoQueueMap[action.repoId]?.history ?? [],
+          stats: action.queue.stats || { queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0, total: 0, isPaused: false, isDraining: false }
+        };
+        return {
+          ...state,
+          repoQueueMap: { ...state.repoQueueMap, [action.repoId]: repoData }
         };
       }
       case "SEED_QUEUE": {
@@ -34306,6 +34319,7 @@
     const [loading, setLoading] = (0, import_react50.useState)(true);
     const [now, setNow] = (0, import_react50.useState)(Date.now());
     const { state: queueState, dispatch: queueDispatch } = useQueue();
+    const repoQueue = queueState.repoQueueMap[workspaceId];
     const fetchQueue = async () => {
       try {
         const data = await fetchApi("/queue?repoId=" + encodeURIComponent(workspaceId));
@@ -34325,8 +34339,12 @@
       fetchQueue();
     }, [workspaceId]);
     (0, import_react50.useEffect)(() => {
-      fetchQueue();
-    }, [queueState.stats]);
+      if (!repoQueue) return;
+      setRunning(repoQueue.running);
+      setQueued(repoQueue.queued);
+      setHistory(repoQueue.history);
+      setLoading(false);
+    }, [repoQueue]);
     const hasActive = (0, import_react50.useMemo)(() => running.length > 0, [running]);
     (0, import_react50.useEffect)(() => {
       if (!hasActive) return;
@@ -40709,12 +40727,16 @@
           break;
         case "queue-updated":
           if (msg.queue) {
-            queueDispatch({ type: "QUEUE_UPDATED", queue: msg.queue });
-            if (!msg.queue.history) {
-              fetchApi("/queue/history").then((data) => {
-                if (data?.history) queueDispatch({ type: "SET_HISTORY", history: data.history });
-              }).catch(() => {
-              });
+            if (msg.queue.repoId) {
+              queueDispatch({ type: "REPO_QUEUE_UPDATED", repoId: msg.queue.repoId, queue: msg.queue });
+            } else {
+              queueDispatch({ type: "QUEUE_UPDATED", queue: msg.queue });
+              if (!msg.queue.history) {
+                fetchApi("/queue/history").then((data) => {
+                  if (data?.history) queueDispatch({ type: "SET_HISTORY", history: data.history });
+                }).catch(() => {
+                });
+              }
             }
           }
           break;

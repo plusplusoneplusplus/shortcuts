@@ -85,6 +85,7 @@ export interface QueueHistoryTaskSummary {
 
 /** Queue state snapshot sent via WebSocket. */
 export interface QueueSnapshot {
+    repoId?: string;
     queued: QueueTaskSummary[];
     running: QueueTaskSummary[];
     history?: QueueHistoryTaskSummary[];

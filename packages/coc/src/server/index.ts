@@ -310,9 +310,36 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         }
     };
 
-    // Bridge queue change events from all repos to WebSocket (aggregated snapshot)
+    // Helper to map task arrays to WS-friendly summaries
+    const mapQueued = (t: any) => ({
+        id: t.id, repoId: t.repoId, type: t.type, priority: t.priority,
+        status: t.status, displayName: t.displayName, createdAt: t.createdAt,
+        workingDirectory: (t.payload as any)?.workingDirectory,
+    });
+    const mapRunning = (t: any) => ({
+        ...mapQueued(t), startedAt: t.startedAt,
+    });
+    const mapHistory = (t: any) => ({
+        ...mapRunning(t), completedAt: t.completedAt, error: t.error,
+    });
+
+    // Bridge queue change events from all repos to WebSocket
     bridge.on('queueChange', (event: { repoPath: string; repoId: string; type: string; taskId?: string }) => {
-        // Aggregate queued/running/history across all repos
+        // 1) Per-repo scoped broadcast
+        const repoManager = registry.getQueueForRepo(event.repoPath);
+        const repoStats = repoManager.getStats();
+        wsServer.broadcastProcessEvent({
+            type: 'queue-updated',
+            queue: {
+                repoId: event.repoId,
+                queued: repoManager.getQueued().map(mapQueued),
+                running: repoManager.getRunning().map(mapRunning),
+                history: repoManager.getHistory().map(mapHistory),
+                stats: repoStats,
+            },
+        } as any);
+
+        // 2) Global aggregate broadcast (no repoId) for top-level stats badge
         const allQueued: any[] = [];
         const allRunning: any[] = [];
         const allHistory: any[] = [];
@@ -338,40 +365,9 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         wsServer.broadcastProcessEvent({
             type: 'queue-updated',
             queue: {
-                queued: allQueued.map(t => ({
-                    id: t.id,
-                    repoId: t.repoId,
-                    type: t.type,
-                    priority: t.priority,
-                    status: t.status,
-                    displayName: t.displayName,
-                    createdAt: t.createdAt,
-                    workingDirectory: (t.payload as any)?.workingDirectory,
-                })),
-                running: allRunning.map(t => ({
-                    id: t.id,
-                    repoId: t.repoId,
-                    type: t.type,
-                    priority: t.priority,
-                    status: t.status,
-                    displayName: t.displayName,
-                    createdAt: t.createdAt,
-                    startedAt: t.startedAt,
-                    workingDirectory: (t.payload as any)?.workingDirectory,
-                })),
-                history: allHistory.map(t => ({
-                    id: t.id,
-                    repoId: t.repoId,
-                    type: t.type,
-                    priority: t.priority,
-                    status: t.status,
-                    displayName: t.displayName,
-                    createdAt: t.createdAt,
-                    startedAt: t.startedAt,
-                    completedAt: t.completedAt,
-                    error: t.error,
-                    workingDirectory: (t.payload as any)?.workingDirectory,
-                })),
+                queued: allQueued.map(mapQueued),
+                running: allRunning.map(mapRunning),
+                history: allHistory.map(mapHistory),
                 stats: combinedStats,
             },
         } as any);
