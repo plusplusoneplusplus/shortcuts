@@ -35963,8 +35963,8 @@
       medium: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400",
       high: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
     };
-    return /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)("div", { className: "flex h-full", id: "wiki-article-content", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)("div", { ref: scrollRef, className: "wiki-content-scroll flex-1 overflow-y-auto p-4", id: "wiki-content-scroll", children: [
+    return /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("div", { className: "h-full overflow-y-auto", ref: scrollRef, id: "wiki-article-content", children: /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)("div", { className: "flex items-start", id: "wiki-content-scroll", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)("div", { className: "flex-1 min-w-0 p-4 wiki-content-scroll", children: [
         comp && /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)("div", { className: "mb-4 space-y-2", children: [
           /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)("div", { className: "flex items-center gap-2 flex-wrap", children: [
             /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("h2", { className: "text-lg font-semibold text-[#1e1e1e] dark:text-[#cccccc]", children: comp.name }),
@@ -36006,7 +36006,7 @@
           }
         )
       ] }),
-      toc.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)("aside", { className: "wiki-toc-sidebar w-48 flex-shrink-0 border-l border-[#e0e0e0] dark:border-[#3c3c3c] overflow-y-auto p-3 hidden lg:block", id: "wiki-toc-sidebar", children: [
+      toc.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)("aside", { className: "wiki-toc-sidebar w-48 flex-shrink-0 border-l border-[#e0e0e0] dark:border-[#3c3c3c] p-3 hidden lg:block sticky top-0 max-h-screen overflow-y-auto", id: "wiki-toc-sidebar", children: [
         /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("h4", { className: "text-[10px] font-semibold uppercase text-[#848484] mb-2", children: "On this page" }),
         /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("nav", { id: "wiki-toc-nav", className: "space-y-0.5", children: toc.map((item) => /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(
           "a",
@@ -36027,7 +36027,7 @@
           item.id
         )) })
       ] })
-    ] });
+    ] }) });
   }
 
   // src/server/spa/client/react/wiki/WikiGraph.tsx

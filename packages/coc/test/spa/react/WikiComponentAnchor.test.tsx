@@ -237,3 +237,142 @@ describe('WikiComponent source code verification', () => {
         expect(tsx).toContain('wiki-toc-sidebar');
     });
 });
+
+// ============================================================================
+// WikiComponent TOC sidebar sticky layout
+// ============================================================================
+
+describe('WikiComponent TOC sidebar sticky layout', () => {
+    it('TOC sidebar has sticky positioning classes', () => {
+        const { readFileSync } = require('fs');
+        const { resolve } = require('path');
+        const tsxPath = resolve(
+            __dirname,
+            '../../../src/server/spa/client/react/wiki/WikiComponent.tsx',
+        );
+        const tsx = readFileSync(tsxPath, 'utf-8');
+
+        expect(tsx).toMatch(/wiki-toc-sidebar.*sticky/);
+        expect(tsx).toMatch(/wiki-toc-sidebar.*top-0/);
+        expect(tsx).toMatch(/wiki-toc-sidebar.*max-h-screen/);
+    });
+
+    it('TOC sidebar is inside the scroll container, not a sibling', () => {
+        const { readFileSync } = require('fs');
+        const { resolve } = require('path');
+        const tsxPath = resolve(
+            __dirname,
+            '../../../src/server/spa/client/react/wiki/WikiComponent.tsx',
+        );
+        const tsx = readFileSync(tsxPath, 'utf-8');
+
+        const scrollContainerStart = tsx.indexOf('id="wiki-article-content"');
+        const tocSidebar = tsx.indexOf('id="wiki-toc-sidebar"');
+        const scrollContainerEnd = tsx.indexOf('</div>', tocSidebar);
+        expect(scrollContainerStart).toBeLessThan(tocSidebar);
+        expect(tocSidebar).toBeLessThan(scrollContainerEnd);
+    });
+
+    it('outer container is the scroll host with overflow-y-auto', () => {
+        const { readFileSync } = require('fs');
+        const { resolve } = require('path');
+        const tsxPath = resolve(
+            __dirname,
+            '../../../src/server/spa/client/react/wiki/WikiComponent.tsx',
+        );
+        const tsx = readFileSync(tsxPath, 'utf-8');
+
+        const outerLine = tsx.split('\n').find(l => l.includes('id="wiki-article-content"'));
+        expect(outerLine).toBeTruthy();
+        expect(outerLine).toContain('overflow-y-auto');
+        expect(outerLine).toContain('ref={scrollRef}');
+    });
+
+    it('content and TOC are in a flex row with items-start', () => {
+        const { readFileSync } = require('fs');
+        const { resolve } = require('path');
+        const tsxPath = resolve(
+            __dirname,
+            '../../../src/server/spa/client/react/wiki/WikiComponent.tsx',
+        );
+        const tsx = readFileSync(tsxPath, 'utf-8');
+
+        const flexRow = tsx.split('\n').find(l => l.includes('id="wiki-content-scroll"'));
+        expect(flexRow).toBeTruthy();
+        expect(flexRow).toContain('flex');
+        expect(flexRow).toContain('items-start');
+    });
+
+    it('renders TOC sidebar element when article has headings', async () => {
+        mockFetchApi.mockResolvedValueOnce({ markdown: MARKDOWN_WITH_TOC });
+        renderWikiComponent();
+
+        await waitFor(() => {
+            const sidebar = document.getElementById('wiki-toc-sidebar');
+            expect(sidebar).toBeTruthy();
+        });
+
+        const sidebar = document.getElementById('wiki-toc-sidebar')!;
+        expect(sidebar.tagName.toLowerCase()).toBe('aside');
+        expect(sidebar.className).toContain('sticky');
+        expect(sidebar.className).toContain('top-0');
+        expect(sidebar.className).toContain('max-h-screen');
+        expect(sidebar.className).toContain('overflow-y-auto');
+    });
+
+    it('does not render TOC sidebar when article has no headings', async () => {
+        mockFetchApi.mockResolvedValueOnce({ markdown: 'Just plain text without headings.' });
+        renderWikiComponent();
+
+        await waitFor(() => {
+            expect(document.querySelector('.wiki-body')).toBeTruthy();
+        });
+
+        const sidebar = document.getElementById('wiki-toc-sidebar');
+        expect(sidebar).toBeNull();
+    });
+
+    it('TOC sidebar contains headings from article', async () => {
+        mockFetchApi.mockResolvedValueOnce({ markdown: MARKDOWN_WITH_TOC });
+        renderWikiComponent();
+
+        await waitFor(() => {
+            const nav = document.getElementById('wiki-toc-nav');
+            expect(nav).toBeTruthy();
+        });
+
+        const nav = document.getElementById('wiki-toc-nav')!;
+        const links = nav.querySelectorAll('a');
+        const texts = Array.from(links).map(a => a.textContent);
+        expect(texts).toContain('Ai Service');
+        expect(texts).toContain('Table of Contents');
+        expect(texts).toContain('Purpose & Scope');
+        expect(texts).toContain('Architecture');
+    });
+
+    it('TOC sidebar applies indentation classes for nested headings', async () => {
+        const htmlWithNesting = '<h2>Top Level</h2><h3>Mid Level</h3><h4>Deep Level</h4>';
+        mockFetchApi.mockResolvedValueOnce({ markdown: 'ignored' });
+        renderWikiComponent();
+
+        await waitFor(() => {
+            expect(document.querySelector('.wiki-body')).toBeTruthy();
+        });
+
+        const wikiBody = document.querySelector('.wiki-body')!;
+        wikiBody.innerHTML = htmlWithNesting;
+
+        const container = document.querySelector('.wiki-body')!;
+        container.querySelectorAll('h1, h2, h3, h4').forEach(heading => {
+            const id = (heading.textContent || '').toLowerCase()
+                .replace(/[^a-z0-9 -]/g, '')
+                .replace(/ /g, '-')
+                .replace(/^-+|-+$/g, '');
+            heading.id = id;
+        });
+
+        expect(document.getElementById('top-level')).toBeTruthy();
+        expect(document.getElementById('mid-level')).toBeTruthy();
+        expect(document.getElementById('deep-level')).toBeTruthy();
+    });
+});

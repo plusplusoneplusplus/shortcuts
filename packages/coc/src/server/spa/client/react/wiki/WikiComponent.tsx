@@ -197,82 +197,84 @@ export function WikiComponent({ wikiId, componentId, graph, onSelectComponent }:
     };
 
     return (
-        <div className="flex h-full" id="wiki-article-content">
-            <div ref={scrollRef} className="wiki-content-scroll flex-1 overflow-y-auto p-4" id="wiki-content-scroll">
-                {comp && (
-                    <div className="mb-4 space-y-2">
-                        <div className="flex items-center gap-2 flex-wrap">
-                            <h2 className="text-lg font-semibold text-[#1e1e1e] dark:text-[#cccccc]">{comp.name}</h2>
-                            {comp.complexity && (
-                                <span className={cn('text-[10px] px-1.5 py-0.5 rounded font-medium', complexityColors[comp.complexity])}>
-                                    {comp.complexity}
-                                </span>
-                            )}
-                            <span className="text-xs text-[#848484]">{comp.category}</span>
-                        </div>
-                        {comp.purpose && <p className="text-xs text-[#848484]">{comp.purpose}</p>}
-                        {comp.dependencies && comp.dependencies.length > 0 && (
-                            <div className="flex items-center gap-1 flex-wrap">
-                                <span className="text-[10px] text-[#848484]">Depends on:</span>
-                                {comp.dependencies.map(dep => (
-                                    <button
-                                        key={dep}
-                                        className="text-[10px] px-1.5 py-0.5 rounded bg-[#0078d4]/10 text-[#0078d4] hover:bg-[#0078d4]/20"
-                                        onClick={() => onSelectComponent?.(dep)}
-                                    >
-                                        {graph.components.find(c => c.id === dep)?.name || dep}
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-                        {comp.dependents && comp.dependents.length > 0 && (
-                            <div className="flex items-center gap-1 flex-wrap">
-                                <span className="text-[10px] text-[#848484]">Used by:</span>
-                                {comp.dependents.map(dep => (
-                                    <button
-                                        key={dep}
-                                        className="text-[10px] px-1.5 py-0.5 rounded bg-[#0078d4]/10 text-[#0078d4] hover:bg-[#0078d4]/20"
-                                        onClick={() => onSelectComponent?.(dep)}
-                                    >
-                                        {graph.components.find(c => c.id === dep)?.name || dep}
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                )}
-                <div
-                    ref={contentRef}
-                    className="wiki-body markdown-body text-sm text-[#1e1e1e] dark:text-[#cccccc]"
-                    dangerouslySetInnerHTML={{ __html: html }}
-                />
-            </div>
-
-            {toc.length > 0 && (
-                <aside className="wiki-toc-sidebar w-48 flex-shrink-0 border-l border-[#e0e0e0] dark:border-[#3c3c3c] overflow-y-auto p-3 hidden lg:block" id="wiki-toc-sidebar">
-                    <h4 className="text-[10px] font-semibold uppercase text-[#848484] mb-2">On this page</h4>
-                    <nav id="wiki-toc-nav" className="space-y-0.5">
-                        {toc.map(item => (
-                            <a
-                                key={item.id}
-                                href={'#' + item.id}
-                                className={cn(
-                                    'block text-xs py-0.5 truncate hover:text-[#0078d4]',
-                                    item.level >= 3 && 'pl-3',
-                                    item.level >= 4 && 'pl-6',
-                                    activeHeading === item.id ? 'text-[#0078d4] font-medium' : 'text-[#848484]'
+        <div className="h-full overflow-y-auto" ref={scrollRef} id="wiki-article-content">
+            <div className="flex items-start" id="wiki-content-scroll">
+                <div className="flex-1 min-w-0 p-4 wiki-content-scroll">
+                    {comp && (
+                        <div className="mb-4 space-y-2">
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <h2 className="text-lg font-semibold text-[#1e1e1e] dark:text-[#cccccc]">{comp.name}</h2>
+                                {comp.complexity && (
+                                    <span className={cn('text-[10px] px-1.5 py-0.5 rounded font-medium', complexityColors[comp.complexity])}>
+                                        {comp.complexity}
+                                    </span>
                                 )}
-                                onClick={e => {
-                                    e.preventDefault();
-                                    scrollToHeading(item.id);
-                                }}
-                            >
-                                {item.text}
-                            </a>
-                        ))}
-                    </nav>
-                </aside>
-            )}
+                                <span className="text-xs text-[#848484]">{comp.category}</span>
+                            </div>
+                            {comp.purpose && <p className="text-xs text-[#848484]">{comp.purpose}</p>}
+                            {comp.dependencies && comp.dependencies.length > 0 && (
+                                <div className="flex items-center gap-1 flex-wrap">
+                                    <span className="text-[10px] text-[#848484]">Depends on:</span>
+                                    {comp.dependencies.map(dep => (
+                                        <button
+                                            key={dep}
+                                            className="text-[10px] px-1.5 py-0.5 rounded bg-[#0078d4]/10 text-[#0078d4] hover:bg-[#0078d4]/20"
+                                            onClick={() => onSelectComponent?.(dep)}
+                                        >
+                                            {graph.components.find(c => c.id === dep)?.name || dep}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                            {comp.dependents && comp.dependents.length > 0 && (
+                                <div className="flex items-center gap-1 flex-wrap">
+                                    <span className="text-[10px] text-[#848484]">Used by:</span>
+                                    {comp.dependents.map(dep => (
+                                        <button
+                                            key={dep}
+                                            className="text-[10px] px-1.5 py-0.5 rounded bg-[#0078d4]/10 text-[#0078d4] hover:bg-[#0078d4]/20"
+                                            onClick={() => onSelectComponent?.(dep)}
+                                        >
+                                            {graph.components.find(c => c.id === dep)?.name || dep}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                    <div
+                        ref={contentRef}
+                        className="wiki-body markdown-body text-sm text-[#1e1e1e] dark:text-[#cccccc]"
+                        dangerouslySetInnerHTML={{ __html: html }}
+                    />
+                </div>
+
+                {toc.length > 0 && (
+                    <aside className="wiki-toc-sidebar w-48 flex-shrink-0 border-l border-[#e0e0e0] dark:border-[#3c3c3c] p-3 hidden lg:block sticky top-0 max-h-screen overflow-y-auto" id="wiki-toc-sidebar">
+                        <h4 className="text-[10px] font-semibold uppercase text-[#848484] mb-2">On this page</h4>
+                        <nav id="wiki-toc-nav" className="space-y-0.5">
+                            {toc.map(item => (
+                                <a
+                                    key={item.id}
+                                    href={'#' + item.id}
+                                    className={cn(
+                                        'block text-xs py-0.5 truncate hover:text-[#0078d4]',
+                                        item.level >= 3 && 'pl-3',
+                                        item.level >= 4 && 'pl-6',
+                                        activeHeading === item.id ? 'text-[#0078d4] font-medium' : 'text-[#848484]'
+                                    )}
+                                    onClick={e => {
+                                        e.preventDefault();
+                                        scrollToHeading(item.id);
+                                    }}
+                                >
+                                    {item.text}
+                                </a>
+                            ))}
+                        </nav>
+                    </aside>
+                )}
+            </div>
         </div>
     );
 }
