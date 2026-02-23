@@ -20,6 +20,7 @@ import {
     createAnchorData,
     DEFAULT_ANCHOR_MATCH_CONFIG,
 } from '@plusplusoneplusplus/pipeline-core/editor/anchor';
+import { extractDocumentContext } from '../utils/document-context';
 
 export interface MarkdownReviewEditorProps {
     wsId: string;
@@ -88,6 +89,9 @@ export function MarkdownReviewEditor({
         resolveComment,
         unresolveComment,
         askAI,
+        aiLoadingIds,
+        aiErrors,
+        clearAiError,
     } = useTaskComments(wsId, filePath);
 
     // Shared markdown rendering (render + hljs + mermaid)
@@ -294,8 +298,15 @@ export function MarkdownReviewEditor({
                         onUnresolve={(id) => unresolveComment(id)}
                         onDelete={(id) => deleteComment(id)}
                         onEdit={(id, text) => updateComment(id, { comment: text })}
-                        onAskAI={(id) => askAI(id)}
+                        onAskAI={(id, commandId, customQuestion) => {
+                            const comment = comments.find(c => c.id === id);
+                            const context = extractDocumentContext(rawContent, comment);
+                            askAI(id, { commandId, customQuestion, documentContext: context });
+                        }}
                         onCommentClick={handleCommentClick}
+                        aiLoadingIds={aiLoadingIds}
+                        aiErrors={aiErrors}
+                        onClearAiError={clearAiError}
                     />
                 )}
             </div>
@@ -332,6 +343,13 @@ export function MarkdownReviewEditor({
                     onUnresolve={(id) => { unresolveComment(id); setActivePopoverComment(null); }}
                     onDelete={(id) => { deleteComment(id); setActivePopoverComment(null); }}
                     onEdit={(id, text) => updateComment(id, { comment: text })}
+                    onAskAI={(id, commandId, customQuestion) => {
+                        const context = extractDocumentContext(rawContent, activePopoverComment);
+                        askAI(id, { commandId, customQuestion, documentContext: context });
+                    }}
+                    aiLoading={aiLoadingIds.has(activePopoverComment.id)}
+                    aiError={aiErrors.get(activePopoverComment.id) ?? null}
+                    onClearAiError={(id) => clearAiError(id)}
                 />
             )}
         </div>
