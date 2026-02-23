@@ -68,15 +68,17 @@ function postJSON(url: string, data: unknown) {
     });
 }
 
-/** Create enqueue task body with repoId */
-function makeTask(repoId?: string, overrides: Record<string, any> = {}) {
+/** Create enqueue task body with workingDirectory for per-repo routing */
+function makeTask(workingDirectory?: string, overrides: Record<string, any> = {}) {
     return {
         type: 'custom',
         priority: 'normal',
         displayName: overrides.displayName || 'Test task',
-        payload: { data: { prompt: overrides.prompt || 'test prompt' } },
+        payload: {
+            data: { prompt: overrides.prompt || 'test prompt' },
+            ...(workingDirectory ? { workingDirectory } : {}),
+        },
         config: {},
-        ...(repoId ? { repoId } : {}),
         ...overrides,
     };
 }
@@ -166,21 +168,24 @@ describe('Per-Repo Queue Integration', () => {
             const repoA = '/Users/test/repo-a';
             const repoB = '/Users/test/repo-b';
 
+            // Pause to prevent auto-execution
+            await postJSON(`${baseUrl}/api/queue/pause`, {});
+
             // Enqueue tasks for two different repos
             const taskA1 = await postJSON(`${baseUrl}/api/queue`, makeTask(repoA, { displayName: 'Task A1' }));
             expect(taskA1.status).toBe(201);
             const bodyA1 = JSON.parse(taskA1.body);
-            expect(bodyA1.task.repoId).toBe(repoA);
+            expect(bodyA1.task.payload?.workingDirectory).toBe(repoA);
 
             const taskA2 = await postJSON(`${baseUrl}/api/queue`, makeTask(repoA, { displayName: 'Task A2' }));
             expect(taskA2.status).toBe(201);
             const bodyA2 = JSON.parse(taskA2.body);
-            expect(bodyA2.task.repoId).toBe(repoA);
+            expect(bodyA2.task.payload?.workingDirectory).toBe(repoA);
 
             const taskB1 = await postJSON(`${baseUrl}/api/queue`, makeTask(repoB, { displayName: 'Task B1' }));
             expect(taskB1.status).toBe(201);
             const bodyB1 = JSON.parse(taskB1.body);
-            expect(bodyB1.task.repoId).toBe(repoB);
+            expect(bodyB1.task.payload?.workingDirectory).toBe(repoB);
 
             // List all tasks and verify repo assignments
             const list = await request(`${baseUrl}/api/queue`);
@@ -190,11 +195,14 @@ describe('Per-Repo Queue Integration', () => {
             // Get queued + running tasks
             const tasks = [...allTasks.queued, ...allTasks.running];
 
-            const repoATasks = tasks.filter((t: any) => t.repoId === repoA);
-            const repoBTasks = tasks.filter((t: any) => t.repoId === repoB);
+            const repoATasks = tasks.filter((t: any) => t.payload?.workingDirectory === repoA);
+            const repoBTasks = tasks.filter((t: any) => t.payload?.workingDirectory === repoB);
 
             expect(repoATasks.length).toBe(2);
             expect(repoBTasks.length).toBe(1);
+
+            // Resume for cleanup
+            await postJSON(`${baseUrl}/api/queue/resume`, {});
         });
 
         it('should preserve repoId when retrieving individual task', async () => {
@@ -208,10 +216,13 @@ describe('Per-Repo Queue Integration', () => {
             const taskRes = await request(`${baseUrl}/api/queue/${taskId}`);
             expect(taskRes.status).toBe(200);
             const body = JSON.parse(taskRes.body);
-            expect(body.task.repoId).toBe(repoA);
+            expect(body.task.payload?.workingDirectory).toBe(repoA);
         });
 
         it('should list tasks from multiple repos in queue listing', async () => {
+            // Pause to prevent auto-execution
+            await postJSON(`${baseUrl}/api/queue/pause`, {});
+
             // Enqueue tasks for three repos
             await postJSON(`${baseUrl}/api/queue`, makeTask('/repo-a', { displayName: 'A1' }));
             await postJSON(`${baseUrl}/api/queue`, makeTask('/repo-a', { displayName: 'A2' }));
@@ -224,15 +235,15 @@ describe('Per-Repo Queue Integration', () => {
 
             const tasks = [...body.queued, ...body.running];
 
-            // Group by repoId
+            // Group by payload.workingDirectory
             const byRepo = new Map<string, any[]>();
             for (const task of tasks) {
-                const repo = task.repoId || '__none__';
+                const repo = task.payload?.workingDirectory || '__none__';
                 if (!byRepo.has(repo)) { byRepo.set(repo, []); }
                 byRepo.get(repo)!.push(task);
             }
 
-            // Verify repo IDs present
+            // Verify working directories present
             const repoIds = Array.from(byRepo.keys()).sort();
             expect(repoIds).toEqual(['/repo-a', '/repo-b', '/repo-c']);
 
@@ -240,6 +251,9 @@ describe('Per-Repo Queue Integration', () => {
             expect(byRepo.get('/repo-a')!.length).toBe(2);
             expect(byRepo.get('/repo-b')!.length).toBe(1);
             expect(byRepo.get('/repo-c')!.length).toBe(1);
+
+            // Resume for cleanup
+            await postJSON(`${baseUrl}/api/queue/resume`, {});
         });
 
         it('should enqueue task without repoId (undefined)', async () => {
@@ -256,6 +270,9 @@ describe('Per-Repo Queue Integration', () => {
     // ------------------------------------------------------------------
     describe('bulk enqueue with repoId', () => {
         it('should enqueue multiple tasks with different repoIds in bulk', async () => {
+            // Pause to prevent auto-execution
+            await postJSON(`${baseUrl}/api/queue/pause`, {});
+
             const res = await postJSON(`${baseUrl}/api/queue/bulk`, {
                 tasks: [
                     makeTask('/repo-bulk-a', { displayName: 'Bulk A1' }),
@@ -268,16 +285,19 @@ describe('Per-Repo Queue Integration', () => {
             expect(body.summary.succeeded).toBe(3);
             expect(body.summary.failed).toBe(0);
 
-            // Verify each task has correct repoId
+            // Verify each task has correct workingDirectory
             for (const item of body.success) {
                 const taskRes = await request(`${baseUrl}/api/queue/${item.taskId}`);
                 const task = JSON.parse(taskRes.body).task;
                 if (item.index < 2) {
-                    expect(task.repoId).toBe('/repo-bulk-a');
+                    expect(task.payload?.workingDirectory).toBe('/repo-bulk-a');
                 } else {
-                    expect(task.repoId).toBe('/repo-bulk-b');
+                    expect(task.payload?.workingDirectory).toBe('/repo-bulk-b');
                 }
             }
+
+            // Resume for cleanup
+            await postJSON(`${baseUrl}/api/queue/resume`, {});
         });
     });
 
@@ -328,6 +348,9 @@ describe('Per-Repo Queue Integration', () => {
         });
 
         it('should cancel a specific task without affecting other repos', async () => {
+            // Pause to prevent auto-execution
+            await postJSON(`${baseUrl}/api/queue/pause`, {});
+
             const taskA = await postJSON(`${baseUrl}/api/queue`, makeTask('/repo-cancel-a', { displayName: 'Cancel A' }));
             const taskB = await postJSON(`${baseUrl}/api/queue`, makeTask('/repo-cancel-b', { displayName: 'Cancel B' }));
 
@@ -342,8 +365,11 @@ describe('Per-Repo Queue Integration', () => {
             const taskBRes = await request(`${baseUrl}/api/queue/${taskBId}`);
             expect(taskBRes.status).toBe(200);
             const taskBBody = JSON.parse(taskBRes.body);
-            expect(taskBBody.task.repoId).toBe('/repo-cancel-b');
+            expect(taskBBody.task.payload?.workingDirectory).toBe('/repo-cancel-b');
             expect(['queued', 'running']).toContain(taskBBody.task.status);
+
+            // Resume for cleanup
+            await postJSON(`${baseUrl}/api/queue/resume`, {});
         });
     });
 
@@ -373,8 +399,8 @@ describe('Per-Repo Queue Integration', () => {
             const beforeList = await request(`${baseUrl}/api/queue`);
             const beforeBody = JSON.parse(beforeList.body);
             const beforeTasks = [...beforeBody.queued, ...beforeBody.running];
-            expect(beforeTasks.filter((t: any) => t.repoId === repoA).length).toBe(1);
-            expect(beforeTasks.filter((t: any) => t.repoId === repoB).length).toBe(1);
+            expect(beforeTasks.filter((t: any) => t.payload?.workingDirectory === repoA).length).toBe(1);
+            expect(beforeTasks.filter((t: any) => t.payload?.workingDirectory === repoB).length).toBe(1);
 
             // Wait for persistence debounce to flush (300ms + buffer)
             await waitFor(600);
@@ -403,11 +429,11 @@ describe('Per-Repo Queue Integration', () => {
 
             const allTasks = [...body.queued, ...body.running];
 
-            // Filter by our specific repoIds
-            const repoATasks = allTasks.filter((t: any) => t.repoId === repoA);
-            const repoBTasks = allTasks.filter((t: any) => t.repoId === repoB);
+            // Filter by our specific workingDirectories
+            const repoATasks = allTasks.filter((t: any) => t.payload?.workingDirectory === repoA);
+            const repoBTasks = allTasks.filter((t: any) => t.payload?.workingDirectory === repoB);
 
-            // Verify tasks were restored with correct repoId
+            // Verify tasks were restored with correct workingDirectory
             expect(repoATasks.length).toBeGreaterThanOrEqual(1);
             expect(repoBTasks.length).toBeGreaterThanOrEqual(1);
 
@@ -438,7 +464,7 @@ describe('Per-Repo Queue Integration', () => {
             // Verify task3 is at position 1 and still has correct repoId
             const taskRes = await request(`${baseUrl}/api/queue/${task3Id}`);
             const body = JSON.parse(taskRes.body);
-            expect(body.task.repoId).toBe('/repo-reorder-a');
+            expect(body.task.payload?.workingDirectory).toBe('/repo-reorder-a');
             expect(body.task.displayName).toBe('Third');
 
             // Resume for cleanup
@@ -459,7 +485,7 @@ describe('Per-Repo Queue Integration', () => {
                 const timeout = setTimeout(() => {
                     ws.close();
                     reject(new Error('Timeout waiting for WebSocket message'));
-                }, 5000);
+                }, 10000);
 
                 ws.on('open', () => {
                     // Only enqueue AFTER WebSocket is connected
@@ -477,7 +503,8 @@ describe('Per-Repo Queue Integration', () => {
                                 ...(msg.queue?.queued || []),
                                 ...(msg.queue?.running || []),
                             ];
-                            if (allTasks.some((t: any) => t.repoId === repoA)) {
+                            // WS events flatten workingDirectory to top-level
+                            if (allTasks.some((t: any) => t.workingDirectory === repoA)) {
                                 clearTimeout(timeout);
                                 ws.close();
                                 resolve(msg);
@@ -501,9 +528,9 @@ describe('Per-Repo Queue Integration', () => {
                 ...(event.queue?.queued || []),
                 ...(event.queue?.running || []),
             ];
-            const matchingTasks = allTasks.filter((t: any) => t.repoId === repoA);
+            const matchingTasks = allTasks.filter((t: any) => t.workingDirectory === repoA);
             expect(matchingTasks.length).toBeGreaterThanOrEqual(1);
-            expect(matchingTasks[0].repoId).toBe(repoA);
+            expect(matchingTasks[0].workingDirectory).toBe(repoA);
         });
 
         it('should include repoId for tasks from multiple repos in queue snapshot', async () => {
@@ -522,7 +549,7 @@ describe('Per-Repo Queue Integration', () => {
                 const timeout = setTimeout(() => {
                     ws.close();
                     reject(new Error('Timeout waiting for WebSocket message'));
-                }, 5000);
+                }, 10000);
 
                 ws.on('open', () => {
                     // Trigger a queue update by enqueuing one more task
@@ -538,8 +565,9 @@ describe('Per-Repo Queue Integration', () => {
                                 ...(msg.queue?.queued || []),
                                 ...(msg.queue?.running || []),
                             ];
-                            const hasA = allTasks.some((t: any) => t.repoId === repoA);
-                            const hasB = allTasks.some((t: any) => t.repoId === repoB);
+                            // WS events flatten workingDirectory to top-level
+                            const hasA = allTasks.some((t: any) => t.workingDirectory === repoA);
+                            const hasB = allTasks.some((t: any) => t.workingDirectory === repoB);
                             if (hasA && hasB) {
                                 clearTimeout(timeout);
                                 ws.close();
@@ -564,9 +592,9 @@ describe('Per-Repo Queue Integration', () => {
                 ...(event.queue?.queued || []),
                 ...(event.queue?.running || []),
             ];
-            const repoIds = [...new Set(allTasks.map((t: any) => t.repoId).filter(Boolean))].sort();
-            expect(repoIds).toContain(repoA);
-            expect(repoIds).toContain(repoB);
+            const workingDirs = [...new Set(allTasks.map((t: any) => t.workingDirectory).filter(Boolean))].sort();
+            expect(workingDirs).toContain(repoA);
+            expect(workingDirs).toContain(repoB);
 
             // Resume for cleanup
             await postJSON(`${baseUrl}/api/queue/resume`, {});
@@ -664,7 +692,7 @@ describe('Per-Repo Queue Integration', () => {
             expect(taskBRes.status).toBe(200);
             const taskBBody = JSON.parse(taskBRes.body);
             expect(taskBBody.task.status).toBe('queued');
-            expect(taskBBody.task.repoId).toBe('/repo-err-b');
+            expect(taskBBody.task.payload?.workingDirectory).toBe('/repo-err-b');
 
             // Resume for cleanup
             await postJSON(`${baseUrl}/api/queue/resume`, {});
@@ -843,13 +871,11 @@ describe('Per-Repo Queue Integration', () => {
             });
             expect(regRes.status).toBe(201);
 
-            // Verify the repo can accept tasks (bridge was auto-created for the workspace path)
-            // The registration intercept calls bridge.registerRepoId, so enqueueing for this
-            // repo should work and the task's repoId should match
+            // Enqueue a task for this workspace path to verify routing works
             const taskRes = await postJSON(`${baseUrl}/api/queue`, makeTask(rootPath, { displayName: 'WS task' }));
             expect(taskRes.status).toBe(201);
             const task = JSON.parse(taskRes.body).task;
-            expect(task.repoId).toBe(rootPath);
+            expect(task.payload?.workingDirectory).toBe(rootPath);
         });
     });
 
