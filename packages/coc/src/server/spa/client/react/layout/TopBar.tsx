@@ -28,6 +28,11 @@ export function TopBar() {
         location.hash = '#' + tab;
     }, [dispatch]);
 
+    const toggleReposSidebar = useCallback(() => {
+        if (state.activeTab !== 'repos') return;
+        dispatch({ type: 'TOGGLE_REPOS_SIDEBAR' });
+    }, [dispatch, state.activeTab]);
+
     return (
         <header
             className="h-12 px-3 flex items-center justify-between border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] text-[#1e1e1e] dark:text-[#cccccc]"
@@ -38,6 +43,9 @@ export function TopBar() {
                     className="h-8 w-8 rounded border border-transparent hover:border-[#c8c8c8] dark:hover:border-[#3c3c3c] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-base leading-none"
                     id="hamburger-btn"
                     aria-label="Toggle sidebar"
+                    aria-pressed={state.reposSidebarCollapsed}
+                    title={state.reposSidebarCollapsed ? 'Expand repository sidebar' : 'Collapse repository sidebar'}
+                    onClick={toggleReposSidebar}
                 >
                     &#9776;
                 </button>

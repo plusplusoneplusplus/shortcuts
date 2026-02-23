@@ -4,8 +4,8 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import type { ReactNode } from 'react';
-import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
+import { useEffect, type ReactNode } from 'react';
+import { AppProvider, useApp } from '../../../src/server/spa/client/react/context/AppContext';
 import { QueueProvider } from '../../../src/server/spa/client/react/context/QueueContext';
 import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
 import {
@@ -36,6 +36,14 @@ function Wrap({ children }: { children: ReactNode }) {
             </QueueProvider>
         </AppProvider>
     );
+}
+
+function CollapseReposSidebarOnMount() {
+    const { dispatch } = useApp();
+    useEffect(() => {
+        dispatch({ type: 'TOGGLE_REPOS_SIDEBAR' });
+    }, [dispatch]);
+    return null;
 }
 
 function makeRepo(overrides: Partial<RepoData> & { workspace: any }): RepoData {
@@ -469,6 +477,33 @@ describe('ReposView', () => {
         render(<Wrap><ReposView /></Wrap>);
         const view = document.getElementById('view-repos');
         expect(view).not.toBeNull();
+    });
+
+    it('keeps sidebar width classes when expanded', async () => {
+        render(<Wrap><ReposView /></Wrap>);
+        await vi.waitFor(() => {
+            expect(screen.getByText(/Select a repository/)).toBeDefined();
+        });
+        const sidebar = screen.getByTestId('repos-sidebar');
+        expect(sidebar.className).toContain('w-[280px]');
+        expect(sidebar.className).toContain('min-w-[240px]');
+        expect(sidebar.className).not.toContain('w-0');
+    });
+
+    it('collapses sidebar width when app state is collapsed', async () => {
+        render(
+            <Wrap>
+                <CollapseReposSidebarOnMount />
+                <ReposView />
+            </Wrap>
+        );
+        await vi.waitFor(() => {
+            expect(screen.getByText(/Select a repository/)).toBeDefined();
+        });
+        const sidebar = screen.getByTestId('repos-sidebar');
+        expect(sidebar.className).toContain('w-0');
+        expect(sidebar.className).toContain('min-w-0');
+        expect(sidebar.className).toContain('border-r-0');
     });
 
     it('shows empty detail pane prompt', async () => {

@@ -17,6 +17,7 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         workspaces: [],
         selectedRepoId: null,
         activeRepoSubTab: 'info',
+        reposSidebarCollapsed: false,
         selectedWikiId: null,
         selectedWikiComponentId: null,
         wikiView: 'list',
@@ -261,6 +262,20 @@ describe('AppContext reducer', () => {
         it('SET_REPO_SUB_TAB switches to schedules', () => {
             const result = appReducer(makeState(), { type: 'SET_REPO_SUB_TAB', tab: 'schedules' });
             expect(result.activeRepoSubTab).toBe('schedules');
+        });
+    });
+
+    describe('repos sidebar', () => {
+        it('TOGGLE_REPOS_SIDEBAR collapses when currently expanded', () => {
+            const state = makeState({ reposSidebarCollapsed: false });
+            const result = appReducer(state, { type: 'TOGGLE_REPOS_SIDEBAR' });
+            expect(result.reposSidebarCollapsed).toBe(true);
+        });
+
+        it('TOGGLE_REPOS_SIDEBAR expands when currently collapsed', () => {
+            const state = makeState({ reposSidebarCollapsed: true });
+            const result = appReducer(state, { type: 'TOGGLE_REPOS_SIDEBAR' });
+            expect(result.reposSidebarCollapsed).toBe(false);
         });
     });
 

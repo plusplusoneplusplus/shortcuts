@@ -79,6 +79,37 @@ describe('TopBar', () => {
         expect(screen.getByLabelText('Toggle sidebar')).toBeDefined();
     });
 
+    it('hamburger toggles repos sidebar pressed state in Repos tab', () => {
+        renderTopBar();
+        const btn = screen.getByLabelText('Toggle sidebar');
+        expect(btn.getAttribute('aria-pressed')).toBe('false');
+
+        act(() => {
+            fireEvent.click(btn);
+        });
+        expect(btn.getAttribute('aria-pressed')).toBe('true');
+
+        act(() => {
+            fireEvent.click(btn);
+        });
+        expect(btn.getAttribute('aria-pressed')).toBe('false');
+    });
+
+    it('hamburger does not toggle sidebar outside Repos tab', () => {
+        renderTopBar();
+        act(() => {
+            fireEvent.click(screen.getByText('Processes'));
+        });
+
+        const btn = screen.getByLabelText('Toggle sidebar');
+        expect(btn.getAttribute('aria-pressed')).toBe('false');
+
+        act(() => {
+            fireEvent.click(btn);
+        });
+        expect(btn.getAttribute('aria-pressed')).toBe('false');
+    });
+
     it('renders theme toggle button', () => {
         renderTopBar();
         expect(screen.getByLabelText('Toggle theme')).toBeDefined();
@@ -192,6 +223,7 @@ describe('appReducer — SET_ACTIVE_TAB for top tabs', () => {
         selectedProcessId: null,
         selectedRepoId: null,
         repoSubTab: 'info' as const,
+        reposSidebarCollapsed: false,
         selectedWikiId: null,
         selectedWikiComponentId: null,
         wikiView: 'list' as const,

@@ -59,6 +59,7 @@ export interface AppState {
     workspaces: any[];
     selectedRepoId: string | null;
     activeRepoSubTab: RepoSubTab;
+    reposSidebarCollapsed: boolean;
     selectedWikiId: string | null;
     selectedWikiComponentId: string | null;
     wikiView: WikiViewMode;

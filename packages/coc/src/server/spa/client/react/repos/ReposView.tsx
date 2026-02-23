@@ -9,6 +9,7 @@ import { fetchApi } from '../hooks/useApi';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { ReposGrid } from './ReposGrid';
 import { RepoDetail } from './RepoDetail';
+import { cn } from '../shared';
 import { countTasks } from './repoGrouping';
 import { fetchPipelines } from './pipeline-api';
 import type { RepoData } from './repoGrouping';
@@ -109,7 +110,17 @@ export function ReposView() {
     return (
         <div id="view-repos" className="flex h-[calc(100vh-48px)] overflow-hidden">
             {/* Left: sidebar */}
-            <aside className="w-[280px] min-w-[240px] min-h-0 flex flex-col border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]">
+            <aside
+                id="repos-sidebar"
+                data-testid="repos-sidebar"
+                aria-hidden={state.reposSidebarCollapsed}
+                className={cn(
+                    'shrink-0 min-h-0 flex flex-col overflow-hidden transition-[width,min-width] duration-150 ease-out border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]',
+                    state.reposSidebarCollapsed
+                        ? 'w-0 min-w-0 border-r-0'
+                        : 'w-[280px] min-w-[240px]'
+                )}
+            >
                 <ReposGrid repos={repos} onRefresh={fetchRepos} />
             </aside>
 

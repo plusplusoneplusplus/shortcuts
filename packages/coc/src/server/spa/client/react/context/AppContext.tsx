@@ -19,6 +19,7 @@ export interface AppContextState {
     workspaces: any[];
     selectedRepoId: string | null;
     activeRepoSubTab: RepoSubTab;
+    reposSidebarCollapsed: boolean;
     selectedWikiId: string | null;
     selectedWikiComponentId: string | null;
     wikiView: WikiViewMode;
@@ -40,6 +41,7 @@ const initialState: AppContextState = {
     workspaces: [],
     selectedRepoId: null,
     activeRepoSubTab: 'info',
+    reposSidebarCollapsed: false,
     selectedWikiId: null,
     selectedWikiComponentId: null,
     wikiView: 'list',
@@ -70,6 +72,7 @@ export type AppAction =
     | { type: 'SET_ACTIVE_TAB'; tab: DashboardTab }
     | { type: 'SET_SELECTED_REPO'; id: string | null }
     | { type: 'SET_REPO_SUB_TAB'; tab: RepoSubTab }
+    | { type: 'TOGGLE_REPOS_SIDEBAR' }
     | { type: 'SET_WIKI_VIEW'; wikiId: string | null; componentId: string | null; view: WikiViewMode }
     | { type: 'SET_WIKIS'; wikis: any[] }
     | { type: 'SELECT_WIKI'; wikiId: string | null }
@@ -137,6 +140,8 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             return { ...state, selectedRepoId: action.id };
         case 'SET_REPO_SUB_TAB':
             return { ...state, activeRepoSubTab: action.tab };
+        case 'TOGGLE_REPOS_SIDEBAR':
+            return { ...state, reposSidebarCollapsed: !state.reposSidebarCollapsed };
         case 'SET_WIKI_VIEW':
             return { ...state, selectedWikiId: action.wikiId, selectedWikiComponentId: action.componentId, wikiView: action.view };
         case 'SET_WIKIS':
