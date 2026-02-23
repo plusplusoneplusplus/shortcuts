@@ -28175,6 +28175,7 @@
     let hasContent = false;
     const callsById = /* @__PURE__ */ new Map();
     const callOrder = [];
+    const renderedContentTexts = /* @__PURE__ */ new Set();
     for (let i = 0; i < timeline.length; i++) {
       const item = timeline[i];
       if (!item) continue;
@@ -28183,6 +28184,7 @@
         if (html) {
           chunks.push({ kind: "content", key: `content-${i}`, html });
           hasContent = true;
+          if (item.content) renderedContentTexts.add(item.content.trim());
         }
         continue;
       }
@@ -28196,6 +28198,11 @@
           callOrder.push(incoming.id);
           chunks.push({ kind: "tool", key: `tool-${incoming.id}`, toolId: incoming.id });
         }
+      }
+    }
+    for (const call of callsById.values()) {
+      if (call.result && typeof call.result === "string" && renderedContentTexts.has(call.result.trim())) {
+        call.result = void 0;
       }
     }
     if (callOrder.length === 0 && Array.isArray(turn.toolCalls) && turn.toolCalls.length > 0) {

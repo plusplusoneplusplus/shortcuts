@@ -564,11 +564,14 @@ function renderChatMessage(turn: ClientConversationTurn): string {
         let hasContentSegment = false;
         const toolsById = new Map<string, any>();
         const orderedToolCalls: any[] = [];
+        // Track content texts rendered inline so we can suppress duplicate tool results
+        const renderedContentTexts = new Set<string>();
 
         for (const item of turn.timeline) {
             if (item.type === 'content') {
                 hasContentSegment = true;
                 html += '<div class="chat-message-content">' + renderMarkdownToHtml(item.content || '') + '</div>';
+                if (item.content) renderedContentTexts.add(item.content.trim());
             } else if (item.type.startsWith('tool-')) {
                 const tc = normalizeToolCall(item.toolCall || {});
                 if (!tc.id) continue;
@@ -604,6 +607,15 @@ function renderChatMessage(turn: ClientConversationTurn): string {
                         existing.parentToolCallId = tc.parentToolCallId;
                     }
                 }
+            }
+        }
+
+        // Suppress tool results that are already shown as inline content to avoid duplication.
+        // This happens when a sub-agent (e.g. explore task) streams its output as a content
+        // event and then the SDK also surfaces the same text as the tool-complete result.
+        for (const tc of orderedToolCalls) {
+            if (tc.result && typeof tc.result === 'string' && renderedContentTexts.has(tc.result.trim())) {
+                tc.result = undefined;
             }
         }
 

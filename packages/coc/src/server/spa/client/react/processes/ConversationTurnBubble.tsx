@@ -210,6 +210,10 @@ function buildAssistantRender(turn: ClientConversationTurn): {
 
     const callsById = new Map<string, RenderToolCall>();
     const callOrder: string[] = [];
+    // Track content texts rendered inline so we can suppress duplicate tool results.
+    // This handles the case where a sub-agent (e.g. explore task) streams its output as a
+    // content event and the SDK also surfaces the same text as the tool-complete result.
+    const renderedContentTexts = new Set<string>();
 
     for (let i = 0; i < timeline.length; i++) {
         const item: any = timeline[i];
@@ -220,6 +224,7 @@ function buildAssistantRender(turn: ClientConversationTurn): {
             if (html) {
                 chunks.push({ kind: 'content', key: `content-${i}`, html });
                 hasContent = true;
+                if (item.content) renderedContentTexts.add((item.content as string).trim());
             }
             continue;
         }
@@ -234,6 +239,13 @@ function buildAssistantRender(turn: ClientConversationTurn): {
                 callOrder.push(incoming.id);
                 chunks.push({ kind: 'tool', key: `tool-${incoming.id}`, toolId: incoming.id });
             }
+        }
+    }
+
+    // Suppress tool results that are already shown as inline content to avoid duplication.
+    for (const call of callsById.values()) {
+        if (call.result && typeof call.result === 'string' && renderedContentTexts.has(call.result.trim())) {
+            call.result = undefined;
         }
     }
 
