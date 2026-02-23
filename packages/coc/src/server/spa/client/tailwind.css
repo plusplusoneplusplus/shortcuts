@@ -761,3 +761,19 @@
     color: #f14c4c;
     font-size: 12px;
 }
+
+/* Queue task repo/workspace badge */
+.queue-repo-badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 4px;
+    border-radius: 3px;
+    background: var(--vscode-badge-background, #0078d4);
+    color: var(--vscode-badge-foreground, #fff);
+    flex-shrink: 0;
+    max-width: 80px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

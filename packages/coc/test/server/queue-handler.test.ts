@@ -579,6 +579,29 @@ describe('Queue Handler', () => {
             expect(body.queued[1].priority).toBe('normal');
             expect(body.queued[2].priority).toBe('low');
         });
+
+        it('should include folderPath in serialized task response', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(`${srv.url}/api/queue`, makeTask({ folderPath: '/Users/test/my-project' }));
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.folderPath).toBe('/Users/test/my-project');
+        });
+
+        it('should include folderPath when listing queued tasks', async () => {
+            const srv = await startServer();
+
+            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'WithFolder', folderPath: '/repos/frontend' }));
+            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'NoFolder' }));
+
+            const res = await request(`${srv.url}/api/queue`);
+            const body = JSON.parse(res.body);
+            const withFolder = body.queued.find((t: any) => t.displayName === 'WithFolder');
+            const noFolder = body.queued.find((t: any) => t.displayName === 'NoFolder');
+            expect(withFolder.folderPath).toBe('/repos/frontend');
+            expect(noFolder.folderPath).toBeUndefined();
+        });
     });
 
     // ========================================================================

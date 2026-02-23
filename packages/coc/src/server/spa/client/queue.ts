@@ -246,12 +246,33 @@ export function renderQueuePanel(): void {
     startLiveTimers();
 }
 
+/**
+ * Resolve a queue task's repo/workspace label for display.
+ * Returns the workspace name if repoId matches a registered workspace,
+ * or the folderPath basename as a fallback, or null if unavailable.
+ */
+export function resolveTaskRepoLabel(task: any): string | null {
+    if (task.repoId) {
+        const ws = appState.workspaces.find(function(w: any) { return w.id === task.repoId; });
+        if (ws && ws.name) return ws.name;
+    }
+    if (task.folderPath) {
+        const parts = task.folderPath.replace(/\\/g, '/').split('/').filter(Boolean);
+        if (parts.length > 0) return parts[parts.length - 1];
+    }
+    return null;
+}
+
 export function renderQueueTask(task: any, isQueued: boolean, index?: number): string {
     let name = task.displayName || task.type || 'Task';
     if (name.length > 35) name = name.substring(0, 35) + '...';
 
     const priorityIcon: Record<string, string> = { high: '\u{1F525}', normal: '', low: '\u{1F53D}' };
     const statusIcn = task.status === 'running' ? '\u{1F504}' : '\u23F3';
+    const repoLabel = resolveTaskRepoLabel(task);
+    const repoBadgeHtml = repoLabel
+        ? '<span class="queue-repo-badge">' + escapeHtmlClient(repoLabel.length > 12 ? repoLabel.substring(0, 12) + '\u2026' : repoLabel) + '</span>'
+        : '';
     let elapsed = '';
     if (task.status === 'running' && task.startedAt) {
         elapsed = formatDuration(Date.now() - task.startedAt);
@@ -267,6 +288,7 @@ export function renderQueueTask(task: any, isQueued: boolean, index?: number): s
     let html = '<div class="queue-task ' + task.status + '" data-task-id="' + escapeHtmlClient(task.id) + '"' + clickAttr + '>' +
         '<div class="queue-task-row">' +
             '<span class="queue-task-status">' + statusIcn + '</span>' +
+            repoBadgeHtml +
             (priorityIcon[task.priority] ? '<span class="queue-task-priority">' + priorityIcon[task.priority] + '</span>' : '') +
             '<span class="queue-task-name">' + escapeHtmlClient(name) + '</span>' +
             '<span class="queue-task-time">' + elapsed + '</span>' +
@@ -298,6 +320,10 @@ export function renderQueueHistoryTask(task: any): string {
     const statusIcn = task.status === 'completed' ? '\u2705'
         : task.status === 'failed' ? '\u274C'
         : '\u{1F6AB}'; // cancelled
+    const repoLabel = resolveTaskRepoLabel(task);
+    const repoBadgeHtml = repoLabel
+        ? '<span class="queue-repo-badge">' + escapeHtmlClient(repoLabel.length > 12 ? repoLabel.substring(0, 12) + '\u2026' : repoLabel) + '</span>'
+        : '';
     let elapsed = '';
     if (task.completedAt) {
         elapsed = formatRelativeTime(new Date(task.completedAt).toISOString());
@@ -311,6 +337,7 @@ export function renderQueueHistoryTask(task: any): string {
         ' onclick="showQueueTaskDetail(\'' + escapeHtmlClient(task.id) + '\')" style="cursor:pointer">' +
         '<div class="queue-task-row">' +
             '<span class="queue-task-status">' + statusIcn + '</span>' +
+            repoBadgeHtml +
             '<span class="queue-task-name">' + escapeHtmlClient(name) + '</span>' +
             '<span class="queue-task-time">' + elapsed + duration + '</span>' +
         '</div>';
