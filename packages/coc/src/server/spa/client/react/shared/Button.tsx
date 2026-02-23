@@ -7,6 +7,7 @@ export interface ButtonProps {
     size?: 'sm' | 'md' | 'lg';
     id?: string;
     'data-testid'?: string;
+    title?: string;
     disabled?: boolean;
     loading?: boolean;
     onClick?: MouseEventHandler<HTMLButtonElement>;
@@ -33,6 +34,7 @@ export function Button(props: ButtonProps) {
         variant = 'primary',
         size = 'md',
         id,
+        title,
         disabled,
         loading,
         onClick,
@@ -44,6 +46,7 @@ export function Button(props: ButtonProps) {
         <button
             id={id}
             data-testid={props['data-testid']}
+            title={title}
             type={type}
             onClick={onClick}
             disabled={disabled || loading}

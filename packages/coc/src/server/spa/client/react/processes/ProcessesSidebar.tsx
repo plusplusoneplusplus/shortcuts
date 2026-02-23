@@ -10,6 +10,7 @@ import { useQueue } from '../context/QueueContext';
 import { Card, Badge, Button, cn } from '../shared';
 import { formatDuration, statusIcon, statusLabel, typeLabel, repoName } from '../utils/format';
 import { resolveWorkspaceName, getProcessWorkspaceId, getProcessWorkspaceName } from '../utils/workspace';
+import { getApiBase } from '../utils/config';
 
 function groupByFolder(tasks: any[]): { folder: string | null; tasks: any[] }[] {
     const map = new Map<string | null, any[]>();
@@ -31,6 +32,8 @@ export function ProcessesSidebar() {
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { queued, running, history, stats, showHistory, draining, drainQueued, drainRunning } = queueState;
     const [now, setNow] = useState(Date.now());
+    const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
+    const [isClearLoading, setIsClearLoading] = useState(false);
 
     const navigateToRepo = useCallback((e: React.MouseEvent, workspaceId: string) => {
         e.stopPropagation();
@@ -88,6 +91,32 @@ export function ProcessesSidebar() {
         dispatch({ type: 'SELECT_PROCESS', id: null });
     }, [dispatch, queueDispatch]);
 
+    const hasQueueActive = running.length > 0 || queued.length > 0;
+
+    async function handlePauseResume() {
+        setIsPauseResumeLoading(true);
+        try {
+            const endpoint = stats.isPaused ? '/queue/resume' : '/queue/pause';
+            await fetch(getApiBase() + endpoint, { method: 'POST' });
+            const data = await fetch(getApiBase() + '/queue').then(r => r.json());
+            queueDispatch({ type: 'QUEUE_UPDATED', queue: data });
+        } finally {
+            setIsPauseResumeLoading(false);
+        }
+    }
+
+    async function handleClearQueue() {
+        if (!confirm('Clear all queued tasks?')) return;
+        setIsClearLoading(true);
+        try {
+            await fetch(getApiBase() + '/queue', { method: 'DELETE' });
+            const data = await fetch(getApiBase() + '/queue').then(r => r.json());
+            queueDispatch({ type: 'QUEUE_UPDATED', queue: data });
+        } finally {
+            setIsClearLoading(false);
+        }
+    }
+
     const isEmpty = running.length === 0 && queued.length === 0 && filteredLegacy.length === 0;
 
     return (
@@ -100,11 +129,28 @@ export function ProcessesSidebar() {
             )}
 
             {/* Stats bar */}
-            <div className="flex gap-3 text-xs text-[#848484]">
+            <div className="flex items-center gap-3 text-xs text-[#848484]">
                 <span>⏳ {stats.queued} queued</span>
                 <span>🔄 {stats.running} running</span>
                 <span>✅ {stats.completed} done</span>
                 <span>❌ {stats.failed} failed</span>
+                {stats.isPaused && <Badge status="warning">Paused</Badge>}
+                <div className="ml-auto flex items-center gap-1">
+                    {(stats.isPaused || hasQueueActive) && (
+                        <Button variant="ghost" size="sm" disabled={isPauseResumeLoading}
+                                onClick={handlePauseResume} title={stats.isPaused ? 'Resume' : 'Pause'}
+                                data-testid="pause-resume-btn">
+                            {stats.isPaused ? '▶' : '⏸'}
+                        </Button>
+                    )}
+                    {stats.queued > 0 && (
+                        <Button variant="danger" size="sm" disabled={isClearLoading}
+                                onClick={handleClearQueue} title="Clear queue"
+                                data-testid="clear-queue-btn">
+                            🗑
+                        </Button>
+                    )}
+                </div>
             </div>
 
             {/* Running queue tasks */}
