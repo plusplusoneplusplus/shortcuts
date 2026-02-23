@@ -31,11 +31,23 @@ export class MultiRepoQueuePersistence {
     private readonly debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
     private readonly dirtyRepos = new Set<string>();
     private readonly changeListeners = new Map<string, (event: QueueChangeEvent) => void>();
+    private readonly bridgeChangeListener: (...args: any[]) => void;
 
     constructor(bridge: MultiRepoQueueExecutorBridge, dataDir: string) {
         this.bridge = bridge;
         this.dataDir = dataDir;
         this.queuesDir = path.join(dataDir, 'queues');
+
+        // Auto-subscribe to change events for any repo (including newly created ones)
+        this.bridgeChangeListener = (event: { repoPath: string }) => {
+            if (!this.changeListeners.has(event.repoPath)) {
+                const queueManager = this.bridge.registry.getQueueForRepo(event.repoPath);
+                this.subscribeToRepo(event.repoPath, queueManager);
+            }
+            this.dirtyRepos.add(event.repoPath);
+            this.scheduleSave(event.repoPath);
+        };
+        this.bridge.on('queueChange', this.bridgeChangeListener);
     }
 
     /**
@@ -118,6 +130,9 @@ export class MultiRepoQueuePersistence {
      * Flush all pending debounced saves and remove all change listeners.
      */
     dispose(): void {
+        // Remove bridge-level listener
+        this.bridge.removeListener('queueChange', this.bridgeChangeListener);
+
         // Flush all pending debounced saves synchronously
         for (const [rootPath, timer] of this.debounceTimers) {
             clearTimeout(timer);
@@ -282,20 +297,6 @@ export class MultiRepoQueuePersistence {
      * registry through the bridge's getOrCreateBridge().
      */
     private getQueueManager(rootPath: string): import('@plusplusoneplusplus/pipeline-core').TaskQueueManager | undefined {
-        // The bridge stores per-repo bridges internally. We access the
-        // queue manager by looking up the bridge's underlying registry.
-        // Since QueueExecutorBridge doesn't expose queueManager directly,
-        // we use the registry via the MultiRepoQueueExecutorBridge.
-        // The bridge's getOrCreateBridge calls registry.getQueueForRepo() internally,
-        // so we can call registry.getQueueForRepo() directly if we have access.
-        // However, registry is private. We use the bridge's exposed API.
-        //
-        // To support this, we access the registry via (bridge as any).registry.
-        // This is acceptable since both classes are in the same package.
-        const registry = (this.bridge as any).registry as import('@plusplusoneplusplus/pipeline-core').RepoQueueRegistry;
-        if (!registry) {
-            return undefined;
-        }
-        return registry.getQueueForRepo(rootPath);
+        return this.bridge.registry.getQueueForRepo(rootPath);
     }
 }

@@ -31,9 +31,10 @@ import { generateDashboardHtml } from './spa';
 import type { ExecutionServerOptions, ExecutionServer } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
 import type { ProcessStore, AIProcess, ProcessChangeCallback, ProcessOutputEvent } from '@plusplusoneplusplus/pipeline-core';
-import { TaskQueueManager, FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
-import { createQueueExecutorBridge } from './queue-executor-bridge';
-import { QueuePersistence, computeRepoId } from './queue-persistence';
+import { RepoQueueRegistry, FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
+import { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
+import { MultiRepoQueuePersistence } from './multi-repo-queue-persistence';
+import { computeRepoId } from './queue-persistence';
 import { SchedulePersistence } from './schedule-persistence';
 import { ScheduleManager } from './schedule-manager';
 import { registerScheduleRoutes } from './schedule-handler';
@@ -146,27 +147,32 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // Ensure data directory exists
     fs.mkdirSync(dataDir, { recursive: true });
 
-    // Create queue manager with per-repo pause support
-    const queueManager = new TaskQueueManager({
+    // Create per-repo queue infrastructure
+    const registry = new RepoQueueRegistry({
         maxQueueSize: 0,  // unlimited
         keepHistory: true,
         maxHistorySize: 100,
-        getTaskRepoId: (task) => {
-            const payload = task.payload as Record<string, unknown>;
-            const rootPath = (typeof payload?.workingDirectory === 'string' && payload.workingDirectory)
-                ? payload.workingDirectory
-                : process.cwd();
-            return computeRepoId(rootPath);
-        },
+    });
+
+    const bridge = new MultiRepoQueueExecutorBridge(registry, store, {
+        maxConcurrency: 1,
+        autoStart: true,
+        approvePermissions: true,
+        dataDir,
+        aiService: options.aiService,
     });
 
     // Restore persisted queue state before executor starts processing
-    const queuePersistence = new QueuePersistence(queueManager, dataDir);
+    const queuePersistence = new MultiRepoQueuePersistence(bridge, dataDir);
     queuePersistence.restore();
 
+    // Create aggregate facade for queue routes (until queue-handler.ts is updated in 004)
+    const queueFacade = bridge.createAggregateFacade();
+
     // Initialize schedule manager with persistent storage
+    // TODO(004): update ScheduleManager to accept MultiRepoQueueExecutorBridge
     const schedulePersistence = new SchedulePersistence(dataDir);
-    const scheduleManager = new ScheduleManager(schedulePersistence, queueManager);
+    const scheduleManager = new ScheduleManager(schedulePersistence, queueFacade);
     scheduleManager.restore();
 
     // Wire up output file pruner for automatic cleanup
@@ -177,17 +183,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         store.onPrune = (entries) => outputPruner.handlePrunedEntries(entries);
     }
 
-    // Create queue executor to actually process queued tasks
-    const { executor: queueExecutor, bridge } = createQueueExecutorBridge(queueManager, store, {
-        maxConcurrency: 1,
-        autoStart: true,
-        approvePermissions: true,
-        dataDir,
-        aiService: options.aiService,
-    });
-
-    // Start periodic stale task detection (checks every 60s, grace 5min after timeout)
-    const staleDetector = new StaleTaskDetector(queueManager, store);
+    // StaleTaskDetector: use aggregate facade to scan all per-repo managers
+    const staleDetector = new StaleTaskDetector(queueFacade, store);
     staleDetector.start();
 
     // Start event-driven output cleanup and run initial orphan scan
@@ -202,7 +199,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const routes: Route[] = [];
     registerApiRoutes(routes, store, bridge);
     registerProcessResumeRoutes(routes, store);
-    registerQueueRoutes(routes, queueManager, store);
+    // TODO(004): update registerQueueRoutes signature to accept MultiRepoQueueExecutorBridge
+    registerQueueRoutes(routes, queueFacade, store);
     registerTaskRoutes(routes, store);
     registerTaskWriteRoutes(routes, store);
     registerPipelineRoutes(routes, store);
@@ -217,7 +215,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     registerPromptRoutes(routes, store);
     registerPreferencesRoutes(routes, dataDir);
     registerTaskCommentsRoutes(routes, dataDir);
-    registerAdminRoutes(routes, { store, dataDir, getWsServer: () => wsServer, configPath: options.configPath, getQueueManager: () => queueManager, getQueuePersistence: () => queuePersistence });
+    // TODO(004): update AdminRouteOptions to accept MultiRepoQueueExecutorBridge
+    registerAdminRoutes(routes, { store, dataDir, getWsServer: () => wsServer, configPath: options.configPath, getQueueManager: () => queueFacade, getQueuePersistence: () => queuePersistence as any });
     registerScheduleRoutes(routes, scheduleManager);
 
     // Always register wiki routes (they are safe even with no wikis registered)
@@ -262,17 +261,17 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const wsServer = new ProcessWebSocketServer();
     wsServer.attach(server);
 
-    // Wire drain events from executor to WebSocket
-    queueExecutor.on('drain-start', (event: { queued: number; running: number }) => {
+    // Wire drain events from multi-repo bridge to WebSocket
+    bridge.on('drain-start', (event: { queued: number; running: number }) => {
         wsServer.broadcastProcessEvent({ type: 'drain-start', queued: event.queued, running: event.running });
     });
-    queueExecutor.on('drain-progress', (event: { queued: number; running: number }) => {
+    bridge.on('drain-progress', (event: { queued: number; running: number }) => {
         wsServer.broadcastProcessEvent({ type: 'drain-progress', queued: event.queued, running: event.running });
     });
-    queueExecutor.on('drain-complete', (event: { outcome: 'completed'; queued: number; running: number }) => {
+    bridge.on('drain-complete', (event: { outcome: 'completed'; queued: number; running: number }) => {
         wsServer.broadcastProcessEvent({ type: 'drain-complete', outcome: event.outcome, queued: event.queued, running: event.running });
     });
-    queueExecutor.on('drain-timeout', (event: { queued: number; running: number; timeoutMs?: number }) => {
+    bridge.on('drain-timeout', (event: { queued: number; running: number; timeoutMs?: number }) => {
         wsServer.broadcastProcessEvent({ type: 'drain-timeout', queued: event.queued, running: event.running, timeoutMs: event.timeoutMs });
     });
 
@@ -311,21 +310,35 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         }
     };
 
-    // Bridge queue manager events to WebSocket
-    queueManager.on('change', (event: { type: string; taskId?: string }) => {
-        const queued = queueManager.getQueued();
-        const running = queueManager.getRunning();
-        const history = queueManager.getHistory();
-        const stats = queueManager.getStats();
+    // Bridge queue change events from all repos to WebSocket (aggregated snapshot)
+    bridge.on('queueChange', (event: { repoPath: string; repoId: string; type: string; taskId?: string }) => {
+        // Aggregate queued/running/history across all repos
+        const allQueued: any[] = [];
+        const allRunning: any[] = [];
+        const allHistory: any[] = [];
+        const combinedStats = { queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0, total: 0, isPaused: false };
+
+        for (const [, manager] of registry.getAllQueues()) {
+            allQueued.push(...manager.getQueued());
+            allRunning.push(...manager.getRunning());
+            allHistory.push(...manager.getHistory());
+            const s = manager.getStats();
+            combinedStats.queued += s.queued;
+            combinedStats.running += s.running;
+            combinedStats.completed += s.completed;
+            combinedStats.failed += s.failed;
+            combinedStats.cancelled += s.cancelled;
+            combinedStats.total += s.total;
+        }
 
         // Debug: log queue state changes
         const taskInfo = event.taskId ? ` task=${event.taskId}` : '';
-        process.stderr.write(`[Queue] ${event.type}${taskInfo} — queued=${stats.queued} running=${stats.running} completed=${stats.completed} failed=${stats.failed} ws_clients=${wsServer.clientCount}\n`);
+        process.stderr.write(`[Queue] ${event.type}${taskInfo} — queued=${combinedStats.queued} running=${combinedStats.running} completed=${combinedStats.completed} failed=${combinedStats.failed} ws_clients=${wsServer.clientCount}\n`);
 
         wsServer.broadcastProcessEvent({
             type: 'queue-updated',
             queue: {
-                queued: queued.map(t => ({
+                queued: allQueued.map(t => ({
                     id: t.id,
                     repoId: t.repoId,
                     type: t.type,
@@ -335,7 +348,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                     createdAt: t.createdAt,
                     workingDirectory: (t.payload as any)?.workingDirectory,
                 })),
-                running: running.map(t => ({
+                running: allRunning.map(t => ({
                     id: t.id,
                     repoId: t.repoId,
                     type: t.type,
@@ -346,7 +359,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                     startedAt: t.startedAt,
                     workingDirectory: (t.payload as any)?.workingDirectory,
                 })),
-                history: history.map(t => ({
+                history: allHistory.map(t => ({
                     id: t.id,
                     repoId: t.repoId,
                     type: t.type,
@@ -359,7 +372,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                     error: t.error,
                     workingDirectory: (t.payload as any)?.workingDirectory,
                 })),
-                stats,
+                stats: combinedStats,
             },
         } as any);
     });
@@ -398,6 +411,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     for (const ws of existingWorkspaces) {
         taskWatcher.watchWorkspace(ws.id, ws.rootPath);
         pipelineWatcher.watchWorkspace(ws.id, ws.rootPath);
+        // Register repo ID so bridge.getBridgeByRepoId() works for pre-existing workspaces
+        bridge.registerRepoId(computeRepoId(ws.rootPath), ws.rootPath);
     }
 
     // Intercept workspace registration/removal to manage task watchers
@@ -408,6 +423,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         await originalRegister(workspace);
         taskWatcher.watchWorkspace(workspace.id, workspace.rootPath);
         pipelineWatcher.watchWorkspace(workspace.id, workspace.rootPath);
+        bridge.registerRepoId(computeRepoId(workspace.rootPath), workspace.rootPath);
     };
 
     store.removeWorkspace = async (id: string) => {
@@ -458,18 +474,14 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             // Drain queue if requested
             let drainOutcome: 'completed' | 'timeout' | undefined;
             if (closeOptions?.drain) {
-                const result = await queueExecutor.drainAndDispose(closeOptions.drainTimeoutMs);
+                const result = await bridge.drainAll(closeOptions.drainTimeoutMs);
                 drainOutcome = result.outcome;
-            } else {
-                // Flush persisted queue state before stopping executor
-                queuePersistence.dispose();
-                // Stop the queue executor immediately
-                queueExecutor.dispose();
             }
 
-            // If drain was used, still flush persistence
-            if (closeOptions?.drain) {
-                queuePersistence.dispose();
+            // Flush persisted queue state and dispose bridge
+            queuePersistence.dispose();
+            if (!closeOptions?.drain) {
+                bridge.dispose();
             }
 
             wsServer.closeAll();
@@ -508,6 +520,8 @@ export { generateDashboardHtml } from './spa';
 export type { DashboardOptions } from './spa';
 export { CLITaskExecutor, createQueueExecutorBridge } from './queue-executor-bridge';
 export type { QueueExecutorBridgeOptions, QueueExecutorBridge } from './queue-executor-bridge';
+export { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
+export { MultiRepoQueuePersistence } from './multi-repo-queue-persistence';
 export { QueuePersistence } from './queue-persistence';
 export { OutputPruner } from './output-pruner';
 export { StaleTaskDetector } from './stale-task-detector';

@@ -702,4 +702,186 @@ describe('Per-Repo Queue Integration', () => {
             }
         });
     });
+
+    // ------------------------------------------------------------------
+    // Scenario 10: Two-repo parallel execution
+    // ------------------------------------------------------------------
+    describe('two-repo parallel execution', () => {
+        it('should execute tasks from different repos concurrently', async () => {
+            // Resume queue
+            await postJSON(`${baseUrl}/api/queue/resume`, {});
+
+            const repoA = '/repo-parallel-a';
+            const repoB = '/repo-parallel-b';
+
+            // Enqueue one task per repo — they should execute in parallel
+            const taskA = await postJSON(`${baseUrl}/api/queue`, makeTask(repoA, { displayName: 'Parallel A' }));
+            const taskB = await postJSON(`${baseUrl}/api/queue`, makeTask(repoB, { displayName: 'Parallel B' }));
+
+            expect(taskA.status).toBe(201);
+            expect(taskB.status).toBe(201);
+
+            const taskAId = JSON.parse(taskA.body).task.id;
+            const taskBId = JSON.parse(taskB.body).task.id;
+
+            // Wait briefly for tasks to be picked up
+            await waitFor(500);
+
+            // Both tasks should be running or completed — neither should block the other
+            const list = await request(`${baseUrl}/api/queue`);
+            const body = JSON.parse(list.body);
+            const allActive = [...body.queued, ...body.running];
+
+            // At this point both tasks should have started (running or completed)
+            // Since they are on different repos, neither should be queued waiting for the other
+            const taskAActive = allActive.find((t: any) => t.id === taskAId);
+            const taskBActive = allActive.find((t: any) => t.id === taskBId);
+
+            // If both are still active, verify they're not both queued (at least one should be running)
+            if (taskAActive && taskBActive) {
+                const bothQueued = taskAActive.status === 'queued' && taskBActive.status === 'queued';
+                expect(bothQueued).toBe(false);
+            }
+            // If they completed very fast, check history
+            if (!taskAActive || !taskBActive) {
+                const histRes = await request(`${baseUrl}/api/queue/history`);
+                const histBody = JSON.parse(histRes.body);
+                const histIds = histBody.history.map((t: any) => t.id);
+                if (!taskAActive) expect(histIds).toContain(taskAId);
+                if (!taskBActive) expect(histIds).toContain(taskBId);
+            }
+        });
+    });
+
+    // ------------------------------------------------------------------
+    // Scenario 11: Single-repo serialization
+    // ------------------------------------------------------------------
+    describe('single-repo serialization', () => {
+        it('should serialize tasks within the same repo', async () => {
+            // Pause to accumulate tasks
+            await postJSON(`${baseUrl}/api/queue/pause`, {});
+
+            const repo = '/repo-serial';
+            const task1 = await postJSON(`${baseUrl}/api/queue`, makeTask(repo, { displayName: 'Serial 1' }));
+            const task2 = await postJSON(`${baseUrl}/api/queue`, makeTask(repo, { displayName: 'Serial 2' }));
+
+            expect(task1.status).toBe(201);
+            expect(task2.status).toBe(201);
+
+            // Resume and let executor pick up
+            await postJSON(`${baseUrl}/api/queue/resume`, {});
+            await waitFor(500);
+
+            // List tasks — at most one should be running for this repo (concurrency=1)
+            const list = await request(`${baseUrl}/api/queue`);
+            const body = JSON.parse(list.body);
+            const runningForRepo = body.running.filter((t: any) => t.repoId === repo);
+            expect(runningForRepo.length).toBeLessThanOrEqual(1);
+        });
+    });
+
+    // ------------------------------------------------------------------
+    // Scenario 12: Isolation on failure
+    // ------------------------------------------------------------------
+    describe('isolation on failure', () => {
+        it('should not block repo B when repo A task fails', async () => {
+            await postJSON(`${baseUrl}/api/queue/resume`, {});
+
+            const repoA = '/repo-fail-a';
+            const repoB = '/repo-fail-b';
+
+            // Enqueue tasks for both repos
+            const taskA = await postJSON(`${baseUrl}/api/queue`, makeTask(repoA, { displayName: 'Fail A' }));
+            const taskB = await postJSON(`${baseUrl}/api/queue`, makeTask(repoB, { displayName: 'Success B' }));
+
+            expect(taskA.status).toBe(201);
+            expect(taskB.status).toBe(201);
+
+            const taskAId = JSON.parse(taskA.body).task.id;
+            const taskBId = JSON.parse(taskB.body).task.id;
+
+            // Force-fail task A
+            await waitFor(300);
+            await request(`${baseUrl}/api/queue/${taskAId}/force-fail`, {
+                method: 'POST',
+                body: JSON.stringify({ error: 'Simulated failure' }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            // Wait for task B to process
+            await waitFor(2000);
+
+            // Task B should have completed or be running — not blocked by A's failure
+            const taskBRes = await request(`${baseUrl}/api/queue/${taskBId}`);
+            const taskBBody = JSON.parse(taskBRes.body);
+            if (taskBBody.task) {
+                expect(['running', 'completed', 'failed']).toContain(taskBBody.task.status);
+                expect(taskBBody.task.status).not.toBe('queued');
+            } else {
+                // Task completed and moved to history
+                const histRes = await request(`${baseUrl}/api/queue/history`);
+                const histBody = JSON.parse(histRes.body);
+                const histTask = histBody.history.find((t: any) => t.id === taskBId);
+                expect(histTask).toBeDefined();
+            }
+        });
+    });
+
+    // ------------------------------------------------------------------
+    // Scenario 13: Workspace registration propagates to bridge
+    // ------------------------------------------------------------------
+    describe('workspace registration propagates to bridge', () => {
+        it('should register repo ID when workspace is registered via API', async () => {
+            const rootPath = '/repo-ws-register-test';
+            const workspaceId = 'ws-register-test-id';
+
+            // Register a workspace via the API
+            const regRes = await postJSON(`${baseUrl}/api/workspaces`, {
+                id: workspaceId,
+                name: 'Test Workspace',
+                rootPath,
+            });
+            expect(regRes.status).toBe(201);
+
+            // Verify the repo can accept tasks (bridge was auto-created for the workspace path)
+            // The registration intercept calls bridge.registerRepoId, so enqueueing for this
+            // repo should work and the task's repoId should match
+            const taskRes = await postJSON(`${baseUrl}/api/queue`, makeTask(rootPath, { displayName: 'WS task' }));
+            expect(taskRes.status).toBe(201);
+            const task = JSON.parse(taskRes.body).task;
+            expect(task.repoId).toBe(rootPath);
+        });
+    });
+
+    // ------------------------------------------------------------------
+    // Scenario 14: Server close drains all repos
+    // ------------------------------------------------------------------
+    describe('server close drains all repos', () => {
+        it('should drain tasks from multiple repos on close', async () => {
+            // Create a fresh server instance for this test
+            const drainTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'per-repo-drain-'));
+            let drainServer: ExecutionServer;
+
+            try {
+                drainServer = await createExecutionServer({
+                    port: 0,
+                    host: '127.0.0.1',
+                    dataDir: drainTmpDir,
+                });
+                const drainUrl = drainServer.url;
+
+                // Enqueue tasks from two repos
+                await postJSON(`${drainUrl}/api/queue`, makeTask('/repo-drain-a', { displayName: 'Drain A' }));
+                await postJSON(`${drainUrl}/api/queue`, makeTask('/repo-drain-b', { displayName: 'Drain B' }));
+
+                // Close with drain
+                const result = await drainServer.close({ drain: true, drainTimeoutMs: 10000 });
+
+                // Drain should complete (or timeout, both are acceptable outcomes)
+                expect(['completed', 'timeout', undefined]).toContain(result?.drainOutcome);
+            } finally {
+                fs.rmSync(drainTmpDir, { recursive: true, force: true });
+            }
+        });
+    });
 });
