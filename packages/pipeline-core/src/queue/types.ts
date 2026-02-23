@@ -19,6 +19,7 @@ export type TaskType =
     | 'resolve-comments'
     | 'code-review'
     | 'ai-clarification'
+    | 'task-generation'
     | 'custom';
 
 /**
@@ -128,6 +129,30 @@ export interface AIClarificationPayload {
 }
 
 /**
+ * Payload for task-generation tasks (AI-powered task file creation)
+ */
+export interface TaskGenerationPayload {
+    /** Discriminant field for clean type narrowing */
+    readonly kind: 'task-generation';
+    /** Absolute workspace root path — used as workingDirectory for the AI session */
+    workingDirectory: string;
+    /** User's feature description / instructions */
+    prompt: string;
+    /** Relative path under .vscode/tasks/ where the task file should be written */
+    targetFolder?: string;
+    /** Desired task name (used with buildCreateTaskPromptWithName) */
+    name?: string;
+    /** AI model override */
+    model?: string;
+    /** Generation depth: simple = buildCreateFromFeaturePrompt, deep = buildDeepModePrompt */
+    depth?: 'simple' | 'deep';
+    /** When present, activates feature-context mode */
+    mode?: 'from-feature';
+    /** Workspace ID for display / process metadata */
+    workspaceId?: string;
+}
+
+/**
  * Payload for custom tasks
  */
 export interface CustomTaskPayload {
@@ -145,6 +170,7 @@ export type TaskPayload =
     | ResolveCommentsPayload
     | CodeReviewPayload
     | AIClarificationPayload
+    | TaskGenerationPayload
     | CustomTaskPayload;
 
 // ============================================================================
@@ -532,6 +558,13 @@ export function isAIClarificationPayload(payload: TaskPayload): payload is AICla
  */
 export function isCustomTaskPayload(payload: TaskPayload): payload is CustomTaskPayload {
     return 'data' in payload;
+}
+
+/**
+ * Check if a payload is a TaskGenerationPayload
+ */
+export function isTaskGenerationPayload(payload: TaskPayload): payload is TaskGenerationPayload {
+    return (payload as any).kind === 'task-generation';
 }
 
 /**

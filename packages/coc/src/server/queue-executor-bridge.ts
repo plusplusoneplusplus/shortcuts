@@ -9,6 +9,7 @@
  * - ai-clarification: Sends prompt to CopilotSDKService
  * - custom: Sends payload.data.prompt to CopilotSDKService
  * - follow-prompt: Reads prompt file and sends to CopilotSDKService
+ * - task-generation: Builds task creation prompt and sends to CopilotSDKService
  * - code-review / resolve-comments: Marked as completed (no-op placeholder)
  *
  * No VS Code dependencies — uses only Node.js built-in modules.
@@ -28,13 +29,19 @@ import {
     isFollowPromptPayload,
     isAIClarificationPayload,
     isCustomTaskPayload,
+    isTaskGenerationPayload,
     getCopilotSDKService,
     approveAllPermissions,
     DEFAULT_AI_TIMEOUT_MS,
     getLogger,
     LogCategory,
+    buildCreateTaskPrompt,
+    buildCreateTaskPromptWithName,
+    buildCreateFromFeaturePrompt,
+    buildDeepModePrompt,
+    gatherFeatureContext,
 } from '@plusplusoneplusplus/pipeline-core';
-import type { ProcessStore, AIProcess, ConversationTurn, ToolEvent, TimelineItem, CopilotSDKService } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore, AIProcess, ConversationTurn, ToolEvent, TimelineItem, CopilotSDKService, TaskGenerationPayload, SelectedContext } from '@plusplusoneplusplus/pipeline-core';
 
 // ============================================================================
 // Types
@@ -433,6 +440,10 @@ export class CLITaskExecutor implements TaskExecutor {
     // ========================================================================
 
     private extractPrompt(task: QueuedTask): string {
+        if (isTaskGenerationPayload(task.payload)) {
+            return task.payload.prompt;
+        }
+
         if (isAIClarificationPayload(task.payload)) {
             return task.payload.prompt || task.displayName || 'AI clarification task';
         }
@@ -510,6 +521,11 @@ export class CLITaskExecutor implements TaskExecutor {
     // ========================================================================
 
     private async executeByType(task: QueuedTask, prompt: string): Promise<unknown> {
+        // Task generation: build the appropriate prompt and delegate to AI
+        if (isTaskGenerationPayload(task.payload)) {
+            return this.executeTaskGeneration(task);
+        }
+
         // For types that need AI execution
         if (
             isAIClarificationPayload(task.payload) ||
@@ -609,7 +625,40 @@ export class CLITaskExecutor implements TaskExecutor {
         };
     }
 
+    private async executeTaskGeneration(task: QueuedTask): Promise<unknown> {
+        const payload = task.payload as TaskGenerationPayload;
+
+        const tasksBase = path.resolve(payload.workingDirectory, '.vscode/tasks');
+        const resolvedTarget = payload.targetFolder
+            ? path.resolve(tasksBase, payload.targetFolder)
+            : tasksBase;
+        fs.mkdirSync(resolvedTarget, { recursive: true });
+
+        let aiPrompt: string;
+        if (payload.mode === 'from-feature') {
+            const context = await gatherFeatureContext(resolvedTarget, payload.workingDirectory);
+            const selectedContext: SelectedContext = {
+                description: context.description,
+                planContent: context.planContent,
+                specContent: context.specContent,
+                relatedFiles: context.relatedFiles,
+            };
+            aiPrompt = payload.depth === 'deep'
+                ? buildDeepModePrompt(selectedContext, payload.prompt, payload.name, resolvedTarget, payload.workingDirectory)
+                : buildCreateFromFeaturePrompt(selectedContext, payload.prompt, payload.name, resolvedTarget);
+        } else if (payload.name?.trim()) {
+            aiPrompt = buildCreateTaskPromptWithName(payload.name, payload.prompt, resolvedTarget);
+        } else {
+            aiPrompt = buildCreateTaskPrompt(payload.prompt, resolvedTarget);
+        }
+
+        return this.executeWithAI(task, aiPrompt);
+    }
+
     private getWorkingDirectory(task: QueuedTask): string | undefined {
+        if (isTaskGenerationPayload(task.payload)) {
+            return task.payload.workingDirectory || this.defaultWorkingDirectory;
+        }
         if (isFollowPromptPayload(task.payload)) {
             return task.payload.workingDirectory || this.defaultWorkingDirectory;
         }

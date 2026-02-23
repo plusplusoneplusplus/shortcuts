@@ -211,7 +211,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             timestamp: Date.now(),
         });
     });
-    registerTaskGenerationRoutes(routes, store);
+    registerTaskGenerationRoutes(routes, store, bridge);
     registerPromptRoutes(routes, store);
     registerPreferencesRoutes(routes, dataDir);
     registerTaskCommentsRoutes(routes, dataDir);

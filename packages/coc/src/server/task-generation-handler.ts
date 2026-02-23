@@ -15,7 +15,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import type { ServerResponse } from 'http';
-import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore, CreateTaskInput, TaskGenerationPayload } from '@plusplusoneplusplus/pipeline-core';
 import {
     buildCreateTaskPrompt,
     buildCreateTaskPromptWithName,
@@ -29,10 +29,12 @@ import {
     approveAllPermissions,
     denyAllPermissions,
     DEFAULT_AI_TIMEOUT_MS,
+    generateTaskId,
 } from '@plusplusoneplusplus/pipeline-core';
 import type { SelectedContext } from '@plusplusoneplusplus/pipeline-core';
 import { sendJSON, sendError, parseBody } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
+import type { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 
 // ============================================================================
 // Workspace resolution helper
@@ -71,7 +73,7 @@ function sendEvent(res: ServerResponse, event: string, data: unknown): void {
  * Register task generation API routes on the given route table.
  * Mutates the `routes` array in-place.
  */
-export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStore): void {
+export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStore, bridge: MultiRepoQueueExecutorBridge): void {
 
     // ------------------------------------------------------------------
     // POST /api/workspaces/:id/tasks/generate — AI task generation
@@ -270,6 +272,60 @@ export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStor
                 }
                 return sendError(res, 500, 'Discovery failed: ' + message);
             }
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // POST /api/workspaces/:id/queue/generate — Queued task generation
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/queue\/generate$/,
+        handler: async (req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const ws = await resolveWorkspace(store, id);
+            if (!ws) {
+                return sendError(res, 404, 'Workspace not found');
+            }
+
+            let body: any;
+            try {
+                body = await parseBody(req);
+            } catch {
+                return sendError(res, 400, 'Invalid JSON body');
+            }
+
+            const { prompt, targetFolder, name, model, mode, depth, priority } = body || {};
+
+            if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
+                return sendError(res, 400, 'Missing required field: prompt');
+            }
+
+            const payload: TaskGenerationPayload = {
+                kind: 'task-generation',
+                workingDirectory: ws.rootPath,
+                prompt: prompt.trim(),
+                targetFolder,
+                name,
+                model,
+                mode,
+                depth,
+                workspaceId: id,
+            };
+
+            const taskInput: CreateTaskInput<TaskGenerationPayload> = {
+                type: 'task-generation',
+                priority: priority || 'normal',
+                payload,
+                config: { model, timeoutMs: DEFAULT_AI_TIMEOUT_MS },
+                displayName: name || prompt.trim().slice(0, 60),
+            };
+
+            const repoBridge = bridge.getOrCreateBridge(ws.rootPath);
+            const queueManager = bridge.registry.getQueueForRepo(ws.rootPath);
+            const taskId = queueManager.enqueue(taskInput);
+
+            sendJSON(res, 201, { taskId, queuedAt: Date.now() });
         },
     });
 }

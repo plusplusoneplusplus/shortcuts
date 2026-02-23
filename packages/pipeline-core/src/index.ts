@@ -616,6 +616,7 @@ export {
     ResolveCommentsPayload,
     CodeReviewPayload,
     AIClarificationPayload,
+    TaskGenerationPayload,
     CustomTaskPayload,
     TaskPayload,
 
@@ -660,6 +661,7 @@ export {
     isResolveCommentsPayload,
     isCodeReviewPayload,
     isAIClarificationPayload,
+    isTaskGenerationPayload,
     isCustomTaskPayload,
 
     // Utilities
