@@ -819,3 +819,69 @@ test.describe('Queue Task Conversation – Error Handling', () => {
         await expect(page.locator('.retry-btn')).toBeVisible();
     });
 });
+
+// ---------------------------------------------------------------------------
+// 8. Streaming – Intermediate State
+// ---------------------------------------------------------------------------
+
+test.describe('Queue Task Conversation – Streaming Intermediate State', () => {
+
+    test('renders each chunk before the next one arrives', async ({ page, serverUrl, mockAI }) => {
+        const chunks = ['Hello', ', world', '!'];
+        const { implementation, gate } = mockAI.createGatedStreamingResponse(chunks);
+        mockAI.mockSendMessage.mockImplementation(implementation);
+
+        const task = await seedQueueTask(serverUrl, { payload: { prompt: 'Gate test' } });
+
+        // Detect when SSE stream connection is established (before navigation triggers it)
+        const sseConnected = page.waitForRequest(req => req.url().includes('/stream'), { timeout: 10_000 });
+        await gotoQueueTask(page, serverUrl, task.id as string);
+
+        const bubble = page.locator('.chat-message.assistant').last();
+
+        // Wait for executor to start — streaming placeholder proves SSE is connected
+        await expect(page.locator('.streaming-indicator')).toBeVisible({ timeout: 8000 });
+        // Ensure SSE EventSource has connected so chunks reach the browser
+        await sseConnected;
+
+        // ── Chunk 1 ───────────────────────────────────────────────────────
+        await gate.releaseNext();
+        await expect(bubble).toContainText('Hello', { timeout: 5000 });
+        await expect(bubble).not.toContainText(', world');
+
+        // ── Chunk 2 ───────────────────────────────────────────────────────
+        await gate.releaseNext();
+        await expect(bubble).toContainText('Hello, world', { timeout: 2000 });
+        await expect(bubble).not.toContainText('!');
+
+        // ── Chunk 3 ───────────────────────────────────────────────────────
+        await gate.releaseNext();
+        await expect(bubble).toContainText('Hello, world!', { timeout: 2000 });
+
+        await waitForStreamingToComplete(page);
+    });
+
+    test('streaming indicator is visible between chunks and gone after last chunk', async ({ page, serverUrl, mockAI }) => {
+        const chunks = ['Part one', ' part two'];
+        const { implementation, gate } = mockAI.createGatedStreamingResponse(chunks);
+        mockAI.mockSendMessage.mockImplementation(implementation);
+
+        const task = await seedQueueTask(serverUrl, { payload: { prompt: 'Indicator test' } });
+
+        const sseConnected = page.waitForRequest(req => req.url().includes('/stream'), { timeout: 10_000 });
+        await gotoQueueTask(page, serverUrl, task.id as string);
+
+        await expect(page.locator('.streaming-indicator')).toBeVisible({ timeout: 8000 });
+        await sseConnected;
+
+        await gate.releaseNext();
+        await expect(page.locator('.chat-message.assistant').last())
+            .toContainText('Part one', { timeout: 5000 });
+        // Indicator still visible — stream not complete
+        await expect(page.locator('.streaming-indicator')).toBeVisible();
+
+        await gate.releaseNext();
+        await waitForStreamingToComplete(page);
+        await expect(page.locator('.streaming-indicator')).toHaveCount(0);
+    });
+});

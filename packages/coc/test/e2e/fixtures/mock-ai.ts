@@ -72,6 +72,22 @@ function createMockFn<TReturn = unknown>(defaultImpl: (...args: unknown[]) => TR
 }
 
 // ---------------------------------------------------------------------------
+// Chunk Gate (for intermediate streaming verification)
+// ---------------------------------------------------------------------------
+
+export interface ChunkGate {
+    /**
+     * Unblocks the next pending chunk, then yields so onStreamingChunk fires
+     * before returning. The Playwright expect() timeout handles SSE propagation.
+     */
+    releaseNext(): Promise<void>;
+    /** Release all remaining chunks at once (cleanup / error paths). */
+    releaseAll(): void;
+    /** Number of chunks released so far. */
+    readonly released: number;
+}
+
+// ---------------------------------------------------------------------------
 // Mock Tool Event
 // ---------------------------------------------------------------------------
 
@@ -124,6 +140,15 @@ export interface E2EMockAIControls {
         events: MockToolEvent[],
         options?: { finalResponse?: string; sessionId?: string },
     ): (...args: unknown[]) => Promise<unknown>;
+    /**
+     * Returns a gated streaming implementation where each chunk is held
+     * until the test explicitly calls `gate.releaseNext()`. This allows
+     * asserting exact DOM state after each individual chunk.
+     */
+    createGatedStreamingResponse(
+        chunks: string[],
+        options?: { finalResponse?: string; sessionId?: string },
+    ): { implementation: (...args: unknown[]) => Promise<unknown>; gate: ChunkGate };
 }
 
 export interface E2EMockAIOptions {
@@ -182,7 +207,11 @@ export function createE2EMockSDKService(options?: E2EMockAIOptions): E2EMockAICo
         dispose: () => Promise.resolve(),
     };
 
+    let activeGate: ChunkGate | null = null;
+
     const resetAll = () => {
+        activeGate?.releaseAll();
+        activeGate = null;
         mockIsAvailable.mockReset();
         mockSendMessage.mockReset();
         mockSendFollowUp.mockReset();
@@ -235,6 +264,54 @@ export function createE2EMockSDKService(options?: E2EMockAIOptions): E2EMockAICo
         };
     }
 
+    function createGatedStreamingResponse(
+        chunks: string[],
+        gatedOpts?: { finalResponse?: string; sessionId?: string },
+    ): { implementation: (...args: unknown[]) => Promise<unknown>; gate: ChunkGate } {
+        const gates = chunks.map(() => {
+            let resolve!: () => void;
+            const promise = new Promise<void>((r) => { resolve = r; });
+            return { promise, resolve };
+        });
+        let releasedCount = 0;
+
+        const implementation = async (...args: unknown[]) => {
+            const opts = (args.length >= 3 ? args[2] : args[0]) as Record<string, unknown> | undefined;
+            const onChunk = opts?.onStreamingChunk as ((chunk: string) => void) | undefined;
+
+            for (let i = 0; i < chunks.length; i++) {
+                await gates[i].promise;
+                onChunk?.(chunks[i]);
+            }
+
+            return {
+                success: true,
+                response: gatedOpts?.finalResponse ?? chunks.join(''),
+                sessionId: gatedOpts?.sessionId ?? 'session-123',
+            };
+        };
+
+        const gate: ChunkGate = {
+            releaseNext: async () => {
+                if (releasedCount < gates.length) {
+                    gates[releasedCount].resolve();
+                    releasedCount++;
+                    await sleep(0);
+                }
+            },
+            releaseAll: () => {
+                for (let i = releasedCount; i < gates.length; i++) {
+                    gates[i].resolve();
+                }
+                releasedCount = gates.length;
+            },
+            get released() { return releasedCount; },
+        };
+
+        activeGate = gate;
+        return { implementation, gate };
+    }
+
     return {
         service,
         mockSendMessage,
@@ -245,5 +322,6 @@ export function createE2EMockSDKService(options?: E2EMockAIOptions): E2EMockAICo
         resetAll,
         createStreamingResponse,
         createToolCallResponse,
+        createGatedStreamingResponse,
     };
 }
