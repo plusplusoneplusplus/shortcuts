@@ -17,6 +17,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { sendJSON, sendError, parseBody } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
+import {
+    DEFAULT_AI_COMMANDS,
+    type AICommand,
+    buildPromptFromContext,
+    type PromptContext,
+} from '@plusplusoneplusplus/pipeline-core';
 
 // ============================================================================
 // Types
@@ -86,6 +92,20 @@ export interface CommentAnchor {
     contextAfter: string;
     originalLine: number;
     textHash: string;
+}
+
+/**
+ * Optional document context supplied by the client to enrich AI prompts.
+ */
+export interface DocumentContext {
+    /** Lines surrounding the selection (excluding the selection itself). */
+    surroundingLines?: string;
+    /** Nearest markdown heading above the selection. */
+    nearestHeading?: string;
+    /** All headings in the document. */
+    allHeadings?: string[];
+    /** Relative path of the source file (overrides comment.filePath if provided). */
+    filePath?: string;
 }
 
 /**
@@ -519,8 +539,26 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string): vo
                     return sendError(res, 404, 'Comment not found');
                 }
 
-                const question = body.question || 'Please explain this section and suggest improvements.';
-                const prompt = buildAIPrompt(comment, question);
+                // Extract new optional body fields
+                const commandId: string | undefined = body.commandId;
+                const customQuestion: string | undefined = body.customQuestion;
+                const documentContext: DocumentContext | undefined = body.documentContext;
+
+                let prompt: string;
+                if (commandId) {
+                    const command = DEFAULT_AI_COMMANDS.find(c => c.id === commandId);
+                    if (command) {
+                        prompt = buildEnrichedPrompt(command, comment, customQuestion, documentContext);
+                    } else {
+                        // Unknown commandId: fall back to legacy behavior with question text
+                        const question = customQuestion || body.question || 'Please explain this section and suggest improvements.';
+                        prompt = buildAIPrompt(comment, question);
+                    }
+                } else {
+                    // Legacy path: no commandId supplied
+                    const question = body.question || 'Please explain this section and suggest improvements.';
+                    prompt = buildAIPrompt(comment, question);
+                }
 
                 // Try to invoke AI
                 let aiResponse: string;
@@ -638,6 +676,29 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string): vo
             }
         },
     });
+}
+
+/**
+ * Build an enriched prompt using a named AI command and optional document context.
+ */
+function buildEnrichedPrompt(
+    command: AICommand,
+    comment: TaskComment,
+    customQuestion: string | undefined,
+    docCtx: DocumentContext | undefined
+): string {
+    const promptTemplate =
+        command.isCustomInput && customQuestion ? customQuestion : command.prompt;
+
+    const context: PromptContext = {
+        selectedText: comment.selectedText,
+        filePath: docCtx?.filePath ?? comment.filePath,
+        surroundingContent: docCtx?.surroundingLines,
+        nearestHeading: docCtx?.nearestHeading ?? null,
+        headings: docCtx?.allHeadings,
+    };
+
+    return buildPromptFromContext(promptTemplate, context);
 }
 
 /**
