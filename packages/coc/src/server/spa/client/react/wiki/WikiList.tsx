@@ -39,6 +39,26 @@ const statusConfig: Record<WikiStatus, { label: string; badge: string }> = {
     pending: { label: 'Setup Required', badge: 'warning' },
 };
 
+/** Replace the user's home directory prefix with `~` for cleaner display. */
+export function shortenPath(fullPath: string): string {
+    if (!fullPath) return fullPath;
+    // Detect home directory from common env vars or path patterns
+    const home = typeof process !== 'undefined' && process.env?.HOME
+        ? process.env.HOME
+        : typeof process !== 'undefined' && process.env?.USERPROFILE
+            ? process.env.USERPROFILE
+            : null;
+    if (home && fullPath.startsWith(home)) {
+        return '~' + fullPath.slice(home.length);
+    }
+    // Fallback: detect /Users/xxx or /home/xxx patterns
+    const homeMatch = fullPath.match(/^(\/(?:Users|home)\/[^/]+)/);
+    if (homeMatch) {
+        return '~' + fullPath.slice(homeMatch[1].length);
+    }
+    return fullPath;
+}
+
 function relativeTime(dateStr: string): string {
     const d = new Date(dateStr);
     const now = Date.now();
@@ -138,6 +158,17 @@ export function WikiList() {
                                         </Button>
                                     )}
                                 </div>
+                                {wiki.repoPath && (
+                                    <div
+                                        className="text-xs text-[#848484] truncate mt-1"
+                                        style={{ direction: 'rtl', textAlign: 'left' }}
+                                        title={wiki.repoPath}
+                                    >
+                                        <span style={{ direction: 'ltr', unicodeBidi: 'embed' }}>
+                                            📂 {shortenPath(wiki.repoPath)}
+                                        </span>
+                                    </div>
+                                )}
                                 <div className="flex justify-end gap-1 mt-2" onClick={e => e.stopPropagation()}>
                                     <button
                                         className="p-1 text-xs text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]"

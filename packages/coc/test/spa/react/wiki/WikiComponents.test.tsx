@@ -10,7 +10,7 @@ import { useEffect, type ReactNode } from 'react';
 import { AppProvider, useApp, appReducer, type AppContextState } from '../../../../src/server/spa/client/react/context/AppContext';
 import { QueueProvider } from '../../../../src/server/spa/client/react/context/QueueContext';
 import { WikiComponentTree } from '../../../../src/server/spa/client/react/wiki/WikiComponentTree';
-import { WikiList } from '../../../../src/server/spa/client/react/wiki/WikiList';
+import { WikiList, shortenPath } from '../../../../src/server/spa/client/react/wiki/WikiList';
 import { AddWikiDialog } from '../../../../src/server/spa/client/react/wiki/AddWikiDialog';
 import { WikiAsk } from '../../../../src/server/spa/client/react/wiki/WikiAsk';
 import { WikiAdmin } from '../../../../src/server/spa/client/react/wiki/WikiAdmin';
@@ -373,6 +373,107 @@ describe('WikiList', () => {
             expect(screen.getByText('Generating Wiki')).toBeTruthy();
         });
         expect(screen.queryByText('→ Setup')).toBeNull();
+    });
+    it('shows repo path on wiki card when repoPath is provided', async () => {
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve([
+                { id: 'w1', name: 'My Wiki', status: 'loaded', color: '#3b82f6', repoPath: '/tmp/my-project', componentCount: 10 },
+            ]),
+        }));
+        render(<Wrap><WikiList /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByText('My Wiki')).toBeTruthy();
+        });
+        expect(screen.getByText(/📂.*\/tmp\/my-project/)).toBeTruthy();
+    });
+
+    it('shows full repoPath as tooltip', async () => {
+        const fullPath = '/tmp/my-project';
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve([
+                { id: 'w1', name: 'My Wiki', status: 'loaded', color: '#3b82f6', repoPath: fullPath },
+            ]),
+        }));
+        render(<Wrap><WikiList /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByText('My Wiki')).toBeTruthy();
+        });
+        const repoDiv = screen.getByTitle(fullPath);
+        expect(repoDiv).toBeTruthy();
+    });
+
+    it('hides repo path row when repoPath is empty', async () => {
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve([
+                { id: 'w1', name: 'No Path Wiki', status: 'loaded', color: '#3b82f6', repoPath: '' },
+            ]),
+        }));
+        render(<Wrap><WikiList /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByText('No Path Wiki')).toBeTruthy();
+        });
+        expect(screen.queryByText(/📂/)).toBeNull();
+    });
+
+    it('hides repo path row when repoPath is undefined', async () => {
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve([
+                { id: 'w1', name: 'No Path Wiki', status: 'loaded', color: '#3b82f6' },
+            ]),
+        }));
+        render(<Wrap><WikiList /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByText('No Path Wiki')).toBeTruthy();
+        });
+        expect(screen.queryByText(/📂/)).toBeNull();
+    });
+
+    it('shows repo path for pending wikis too', async () => {
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve([
+                { id: 'w1', name: 'Pending Wiki', status: 'pending', color: '#aaa', repoPath: '/tmp/pending-repo' },
+            ]),
+        }));
+        render(<Wrap><WikiList /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByText('Pending Wiki')).toBeTruthy();
+        });
+        expect(screen.getByText(/📂.*\/tmp\/pending-repo/)).toBeTruthy();
+    });
+});
+
+// ============================================================================
+// shortenPath — home directory replacement
+// ============================================================================
+
+describe('shortenPath', () => {
+    it('replaces /Users/xxx prefix with ~', () => {
+        expect(shortenPath('/Users/alice/projects/foo')).toBe('~/projects/foo');
+    });
+
+    it('replaces /home/xxx prefix with ~', () => {
+        expect(shortenPath('/home/bob/repos/bar')).toBe('~/repos/bar');
+    });
+
+    it('returns path unchanged when no home prefix detected', () => {
+        expect(shortenPath('/opt/data/repo')).toBe('/opt/data/repo');
+    });
+
+    it('returns empty string unchanged', () => {
+        expect(shortenPath('')).toBe('');
+    });
+
+    it('handles path that is exactly a home directory', () => {
+        expect(shortenPath('/Users/alice')).toBe('~');
+    });
+
+    it('handles Windows-style paths without home prefix', () => {
+        expect(shortenPath('C:\\Users\\alice\\projects')).toBe('C:\\Users\\alice\\projects');
     });
 });
 
