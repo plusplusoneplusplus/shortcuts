@@ -14,7 +14,7 @@ import { getActiveModels } from '@plusplusoneplusplus/pipeline-core';
 import { sendJSON, sendError, parseBody } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
 import { computeRepoId } from './queue-persistence';
-import { extractRepoId } from '@plusplusoneplusplus/coc-server';
+import type { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 import * as url from 'url';
 
 // ============================================================================
@@ -173,15 +173,111 @@ function validateAndParseTask(taskSpec: any): TaskValidationResult {
 // Route Registration
 // ============================================================================
 
+// ============================================================================
+// Bridge Helpers
+// ============================================================================
+
+/**
+ * Aggregate stats across all per-repo TaskQueueManagers.
+ */
+function aggregateStats(bridge: MultiRepoQueueExecutorBridge): QueueStats {
+    let queued = 0, running = 0, completed = 0, failed = 0, cancelled = 0, total = 0;
+    let allPaused = true, any = false, anyDraining = false;
+    for (const m of bridge.registry.getAllQueues().values()) {
+        const s = m.getStats();
+        queued += s.queued;
+        running += s.running;
+        completed += s.completed;
+        failed += s.failed;
+        cancelled += s.cancelled;
+        total += s.total;
+        if (!s.isPaused) { allPaused = false; }
+        if (s.isDraining) { anyDraining = true; }
+        any = true;
+    }
+    return { queued, running, completed, failed, cancelled, total, isPaused: any && allPaused, isDraining: anyDraining };
+}
+
+/**
+ * Search for a task across all per-repo managers and return the owning manager.
+ */
+function findTaskManager(bridge: MultiRepoQueueExecutorBridge, id: string): TaskQueueManager | undefined {
+    for (const m of bridge.registry.getAllQueues().values()) {
+        if (m.getTask(id)) { return m; }
+    }
+    return undefined;
+}
+
+/**
+ * Get the TaskQueueManager for a given repoId, or undefined if not found.
+ */
+function getManagerByRepoId(bridge: MultiRepoQueueExecutorBridge, repoId: string): TaskQueueManager | undefined {
+    for (const [rootPath, m] of bridge.registry.getAllQueues()) {
+        if (computeRepoId(rootPath) === repoId) { return m; }
+    }
+    return undefined;
+}
+
 /**
  * Register all queue API routes on the given route table.
  * Mutates the `routes` array in-place.
  *
  * @param routes - Route table to mutate
- * @param queueManager - Task queue manager
+ * @param bridge - Multi-repo queue executor bridge for per-repo task routing
  * @param store - Optional process store (used by force-fail routes to update linked process status)
  */
-export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueManager, store?: ProcessStore): void {
+export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecutorBridge, store?: ProcessStore): void {
+
+    // Track global pause state so newly-created bridges inherit it
+    let globalPaused = false;
+
+    /**
+     * Resolve rootPath from payload.workingDirectory or payload.workspaceId (via store).
+     * Returns undefined if neither is available.
+     */
+    async function resolveRootPath(payload: any): Promise<string | undefined> {
+        if (typeof payload?.workingDirectory === 'string' && payload.workingDirectory.trim()) {
+            return payload.workingDirectory.trim();
+        }
+        if (typeof payload?.workspaceId === 'string' && payload.workspaceId.trim() && store) {
+            const workspaces = await store.getWorkspaces();
+            const ws = workspaces.find((w: any) => w.id === payload.workspaceId.trim());
+            if (ws?.rootPath) {
+                payload.workingDirectory = ws.rootPath;
+                return ws.rootPath;
+            }
+        }
+        return undefined;
+    }
+
+    /**
+     * Enqueue a validated task input via the bridge, resolving rootPath from payload.
+     */
+    async function enqueueViaBridge(input: CreateTaskInput): Promise<string> {
+        const rootPath = await resolveRootPath(input.payload) || process.cwd();
+        if (rootPath === process.cwd() && !(input.payload as any)?.workingDirectory) {
+            process.stderr.write(`[Queue] warn: no workingDirectory or workspaceId — falling back to cwd\n`);
+        }
+        bridge.getOrCreateBridge(rootPath); // ensure executor bridge exists
+        const queueManager = bridge.registry.getQueueForRepo(rootPath);
+        // Auto-pause newly created managers if global pause is active
+        if (globalPaused && !queueManager.getStats().isPaused) {
+            queueManager.pause();
+        }
+        return queueManager.enqueue(input);
+    }
+
+    /**
+     * Get aggregate stats, incorporating global pause state for the edge case
+     * where no bridges exist yet but pause was called.
+     */
+    function getAggregateStats(): QueueStats {
+        const stats = aggregateStats(bridge);
+        if (globalPaused && bridge.registry.getAllQueues().size === 0) {
+            stats.isPaused = true;
+        }
+        return stats;
+    }
 
     // ------------------------------------------------------------------
     // GET /api/queue/models — List available AI model IDs
@@ -248,8 +344,8 @@ export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueMana
             }
 
             try {
-                const taskId = queueManager.enqueue(validation.input!);
-                const task = queueManager.getTask(taskId);
+                const taskId = await enqueueViaBridge(validation.input!);
+                const task = findTaskManager(bridge, taskId)?.getTask(taskId);
                 const inp = validation.input!;
                 process.stderr.write(`[Queue] enqueue task=${taskId} type=${inp.type} priority=${inp.priority} repoId=${inp.repoId || '-'}\n`);
                 sendJSON(res, 201, { task: task ? serializeTask(task) : { id: taskId } });
@@ -274,18 +370,29 @@ export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueMana
 
             let queued: Record<string, unknown>[];
             let running: Record<string, unknown>[];
+            let stats: QueueStats;
 
             if (repoId) {
-                const matchesRepo = (task: QueuedTask): boolean =>
-                    task.repoId === repoId || extractRepoId(task.payload) === repoId;
-                queued = queueManager.getQueued().filter(matchesRepo).map(serializeTask);
-                running = queueManager.getRunning().filter(matchesRepo).map(serializeTask);
+                const mgr = getManagerByRepoId(bridge, repoId);
+                if (mgr) {
+                    queued = mgr.getQueued().map(serializeTask);
+                    running = mgr.getRunning().map(serializeTask);
+                    stats = mgr.getStats();
+                } else {
+                    queued = [];
+                    running = [];
+                    stats = { queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0, total: 0, isPaused: false, isDraining: false };
+                }
             } else {
-                queued = queueManager.getQueued().map(serializeTask);
-                running = queueManager.getRunning().map(serializeTask);
+                queued = [];
+                running = [];
+                for (const m of bridge.registry.getAllQueues().values()) {
+                    queued.push(...m.getQueued().map(serializeTask));
+                    running.push(...m.getRunning().map(serializeTask));
+                }
+                stats = getAggregateStats();
             }
 
-            const stats = queueManager.getStats();
             sendJSON(res, 200, { queued, running, stats });
         },
     });
@@ -308,8 +415,8 @@ export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueMana
         }
 
         try {
-            const taskId = queueManager.enqueue(validation.input!);
-            const task = queueManager.getTask(taskId);
+            const taskId = await enqueueViaBridge(validation.input!);
+            const task = findTaskManager(bridge, taskId)?.getTask(taskId);
             const inp = validation.input!;
             process.stderr.write(`[Queue] enqueue task=${taskId} type=${inp.type} priority=${inp.priority} repoId=${inp.repoId || '-'}\n`);
             sendJSON(res, 201, { task: task ? serializeTask(task) : { id: taskId } });
@@ -394,8 +501,8 @@ export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueMana
                 const taskSpec = body.tasks[i];
 
                 try {
-                    const taskId = queueManager.enqueue(validation.input!);
-                    const task = queueManager.getTask(taskId);
+                    const taskId = await enqueueViaBridge(validation.input!);
+                    const task = findTaskManager(bridge, taskId)?.getTask(taskId);
 
                     successResults.push({
                         index: i,
@@ -439,9 +546,21 @@ export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueMana
     routes.push({
         method: 'GET',
         pattern: '/api/queue/stats',
-        handler: async (_req, res) => {
-            const stats: QueueStats = queueManager.getStats();
-            sendJSON(res, 200, { stats });
+        handler: async (req, res) => {
+            const parsed = url.parse(req.url || '/', true);
+            const repoId = typeof parsed.query.repoId === 'string' && parsed.query.repoId
+                ? parsed.query.repoId
+                : undefined;
+
+            if (repoId) {
+                const mgr = getManagerByRepoId(bridge, repoId);
+                if (!mgr) {
+                    return sendError(res, 404, `No queue found for repoId: ${repoId}`);
+                }
+                sendJSON(res, 200, { stats: mgr.getStats() });
+            } else {
+                sendJSON(res, 200, { stats: getAggregateStats() });
+            }
         },
     });
 
@@ -459,11 +578,15 @@ export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueMana
 
             let history: Record<string, unknown>[];
             if (repoId) {
-                const matchesRepo = (task: QueuedTask): boolean =>
-                    task.repoId === repoId || extractRepoId(task.payload) === repoId;
-                history = queueManager.getHistory().filter(matchesRepo).map(serializeTask);
+                const mgr = getManagerByRepoId(bridge, repoId);
+                history = mgr
+                    ? mgr.getHistory().map(serializeTask)
+                    : [];
             } else {
-                history = queueManager.getHistory().map(serializeTask);
+                history = [];
+                for (const m of bridge.registry.getAllQueues().values()) {
+                    history.push(...m.getHistory().map(serializeTask));
+                }
             }
 
             sendJSON(res, 200, { history });
@@ -481,13 +604,20 @@ export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueMana
             const repoId = typeof parsed.query.repoId === 'string' ? parsed.query.repoId : undefined;
 
             if (repoId) {
-                queueManager.pauseRepo(repoId);
+                const mgr = getManagerByRepoId(bridge, repoId);
+                if (!mgr) {
+                    return sendError(res, 404, `No queue found for repoId: ${repoId}`);
+                }
+                mgr.pause();
                 process.stderr.write(`[Queue] pause repoId=${repoId}\n`);
-                sendJSON(res, 200, { repoId, paused: true, stats: queueManager.getStats() });
+                sendJSON(res, 200, { repoId, paused: true, stats: mgr.getStats() });
             } else {
-                queueManager.pause();
+                globalPaused = true;
+                for (const m of bridge.registry.getAllQueues().values()) {
+                    m.pause();
+                }
                 process.stderr.write(`[Queue] pause repoId=global\n`);
-                sendJSON(res, 200, { paused: true, stats: queueManager.getStats() });
+                sendJSON(res, 200, { paused: true, stats: getAggregateStats() });
             }
         },
     });
@@ -503,13 +633,20 @@ export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueMana
             const repoId = typeof parsed.query.repoId === 'string' ? parsed.query.repoId : undefined;
 
             if (repoId) {
-                queueManager.resumeRepo(repoId);
+                const mgr = getManagerByRepoId(bridge, repoId);
+                if (!mgr) {
+                    return sendError(res, 404, `No queue found for repoId: ${repoId}`);
+                }
+                mgr.resume();
                 process.stderr.write(`[Queue] resume repoId=${repoId}\n`);
-                sendJSON(res, 200, { repoId, paused: false, stats: queueManager.getStats() });
+                sendJSON(res, 200, { repoId, paused: false, stats: mgr.getStats() });
             } else {
-                queueManager.resume();
+                globalPaused = false;
+                for (const m of bridge.registry.getAllQueues().values()) {
+                    m.resume();
+                }
                 process.stderr.write(`[Queue] resume repoId=global\n`);
-                sendJSON(res, 200, { paused: false, stats: queueManager.getStats() });
+                sendJSON(res, 200, { paused: false, stats: getAggregateStats() });
             }
         },
     });
@@ -521,40 +658,19 @@ export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueMana
         method: 'GET',
         pattern: '/api/queue/repos',
         handler: async (_req, res) => {
-            const allTasks = [...queueManager.getQueued(), ...queueManager.getRunning()];
-            const repoMap = new Map<string, { repoId: string; rootPath: string; isPaused: boolean; taskCount: number }>();
+            const repos: Array<{ repoId: string; rootPath: string; isPaused: boolean; taskCount: number }> = [];
 
-            for (const task of allTasks) {
-                const payload = task.payload as Record<string, unknown>;
-                const rootPath = (typeof payload?.workingDirectory === 'string' && payload.workingDirectory)
-                    ? payload.workingDirectory
-                    : process.cwd();
+            for (const [rootPath, m] of bridge.registry.getAllQueues()) {
                 const repoId = computeRepoId(rootPath);
-
-                if (!repoMap.has(repoId)) {
-                    repoMap.set(repoId, {
-                        repoId,
-                        rootPath,
-                        isPaused: queueManager.isRepoPaused(repoId),
-                        taskCount: 0,
-                    });
-                }
-                repoMap.get(repoId)!.taskCount++;
+                repos.push({
+                    repoId,
+                    rootPath,
+                    isPaused: m.isPaused(),
+                    taskCount: m.getQueued().length + m.getRunning().length,
+                });
             }
 
-            // Also include paused repos that may have no active tasks
-            for (const pausedId of queueManager.getPausedRepos()) {
-                if (!repoMap.has(pausedId)) {
-                    repoMap.set(pausedId, {
-                        repoId: pausedId,
-                        rootPath: '',
-                        isPaused: true,
-                        taskCount: 0,
-                    });
-                }
-            }
-
-            sendJSON(res, 200, { repos: Array.from(repoMap.values()) });
+            sendJSON(res, 200, { repos });
         },
     });
 
@@ -564,10 +680,26 @@ export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueMana
     routes.push({
         method: 'DELETE',
         pattern: '/api/queue',
-        handler: async (_req, res) => {
-            const count = queueManager.getQueued().length;
-            queueManager.clear();
-            sendJSON(res, 200, { cleared: count, stats: queueManager.getStats() });
+        handler: async (req, res) => {
+            const parsed = url.parse(req.url || '/', true);
+            const repoId = typeof parsed.query.repoId === 'string' && parsed.query.repoId
+                ? parsed.query.repoId
+                : undefined;
+
+            let count = 0;
+            if (repoId) {
+                const mgr = getManagerByRepoId(bridge, repoId);
+                if (mgr) {
+                    count = mgr.getQueued().length;
+                    mgr.clear();
+                }
+            } else {
+                for (const m of bridge.registry.getAllQueues().values()) {
+                    count += m.getQueued().length;
+                    m.clear();
+                }
+            }
+            sendJSON(res, 200, { cleared: count, stats: getAggregateStats() });
         },
     });
 
@@ -578,7 +710,9 @@ export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueMana
         method: 'DELETE',
         pattern: '/api/queue/history',
         handler: async (_req, res) => {
-            queueManager.clearHistory();
+            for (const m of bridge.registry.getAllQueues().values()) {
+                m.clearHistory();
+            }
             sendJSON(res, 200, { cleared: true });
         },
     });
@@ -601,12 +735,15 @@ export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueMana
                 : 'Task was force-failed (assumed stale)';
 
             // Collect running task process IDs before force-failing
-            const runningTasks = queueManager.getRunning();
-            const processIds = runningTasks
-                .map(t => t.processId)
-                .filter((pid): pid is string => !!pid);
-
-            const count = queueManager.forceFailRunning(error);
+            const processIds: string[] = [];
+            let count = 0;
+            for (const m of bridge.registry.getAllQueues().values()) {
+                const runningTasks = m.getRunning();
+                processIds.push(
+                    ...runningTasks.map(t => t.processId).filter((pid): pid is string => !!pid)
+                );
+                count += m.forceFailRunning(error);
+            }
 
             process.stderr.write(`[Queue] force-fail-running count=${count}\n`);
             if (store && processIds.length > 0) {
@@ -623,7 +760,7 @@ export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueMana
                 }
             }
 
-            sendJSON(res, 200, { forceFailed: count, stats: queueManager.getStats() });
+            sendJSON(res, 200, { forceFailed: count, stats: getAggregateStats() });
         },
     });
 
@@ -646,10 +783,11 @@ export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueMana
                 : 'Task was force-failed (assumed stale)';
 
             // Get the task's linked process ID before force-failing
-            const task = queueManager.getTask(id);
+            const mgr = findTaskManager(bridge, id);
+            const task = mgr?.getTask(id);
             const processId = task?.processId;
 
-            const success = queueManager.forceFailTask(id, error);
+            const success = mgr?.forceFailTask(id, error) ?? false;
             if (!success) {
                 return sendError(res, 404, 'Task not found or not running');
             }
@@ -667,7 +805,7 @@ export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueMana
                 }
             }
 
-            sendJSON(res, 200, { forceFailed: true, stats: queueManager.getStats() });
+            sendJSON(res, 200, { forceFailed: true, stats: getAggregateStats() });
         },
     });
 
@@ -685,7 +823,7 @@ export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueMana
                 return sendError(res, 404, 'Task not found');
             }
 
-            const task = queueManager.getTask(id);
+            const task = findTaskManager(bridge, id)?.getTask(id);
             if (!task) {
                 return sendError(res, 404, 'Task not found');
             }
@@ -707,7 +845,7 @@ export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueMana
                 return sendError(res, 404, 'Task not found');
             }
 
-            const cancelled = queueManager.cancelTask(id);
+            const cancelled = findTaskManager(bridge, id)?.cancelTask(id) ?? false;
             if (!cancelled) {
                 return sendError(res, 404, 'Task not found or not cancellable');
             }
@@ -723,7 +861,7 @@ export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueMana
         pattern: /^\/api\/queue\/([^/]+)\/move-to-top$/,
         handler: async (_req, res, match) => {
             const id = decodeURIComponent(match![1]);
-            const moved = queueManager.moveToTop(id);
+            const moved = findTaskManager(bridge, id)?.moveToTop(id) ?? false;
             if (!moved) {
                 return sendError(res, 404, 'Task not found in queue');
             }
@@ -740,11 +878,11 @@ export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueMana
         pattern: /^\/api\/queue\/([^/]+)\/move-up$/,
         handler: async (_req, res, match) => {
             const id = decodeURIComponent(match![1]);
-            const moved = queueManager.moveUp(id);
+            const moved = findTaskManager(bridge, id)?.moveUp(id) ?? false;
             if (!moved) {
                 return sendError(res, 404, 'Task not found or already at top');
             }
-            const position = queueManager.getPosition(id);
+            const position = findTaskManager(bridge, id)?.getPosition(id);
             process.stderr.write(`[Queue] move-up task=${id}\n`);
             sendJSON(res, 200, { moved: true, position });
         },
@@ -758,11 +896,11 @@ export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueMana
         pattern: /^\/api\/queue\/([^/]+)\/move-down$/,
         handler: async (_req, res, match) => {
             const id = decodeURIComponent(match![1]);
-            const moved = queueManager.moveDown(id);
+            const moved = findTaskManager(bridge, id)?.moveDown(id) ?? false;
             if (!moved) {
                 return sendError(res, 404, 'Task not found or already at bottom');
             }
-            const position = queueManager.getPosition(id);
+            const position = findTaskManager(bridge, id)?.getPosition(id);
             process.stderr.write(`[Queue] move-down task=${id}\n`);
             sendJSON(res, 200, { moved: true, position });
         },

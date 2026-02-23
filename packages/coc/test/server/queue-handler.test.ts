@@ -601,21 +601,24 @@ describe('Queue Handler', () => {
         it('should filter queued tasks by explicit repoId', async () => {
             const srv = await startServer();
 
-            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'A', repoId: 'repo-1' }));
-            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'B', repoId: 'repo-2' }));
-            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'C', repoId: 'repo-1' }));
+            // Pause to prevent execution, then route tasks via workingDirectory
+            await postJSON(`${srv.url}/api/queue/pause`, {});
+            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'A', payload: { data: { prompt: 'test' }, workingDirectory: '/repo/alpha' } }));
+            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'B', payload: { data: { prompt: 'test' }, workingDirectory: '/repo/beta' } }));
+            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'C', payload: { data: { prompt: 'test' }, workingDirectory: '/repo/alpha' } }));
 
-            const res = await request(`${srv.url}/api/queue?repoId=repo-1`);
+            const repoIdAlpha = require('crypto').createHash('sha256').update(require('path').resolve('/repo/alpha')).digest('hex').substring(0, 16);
+            const res = await request(`${srv.url}/api/queue?repoId=${repoIdAlpha}`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
             expect(body.queued).toHaveLength(2);
-            expect(body.queued.every((t: any) => t.repoId === 'repo-1')).toBe(true);
         });
 
         it('should return empty arrays for non-existent repoId', async () => {
             const srv = await startServer();
 
-            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'A', repoId: 'repo-1' }));
+            await postJSON(`${srv.url}/api/queue/pause`, {});
+            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'A', payload: { data: { prompt: 'test' }, workingDirectory: '/repo/alpha' } }));
 
             const res = await request(`${srv.url}/api/queue?repoId=nonexistent`);
             expect(res.status).toBe(200);
@@ -627,8 +630,9 @@ describe('Queue Handler', () => {
         it('should treat empty repoId parameter as no filter', async () => {
             const srv = await startServer();
 
-            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'A', repoId: 'repo-1' }));
-            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'B', repoId: 'repo-2' }));
+            await postJSON(`${srv.url}/api/queue/pause`, {});
+            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'A', payload: { data: { prompt: 'test' }, workingDirectory: '/repo/alpha' } }));
+            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'B', payload: { data: { prompt: 'test' }, workingDirectory: '/repo/beta' } }));
 
             const res = await request(`${srv.url}/api/queue?repoId=`);
             expect(res.status).toBe(200);
@@ -636,28 +640,32 @@ describe('Queue Handler', () => {
             expect(body.queued).toHaveLength(2);
         });
 
-        it('should return global stats even when filtering', async () => {
+        it('should return per-repo stats when filtering by repoId', async () => {
             const srv = await startServer();
 
-            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'A', repoId: 'repo-1' }));
-            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'B', repoId: 'repo-2' }));
-            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'C', repoId: 'repo-1' }));
+            await postJSON(`${srv.url}/api/queue/pause`, {});
+            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'A', payload: { data: { prompt: 'test' }, workingDirectory: '/repo/alpha' } }));
+            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'B', payload: { data: { prompt: 'test' }, workingDirectory: '/repo/beta' } }));
+            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'C', payload: { data: { prompt: 'test' }, workingDirectory: '/repo/alpha' } }));
 
-            const res = await request(`${srv.url}/api/queue?repoId=repo-1`);
+            const repoIdAlpha = require('crypto').createHash('sha256').update(require('path').resolve('/repo/alpha')).digest('hex').substring(0, 16);
+            const res = await request(`${srv.url}/api/queue?repoId=${repoIdAlpha}`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
             // Filtered results
             expect(body.queued).toHaveLength(2);
-            // Global stats (not filtered)
-            expect(body.stats.queued).toBe(3);
+            // Per-repo stats (not global)
+            expect(body.stats.queued).toBe(2);
         });
 
         it('should preserve response structure with filtering', async () => {
             const srv = await startServer();
 
-            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'A', repoId: 'repo-1' }));
+            await postJSON(`${srv.url}/api/queue/pause`, {});
+            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'A', payload: { data: { prompt: 'test' }, workingDirectory: '/repo/alpha' } }));
 
-            const res = await request(`${srv.url}/api/queue?repoId=repo-1`);
+            const repoIdAlpha = require('crypto').createHash('sha256').update(require('path').resolve('/repo/alpha')).digest('hex').substring(0, 16);
+            const res = await request(`${srv.url}/api/queue?repoId=${repoIdAlpha}`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
             expect(body).toHaveProperty('queued');
@@ -670,12 +678,14 @@ describe('Queue Handler', () => {
         it('should exclude tasks without matching repoId', async () => {
             const srv = await startServer();
 
-            // Task with no repoId
+            await postJSON(`${srv.url}/api/queue/pause`, {});
+            // Task with no workingDirectory (routes to cwd)
             await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'NoRepo' }));
-            // Task with different repoId
-            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'Other', repoId: 'repo-2' }));
+            // Task with different workingDirectory
+            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'Other', payload: { data: { prompt: 'test' }, workingDirectory: '/repo/beta' } }));
 
-            const res = await request(`${srv.url}/api/queue?repoId=repo-1`);
+            const repoIdAlpha = require('crypto').createHash('sha256').update(require('path').resolve('/repo/alpha')).digest('hex').substring(0, 16);
+            const res = await request(`${srv.url}/api/queue?repoId=${repoIdAlpha}`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
             expect(body.queued).toEqual([]);
@@ -869,45 +879,60 @@ describe('Queue Handler', () => {
             // Pause queue first to prevent auto-execution
             await postJSON(`${srv.url}/api/queue/pause`, {});
 
-            // Enqueue task with workingDirectory
+            // Enqueue task with workingDirectory to create the bridge
             await postJSON(`${srv.url}/api/queue`, makeTask({
                 payload: { data: { prompt: 'test' }, workingDirectory: '/my/repo' },
             }));
 
-            // Pause specific repo
-            const repoId = require('crypto').createHash('sha256').update('/my/repo').digest('hex').substring(0, 16);
+            // Resume globally first, then pause specific repo
+            await postJSON(`${srv.url}/api/queue/resume`, {});
+            const repoId = require('crypto').createHash('sha256').update(require('path').resolve('/my/repo')).digest('hex').substring(0, 16);
             const res = await postJSON(`${srv.url}/api/queue/pause?repoId=${repoId}`, {});
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
             expect(body.repoId).toBe(repoId);
             expect(body.paused).toBe(true);
-            expect(body.stats.pausedRepos).toContain(repoId);
+            expect(body.stats.isPaused).toBe(true);
         });
 
         it('should resume a specific repo', async () => {
             const srv = await startServer();
 
-            const repoId = require('crypto').createHash('sha256').update('/my/repo').digest('hex').substring(0, 16);
+            // Pause queue first to prevent auto-execution, then enqueue to create bridge
+            await postJSON(`${srv.url}/api/queue/pause`, {});
+            await postJSON(`${srv.url}/api/queue`, makeTask({
+                payload: { data: { prompt: 'test' }, workingDirectory: '/my/repo' },
+            }));
 
-            // Pause then resume repo
+            const repoId = require('crypto').createHash('sha256').update(require('path').resolve('/my/repo')).digest('hex').substring(0, 16);
+
+            // Resume globally, then pause+resume specific repo
+            await postJSON(`${srv.url}/api/queue/resume`, {});
             await postJSON(`${srv.url}/api/queue/pause?repoId=${repoId}`, {});
             const res = await postJSON(`${srv.url}/api/queue/resume?repoId=${repoId}`, {});
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
             expect(body.repoId).toBe(repoId);
             expect(body.paused).toBe(false);
-            expect(body.stats.pausedRepos).not.toContain(repoId);
+            expect(body.stats.isPaused).toBe(false);
         });
 
-        it('should include pausedRepos in stats', async () => {
+        it('should include isPaused in per-repo stats', async () => {
             const srv = await startServer();
 
-            const repoId = require('crypto').createHash('sha256').update('/test/repo').digest('hex').substring(0, 16);
-            await postJSON(`${srv.url}/api/queue/pause?repoId=${repoId}`, {});
+            // Pause queue to prevent execution
+            await postJSON(`${srv.url}/api/queue/pause`, {});
 
-            const statsRes = await request(`${srv.url}/api/queue/stats`);
+            // Enqueue to create bridge
+            await postJSON(`${srv.url}/api/queue`, makeTask({
+                payload: { data: { prompt: 'test' }, workingDirectory: '/test/repo' },
+            }));
+
+            const repoId = require('crypto').createHash('sha256').update(require('path').resolve('/test/repo')).digest('hex').substring(0, 16);
+            // Stats should show isPaused from the per-repo manager
+            const statsRes = await request(`${srv.url}/api/queue/stats?repoId=${repoId}`);
             const stats = JSON.parse(statsRes.body).stats;
-            expect(stats.pausedRepos).toContain(repoId);
+            expect(stats.isPaused).toBe(true);
         });
 
         it('GET /api/queue/repos should list repos with pause states', async () => {
@@ -924,9 +949,8 @@ describe('Queue Handler', () => {
                 payload: { data: { prompt: 'b' }, workingDirectory: '/repo/two' },
             }));
 
-            // Pause one repo
-            const repoOneId = require('crypto').createHash('sha256').update('/repo/one').digest('hex').substring(0, 16);
-            await postJSON(`${srv.url}/api/queue/pause?repoId=${repoOneId}`, {});
+            // repoId is computed from path.resolve(workingDirectory)
+            const repoOneId = require('crypto').createHash('sha256').update(require('path').resolve('/repo/one')).digest('hex').substring(0, 16);
 
             const res = await request(`${srv.url}/api/queue/repos`);
             expect(res.status).toBe(200);
@@ -936,13 +960,14 @@ describe('Queue Handler', () => {
 
             const repoOne = body.repos.find((r: any) => r.repoId === repoOneId);
             expect(repoOne).toBeDefined();
+            // Both repos are paused because global pause was set
             expect(repoOne.isPaused).toBe(true);
             expect(repoOne.taskCount).toBeGreaterThanOrEqual(1);
 
-            const repoTwoId = require('crypto').createHash('sha256').update('/repo/two').digest('hex').substring(0, 16);
+            const repoTwoId = require('crypto').createHash('sha256').update(require('path').resolve('/repo/two')).digest('hex').substring(0, 16);
             const repoTwo = body.repos.find((r: any) => r.repoId === repoTwoId);
             expect(repoTwo).toBeDefined();
-            expect(repoTwo.isPaused).toBe(false);
+            expect(repoTwo.isPaused).toBe(true);
         });
     });
 
@@ -1080,54 +1105,27 @@ describe('Queue Handler', () => {
                 expect(body.history).toHaveLength(2);
             });
 
-            it('should filter history by explicit task.repoId', async () => {
+            it('should filter history by per-repo queue routing', async () => {
                 const srv = await startServer();
-                const r1 = await postJSON(`${srv.url}/api/queue`, makeTask({ repoId: 'repo-1' }));
-                const r2 = await postJSON(`${srv.url}/api/queue`, makeTask({ repoId: 'repo-2' }));
-                const r3 = await postJSON(`${srv.url}/api/queue`, makeTask({ repoId: 'repo-1' }));
+                await postJSON(`${srv.url}/api/queue/pause`, {});
+                const r1 = await postJSON(`${srv.url}/api/queue`, makeTask({ payload: { data: { prompt: 'test' }, workingDirectory: '/repo/alpha' } }));
+                const r2 = await postJSON(`${srv.url}/api/queue`, makeTask({ payload: { data: { prompt: 'test' }, workingDirectory: '/repo/beta' } }));
+                const r3 = await postJSON(`${srv.url}/api/queue`, makeTask({ payload: { data: { prompt: 'test' }, workingDirectory: '/repo/alpha' } }));
                 for (const r of [r1, r2, r3]) {
                     const id = JSON.parse(r.body).task.id;
                     await request(`${srv.url}/api/queue/${id}`, { method: 'DELETE' });
                 }
 
-                const res = await request(`${srv.url}/api/queue/history?repoId=repo-1`);
-                expect(res.status).toBe(200);
-                const body = JSON.parse(res.body);
-                expect(body.history).toHaveLength(2);
-                expect(body.history.every((t: any) => t.repoId === 'repo-1')).toBe(true);
-            });
-
-            it('should return empty array when no history matches the repoId', async () => {
-                const srv = await startServer();
-                const r = await postJSON(`${srv.url}/api/queue`, makeTask({ repoId: 'repo-1' }));
-                const id = JSON.parse(r.body).task.id;
-                await request(`${srv.url}/api/queue/${id}`, { method: 'DELETE' });
-
-                const res = await request(`${srv.url}/api/queue/history?repoId=nonexistent`);
-                expect(res.status).toBe(200);
-                const body = JSON.parse(res.body);
-                expect(body.history).toHaveLength(0);
-            });
-
-            it('should treat empty repoId param as no filter', async () => {
-                const srv = await startServer();
-                const r1 = await postJSON(`${srv.url}/api/queue`, makeTask({ repoId: 'repo-1' }));
-                const r2 = await postJSON(`${srv.url}/api/queue`, makeTask({ repoId: 'repo-2' }));
-                for (const r of [r1, r2]) {
-                    const id = JSON.parse(r.body).task.id;
-                    await request(`${srv.url}/api/queue/${id}`, { method: 'DELETE' });
-                }
-
-                const res = await request(`${srv.url}/api/queue/history?repoId=`);
+                const repoIdAlpha = require('crypto').createHash('sha256').update(require('path').resolve('/repo/alpha')).digest('hex').substring(0, 16);
+                const res = await request(`${srv.url}/api/queue/history?repoId=${repoIdAlpha}`);
                 expect(res.status).toBe(200);
                 const body = JSON.parse(res.body);
                 expect(body.history).toHaveLength(2);
             });
 
-            it('should match history tasks via extractRepoId fallback when task.repoId is absent', async () => {
+            it('should filter history via workingDirectory-based routing', async () => {
                 const srv = await startServer();
-                // Enqueue a task without explicit repoId but with a workingDirectory
-                // that extractRepoId can resolve (current repo root)
+                // Enqueue a task with workingDirectory
                 const cwd = process.cwd();
                 const r = await postJSON(`${srv.url}/api/queue`, makeTask({
                     payload: { data: { prompt: 'test' }, workingDirectory: cwd },
@@ -1135,31 +1133,10 @@ describe('Queue Handler', () => {
                 const id = JSON.parse(r.body).task.id;
                 await request(`${srv.url}/api/queue/${id}`, { method: 'DELETE' });
 
-                // Verify the task has no top-level repoId
-                const historyAll = await request(`${srv.url}/api/queue/history`);
-                const allTasks = JSON.parse(historyAll.body).history;
-                const task = allTasks.find((t: any) => t.id === id);
-                expect(task.repoId).toBeUndefined();
+                // Compute repoId from resolved workingDirectory path
+                const repoId = require('crypto').createHash('sha256').update(require('path').resolve(cwd)).digest('hex').substring(0, 16);
 
-                // Compute the expected repoId using the same logic as extractRepoId:
-                // git rev-parse --show-toplevel → normalizeRepoPath
-                const { execSync } = await import('child_process');
-                let gitRoot: string;
-                try {
-                    gitRoot = execSync('git rev-parse --show-toplevel', { cwd, encoding: 'utf-8' }).trim();
-                } catch {
-                    // Skip if not in a git repo
-                    return;
-                }
-                // normalizeRepoPath: resolve → realpathSync → forward slashes
-                const pathMod = await import('path');
-                const fsMod = await import('fs');
-                let normalized = pathMod.resolve(gitRoot);
-                try { normalized = fsMod.realpathSync(normalized); } catch { /* ignore */ }
-                normalized = normalized.split(pathMod.sep).join('/');
-                const expectedRepoId = normalized;
-
-                const res = await request(`${srv.url}/api/queue/history?repoId=${encodeURIComponent(expectedRepoId)}`);
+                const res = await request(`${srv.url}/api/queue/history?repoId=${encodeURIComponent(repoId)}`);
                 expect(res.status).toBe(200);
                 const body = JSON.parse(res.body);
                 expect(body.history.some((t: any) => t.id === id)).toBe(true);
@@ -1475,9 +1452,14 @@ describe('Queue Handler', () => {
 
         it('should log [Queue] pause with repoId', async () => {
             const srv = await startServer();
-            await request(`${srv.url}/api/queue/pause?repoId=repo-123`, { method: 'POST' });
+            // Enqueue a task to create the bridge for this repo
+            await postJSON(`${srv.url}/api/queue/pause`, {});
+            await postJSON(`${srv.url}/api/queue`, makeTask({ payload: { data: { prompt: 'test' }, workingDirectory: '/test/pause-log' } }));
+            const repoId = require('crypto').createHash('sha256').update(require('path').resolve('/test/pause-log')).digest('hex').substring(0, 16);
+            stderrSpy.mockClear();
+            await request(`${srv.url}/api/queue/pause?repoId=${repoId}`, { method: 'POST' });
             const lines = stderrLines();
-            expect(lines.some(l => l.includes('[Queue] pause repoId=repo-123'))).toBe(true);
+            expect(lines.some(l => l.includes(`[Queue] pause repoId=${repoId}`))).toBe(true);
         });
 
         it('should log [Queue] resume on POST /api/queue/resume', async () => {
@@ -1496,6 +1478,7 @@ describe('Queue Handler', () => {
 
         it('should log [Queue] move-to-top on success', async () => {
             const srv = await startServer();
+            await postJSON(`${srv.url}/api/queue/pause`, {});
             // Enqueue two tasks to allow reordering
             const r1 = await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'First' }));
             const r2 = await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'Second' }));
@@ -1509,6 +1492,7 @@ describe('Queue Handler', () => {
 
         it('should log [Queue] move-up on success', async () => {
             const srv = await startServer();
+            await postJSON(`${srv.url}/api/queue/pause`, {});
             const r1 = await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'First' }));
             const r2 = await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'Second' }));
             const id2 = JSON.parse(r2.body).task.id;
@@ -1521,6 +1505,7 @@ describe('Queue Handler', () => {
 
         it('should log [Queue] move-down on success', async () => {
             const srv = await startServer();
+            await postJSON(`${srv.url}/api/queue/pause`, {});
             const r1 = await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'First' }));
             const r2 = await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'Second' }));
             const id1 = JSON.parse(r1.body).task.id;

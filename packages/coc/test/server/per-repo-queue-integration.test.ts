@@ -17,6 +17,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { WebSocket } from 'ws';
 import { createExecutionServer } from '../../src/server/index';
+import { FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 
 // ============================================================================
@@ -136,11 +137,13 @@ describe('Per-Repo Queue Integration', () => {
         // Create temp directory for queue persistence
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'per-repo-queue-'));
 
-        // Start server with port 0 (OS-assigned)
+        // Start server with port 0 (OS-assigned) and real store for workspace resolution
+        const store = new FileProcessStore({ dataDir: tmpDir });
         server = await createExecutionServer({
             port: 0,
             host: '127.0.0.1',
             dataDir: tmpDir,
+            store,
         });
         baseUrl = server.url;
 
@@ -408,10 +411,12 @@ describe('Per-Repo Queue Integration', () => {
             // Simulate restart by closing and recreating server with same data directory
             await server.close();
 
+            const restartedStore = new FileProcessStore({ dataDir: tmpDir });
             server = await createExecutionServer({
                 port: 0,
                 host: '127.0.0.1',
                 dataDir: tmpDir,
+                store: restartedStore,
             });
             baseUrl = server.url;
 
@@ -876,6 +881,170 @@ describe('Per-Repo Queue Integration', () => {
             expect(taskRes.status).toBe(201);
             const task = JSON.parse(taskRes.body).task;
             expect(task.payload?.workingDirectory).toBe(rootPath);
+        });
+    });
+
+    // ------------------------------------------------------------------
+    // Scenario 15: workspaceId → rootPath resolution
+    // ------------------------------------------------------------------
+    describe('workspaceId resolution', () => {
+        it('should resolve workspaceId to rootPath via store and route to correct bridge', async () => {
+            const rootPath = '/repo/workspace-resolve';
+            const workspaceId = 'ws-resolve-1';
+
+            // Register a workspace
+            const regRes = await postJSON(`${baseUrl}/api/workspaces`, {
+                id: workspaceId,
+                name: 'Resolve Test',
+                rootPath,
+            });
+            expect(regRes.status).toBe(201);
+
+            // Pause to prevent execution
+            await postJSON(`${baseUrl}/api/queue/pause`, {});
+
+            // Enqueue via legacy /api/queue/enqueue with workspaceId (no workingDirectory)
+            const enqueueRes = await postJSON(`${baseUrl}/api/queue/enqueue`, {
+                prompt: 'test prompt via workspaceId',
+                workspaceId,
+            });
+            expect(enqueueRes.status).toBe(201);
+            const taskId = JSON.parse(enqueueRes.body).task.id;
+
+            // Retrieve the full task to verify workingDirectory was injected
+            const taskRes = await request(`${baseUrl}/api/queue/${taskId}`);
+            expect(taskRes.status).toBe(200);
+            const task = JSON.parse(taskRes.body).task;
+            expect(task.payload?.workingDirectory).toBe(rootPath);
+
+            // Verify the task is in the correct per-repo queue
+            const crypto = require('crypto');
+            const pathMod = require('path');
+            const repoId = crypto.createHash('sha256').update(pathMod.resolve(rootPath)).digest('hex').substring(0, 16);
+            const statsRes = await request(`${baseUrl}/api/queue/stats?repoId=${repoId}`);
+            expect(statsRes.status).toBe(200);
+            const stats = JSON.parse(statsRes.body).stats;
+            expect(stats.queued).toBeGreaterThanOrEqual(1);
+
+            await postJSON(`${baseUrl}/api/queue/resume`, {});
+        });
+    });
+
+    // ------------------------------------------------------------------
+    // Scenario 16: Per-repo stats isolation
+    // ------------------------------------------------------------------
+    describe('per-repo stats isolation', () => {
+        it('should return per-repo stats with repoId filter', async () => {
+            const repoA = '/repo/stats-a';
+            const repoB = '/repo/stats-b';
+
+            // Pause to prevent execution
+            await postJSON(`${baseUrl}/api/queue/pause`, {});
+
+            // Enqueue tasks to different repos
+            await postJSON(`${baseUrl}/api/queue`, makeTask(repoA, { displayName: 'Stats A1' }));
+            await postJSON(`${baseUrl}/api/queue`, makeTask(repoA, { displayName: 'Stats A2' }));
+            await postJSON(`${baseUrl}/api/queue`, makeTask(repoB, { displayName: 'Stats B1' }));
+
+            const crypto = require('crypto');
+            const pathMod = require('path');
+            const repoIdA = crypto.createHash('sha256').update(pathMod.resolve(repoA)).digest('hex').substring(0, 16);
+            const repoIdB = crypto.createHash('sha256').update(pathMod.resolve(repoB)).digest('hex').substring(0, 16);
+
+            // Per-repo stats for A
+            const statsA = await request(`${baseUrl}/api/queue/stats?repoId=${repoIdA}`);
+            expect(statsA.status).toBe(200);
+            expect(JSON.parse(statsA.body).stats.queued).toBe(2);
+
+            // Per-repo stats for B
+            const statsB = await request(`${baseUrl}/api/queue/stats?repoId=${repoIdB}`);
+            expect(statsB.status).toBe(200);
+            expect(JSON.parse(statsB.body).stats.queued).toBe(1);
+
+            // Aggregate stats (no filter) — should sum both
+            const statsAll = await request(`${baseUrl}/api/queue/stats`);
+            expect(statsAll.status).toBe(200);
+            expect(JSON.parse(statsAll.body).stats.queued).toBe(3);
+
+            await postJSON(`${baseUrl}/api/queue/resume`, {});
+        });
+
+        it('should return 404 for non-existent repoId in stats', async () => {
+            const res = await request(`${baseUrl}/api/queue/stats?repoId=nonexistent`);
+            expect(res.status).toBe(404);
+        });
+    });
+
+    // ------------------------------------------------------------------
+    // Scenario 17: GET /api/queue/repos with per-repo state
+    // ------------------------------------------------------------------
+    describe('GET /api/queue/repos with per-repo state', () => {
+        it('should list repos with correct repoId, rootPath, isPaused, and taskCount', async () => {
+            const repoA = '/repo/repos-a';
+            const repoB = '/repo/repos-b';
+
+            // Pause globally to prevent execution
+            await postJSON(`${baseUrl}/api/queue/pause`, {});
+
+            // Enqueue tasks
+            await postJSON(`${baseUrl}/api/queue`, makeTask(repoA, { displayName: 'Repos A1' }));
+            await postJSON(`${baseUrl}/api/queue`, makeTask(repoA, { displayName: 'Repos A2' }));
+            await postJSON(`${baseUrl}/api/queue`, makeTask(repoB, { displayName: 'Repos B1' }));
+
+            const crypto = require('crypto');
+            const pathMod = require('path');
+            const repoIdA = crypto.createHash('sha256').update(pathMod.resolve(repoA)).digest('hex').substring(0, 16);
+            const repoIdB = crypto.createHash('sha256').update(pathMod.resolve(repoB)).digest('hex').substring(0, 16);
+
+            const res = await request(`${baseUrl}/api/queue/repos`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+
+            const entryA = body.repos.find((r: any) => r.repoId === repoIdA);
+            const entryB = body.repos.find((r: any) => r.repoId === repoIdB);
+
+            expect(entryA).toBeDefined();
+            expect(entryA.rootPath).toBe(pathMod.resolve(repoA));
+            expect(entryA.taskCount).toBe(2);
+            expect(entryA.isPaused).toBe(true); // global pause inherited
+
+            expect(entryB).toBeDefined();
+            expect(entryB.rootPath).toBe(pathMod.resolve(repoB));
+            expect(entryB.taskCount).toBe(1);
+            expect(entryB.isPaused).toBe(true);
+
+            await postJSON(`${baseUrl}/api/queue/resume`, {});
+        });
+    });
+
+    // ------------------------------------------------------------------
+    // Scenario 18: Aggregate GET /api/queue
+    // ------------------------------------------------------------------
+    describe('aggregate GET /api/queue', () => {
+        it('should return tasks from all repos when no repoId filter', async () => {
+            const repoA = '/repo/aggregate-a';
+            const repoB = '/repo/aggregate-b';
+
+            await postJSON(`${baseUrl}/api/queue/pause`, {});
+
+            await postJSON(`${baseUrl}/api/queue`, makeTask(repoA, { displayName: 'Agg A1' }));
+            await postJSON(`${baseUrl}/api/queue`, makeTask(repoB, { displayName: 'Agg B1' }));
+            await postJSON(`${baseUrl}/api/queue`, makeTask(repoB, { displayName: 'Agg B2' }));
+
+            const res = await request(`${baseUrl}/api/queue`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+
+            // All 3 tasks should appear in aggregate
+            expect(body.queued.length).toBe(3);
+            expect(body.stats.queued).toBe(3);
+
+            // Verify both repos' tasks present
+            const wdirs = body.queued.map((t: any) => t.payload?.workingDirectory);
+            expect(wdirs.filter((w: string) => w === repoA).length).toBe(1);
+            expect(wdirs.filter((w: string) => w === repoB).length).toBe(2);
+
+            await postJSON(`${baseUrl}/api/queue/resume`, {});
         });
     });
 

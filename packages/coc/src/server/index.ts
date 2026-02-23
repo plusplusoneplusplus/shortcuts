@@ -199,8 +199,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const routes: Route[] = [];
     registerApiRoutes(routes, store, bridge);
     registerProcessResumeRoutes(routes, store);
-    // TODO(004): update registerQueueRoutes signature to accept MultiRepoQueueExecutorBridge
-    registerQueueRoutes(routes, queueFacade, store);
+    // Queue routes now receive the bridge directly for per-repo routing
+    registerQueueRoutes(routes, bridge, store);
     registerTaskRoutes(routes, store);
     registerTaskWriteRoutes(routes, store);
     registerPipelineRoutes(routes, store);
