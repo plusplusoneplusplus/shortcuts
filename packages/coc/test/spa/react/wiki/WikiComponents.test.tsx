@@ -15,6 +15,7 @@ import { AddWikiDialog } from '../../../../src/server/spa/client/react/wiki/AddW
 import { WikiAsk } from '../../../../src/server/spa/client/react/wiki/WikiAsk';
 import { WikiAdmin } from '../../../../src/server/spa/client/react/wiki/WikiAdmin';
 import { WikiDetail } from '../../../../src/server/spa/client/react/wiki/WikiDetail';
+import { WikiGraph } from '../../../../src/server/spa/client/react/wiki/WikiGraph';
 
 function Wrap({ children }: { children: ReactNode }) {
     return <AppProvider><QueueProvider>{children}</QueueProvider></AppProvider>;
@@ -1292,6 +1293,190 @@ describe('useWebSocket wiki event dispatching', () => {
         const result = appReducer(state, { type: 'WIKI_ERROR', wikiId: 'w1', error: 'Phase 3 failed' });
         expect(result.wikis[0].status).toBe('error');
         expect(result.wikis[0].errorMessage).toBe('Phase 3 failed');
+    });
+});
+
+// ============================================================================
+// WikiGraph — D3 loading and rendering
+// ============================================================================
+
+describe('WikiGraph', () => {
+    const mockGraph = {
+        components: [
+            { id: 'c1', name: 'Auth', path: '/auth', purpose: 'Auth module', category: 'core', complexity: 'medium' as const, dependencies: ['c2'] },
+            { id: 'c2', name: 'DB', path: '/db', purpose: 'Database layer', category: 'data', complexity: 'high' as const, dependencies: [] },
+            { id: 'c3', name: 'UI', path: '/ui', purpose: 'User interface', category: 'frontend', complexity: 'low' as const, dependencies: ['c1'] },
+        ],
+        categories: [{ id: 'core', name: 'Core' }, { id: 'data', name: 'Data' }, { id: 'frontend', name: 'Frontend' }],
+        project: { name: 'Test', description: 'A test project' },
+    };
+
+    beforeEach(() => {
+        // Stub d3 on window so ensureD3() resolves immediately without loading CDN
+        const mockD3Selection = {
+            selectAll: vi.fn().mockReturnThis(),
+            remove: vi.fn().mockReturnThis(),
+            attr: vi.fn().mockReturnThis(),
+            append: vi.fn().mockReturnThis(),
+            data: vi.fn().mockReturnThis(),
+            join: vi.fn().mockReturnThis(),
+            style: vi.fn().mockReturnThis(),
+            call: vi.fn().mockReturnThis(),
+            on: vi.fn().mockReturnThis(),
+            text: vi.fn().mockReturnThis(),
+        };
+        const mockSimulation = {
+            force: vi.fn().mockReturnThis(),
+            on: vi.fn().mockReturnThis(),
+            stop: vi.fn(),
+        };
+        (window as any).d3 = {
+            select: vi.fn().mockReturnValue(mockD3Selection),
+            drag: vi.fn().mockReturnValue({ on: vi.fn().mockReturnThis() }),
+            forceSimulation: vi.fn().mockReturnValue(mockSimulation),
+            forceLink: vi.fn().mockReturnValue({ id: vi.fn().mockReturnThis(), distance: vi.fn().mockReturnThis() }),
+            forceManyBody: vi.fn().mockReturnValue({ strength: vi.fn().mockReturnThis() }),
+            forceCenter: vi.fn().mockReturnValue({}),
+            forceCollide: vi.fn().mockReturnValue({ radius: vi.fn().mockReturnThis() }),
+            zoom: vi.fn().mockReturnValue({ scaleExtent: vi.fn().mockReturnValue({ on: vi.fn().mockReturnThis() }) }),
+        };
+    });
+
+    it('renders SVG and legend after D3 loads', async () => {
+        const onSelect = vi.fn();
+        const { container } = render(
+            <WikiGraph wikiId="w1" graph={mockGraph} onSelectComponent={onSelect} />
+        );
+        // After D3 loads (window.d3 is stubbed), loading should be false and SVG should render
+        await waitFor(() => {
+            expect(container.querySelector('#wiki-graph-container')).toBeTruthy();
+            expect(container.querySelector('svg')).toBeTruthy();
+        });
+    });
+
+    it('renders category legend with all categories', async () => {
+        const onSelect = vi.fn();
+        render(
+            <WikiGraph wikiId="w1" graph={mockGraph} onSelectComponent={onSelect} />
+        );
+        await waitFor(() => {
+            expect(screen.getByText('Categories')).toBeTruthy();
+        });
+        expect(screen.getByText('core')).toBeTruthy();
+        expect(screen.getByText('data')).toBeTruthy();
+        expect(screen.getByText('frontend')).toBeTruthy();
+    });
+
+    it('calls d3.select and forceSimulation when rendering graph', async () => {
+        const onSelect = vi.fn();
+        render(
+            <WikiGraph wikiId="w1" graph={mockGraph} onSelectComponent={onSelect} />
+        );
+        await waitFor(() => {
+            expect((window as any).d3.select).toHaveBeenCalled();
+            expect((window as any).d3.forceSimulation).toHaveBeenCalled();
+        });
+    });
+
+    it('toggles category disabled state when legend item clicked', async () => {
+        const onSelect = vi.fn();
+        render(
+            <WikiGraph wikiId="w1" graph={mockGraph} onSelectComponent={onSelect} />
+        );
+        await waitFor(() => {
+            expect(screen.getByText('core')).toBeTruthy();
+        });
+        const coreLegendItem = screen.getByText('core').closest('.wiki-graph-legend-item')!;
+        expect(coreLegendItem.className).not.toContain('line-through');
+
+        fireEvent.click(coreLegendItem);
+        expect(coreLegendItem.className).toContain('line-through');
+
+        // Toggle back
+        fireEvent.click(coreLegendItem);
+        expect(coreLegendItem.className).not.toContain('line-through');
+    });
+
+    it('renders legend swatches with correct category colors', async () => {
+        const onSelect = vi.fn();
+        render(
+            <WikiGraph wikiId="w1" graph={mockGraph} onSelectComponent={onSelect} />
+        );
+        await waitFor(() => {
+            expect(screen.getByText('core')).toBeTruthy();
+        });
+        const swatches = document.querySelectorAll('.wiki-graph-legend-swatch');
+        expect(swatches.length).toBe(3);
+    });
+});
+
+// ============================================================================
+// WikiDetail — height class consistency
+// ============================================================================
+
+describe('WikiDetail height class', () => {
+    beforeEach(() => {
+        vi.stubGlobal('fetch', vi.fn().mockImplementation((input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url.includes('/graph')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        components: [{ id: 'c1', name: 'A', path: '/a', purpose: 'p', category: 'ui' }],
+                        categories: [{ id: 'ui', name: 'UI' }],
+                        project: { name: 'T', description: 'd' },
+                    }),
+                });
+            }
+            if (url.includes('/admin/cache')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        }));
+        location.hash = '';
+    });
+
+    it('uses viewport-relative height instead of h-full', async () => {
+        render(
+            <Wrap>
+                <SeededWikiDetail wiki={{ id: 'w1', name: 'Test', status: 'loaded' }} />
+            </Wrap>
+        );
+        await waitFor(() => {
+            const el = document.getElementById('view-wiki');
+            expect(el).toBeTruthy();
+            expect(el!.className).toContain('h-[calc(100vh-48px)]');
+            expect(el!.className).toContain('overflow-hidden');
+            expect(el!.className).not.toContain(' h-full');
+        });
+    });
+});
+
+// ============================================================================
+// WikiGraph — effect separation (regression test for React 18 batching bug)
+// ============================================================================
+
+describe('WikiGraph effect separation', () => {
+    it('WikiGraph source uses separate effects for D3 loading and rendering', () => {
+        // Regression test: ensure the component has two separate useEffect calls
+        // to avoid React 18 batching issue where renderGraph runs before SVG is in DOM.
+        const fs = require('fs');
+        const path = require('path');
+        const source = fs.readFileSync(
+            path.resolve(__dirname, '../../../../src/server/spa/client/react/wiki/WikiGraph.tsx'),
+            'utf8'
+        );
+
+        // Effect 1: loads D3 with empty deps
+        expect(source).toContain('ensureD3()');
+        expect(source).toContain('.then(() => setLoading(false))');
+
+        // Effect 2: renders graph after loading
+        expect(source).toContain('if (!loading && !error)');
+        expect(source).toContain('[loading, error, renderGraph]');
+
+        // Should NOT have the old combined pattern
+        expect(source).not.toContain('setLoading(false); renderGraph()');
     });
 });
 

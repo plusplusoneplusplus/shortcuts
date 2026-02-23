@@ -43,11 +43,10 @@ const COMPLEXITY_RADIUS: Record<string, number> = { low: 8, medium: 12, high: 18
 
 let d3Promise: Promise<void> | null = null;
 function ensureD3(): Promise<void> {
-    if (d3Promise) return d3Promise;
     if (typeof (window as any).d3 !== 'undefined') {
-        d3Promise = Promise.resolve();
-        return d3Promise;
+        return Promise.resolve();
     }
+    if (d3Promise) return d3Promise;
     d3Promise = new Promise((resolve, reject) => {
         const script = document.createElement('script');
         script.src = D3_CDN_URL;
@@ -173,17 +172,25 @@ export function WikiGraph({ wikiId, graph, onSelectComponent }: WikiGraphProps) 
         svg.call(zoom);
     }, [graph, onSelectComponent]);
 
+    // Effect 1: Load D3 library
     useEffect(() => {
         setLoading(true);
         setError(null);
         ensureD3()
-            .then(() => { setLoading(false); renderGraph(); })
+            .then(() => setLoading(false))
             .catch(() => { setLoading(false); setError('Failed to load graph library'); });
 
         return () => {
             if (simulationRef.current) simulationRef.current.stop();
         };
-    }, [renderGraph]);
+    }, []);
+
+    // Effect 2: Render graph once D3 is loaded and SVG is in the DOM
+    useEffect(() => {
+        if (!loading && !error) {
+            renderGraph();
+        }
+    }, [loading, error, renderGraph]);
 
     // Update visibility when categories toggled
     useEffect(() => {
