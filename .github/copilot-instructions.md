@@ -1,7 +1,11 @@
 ## Rules
 - Never `git add/commit` files under `.vscode/tasks` (creating is fine).
 - Assume no backward compatibility unless explicitly asked.
-- Use `claude-haiku-4.5` for simple exploration tasks. Use `claude-sonnet-4.6` for complex exploration tasks. 
+- Use `claude-haiku-4.5` for simple exploration tasks. Use `claude-sonnet-4.6` for complex exploration tasks.
+
+## Planning
+- When creating plan or spec files, place them under `.vscode/tasks/<feature>/<task>.md` (e.g., `.vscode/tasks/coc/add-retry-logic.plan.md`).
+- Before creating a new feature folder, check what already exists under `.vscode/tasks/` and reuse an existing feature folder if one matches.
 
 ## Project Principles
 - CoC (Copilot of Copilot) is independent of the VS Code extension.
