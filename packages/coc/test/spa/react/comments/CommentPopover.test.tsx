@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { CommentPopover } from '../../../../src/server/spa/client/react/tasks/comments/CommentPopover';
 import type { TaskComment } from '../../../../src/server/spa/client/task-comments-types';
 
@@ -282,5 +282,185 @@ describe('CommentPopover', () => {
             />,
         );
         expect(screen.getByTitle('Suggestion')).toBeTruthy();
+    });
+
+    // --- AI integration tests ---
+
+    it('renders Ask AI button when onAskAI is provided', () => {
+        render(
+            <CommentPopover
+                comment={makeComment()}
+                position={{ top: 100, left: 200 }}
+                onClose={noop}
+                onResolve={noop}
+                onUnresolve={noop}
+                onDelete={noop}
+                onEdit={noop}
+                onAskAI={vi.fn()}
+            />,
+        );
+        expect(screen.getByLabelText('Ask AI')).toBeTruthy();
+    });
+
+    it('does not render Ask AI button when onAskAI is not provided', () => {
+        render(
+            <CommentPopover
+                comment={makeComment()}
+                position={{ top: 100, left: 200 }}
+                onClose={noop}
+                onResolve={noop}
+                onUnresolve={noop}
+                onDelete={noop}
+                onEdit={noop}
+            />,
+        );
+        expect(screen.queryByLabelText('Ask AI')).toBeNull();
+    });
+
+    it('clicking Ask AI opens AI command menu', () => {
+        render(
+            <CommentPopover
+                comment={makeComment()}
+                position={{ top: 100, left: 200 }}
+                onClose={noop}
+                onResolve={noop}
+                onUnresolve={noop}
+                onDelete={noop}
+                onEdit={noop}
+                onAskAI={vi.fn()}
+            />,
+        );
+        fireEvent.click(screen.getByTestId('popover-ai-menu-trigger'));
+        expect(screen.getByTestId('popover-ai-command-menu')).toBeTruthy();
+    });
+
+    it('Clarify option calls onAskAI with correct args', () => {
+        const onAskAI = vi.fn();
+        render(
+            <CommentPopover
+                comment={makeComment()}
+                position={{ top: 100, left: 200 }}
+                onClose={noop}
+                onResolve={noop}
+                onUnresolve={noop}
+                onDelete={noop}
+                onEdit={noop}
+                onAskAI={onAskAI}
+            />,
+        );
+        fireEvent.click(screen.getByTestId('popover-ai-menu-trigger'));
+        fireEvent.click(screen.getByTestId('popover-ai-cmd-clarify'));
+        expect(onAskAI).toHaveBeenCalledWith('c1', 'clarify', undefined);
+    });
+
+    it('Go Deeper option calls onAskAI with correct args', () => {
+        const onAskAI = vi.fn();
+        render(
+            <CommentPopover
+                comment={makeComment()}
+                position={{ top: 100, left: 200 }}
+                onClose={noop}
+                onResolve={noop}
+                onUnresolve={noop}
+                onDelete={noop}
+                onEdit={noop}
+                onAskAI={onAskAI}
+            />,
+        );
+        fireEvent.click(screen.getByTestId('popover-ai-menu-trigger'));
+        fireEvent.click(screen.getByTestId('popover-ai-cmd-go-deeper'));
+        expect(onAskAI).toHaveBeenCalledWith('c1', 'go-deeper', undefined);
+    });
+
+    it('Custom question calls onAskAI with question text', () => {
+        const onAskAI = vi.fn();
+        render(
+            <CommentPopover
+                comment={makeComment()}
+                position={{ top: 100, left: 200 }}
+                onClose={noop}
+                onResolve={noop}
+                onUnresolve={noop}
+                onDelete={noop}
+                onEdit={noop}
+                onAskAI={onAskAI}
+            />,
+        );
+        fireEvent.click(screen.getByTestId('popover-ai-menu-trigger'));
+        fireEvent.click(screen.getByTestId('popover-ai-cmd-custom'));
+        const input = screen.getByTestId('popover-ai-custom-input');
+        fireEvent.change(input, { target: { value: 'my question' } });
+        fireEvent.keyDown(input, { key: 'Enter' });
+        expect(onAskAI).toHaveBeenCalledWith('c1', 'custom', 'my question');
+    });
+
+    it('shows loading spinner when aiLoading=true', () => {
+        render(
+            <CommentPopover
+                comment={makeComment()}
+                position={{ top: 100, left: 200 }}
+                onClose={noop}
+                onResolve={noop}
+                onUnresolve={noop}
+                onDelete={noop}
+                onEdit={noop}
+                onAskAI={vi.fn()}
+                aiLoading={true}
+            />,
+        );
+        expect(screen.getByTestId('popover-ai-loading')).toBeTruthy();
+    });
+
+    it('shows error state when aiError is set', () => {
+        render(
+            <CommentPopover
+                comment={makeComment()}
+                position={{ top: 100, left: 200 }}
+                onClose={noop}
+                onResolve={noop}
+                onUnresolve={noop}
+                onDelete={noop}
+                onEdit={noop}
+                aiError="AI failed"
+            />,
+        );
+        const errorEl = screen.getByTestId('popover-ai-error');
+        expect(errorEl.textContent).toContain('AI failed');
+    });
+
+    it('dismiss error calls onClearAiError', () => {
+        const onClearAiError = vi.fn();
+        render(
+            <CommentPopover
+                comment={makeComment()}
+                position={{ top: 100, left: 200 }}
+                onClose={noop}
+                onResolve={noop}
+                onUnresolve={noop}
+                onDelete={noop}
+                onEdit={noop}
+                aiError="oops"
+                onClearAiError={onClearAiError}
+            />,
+        );
+        fireEvent.click(screen.getByLabelText('Dismiss error'));
+        expect(onClearAiError).toHaveBeenCalledWith('c1');
+    });
+
+    it('renders markdown in aiResponse', () => {
+        render(
+            <CommentPopover
+                comment={makeComment({ aiResponse: '**bold**' })}
+                position={{ top: 100, left: 200 }}
+                onClose={noop}
+                onResolve={noop}
+                onUnresolve={noop}
+                onDelete={noop}
+                onEdit={noop}
+            />,
+        );
+        const response = screen.getByTestId('popover-ai-response');
+        expect(response).toBeTruthy();
+        expect(response.querySelector('.markdown-body')).toBeTruthy();
     });
 });

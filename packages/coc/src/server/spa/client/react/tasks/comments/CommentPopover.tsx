@@ -5,8 +5,11 @@
 
 import { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
-import { cn, Button } from '../../shared';
+import { cn, Button, Spinner } from '../../shared';
 import { clampToViewport } from './InlineCommentPopup';
+import { AICommandMenu } from './AICommandMenu';
+import { MarkdownView } from '../../processes/MarkdownView';
+import { renderMarkdownToHtml } from '../../../markdown-renderer';
 import type { TaskComment, TaskCommentCategory } from '../../../task-comments-types';
 import { CATEGORY_INFO, getCommentCategory } from '../../../task-comments-types';
 
@@ -20,6 +23,10 @@ export interface CommentPopoverProps {
     onUnresolve: (id: string) => void;
     onDelete: (id: string) => void;
     onEdit: (id: string, text: string) => void;
+    onAskAI?: (id: string, commandId: string, customQuestion?: string) => void;
+    aiLoading?: boolean;
+    aiError?: string | null;
+    onClearAiError?: (id: string) => void;
 }
 
 export function CommentPopover({
@@ -30,6 +37,10 @@ export function CommentPopover({
     onUnresolve,
     onDelete,
     onEdit,
+    onAskAI,
+    aiLoading,
+    aiError,
+    onClearAiError,
 }: CommentPopoverProps) {
     const popoverRef = useRef<HTMLDivElement>(null);
     const [clampedPos, setClampedPos] = useState(position);
@@ -138,10 +149,29 @@ export function CommentPopover({
             )}
 
             {/* AI response */}
-            {comment.aiResponse && (
+            {(comment.aiResponse || (aiLoading && !comment.aiResponse)) && (
                 <div className="p-1.5 rounded bg-[#0078d4]/5 dark:bg-[#3794ff]/5 border-l-2 border-[#0078d4] dark:border-[#3794ff]" data-testid="popover-ai-response">
                     <div className="text-[10px] text-[#0078d4] dark:text-[#3794ff] font-medium mb-0.5">🤖 AI</div>
-                    <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc]">{comment.aiResponse}</div>
+                    {aiLoading && !comment.aiResponse ? (
+                        <div data-testid="popover-ai-loading"><Spinner size="sm" /></div>
+                    ) : (
+                        <div className="max-h-[180px] overflow-y-auto text-[11px] text-[#1e1e1e] dark:text-[#cccccc]">
+                            <MarkdownView html={renderMarkdownToHtml(comment.aiResponse!)} />
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* AI error */}
+            {aiError && (
+                <div
+                    className="flex items-start gap-1.5 p-1.5 rounded bg-red-500/10 border border-red-500/20 text-[11px] text-red-600 dark:text-red-400"
+                    data-testid="popover-ai-error"
+                >
+                    <span className="flex-1">{aiError}</span>
+                    {onClearAiError && (
+                        <button className="shrink-0 hover:opacity-70" onClick={() => onClearAiError(comment.id)} aria-label="Dismiss error">×</button>
+                    )}
                 </div>
             )}
 
@@ -155,6 +185,14 @@ export function CommentPopover({
                     )}
                     <button className={ACTION_BTN} onClick={() => { setEditing(true); setEditText(comment.comment); }} title="Edit" aria-label="Edit">✏️</button>
                     <button className={ACTION_BTN} onClick={() => { onDelete(comment.id); onClose(); }} title="Delete" aria-label="Delete">🗑️</button>
+                    {onAskAI && (
+                        <AICommandMenu
+                            onCommand={(cmdId, q) => onAskAI(comment.id, cmdId, q)}
+                            loading={aiLoading}
+                            triggerClassName={ACTION_BTN}
+                            data-testid="popover-ai"
+                        />
+                    )}
                 </div>
             )}
         </div>,
