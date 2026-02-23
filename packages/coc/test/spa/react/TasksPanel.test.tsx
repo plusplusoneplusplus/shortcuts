@@ -611,6 +611,90 @@ describe('TasksPanel — folder click clears preview', () => {
         expect(screen.getByTestId('miller-column-1')).toBeTruthy();
     });
 
+    it('clears active folder highlight when clicking a sibling file', async () => {
+        fetchSpy.mockImplementation((url: string) => {
+            if (url.includes('tasks/content')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ content: '# Fix' }) });
+            }
+            if (url.includes('/comments/')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ comments: [] }) });
+            }
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve(nestedSiblingTree) });
+        });
+
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree-item-coc')).toBeTruthy();
+        });
+
+        // Open coc folder — it becomes the active folder in column 0.
+        fireEvent.click(screen.getByTestId('task-tree-item-coc'));
+        await waitFor(() => {
+            expect(screen.getByTestId('miller-column-1')).toBeTruthy();
+        });
+
+        // Open nested chat folder — it becomes active in column 1.
+        fireEvent.click(screen.getByTestId('task-tree-item-chat'));
+        await waitFor(() => {
+            expect(screen.getByTestId('miller-column-2')).toBeTruthy();
+        });
+        // chat should have the active-folder highlight.
+        expect(screen.getByTestId('task-tree-item-chat').className).toContain('bg-[#0078d4]');
+
+        // Click sibling file fix-wiki-graph in column 1.
+        fireEvent.click(screen.getByTestId('task-tree-item-fix-wiki-graph'));
+        await waitFor(() => {
+            expect(screen.queryByTestId('miller-column-2')).toBeNull();
+        });
+
+        // chat should no longer have the active-folder highlight.
+        expect(screen.getByTestId('task-tree-item-chat').className).not.toContain('bg-[#0078d4]/[0.12]');
+    });
+
+    it('resumes folder navigation after clicking a file', async () => {
+        fetchSpy.mockImplementation((url: string) => {
+            if (url.includes('tasks/content')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ content: '# Content' }) });
+            }
+            if (url.includes('/comments/')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ comments: [] }) });
+            }
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve(nestedSiblingTree) });
+        });
+
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree-item-coc')).toBeTruthy();
+        });
+
+        // Open coc folder.
+        fireEvent.click(screen.getByTestId('task-tree-item-coc'));
+        await waitFor(() => {
+            expect(screen.getByTestId('miller-column-1')).toBeTruthy();
+        });
+
+        // Click a file in column 1.
+        fireEvent.click(screen.getByTestId('task-tree-item-fix-wiki-graph'));
+        await waitFor(() => {
+            expect(document.querySelector('#task-preview-body')).toBeTruthy();
+        });
+
+        // Now click the chat folder — should open column 2 and hide preview.
+        fireEvent.click(screen.getByTestId('task-tree-item-chat'));
+        await waitFor(() => {
+            expect(screen.getByTestId('miller-column-2')).toBeTruthy();
+        });
+        await waitFor(() => {
+            expect(document.querySelector('#task-preview-body')).toBeNull();
+        });
+    });
+
     it('collapses child column when opening a root-level file', async () => {
         fetchSpy.mockImplementation((url: string) => {
             if (url.includes('tasks/content')) {
