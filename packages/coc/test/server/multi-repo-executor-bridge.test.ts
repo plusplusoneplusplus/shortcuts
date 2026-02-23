@@ -1,0 +1,290 @@
+/**
+ * MultiRepoQueueExecutorBridge Tests
+ *
+ * Tests for MultiRepoQueueExecutorBridge:
+ * - Lazy creation of per-repo bridges
+ * - Path normalization (dedup)
+ * - Independent bridges per repo
+ * - repoId registration and lookup
+ * - Auto-registration via getOrCreateBridge
+ * - queueChange event forwarding with repoPath and repoId
+ * - dispose() cleanup
+ *
+ * Uses real RepoQueueRegistry and TaskQueueManager (pure in-memory).
+ */
+
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+import {
+    RepoQueueRegistry,
+    TaskQueueManager,
+} from '@plusplusoneplusplus/pipeline-core';
+
+// SDK mock — needed because createQueueExecutorBridge → CLITaskExecutor → getCopilotSDKService
+import { createMockSDKService } from '../helpers/mock-sdk-service';
+import { createMockProcessStore } from '../helpers/mock-process-store';
+import { computeRepoId } from '../../src/server/queue-persistence';
+
+const sdkMocks = createMockSDKService();
+
+vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@plusplusoneplusplus/pipeline-core')>();
+    return {
+        ...actual,
+        getCopilotSDKService: () => sdkMocks.service,
+    };
+});
+
+import { MultiRepoQueueExecutorBridge } from '../../src/server/multi-repo-executor-bridge';
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+function createBridge(options?: { maxConcurrency?: number; autoStart?: boolean }) {
+    const registry = new RepoQueueRegistry();
+    const store = createMockProcessStore();
+    const bridge = new MultiRepoQueueExecutorBridge(registry, store, {
+        autoStart: false,
+        ...options,
+    });
+    return { registry, store, bridge };
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+describe('MultiRepoQueueExecutorBridge', () => {
+    beforeEach(() => {
+        sdkMocks.resetAll();
+    });
+
+    // --------------------------------------------------------------------
+    // Lazy creation
+    // --------------------------------------------------------------------
+
+    describe('lazy creation', () => {
+        it('getOrCreateBridge called twice returns the same instance', () => {
+            const { bridge, registry } = createBridge();
+
+            const b1 = bridge.getOrCreateBridge('/repo/a');
+            const b2 = bridge.getOrCreateBridge('/repo/a');
+
+            expect(b1).toBe(b2);
+            expect(registry.hasRepo('/repo/a')).toBe(true);
+
+            bridge.dispose();
+        });
+
+        it('creates a queue in the registry on first call', () => {
+            const { bridge, registry } = createBridge();
+
+            expect(registry.hasRepo('/repo/x')).toBe(false);
+            bridge.getOrCreateBridge('/repo/x');
+            expect(registry.hasRepo('/repo/x')).toBe(true);
+
+            bridge.dispose();
+        });
+    });
+
+    // --------------------------------------------------------------------
+    // Path normalization
+    // --------------------------------------------------------------------
+
+    describe('path normalization', () => {
+        it('normalizes paths so /repo/a/../a and /repo/a share the same bridge', () => {
+            const { bridge } = createBridge();
+
+            const b1 = bridge.getOrCreateBridge('/repo/a/../a');
+            const b2 = bridge.getOrCreateBridge('/repo/a');
+
+            expect(b1).toBe(b2);
+            expect(bridge.getAllBridges().size).toBe(1);
+
+            bridge.dispose();
+        });
+    });
+
+    // --------------------------------------------------------------------
+    // Independent bridges
+    // --------------------------------------------------------------------
+
+    describe('independent bridges', () => {
+        it('different repos get different bridge instances', () => {
+            const { bridge } = createBridge();
+
+            const bA = bridge.getOrCreateBridge('/repo/a');
+            const bB = bridge.getOrCreateBridge('/repo/b');
+
+            expect(bA).not.toBe(bB);
+            expect(bridge.getAllBridges().size).toBe(2);
+
+            bridge.dispose();
+        });
+    });
+
+    // --------------------------------------------------------------------
+    // registerRepoId + getBridgeByRepoId
+    // --------------------------------------------------------------------
+
+    describe('registerRepoId + getBridgeByRepoId', () => {
+        it('returns the correct bridge after registerRepoId + getOrCreateBridge', () => {
+            const { bridge } = createBridge();
+            const rootPath = '/repo/registered';
+            const repoId = computeRepoId(rootPath);
+
+            bridge.registerRepoId(repoId, rootPath);
+            const created = bridge.getOrCreateBridge(rootPath);
+
+            expect(bridge.getBridgeByRepoId(repoId)).toBe(created);
+
+            bridge.dispose();
+        });
+
+        it('returns undefined for unknown repoId', () => {
+            const { bridge } = createBridge();
+
+            expect(bridge.getBridgeByRepoId('0000000000000000')).toBeUndefined();
+
+            bridge.dispose();
+        });
+
+        it('registerRepoId before getOrCreateBridge allows later lookup', () => {
+            const { bridge } = createBridge();
+            const rootPath = '/repo/pre-registered';
+            const repoId = computeRepoId(rootPath);
+
+            // Register first, create bridge later
+            bridge.registerRepoId(repoId, rootPath);
+            expect(bridge.getBridgeByRepoId(repoId)).toBeUndefined(); // no bridge yet
+
+            const created = bridge.getOrCreateBridge(rootPath);
+            expect(bridge.getBridgeByRepoId(repoId)).toBe(created);
+
+            bridge.dispose();
+        });
+    });
+
+    // --------------------------------------------------------------------
+    // Auto-registration
+    // --------------------------------------------------------------------
+
+    describe('auto-registration', () => {
+        it('getOrCreateBridge auto-registers repoId so getBridgeByRepoId works', () => {
+            const { bridge } = createBridge();
+            const rootPath = '/repo/auto';
+            const resolvedPath = require('path').resolve(rootPath);
+            const repoId = computeRepoId(resolvedPath);
+
+            const created = bridge.getOrCreateBridge(rootPath);
+
+            expect(bridge.getBridgeByRepoId(repoId)).toBe(created);
+
+            bridge.dispose();
+        });
+    });
+
+    // --------------------------------------------------------------------
+    // queueChange event forwarding
+    // --------------------------------------------------------------------
+
+    describe('queueChange event forwarding', () => {
+        it('emits queueChange with repoPath and repoId when a task is enqueued', async () => {
+            const { bridge, registry } = createBridge();
+            const rootPath = '/repo/events';
+            const resolvedPath = require('path').resolve(rootPath);
+            const expectedRepoId = computeRepoId(resolvedPath);
+
+            // Create the bridge (which also creates the queue in the registry)
+            bridge.getOrCreateBridge(rootPath);
+
+            // Listen for the forwarded event
+            const events: any[] = [];
+            bridge.on('queueChange', (event: any) => {
+                events.push(event);
+            });
+
+            // Enqueue a task on the registry's queue — this triggers 'change' on the queue,
+            // which the registry forwards as 'queueChange', which MultiRepoQueueExecutorBridge
+            // intercepts and re-emits with augmented payload.
+            const queue = registry.getQueueForRepo(resolvedPath);
+            queue.enqueue({
+                type: 'custom',
+                priority: 'medium',
+                payload: { prompt: 'test' },
+            });
+
+            // Events are synchronous
+            expect(events.length).toBeGreaterThan(0);
+
+            const addEvent = events.find((e) => e.type === 'added');
+            expect(addEvent).toBeDefined();
+            expect(addEvent.repoPath).toBe(resolvedPath);
+            expect(addEvent.repoId).toBe(expectedRepoId);
+
+            bridge.dispose();
+        });
+    });
+
+    // --------------------------------------------------------------------
+    // getAllBridges
+    // --------------------------------------------------------------------
+
+    describe('getAllBridges', () => {
+        it('returns a shallow copy keyed by normalized rootPath', () => {
+            const { bridge } = createBridge();
+
+            bridge.getOrCreateBridge('/repo/one');
+            bridge.getOrCreateBridge('/repo/two');
+
+            const all = bridge.getAllBridges();
+            expect(all.size).toBe(2);
+
+            // It's a copy — modifying it doesn't affect internal state
+            all.clear();
+            expect(bridge.getAllBridges().size).toBe(2);
+
+            bridge.dispose();
+        });
+    });
+
+    // --------------------------------------------------------------------
+    // dispose
+    // --------------------------------------------------------------------
+
+    describe('dispose', () => {
+        it('clears all bridges and internal state', () => {
+            const { bridge } = createBridge();
+
+            bridge.getOrCreateBridge('/repo/a');
+            bridge.getOrCreateBridge('/repo/b');
+
+            expect(bridge.getAllBridges().size).toBe(2);
+
+            bridge.dispose();
+
+            expect(bridge.getAllBridges().size).toBe(0);
+        });
+
+        it('allows creating new bridges after dispose', () => {
+            const registry = new RepoQueueRegistry();
+            const store = createMockProcessStore();
+            const mrBridge = new MultiRepoQueueExecutorBridge(registry, store, { autoStart: false });
+
+            mrBridge.getOrCreateBridge('/repo/a');
+            mrBridge.dispose();
+
+            // After dispose, the registry is also disposed. Creating a fresh bridge
+            // requires a new instance of MultiRepoQueueExecutorBridge.
+            const registry2 = new RepoQueueRegistry();
+            const mrBridge2 = new MultiRepoQueueExecutorBridge(registry2, store, { autoStart: false });
+            const b = mrBridge2.getOrCreateBridge('/repo/c');
+
+            expect(b).toBeDefined();
+            expect(mrBridge2.getAllBridges().size).toBe(1);
+
+            mrBridge2.dispose();
+        });
+    });
+});
