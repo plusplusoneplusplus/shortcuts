@@ -20,6 +20,7 @@ import {
     createAnchorData,
     DEFAULT_ANCHOR_MATCH_CONFIG,
 } from '@plusplusoneplusplus/pipeline-core/editor/anchor';
+import { DEFAULT_AI_COMMANDS } from '@plusplusoneplusplus/pipeline-core/ai';
 import { extractDocumentContext } from '../utils/document-context';
 
 export interface MarkdownReviewEditorProps {
@@ -253,6 +254,86 @@ export function MarkdownReviewEditor({
         setActivePopoverComment(comment);
     }, []);
 
+    const handleAskAIFromSelection = useCallback(async (commandId: string) => {
+        if (!savedSelection) return;
+        setContextMenuVisible(false);
+
+        const selection: CommentSelection = {
+            startLine: savedSelection.startLine,
+            startColumn: savedSelection.startColumn,
+            endLine: savedSelection.endLine,
+            endColumn: savedSelection.endColumn,
+        };
+
+        let anchor;
+        try {
+            anchor = createAnchorData(
+                rawContent,
+                savedSelection.startLine,
+                savedSelection.endLine,
+                savedSelection.startColumn,
+                savedSelection.endColumn,
+                DEFAULT_ANCHOR_MATCH_CONFIG
+            );
+        } catch {
+            // proceed without anchor
+        }
+
+        const cmd = DEFAULT_AI_COMMANDS.find(c => c.id === commandId);
+        const commentText = cmd?.label ?? commandId;
+
+        const newComment = await addComment({
+            filePath,
+            selection,
+            selectedText: savedSelection.text,
+            comment: commentText,
+            category: 'question',
+            anchor,
+        });
+
+        const context = extractDocumentContext(rawContent, newComment);
+        await askAI(newComment.id, { commandId, documentContext: context });
+    }, [savedSelection, rawContent, filePath, addComment, askAI]);
+
+    const handleCustomAskAIFromSelection = useCallback(async () => {
+        if (!savedSelection) return;
+        setContextMenuVisible(false);
+
+        const question = window.prompt('Ask AI a custom question about the selection:');
+        if (!question?.trim()) return;
+
+        const selection: CommentSelection = {
+            startLine: savedSelection.startLine,
+            startColumn: savedSelection.startColumn,
+            endLine: savedSelection.endLine,
+            endColumn: savedSelection.endColumn,
+        };
+
+        let anchor;
+        try {
+            anchor = createAnchorData(
+                rawContent,
+                savedSelection.startLine,
+                savedSelection.endLine,
+                savedSelection.startColumn,
+                savedSelection.endColumn,
+                DEFAULT_ANCHOR_MATCH_CONFIG
+            );
+        } catch { /* proceed without anchor */ }
+
+        const newComment = await addComment({
+            filePath,
+            selection,
+            selectedText: savedSelection.text,
+            comment: question.trim(),
+            category: 'question',
+            anchor,
+        });
+
+        const context = extractDocumentContext(rawContent, newComment);
+        await askAI(newComment.id, { customQuestion: question.trim(), documentContext: context });
+    }, [savedSelection, rawContent, filePath, addComment, askAI]);
+
     if (loading) {
         return (
             <div className="flex items-center justify-center h-full">
@@ -320,6 +401,19 @@ export function MarkdownReviewEditor({
                             icon: '💬',
                             disabled: !savedSelection,
                             onClick: handleAddCommentFromMenu,
+                        },
+                        { label: '', separator: true, onClick: () => {} },
+                        {
+                            label: 'Ask AI',
+                            icon: '🤖',
+                            disabled: !savedSelection,
+                            children: DEFAULT_AI_COMMANDS.filter(c => !c.isCustomInput).map(cmd => ({
+                                label: `${cmd.icon ?? ''} ${cmd.label}`.trim(),
+                                onClick: () => handleAskAIFromSelection(cmd.id),
+                            })).concat([{
+                                label: '💬 Custom...',
+                                onClick: () => handleCustomAskAIFromSelection(),
+                            }]),
                         },
                     ]}
                     onClose={() => setContextMenuVisible(false)}
