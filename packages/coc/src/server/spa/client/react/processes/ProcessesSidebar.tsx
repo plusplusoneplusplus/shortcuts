@@ -12,6 +12,26 @@ import { formatDuration, statusIcon, statusLabel, typeLabel, repoName } from '..
 import { resolveWorkspaceName, getProcessWorkspaceId, getProcessWorkspaceName } from '../utils/workspace';
 import { getApiBase } from '../utils/config';
 
+export function filterQueueTask(
+    task: any,
+    searchQuery: string,
+    statusFilter: string,
+    workspace: string
+): boolean {
+    if (statusFilter !== '__all' && task.status !== statusFilter) return false;
+    if (workspace !== '__all') {
+        const repoId = task.repoId || task.workingDirectory || task.payload?.workingDirectory || '';
+        if (repoId !== workspace) return false;
+    }
+    if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        const haystack = [task.displayName, task.prompt, task.type, task.id]
+            .filter(Boolean).join(' ').toLowerCase();
+        if (haystack.indexOf(q) === -1) return false;
+    }
+    return true;
+}
+
 function groupByFolder(tasks: any[]): { folder: string | null; tasks: any[] }[] {
     const map = new Map<string | null, any[]>();
     for (const t of tasks) {
@@ -40,6 +60,20 @@ export function ProcessesSidebar() {
         location.hash = '#repos/' + encodeURIComponent(workspaceId);
     }, []);
 
+    // Queue task filtering
+    const filteredRunning = useMemo(
+        () => running.filter((t: any) => filterQueueTask(t, state.searchQuery, state.statusFilter, state.workspace)),
+        [running, state.searchQuery, state.statusFilter, state.workspace]
+    );
+    const filteredQueued = useMemo(
+        () => queued.filter((t: any) => filterQueueTask(t, state.searchQuery, state.statusFilter, state.workspace)),
+        [queued, state.searchQuery, state.statusFilter, state.workspace]
+    );
+    const filteredHistory = useMemo(
+        () => history.filter((t: any) => filterQueueTask(t, state.searchQuery, state.statusFilter, state.workspace)),
+        [history, state.searchQuery, state.statusFilter, state.workspace]
+    );
+
     // Legacy process filtering
     const filteredLegacy = useMemo(() => {
         return state.processes
@@ -66,8 +100,8 @@ export function ProcessesSidebar() {
 
     // Unified live timer
     const hasActive = useMemo(
-        () => running.length > 0 || filteredLegacy.some((p: any) => p.status === 'running'),
-        [running, filteredLegacy]
+        () => filteredRunning.length > 0 || filteredLegacy.some((p: any) => p.status === 'running'),
+        [filteredRunning, filteredLegacy]
     );
 
     useEffect(() => {
@@ -117,7 +151,7 @@ export function ProcessesSidebar() {
         }
     }
 
-    const isEmpty = running.length === 0 && queued.length === 0 && filteredLegacy.length === 0;
+    const isEmpty = filteredRunning.length === 0 && filteredQueued.length === 0 && filteredLegacy.length === 0;
 
     return (
         <div className="flex flex-col gap-3 min-h-0 p-2">
@@ -154,10 +188,10 @@ export function ProcessesSidebar() {
             </div>
 
             {/* Running queue tasks */}
-            {running.length > 0 && (
+            {filteredRunning.length > 0 && (
                 <div>
                     <div className="text-[11px] uppercase text-[#848484] mb-1 font-medium">Running</div>
-                    {groupByFolder(running).map(({ folder, tasks }) => (
+                    {groupByFolder(filteredRunning).map(({ folder, tasks }) => (
                         <div key={folder ?? '__unassigned__'}>
                             {folder && (
                                 <div className="queue-folder-heading text-[10px] text-[#848484] dark:text-[#666] font-mono truncate mb-0.5 pl-0.5">
@@ -177,10 +211,10 @@ export function ProcessesSidebar() {
             )}
 
             {/* Queued queue tasks */}
-            {queued.length > 0 && (
+            {filteredQueued.length > 0 && (
                 <div>
                     <div className="text-[11px] uppercase text-[#848484] mb-1 font-medium">Queued</div>
-                    {groupByFolder(queued).map(({ folder, tasks }) => (
+                    {groupByFolder(filteredQueued).map(({ folder, tasks }) => (
                         <div key={folder ?? '__unassigned__'}>
                             {folder && (
                                 <div className="queue-folder-heading text-[10px] text-[#848484] dark:text-[#666] font-mono truncate mb-0.5 pl-0.5">
@@ -286,11 +320,11 @@ export function ProcessesSidebar() {
                     className="flex items-center gap-1 text-[11px] uppercase text-[#848484] font-medium hover:text-[#0078d4] dark:hover:text-[#3794ff] transition-colors"
                     onClick={() => queueDispatch({ type: 'TOGGLE_HISTORY' })}
                 >
-                    {showHistory ? '▼' : '▶'} History ({history.length})
+                    {showHistory ? '▼' : '▶'} History ({filteredHistory.length})
                 </button>
-                {showHistory && history.length > 0 && (
+                {showHistory && filteredHistory.length > 0 && (
                     <div className="mt-1 max-h-[38vh] overflow-y-auto pr-1 space-y-1">
-                        {history.map((task: any) => (
+                        {filteredHistory.map((task: any) => (
                             <QueueTaskCard
                                 key={task.id}
                                 task={task}
