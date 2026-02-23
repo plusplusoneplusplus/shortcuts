@@ -614,6 +614,27 @@ describe('Queue Handler', () => {
             expect(body.queued).toHaveLength(2);
         });
 
+        it('should filter queued tasks by workspace ID alias', async () => {
+            const srv = await startServer();
+
+            await postJSON(`${srv.url}/api/workspaces`, {
+                id: 'ws-alpha',
+                name: 'alpha',
+                rootPath: '/repo/alpha',
+            });
+
+            // Pause to keep tasks in queued state for deterministic assertions
+            await postJSON(`${srv.url}/api/queue/pause`, {});
+            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'A', payload: { data: { prompt: 'test' }, workingDirectory: '/repo/alpha' } }));
+            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'B', payload: { data: { prompt: 'test' }, workingDirectory: '/repo/beta' } }));
+
+            const res = await request(`${srv.url}/api/queue?repoId=ws-alpha`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.queued).toHaveLength(1);
+            expect(body.queued[0].displayName).toBe('A');
+        });
+
         it('should return empty arrays for non-existent repoId', async () => {
             const srv = await startServer();
 
@@ -1121,6 +1142,31 @@ describe('Queue Handler', () => {
                 expect(res.status).toBe(200);
                 const body = JSON.parse(res.body);
                 expect(body.history).toHaveLength(2);
+            });
+
+            it('should filter history by workspace ID alias', async () => {
+                const srv = await startServer();
+
+                await postJSON(`${srv.url}/api/workspaces`, {
+                    id: 'ws-alpha',
+                    name: 'alpha',
+                    rootPath: '/repo/alpha',
+                });
+
+                await postJSON(`${srv.url}/api/queue/pause`, {});
+                const alphaTask = await postJSON(`${srv.url}/api/queue`, makeTask({ payload: { data: { prompt: 'test' }, workingDirectory: '/repo/alpha' } }));
+                const betaTask = await postJSON(`${srv.url}/api/queue`, makeTask({ payload: { data: { prompt: 'test' }, workingDirectory: '/repo/beta' } }));
+
+                const alphaTaskId = JSON.parse(alphaTask.body).task.id;
+                const betaTaskId = JSON.parse(betaTask.body).task.id;
+                await request(`${srv.url}/api/queue/${alphaTaskId}`, { method: 'DELETE' });
+                await request(`${srv.url}/api/queue/${betaTaskId}`, { method: 'DELETE' });
+
+                const res = await request(`${srv.url}/api/queue/history?repoId=ws-alpha`);
+                expect(res.status).toBe(200);
+                const body = JSON.parse(res.body);
+                expect(body.history).toHaveLength(1);
+                expect(body.history[0].id).toBe(alphaTaskId);
             });
 
             it('should filter history via workingDirectory-based routing', async () => {

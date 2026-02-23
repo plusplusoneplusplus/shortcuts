@@ -16,6 +16,7 @@ import type { Route } from '@plusplusoneplusplus/coc-server';
 import { computeRepoId } from './queue-persistence';
 import type { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 import * as url from 'url';
+import * as path from 'path';
 
 // ============================================================================
 // Validation Helpers
@@ -268,6 +269,35 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
     }
 
     /**
+     * Resolve manager by either:
+     * 1) queue repoId (sha256(rootPath).slice(0, 16)), or
+     * 2) workspace ID persisted in ProcessStore.
+     */
+    async function getManagerByRepoIdentifier(repoId: string): Promise<TaskQueueManager | undefined> {
+        const managerByQueueRepoId = getManagerByRepoId(bridge, repoId);
+        if (managerByQueueRepoId) {
+            return managerByQueueRepoId;
+        }
+        if (!store) {
+            return undefined;
+        }
+
+        const workspaces = await store.getWorkspaces();
+        const workspace = workspaces.find((ws: any) => ws.id === repoId);
+        if (!workspace?.rootPath) {
+            return undefined;
+        }
+
+        const targetPath = path.resolve(workspace.rootPath);
+        for (const [rootPath, manager] of bridge.registry.getAllQueues()) {
+            if (path.resolve(rootPath) === targetPath) {
+                return manager;
+            }
+        }
+        return undefined;
+    }
+
+    /**
      * Get aggregate stats, incorporating global pause state for the edge case
      * where no bridges exist yet but pause was called.
      */
@@ -373,7 +403,7 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
             let stats: QueueStats;
 
             if (repoId) {
-                const mgr = getManagerByRepoId(bridge, repoId);
+                const mgr = await getManagerByRepoIdentifier(repoId);
                 if (mgr) {
                     queued = mgr.getQueued().map(serializeTask);
                     running = mgr.getRunning().map(serializeTask);
@@ -553,7 +583,7 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
                 : undefined;
 
             if (repoId) {
-                const mgr = getManagerByRepoId(bridge, repoId);
+                const mgr = await getManagerByRepoIdentifier(repoId);
                 if (!mgr) {
                     return sendError(res, 404, `No queue found for repoId: ${repoId}`);
                 }
@@ -578,7 +608,7 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
 
             let history: Record<string, unknown>[];
             if (repoId) {
-                const mgr = getManagerByRepoId(bridge, repoId);
+                const mgr = await getManagerByRepoIdentifier(repoId);
                 history = mgr
                     ? mgr.getHistory().map(serializeTask)
                     : [];
@@ -604,7 +634,7 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
             const repoId = typeof parsed.query.repoId === 'string' ? parsed.query.repoId : undefined;
 
             if (repoId) {
-                const mgr = getManagerByRepoId(bridge, repoId);
+                const mgr = await getManagerByRepoIdentifier(repoId);
                 if (!mgr) {
                     return sendError(res, 404, `No queue found for repoId: ${repoId}`);
                 }
@@ -633,7 +663,7 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
             const repoId = typeof parsed.query.repoId === 'string' ? parsed.query.repoId : undefined;
 
             if (repoId) {
-                const mgr = getManagerByRepoId(bridge, repoId);
+                const mgr = await getManagerByRepoIdentifier(repoId);
                 if (!mgr) {
                     return sendError(res, 404, `No queue found for repoId: ${repoId}`);
                 }
@@ -688,7 +718,7 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
 
             let count = 0;
             if (repoId) {
-                const mgr = getManagerByRepoId(bridge, repoId);
+                const mgr = await getManagerByRepoIdentifier(repoId);
                 if (mgr) {
                     count = mgr.getQueued().length;
                     mgr.clear();
