@@ -9,13 +9,13 @@ import { useEffect, type ReactNode } from 'react';
 import { AppProvider, useApp } from '../../../src/server/spa/client/react/context/AppContext';
 import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/context/QueueContext';
 import { ProcessFilters } from '../../../src/server/spa/client/react/processes/ProcessFilters';
-import { ProcessList } from '../../../src/server/spa/client/react/processes/ProcessList';
+import { ProcessesSidebar } from '../../../src/server/spa/client/react/processes/ProcessesSidebar';
 import { ProcessDetail } from '../../../src/server/spa/client/react/processes/ProcessDetail';
 import { ConversationTurnBubble } from '../../../src/server/spa/client/react/processes/ConversationTurnBubble';
 import { ProcessesView } from '../../../src/server/spa/client/react/processes/ProcessesView';
 import { ToolCallView } from '../../../src/server/spa/client/react/processes/ToolCallView';
 import { MarkdownView } from '../../../src/server/spa/client/react/processes/MarkdownView';
-import { QueuePanel } from '../../../src/server/spa/client/react/queue/QueuePanel';
+// QueuePanel merged into ProcessesSidebar
 import { QueueView } from '../../../src/server/spa/client/react/queue/QueueView';
 import { QueueTaskDetail } from '../../../src/server/spa/client/react/queue/QueueTaskDetail';
 
@@ -38,7 +38,7 @@ function SeededProcessList({ processes, workspaces }: { processes: any[]; worksp
             dispatch({ type: 'WORKSPACES_LOADED', workspaces });
         }
     }, [dispatch, processes, workspaces]);
-    return <ProcessList />;
+    return <ProcessesSidebar />;
 }
 
 function SeededProcessDetail({ process, workspaces }: { process: any; workspaces?: any[] }) {
@@ -59,7 +59,7 @@ function SeededQueuePanel({ historyItem }: { historyItem: any }) {
         dispatch({ type: 'SET_HISTORY', history: [historyItem] });
         dispatch({ type: 'TOGGLE_HISTORY' });
     }, [dispatch, historyItem]);
-    return <QueuePanel />;
+    return <ProcessesSidebar />;
 }
 
 function SeededQueueTaskDetail({ task }: { task: any }) {
@@ -83,9 +83,9 @@ describe('ProcessFilters', () => {
     });
 });
 
-describe('ProcessList', () => {
+describe('ProcessesSidebar (legacy process list)', () => {
     it('shows empty state when no processes', () => {
-        render(<Wrap><ProcessList /></Wrap>);
+        render(<Wrap><ProcessesSidebar /></Wrap>);
         expect(screen.getByText('No processes found')).toBeDefined();
     });
 
@@ -763,7 +763,7 @@ describe('ProcessesView', () => {
         expect(main!.className).toContain('min-w-0');
     });
 
-    it('wraps ProcessList and QueuePanel in a single scrollable container', () => {
+    it('wraps ProcessesSidebar in a single scrollable container', () => {
         const { container } = render(<Wrap><ProcessesView /></Wrap>);
         const aside = container.querySelector('#view-processes > aside');
         expect(aside).not.toBeNull();
@@ -777,18 +777,18 @@ describe('ProcessesView', () => {
         expect(scrollable!.className).toContain('flex-col');
     });
 
-    it('does not have a separate border-t wrapper around QueuePanel', () => {
+    it('does not have a separate border-t wrapper in sidebar', () => {
         const { container } = render(<Wrap><ProcessesView /></Wrap>);
         const aside = container.querySelector('#view-processes > aside');
-        // There should be no direct child div with border-t wrapping QueuePanel
+        // There should be no direct child div with border-t in the sidebar
         const borderTDivs = Array.from(aside!.querySelectorAll(':scope > div.border-t'));
         expect(borderTDivs.length).toBe(0);
     });
 });
 
-describe('ProcessList – unified layout', () => {
+describe('ProcessesSidebar – unified layout', () => {
     it('empty state uses compact non-expanding style', () => {
-        const { container } = render(<Wrap><ProcessList /></Wrap>);
+        const { container } = render(<Wrap><ProcessesSidebar /></Wrap>);
         const emptyDiv = screen.getByText('No processes found').closest('div');
         expect(emptyDiv).not.toBeNull();
         expect(emptyDiv!.className).toContain('py-6');
@@ -813,13 +813,12 @@ describe('ProcessList – unified layout', () => {
     });
 });
 
-describe('QueuePanel – border-t styling', () => {
-    it('has border-t on its root element', () => {
-        const { container } = render(<Wrap><QueuePanel /></Wrap>);
-        // The root div of QueuePanel should have border-t styling
+describe('ProcessesSidebar – no border-t styling', () => {
+    it('does not have border-t on its root element', () => {
+        const { container } = render(<Wrap><ProcessesSidebar /></Wrap>);
         const root = container.firstElementChild as HTMLElement;
         expect(root).not.toBeNull();
-        expect(root!.className).toContain('border-t');
+        expect(root!.className).not.toContain('border-t');
         expect(root!.className).toContain('p-2');
     });
 });
@@ -949,20 +948,20 @@ describe('MarkdownView', () => {
     });
 });
 
-describe('QueuePanel', () => {
+describe('ProcessesSidebar (queue panel)', () => {
     it('renders stats bar', () => {
-        render(<Wrap><QueuePanel /></Wrap>);
+        render(<Wrap><ProcessesSidebar /></Wrap>);
         expect(screen.getByText(/0 queued/)).toBeDefined();
         expect(screen.getByText(/0 running/)).toBeDefined();
     });
 
     it('renders enqueue button', () => {
-        render(<Wrap><QueuePanel /></Wrap>);
+        render(<Wrap><ProcessesSidebar /></Wrap>);
         expect(screen.getByText('+ Enqueue')).toBeDefined();
     });
 
     it('renders history toggle', () => {
-        render(<Wrap><QueuePanel /></Wrap>);
+        render(<Wrap><ProcessesSidebar /></Wrap>);
         expect(screen.getByText(/History/)).toBeDefined();
     });
 

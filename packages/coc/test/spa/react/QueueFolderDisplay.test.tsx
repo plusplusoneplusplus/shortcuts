@@ -1,6 +1,6 @@
 /**
  * Tests for queue folder display: grouping, badges, and folder queue counts.
- * Covers QueuePanel grouping, QueueTaskCard folder badge, TaskTreeItem folderQueueCount,
+ * Covers ProcessesSidebar grouping, QueueTaskCard folder badge, TaskTreeItem folderQueueCount,
  * and TaskTree folderMap wiring.
  */
 
@@ -11,7 +11,7 @@ import { AppProvider, useApp } from '../../../src/server/spa/client/react/contex
 import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/context/QueueContext';
 import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
 import { TaskProvider } from '../../../src/server/spa/client/react/context/TaskContext';
-import { QueuePanel } from '../../../src/server/spa/client/react/queue/QueuePanel';
+import { ProcessesSidebar } from '../../../src/server/spa/client/react/processes/ProcessesSidebar';
 import { TaskTreeItem, type TaskTreeItemProps } from '../../../src/server/spa/client/react/tasks/TaskTreeItem';
 import { TasksPanel } from '../../../src/server/spa/client/react/tasks/TasksPanel';
 
@@ -40,14 +40,14 @@ function SeededQueuePanelWithTasks({ running, queued }: { running: any[]; queued
             },
         });
     }, [dispatch, running, queued]);
-    return <QueuePanel />;
+    return <ProcessesSidebar />;
 }
 
 // ============================================================================
-// QueuePanel — grouping by folderPath
+// ProcessesSidebar — grouping by folderPath
 // ============================================================================
 
-describe('QueuePanel folder grouping', () => {
+describe('ProcessesSidebar folder grouping', () => {
     it('groups running tasks by folderPath with folder headings', () => {
         const running = [
             { id: 't1', status: 'running', folderPath: 'features/auth', prompt: 'task 1', startTime: new Date().toISOString() },
@@ -160,7 +160,7 @@ describe('QueueTaskCard folder badge', () => {
                 ] });
                 d({ type: 'TOGGLE_HISTORY' });
             }, [d]);
-            return <QueuePanel />;
+            return <ProcessesSidebar />;
         }
 
         render(<Wrap><SeededHistory /></Wrap>);
