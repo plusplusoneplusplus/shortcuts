@@ -102,7 +102,11 @@ function toMillis(iso?: string): number | null {
  * Infer parent relationships when events do not include explicit parent IDs.
  * This mirrors the legacy renderer behavior to keep subagent tool nesting.
  */
-function inferParentToolCalls(calls: RenderToolCall[]): RenderToolCall[] {
+function inferParentToolCalls(
+    calls: RenderToolCall[],
+    options?: { enableTrailingTaskFallback?: boolean }
+): RenderToolCall[] {
+    const enableTrailingTaskFallback = options?.enableTrailingTaskFallback ?? true;
     const cloned = calls.map((call) => ({ ...call }));
     const ordered = cloned.map((call, originalIndex) => ({
         call,
@@ -151,15 +155,17 @@ function inferParentToolCalls(calls: RenderToolCall[]): RenderToolCall[] {
         }
     }
 
-    // Fallback for records that lack reliable timing: bind trailing calls to the latest task.
-    let lastTaskId: string | undefined;
-    for (const call of cloned) {
-        if (call.toolName === 'task') {
-            lastTaskId = call.id;
-            continue;
-        }
-        if (!call.parentToolCallId && lastTaskId) {
-            call.parentToolCallId = lastTaskId;
+    if (enableTrailingTaskFallback) {
+        // Fallback for records that lack reliable timing: bind trailing calls to the latest task.
+        let lastTaskId: string | undefined;
+        for (const call of cloned) {
+            if (call.toolName === 'task') {
+                lastTaskId = call.id;
+                continue;
+            }
+            if (!call.parentToolCallId && lastTaskId) {
+                call.parentToolCallId = lastTaskId;
+            }
         }
     }
 
@@ -220,6 +226,7 @@ function buildAssistantRender(turn: ClientConversationTurn): {
     const callsById = new Map<string, RenderToolCall>();
     const callOrder: string[] = [];
     const activeTaskStack: string[] = [];
+    let hasTimelineToolEvents = false;
     // Track content texts rendered inline so we can suppress duplicate tool results.
     // This handles the case where a sub-agent (e.g. explore task) streams its output as a
     // content event and the SDK also surfaces the same text as the tool-complete result.
@@ -243,7 +250,23 @@ function buildAssistantRender(turn: ClientConversationTurn): {
         }
 
         if (typeof item.type === 'string' && item.type.startsWith('tool-') && item.toolCall) {
+            hasTimelineToolEvents = true;
             const incoming = normalizeToolCall(item.toolCall, `tool-${i}`);
+            const activeParent = activeTaskStack.length > 0
+                ? activeTaskStack[activeTaskStack.length - 1]
+                : undefined;
+
+            // Timeline order is the most reliable signal for task enter/exit boundaries.
+            if (!incoming.parentToolCallId && activeParent) {
+                if (incoming.toolName === 'task') {
+                    if (item.type === 'tool-start' && incoming.id !== activeParent) {
+                        incoming.parentToolCallId = activeParent;
+                    }
+                } else {
+                    incoming.parentToolCallId = activeParent;
+                }
+            }
+
             const existing = callsById.get(incoming.id);
             if (existing) {
                 mergeToolCall(existing, incoming);
@@ -280,7 +303,9 @@ function buildAssistantRender(turn: ClientConversationTurn): {
     const orderedCalls = callOrder
         .map((id) => callsById.get(id))
         .filter((call): call is RenderToolCall => Boolean(call));
-    const inferred = inferParentToolCalls(orderedCalls);
+    const inferred = inferParentToolCalls(orderedCalls, {
+        enableTrailingTaskFallback: !hasTimelineToolEvents,
+    });
     const inferredById = new Map<string, RenderToolCall>();
     inferred.forEach((call) => inferredById.set(call.id, call));
     const toolDepthById = buildToolDepthMap(inferred);

@@ -171,3 +171,136 @@ describe('ConversationTurnBubble — semantic hooks', () => {
         expect(outer?.classList.contains('justify-start')).toBe(true);
     });
 });
+
+describe('ConversationTurnBubble — task boundary inference', () => {
+    it('keeps tool calls after task-complete at root level without timestamps', () => {
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn({
+                    role: 'assistant',
+                    content: '',
+                    timeline: [
+                        {
+                            type: 'tool-start',
+                            toolCall: {
+                                id: 'task-1',
+                                toolName: 'task',
+                                args: { agent_type: 'explore', description: 'Inspect wiki files' },
+                                status: 'running',
+                            },
+                        },
+                        {
+                            type: 'tool-start',
+                            toolCall: {
+                                id: 'view-inside',
+                                toolName: 'view',
+                                args: { path: '/Users/test/Documents/Projects/shortcuts/packages/coc/src/server/wiki/wiki-data.ts' },
+                                status: 'completed',
+                            },
+                        },
+                        {
+                            type: 'tool-complete',
+                            toolCall: {
+                                id: 'task-1',
+                                toolName: 'task',
+                                args: { agent_type: 'explore', description: 'Inspect wiki files' },
+                                status: 'completed',
+                            },
+                        },
+                        {
+                            type: 'tool-start',
+                            toolCall: {
+                                id: 'view-outside',
+                                toolName: 'view',
+                                args: { path: '/Users/test/Documents/Projects/shortcuts/packages/coc/src/server/spa/client/react/wiki/WikiList.tsx' },
+                                status: 'completed',
+                            },
+                        },
+                    ],
+                })}
+            />
+        );
+
+        const taskCard = container.querySelector('[data-tool-id="task-1"]');
+        const taskChildren = taskCard?.querySelector('.tool-call-children');
+        const insideView = container.querySelector('[data-tool-id="view-inside"]');
+        const outsideView = container.querySelector('[data-tool-id="view-outside"]');
+
+        expect(taskCard).toBeTruthy();
+        expect(taskChildren?.querySelector('[data-tool-id="view-inside"]')).toBeTruthy();
+        expect(taskChildren?.querySelector('[data-tool-id="view-outside"]')).toBeNull();
+        expect(insideView).toBeTruthy();
+        expect(outsideView).toBeTruthy();
+        expect(taskCard?.contains(outsideView as HTMLElement)).toBe(false);
+    });
+
+    it('keeps tool calls after task-complete at root level with timestamps', () => {
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn({
+                    role: 'assistant',
+                    content: '',
+                    timeline: [
+                        {
+                            type: 'tool-start',
+                            timestamp: '2026-02-23T10:00:00.000Z',
+                            toolCall: {
+                                id: 'task-2',
+                                toolName: 'task',
+                                args: { agent_type: 'explore', description: 'Inspect task renderer' },
+                                startTime: '2026-02-23T10:00:00.000Z',
+                                status: 'running',
+                            },
+                        },
+                        {
+                            type: 'tool-start',
+                            timestamp: '2026-02-23T10:00:01.000Z',
+                            toolCall: {
+                                id: 'view-inside-timed',
+                                toolName: 'view',
+                                args: { path: '/Users/test/Documents/Projects/shortcuts/packages/coc/src/server/wiki/wiki-manager.ts' },
+                                startTime: '2026-02-23T10:00:01.000Z',
+                                endTime: '2026-02-23T10:00:02.000Z',
+                                status: 'completed',
+                            },
+                        },
+                        {
+                            type: 'tool-complete',
+                            timestamp: '2026-02-23T10:00:03.000Z',
+                            toolCall: {
+                                id: 'task-2',
+                                toolName: 'task',
+                                args: { agent_type: 'explore', description: 'Inspect task renderer' },
+                                startTime: '2026-02-23T10:00:00.000Z',
+                                endTime: '2026-02-23T10:00:03.000Z',
+                                status: 'completed',
+                            },
+                        },
+                        {
+                            type: 'tool-start',
+                            timestamp: '2026-02-23T10:00:04.000Z',
+                            toolCall: {
+                                id: 'view-outside-timed',
+                                toolName: 'view',
+                                args: { path: '/Users/test/Documents/Projects/shortcuts/packages/coc/src/server/spa/client/react/wiki/WikiList.tsx' },
+                                startTime: '2026-02-23T10:00:04.000Z',
+                                endTime: '2026-02-23T10:00:05.000Z',
+                                status: 'completed',
+                            },
+                        },
+                    ],
+                })}
+            />
+        );
+
+        const taskCard = container.querySelector('[data-tool-id="task-2"]');
+        const taskChildren = taskCard?.querySelector('.tool-call-children');
+        const outsideView = container.querySelector('[data-tool-id="view-outside-timed"]');
+
+        expect(taskCard).toBeTruthy();
+        expect(taskChildren?.querySelector('[data-tool-id="view-inside-timed"]')).toBeTruthy();
+        expect(taskChildren?.querySelector('[data-tool-id="view-outside-timed"]')).toBeNull();
+        expect(outsideView).toBeTruthy();
+        expect(taskCard?.contains(outsideView as HTMLElement)).toBe(false);
+    });
+});
