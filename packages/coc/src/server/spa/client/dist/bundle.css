@@ -705,6 +705,9 @@ video {
 .ml-8 {
   margin-left: 2rem;
 }
+.ml-\[6\.5rem\] {
+  margin-left: 6.5rem;
+}
 .ml-auto {
   margin-left: auto;
 }

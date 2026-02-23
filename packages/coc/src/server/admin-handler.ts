@@ -192,8 +192,8 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
                 }
             }
             if ('timeout' in body) {
-                if (typeof body.timeout !== 'number' || body.timeout <= 0) {
-                    errors.push('timeout must be a number greater than 0');
+                if (body.timeout !== null && (typeof body.timeout !== 'number' || body.timeout <= 0)) {
+                    errors.push('timeout must be a number greater than 0, or null to clear');
                 }
             }
             if ('output' in body) {
@@ -215,7 +215,13 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             const existing: CLIConfig = loadConfigFile(configPath) ?? {};
             if ('model' in body) { existing.model = body.model as string; }
             if ('parallel' in body) { existing.parallel = body.parallel as number; }
-            if ('timeout' in body) { existing.timeout = body.timeout as number; }
+            if ('timeout' in body) {
+                if (body.timeout === null) {
+                    delete existing.timeout;
+                } else {
+                    existing.timeout = body.timeout as number;
+                }
+            }
             if ('output' in body) { existing.output = body.output as CLIConfig['output']; }
             if ('showReportIntent' in body) { existing.showReportIntent = body.showReportIntent as boolean; }
 

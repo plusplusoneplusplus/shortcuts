@@ -39949,7 +39949,7 @@
         setConfigForm({
           model: resolved2.model ?? "",
           parallel: String(resolved2.parallel ?? 1),
-          timeout: String(resolved2.timeout ?? 30),
+          timeout: resolved2.timeout != null ? String(resolved2.timeout) : "",
           output: resolved2.output ?? "table"
         });
         setShowReportIntent(resolved2.showReportIntent ?? false);
@@ -39968,8 +39968,16 @@
       if (!configForm.model?.trim()) errors.push("Model must be non-empty");
       const parallel = Number(configForm.parallel);
       if (isNaN(parallel) || parallel < 1) errors.push("Parallelism must be at least 1");
-      const timeout = Number(configForm.timeout);
-      if (isNaN(timeout) || timeout < 1) errors.push("Timeout must be at least 1");
+      const timeoutStr = configForm.timeout.trim();
+      let timeoutValue = null;
+      if (timeoutStr !== "") {
+        const timeout = Number(timeoutStr);
+        if (isNaN(timeout) || !Number.isInteger(timeout) || timeout < 1) {
+          errors.push("Timeout must be a positive integer");
+        } else {
+          timeoutValue = timeout;
+        }
+      }
       if (!VALID_OUTPUT_OPTIONS.includes(configForm.output)) {
         errors.push(`Output must be one of: ${VALID_OUTPUT_OPTIONS.join(", ")}`);
       }
@@ -39979,10 +39987,12 @@
       }
       setConfigSaving(true);
       try {
+        const payload = { model: configForm.model, parallel, output: configForm.output };
+        payload.timeout = timeoutValue;
         const res = await fetch(getApiBase() + "/admin/config", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ model: configForm.model, parallel, timeout, output: configForm.output })
+          body: JSON.stringify(payload)
         });
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
@@ -40234,13 +40244,16 @@
                 {
                   type: "number",
                   min: 1,
+                  placeholder: "3600 (1 h default)",
                   className: "flex-1 px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]",
                   value: configForm.timeout,
                   onChange: (e) => setConfigForm((f) => ({ ...f, timeout: e.target.value }))
                 }
               ),
+              /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("span", { className: "inline-block px-1.5 py-0.5 text-[10px] rounded bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300", children: "s" }),
               /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(SourceBadge, { source: sources["timeout"] })
             ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("div", { className: "text-[10px] text-[#848484] ml-[6.5rem]", children: "AI task execution timeout. Leave empty to use the system default (1 hour)." }),
             /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "flex items-center gap-2", children: [
               /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("label", { className: "text-xs w-24 text-[#616161] dark:text-[#999]", children: "Output" }),
               /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(

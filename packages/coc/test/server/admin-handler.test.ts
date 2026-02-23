@@ -668,6 +668,59 @@ describe('Admin Handler', () => {
 
             expect(res.status).toBe(400);
         });
+
+        it('should accept timeout null to clear the field', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const yaml = require('js-yaml');
+            fs.writeFileSync(configPath, yaml.dump({ model: 'gpt-4', timeout: 120 }), 'utf-8');
+            const srv = await startServerWithConfig(configPath);
+
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ timeout: null }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.timeout).toBeUndefined();
+
+            // Verify on disk: timeout key should be absent
+            const diskConfig = yaml.load(fs.readFileSync(configPath, 'utf-8'));
+            expect(diskConfig.timeout).toBeUndefined();
+            // Other keys preserved
+            expect(diskConfig.model).toBe('gpt-4');
+        });
+
+        it('should reject timeout: negative number', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ timeout: -5 }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('timeout');
+        });
+
+        it('should reject timeout: string', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ timeout: 'abc' }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('timeout');
+        });
     });
 
     // ========================================================================

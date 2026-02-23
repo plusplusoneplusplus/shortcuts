@@ -60,6 +60,8 @@ export interface QueueExecutorBridgeOptions {
     dataDir?: string;
     /** Optional AI service injection (for testing). If not provided, uses getCopilotSDKService(). */
     aiService?: CopilotSDKService;
+    /** Default timeout in ms for tasks that don't specify their own timeoutMs */
+    defaultTimeoutMs?: number;
 }
 
 /**
@@ -88,6 +90,8 @@ export class CLITaskExecutor implements TaskExecutor {
     private readonly dataDir?: string;
     /** AI service instance (injected or default from getCopilotSDKService()) */
     private readonly aiService: CopilotSDKService;
+    /** Default timeout in ms for tasks without explicit timeoutMs */
+    private readonly defaultTimeoutMs: number;
     /** Per-process output accumulator for persisting conversation output */
     private readonly outputBuffers: Map<string, string> = new Map();
     /** Per-process timeline accumulator for chronological execution events */
@@ -102,12 +106,13 @@ export class CLITaskExecutor implements TaskExecutor {
     /** Count-based throttle: flush every N chunks */
     private static readonly THROTTLE_CHUNK_COUNT = 50;
 
-    constructor(store: ProcessStore, options: { approvePermissions?: boolean; workingDirectory?: string; dataDir?: string; aiService?: CopilotSDKService } = {}) {
+    constructor(store: ProcessStore, options: { approvePermissions?: boolean; workingDirectory?: string; dataDir?: string; aiService?: CopilotSDKService; defaultTimeoutMs?: number } = {}) {
         this.store = store;
         this.approvePermissions = options.approvePermissions !== false;
         this.defaultWorkingDirectory = options.workingDirectory;
         this.dataDir = options.dataDir;
         this.aiService = options.aiService ?? getCopilotSDKService();
+        this.defaultTimeoutMs = options.defaultTimeoutMs ?? DEFAULT_AI_TIMEOUT_MS;
     }
 
     async execute(task: QueuedTask): Promise<TaskExecutionResult> {
@@ -551,7 +556,7 @@ export class CLITaskExecutor implements TaskExecutor {
         }
 
         const workingDirectory = this.getWorkingDirectory(task);
-        const timeoutMs = task.config.timeoutMs || DEFAULT_AI_TIMEOUT_MS;
+        const timeoutMs = task.config.timeoutMs || this.defaultTimeoutMs;
 
         const result = await this.aiService.sendMessage({
             prompt,
@@ -843,6 +848,7 @@ export function createQueueExecutorBridge(
         workingDirectory: options.workingDirectory,
         dataDir: options.dataDir,
         aiService: options.aiService,
+        defaultTimeoutMs: options.defaultTimeoutMs,
     });
 
     const executor = createQueueExecutor(queueManager, taskExecutor, {

@@ -88,7 +88,7 @@ export function AdminPanel() {
             setConfigForm({
                 model: resolved.model ?? '',
                 parallel: String(resolved.parallel ?? 1),
-                timeout: String(resolved.timeout ?? 30),
+                timeout: resolved.timeout != null ? String(resolved.timeout) : '',
                 output: resolved.output ?? 'table',
             });
             setShowReportIntent(resolved.showReportIntent ?? false);
@@ -109,8 +109,16 @@ export function AdminPanel() {
         if (!configForm.model?.trim()) errors.push('Model must be non-empty');
         const parallel = Number(configForm.parallel);
         if (isNaN(parallel) || parallel < 1) errors.push('Parallelism must be at least 1');
-        const timeout = Number(configForm.timeout);
-        if (isNaN(timeout) || timeout < 1) errors.push('Timeout must be at least 1');
+        const timeoutStr = configForm.timeout.trim();
+        let timeoutValue: number | null = null;
+        if (timeoutStr !== '') {
+            const timeout = Number(timeoutStr);
+            if (isNaN(timeout) || !Number.isInteger(timeout) || timeout < 1) {
+                errors.push('Timeout must be a positive integer');
+            } else {
+                timeoutValue = timeout;
+            }
+        }
         if (!(VALID_OUTPUT_OPTIONS as readonly string[]).includes(configForm.output)) {
             errors.push(`Output must be one of: ${VALID_OUTPUT_OPTIONS.join(', ')}`);
         }
@@ -120,10 +128,13 @@ export function AdminPanel() {
         }
         setConfigSaving(true);
         try {
+            const payload: Record<string, unknown> = { model: configForm.model, parallel, output: configForm.output };
+            // Empty timeout = clear from config (send null); present = send value
+            payload.timeout = timeoutValue;
             const res = await fetch(getApiBase() + '/admin/config', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ model: configForm.model, parallel, timeout, output: configForm.output }),
+                body: JSON.stringify(payload),
             });
             if (!res.ok) {
                 const body = await res.json().catch(() => ({}));
@@ -376,12 +387,15 @@ export function AdminPanel() {
                                 <input
                                     type="number"
                                     min={1}
+                                    placeholder="3600 (1 h default)"
                                     className="flex-1 px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
                                     value={configForm.timeout}
                                     onChange={e => setConfigForm(f => ({ ...f, timeout: e.target.value }))}
                                 />
+                                <span className="inline-block px-1.5 py-0.5 text-[10px] rounded bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300">s</span>
                                 <SourceBadge source={sources['timeout']} />
                             </div>
+                            <div className="text-[10px] text-[#848484] ml-[6.5rem]">AI task execution timeout. Leave empty to use the system default (1 hour).</div>
                             <div className="flex items-center gap-2">
                                 <label className="text-xs w-24 text-[#616161] dark:text-[#999]">Output</label>
                                 <select

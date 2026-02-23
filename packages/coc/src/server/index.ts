@@ -41,6 +41,8 @@ import { registerScheduleRoutes } from './schedule-handler';
 import { OutputPruner } from './output-pruner';
 import { StaleTaskDetector } from './stale-task-detector';
 import { TaskWatcher } from './task-watcher';
+import { resolveConfig } from '../config';
+import { DEFAULT_AI_TIMEOUT_MS } from '@plusplusoneplusplus/pipeline-core';
 
 // ============================================================================
 // Stub Process Store
@@ -154,12 +156,19 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         maxHistorySize: 100,
     });
 
+    // Resolve config to derive default timeout for AI tasks
+    const resolvedConfig = resolveConfig(options.configPath);
+    const defaultTimeoutMs = resolvedConfig.timeout
+        ? resolvedConfig.timeout * 1000
+        : DEFAULT_AI_TIMEOUT_MS;
+
     const bridge = new MultiRepoQueueExecutorBridge(registry, store, {
         maxConcurrency: 1,
         autoStart: true,
         approvePermissions: true,
         dataDir,
         aiService: options.aiService,
+        defaultTimeoutMs,
     });
 
     // Restore persisted queue state before executor starts processing
