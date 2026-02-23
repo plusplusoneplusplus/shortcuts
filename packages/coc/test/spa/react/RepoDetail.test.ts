@@ -40,3 +40,38 @@ describe('RepoDetail RepoChatTab wiring', () => {
         expect(REPO_DETAIL_SOURCE).not.toContain('workspacePath={ws.path}');
     });
 });
+
+describe('RepoDetail Queue badge wiring', () => {
+    it('imports useQueue from QueueContext', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("import { useQueue } from '../context/QueueContext'");
+    });
+
+    it('imports fetchApi from useApi hook', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("import { fetchApi } from '../hooks/useApi'");
+    });
+
+    it('derives queueCount from repoQueueMap running + queued lengths', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('repoQueue.running.length + repoQueue.queued.length');
+    });
+
+    it('renders queue badge only when queueCount > 0', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("t.key === 'queue' && queueCount > 0");
+    });
+
+    it('queue badge uses the same styling as the tasks badge', () => {
+        // Both badges should use the same className
+        const badgeClass = 'ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full';
+        const matches = REPO_DETAIL_SOURCE.split(badgeClass);
+        // Should appear at least twice: once for tasks, once for queue
+        expect(matches.length).toBeGreaterThanOrEqual(3); // 2 occurrences = 3 splits
+    });
+
+    it('seeds repo queue map via useEffect on ws.id change', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("fetchApi('/queue?repoId='");
+        expect(REPO_DETAIL_SOURCE).toContain("type: 'REPO_QUEUE_UPDATED'");
+    });
+
+    it('skips fetch if repoQueueMap already has data for the repo', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('if (queueState.repoQueueMap[ws.id]) return');
+    });
+});

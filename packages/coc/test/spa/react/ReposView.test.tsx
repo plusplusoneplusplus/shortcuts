@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { useEffect, type ReactNode } from 'react';
 import { AppProvider, useApp } from '../../../src/server/spa/client/react/context/AppContext';
-import { QueueProvider } from '../../../src/server/spa/client/react/context/QueueContext';
+import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/context/QueueContext';
 import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
 import {
     normalizeRemoteUrl,
@@ -462,6 +462,82 @@ describe('RepoDetail', () => {
         const badges = document.querySelectorAll('span.rounded-full');
         const taskBadge = Array.from(badges).find(b => b.textContent === '5');
         expect(taskBadge).not.toBeUndefined();
+    });
+
+    it('shows no queue badge when queue is empty', () => {
+        const repo = makeRepo({
+            workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
+        });
+        render(<Wrap><RepoDetail repo={repo} repos={[repo]} onRefresh={() => {}} /></Wrap>);
+        const queueBtn = document.querySelector('button[data-subtab="queue"]');
+        // Only the label text, no badge span inside
+        const badges = queueBtn?.querySelectorAll('span.rounded-full') || [];
+        expect(badges.length).toBe(0);
+    });
+
+    it('shows queue badge with combined running + queued count', async () => {
+        // Mock fetch to return queue data with running and queued items
+        global.fetch = vi.fn().mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({
+                running: [{ id: 'r1' }],
+                queued: [{ id: 'q1' }, { id: 'q2' }],
+                stats: {},
+            }),
+        });
+        const repo = makeRepo({
+            workspace: { id: 'ws-q', name: 'QueueTest', rootPath: '/qtest' },
+        });
+        render(<Wrap><RepoDetail repo={repo} repos={[repo]} onRefresh={() => {}} /></Wrap>);
+        // Wait for the seeding useEffect to fetch and dispatch
+        await vi.waitFor(() => {
+            const queueBtn = document.querySelector('button[data-subtab="queue"]');
+            const badges = queueBtn?.querySelectorAll('span.rounded-full') || [];
+            const badge = Array.from(badges).find(b => b.textContent === '3');
+            expect(badge).not.toBeUndefined();
+        });
+    });
+
+    it('shows queue badge with only running count when no queued items', async () => {
+        global.fetch = vi.fn().mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({
+                running: [{ id: 'r1' }],
+                queued: [],
+                stats: {},
+            }),
+        });
+        const repo = makeRepo({
+            workspace: { id: 'ws-r', name: 'RunOnly', rootPath: '/ronly' },
+        });
+        render(<Wrap><RepoDetail repo={repo} repos={[repo]} onRefresh={() => {}} /></Wrap>);
+        await vi.waitFor(() => {
+            const queueBtn = document.querySelector('button[data-subtab="queue"]');
+            const badges = queueBtn?.querySelectorAll('span.rounded-full') || [];
+            const badge = Array.from(badges).find(b => b.textContent === '1');
+            expect(badge).not.toBeUndefined();
+        });
+    });
+
+    it('shows queue badge with only queued count when nothing running', async () => {
+        global.fetch = vi.fn().mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({
+                running: [],
+                queued: [{ id: 'q1' }, { id: 'q2' }, { id: 'q3' }, { id: 'q4' }],
+                stats: {},
+            }),
+        });
+        const repo = makeRepo({
+            workspace: { id: 'ws-qo', name: 'QueuedOnly', rootPath: '/qonly' },
+        });
+        render(<Wrap><RepoDetail repo={repo} repos={[repo]} onRefresh={() => {}} /></Wrap>);
+        await vi.waitFor(() => {
+            const queueBtn = document.querySelector('button[data-subtab="queue"]');
+            const badges = queueBtn?.querySelectorAll('span.rounded-full') || [];
+            const badge = Array.from(badges).find(b => b.textContent === '4');
+            expect(badge).not.toBeUndefined();
+        });
     });
 });
 

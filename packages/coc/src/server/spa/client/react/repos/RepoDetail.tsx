@@ -2,8 +2,9 @@
  * RepoDetail — right panel showing sub-tabs for the selected repo.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { useQueue } from '../context/QueueContext';
 import { Button, cn } from '../shared';
 import { RepoInfoTab } from './RepoInfoTab';
 import { PipelinesTab } from './PipelinesTab';
@@ -13,6 +14,7 @@ import { RepoSchedulesTab } from './RepoSchedulesTab';
 import { RepoChatTab } from './RepoChatTab';
 import { AddRepoDialog } from './AddRepoDialog';
 import { getApiBase } from '../utils/config';
+import { fetchApi } from '../hooks/useApi';
 import type { RepoData } from './repoGrouping';
 import type { RepoSubTab } from '../types/dashboard';
 
@@ -33,11 +35,26 @@ export const SUB_TABS: { key: RepoSubTab; label: string }[] = [
 
 export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const { state, dispatch } = useApp();
+    const { state: queueState, dispatch: queueDispatch } = useQueue();
     const [editOpen, setEditOpen] = useState(false);
     const ws = repo.workspace;
     const color = ws.color || '#848484';
     const activeSubTab = state.activeRepoSubTab;
     const taskCount = repo.taskCount || 0;
+    const repoQueue = queueState.repoQueueMap[ws.id];
+    const queueCount = repoQueue
+        ? repoQueue.running.length + repoQueue.queued.length
+        : 0;
+
+    // Seed repo queue map on first render if not yet populated
+    useEffect(() => {
+        if (queueState.repoQueueMap[ws.id]) return;
+        fetchApi('/queue?repoId=' + encodeURIComponent(ws.id))
+            .then(data => {
+                if (data) queueDispatch({ type: 'REPO_QUEUE_UPDATED', repoId: ws.id, queue: data });
+            })
+            .catch(() => {});
+    }, [ws.id]);
 
     const switchSubTab = (tab: RepoSubTab) => {
         dispatch({ type: 'SET_REPO_SUB_TAB', tab });
@@ -84,6 +101,9 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                         {t.label}
                         {t.key === 'tasks' && taskCount > 0 && (
                             <span className="ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full">{taskCount}</span>
+                        )}
+                        {t.key === 'queue' && queueCount > 0 && (
+                            <span className="ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full">{queueCount}</span>
                         )}
                         {activeSubTab === t.key && (
                             <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#0078d4] dark:bg-[#3794ff]" />
