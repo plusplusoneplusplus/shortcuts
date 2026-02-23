@@ -23,7 +23,7 @@ import type { QueuedTask, QueueChangeEvent } from '@plusplusoneplusplus/pipeline
 // Types
 // ============================================================================
 
-interface PersistedQueueState {
+export interface PersistedQueueState {
     version: number;
     savedAt: string;
     repoRootPath: string;
