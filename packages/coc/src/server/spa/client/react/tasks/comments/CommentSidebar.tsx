@@ -25,8 +25,11 @@ export interface CommentSidebarProps {
     onUnresolve: (id: string) => void;
     onDelete: (id: string) => void;
     onEdit: (id: string, text: string) => void;
-    onAskAI: (id: string) => void;
+    onAskAI: (id: string, commandId: string, customQuestion?: string) => void;
     onCommentClick: (comment: TaskComment) => void;
+    aiLoadingIds?: Set<string>;
+    aiErrors?: Map<string, string>;
+    onClearAiError?: (id: string) => void;
 }
 
 export function CommentSidebar({
@@ -43,6 +46,9 @@ export function CommentSidebar({
     onEdit,
     onAskAI,
     onCommentClick,
+    aiLoadingIds,
+    aiErrors,
+    onClearAiError,
 }: CommentSidebarProps) {
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
     const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
@@ -159,8 +165,11 @@ export function CommentSidebar({
                         onUnresolve={() => onUnresolve(comment.id)}
                         onEdit={(text) => onEdit(comment.id, text)}
                         onDelete={() => onDelete(comment.id)}
-                        onAskAI={() => onAskAI(comment.id)}
+                        onAskAI={(commandId, question) => onAskAI(comment.id, commandId, question)}
                         onClick={() => onCommentClick(comment)}
+                        aiLoading={aiLoadingIds?.has(comment.id)}
+                        aiError={aiErrors?.get(comment.id) ?? null}
+                        onClearAiError={onClearAiError ? () => onClearAiError(comment.id) : undefined}
                     />
                 ))}
             </div>

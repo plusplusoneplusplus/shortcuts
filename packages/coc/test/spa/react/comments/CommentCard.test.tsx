@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { CommentCard } from '../../../../src/server/spa/client/react/tasks/comments/CommentCard';
 import type { TaskComment } from '../../../../src/server/spa/client/task-comments-types';
 
@@ -225,7 +225,7 @@ describe('CommentCard', () => {
         expect(screen.getByText('Anonymous')).toBeTruthy();
     });
 
-    it('calls onAskAI when Ask AI is clicked', () => {
+    it('calls onAskAI when Ask AI menu command is clicked', () => {
         const onAskAI = vi.fn();
         render(
             <CommentCard
@@ -234,7 +234,152 @@ describe('CommentCard', () => {
                 onDelete={noop} onAskAI={onAskAI} onClick={noop}
             />
         );
-        fireEvent.click(screen.getByLabelText('Ask AI'));
-        expect(onAskAI).toHaveBeenCalledOnce();
+        fireEvent.click(screen.getByTestId('ai-menu-trigger'));
+        fireEvent.click(screen.getByTestId('ai-cmd-clarify'));
+        expect(onAskAI).toHaveBeenCalledWith('clarify');
+    });
+
+    it('opens dropdown on 🤖 click', () => {
+        render(
+            <CommentCard
+                comment={makeComment()}
+                onResolve={noop} onUnresolve={noop} onEdit={noop}
+                onDelete={noop} onAskAI={noop} onClick={noop}
+            />
+        );
+        fireEvent.click(screen.getByTestId('ai-menu-trigger'));
+        expect(screen.getByTestId('ai-command-menu')).toBeTruthy();
+    });
+
+    it('Clarify command calls onAskAI("clarify")', () => {
+        const onAskAI = vi.fn();
+        render(
+            <CommentCard
+                comment={makeComment()}
+                onResolve={noop} onUnresolve={noop} onEdit={noop}
+                onDelete={noop} onAskAI={onAskAI} onClick={noop}
+            />
+        );
+        fireEvent.click(screen.getByTestId('ai-menu-trigger'));
+        fireEvent.click(screen.getByTestId('ai-cmd-clarify'));
+        expect(onAskAI).toHaveBeenCalledWith('clarify');
+    });
+
+    it('Go Deeper command calls onAskAI("go-deeper")', () => {
+        const onAskAI = vi.fn();
+        render(
+            <CommentCard
+                comment={makeComment()}
+                onResolve={noop} onUnresolve={noop} onEdit={noop}
+                onDelete={noop} onAskAI={onAskAI} onClick={noop}
+            />
+        );
+        fireEvent.click(screen.getByTestId('ai-menu-trigger'));
+        fireEvent.click(screen.getByTestId('ai-cmd-go-deeper'));
+        expect(onAskAI).toHaveBeenCalledWith('go-deeper');
+    });
+
+    it('Custom… shows input and submits', () => {
+        const onAskAI = vi.fn();
+        render(
+            <CommentCard
+                comment={makeComment()}
+                onResolve={noop} onUnresolve={noop} onEdit={noop}
+                onDelete={noop} onAskAI={onAskAI} onClick={noop}
+            />
+        );
+        fireEvent.click(screen.getByTestId('ai-menu-trigger'));
+        fireEvent.click(screen.getByTestId('ai-cmd-custom'));
+        const input = screen.getByTestId('ai-custom-input');
+        expect(input).toBeTruthy();
+        fireEvent.change(input, { target: { value: 'my question' } });
+        fireEvent.keyDown(input, { key: 'Enter' });
+        expect(onAskAI).toHaveBeenCalledWith('custom', 'my question');
+    });
+
+    it('renders loading spinner when aiLoading=true', () => {
+        render(
+            <CommentCard
+                comment={makeComment()}
+                onResolve={noop} onUnresolve={noop} onEdit={noop}
+                onDelete={noop} onAskAI={noop} onClick={noop}
+                aiLoading={true}
+            />
+        );
+        const trigger = screen.getByTestId('ai-menu-trigger');
+        expect(trigger).toHaveProperty('disabled', true);
+        expect(trigger.querySelector('[aria-label="Loading"]')).toBeTruthy();
+    });
+
+    it('renders error banner when aiError is set', () => {
+        render(
+            <CommentCard
+                comment={makeComment()}
+                onResolve={noop} onUnresolve={noop} onEdit={noop}
+                onDelete={noop} onAskAI={noop} onClick={noop}
+                aiError="Something went wrong"
+            />
+        );
+        const banner = screen.getByTestId('ai-error-banner');
+        expect(banner.textContent).toContain('Something went wrong');
+    });
+
+    it('error banner dismiss calls onClearAiError', () => {
+        const onClearAiError = vi.fn();
+        render(
+            <CommentCard
+                comment={makeComment()}
+                onResolve={noop} onUnresolve={noop} onEdit={noop}
+                onDelete={noop} onAskAI={noop} onClick={noop}
+                aiError="err"
+                onClearAiError={onClearAiError}
+            />
+        );
+        fireEvent.click(screen.getByLabelText('Dismiss error'));
+        expect(onClearAiError).toHaveBeenCalledOnce();
+    });
+
+    it('renders markdown for aiResponse', () => {
+        const { container } = render(
+            <CommentCard
+                comment={makeComment({ aiResponse: '# Hello\n\nworld' })}
+                onResolve={noop} onUnresolve={noop} onEdit={noop}
+                onDelete={noop} onAskAI={noop} onClick={noop}
+            />
+        );
+        const response = screen.getByTestId('ai-response');
+        expect(response).toBeTruthy();
+        // MarkdownView renders with markdown-body class
+        expect(response.querySelector('.markdown-body')).toBeTruthy();
+    });
+
+    it('expand/collapse toggle for AI response', () => {
+        render(
+            <CommentCard
+                comment={makeComment({ aiResponse: 'Some AI response text' })}
+                onResolve={noop} onUnresolve={noop} onEdit={noop}
+                onDelete={noop} onAskAI={noop} onClick={noop}
+            />
+        );
+        const response = screen.getByTestId('ai-response');
+        // Initially collapsed
+        expect(response.querySelector('.line-clamp-3')).toBeTruthy();
+        // Expand
+        fireEvent.click(screen.getByTestId('ai-response-expand'));
+        expect(response.querySelector('.line-clamp-3')).toBeNull();
+        // Collapse again
+        fireEvent.click(screen.getByTestId('ai-response-expand'));
+        expect(response.querySelector('.line-clamp-3')).toBeTruthy();
+    });
+
+    it('copy button present when aiResponse is set', () => {
+        render(
+            <CommentCard
+                comment={makeComment({ aiResponse: 'hello' })}
+                onResolve={noop} onUnresolve={noop} onEdit={noop}
+                onDelete={noop} onAskAI={noop} onClick={noop}
+            />
+        );
+        expect(screen.getByTestId('ai-response-copy')).toBeTruthy();
     });
 });
