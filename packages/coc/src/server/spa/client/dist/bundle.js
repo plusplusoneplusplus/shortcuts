@@ -28245,7 +28245,7 @@
         `<div class="source-line" data-line="${lineNum}"><span class="line-number">${lineNum}</span><span class="line-content">${lineContent}</span></div>`
       );
     }
-    return '<div class="source-mode-body">' + htmlParts.join("\n") + "</div>";
+    return '<div class="source-mode-body">' + htmlParts.join("") + "</div>";
   }
   function buildBlockRanges(codeBlocks, mermaidBlocks, tables) {
     const ranges = [];

@@ -2743,7 +2743,6 @@ video {
 /* Source-mode container */
 .source-mode-body {
     font-family: monospace;
-    white-space: pre-wrap;
     word-break: break-word;
     line-height: 1.6;
 }
