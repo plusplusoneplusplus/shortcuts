@@ -59,15 +59,21 @@ jobs:
       - name: Compile
         run: npm run compile
 
-      - name: Run tests (Linux)
+      - name: Compile tests
+        run: npm run compile-tests
+
+      - name: Copy test fixtures
+        run: npm run copy-fixtures
+
+      - name: Run extension tests (Linux)
         if: runner.os == 'Linux'
-        run: xvfb-run -a npm test
+        run: xvfb-run -a npm run test:extension
         env:
           DISPLAY: ':99.0'
 
-      - name: Run tests (macOS/Windows)
+      - name: Run extension tests (macOS/Windows)
         if: runner.os != 'Linux'
-        run: npm test
+        run: npm run test:extension
 
   package:
     runs-on: ubuntu-latest
