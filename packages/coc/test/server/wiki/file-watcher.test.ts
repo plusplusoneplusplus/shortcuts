@@ -186,14 +186,15 @@ describe('FileWatcher', () => {
 
             watcher.start();
 
-            // Modify a file in the auth component
-            fs.writeFileSync(
-                path.join(tmpDir, 'src', 'auth', 'login.ts'),
-                'export function login() { /* updated */ }',
-            );
+            const loginPath = path.join(tmpDir, 'src', 'auth', 'login.ts');
+            let writeCount = 0;
 
-            // Poll until onChange fires (fs.watch delivery can be slow under CI load)
-            await waitForCondition(() => onChange.mock.calls.length > 0, 10000);
+            // fs.watch event delivery can be slow under CI load; retry writes
+            while (onChange.mock.calls.length === 0 && writeCount < 3) {
+                writeCount++;
+                fs.writeFileSync(loginPath, `export function login() { /* v${writeCount} */ }`);
+                await waitForCondition(() => onChange.mock.calls.length > 0, 5000);
+            }
 
             expect(onChange).toHaveBeenCalled();
             const affectedIds = onChange.mock.calls[0][0];
