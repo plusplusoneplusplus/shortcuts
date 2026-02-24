@@ -67,31 +67,51 @@ export function parseCodeBlocks(content: string): CodeBlock[] {
     const lines = normalized.split('\n');
     const blocks: CodeBlock[] = [];
     let inBlock = false;
+    let openingFenceLength = 0;
     let currentBlock: Partial<CodeBlock> = {};
     let codeLines: string[] = [];
 
     lines.forEach((line, index) => {
-        // Allow any amount of leading whitespace before the fence.
+        // Allow any amount of leading whitespace before fences.
         // CommonMark spec only allows 0-3 spaces, but we're lenient here to handle
         // non-standard markdown (e.g., deeply indented code blocks in documents).
-        const fenceMatch = line.match(/^[ \t]*```(\w*)/);
+        //
+        // Opening fence:
+        // - 3+ backticks
+        // - optional info string (no backticks)
+        // - optional trailing whitespace
+        const openingFenceMatch = line.match(/^[ \t]*(`{3,})([^\s`]*)?\s*$/);
 
-        if (fenceMatch && !inBlock) {
+        if (!inBlock && openingFenceMatch) {
             inBlock = true;
+            openingFenceLength = openingFenceMatch[1].length;
+            const language = openingFenceMatch[2] || 'plaintext';
             currentBlock = {
-                language: fenceMatch[1] || 'plaintext',
+                language,
                 startLine: index + 1,
-                isMermaid: fenceMatch[1] === 'mermaid'
+                isMermaid: language === 'mermaid'
             };
             codeLines = [];
-        } else if (line.match(/^[ \t]*```/) && inBlock) {
-            inBlock = false;
-            currentBlock.endLine = index + 1;
-            currentBlock.code = codeLines.join('\n');
-            currentBlock.id = `codeblock-${currentBlock.startLine}`;
-            blocks.push(currentBlock as CodeBlock);
-            currentBlock = {};
-        } else if (inBlock) {
+            return;
+        }
+
+        if (inBlock) {
+            // Closing fence:
+            // - 3+ backticks
+            // - optional trailing whitespace only (no info string)
+            // - fence length must be >= opening fence length
+            const closingFenceMatch = line.match(/^[ \t]*(`{3,})\s*$/);
+            if (closingFenceMatch && closingFenceMatch[1].length >= openingFenceLength) {
+                inBlock = false;
+                openingFenceLength = 0;
+                currentBlock.endLine = index + 1;
+                currentBlock.code = codeLines.join('\n');
+                currentBlock.id = `codeblock-${currentBlock.startLine}`;
+                blocks.push(currentBlock as CodeBlock);
+                currentBlock = {};
+                return;
+            }
+
             codeLines.push(line);
         }
     });

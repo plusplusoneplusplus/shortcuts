@@ -191,6 +191,32 @@ describe('renderMarkdownToHtml', () => {
             expect(html).toContain('const y: number = 2;');
             expect(html).toContain('code-block');
         });
+
+        it('preserves nested triple-backtick examples inside longer fences', () => {
+            const md = [
+                '````',
+                '# Document Revision Request',
+                '',
+                '### Full Document Content',
+                '',
+                '```markdown',
+                '{documentContent}',
+                '```',
+                '',
+                '**Selected Text:**',
+                '```',
+                '{selectedText}',
+                '```',
+                '````',
+            ].join('\n');
+            const html = renderMarkdownToHtml(md);
+
+            const blockCount = (html.match(/code-block-container/g) || []).length;
+            expect(blockCount).toBe(1);
+            expect(html).toContain('{documentContent}');
+            expect(html).toContain('{selectedText}');
+            expect(html).toContain('```markdown');
+        });
     });
 
     // ----------------------------------------------------------------

@@ -84,6 +84,42 @@ describe('parseCodeBlocks', () => {
         expect(blocks[0].language).toBe('js');
     });
 
+    it('does not treat info-string fences as closing fences', () => {
+        const content = [
+            '```',
+            '# Prompt Example',
+            '```markdown',
+            '{documentContent}',
+            '```',
+            '```',
+        ].join('\n');
+        const blocks = parseCodeBlocks(content);
+
+        expect(blocks).toHaveLength(1);
+        expect(blocks[0].language).toBe('plaintext');
+        expect(blocks[0].code).toContain('```markdown');
+        expect(blocks[0].code).toContain('{documentContent}');
+        expect(blocks[0].code).toContain('```');
+    });
+
+    it('supports longer outer fences that contain triple backticks', () => {
+        const content = [
+            '````markdown',
+            'Outer block',
+            '```ts',
+            'const x = 1;',
+            '```',
+            '````',
+        ].join('\n');
+        const blocks = parseCodeBlocks(content);
+
+        expect(blocks).toHaveLength(1);
+        expect(blocks[0].language).toBe('markdown');
+        expect(blocks[0].code).toContain('```ts');
+        expect(blocks[0].code).toContain('const x = 1;');
+        expect(blocks[0].code).toContain('```');
+    });
+
     it('normalizes CRLF line endings', () => {
         const content = '```js\r\nconst x = 1;\r\n```';
         const blocks = parseCodeBlocks(content);
