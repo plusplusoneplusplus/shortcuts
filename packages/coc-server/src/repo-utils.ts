@@ -126,13 +126,11 @@ export function findGitRoot(pathLike: string): string | null {
 export function normalizeRepoPath(repoPath: string): string {
     let normalized = path.resolve(repoPath);
 
-    // On Unix-like systems, resolve symlinks for consistency
-    if (process.platform !== 'win32') {
-        try {
-            normalized = fs.realpathSync(normalized);
-        } catch {
-            // If realpath fails, continue with resolved path
-        }
+    // Resolve symlinks (Unix) and 8.3 short names (Windows) for consistency
+    try {
+        normalized = fs.realpathSync(normalized);
+    } catch {
+        // If realpath fails, continue with resolved path
     }
 
     // Normalize separators (forward slashes)

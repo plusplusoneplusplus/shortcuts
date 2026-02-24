@@ -60,23 +60,28 @@ export class FileWatcher {
 
         const { repoPath, debounceMs = DEFAULT_DEBOUNCE_MS } = this.options;
 
+        const changeHandler = (_eventType: string, filename: string | null) => {
+            if (!filename) return;
+            if (shouldIgnore(filename)) return;
+
+            this.changedFiles.add(filename);
+
+            if (this.debounceTimer) {
+                clearTimeout(this.debounceTimer);
+            }
+            this.debounceTimer = setTimeout(() => {
+                this.processChanges();
+            }, debounceMs);
+        };
+
         try {
-            this.watcher = fs.watch(repoPath, { recursive: true }, (eventType, filename) => {
-                if (!filename) return;
-
-                // Ignore common non-source files
-                if (shouldIgnore(filename)) return;
-
-                this.changedFiles.add(filename);
-
-                // Debounce
-                if (this.debounceTimer) {
-                    clearTimeout(this.debounceTimer);
-                }
-                this.debounceTimer = setTimeout(() => {
-                    this.processChanges();
-                }, debounceMs);
-            });
+            // `recursive: true` requires Node 19+ on Linux; fall back to
+            // non-recursive watching on older runtimes.
+            try {
+                this.watcher = fs.watch(repoPath, { recursive: true }, changeHandler);
+            } catch {
+                this.watcher = fs.watch(repoPath, changeHandler);
+            }
 
             this.watcher.on('error', (err) => {
                 if (this.options.onError) {
