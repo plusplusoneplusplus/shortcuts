@@ -170,11 +170,21 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
     }, [fileMoveCtxItem, fileActions, refresh]);
 
     // ── Folder context-menu state ──────────────────────────────────────
-    interface FolderCtxMenu { folder: TaskFolder; x: number; y: number }
+    interface FolderCtxMenu {
+        folder: TaskFolder;
+        x: number;
+        y: number;
+        source: 'folder-row' | 'empty-space';
+    }
     const [folderCtxMenu, setFolderCtxMenu] = useState<FolderCtxMenu | null>(null);
 
     const handleFolderContextMenu = useCallback(
-        (folder: TaskFolder, x: number, y: number) => setFolderCtxMenu({ folder, x, y }),
+        (folder: TaskFolder, x: number, y: number) => setFolderCtxMenu({ folder, x, y, source: 'folder-row' }),
+        []
+    );
+
+    const handleFolderEmptySpaceContextMenu = useCallback(
+        (folder: TaskFolder, x: number, y: number) => setFolderCtxMenu({ folder, x, y, source: 'empty-space' }),
         []
     );
 
@@ -390,6 +400,16 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
     // ── Build folder context-menu items ────────────────────────────────
     const folderMenuItems: ContextMenuItem[] = folderCtxMenu ? (() => {
         const folder = folderCtxMenu.folder;
+        if (folderCtxMenu.source === 'empty-space') {
+            return [
+                {
+                    label: 'Create Folder',
+                    icon: '📁',
+                    onClick: () => handleFolderContextMenuAction('create-subfolder', folder),
+                },
+            ];
+        }
+
         const folderPath = folder.relativePath || folder.name;
         const isArchived = (folder.relativePath ?? '').startsWith('archive');
         return [
@@ -518,6 +538,7 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
                             initialFilePath={initialParams.initialFilePath}
                             onColumnsChange={handleColumnsChange}
                             onFolderContextMenu={handleFolderContextMenu}
+                            onFolderEmptySpaceContextMenu={handleFolderEmptySpaceContextMenu}
                             onFileContextMenu={handleFileContextMenu}
                         />
                     </div>

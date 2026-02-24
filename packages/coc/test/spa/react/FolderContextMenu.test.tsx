@@ -149,6 +149,77 @@ describe('Folder context menu', () => {
         expect(screen.queryByTestId('context-menu')).toBeNull();
     });
 
+    it('renders a create-folder menu when right-clicking folder empty space', async () => {
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree-item-feature1')).toBeTruthy();
+        });
+
+        // Open feature1 column, then right-click on its empty area (not on a row).
+        fireEvent.click(screen.getByTestId('task-tree-item-feature1'));
+        await waitFor(() => {
+            expect(screen.getByTestId('miller-column-1')).toBeTruthy();
+        });
+
+        fireEvent.contextMenu(screen.getByTestId('miller-column-1'));
+        expect(screen.getByTestId('context-menu')).toBeTruthy();
+        expect(screen.getByText('Create Folder')).toBeTruthy();
+        expect(screen.queryByText('Rename Folder')).toBeNull();
+        expect(screen.queryByText('Delete Folder')).toBeNull();
+    });
+
+    it('creates a folder in the current column parent when using empty-space menu', async () => {
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree-item-feature1')).toBeTruthy();
+        });
+
+        // Navigate to feature1 so column 1 represents that folder.
+        fireEvent.click(screen.getByTestId('task-tree-item-feature1'));
+        await waitFor(() => {
+            expect(screen.getByTestId('miller-column-1')).toBeTruthy();
+        });
+
+        fireEvent.contextMenu(screen.getByTestId('miller-column-1'));
+        fireEvent.click(screen.getByText('Create Folder'));
+
+        const input = screen.getByPlaceholderText('Enter subfolder name') as HTMLInputElement;
+        fireEvent.change(input, { target: { value: 'nested-folder' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+        await waitFor(() => {
+            const call = fetchSpy.mock.calls.find(([, opts]: any[]) => {
+                if (!opts || opts.method !== 'POST' || typeof opts.body !== 'string') return false;
+                const body = JSON.parse(opts.body);
+                return body.type === 'folder' && body.name === 'nested-folder' && body.parent === 'feature1';
+            });
+            expect(call).toBeTruthy();
+        });
+    });
+
+    it('creates a root folder from root-column empty space', async () => {
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('miller-column-0')).toBeTruthy();
+        });
+
+        fireEvent.contextMenu(screen.getByTestId('miller-column-0'));
+        fireEvent.click(screen.getByText('Create Folder'));
+
+        const input = screen.getByPlaceholderText('Enter subfolder name') as HTMLInputElement;
+        fireEvent.change(input, { target: { value: 'root-folder' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+        await waitFor(() => {
+            const call = fetchSpy.mock.calls.find(([, opts]: any[]) => {
+                if (!opts || opts.method !== 'POST' || typeof opts.body !== 'string') return false;
+                const body = JSON.parse(opts.body);
+                return body.type === 'folder' && body.name === 'root-folder' && body.parent === '';
+            });
+            expect(call).toBeTruthy();
+        });
+    });
+
     it('does not render context menu when right-clicking a non-folder (file) row', async () => {
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
         await waitFor(() => {

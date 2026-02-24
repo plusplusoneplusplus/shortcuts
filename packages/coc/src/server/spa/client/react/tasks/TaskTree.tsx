@@ -17,6 +17,7 @@ interface TaskTreeProps {
     initialFilePath?: string | null;
     onColumnsChange?: () => void;
     onFolderContextMenu?: (folder: TaskFolder, x: number, y: number) => void;
+    onFolderEmptySpaceContextMenu?: (folder: TaskFolder, x: number, y: number) => void;
     onFileContextMenu?: (item: TaskDocument | TaskDocumentGroup, x: number, y: number) => void;
 }
 
@@ -60,7 +61,17 @@ export function rebuildColumnsFromKeys(tree: TaskFolder, keys: (string | null)[]
     return cols;
 }
 
-export function TaskTree({ tree, commentCounts, wsId, initialFolderPath, initialFilePath, onColumnsChange, onFolderContextMenu, onFileContextMenu }: TaskTreeProps) {
+export function TaskTree({
+    tree,
+    commentCounts,
+    wsId,
+    initialFolderPath,
+    initialFilePath,
+    onColumnsChange,
+    onFolderContextMenu,
+    onFolderEmptySpaceContextMenu,
+    onFileContextMenu,
+}: TaskTreeProps) {
     const { openFilePath, setOpenFilePath, selectedFilePaths, toggleSelectedFile, showContextFiles, setSelectedFolderPath } = useTaskPanel();
     const { fileMap: queueActivity, folderMap: queueFolderActivity } = useQueueActivity(wsId);
     const [columns, setColumns] = useState<TaskNode[][]>([]);
@@ -142,6 +153,13 @@ export function TaskTree({ tree, commentCounts, wsId, initialFolderPath, initial
         toggleSelectedFile(path);
     };
 
+    const getColumnFolder = (colIndex: number): TaskFolder | null => {
+        if (colIndex === 0) return tree;
+        const parentKey = activeFolderKeys[colIndex - 1];
+        if (!parentKey) return null;
+        return findFolderByKey(tree, parentKey);
+    };
+
     return (
         <div
             className="flex flex-row h-full min-h-0"
@@ -153,6 +171,18 @@ export function TaskTree({ tree, commentCounts, wsId, initialFolderPath, initial
                     key={colIndex}
                     className="flex-shrink-0 w-56 h-full border-r border-[#e0e0e0] dark:border-[#3c3c3c] overflow-y-auto"
                     data-testid={`miller-column-${colIndex}`}
+                    onContextMenu={(e) => {
+                        if (e.shiftKey || !onFolderEmptySpaceContextMenu) return;
+                        const target = e.target as HTMLElement;
+                        if (target.closest('[data-testid^="task-tree-item-"]')) return;
+
+                        const folder = getColumnFolder(colIndex);
+                        if (!folder) return;
+
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onFolderEmptySpaceContextMenu(folder, e.clientX, e.clientY);
+                    }}
                 >
                     {colNodes.length === 0 ? (
                         <div className="py-6 px-4 text-center text-xs text-[#848484] dark:text-[#666] italic">
