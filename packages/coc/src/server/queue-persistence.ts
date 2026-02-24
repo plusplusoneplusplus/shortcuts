@@ -44,7 +44,7 @@ const MAX_PERSISTED_HISTORY = 100;
 /** Compute a deterministic 16-char hex repo ID from a root path. */
 export function computeRepoId(rootPath: string): string {
     return crypto.createHash('sha256')
-        .update(rootPath)
+        .update(path.resolve(rootPath))
         .digest('hex')
         .substring(0, 16);
 }

@@ -148,4 +148,24 @@ describe('renderSourceModeToHtml', () => {
             expect(html).toContain('<span class="line-content"><br></span>');
         });
     });
+
+    // ----------------------------------------------------------------
+    // No inter-line whitespace in container (regression: extra spacing)
+    // ----------------------------------------------------------------
+    describe('source-mode-body container whitespace', () => {
+        it('does not insert newline characters between source-line divs', () => {
+            // Newline chars between divs + CSS white-space:pre-wrap on the
+            // container used to render as visible blank lines between every row.
+            const html = renderSourceModeToHtml('line1\nline2\nline3');
+            const inner = html.replace('<div class="source-mode-body">', '').replace(/<\/div>$/, '');
+            expect(inner).not.toMatch(/>\n</);
+        });
+
+        it('source-line divs are adjacent with no whitespace between them', () => {
+            const html = renderSourceModeToHtml('a\nb');
+            // The closing </div> of one source-line must be immediately followed
+            // by the opening <div of the next — no newline or space in between.
+            expect(html).toContain('</div><div class="source-line"');
+        });
+    });
 });

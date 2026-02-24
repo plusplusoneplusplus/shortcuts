@@ -190,7 +190,7 @@ export function renderSourceModeToHtml(content: string): string {
         );
     }
 
-    return '<div class="source-mode-body">' + htmlParts.join('\n') + '</div>';
+    return '<div class="source-mode-body">' + htmlParts.join('') + '</div>';
 }
 
 // ---------------------------------------------------------------------------
