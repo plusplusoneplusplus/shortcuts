@@ -135,6 +135,10 @@ export function TaskTreeItem({
             )}
             onClick={handleClick}
             onContextMenu={(e) => {
+                if (e.shiftKey) {
+                    // Keep the browser's native context menu when Shift is held.
+                    return;
+                }
                 if (isFolder && onFolderContextMenu) {
                     e.preventDefault();
                     e.stopPropagation();

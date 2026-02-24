@@ -134,6 +134,21 @@ describe('Folder context menu', () => {
         expect(screen.getByTestId('context-menu')).toBeTruthy();
     });
 
+    it('uses native browser menu for Shift+right-click on a folder row', async () => {
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree-item-feature1')).toBeTruthy();
+        });
+
+        const wasNotPrevented = fireEvent.contextMenu(
+            screen.getByTestId('task-tree-item-feature1'),
+            { shiftKey: true }
+        );
+
+        expect(wasNotPrevented).toBe(true);
+        expect(screen.queryByTestId('context-menu')).toBeNull();
+    });
+
     it('does not render context menu when right-clicking a non-folder (file) row', async () => {
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
         await waitFor(() => {

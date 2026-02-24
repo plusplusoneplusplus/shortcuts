@@ -135,6 +135,21 @@ describe('File context menu', () => {
         expect(screen.queryByTestId('context-menu')).not.toBeNull();
     });
 
+    it('uses native browser menu for Shift+right-click on a file row', async () => {
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree-item-notes')).toBeTruthy();
+        });
+
+        const wasNotPrevented = fireEvent.contextMenu(
+            screen.getByTestId('task-tree-item-notes'),
+            { shiftKey: true }
+        );
+
+        expect(wasNotPrevented).toBe(true);
+        expect(screen.queryByTestId('context-menu')).toBeNull();
+    });
+
     it('renders file context menu when right-clicking a document group', async () => {
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
         await waitFor(() => {
