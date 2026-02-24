@@ -25,6 +25,7 @@ import {
 import {
     // Line-level rendering
     applyMarkdownHighlighting,
+    applySourceModeHighlighting,
 } from '@plusplusoneplusplus/pipeline-core/editor/rendering';
 
 // highlight.js is loaded via CDN; declared globally in the HTML template.
@@ -154,6 +155,42 @@ export function renderMarkdownToHtml(content: string, options?: RenderOptions): 
     }
 
     return htmlParts.join('\n');
+}
+
+/**
+ * Convert markdown content to a source-mode HTML view with per-line syntax
+ * highlighting and line-number gutters.
+ *
+ * Each line is wrapped in a `source-line` div with a `data-line` attribute
+ * (1-based) and two child spans: `line-number` and `line-content`.
+ * Empty lines render as `<br>` inside the `line-content` span.
+ */
+export function renderSourceModeToHtml(content: string): string {
+    if (!content) return '';
+
+    // Normalize Windows line endings so that \r does not produce extra blank
+    // lines or misaligned data-line numbers.
+    const text = content.replace(/\r\n/g, '\n');
+    const lines = text.split('\n');
+
+    let inCodeBlock = false;
+    const htmlParts: string[] = [];
+
+    for (let i = 0; i < lines.length; i++) {
+        const lineNum = i + 1;
+        const result = applySourceModeHighlighting(lines[i], inCodeBlock);
+        inCodeBlock = result.inCodeBlock;
+
+        const lineContent = result.html === '' ? '<br>' : result.html;
+        htmlParts.push(
+            `<div class="source-line" data-line="${lineNum}">` +
+            `<span class="line-number">${lineNum}</span>` +
+            `<span class="line-content">${lineContent}</span>` +
+            `</div>`
+        );
+    }
+
+    return '<div class="source-mode-body">' + htmlParts.join('\n') + '</div>';
 }
 
 // ---------------------------------------------------------------------------
