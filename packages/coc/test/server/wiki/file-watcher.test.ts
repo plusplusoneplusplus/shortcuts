@@ -192,8 +192,8 @@ describe('FileWatcher', () => {
                 'export function login() { /* updated */ }',
             );
 
-            // Poll until onChange fires (fs.watch delivery can be slow under load)
-            await waitForCondition(() => onChange.mock.calls.length > 0, 5000);
+            // Poll until onChange fires (fs.watch delivery can be slow under CI load)
+            await waitForCondition(() => onChange.mock.calls.length > 0, 10000);
 
             expect(onChange).toHaveBeenCalled();
             const affectedIds = onChange.mock.calls[0][0];
@@ -222,7 +222,7 @@ describe('FileWatcher', () => {
             fs.writeFileSync(path.join(tmpDir, 'src', 'api', 'routes.ts'), 'change3');
 
             // Poll until onChange fires at least once
-            await waitForCondition(() => onChange.mock.calls.length > 0, 5000);
+            await waitForCondition(() => onChange.mock.calls.length > 0, 10000);
 
             // Should be called once (debounced)
             expect(onChange).toHaveBeenCalledTimes(1);
