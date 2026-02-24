@@ -296,8 +296,21 @@ export function registerWikiRoutes(
                     return;
                 }
 
-                // Ensure the wiki output directory exists
-                fs.mkdirSync(wikiDir, { recursive: true });
+                // When wikiDir is explicitly provided, it must exist and be a directory (reject invalid paths)
+                if (body.wikiDir) {
+                    const resolvedDir = path.resolve(wikiDir);
+                    if (!fs.existsSync(resolvedDir)) {
+                        sendJson(res, { error: 'wikiDir must be an existing directory' }, 400);
+                        return;
+                    }
+                    if (!fs.statSync(resolvedDir).isDirectory()) {
+                        sendJson(res, { error: 'wikiDir must be a directory' }, 400);
+                        return;
+                    }
+                } else {
+                    // Derived from repoPath — ensure the wiki output directory exists
+                    fs.mkdirSync(wikiDir, { recursive: true });
+                }
 
                 // Check if wiki data already exists (component-graph.json)
                 const graphPath = path.join(wikiDir, 'component-graph.json');

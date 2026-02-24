@@ -88,10 +88,13 @@ describe('handleGenerateSeeds auto-save', () => {
 
         await handleGenerateSeeds(req, res, 'test-wiki', mockManager as any);
 
-        // Seeds should go to repoPath, not wikiDir
-        expect(fs.mkdirSync).toHaveBeenCalledWith('/test/repo', { recursive: true });
+        // Seeds should go to repoPath, not wikiDir (use path ops for cross-platform assertion)
+        const repoPath = '/test/repo';
+        const expectedSeedsDir = path.dirname(path.join(repoPath, 'seeds.yaml'));
+        const expectedSeedsPath = path.join(repoPath, 'seeds.yaml');
+        expect(fs.mkdirSync).toHaveBeenCalledWith(expectedSeedsDir, { recursive: true });
         expect(fs.writeFileSync).toHaveBeenCalledWith(
-            path.join('/test/repo', 'seeds.yaml'),
+            expectedSeedsPath,
             expect.stringContaining('theme'),
             'utf-8',
         );

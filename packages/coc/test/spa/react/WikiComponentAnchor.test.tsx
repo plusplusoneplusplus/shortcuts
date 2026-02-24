@@ -110,12 +110,17 @@ describe('WikiComponent in-article anchor click interception', () => {
 
         // findByRole has built-in wait/retry; more robust than custom getInArticleTocLink + waitFor
         const tocLink = (await screen.findByRole('link', { name: 'Purpose & Scope' })) as HTMLAnchorElement;
-        expect(tocLink.closest('.wiki-body')).toBeTruthy(); // must be in-article, not sidebar
+        expect(tocLink.closest('.wiki-body')).toBeTruthy();
         expect(tocLink.textContent).toBe('Purpose & Scope');
 
+        // Heading IDs are set in a post-render useEffect; wait for them
+        let headingEl: HTMLElement | null = null;
+        await waitFor(() => {
+            headingEl = document.getElementById('purpose--scope');
+            expect(headingEl).toBeTruthy();
+        });
+
         const scrollIntoViewMock = vi.fn();
-        const headingEl = document.getElementById('purpose--scope');
-        expect(headingEl).toBeTruthy();
         headingEl!.scrollIntoView = scrollIntoViewMock;
 
         const event = new MouseEvent('click', { bubbles: true, cancelable: true });
