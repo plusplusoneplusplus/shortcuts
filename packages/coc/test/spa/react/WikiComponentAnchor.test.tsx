@@ -273,7 +273,7 @@ describe('WikiComponent TOC sidebar sticky layout', () => {
         expect(tocSidebar).toBeLessThan(scrollContainerEnd);
     });
 
-    it('outer container avoids local overflow scrolling so sticky can follow page scroll', () => {
+    it('outer container is a local scroll container for article content', () => {
         const { readFileSync } = require('fs');
         const { resolve } = require('path');
         const tsxPath = resolve(
@@ -284,11 +284,11 @@ describe('WikiComponent TOC sidebar sticky layout', () => {
 
         const outerLine = tsx.split('\n').find(l => l.includes('id="wiki-article-content"'));
         expect(outerLine).toBeTruthy();
-        expect(outerLine).not.toContain('overflow-y-auto');
+        expect(outerLine).toContain('overflow-y-auto');
         expect(outerLine).toContain('ref={scrollRef}');
     });
 
-    it('scroll spy listens to page-level scroll events', () => {
+    it('scroll spy listens to local article scroll events', () => {
         const { readFileSync } = require('fs');
         const { resolve } = require('path');
         const tsxPath = resolve(
@@ -297,9 +297,22 @@ describe('WikiComponent TOC sidebar sticky layout', () => {
         );
         const tsx = readFileSync(tsxPath, 'utf-8');
 
-        expect(tsx).toContain("window.addEventListener('scroll'");
-        expect(tsx).toContain("window.removeEventListener('scroll'");
+        expect(tsx).toContain("scrollContainer.addEventListener('scroll'");
+        expect(tsx).toContain("scrollContainer.removeEventListener('scroll'");
+        expect(tsx).not.toContain("window.addEventListener('scroll'");
         expect(tsx).toContain('getBoundingClientRect().top');
+    });
+
+    it('resets local article scroll position on component change', () => {
+        const { readFileSync } = require('fs');
+        const { resolve } = require('path');
+        const tsxPath = resolve(
+            __dirname,
+            '../../../src/server/spa/client/react/wiki/WikiComponent.tsx',
+        );
+        const tsx = readFileSync(tsxPath, 'utf-8');
+
+        expect(tsx).toContain('scrollRef.current.scrollTop = 0');
     });
 
     it('content and TOC are in a flex row with items-start', () => {
@@ -332,6 +345,19 @@ describe('WikiComponent TOC sidebar sticky layout', () => {
         expect(sidebar.className).toContain('top-0');
         expect(sidebar.className).toContain('max-h-screen');
         expect(sidebar.className).toContain('overflow-y-auto');
+    });
+
+    it('renders article content container as scrollable pane', async () => {
+        mockFetchApi.mockResolvedValueOnce({ markdown: MARKDOWN_WITH_TOC });
+        renderWikiComponent();
+
+        await waitFor(() => {
+            const article = document.getElementById('wiki-article-content');
+            expect(article).toBeTruthy();
+        });
+
+        const article = document.getElementById('wiki-article-content')!;
+        expect(article.className).toContain('overflow-y-auto');
     });
 
     it('does not render TOC sidebar when article has no headings', async () => {

@@ -133,19 +133,22 @@ export function WikiComponent({ wikiId, componentId, graph, onSelectComponent }:
             pre.parentNode!.replaceChild(wrapper, pre);
         });
 
-        // Scroll spy (page-level scroll)
+        // Scroll spy (article container scroll)
+        const scrollContainer = scrollRef.current;
+        if (!scrollContainer) return;
         const onScroll = () => {
             let activeId: string | null = null;
+            const scrollTop = scrollContainer.getBoundingClientRect().top;
             container.querySelectorAll('h2, h3, h4').forEach(h => {
-                if ((h as HTMLElement).getBoundingClientRect().top <= 120) {
+                if ((h as HTMLElement).getBoundingClientRect().top - scrollTop <= 120) {
                     activeId = h.id;
                 }
             });
             setActiveHeading(activeId);
         };
         onScroll();
-        window.addEventListener('scroll', onScroll);
-        return () => window.removeEventListener('scroll', onScroll);
+        scrollContainer.addEventListener('scroll', onScroll);
+        return () => scrollContainer.removeEventListener('scroll', onScroll);
     }, [html]);
 
     // Intercept in-article anchor clicks so they scroll instead of replacing the hash route
@@ -173,8 +176,8 @@ export function WikiComponent({ wikiId, componentId, graph, onSelectComponent }:
 
     // Scroll to top on component change
     useEffect(() => {
-        if (typeof scrollRef.current?.scrollIntoView === 'function') {
-            scrollRef.current.scrollIntoView({ block: 'start' });
+        if (scrollRef.current) {
+            scrollRef.current.scrollTop = 0;
         }
     }, [componentId]);
 
@@ -198,7 +201,7 @@ export function WikiComponent({ wikiId, componentId, graph, onSelectComponent }:
     };
 
     return (
-        <div className="h-full" ref={scrollRef} id="wiki-article-content">
+        <div className="h-full overflow-y-auto" ref={scrollRef} id="wiki-article-content">
             <div className="flex items-start" id="wiki-content-scroll">
                 <div className="flex-1 min-w-0 p-4 wiki-content-scroll">
                     {comp && (
