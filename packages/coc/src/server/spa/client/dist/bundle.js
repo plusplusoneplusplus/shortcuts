@@ -30715,6 +30715,22 @@
   function isContextFile(fileName) {
     return CONTEXT_FILES.has(fileName.toLowerCase());
   }
+  function getPathSegments(relativePath) {
+    return relativePath.split(/[\\/]/).filter(Boolean);
+  }
+  function isGitMetadataFolder(folder) {
+    if (folder.name === ".git") {
+      return true;
+    }
+    return getPathSegments(folder.relativePath ?? "").includes(".git");
+  }
+  function filterGitMetadataFolders(folder) {
+    const children = Array.isArray(folder.children) ? folder.children : [];
+    return {
+      ...folder,
+      children: children.filter((child) => !isGitMetadataFolder(child)).map((child) => filterGitMetadataFolders(child))
+    };
+  }
   function isTaskFolder(node) {
     return "children" in node && "singleDocuments" in node;
   }
@@ -30750,7 +30766,8 @@
         fetchApi(`/workspaces/${encodeURIComponent(wsId)}/tasks?showArchived=true`),
         fetchApi(`/workspaces/${encodeURIComponent(wsId)}/tasks/comment-counts`).catch(() => null)
       ]).then(([tasksData, countsData]) => {
-        setTree(tasksData);
+        const filteredTree = tasksData && typeof tasksData === "object" ? filterGitMetadataFolders(tasksData) : tasksData;
+        setTree(filteredTree);
         if (countsData && typeof countsData === "object") {
           setCommentCounts(countsData);
         }
@@ -31445,6 +31462,8 @@
     if (isContext && !showContextFiles) return null;
     const displayName = getDisplayName(item);
     const path = getItemPath(item);
+    const isNestedContextDoc = isContext && fileName.toLowerCase() === "context.md" && !!path && path.includes("/");
+    const canOpenFileContextMenu = !isFolder && (!isContext || isNestedContextDoc);
     const status = isTaskDocument(item) ? item.status : void 0;
     const isArchived = isTaskDocument(item) ? item.isArchived : isTaskDocumentGroup(item) ? item.isArchived : false;
     const tooltip = !isFolder ? buildFileTooltip(path, commentCount, status) : void 0;
@@ -31476,11 +31495,14 @@
         ),
         onClick: handleClick,
         onContextMenu: (e) => {
+          if (e.shiftKey) {
+            return;
+          }
           if (isFolder && onFolderContextMenu) {
             e.preventDefault();
             e.stopPropagation();
             onFolderContextMenu(item, e.clientX, e.clientY);
-          } else if (!isFolder && !isContext && onFileContextMenu) {
+          } else if (canOpenFileContextMenu && onFileContextMenu) {
             e.preventDefault();
             e.stopPropagation();
             onFileContextMenu(item, e.clientX, e.clientY);
@@ -31577,7 +31599,17 @@
     }
     return cols;
   }
-  function TaskTree({ tree, commentCounts, wsId, initialFolderPath, initialFilePath, onColumnsChange, onFolderContextMenu, onFileContextMenu }) {
+  function TaskTree({
+    tree,
+    commentCounts,
+    wsId,
+    initialFolderPath,
+    initialFilePath,
+    onColumnsChange,
+    onFolderContextMenu,
+    onFolderEmptySpaceContextMenu,
+    onFileContextMenu
+  }) {
     const { openFilePath, setOpenFilePath, selectedFilePaths, toggleSelectedFile, showContextFiles, setSelectedFolderPath } = useTaskPanel();
     const { fileMap: queueActivity, folderMap: queueFolderActivity } = useQueueActivity(wsId);
     const [columns, setColumns] = (0, import_react32.useState)([]);
@@ -31642,6 +31674,12 @@
     const handleCheckboxChange = (path, _checked) => {
       toggleSelectedFile(path);
     };
+    const getColumnFolder = (colIndex) => {
+      if (colIndex === 0) return tree;
+      const parentKey = activeFolderKeys[colIndex - 1];
+      if (!parentKey) return null;
+      return findFolderByKey(tree, parentKey);
+    };
     return /* @__PURE__ */ (0, import_jsx_runtime33.jsx)(
       "div",
       {
@@ -31653,6 +31691,16 @@
             {
               className: "flex-shrink-0 w-56 h-full border-r border-[#e0e0e0] dark:border-[#3c3c3c] overflow-y-auto",
               "data-testid": `miller-column-${colIndex}`,
+              onContextMenu: (e) => {
+                if (e.shiftKey || !onFolderEmptySpaceContextMenu) return;
+                const target = e.target;
+                if (target.closest('[data-testid^="task-tree-item-"]')) return;
+                const folder = getColumnFolder(colIndex);
+                if (!folder) return;
+                e.preventDefault();
+                e.stopPropagation();
+                onFolderEmptySpaceContextMenu(folder, e.clientX, e.clientY);
+              },
               children: colNodes.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime33.jsx)("div", { className: "py-6 px-4 text-center text-xs text-[#848484] dark:text-[#666] italic", children: "Empty folder" }) : /* @__PURE__ */ (0, import_jsx_runtime33.jsx)("ul", { className: "py-1", children: colNodes.map((node, nodeIndex) => {
                 const path = getNodePath(node);
                 const folderMdCount = isTaskFolder(node) ? countMarkdownFilesInFolder(node) : 0;
@@ -34653,7 +34701,11 @@
     }, [fileMoveCtxItem, fileActions, refresh]);
     const [folderCtxMenu, setFolderCtxMenu] = (0, import_react50.useState)(null);
     const handleFolderContextMenu = (0, import_react50.useCallback)(
-      (folder, x, y) => setFolderCtxMenu({ folder, x, y }),
+      (folder, x, y) => setFolderCtxMenu({ folder, x, y, source: "folder-row" }),
+      []
+    );
+    const handleFolderEmptySpaceContextMenu = (0, import_react50.useCallback)(
+      (folder, x, y) => setFolderCtxMenu({ folder, x, y, source: "empty-space" }),
       []
     );
     const [folderDialog, setFolderDialog] = (0, import_react50.useState)({ action: null, folder: null, submitting: false });
@@ -34839,6 +34891,15 @@
     })() : [];
     const folderMenuItems = folderCtxMenu ? (() => {
       const folder = folderCtxMenu.folder;
+      if (folderCtxMenu.source === "empty-space") {
+        return [
+          {
+            label: "Create Folder",
+            icon: "\u{1F4C1}",
+            onClick: () => handleFolderContextMenuAction("create-subfolder", folder)
+          }
+        ];
+      }
       const folderPath = folder.relativePath || folder.name;
       const isArchived = (folder.relativePath ?? "").startsWith("archive");
       return [
@@ -34970,6 +35031,7 @@
                 initialFilePath: initialParams.initialFilePath,
                 onColumnsChange: handleColumnsChange,
                 onFolderContextMenu: handleFolderContextMenu,
+                onFolderEmptySpaceContextMenu: handleFolderEmptySpaceContextMenu,
                 onFileContextMenu: handleFileContextMenu
               }
             ) }),
