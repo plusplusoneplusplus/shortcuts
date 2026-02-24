@@ -36,6 +36,14 @@ jobs:
         run: npm run test:run
         working-directory: packages/pipeline-core
 
+      - name: Build coc-server package
+        run: npm run build
+        working-directory: packages/coc-server
+
+      - name: Run coc-server tests
+        run: npm run test:run
+        working-directory: packages/coc-server
+
       - name: Run coc tests
         run: npm run test:run
         working-directory: packages/coc

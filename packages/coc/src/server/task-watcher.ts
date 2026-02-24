@@ -58,16 +58,22 @@ export class TaskWatcher {
         }
 
         try {
-            // Note: `recursive: true` is supported natively on macOS (FSEvents)
-            // and Windows. On Linux, recursive mode requires Node 19+.
-            // On older Linux versions this watches only the top-level directory.
-            const watcher = fs.watch(tasksDir, { recursive: true }, (_event, _filename) => {
-                this.debounceFire(workspaceId);
-            });
+            // `recursive: true` is supported on macOS (FSEvents), Windows,
+            // and Linux with Node 19+.  On Linux Node 18 it throws
+            // ERR_FEATURE_UNAVAILABLE_ON_PLATFORM, so we fall back to
+            // non-recursive watching.
+            let watcher: fs.FSWatcher;
+            try {
+                watcher = fs.watch(tasksDir, { recursive: true }, (_event, _filename) => {
+                    this.debounceFire(workspaceId);
+                });
+            } catch {
+                watcher = fs.watch(tasksDir, (_event, _filename) => {
+                    this.debounceFire(workspaceId);
+                });
+            }
 
             watcher.on('error', (_err) => {
-                // Directory may have been deleted while watched (EPERM/ENOENT on Windows).
-                // Clean up this watcher gracefully.
                 this.cleanupWatcher(workspaceId);
             });
 

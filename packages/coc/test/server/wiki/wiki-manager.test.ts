@@ -522,11 +522,14 @@ describe('WikiManager', () => {
                 watchDebounceMs: 100,
             });
 
+            // Give the watcher time to register with the OS
+            await new Promise(resolve => setTimeout(resolve, 300));
+
             // Trigger a file change
             fs.writeFileSync(path.join(authDir, 'new-file.ts'), 'export const x = 1;');
 
-            // Wait for debounce + processing
-            await new Promise(resolve => setTimeout(resolve, 500));
+            // Wait for debounce (100ms) + OS propagation margin
+            await new Promise(resolve => setTimeout(resolve, 2000));
 
             expect(reloadedCalls.length).toBeGreaterThanOrEqual(1);
             expect(reloadedCalls[0].wikiId).toBe('w');
