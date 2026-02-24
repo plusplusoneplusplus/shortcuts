@@ -7,7 +7,7 @@
  */
 
 import { useEffect } from 'react';
-import { renderMarkdownToHtml, type RenderOptions } from '../../markdown-renderer';
+import { renderMarkdownToHtml, renderSourceModeToHtml, type RenderOptions } from '../../markdown-renderer';
 import { useMermaid } from './useMermaid';
 import { useCodeBlockActions } from './useCodeBlockActions';
 
@@ -18,6 +18,12 @@ export interface UseMarkdownPreviewOptions extends RenderOptions {
     containerRef: React.RefObject<HTMLElement | null>;
     /** Whether the content is still loading (skip rendering). */
     loading?: boolean;
+    /**
+     * Controls which rendering pipeline is used.
+     * - 'review' (default): full pipeline — renderMarkdownToHtml, hljs, mermaid, code-block handlers
+     * - 'source': lightweight source view — renderSourceModeToHtml only, no post-render effects
+     */
+    viewMode?: 'review' | 'source';
 }
 
 export interface UseMarkdownPreviewResult {
@@ -32,10 +38,15 @@ export function useMarkdownPreview({
     content,
     containerRef,
     loading,
+    viewMode,
     ...renderOptions
 }: UseMarkdownPreviewOptions): UseMarkdownPreviewResult {
+    const isSourceMode = viewMode === 'source';
+
     const html = !loading && content
-        ? renderMarkdownToHtml(content, renderOptions)
+        ? isSourceMode
+            ? renderSourceModeToHtml(content)
+            : renderMarkdownToHtml(content, renderOptions)
         : '';
 
     // Trigger highlight.js on code blocks NOT already rendered by renderCodeBlock.
@@ -43,7 +54,7 @@ export function useMarkdownPreview({
     // .code-line spans with .line-number gutters. Calling hljs.highlightElement()
     // on those blocks would replace the innerHTML and destroy that structure.
     useEffect(() => {
-        if (!html || !containerRef.current) return;
+        if (!html || !containerRef.current || isSourceMode) return;
         const hljs = (window as any).hljs;
         if (hljs) {
             containerRef.current.querySelectorAll('pre code').forEach((block: Element) => {
@@ -53,8 +64,10 @@ export function useMarkdownPreview({
         }
     }, [html, containerRef]);
 
-    // Mermaid diagram rendering
-    useMermaid(containerRef);
+    // Mermaid diagram rendering — pass a null ref in source mode to suppress
+    // mermaid without conditionally calling the hook (Rules of Hooks).
+    const mermaidRef = isSourceMode ? { current: null } : containerRef;
+    useMermaid(mermaidRef);
 
     // Code block copy/collapse/expand handlers
     useCodeBlockActions(containerRef, [html]);

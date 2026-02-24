@@ -12,6 +12,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { useMarkdownPreview } from '../../../src/server/spa/client/react/hooks/useMarkdownPreview';
 import { useCodeBlockActions } from '../../../src/server/spa/client/react/hooks/useCodeBlockActions';
+import { useMermaid } from '../../../src/server/spa/client/react/hooks/useMermaid';
 
 // Mock useMermaid since it requires DOM manipulation
 vi.mock('../../../src/server/spa/client/react/hooks/useMermaid', () => ({
@@ -228,5 +229,127 @@ describe('useMarkdownPreview', () => {
         expect(result.current.html).toContain('class="line-number"');
         expect(result.current.html).toContain('data-line="1"');
         expect(result.current.html).toContain('data-line="2"');
+    });
+
+    describe('source mode', () => {
+        it('renders raw markdown as source-mode HTML', () => {
+            const containerRef = createRef();
+            const { result } = renderHook(() =>
+                useMarkdownPreview({
+                    content: '# Hello\n\nWorld',
+                    containerRef,
+                    viewMode: 'source',
+                })
+            );
+
+            expect(result.current.html).not.toBe('');
+            expect(result.current.html).toContain('source-mode-body');
+        });
+
+        it('source mode suppresses Mermaid rendering', () => {
+            const container = document.createElement('div');
+            const mermaidDiv = document.createElement('div');
+            mermaidDiv.className = 'mermaid';
+            container.appendChild(mermaidDiv);
+            const containerRef = createRef(container);
+
+            renderHook(() =>
+                useMarkdownPreview({
+                    content: '# Hello',
+                    containerRef,
+                    viewMode: 'source',
+                })
+            );
+
+            const useMermaidMock = useMermaid as ReturnType<typeof vi.fn>;
+            const calls = useMermaidMock.mock.calls;
+            const lastCall = calls[calls.length - 1];
+            expect(lastCall[0].current).toBeNull();
+        });
+
+        it('source mode suppresses hljs', () => {
+            const highlightElementSpy = vi.fn();
+            (window as any).hljs = {
+                highlight: vi.fn((_code: string) => ({ value: _code })),
+                highlightAuto: vi.fn((_code: string) => ({ value: _code, language: 'js' })),
+                highlightElement: highlightElementSpy,
+            };
+
+            const container = document.createElement('div');
+            const pre = document.createElement('pre');
+            const code = document.createElement('code');
+            pre.appendChild(code);
+            container.appendChild(pre);
+            const containerRef = createRef(container);
+
+            renderHook(() =>
+                useMarkdownPreview({
+                    content: '# Hello',
+                    containerRef,
+                    viewMode: 'source',
+                })
+            );
+
+            expect(highlightElementSpy).not.toHaveBeenCalled();
+
+            delete (window as any).hljs;
+        });
+
+        it('source mode returns empty string for empty content', () => {
+            const containerRef = createRef();
+            const { result } = renderHook(() =>
+                useMarkdownPreview({
+                    content: '',
+                    containerRef,
+                    viewMode: 'source',
+                })
+            );
+
+            expect(result.current.html).toBe('');
+        });
+
+        it('source mode suppresses output when loading is true', () => {
+            const containerRef = createRef();
+            const { result } = renderHook(() =>
+                useMarkdownPreview({
+                    content: '# Hello',
+                    containerRef,
+                    viewMode: 'source',
+                    loading: true,
+                })
+            );
+
+            expect(result.current.html).toBe('');
+        });
+
+        it('defaults to review mode when viewMode not specified', () => {
+            const containerRef = createRef();
+            const { result } = renderHook(() =>
+                useMarkdownPreview({
+                    content: '# Hello\n\nWorld',
+                    containerRef,
+                })
+            );
+
+            expect(result.current.html).toContain('data-line=');
+        });
+
+        it('switching from review to source updates html', () => {
+            const containerRef = createRef();
+            const { result, rerender } = renderHook(
+                ({ viewMode }: { viewMode: 'review' | 'source' }) =>
+                    useMarkdownPreview({
+                        content: '# Hello\n\nWorld',
+                        containerRef,
+                        viewMode,
+                    }),
+                { initialProps: { viewMode: 'review' as const } }
+            );
+
+            const firstHtml = result.current.html;
+            rerender({ viewMode: 'source' });
+
+            expect(result.current.html).not.toBe(firstHtml);
+        });
     });
 });
