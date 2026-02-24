@@ -1097,7 +1097,7 @@
             var dispatcher = resolveDispatcher();
             return dispatcher.useRef(initialValue);
           }
-          function useEffect51(create, deps) {
+          function useEffect52(create, deps) {
             var dispatcher = resolveDispatcher();
             return dispatcher.useEffect(create, deps);
           }
@@ -1880,7 +1880,7 @@
           exports.useContext = useContext6;
           exports.useDebugValue = useDebugValue;
           exports.useDeferredValue = useDeferredValue;
-          exports.useEffect = useEffect51;
+          exports.useEffect = useEffect52;
           exports.useId = useId;
           exports.useImperativeHandle = useImperativeHandle;
           exports.useInsertionEffect = useInsertionEffect;
@@ -26701,7 +26701,7 @@
   var import_client = __toESM(require_client());
 
   // src/server/spa/client/react/App.tsx
-  var import_react69 = __toESM(require_react());
+  var import_react70 = __toESM(require_react());
 
   // src/server/spa/client/react/context/AppContext.tsx
   var import_react = __toESM(require_react());
@@ -27168,7 +27168,7 @@
   }
 
   // src/server/spa/client/react/layout/Router.tsx
-  var import_react67 = __toESM(require_react());
+  var import_react68 = __toESM(require_react());
 
   // src/server/spa/client/react/processes/ProcessFilters.tsx
   var import_react6 = __toESM(require_react());
@@ -29695,7 +29695,7 @@
   }
 
   // src/server/spa/client/react/repos/ReposView.tsx
-  var import_react55 = __toESM(require_react());
+  var import_react56 = __toESM(require_react());
 
   // src/server/spa/client/react/hooks/useWebSocket.ts
   var import_react18 = __toESM(require_react());
@@ -30239,7 +30239,7 @@
   }
 
   // src/server/spa/client/react/repos/RepoDetail.tsx
-  var import_react54 = __toESM(require_react());
+  var import_react55 = __toESM(require_react());
 
   // src/server/spa/client/react/repos/RepoInfoTab.tsx
   var import_react21 = __toESM(require_react());
@@ -30639,7 +30639,7 @@
   }
 
   // src/server/spa/client/react/tasks/TasksPanel.tsx
-  var import_react50 = __toESM(require_react());
+  var import_react51 = __toESM(require_react());
 
   // src/server/spa/client/react/context/TaskContext.tsx
   var import_react25 = __toESM(require_react());
@@ -31744,10 +31744,10 @@
   }
 
   // src/server/spa/client/react/shared/MarkdownReviewEditor.tsx
-  var import_react43 = __toESM(require_react());
+  var import_react44 = __toESM(require_react());
 
   // src/server/spa/client/react/hooks/useMarkdownPreview.ts
-  var import_react34 = __toESM(require_react());
+  var import_react35 = __toESM(require_react());
 
   // src/server/spa/client/react/hooks/useMermaid.ts
   var import_react33 = __toESM(require_react());
@@ -31993,6 +31993,89 @@
     }, [rootRef]);
   }
 
+  // src/server/spa/client/react/hooks/useCodeBlockActions.ts
+  var import_react34 = __toESM(require_react());
+  function useCodeBlockActions(containerRef, deps = []) {
+    (0, import_react34.useEffect)(() => {
+      const container2 = containerRef.current;
+      if (!container2) return;
+      function handleClick(e) {
+        const target = e.target;
+        if (!target) return;
+        if (target.classList.contains("code-block-copy")) {
+          handleCopy(target);
+          return;
+        }
+        if (target.classList.contains("code-block-collapse")) {
+          handleCollapse(target);
+          return;
+        }
+        if (target.classList.contains("code-block-collapsed-indicator")) {
+          handleExpandFromIndicator(target);
+          return;
+        }
+        if (target.classList.contains("md-table-copy-btn")) {
+          handleTableCopy(target);
+          return;
+        }
+      }
+      container2.addEventListener("click", handleClick);
+      return () => container2.removeEventListener("click", handleClick);
+    }, [containerRef, ...deps]);
+  }
+  function handleCopy(btn) {
+    const block = btn.closest(".code-block-container");
+    if (!block) return;
+    const raw = block.getAttribute("data-raw");
+    if (!raw) return;
+    const decoded = raw.replace(/&#10;/g, "\n").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
+    navigator.clipboard.writeText(decoded).then(() => {
+      const original = btn.textContent;
+      btn.textContent = "\u2713";
+      setTimeout(() => {
+        btn.textContent = original;
+      }, 1500);
+    }).catch(() => {
+    });
+  }
+  function handleCollapse(btn) {
+    const block = btn.closest(".code-block-container");
+    if (!block) return;
+    const isCollapsed = block.getAttribute("data-collapsed") === "true";
+    if (isCollapsed) {
+      block.setAttribute("data-collapsed", "false");
+      btn.textContent = "\u25BC";
+      btn.title = "Collapse code block";
+    } else {
+      block.setAttribute("data-collapsed", "true");
+      btn.textContent = "\u25B6";
+      btn.title = "Expand code block";
+    }
+  }
+  function handleExpandFromIndicator(indicator) {
+    const block = indicator.closest(".code-block-container");
+    if (!block) return;
+    block.setAttribute("data-collapsed", "false");
+    const collapseBtn = block.querySelector(".code-block-collapse");
+    if (collapseBtn) {
+      collapseBtn.textContent = "\u25BC";
+      collapseBtn.title = "Collapse code block";
+    }
+  }
+  function handleTableCopy(btn) {
+    const markdown = btn.getAttribute("data-table-markdown");
+    if (!markdown) return;
+    const decoded = markdown.replace(/&#10;/g, "\n").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
+    navigator.clipboard.writeText(decoded).then(() => {
+      const original = btn.textContent;
+      btn.textContent = "\u2713 Copied";
+      setTimeout(() => {
+        btn.textContent = original;
+      }, 1500);
+    }).catch(() => {
+    });
+  }
+
   // src/server/spa/client/react/hooks/useMarkdownPreview.ts
   function useMarkdownPreview({
     content,
@@ -32001,7 +32084,7 @@
     ...renderOptions
   }) {
     const html = !loading && content ? renderMarkdownToHtml(content, renderOptions) : "";
-    (0, import_react34.useEffect)(() => {
+    (0, import_react35.useEffect)(() => {
       if (!html || !containerRef.current) return;
       const hljs2 = window.hljs;
       if (hljs2) {
@@ -32012,11 +32095,12 @@
       }
     }, [html, containerRef]);
     useMermaid(containerRef);
+    useCodeBlockActions(containerRef, [html]);
     return { html };
   }
 
   // src/server/spa/client/react/hooks/useTaskComments.ts
-  var import_react35 = __toESM(require_react());
+  var import_react36 = __toESM(require_react());
   function commentsUrl(wsId, taskPath) {
     return getApiBase() + "/comments/" + encodeURIComponent(wsId) + "/" + encodeURIComponent(taskPath);
   }
@@ -32024,20 +32108,20 @@
     return commentsUrl(wsId, taskPath) + "/" + encodeURIComponent(commentId);
   }
   function useTaskComments(wsId, taskPath) {
-    const [comments, setComments] = (0, import_react35.useState)([]);
-    const [commentCounts, setCommentCounts] = (0, import_react35.useState)({});
-    const [loading, setLoading] = (0, import_react35.useState)(true);
-    const [error, setError] = (0, import_react35.useState)(null);
-    const [aiLoadingIds, setAiLoadingIds] = (0, import_react35.useState)(/* @__PURE__ */ new Set());
-    const [aiErrors, setAiErrors] = (0, import_react35.useState)(/* @__PURE__ */ new Map());
-    const mountedRef = (0, import_react35.useRef)(true);
-    (0, import_react35.useEffect)(() => {
+    const [comments, setComments] = (0, import_react36.useState)([]);
+    const [commentCounts, setCommentCounts] = (0, import_react36.useState)({});
+    const [loading, setLoading] = (0, import_react36.useState)(true);
+    const [error, setError] = (0, import_react36.useState)(null);
+    const [aiLoadingIds, setAiLoadingIds] = (0, import_react36.useState)(/* @__PURE__ */ new Set());
+    const [aiErrors, setAiErrors] = (0, import_react36.useState)(/* @__PURE__ */ new Map());
+    const mountedRef = (0, import_react36.useRef)(true);
+    (0, import_react36.useEffect)(() => {
       mountedRef.current = true;
       return () => {
         mountedRef.current = false;
       };
     }, []);
-    const fetchComments = (0, import_react35.useCallback)(async () => {
+    const fetchComments = (0, import_react36.useCallback)(async () => {
       if (!wsId || !taskPath) return;
       setLoading(true);
       setError(null);
@@ -32057,7 +32141,7 @@
         if (mountedRef.current) setLoading(false);
       }
     }, [wsId, taskPath]);
-    const fetchCounts = (0, import_react35.useCallback)(async () => {
+    const fetchCounts = (0, import_react36.useCallback)(async () => {
       if (!wsId) return;
       try {
         const res = await fetch(getApiBase() + "/comment-counts/" + encodeURIComponent(wsId));
@@ -32067,11 +32151,11 @@
       } catch {
       }
     }, [wsId]);
-    (0, import_react35.useEffect)(() => {
+    (0, import_react36.useEffect)(() => {
       fetchComments();
       fetchCounts();
     }, [fetchComments, fetchCounts]);
-    const addComment = (0, import_react35.useCallback)(async (req) => {
+    const addComment = (0, import_react36.useCallback)(async (req) => {
       const res = await fetch(commentsUrl(wsId, taskPath), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -32085,7 +32169,7 @@
       }
       return comment;
     }, [wsId, taskPath]);
-    const updateCommentFn = (0, import_react35.useCallback)(async (id, req) => {
+    const updateCommentFn = (0, import_react36.useCallback)(async (id, req) => {
       const res = await fetch(commentUrl(wsId, taskPath, id), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -32099,20 +32183,20 @@
       }
       return comment;
     }, [wsId, taskPath]);
-    const deleteCommentFn = (0, import_react35.useCallback)(async (id) => {
+    const deleteCommentFn = (0, import_react36.useCallback)(async (id) => {
       const res = await fetch(commentUrl(wsId, taskPath, id), { method: "DELETE" });
       if (!res.ok) throw new Error("Failed to delete comment");
       if (mountedRef.current) {
         setComments((prev) => prev.filter((c) => c.id !== id));
       }
     }, [wsId, taskPath]);
-    const resolveComment = (0, import_react35.useCallback)(async (id) => {
+    const resolveComment = (0, import_react36.useCallback)(async (id) => {
       return updateCommentFn(id, { status: "resolved" });
     }, [updateCommentFn]);
-    const unresolveComment = (0, import_react35.useCallback)(async (id) => {
+    const unresolveComment = (0, import_react36.useCallback)(async (id) => {
       return updateCommentFn(id, { status: "open" });
     }, [updateCommentFn]);
-    const askAI = (0, import_react35.useCallback)(async (id, options = {}) => {
+    const askAI = (0, import_react36.useCallback)(async (id, options = {}) => {
       const { commandId, customQuestion, documentContext } = options;
       setAiLoadingIds((prev) => new Set(prev).add(id));
       setAiErrors((prev) => {
@@ -32147,14 +32231,14 @@
         }
       }
     }, [wsId, taskPath]);
-    const clearAiError = (0, import_react35.useCallback)((id) => {
+    const clearAiError = (0, import_react36.useCallback)((id) => {
       setAiErrors((prev) => {
         const m = new Map(prev);
         m.delete(id);
         return m;
       });
     }, []);
-    const refresh = (0, import_react35.useCallback)(async () => {
+    const refresh = (0, import_react36.useCallback)(async () => {
       await Promise.all([fetchComments(), fetchCounts()]);
     }, [fetchComments, fetchCounts]);
     return {
@@ -32176,10 +32260,10 @@
   }
 
   // src/server/spa/client/react/tasks/comments/CommentSidebar.tsx
-  var import_react38 = __toESM(require_react());
+  var import_react39 = __toESM(require_react());
 
   // src/server/spa/client/react/tasks/comments/CommentCard.tsx
-  var import_react37 = __toESM(require_react());
+  var import_react38 = __toESM(require_react());
 
   // src/server/spa/client/react/tasks/comments/CommentReply.tsx
   var import_jsx_runtime34 = __toESM(require_jsx_runtime());
@@ -32215,7 +32299,7 @@
   }
 
   // src/server/spa/client/react/tasks/comments/AICommandMenu.tsx
-  var import_react36 = __toESM(require_react());
+  var import_react37 = __toESM(require_react());
   var import_react_dom4 = __toESM(require_react_dom());
 
   // src/server/spa/client/react/shared/ai-commands.ts
@@ -32247,14 +32331,14 @@
     triggerClassName,
     "data-testid": testIdPrefix = "ai"
   }) {
-    const [menuOpen, setMenuOpen] = (0, import_react36.useState)(false);
-    const [customInputOpen, setCustomInputOpen] = (0, import_react36.useState)(false);
-    const [customText, setCustomText] = (0, import_react36.useState)("");
-    const [menuPos, setMenuPos] = (0, import_react36.useState)({ top: 0, left: 0 });
-    const triggerRef = (0, import_react36.useRef)(null);
-    const menuRef = (0, import_react36.useRef)(null);
-    const customInputRef = (0, import_react36.useRef)(null);
-    const handleToggleMenu = (0, import_react36.useCallback)((e) => {
+    const [menuOpen, setMenuOpen] = (0, import_react37.useState)(false);
+    const [customInputOpen, setCustomInputOpen] = (0, import_react37.useState)(false);
+    const [customText, setCustomText] = (0, import_react37.useState)("");
+    const [menuPos, setMenuPos] = (0, import_react37.useState)({ top: 0, left: 0 });
+    const triggerRef = (0, import_react37.useRef)(null);
+    const menuRef = (0, import_react37.useRef)(null);
+    const customInputRef = (0, import_react37.useRef)(null);
+    const handleToggleMenu = (0, import_react37.useCallback)((e) => {
       e.stopPropagation();
       if (menuOpen) {
         setMenuOpen(false);
@@ -32285,7 +32369,7 @@
       setCustomText("");
       onCommand("custom", text);
     };
-    (0, import_react36.useEffect)(() => {
+    (0, import_react37.useEffect)(() => {
       if (!menuOpen || !menuRef.current || !triggerRef.current) return;
       const menu = menuRef.current.getBoundingClientRect();
       const trigger = triggerRef.current.getBoundingClientRect();
@@ -32294,7 +32378,7 @@
       if (top + menu.height > window.innerHeight - 8) top = trigger.top - menu.height - 4;
       if (top !== menuPos.top || left !== menuPos.left) setMenuPos({ top, left });
     }, [menuOpen]);
-    (0, import_react36.useEffect)(() => {
+    (0, import_react37.useEffect)(() => {
       if (!menuOpen) return;
       const handler = (e) => {
         if (menuRef.current && !menuRef.current.contains(e.target) && triggerRef.current && !triggerRef.current.contains(e.target)) setMenuOpen(false);
@@ -32302,7 +32386,7 @@
       requestAnimationFrame(() => document.addEventListener("mousedown", handler));
       return () => document.removeEventListener("mousedown", handler);
     }, [menuOpen]);
-    (0, import_react36.useEffect)(() => {
+    (0, import_react37.useEffect)(() => {
       if (!menuOpen) return;
       const handler = (e) => {
         if (e.key === "Escape") setMenuOpen(false);
@@ -32419,11 +32503,11 @@
     aiError,
     onClearAiError
   }) {
-    const [editing, setEditing] = (0, import_react37.useState)(false);
-    const [editText, setEditText] = (0, import_react37.useState)(comment.comment);
-    const [confirmDelete, setConfirmDelete] = (0, import_react37.useState)(false);
-    const [showAllReplies, setShowAllReplies] = (0, import_react37.useState)(false);
-    const [aiExpanded, setAiExpanded] = (0, import_react37.useState)(false);
+    const [editing, setEditing] = (0, import_react38.useState)(false);
+    const [editText, setEditText] = (0, import_react38.useState)(comment.comment);
+    const [confirmDelete, setConfirmDelete] = (0, import_react38.useState)(false);
+    const [showAllReplies, setShowAllReplies] = (0, import_react38.useState)(false);
+    const [aiExpanded, setAiExpanded] = (0, import_react38.useState)(false);
     const category = getCommentCategory(comment);
     const info = CATEGORY_INFO[category];
     const isResolved = comment.status === "resolved";
@@ -32591,8 +32675,8 @@
     aiErrors,
     onClearAiError
   }) {
-    const [statusFilter, setStatusFilter] = (0, import_react38.useState)("all");
-    const [categoryFilter, setCategoryFilter] = (0, import_react38.useState)("all");
+    const [statusFilter, setStatusFilter] = (0, import_react39.useState)("all");
+    const [categoryFilter, setCategoryFilter] = (0, import_react39.useState)("all");
     const filtered = filteredComments ?? comments.filter((c) => {
       if (statusFilter !== "all" && c.status !== statusFilter) return false;
       if (categoryFilter !== "all" && getCommentCategory(c) !== categoryFilter) return false;
@@ -32701,7 +32785,7 @@
   }
 
   // src/server/spa/client/react/tasks/comments/ContextMenu.tsx
-  var import_react39 = __toESM(require_react());
+  var import_react40 = __toESM(require_react());
   var import_react_dom5 = __toESM(require_react_dom());
   var import_jsx_runtime38 = __toESM(require_jsx_runtime());
   var VIEWPORT_MARGIN = 8;
@@ -32722,11 +32806,11 @@
     idx,
     onClose
   }) {
-    const [open, setOpen] = (0, import_react39.useState)(false);
-    const rowRef = (0, import_react39.useRef)(null);
-    const subRef = (0, import_react39.useRef)(null);
-    const handleEnter = (0, import_react39.useCallback)(() => setOpen(true), []);
-    const handleLeave = (0, import_react39.useCallback)((e) => {
+    const [open, setOpen] = (0, import_react40.useState)(false);
+    const rowRef = (0, import_react40.useRef)(null);
+    const subRef = (0, import_react40.useRef)(null);
+    const handleEnter = (0, import_react40.useCallback)(() => setOpen(true), []);
+    const handleLeave = (0, import_react40.useCallback)((e) => {
       const related = e.relatedTarget;
       if (subRef.current?.contains(related) || rowRef.current?.contains(related)) return;
       setOpen(false);
@@ -32809,21 +32893,21 @@
     );
   }
   function ContextMenu({ position, items, onClose }) {
-    const menuRef = (0, import_react39.useRef)(null);
-    const [clamped, setClamped] = (0, import_react39.useState)(position);
-    (0, import_react39.useEffect)(() => {
+    const menuRef = (0, import_react40.useRef)(null);
+    const [clamped, setClamped] = (0, import_react40.useState)(position);
+    (0, import_react40.useEffect)(() => {
       if (!menuRef.current) return;
       const rect = menuRef.current.getBoundingClientRect();
       setClamped(clampMenuPosition(position, rect.width, rect.height));
     }, [position]);
-    (0, import_react39.useEffect)(() => {
+    (0, import_react40.useEffect)(() => {
       const handler = (e) => {
         if (e.key === "Escape") onClose();
       };
       document.addEventListener("keydown", handler);
       return () => document.removeEventListener("keydown", handler);
     }, [onClose]);
-    (0, import_react39.useEffect)(() => {
+    (0, import_react40.useEffect)(() => {
       const handler = (e) => {
         if (menuRef.current && !menuRef.current.contains(e.target)) {
           onClose();
@@ -32900,7 +32984,7 @@
   }
 
   // src/server/spa/client/react/tasks/comments/InlineCommentPopup.tsx
-  var import_react40 = __toESM(require_react());
+  var import_react41 = __toESM(require_react());
   var import_react_dom6 = __toESM(require_react_dom());
   var import_jsx_runtime39 = __toESM(require_jsx_runtime());
   var VIEWPORT_MARGIN2 = 8;
@@ -32921,19 +33005,19 @@
     return { top, left };
   }
   function InlineCommentPopup({ position, onSubmit, onCancel }) {
-    const [text, setText] = (0, import_react40.useState)("");
-    const [category, setCategory] = (0, import_react40.useState)("general");
-    const [clampedPos, setClampedPos] = (0, import_react40.useState)(position);
-    const textareaRef = (0, import_react40.useRef)(null);
-    const popupRef = (0, import_react40.useRef)(null);
-    (0, import_react40.useEffect)(() => {
+    const [text, setText] = (0, import_react41.useState)("");
+    const [category, setCategory] = (0, import_react41.useState)("general");
+    const [clampedPos, setClampedPos] = (0, import_react41.useState)(position);
+    const textareaRef = (0, import_react41.useRef)(null);
+    const popupRef = (0, import_react41.useRef)(null);
+    (0, import_react41.useEffect)(() => {
       textareaRef.current?.focus();
       if (popupRef.current) {
         const rect = popupRef.current.getBoundingClientRect();
         setClampedPos(clampToViewport(position, rect.width, rect.height));
       }
     }, [position]);
-    (0, import_react40.useEffect)(() => {
+    (0, import_react41.useEffect)(() => {
       const handler = (e) => {
         if (e.key === "Escape") onCancel();
         if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
@@ -32944,7 +33028,7 @@
       document.addEventListener("keydown", handler);
       return () => document.removeEventListener("keydown", handler);
     }, [text, category]);
-    (0, import_react40.useEffect)(() => {
+    (0, import_react41.useEffect)(() => {
       const handler = (e) => {
         if (popupRef.current && !popupRef.current.contains(e.target)) {
           onCancel();
@@ -33017,7 +33101,7 @@
   }
 
   // src/server/spa/client/react/tasks/comments/CommentHighlight.tsx
-  var import_react41 = __toESM(require_react());
+  var import_react42 = __toESM(require_react());
   function buildTextRange(container2, needle) {
     const fullText = container2.textContent || "";
     const idx = fullText.indexOf(needle);
@@ -33060,7 +33144,7 @@
   }
   var MARK_CLASS = "bg-yellow-200 dark:bg-yellow-800/50 cursor-pointer rounded-sm";
   function CommentHighlight({ comments, containerRef, onCommentClick }) {
-    (0, import_react41.useEffect)(() => {
+    (0, import_react42.useEffect)(() => {
       const container2 = containerRef.current;
       if (!container2) return;
       container2.querySelectorAll("mark[data-comment-id]").forEach((el) => {
@@ -33095,7 +33179,7 @@
   }
 
   // src/server/spa/client/react/tasks/comments/CommentPopover.tsx
-  var import_react42 = __toESM(require_react());
+  var import_react43 = __toESM(require_react());
   var import_react_dom7 = __toESM(require_react_dom());
   var import_jsx_runtime40 = __toESM(require_jsx_runtime());
   var ACTION_BTN2 = "inline-flex items-center justify-center w-6 h-6 rounded transition-colors text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/[0.06] dark:hover:bg-white/[0.08]";
@@ -33112,27 +33196,27 @@
     aiError,
     onClearAiError
   }) {
-    const popoverRef = (0, import_react42.useRef)(null);
-    const [clampedPos, setClampedPos] = (0, import_react42.useState)(position);
-    const [editing, setEditing] = (0, import_react42.useState)(false);
-    const [editText, setEditText] = (0, import_react42.useState)(comment.comment);
+    const popoverRef = (0, import_react43.useRef)(null);
+    const [clampedPos, setClampedPos] = (0, import_react43.useState)(position);
+    const [editing, setEditing] = (0, import_react43.useState)(false);
+    const [editText, setEditText] = (0, import_react43.useState)(comment.comment);
     const category = getCommentCategory(comment);
     const info = CATEGORY_INFO[category];
     const isResolved = comment.status === "resolved";
-    (0, import_react42.useEffect)(() => {
+    (0, import_react43.useEffect)(() => {
       if (popoverRef.current) {
         const rect = popoverRef.current.getBoundingClientRect();
         setClampedPos(clampToViewport(position, rect.width, rect.height));
       }
     }, [position]);
-    (0, import_react42.useEffect)(() => {
+    (0, import_react43.useEffect)(() => {
       const handler = (e) => {
         if (e.key === "Escape") onClose();
       };
       document.addEventListener("keydown", handler);
       return () => document.removeEventListener("keydown", handler);
     }, [onClose]);
-    (0, import_react42.useEffect)(() => {
+    (0, import_react43.useEffect)(() => {
       const handler = (e) => {
         if (popoverRef.current && !popoverRef.current.contains(e.target)) {
           onClose();
@@ -33297,18 +33381,18 @@
     filePath,
     fetchMode = "tasks"
   }) {
-    const [rawContent, setRawContent] = (0, import_react43.useState)("");
-    const [loading, setLoading] = (0, import_react43.useState)(true);
-    const [error, setError] = (0, import_react43.useState)(null);
-    const previewRef = (0, import_react43.useRef)(null);
-    const [contextMenuVisible, setContextMenuVisible] = (0, import_react43.useState)(false);
-    const [contextMenuPos, setContextMenuPos] = (0, import_react43.useState)({ x: 0, y: 0 });
-    const [savedSelection, setSavedSelection] = (0, import_react43.useState)(null);
-    const [popupVisible, setPopupVisible] = (0, import_react43.useState)(false);
-    const [popupPos, setPopupPos] = (0, import_react43.useState)({ top: 0, left: 0 });
-    const [pendingSelection, setPendingSelection] = (0, import_react43.useState)(null);
-    const [activePopoverComment, setActivePopoverComment] = (0, import_react43.useState)(null);
-    const [popoverPos, setPopoverPos] = (0, import_react43.useState)({ top: 0, left: 0 });
+    const [rawContent, setRawContent] = (0, import_react44.useState)("");
+    const [loading, setLoading] = (0, import_react44.useState)(true);
+    const [error, setError] = (0, import_react44.useState)(null);
+    const previewRef = (0, import_react44.useRef)(null);
+    const [contextMenuVisible, setContextMenuVisible] = (0, import_react44.useState)(false);
+    const [contextMenuPos, setContextMenuPos] = (0, import_react44.useState)({ x: 0, y: 0 });
+    const [savedSelection, setSavedSelection] = (0, import_react44.useState)(null);
+    const [popupVisible, setPopupVisible] = (0, import_react44.useState)(false);
+    const [popupPos, setPopupPos] = (0, import_react44.useState)({ top: 0, left: 0 });
+    const [pendingSelection, setPendingSelection] = (0, import_react44.useState)(null);
+    const [activePopoverComment, setActivePopoverComment] = (0, import_react44.useState)(null);
+    const [popoverPos, setPopoverPos] = (0, import_react44.useState)({ top: 0, left: 0 });
     const {
       comments,
       loading: commentsLoading,
@@ -33329,7 +33413,7 @@
       stripFrontmatter: true
     });
     const showCommentListPanel = comments.length > 0;
-    (0, import_react43.useEffect)(() => {
+    (0, import_react44.useEffect)(() => {
       let cancelled = false;
       setLoading(true);
       setError(null);
@@ -33360,7 +33444,7 @@
         cancelled = true;
       };
     }, [wsId, filePath, fetchMode]);
-    (0, import_react43.useEffect)(() => {
+    (0, import_react44.useEffect)(() => {
       const handleMouseUp = () => {
         const sel = window.getSelection();
         if (sel && !sel.isCollapsed && sel.rangeCount && sel.toString().trim().length >= MIN_SELECTION_LENGTH) {
@@ -33388,12 +33472,12 @@
       document.addEventListener("mouseup", handleMouseUp);
       return () => document.removeEventListener("mouseup", handleMouseUp);
     }, []);
-    const handleContextMenu = (0, import_react43.useCallback)((e) => {
+    const handleContextMenu = (0, import_react44.useCallback)((e) => {
       e.preventDefault();
       setContextMenuPos({ x: e.clientX, y: e.clientY });
       setContextMenuVisible(true);
     }, []);
-    const handleAddCommentFromMenu = (0, import_react43.useCallback)(() => {
+    const handleAddCommentFromMenu = (0, import_react44.useCallback)(() => {
       if (!savedSelection) return;
       const rect = savedSelection.range.getBoundingClientRect();
       setPopupPos({ top: rect.bottom + 8, left: Math.max(8, rect.left) });
@@ -33407,7 +33491,7 @@
       setContextMenuVisible(false);
       setPopupVisible(true);
     }, [savedSelection]);
-    const handlePopupSubmit = (0, import_react43.useCallback)(async (text, category) => {
+    const handlePopupSubmit = (0, import_react44.useCallback)(async (text, category) => {
       if (!pendingSelection) return;
       const selection = {
         startLine: pendingSelection.startLine,
@@ -33438,11 +33522,11 @@
       setPopupVisible(false);
       setPendingSelection(null);
     }, [pendingSelection, rawContent, filePath, addComment]);
-    const handlePopupCancel = (0, import_react43.useCallback)(() => {
+    const handlePopupCancel = (0, import_react44.useCallback)(() => {
       setPopupVisible(false);
       setPendingSelection(null);
     }, []);
-    const handleCommentClick = (0, import_react43.useCallback)((comment) => {
+    const handleCommentClick = (0, import_react44.useCallback)((comment) => {
       if (!previewRef.current) return;
       const mark = previewRef.current.querySelector(`mark[data-comment-id="${comment.id}"]`);
       if (!mark) return;
@@ -33457,7 +33541,7 @@
       setPopoverPos({ top: rect.bottom + 8, left: Math.max(8, rect.left) });
       setActivePopoverComment(comment);
     }, []);
-    const handleAskAIFromSelection = (0, import_react43.useCallback)(async (commandId) => {
+    const handleAskAIFromSelection = (0, import_react44.useCallback)(async (commandId) => {
       if (!savedSelection) return;
       setContextMenuVisible(false);
       const selection = {
@@ -33491,7 +33575,7 @@
       const context = extractDocumentContext(rawContent, newComment);
       await askAI(newComment.id, { commandId, documentContext: context });
     }, [savedSelection, rawContent, filePath, addComment, askAI]);
-    const handleCustomAskAIFromSelection = (0, import_react43.useCallback)(async () => {
+    const handleCustomAskAIFromSelection = (0, import_react44.useCallback)(async () => {
       if (!savedSelection) return;
       setContextMenuVisible(false);
       const question = window.prompt("Ask AI a custom question about the selection:");
@@ -33744,7 +33828,7 @@
   }
 
   // src/server/spa/client/react/tasks/FolderActionDialog.tsx
-  var import_react44 = __toESM(require_react());
+  var import_react45 = __toESM(require_react());
   var import_jsx_runtime44 = __toESM(require_jsx_runtime());
   function FolderActionDialog({
     open,
@@ -33757,15 +33841,15 @@
     onClose,
     onConfirm
   }) {
-    const [name, setName] = (0, import_react44.useState)(initialValue);
-    (0, import_react44.useEffect)(() => {
+    const [name, setName] = (0, import_react45.useState)(initialValue);
+    (0, import_react45.useEffect)(() => {
       if (open) setName(initialValue);
     }, [open, initialValue]);
-    const handleConfirm = (0, import_react44.useCallback)(() => {
+    const handleConfirm = (0, import_react45.useCallback)(() => {
       const trimmed = name.trim();
       if (trimmed) onConfirm(trimmed);
     }, [name, onConfirm]);
-    const handleKeyDown = (0, import_react44.useCallback)(
+    const handleKeyDown = (0, import_react45.useCallback)(
       (e) => {
         if (e.key === "Enter") {
           e.preventDefault();
@@ -33814,7 +33898,7 @@
   }
 
   // src/server/spa/client/react/tasks/FolderMoveDialog.tsx
-  var import_react45 = __toESM(require_react());
+  var import_react46 = __toESM(require_react());
   var import_jsx_runtime45 = __toESM(require_jsx_runtime());
   function buildDestinations(folder, sourceRelativePath, depth = 0, acc = []) {
     if (folder.relativePath === sourceRelativePath) return acc;
@@ -33833,17 +33917,17 @@
     tree,
     onConfirm
   }) {
-    const [selected, setSelected] = (0, import_react45.useState)("");
-    const [error, setError] = (0, import_react45.useState)(null);
-    const [submitting, setSubmitting] = (0, import_react45.useState)(false);
-    const options = (0, import_react45.useMemo)(() => {
+    const [selected, setSelected] = (0, import_react46.useState)("");
+    const [error, setError] = (0, import_react46.useState)(null);
+    const [submitting, setSubmitting] = (0, import_react46.useState)(false);
+    const options = (0, import_react46.useMemo)(() => {
       if (!sourceFolder) return [];
       return [
         { label: "Tasks Root", relativePath: "", depth: 0 },
         ...buildDestinations(tree, sourceFolder.relativePath)
       ];
     }, [tree, sourceFolder]);
-    const handleConfirm = (0, import_react45.useCallback)(async () => {
+    const handleConfirm = (0, import_react46.useCallback)(async () => {
       setError(null);
       setSubmitting(true);
       try {
@@ -33910,7 +33994,7 @@
   }
 
   // src/server/spa/client/react/tasks/FileMoveDialog.tsx
-  var import_react46 = __toESM(require_react());
+  var import_react47 = __toESM(require_react());
   var import_jsx_runtime46 = __toESM(require_jsx_runtime());
   function FileMoveDialog({
     open,
@@ -33919,14 +34003,14 @@
     tree,
     onConfirm
   }) {
-    const [selected, setSelected] = (0, import_react46.useState)("");
-    const [error, setError] = (0, import_react46.useState)(null);
-    const [submitting, setSubmitting] = (0, import_react46.useState)(false);
-    const options = (0, import_react46.useMemo)(() => [
+    const [selected, setSelected] = (0, import_react47.useState)("");
+    const [error, setError] = (0, import_react47.useState)(null);
+    const [submitting, setSubmitting] = (0, import_react47.useState)(false);
+    const options = (0, import_react47.useMemo)(() => [
       { label: "Tasks Root", relativePath: "", depth: 0 },
       ...buildDestinations(tree, "\0")
     ], [tree]);
-    const handleConfirm = (0, import_react46.useCallback)(async () => {
+    const handleConfirm = (0, import_react47.useCallback)(async () => {
       setError(null);
       setSubmitting(true);
       try {
@@ -33993,7 +34077,7 @@
   }
 
   // src/server/spa/client/react/shared/BulkFollowPromptDialog.tsx
-  var import_react47 = __toESM(require_react());
+  var import_react48 = __toESM(require_react());
   var import_jsx_runtime47 = __toESM(require_jsx_runtime());
   var DEFAULT_TASKS_FOLDER3 = ".vscode/tasks";
   async function getTasksFolderPath3(wsId) {
@@ -34031,14 +34115,14 @@
     const { state } = useApp();
     const { model, setModel } = usePreferences();
     const { addToast } = useGlobalToast();
-    const [models, setModels] = (0, import_react47.useState)([]);
-    const [selectedWsId, setSelectedWsId] = (0, import_react47.useState)(wsId);
-    const [prompts, setPrompts] = (0, import_react47.useState)([]);
-    const [skills, setSkills] = (0, import_react47.useState)([]);
-    const [loading, setLoading] = (0, import_react47.useState)(true);
-    const [submitting, setSubmitting] = (0, import_react47.useState)(false);
-    const taskFiles = (0, import_react47.useMemo)(() => collectMarkdownFiles(folder), [folder]);
-    (0, import_react47.useEffect)(() => {
+    const [models, setModels] = (0, import_react48.useState)([]);
+    const [selectedWsId, setSelectedWsId] = (0, import_react48.useState)(wsId);
+    const [prompts, setPrompts] = (0, import_react48.useState)([]);
+    const [skills, setSkills] = (0, import_react48.useState)([]);
+    const [loading, setLoading] = (0, import_react48.useState)(true);
+    const [submitting, setSubmitting] = (0, import_react48.useState)(false);
+    const taskFiles = (0, import_react48.useMemo)(() => collectMarkdownFiles(folder), [folder]);
+    (0, import_react48.useEffect)(() => {
       let cancelled = false;
       (async () => {
         try {
@@ -34060,7 +34144,7 @@
         cancelled = true;
       };
     }, [selectedWsId]);
-    const handleSubmit = (0, import_react47.useCallback)(async (type2, name, path) => {
+    const handleSubmit = (0, import_react48.useCallback)(async (type2, name, path) => {
       setSubmitting(true);
       try {
         const ws = state.workspaces.find((w) => w.id === selectedWsId);
@@ -34211,35 +34295,35 @@
   }
 
   // src/server/spa/client/react/tasks/GenerateTaskDialog.tsx
-  var import_react49 = __toESM(require_react());
+  var import_react50 = __toESM(require_react());
 
   // src/server/spa/client/react/hooks/useTaskGeneration.ts
-  var import_react48 = __toESM(require_react());
+  var import_react49 = __toESM(require_react());
   function useTaskGeneration(wsId) {
-    const [status, setStatus] = (0, import_react48.useState)("idle");
-    const [progressMessage, setProgressMessage] = (0, import_react48.useState)(null);
-    const [chunks, setChunks] = (0, import_react48.useState)([]);
-    const [result, setResult] = (0, import_react48.useState)(null);
-    const [error, setError] = (0, import_react48.useState)(null);
-    const abortRef = (0, import_react48.useRef)(null);
-    const mountedRef = (0, import_react48.useRef)(true);
-    (0, import_react48.useEffect)(() => {
+    const [status, setStatus] = (0, import_react49.useState)("idle");
+    const [progressMessage, setProgressMessage] = (0, import_react49.useState)(null);
+    const [chunks, setChunks] = (0, import_react49.useState)([]);
+    const [result, setResult] = (0, import_react49.useState)(null);
+    const [error, setError] = (0, import_react49.useState)(null);
+    const abortRef = (0, import_react49.useRef)(null);
+    const mountedRef = (0, import_react49.useRef)(true);
+    (0, import_react49.useEffect)(() => {
       mountedRef.current = true;
       return () => {
         mountedRef.current = false;
       };
     }, []);
-    const reset = (0, import_react48.useCallback)(() => {
+    const reset = (0, import_react49.useCallback)(() => {
       setStatus("idle");
       setProgressMessage(null);
       setChunks([]);
       setResult(null);
       setError(null);
     }, []);
-    const cancel = (0, import_react48.useCallback)(() => {
+    const cancel = (0, import_react49.useCallback)(() => {
       abortRef.current?.abort();
     }, []);
-    const generate = (0, import_react48.useCallback)(async (params) => {
+    const generate = (0, import_react49.useCallback)(async (params) => {
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
@@ -34377,17 +34461,17 @@
     onClose
   }) {
     const { model: savedModel, setModel: persistModel } = usePreferences();
-    const [prompt, setPrompt] = (0, import_react49.useState)("");
-    const [name, setName] = (0, import_react49.useState)("");
-    const [targetFolder, setTargetFolder] = (0, import_react49.useState)(initialFolder);
-    const [model, setModel] = (0, import_react49.useState)("");
-    (0, import_react49.useEffect)(() => {
+    const [prompt, setPrompt] = (0, import_react50.useState)("");
+    const [name, setName] = (0, import_react50.useState)("");
+    const [targetFolder, setTargetFolder] = (0, import_react50.useState)(initialFolder);
+    const [model, setModel] = (0, import_react50.useState)("");
+    (0, import_react50.useEffect)(() => {
       if (savedModel && !model) setModel(savedModel);
     }, [savedModel]);
-    const [models, setModels] = (0, import_react49.useState)([]);
-    const [folders, setFolders] = (0, import_react49.useState)([""]);
+    const [models, setModels] = (0, import_react50.useState)([]);
+    const [folders, setFolders] = (0, import_react50.useState)([""]);
     const { status, chunks, progressMessage, result, error, generate, cancel, reset } = useTaskGeneration(wsId);
-    (0, import_react49.useEffect)(() => {
+    (0, import_react50.useEffect)(() => {
       let cancelled = false;
       fetch(getApiBase() + "/queue/models").then((r) => r.ok ? r.json() : []).then((data) => {
         if (!cancelled) setModels(data?.models ?? (Array.isArray(data) ? data : []));
@@ -34397,7 +34481,7 @@
         cancelled = true;
       };
     }, []);
-    (0, import_react49.useEffect)(() => {
+    (0, import_react50.useEffect)(() => {
       let cancelled = false;
       fetch(getApiBase() + `/workspaces/${encodeURIComponent(wsId)}/tasks`).then((r) => r.ok ? r.json() : null).then((data) => {
         if (!cancelled && data) {
@@ -34410,16 +34494,16 @@
         cancelled = true;
       };
     }, [wsId]);
-    const outputRef = (0, import_react49.useRef)(null);
-    (0, import_react49.useEffect)(() => {
+    const outputRef = (0, import_react50.useRef)(null);
+    (0, import_react50.useEffect)(() => {
       if (outputRef.current) outputRef.current.scrollTop = outputRef.current.scrollHeight;
     }, [chunks]);
-    (0, import_react49.useEffect)(() => {
+    (0, import_react50.useEffect)(() => {
       if (status === "complete" && result?.filePath) {
         onSuccess(result.filePath);
       }
     }, [status, result, onSuccess]);
-    const handleGenerate = (0, import_react49.useCallback)(() => {
+    const handleGenerate = (0, import_react50.useCallback)(() => {
       generate({
         prompt: prompt.trim(),
         name: name.trim() || void 0,
@@ -34432,7 +34516,7 @@
     const isGenerating = status === "generating";
     const isComplete = status === "complete";
     const isError = status === "error";
-    const noop = (0, import_react49.useCallback)(() => {
+    const noop = (0, import_react50.useCallback)(() => {
     }, []);
     const footer = /* @__PURE__ */ (0, import_jsx_runtime48.jsxs)(import_jsx_runtime48.Fragment, { children: [
       /* @__PURE__ */ (0, import_jsx_runtime48.jsx)(
@@ -34632,19 +34716,19 @@
   function TasksPanelInner({ wsId }) {
     const { tree, commentCounts, loading, error, refresh } = useTaskTree(wsId);
     const { openFilePath, selectedFilePaths, clearSelection, selectedFolderPath } = useTaskPanel();
-    const [initialParams] = (0, import_react50.useState)(() => parseTaskHashParams(location.hash, wsId));
-    const scrollRef = (0, import_react50.useRef)(null);
-    const [generateDialog, setGenerateDialog] = (0, import_react50.useState)({ open: false, targetFolder: void 0 });
+    const [initialParams] = (0, import_react51.useState)(() => parseTaskHashParams(location.hash, wsId));
+    const scrollRef = (0, import_react51.useRef)(null);
+    const [generateDialog, setGenerateDialog] = (0, import_react51.useState)({ open: false, targetFolder: void 0 });
     const { state: appState } = useApp();
     const { dispatch: queueDispatch } = useQueue();
     const { addToast } = useGlobalToast();
     const folderActions = useFolderActions(wsId);
     const fileActions = useFileActions(wsId);
-    const [fileCtxMenu, setFileCtxMenu] = (0, import_react50.useState)(null);
-    const [fileDialog, setFileDialog] = (0, import_react50.useState)({ action: null, ctxItem: null, submitting: false });
-    const [fileMoveDialogOpen, setFileMoveDialogOpen] = (0, import_react50.useState)(false);
-    const [fileMoveCtxItem, setFileMoveCtxItem] = (0, import_react50.useState)(null);
-    const closeFileDialog = (0, import_react50.useCallback)(
+    const [fileCtxMenu, setFileCtxMenu] = (0, import_react51.useState)(null);
+    const [fileDialog, setFileDialog] = (0, import_react51.useState)({ action: null, ctxItem: null, submitting: false });
+    const [fileMoveDialogOpen, setFileMoveDialogOpen] = (0, import_react51.useState)(false);
+    const [fileMoveCtxItem, setFileMoveCtxItem] = (0, import_react51.useState)(null);
+    const closeFileDialog = (0, import_react51.useCallback)(
       () => setFileDialog({ action: null, ctxItem: null, submitting: false }),
       []
     );
@@ -34666,14 +34750,14 @@
         isArchived: item.isArchived
       };
     }
-    const handleFileContextMenu = (0, import_react50.useCallback)(
+    const handleFileContextMenu = (0, import_react51.useCallback)(
       (item, x, y) => {
         setFileCtxMenu({ ctxItem: buildFileCtxInfo(item), x, y });
       },
       // eslint-disable-next-line react-hooks/exhaustive-deps
       []
     );
-    const handleFileRename = (0, import_react50.useCallback)(async (newName) => {
+    const handleFileRename = (0, import_react51.useCallback)(async (newName) => {
       if (!fileDialog.ctxItem) return;
       setFileDialog((s) => ({ ...s, submitting: true }));
       try {
@@ -34685,7 +34769,7 @@
         setFileDialog((s) => ({ ...s, submitting: false }));
       }
     }, [fileDialog.ctxItem, fileActions, refresh, closeFileDialog, addToast]);
-    const handleFileDelete = (0, import_react50.useCallback)(async () => {
+    const handleFileDelete = (0, import_react51.useCallback)(async () => {
       if (!fileDialog.ctxItem) return;
       setFileDialog((s) => ({ ...s, submitting: true }));
       try {
@@ -34699,7 +34783,7 @@
         setFileDialog((s) => ({ ...s, submitting: false }));
       }
     }, [fileDialog.ctxItem, fileActions, refresh, closeFileDialog, addToast]);
-    const handleFileMoveConfirm = (0, import_react50.useCallback)(async (destinationRelativePath) => {
+    const handleFileMoveConfirm = (0, import_react51.useCallback)(async (destinationRelativePath) => {
       if (!fileMoveCtxItem) return;
       for (const p of fileMoveCtxItem.paths) {
         await fileActions.moveFile(p, destinationRelativePath);
@@ -34708,23 +34792,23 @@
       setFileMoveDialogOpen(false);
       setFileMoveCtxItem(null);
     }, [fileMoveCtxItem, fileActions, refresh]);
-    const [folderCtxMenu, setFolderCtxMenu] = (0, import_react50.useState)(null);
-    const handleFolderContextMenu = (0, import_react50.useCallback)(
+    const [folderCtxMenu, setFolderCtxMenu] = (0, import_react51.useState)(null);
+    const handleFolderContextMenu = (0, import_react51.useCallback)(
       (folder, x, y) => setFolderCtxMenu({ folder, x, y, source: "folder-row" }),
       []
     );
-    const handleFolderEmptySpaceContextMenu = (0, import_react50.useCallback)(
+    const handleFolderEmptySpaceContextMenu = (0, import_react51.useCallback)(
       (folder, x, y) => setFolderCtxMenu({ folder, x, y, source: "empty-space" }),
       []
     );
-    const [folderDialog, setFolderDialog] = (0, import_react50.useState)({ action: null, folder: null, submitting: false });
-    const [moveDialogOpen, setMoveDialogOpen] = (0, import_react50.useState)(false);
-    const [moveSourceFolder, setMoveSourceFolder] = (0, import_react50.useState)(null);
-    const closeFolderDialog = (0, import_react50.useCallback)(
+    const [folderDialog, setFolderDialog] = (0, import_react51.useState)({ action: null, folder: null, submitting: false });
+    const [moveDialogOpen, setMoveDialogOpen] = (0, import_react51.useState)(false);
+    const [moveSourceFolder, setMoveSourceFolder] = (0, import_react51.useState)(null);
+    const closeFolderDialog = (0, import_react51.useCallback)(
       () => setFolderDialog({ action: null, folder: null, submitting: false }),
       []
     );
-    const handleFolderContextMenuAction = (0, import_react50.useCallback)(
+    const handleFolderContextMenuAction = (0, import_react51.useCallback)(
       (actionKey, folder) => {
         setFolderCtxMenu(null);
         if (actionKey === "rename") setFolderDialog({ action: "rename", folder, submitting: false });
@@ -34745,7 +34829,7 @@
       },
       []
     );
-    const handleRename = (0, import_react50.useCallback)(async (newName) => {
+    const handleRename = (0, import_react51.useCallback)(async (newName) => {
       if (!folderDialog.folder) return;
       setFolderDialog((s) => ({ ...s, submitting: true }));
       try {
@@ -34757,7 +34841,7 @@
         setFolderDialog((s) => ({ ...s, submitting: false }));
       }
     }, [folderDialog.folder, folderActions, refresh, closeFolderDialog, addToast]);
-    const handleCreateSubfolder = (0, import_react50.useCallback)(async (name) => {
+    const handleCreateSubfolder = (0, import_react51.useCallback)(async (name) => {
       if (!folderDialog.folder) return;
       setFolderDialog((s) => ({ ...s, submitting: true }));
       try {
@@ -34769,7 +34853,7 @@
         setFolderDialog((s) => ({ ...s, submitting: false }));
       }
     }, [folderDialog.folder, folderActions, refresh, closeFolderDialog, addToast]);
-    const handleCreateTask = (0, import_react50.useCallback)(async (taskName) => {
+    const handleCreateTask = (0, import_react51.useCallback)(async (taskName) => {
       if (!folderDialog.folder) return;
       setFolderDialog((s) => ({ ...s, submitting: true }));
       try {
@@ -34781,7 +34865,7 @@
         setFolderDialog((s) => ({ ...s, submitting: false }));
       }
     }, [folderDialog.folder, folderActions, refresh, closeFolderDialog, addToast]);
-    const handleDelete = (0, import_react50.useCallback)(async () => {
+    const handleDelete = (0, import_react51.useCallback)(async () => {
       if (!folderDialog.folder) return;
       setFolderDialog((s) => ({ ...s, submitting: true }));
       try {
@@ -34793,14 +34877,14 @@
         setFolderDialog((s) => ({ ...s, submitting: false }));
       }
     }, [folderDialog.folder, folderActions, refresh, closeFolderDialog, addToast]);
-    const handleMoveConfirm = (0, import_react50.useCallback)(async (destinationRelativePath) => {
+    const handleMoveConfirm = (0, import_react51.useCallback)(async (destinationRelativePath) => {
       if (!moveSourceFolder) return;
       await folderActions.moveFolder(moveSourceFolder.relativePath, destinationRelativePath);
       refresh();
       setMoveDialogOpen(false);
       setMoveSourceFolder(null);
     }, [moveSourceFolder, folderActions, refresh]);
-    (0, import_react50.useEffect)(() => {
+    (0, import_react51.useEffect)(() => {
       scrollToEnd(scrollRef.current);
     }, [openFilePath]);
     const handleColumnsChange = () => {
@@ -35225,15 +35309,15 @@
   }
 
   // src/server/spa/client/react/repos/RepoQueueTab.tsx
-  var import_react51 = __toESM(require_react());
+  var import_react52 = __toESM(require_react());
   var import_jsx_runtime50 = __toESM(require_jsx_runtime());
   function RepoQueueTab({ workspaceId }) {
-    const [running, setRunning] = (0, import_react51.useState)([]);
-    const [queued, setQueued] = (0, import_react51.useState)([]);
-    const [history2, setHistory] = (0, import_react51.useState)([]);
-    const [showHistory, setShowHistory] = (0, import_react51.useState)(false);
-    const [loading, setLoading] = (0, import_react51.useState)(true);
-    const [now, setNow] = (0, import_react51.useState)(Date.now());
+    const [running, setRunning] = (0, import_react52.useState)([]);
+    const [queued, setQueued] = (0, import_react52.useState)([]);
+    const [history2, setHistory] = (0, import_react52.useState)([]);
+    const [showHistory, setShowHistory] = (0, import_react52.useState)(false);
+    const [loading, setLoading] = (0, import_react52.useState)(true);
+    const [now, setNow] = (0, import_react52.useState)(Date.now());
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const repoQueue = queueState.repoQueueMap[workspaceId];
     const fetchQueue = async () => {
@@ -35250,19 +35334,19 @@
       }
       setLoading(false);
     };
-    (0, import_react51.useEffect)(() => {
+    (0, import_react52.useEffect)(() => {
       setLoading(true);
       fetchQueue();
     }, [workspaceId]);
-    (0, import_react51.useEffect)(() => {
+    (0, import_react52.useEffect)(() => {
       if (!repoQueue) return;
       setRunning(repoQueue.running);
       setQueued(repoQueue.queued);
       setHistory(repoQueue.history);
       setLoading(false);
     }, [repoQueue]);
-    const hasActive = (0, import_react51.useMemo)(() => running.length > 0, [running]);
-    (0, import_react51.useEffect)(() => {
+    const hasActive = (0, import_react52.useMemo)(() => running.length > 0, [running]);
+    (0, import_react52.useEffect)(() => {
       if (!hasActive) return;
       const timer = setInterval(() => setNow(Date.now()), 1e3);
       return () => clearInterval(timer);
@@ -35391,15 +35475,15 @@
   }
 
   // src/server/spa/client/react/repos/RepoSchedulesTab.tsx
-  var import_react52 = __toESM(require_react());
+  var import_react53 = __toESM(require_react());
   var import_jsx_runtime51 = __toESM(require_jsx_runtime());
   function RepoSchedulesTab({ workspaceId }) {
-    const [schedules, setSchedules] = (0, import_react52.useState)([]);
-    const [loading, setLoading] = (0, import_react52.useState)(true);
-    const [expandedId, setExpandedId] = (0, import_react52.useState)(null);
-    const [history2, setHistory] = (0, import_react52.useState)([]);
-    const [showCreate, setShowCreate] = (0, import_react52.useState)(false);
-    const fetchSchedules = (0, import_react52.useCallback)(async () => {
+    const [schedules, setSchedules] = (0, import_react53.useState)([]);
+    const [loading, setLoading] = (0, import_react53.useState)(true);
+    const [expandedId, setExpandedId] = (0, import_react53.useState)(null);
+    const [history2, setHistory] = (0, import_react53.useState)([]);
+    const [showCreate, setShowCreate] = (0, import_react53.useState)(false);
+    const fetchSchedules = (0, import_react53.useCallback)(async () => {
       try {
         const data = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/schedules`);
         setSchedules(data?.schedules || []);
@@ -35408,11 +35492,11 @@
       }
       setLoading(false);
     }, [workspaceId]);
-    (0, import_react52.useEffect)(() => {
+    (0, import_react53.useEffect)(() => {
       setLoading(true);
       fetchSchedules();
     }, [workspaceId, fetchSchedules]);
-    (0, import_react52.useEffect)(() => {
+    (0, import_react53.useEffect)(() => {
       const handler = (e) => {
         try {
           const msg = JSON.parse(e.data);
@@ -35638,17 +35722,17 @@
     }
   ];
   function CreateScheduleForm({ workspaceId, onCreated, onCancel }) {
-    const [name, setName] = (0, import_react52.useState)("");
-    const [target, setTarget] = (0, import_react52.useState)("");
-    const [mode, setMode] = (0, import_react52.useState)("interval");
-    const [cron, setCron] = (0, import_react52.useState)("0 9 * * *");
-    const [intervalValue, setIntervalValue] = (0, import_react52.useState)("1");
-    const [intervalUnit, setIntervalUnit] = (0, import_react52.useState)("hours");
-    const [onFailure, setOnFailure] = (0, import_react52.useState)("notify");
-    const [error, setError] = (0, import_react52.useState)("");
-    const [submitting, setSubmitting] = (0, import_react52.useState)(false);
-    const [selectedTemplate, setSelectedTemplate] = (0, import_react52.useState)(null);
-    const [params, setParams] = (0, import_react52.useState)({});
+    const [name, setName] = (0, import_react53.useState)("");
+    const [target, setTarget] = (0, import_react53.useState)("");
+    const [mode, setMode] = (0, import_react53.useState)("interval");
+    const [cron, setCron] = (0, import_react53.useState)("0 9 * * *");
+    const [intervalValue, setIntervalValue] = (0, import_react53.useState)("1");
+    const [intervalUnit, setIntervalUnit] = (0, import_react53.useState)("hours");
+    const [onFailure, setOnFailure] = (0, import_react53.useState)("notify");
+    const [error, setError] = (0, import_react53.useState)("");
+    const [submitting, setSubmitting] = (0, import_react53.useState)(false);
+    const [selectedTemplate, setSelectedTemplate] = (0, import_react53.useState)(null);
+    const [params, setParams] = (0, import_react53.useState)({});
     const applyTemplate = (templateId) => {
       if (selectedTemplate === templateId) {
         setSelectedTemplate(null);
@@ -35866,7 +35950,7 @@
   }
 
   // src/server/spa/client/react/repos/RepoChatTab.tsx
-  var import_react53 = __toESM(require_react());
+  var import_react54 = __toESM(require_react());
   var import_jsx_runtime52 = __toESM(require_jsx_runtime());
   function getConversationTurns3(data) {
     const process2 = data?.process;
@@ -35894,17 +35978,17 @@
   }
   function RepoChatTab({ workspaceId, workspacePath }) {
     const STORAGE_KEY = `coc-chat-task-${workspaceId}`;
-    const [chatTaskId, setChatTaskId] = (0, import_react53.useState)(null);
-    const [task, setTask] = (0, import_react53.useState)(null);
-    const [turns, setTurns] = (0, import_react53.useState)([]);
-    const [loading, setLoading] = (0, import_react53.useState)(false);
-    const [inputValue, setInputValue] = (0, import_react53.useState)("");
-    const [sending, setSending] = (0, import_react53.useState)(false);
-    const [error, setError] = (0, import_react53.useState)(null);
-    const [sessionExpired, setSessionExpired] = (0, import_react53.useState)(false);
-    const [isStreaming, setIsStreaming] = (0, import_react53.useState)(false);
-    const turnsRef = (0, import_react53.useRef)([]);
-    const eventSourceRef = (0, import_react53.useRef)(null);
+    const [chatTaskId, setChatTaskId] = (0, import_react54.useState)(null);
+    const [task, setTask] = (0, import_react54.useState)(null);
+    const [turns, setTurns] = (0, import_react54.useState)([]);
+    const [loading, setLoading] = (0, import_react54.useState)(false);
+    const [inputValue, setInputValue] = (0, import_react54.useState)("");
+    const [sending, setSending] = (0, import_react54.useState)(false);
+    const [error, setError] = (0, import_react54.useState)(null);
+    const [sessionExpired, setSessionExpired] = (0, import_react54.useState)(false);
+    const [isStreaming, setIsStreaming] = (0, import_react54.useState)(false);
+    const turnsRef = (0, import_react54.useRef)([]);
+    const eventSourceRef = (0, import_react54.useRef)(null);
     const processId = task?.processId ?? (chatTaskId ? `queue_${chatTaskId}` : null);
     const setTurnsAndCache = (next) => {
       const resolved = typeof next === "function" ? next(turnsRef.current) : next;
@@ -35956,7 +36040,7 @@
         finish();
       };
     });
-    (0, import_react53.useEffect)(() => {
+    (0, import_react54.useEffect)(() => {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (!stored) return;
       setChatTaskId(stored);
@@ -35972,7 +36056,7 @@
         }
       }).finally(() => setLoading(false));
     }, [workspaceId]);
-    (0, import_react53.useEffect)(() => {
+    (0, import_react54.useEffect)(() => {
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
         eventSourceRef.current = null;
@@ -36003,7 +36087,7 @@
         eventSourceRef.current = null;
       };
     }, [chatTaskId, task?.status]);
-    (0, import_react53.useEffect)(() => () => stopStreaming(), []);
+    (0, import_react54.useEffect)(() => () => stopStreaming(), []);
     const handleStartChat = async () => {
       const prompt = inputValue.trim();
       if (!prompt) return;
@@ -36170,14 +36254,14 @@
   function RepoDetail({ repo, repos, onRefresh }) {
     const { state, dispatch } = useApp();
     const { state: queueState, dispatch: queueDispatch } = useQueue();
-    const [editOpen, setEditOpen] = (0, import_react54.useState)(false);
+    const [editOpen, setEditOpen] = (0, import_react55.useState)(false);
     const ws = repo.workspace;
     const color = ws.color || "#848484";
     const activeSubTab = state.activeRepoSubTab;
     const taskCount = repo.taskCount || 0;
     const repoQueue = queueState.repoQueueMap[ws.id];
     const queueCount = repoQueue ? repoQueue.running.length + repoQueue.queued.length : 0;
-    (0, import_react54.useEffect)(() => {
+    (0, import_react55.useEffect)(() => {
       if (queueState.repoQueueMap[ws.id]) return;
       fetchApi("/queue?repoId=" + encodeURIComponent(ws.id)).then((data) => {
         if (data) queueDispatch({ type: "REPO_QUEUE_UPDATED", repoId: ws.id, queue: data });
@@ -36254,9 +36338,9 @@
   var import_jsx_runtime54 = __toESM(require_jsx_runtime());
   function ReposView() {
     const { state, dispatch } = useApp();
-    const [repos, setRepos] = (0, import_react55.useState)([]);
-    const [loading, setLoading] = (0, import_react55.useState)(true);
-    const fetchRepos = (0, import_react55.useCallback)(async () => {
+    const [repos, setRepos] = (0, import_react56.useState)([]);
+    const [loading, setLoading] = (0, import_react56.useState)(true);
+    const fetchRepos = (0, import_react56.useCallback)(async () => {
       try {
         const wsRes = await fetchApi("/workspaces");
         const workspaces = wsRes?.workspaces || wsRes || [];
@@ -36299,7 +36383,7 @@
       }
       setLoading(false);
     }, [dispatch, state.selectedRepoId]);
-    const refreshPipelinesForWorkspace = (0, import_react55.useCallback)(async (wsId) => {
+    const refreshPipelinesForWorkspace = (0, import_react56.useCallback)(async (wsId) => {
       try {
         const updated = await fetchPipelines(wsId);
         setRepos((prev) => prev.map(
@@ -36309,13 +36393,13 @@
       }
     }, []);
     const { connect, disconnect } = useWebSocket({
-      onMessage: (0, import_react55.useCallback)((msg) => {
+      onMessage: (0, import_react56.useCallback)((msg) => {
         if (msg.type === "pipelines-changed" && msg.workspaceId) {
           refreshPipelinesForWorkspace(msg.workspaceId);
         }
       }, [refreshPipelinesForWorkspace])
     });
-    (0, import_react55.useEffect)(() => {
+    (0, import_react56.useEffect)(() => {
       fetchRepos();
       connect();
       return () => disconnect();
@@ -36343,13 +36427,13 @@
   }
 
   // src/server/spa/client/react/wiki/WikiList.tsx
-  var import_react59 = __toESM(require_react());
+  var import_react60 = __toESM(require_react());
 
   // src/server/spa/client/react/hooks/useWiki.ts
-  var import_react56 = __toESM(require_react());
+  var import_react57 = __toESM(require_react());
   function useWiki() {
     const { state, dispatch } = useApp();
-    const reload = (0, import_react56.useCallback)(async () => {
+    const reload = (0, import_react57.useCallback)(async () => {
       try {
         const data = await fetchApi("/wikis");
         const wikis = Array.isArray(data) ? data : data?.wikis ?? [];
@@ -36358,7 +36442,7 @@
         dispatch({ type: "SET_WIKIS", wikis: [] });
       }
     }, [dispatch]);
-    (0, import_react56.useEffect)(() => {
+    (0, import_react57.useEffect)(() => {
       reload();
     }, [reload]);
     return {
@@ -36370,16 +36454,16 @@
   }
 
   // src/server/spa/client/react/wiki/AddWikiDialog.tsx
-  var import_react57 = __toESM(require_react());
+  var import_react58 = __toESM(require_react());
   var import_jsx_runtime55 = __toESM(require_jsx_runtime());
   var COLOR_PRESETS = ["#3b82f6", "#ef4444", "#22c55e", "#f59e0b", "#8b5cf6", "#ec4899", "#848484"];
   function AddWikiDialog({ open, onClose, onAdded }) {
-    const [name, setName] = (0, import_react57.useState)("");
-    const [repoPath, setRepoPath] = (0, import_react57.useState)("");
-    const [color, setColor] = (0, import_react57.useState)(COLOR_PRESETS[0]);
-    const [error, setError] = (0, import_react57.useState)("");
-    const [submitting, setSubmitting] = (0, import_react57.useState)(false);
-    const handleSubmit = (0, import_react57.useCallback)(async () => {
+    const [name, setName] = (0, import_react58.useState)("");
+    const [repoPath, setRepoPath] = (0, import_react58.useState)("");
+    const [color, setColor] = (0, import_react58.useState)(COLOR_PRESETS[0]);
+    const [error, setError] = (0, import_react58.useState)("");
+    const [submitting, setSubmitting] = (0, import_react58.useState)(false);
+    const handleSubmit = (0, import_react58.useCallback)(async () => {
       if (!name.trim()) {
         setError("Name is required");
         return;
@@ -36473,15 +36557,15 @@
   }
 
   // src/server/spa/client/react/wiki/EditWikiDialog.tsx
-  var import_react58 = __toESM(require_react());
+  var import_react59 = __toESM(require_react());
   var import_jsx_runtime56 = __toESM(require_jsx_runtime());
   var COLOR_PRESETS2 = ["#3b82f6", "#ef4444", "#22c55e", "#f59e0b", "#8b5cf6", "#ec4899", "#848484"];
   function EditWikiDialog({ open, wiki, onClose, onUpdated }) {
-    const [name, setName] = (0, import_react58.useState)(wiki.name || wiki.title || wiki.id);
-    const [color, setColor] = (0, import_react58.useState)(wiki.color || "#848484");
-    const [error, setError] = (0, import_react58.useState)("");
-    const [submitting, setSubmitting] = (0, import_react58.useState)(false);
-    const handleSubmit = (0, import_react58.useCallback)(async () => {
+    const [name, setName] = (0, import_react59.useState)(wiki.name || wiki.title || wiki.id);
+    const [color, setColor] = (0, import_react59.useState)(wiki.color || "#848484");
+    const [error, setError] = (0, import_react59.useState)("");
+    const [submitting, setSubmitting] = (0, import_react59.useState)(false);
+    const handleSubmit = (0, import_react59.useCallback)(async () => {
       if (!name.trim()) {
         setError("Name is required");
         return;
@@ -36602,18 +36686,18 @@
   function WikiList() {
     const { wikis, reload } = useWiki();
     const { dispatch } = useApp();
-    const [addOpen, setAddOpen] = (0, import_react59.useState)(false);
-    const [editWiki, setEditWiki] = (0, import_react59.useState)(null);
-    const [deleting, setDeleting] = (0, import_react59.useState)(null);
-    const selectWiki = (0, import_react59.useCallback)((wikiId) => {
+    const [addOpen, setAddOpen] = (0, import_react60.useState)(false);
+    const [editWiki, setEditWiki] = (0, import_react60.useState)(null);
+    const [deleting, setDeleting] = (0, import_react60.useState)(null);
+    const selectWiki = (0, import_react60.useCallback)((wikiId) => {
       dispatch({ type: "SELECT_WIKI", wikiId });
       location.hash = "#wiki/" + encodeURIComponent(wikiId);
     }, [dispatch]);
-    const setupWiki = (0, import_react59.useCallback)((wikiId) => {
+    const setupWiki = (0, import_react60.useCallback)((wikiId) => {
       dispatch({ type: "SELECT_WIKI_WITH_TAB", wikiId, tab: "admin" });
       location.hash = "#wiki/" + encodeURIComponent(wikiId) + "/admin";
     }, [dispatch]);
-    const handleDelete = (0, import_react59.useCallback)(async (wikiId) => {
+    const handleDelete = (0, import_react60.useCallback)(async (wikiId) => {
       if (!confirm("Are you sure you want to delete this wiki?")) return;
       setDeleting(wikiId);
       try {
@@ -36734,10 +36818,10 @@
   }
 
   // src/server/spa/client/react/wiki/WikiDetail.tsx
-  var import_react65 = __toESM(require_react());
+  var import_react66 = __toESM(require_react());
 
   // src/server/spa/client/react/wiki/WikiComponentTree.tsx
-  var import_react60 = __toESM(require_react());
+  var import_react61 = __toESM(require_react());
   var import_jsx_runtime58 = __toESM(require_jsx_runtime());
   function buildGroups(graph) {
     if (graph.domains && graph.domains.length > 0) {
@@ -36766,10 +36850,10 @@
     return Array.from(categoryMap.entries()).sort(([a], [b]) => a.localeCompare(b)).map(([cat, comps]) => ({ id: cat, name: cat, components: comps }));
   }
   function WikiComponentTree({ graph, selectedComponentId, onSelect }) {
-    const [filter, setFilter] = (0, import_react60.useState)("");
-    const [collapsed, setCollapsed] = (0, import_react60.useState)(/* @__PURE__ */ new Set());
-    const groups = (0, import_react60.useMemo)(() => buildGroups(graph), [graph]);
-    const filteredGroups = (0, import_react60.useMemo)(() => {
+    const [filter, setFilter] = (0, import_react61.useState)("");
+    const [collapsed, setCollapsed] = (0, import_react61.useState)(/* @__PURE__ */ new Set());
+    const groups = (0, import_react61.useMemo)(() => buildGroups(graph), [graph]);
+    const filteredGroups = (0, import_react61.useMemo)(() => {
       if (!filter.trim()) return groups;
       const q = filter.toLowerCase();
       return groups.map((g) => ({
@@ -36837,7 +36921,7 @@
   }
 
   // src/server/spa/client/react/wiki/WikiComponent.tsx
-  var import_react61 = __toESM(require_react());
+  var import_react62 = __toESM(require_react());
   var import_jsx_runtime59 = __toESM(require_jsx_runtime());
   function preserveMermaidBlocks(md) {
     return md.replace(/```mermaid\n([\s\S]*?)```/g, (_match, code) => {
@@ -36846,18 +36930,18 @@
     });
   }
   function WikiComponent({ wikiId, componentId, graph, onSelectComponent }) {
-    const [html, setHtml] = (0, import_react61.useState)("");
-    const [loading, setLoading] = (0, import_react61.useState)(false);
-    const [toc, setToc] = (0, import_react61.useState)([]);
-    const [activeHeading, setActiveHeading] = (0, import_react61.useState)(null);
-    const contentRef = (0, import_react61.useRef)(null);
-    const scrollRef = (0, import_react61.useRef)(null);
-    const cacheRef = (0, import_react61.useRef)({});
-    const comp = (0, import_react61.useMemo)(
+    const [html, setHtml] = (0, import_react62.useState)("");
+    const [loading, setLoading] = (0, import_react62.useState)(false);
+    const [toc, setToc] = (0, import_react62.useState)([]);
+    const [activeHeading, setActiveHeading] = (0, import_react62.useState)(null);
+    const contentRef = (0, import_react62.useRef)(null);
+    const scrollRef = (0, import_react62.useRef)(null);
+    const cacheRef = (0, import_react62.useRef)({});
+    const comp = (0, import_react62.useMemo)(
       () => graph.components.find((c) => c.id === componentId),
       [graph.components, componentId]
     );
-    (0, import_react61.useEffect)(() => {
+    (0, import_react62.useEffect)(() => {
       if (cacheRef.current[componentId]) {
         setHtml(cacheRef.current[componentId]);
         setLoading(false);
@@ -36876,7 +36960,7 @@
         }
       }).catch(() => setHtml('<p style="color:var(--status-failed)">Failed to load article</p>')).finally(() => setLoading(false));
     }, [wikiId, componentId]);
-    (0, import_react61.useEffect)(() => {
+    (0, import_react62.useEffect)(() => {
       if (!contentRef.current || !html) return;
       const container2 = contentRef.current;
       if (typeof hljs !== "undefined") {
@@ -36919,7 +37003,7 @@
       scrollContainer.addEventListener("scroll", onScroll);
       return () => scrollContainer.removeEventListener("scroll", onScroll);
     }, [html]);
-    (0, import_react61.useEffect)(() => {
+    (0, import_react62.useEffect)(() => {
       const container2 = contentRef.current;
       if (!container2) return;
       const handleClick = (e) => {
@@ -36938,12 +37022,12 @@
       return () => container2.removeEventListener("click", handleClick);
     }, [html]);
     useMermaid(contentRef, html);
-    (0, import_react61.useEffect)(() => {
+    (0, import_react62.useEffect)(() => {
       if (scrollRef.current) {
         scrollRef.current.scrollTop = 0;
       }
     }, [componentId]);
-    const scrollToHeading = (0, import_react61.useCallback)((id) => {
+    const scrollToHeading = (0, import_react62.useCallback)((id) => {
       const el = contentRef.current?.querySelector("#" + CSS.escape(id));
       if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
     }, []);
@@ -37023,7 +37107,7 @@
   }
 
   // src/server/spa/client/react/wiki/WikiGraph.tsx
-  var import_react62 = __toESM(require_react());
+  var import_react63 = __toESM(require_react());
   var import_jsx_runtime60 = __toESM(require_jsx_runtime());
   var D3_CDN_URL = "https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js";
   var CATEGORY_COLORS = [
@@ -37059,16 +37143,16 @@
     return CATEGORY_COLORS[idx % CATEGORY_COLORS.length];
   }
   function WikiGraph({ wikiId, graph, onSelectComponent }) {
-    const svgRef = (0, import_react62.useRef)(null);
-    const containerRef = (0, import_react62.useRef)(null);
-    const [loading, setLoading] = (0, import_react62.useState)(true);
-    const [error, setError] = (0, import_react62.useState)(null);
-    const [disabledCategories, setDisabledCategories] = (0, import_react62.useState)(/* @__PURE__ */ new Set());
-    const simulationRef = (0, import_react62.useRef)(null);
-    const nodeRef = (0, import_react62.useRef)(null);
-    const linkRef = (0, import_react62.useRef)(null);
-    const allCategories = (0, import_react62.useRef)([]);
-    (0, import_react62.useEffect)(() => {
+    const svgRef = (0, import_react63.useRef)(null);
+    const containerRef = (0, import_react63.useRef)(null);
+    const [loading, setLoading] = (0, import_react63.useState)(true);
+    const [error, setError] = (0, import_react63.useState)(null);
+    const [disabledCategories, setDisabledCategories] = (0, import_react63.useState)(/* @__PURE__ */ new Set());
+    const simulationRef = (0, import_react63.useRef)(null);
+    const nodeRef = (0, import_react63.useRef)(null);
+    const linkRef = (0, import_react63.useRef)(null);
+    const allCategories = (0, import_react63.useRef)([]);
+    (0, import_react63.useEffect)(() => {
       const cats = [];
       graph.components.forEach((m) => {
         if (!cats.includes(m.category)) cats.push(m.category);
@@ -37076,7 +37160,7 @@
       cats.sort();
       allCategories.current = cats;
     }, [graph]);
-    const renderGraph = (0, import_react62.useCallback)(() => {
+    const renderGraph = (0, import_react63.useCallback)(() => {
       const d3 = window.d3;
       if (!d3 || !svgRef.current || !containerRef.current) return;
       const svg = d3.select(svgRef.current);
@@ -37131,7 +37215,7 @@
       const zoom = d3.zoom().scaleExtent([0.1, 4]).on("zoom", (event) => g.attr("transform", event.transform));
       svg.call(zoom);
     }, [graph, onSelectComponent]);
-    (0, import_react62.useEffect)(() => {
+    (0, import_react63.useEffect)(() => {
       setLoading(true);
       setError(null);
       ensureD3().then(() => setLoading(false)).catch(() => {
@@ -37142,12 +37226,12 @@
         if (simulationRef.current) simulationRef.current.stop();
       };
     }, []);
-    (0, import_react62.useEffect)(() => {
+    (0, import_react63.useEffect)(() => {
       if (!loading && !error) {
         renderGraph();
       }
     }, [loading, error, renderGraph]);
-    (0, import_react62.useEffect)(() => {
+    (0, import_react63.useEffect)(() => {
       if (!nodeRef.current || !linkRef.current) return;
       nodeRef.current.style("display", (d) => disabledCategories.has(d.category) ? "none" : null);
       linkRef.current.style("display", (d) => {
@@ -37201,24 +37285,24 @@
   }
 
   // src/server/spa/client/react/wiki/WikiAsk.tsx
-  var import_react63 = __toESM(require_react());
+  var import_react64 = __toESM(require_react());
   var import_jsx_runtime61 = __toESM(require_jsx_runtime());
   function WikiAsk({ wikiId, wikiName, currentComponentId }) {
-    const [messages, setMessages] = (0, import_react63.useState)([]);
-    const [input, setInput] = (0, import_react63.useState)("");
-    const [streaming, setStreaming] = (0, import_react63.useState)(false);
-    const [sessionId, setSessionId] = (0, import_react63.useState)(null);
-    const messagesEndRef = (0, import_react63.useRef)(null);
-    const historyRef = (0, import_react63.useRef)([]);
-    const scrollToBottom = (0, import_react63.useCallback)(() => {
+    const [messages, setMessages] = (0, import_react64.useState)([]);
+    const [input, setInput] = (0, import_react64.useState)("");
+    const [streaming, setStreaming] = (0, import_react64.useState)(false);
+    const [sessionId, setSessionId] = (0, import_react64.useState)(null);
+    const messagesEndRef = (0, import_react64.useRef)(null);
+    const historyRef = (0, import_react64.useRef)([]);
+    const scrollToBottom = (0, import_react64.useCallback)(() => {
       if (messagesEndRef.current && typeof messagesEndRef.current.scrollIntoView === "function") {
         messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
       }
     }, []);
-    (0, import_react63.useEffect)(() => {
+    (0, import_react64.useEffect)(() => {
       scrollToBottom();
     }, [messages, scrollToBottom]);
-    const handleSend = (0, import_react63.useCallback)(async () => {
+    const handleSend = (0, import_react64.useCallback)(async () => {
       if (streaming || !input.trim()) return;
       const question = input.trim();
       setInput("");
@@ -37338,7 +37422,7 @@
         setStreaming(false);
       }
     }, [input, streaming, wikiId, sessionId, currentComponentId]);
-    const handleClear = (0, import_react63.useCallback)(() => {
+    const handleClear = (0, import_react64.useCallback)(() => {
       if (sessionId) {
         fetch(getApiBase() + "/wikis/" + encodeURIComponent(wikiId) + "/ask/session/" + encodeURIComponent(sessionId), { method: "DELETE" }).catch(() => {
         });
@@ -37429,7 +37513,7 @@
   }
 
   // src/server/spa/client/react/wiki/WikiAdmin.tsx
-  var import_react64 = __toESM(require_react());
+  var import_react65 = __toESM(require_react());
 
   // ../../node_modules/js-yaml/dist/js-yaml.mjs
   function isNothing(subject) {
@@ -40073,15 +40157,15 @@
     5: { name: "Website", desc: "Build static site output" }
   };
   function WikiAdmin({ wikiId, initialTab, onTabChange }) {
-    const [tab, setTab] = (0, import_react64.useState)(
+    const [tab, setTab] = (0, import_react65.useState)(
       initialTab && ADMIN_TABS.includes(initialTab) ? initialTab : "generate"
     );
-    (0, import_react64.useEffect)(() => {
+    (0, import_react65.useEffect)(() => {
       if (initialTab && ADMIN_TABS.includes(initialTab)) {
         setTab(initialTab);
       }
     }, [initialTab]);
-    const changeTab = (0, import_react64.useCallback)((t) => {
+    const changeTab = (0, import_react65.useCallback)((t) => {
       setTab(t);
       onTabChange?.(t);
     }, [onTabChange]);
@@ -40108,15 +40192,15 @@
     ] });
   }
   function GenerateTab({ wikiId }) {
-    const [cache, setCache2] = (0, import_react64.useState)({});
-    const [metadata, setMetadata] = (0, import_react64.useState)(null);
-    const [runningPhase, setRunningPhase] = (0, import_react64.useState)(null);
-    const [logs, setLogs] = (0, import_react64.useState)({});
-    const [fromPhase, setFromPhase] = (0, import_react64.useState)(1);
-    const [phase4Components, setPhase4Components] = (0, import_react64.useState)([]);
-    const [phase4Expanded, setPhase4Expanded] = (0, import_react64.useState)(false);
-    const abortRef = (0, import_react64.useRef)(null);
-    const loadCacheStatus = (0, import_react64.useCallback)(() => {
+    const [cache, setCache2] = (0, import_react65.useState)({});
+    const [metadata, setMetadata] = (0, import_react65.useState)(null);
+    const [runningPhase, setRunningPhase] = (0, import_react65.useState)(null);
+    const [logs, setLogs] = (0, import_react65.useState)({});
+    const [fromPhase, setFromPhase] = (0, import_react65.useState)(1);
+    const [phase4Components, setPhase4Components] = (0, import_react65.useState)([]);
+    const [phase4Expanded, setPhase4Expanded] = (0, import_react65.useState)(false);
+    const abortRef = (0, import_react65.useRef)(null);
+    const loadCacheStatus = (0, import_react65.useCallback)(() => {
       fetchApi("/wikis/" + encodeURIComponent(wikiId) + "/admin/generate/status").then((data) => {
         if (data?.phases && typeof data.phases === "object") {
           const m = {};
@@ -40131,10 +40215,10 @@
       }).catch(() => {
       });
     }, [wikiId]);
-    (0, import_react64.useEffect)(() => {
+    (0, import_react65.useEffect)(() => {
       loadCacheStatus();
     }, [loadCacheStatus]);
-    const runPhase = (0, import_react64.useCallback)((startPhase, endPhase, force = false) => {
+    const runPhase = (0, import_react65.useCallback)((startPhase, endPhase, force = false) => {
       if (runningPhase !== null) return;
       setRunningPhase(startPhase);
       setLogs((prev) => {
@@ -40211,10 +40295,10 @@
         setRunningPhase(null);
       });
     }, [wikiId, runningPhase, loadCacheStatus]);
-    const runAll = (0, import_react64.useCallback)((force = false) => {
+    const runAll = (0, import_react65.useCallback)((force = false) => {
       runPhase(fromPhase, 5, force);
     }, [runPhase, fromPhase]);
-    const handleAbort = (0, import_react64.useCallback)(() => {
+    const handleAbort = (0, import_react65.useCallback)(() => {
       if (abortRef.current) abortRef.current.abort();
       fetch(getApiBase() + "/wikis/" + encodeURIComponent(wikiId) + "/admin/generate/cancel", { method: "POST" }).catch(() => {
       });
@@ -40357,15 +40441,15 @@
     ] });
   }
   function EditorTab({ wikiId, kind }) {
-    const [content, setContent] = (0, import_react64.useState)("");
-    const [original, setOriginal] = (0, import_react64.useState)("");
-    const [resourcePath, setResourcePath] = (0, import_react64.useState)(null);
-    const [isNewFile, setIsNewFile] = (0, import_react64.useState)(false);
-    const [saving, setSaving] = (0, import_react64.useState)(false);
-    const [status, setStatus] = (0, import_react64.useState)(null);
-    const [generating, setGenerating] = (0, import_react64.useState)(false);
-    const [genLogs, setGenLogs] = (0, import_react64.useState)([]);
-    (0, import_react64.useEffect)(() => {
+    const [content, setContent] = (0, import_react65.useState)("");
+    const [original, setOriginal] = (0, import_react65.useState)("");
+    const [resourcePath, setResourcePath] = (0, import_react65.useState)(null);
+    const [isNewFile, setIsNewFile] = (0, import_react65.useState)(false);
+    const [saving, setSaving] = (0, import_react65.useState)(false);
+    const [status, setStatus] = (0, import_react65.useState)(null);
+    const [generating, setGenerating] = (0, import_react65.useState)(false);
+    const [genLogs, setGenLogs] = (0, import_react65.useState)([]);
+    (0, import_react65.useEffect)(() => {
       fetchApi("/wikis/" + encodeURIComponent(wikiId) + "/admin/" + kind).then((data) => {
         let text = "";
         let resolvedPath = null;
@@ -40391,7 +40475,7 @@
         setStatus(null);
       }).catch(() => setStatus("Failed to load"));
     }, [wikiId, kind]);
-    const handleSave = (0, import_react64.useCallback)(async () => {
+    const handleSave = (0, import_react65.useCallback)(async () => {
       setSaving(true);
       setStatus(null);
       try {
@@ -40412,12 +40496,12 @@
       }
       setSaving(false);
     }, [wikiId, kind, content]);
-    const handleReset = (0, import_react64.useCallback)(() => {
+    const handleReset = (0, import_react65.useCallback)(() => {
       setContent(original);
       setStatus(null);
     }, [original]);
     const isModified = content !== original;
-    const handleGenerateSeeds = (0, import_react64.useCallback)(async () => {
+    const handleGenerateSeeds = (0, import_react65.useCallback)(async () => {
       setGenerating(true);
       setGenLogs([]);
       try {
@@ -40500,8 +40584,8 @@
     ] });
   }
   function DangerZone({ wikiId }) {
-    const [deleting, setDeleting] = (0, import_react64.useState)(false);
-    const handleDelete = (0, import_react64.useCallback)(async () => {
+    const [deleting, setDeleting] = (0, import_react65.useState)(false);
+    const handleDelete = (0, import_react65.useCallback)(async () => {
       if (!confirm("Are you sure you want to delete this wiki? This cannot be undone.")) return;
       setDeleting(true);
       try {
@@ -40542,11 +40626,11 @@
   }
   function WikiDetail({ wikiId }) {
     const { state, dispatch } = useApp();
-    const [graph, setGraph] = (0, import_react65.useState)(null);
-    const [loadingGraph, setLoadingGraph] = (0, import_react65.useState)(true);
-    const [activeTab, setActiveTab] = (0, import_react65.useState)("browse");
-    const [adminSubTab, setAdminSubTab] = (0, import_react65.useState)(null);
-    (0, import_react65.useEffect)(() => {
+    const [graph, setGraph] = (0, import_react66.useState)(null);
+    const [loadingGraph, setLoadingGraph] = (0, import_react66.useState)(true);
+    const [activeTab, setActiveTab] = (0, import_react66.useState)("browse");
+    const [adminSubTab, setAdminSubTab] = (0, import_react66.useState)(null);
+    (0, import_react66.useEffect)(() => {
       if (state.wikiDetailInitialTab) {
         const tab = state.wikiDetailInitialTab;
         if (WIKI_TABS.includes(tab)) {
@@ -40558,31 +40642,31 @@
         dispatch({ type: "CLEAR_WIKI_INITIAL_TAB" });
       }
     }, [state.wikiDetailInitialTab]);
-    const wiki = (0, import_react65.useMemo)(
+    const wiki = (0, import_react66.useMemo)(
       () => state.wikis.find((w) => w.id === wikiId),
       [state.wikis, wikiId]
     );
     const wikiName = wiki?.name || wiki?.title || wikiId;
     const wikiStatus = wiki?.status || (wiki?.loaded ? "loaded" : "pending");
     const cfg = statusConfig2[wikiStatus];
-    (0, import_react65.useEffect)(() => {
+    (0, import_react66.useEffect)(() => {
       setLoadingGraph(true);
       fetchApi("/wikis/" + encodeURIComponent(wikiId) + "/graph").then((data) => setGraph(data)).catch(() => setGraph(null)).finally(() => setLoadingGraph(false));
     }, [wikiId]);
-    const handleBack = (0, import_react65.useCallback)(() => {
+    const handleBack = (0, import_react66.useCallback)(() => {
       dispatch({ type: "SELECT_WIKI", wikiId: null });
       location.hash = "#wiki";
     }, [dispatch]);
-    const changeTab = (0, import_react65.useCallback)((tab) => {
+    const changeTab = (0, import_react66.useCallback)((tab) => {
       setActiveTab(tab);
       if (tab !== "admin") setAdminSubTab(null);
       location.hash = buildWikiHash(wikiId, tab, tab === "browse" ? state.selectedWikiComponentId : null);
     }, [wikiId, state.selectedWikiComponentId]);
-    const handleAdminTabChange = (0, import_react65.useCallback)((subTab) => {
+    const handleAdminTabChange = (0, import_react66.useCallback)((subTab) => {
       setAdminSubTab(subTab);
       location.hash = buildWikiHash(wikiId, "admin", null, subTab);
     }, [wikiId]);
-    const handleSelectComponent = (0, import_react65.useCallback)((componentId) => {
+    const handleSelectComponent = (0, import_react66.useCallback)((componentId) => {
       dispatch({ type: "SELECT_WIKI_COMPONENT", componentId });
       location.hash = buildWikiHash(wikiId, "browse", componentId);
       setActiveTab("browse");
@@ -40778,7 +40862,7 @@
   }
 
   // src/server/spa/client/react/admin/AdminPanel.tsx
-  var import_react66 = __toESM(require_react());
+  var import_react67 = __toESM(require_react());
   var import_jsx_runtime65 = __toESM(require_jsx_runtime());
   function formatBytes(bytes) {
     if (bytes === 0) return "0 B";
@@ -40790,25 +40874,25 @@
   var VALID_OUTPUT_OPTIONS = ["table", "json", "csv", "markdown"];
   function AdminPanel() {
     const { toasts, addToast, removeToast } = useToast();
-    const [stats, setStats] = (0, import_react66.useState)(null);
-    const [statsLoading, setStatsLoading] = (0, import_react66.useState)(true);
-    const [config, setConfig] = (0, import_react66.useState)(null);
-    const [configLoading, setConfigLoading] = (0, import_react66.useState)(true);
-    const [configError, setConfigError] = (0, import_react66.useState)(null);
-    const [configForm, setConfigForm] = (0, import_react66.useState)({});
-    const [configSaving, setConfigSaving] = (0, import_react66.useState)(false);
-    const [showReportIntent, setShowReportIntent] = (0, import_react66.useState)(false);
-    const [displaySaving, setDisplaySaving] = (0, import_react66.useState)(false);
-    const [exportStatus, setExportStatus] = (0, import_react66.useState)("");
-    const [importFile, setImportFile] = (0, import_react66.useState)(null);
-    const [importMode, setImportMode] = (0, import_react66.useState)("replace");
-    const [importPreview, setImportPreview] = (0, import_react66.useState)(null);
-    const [importStatus, setImportStatus] = (0, import_react66.useState)("");
-    const [wipeToken, setWipeToken] = (0, import_react66.useState)(null);
-    const [includeWikis, setIncludeWikis] = (0, import_react66.useState)(false);
-    const [wipeStatus, setWipeStatus] = (0, import_react66.useState)("");
-    const [wipePreview, setWipePreview] = (0, import_react66.useState)(null);
-    const loadStats = (0, import_react66.useCallback)(async () => {
+    const [stats, setStats] = (0, import_react67.useState)(null);
+    const [statsLoading, setStatsLoading] = (0, import_react67.useState)(true);
+    const [config, setConfig] = (0, import_react67.useState)(null);
+    const [configLoading, setConfigLoading] = (0, import_react67.useState)(true);
+    const [configError, setConfigError] = (0, import_react67.useState)(null);
+    const [configForm, setConfigForm] = (0, import_react67.useState)({});
+    const [configSaving, setConfigSaving] = (0, import_react67.useState)(false);
+    const [showReportIntent, setShowReportIntent] = (0, import_react67.useState)(false);
+    const [displaySaving, setDisplaySaving] = (0, import_react67.useState)(false);
+    const [exportStatus, setExportStatus] = (0, import_react67.useState)("");
+    const [importFile, setImportFile] = (0, import_react67.useState)(null);
+    const [importMode, setImportMode] = (0, import_react67.useState)("replace");
+    const [importPreview, setImportPreview] = (0, import_react67.useState)(null);
+    const [importStatus, setImportStatus] = (0, import_react67.useState)("");
+    const [wipeToken, setWipeToken] = (0, import_react67.useState)(null);
+    const [includeWikis, setIncludeWikis] = (0, import_react67.useState)(false);
+    const [wipeStatus, setWipeStatus] = (0, import_react67.useState)("");
+    const [wipePreview, setWipePreview] = (0, import_react67.useState)(null);
+    const loadStats = (0, import_react67.useCallback)(async () => {
       setStatsLoading(true);
       try {
         const res = await fetch(getApiBase() + "/admin/data/stats?includeWikis=true");
@@ -40825,7 +40909,7 @@
         setStatsLoading(false);
       }
     }, []);
-    const loadConfig = (0, import_react66.useCallback)(async () => {
+    const loadConfig = (0, import_react67.useCallback)(async () => {
       setConfigLoading(true);
       setConfigError(null);
       try {
@@ -40847,11 +40931,11 @@
         setConfigLoading(false);
       }
     }, []);
-    (0, import_react66.useEffect)(() => {
+    (0, import_react67.useEffect)(() => {
       loadStats();
       loadConfig();
     }, [loadStats, loadConfig]);
-    const handleSaveConfig = (0, import_react66.useCallback)(async () => {
+    const handleSaveConfig = (0, import_react67.useCallback)(async () => {
       const errors = [];
       if (!configForm.model?.trim()) errors.push("Model must be non-empty");
       const parallel = Number(configForm.parallel);
@@ -40894,7 +40978,7 @@
         setConfigSaving(false);
       }
     }, [configForm, addToast, loadConfig]);
-    const handleToggleShowReportIntent = (0, import_react66.useCallback)(async (newValue) => {
+    const handleToggleShowReportIntent = (0, import_react67.useCallback)(async (newValue) => {
       const prevValue = showReportIntent;
       setShowReportIntent(newValue);
       setDisplaySaving(true);
@@ -40917,7 +41001,7 @@
         setDisplaySaving(false);
       }
     }, [showReportIntent, addToast]);
-    const handleExport = (0, import_react66.useCallback)(async () => {
+    const handleExport = (0, import_react67.useCallback)(async () => {
       setExportStatus("Exporting\u2026");
       try {
         const res = await fetch(getApiBase() + "/admin/export");
@@ -40942,7 +41026,7 @@
         setExportStatus("Export failed: " + (err.message || "Network error"));
       }
     }, []);
-    const handlePreviewImport = (0, import_react66.useCallback)(async () => {
+    const handlePreviewImport = (0, import_react67.useCallback)(async () => {
       if (!importFile) {
         setImportStatus("Please select a JSON file first.");
         return;
@@ -40974,7 +41058,7 @@
         setImportStatus("Invalid JSON file.");
       }
     }, [importFile]);
-    const handleImport = (0, import_react66.useCallback)(async () => {
+    const handleImport = (0, import_react67.useCallback)(async () => {
       if (!importFile) {
         setImportStatus("Please select a JSON file first.");
         return;
@@ -41005,7 +41089,7 @@
         setImportStatus("Import failed: " + (err.message || "Network error"));
       }
     }, [importFile, importMode, addToast, loadStats]);
-    const handlePreviewWipe = (0, import_react66.useCallback)(async () => {
+    const handlePreviewWipe = (0, import_react67.useCallback)(async () => {
       try {
         const res = await fetch(getApiBase() + "/admin/data/stats?includeWikis=" + includeWikis);
         if (!res.ok) {
@@ -41022,7 +41106,7 @@
         setWipePreview("Failed to load preview.");
       }
     }, [includeWikis]);
-    const handleWipeStep1 = (0, import_react66.useCallback)(async () => {
+    const handleWipeStep1 = (0, import_react67.useCallback)(async () => {
       setWipeStatus("Requesting confirmation token\u2026");
       try {
         const res = await fetch(getApiBase() + "/admin/data/wipe-token");
@@ -41035,7 +41119,7 @@
         setWipeStatus(err.message);
       }
     }, []);
-    const handleWipeConfirm = (0, import_react66.useCallback)(async () => {
+    const handleWipeConfirm = (0, import_react67.useCallback)(async () => {
       if (!wipeToken) return;
       setWipeStatus("Wiping data\u2026");
       try {
@@ -41056,7 +41140,7 @@
         setWipeStatus("Wipe failed: " + (err.message || "Network error"));
       }
     }, [wipeToken, includeWikis, addToast, loadStats]);
-    const handleWipeCancel = (0, import_react66.useCallback)(() => {
+    const handleWipeCancel = (0, import_react67.useCallback)(() => {
       setWipeToken(null);
       setWipeStatus("Cancelled.");
     }, []);
@@ -41343,16 +41427,16 @@
   function Router() {
     const { state, dispatch } = useApp();
     const { dispatch: queueDispatch } = useQueue();
-    const switchTab = (0, import_react67.useCallback)((tab) => {
+    const switchTab = (0, import_react68.useCallback)((tab) => {
       dispatch({ type: "SET_ACTIVE_TAB", tab });
     }, [dispatch]);
-    (0, import_react67.useEffect)(() => {
+    (0, import_react68.useEffect)(() => {
       window.switchTab = switchTab;
       return () => {
         delete window.switchTab;
       };
     }, [switchTab]);
-    (0, import_react67.useEffect)(() => {
+    (0, import_react68.useEffect)(() => {
       const handleHash = () => {
         const hash = location.hash.replace(/^#/, "");
         const tab = tabFromHash("#" + hash);
@@ -41409,7 +41493,7 @@
       window.addEventListener("hashchange", handleHash);
       return () => window.removeEventListener("hashchange", handleHash);
     }, [dispatch, queueDispatch]);
-    (0, import_react67.useEffect)(() => {
+    (0, import_react68.useEffect)(() => {
       const handler = (e) => {
         const target = e.target;
         if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) return;
@@ -41491,7 +41575,7 @@
   }
 
   // src/server/spa/client/react/queue/EnqueueDialog.tsx
-  var import_react68 = __toESM(require_react());
+  var import_react69 = __toESM(require_react());
   var import_jsx_runtime68 = __toESM(require_jsx_runtime());
   function flattenFolders2(node, depth = 0) {
     const indent = "\xA0\xA0".repeat(depth);
@@ -41509,17 +41593,17 @@
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { state: appState } = useApp();
     const { model: savedModel, setModel: persistModel } = usePreferences();
-    const [prompt, setPrompt] = (0, import_react68.useState)("");
-    const [model, setModel] = (0, import_react68.useState)("");
-    const [workspaceId, setWorkspaceId] = (0, import_react68.useState)("");
-    const [models, setModels] = (0, import_react68.useState)([]);
-    const [folders, setFolders] = (0, import_react68.useState)([]);
-    const [folderPath, setFolderPath] = (0, import_react68.useState)("");
-    const [submitting, setSubmitting] = (0, import_react68.useState)(false);
-    (0, import_react68.useEffect)(() => {
+    const [prompt, setPrompt] = (0, import_react69.useState)("");
+    const [model, setModel] = (0, import_react69.useState)("");
+    const [workspaceId, setWorkspaceId] = (0, import_react69.useState)("");
+    const [models, setModels] = (0, import_react69.useState)([]);
+    const [folders, setFolders] = (0, import_react69.useState)([]);
+    const [folderPath, setFolderPath] = (0, import_react69.useState)("");
+    const [submitting, setSubmitting] = (0, import_react69.useState)(false);
+    (0, import_react69.useEffect)(() => {
       if (savedModel && !model) setModel(savedModel);
     }, [savedModel]);
-    (0, import_react68.useEffect)(() => {
+    (0, import_react69.useEffect)(() => {
       if (!queueState.showDialog) return;
       setFolderPath(queueState.dialogInitialFolderPath ?? "");
       fetchApi("/queue/models").then((data) => {
@@ -41528,7 +41612,7 @@
       }).catch(() => {
       });
     }, [queueState.showDialog]);
-    (0, import_react68.useEffect)(() => {
+    (0, import_react69.useEffect)(() => {
       setFolders([]);
       if (!workspaceId) return;
       fetchApi("/workspaces/" + encodeURIComponent(workspaceId) + "/tasks").then((data) => {
@@ -41538,11 +41622,11 @@
       }).catch(() => {
       });
     }, [workspaceId]);
-    const handleModelChange = (0, import_react68.useCallback)((value) => {
+    const handleModelChange = (0, import_react69.useCallback)((value) => {
       setModel(value);
       persistModel(value);
     }, [persistModel]);
-    const handleSubmit = (0, import_react68.useCallback)(async () => {
+    const handleSubmit = (0, import_react69.useCallback)(async () => {
       if (!prompt.trim()) return;
       setSubmitting(true);
       try {
@@ -41677,20 +41761,20 @@
     const { state: appState, dispatch: appDispatch } = useApp();
     const { dispatch: queueDispatch } = useQueue();
     const { toasts, addToast, removeToast } = useToast();
-    const [reviewDialog, setReviewDialog] = (0, import_react69.useState)({
+    const [reviewDialog, setReviewDialog] = (0, import_react70.useState)({
       open: false,
       wsId: null,
       filePath: null,
       displayPath: null,
       fetchMode: "auto"
     });
-    const handleConnect = (0, import_react69.useCallback)(async () => {
+    const handleConnect = (0, import_react70.useCallback)(async () => {
       const data = await fetchApi("/queue").catch(() => null);
       if (data && Array.isArray(data.queued) && Array.isArray(data.running)) {
         queueDispatch({ type: "QUEUE_UPDATED", queue: data });
       }
     }, [queueDispatch]);
-    const onMessage = (0, import_react69.useCallback)((msg) => {
+    const onMessage = (0, import_react70.useCallback)((msg) => {
       if (!msg || !msg.type) return;
       switch (msg.type) {
         case "process-added":
@@ -41760,7 +41844,7 @@
       }
     }, [appDispatch, queueDispatch]);
     const { connect } = useWebSocket({ onMessage, onConnect: handleConnect });
-    (0, import_react69.useEffect)(() => {
+    (0, import_react70.useEffect)(() => {
       async function bootstrap() {
         try {
           const [wsRes, pRes, qRes] = await Promise.all([
@@ -41781,7 +41865,7 @@
       }
       bootstrap();
     }, [connect, appDispatch, queueDispatch]);
-    (0, import_react69.useEffect)(() => {
+    (0, import_react70.useEffect)(() => {
       const handleOpenMarkdownReview = (event) => {
         const detail = event.detail;
         const fullPath = typeof detail?.filePath === "string" ? detail.filePath : "";

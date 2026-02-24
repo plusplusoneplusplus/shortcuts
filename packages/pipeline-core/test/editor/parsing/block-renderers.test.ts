@@ -209,6 +209,53 @@ describe('renderCodeBlock', () => {
         expect(html).toContain('class="code-line" data-line="1"');
         expect(html).toContain('class="code-line" data-line="2"');
     });
+
+    it('adds collapsible attributes when block exceeds threshold', () => {
+        const lines = Array.from({ length: 20 }, (_, i) => `line${i + 1}`).join('\n');
+        const block = makeCodeBlock({ code: lines });
+        const options: CodeBlockRenderOptions = {
+            collapsible: true,
+            collapseThreshold: 15,
+        };
+        const html = renderCodeBlock(block, options);
+
+        expect(html).toContain('data-collapsible="true"');
+        expect(html).toContain('data-collapsed="true"');
+        expect(html).toContain('code-block-collapsed-indicator');
+        expect(html).toContain('Show 15 more lines');
+        expect(html).toContain('code-block-collapse');
+    });
+
+    it('does not add collapsible attributes when block is under threshold', () => {
+        const block = makeCodeBlock({ code: 'line1\nline2\nline3' });
+        const options: CodeBlockRenderOptions = {
+            collapsible: true,
+            collapseThreshold: 15,
+        };
+        const html = renderCodeBlock(block, options);
+
+        expect(html).not.toContain('data-collapsible');
+        expect(html).not.toContain('data-collapsed');
+        expect(html).not.toContain('code-block-collapsed-indicator');
+        expect(html).not.toContain('code-block-collapse');
+    });
+
+    it('does not add collapsible when option is false', () => {
+        const lines = Array.from({ length: 20 }, (_, i) => `line${i + 1}`).join('\n');
+        const block = makeCodeBlock({ code: lines });
+        const html = renderCodeBlock(block, { collapsible: false });
+
+        expect(html).not.toContain('data-collapsible');
+        expect(html).not.toContain('data-collapsed');
+    });
+
+    it('includes data-raw when showCopyButton is true', () => {
+        const block = makeCodeBlock({ code: 'const x = 1;' });
+        const html = renderCodeBlock(block, { showCopyButton: true });
+
+        expect(html).toContain('data-raw=');
+        expect(html).toContain('code-block-copy');
+    });
 });
 
 // ─── renderMermaidContainer ──────────────────────────────────────────

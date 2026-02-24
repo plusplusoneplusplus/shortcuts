@@ -2278,8 +2278,44 @@ video {
 .markdown-body .code-block-content {
     margin: 0;
     padding: 10px 0;
-    overflow: auto;
+    overflow-x: auto;
     max-width: 100%;
+}
+
+/* Collapsed code blocks: hide content, show indicator */
+.markdown-body .code-block-container[data-collapsed="true"] .code-block-content {
+    max-height: calc(1.55em * 5 + 20px);
+    overflow: hidden;
+}
+
+.markdown-body .code-block-collapsed-indicator {
+    display: none;
+    padding: 6px 10px;
+    font-size: 11px;
+    color: #848484;
+    cursor: pointer;
+    border-top: 1px dashed #e0e0e0;
+    text-align: center;
+    -webkit-user-select: none;
+       -moz-user-select: none;
+            user-select: none;
+}
+
+.dark .markdown-body .code-block-collapsed-indicator {
+    color: #9a9a9a;
+    border-top-color: #3c3c3c;
+}
+
+.markdown-body .code-block-container[data-collapsed="true"] .code-block-collapsed-indicator {
+    display: block;
+}
+
+.markdown-body .code-block-collapsed-indicator:hover {
+    background: #f3f3f3;
+}
+
+.dark .markdown-body .code-block-collapsed-indicator:hover {
+    background: #2d2d2d;
 }
 
 .markdown-body .code-block-content code {

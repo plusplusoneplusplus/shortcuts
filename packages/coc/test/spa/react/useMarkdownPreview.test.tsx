@@ -11,10 +11,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { useMarkdownPreview } from '../../../src/server/spa/client/react/hooks/useMarkdownPreview';
+import { useCodeBlockActions } from '../../../src/server/spa/client/react/hooks/useCodeBlockActions';
 
 // Mock useMermaid since it requires DOM manipulation
 vi.mock('../../../src/server/spa/client/react/hooks/useMermaid', () => ({
     useMermaid: vi.fn(),
+}));
+
+// Mock useCodeBlockActions since it requires DOM event delegation
+vi.mock('../../../src/server/spa/client/react/hooks/useCodeBlockActions', () => ({
+    useCodeBlockActions: vi.fn(),
 }));
 
 describe('useMarkdownPreview', () => {
@@ -196,6 +202,19 @@ describe('useMarkdownPreview', () => {
         expect(highlightElementSpy).toHaveBeenCalledWith(code);
 
         delete (window as any).hljs;
+    });
+
+    it('calls useCodeBlockActions with containerRef', () => {
+        const containerRef = createRef();
+        const content = '```js\nconst x = 1;\n```';
+        renderHook(() =>
+            useMarkdownPreview({ content, containerRef })
+        );
+
+        expect(useCodeBlockActions).toHaveBeenCalled();
+        const calls = (useCodeBlockActions as ReturnType<typeof vi.fn>).mock.calls;
+        const lastCall = calls[calls.length - 1];
+        expect(lastCall[0]).toBe(containerRef);
     });
 
     it('preserves code-line structure in rendered code blocks', () => {

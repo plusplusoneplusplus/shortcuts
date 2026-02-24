@@ -9,6 +9,7 @@
 import { useEffect } from 'react';
 import { renderMarkdownToHtml, type RenderOptions } from '../../markdown-renderer';
 import { useMermaid } from './useMermaid';
+import { useCodeBlockActions } from './useCodeBlockActions';
 
 export interface UseMarkdownPreviewOptions extends RenderOptions {
     /** Raw markdown content to render. */
@@ -54,6 +55,9 @@ export function useMarkdownPreview({
 
     // Mermaid diagram rendering
     useMermaid(containerRef);
+
+    // Code block copy/collapse/expand handlers
+    useCodeBlockActions(containerRef, [html]);
 
     return { html };
 }
