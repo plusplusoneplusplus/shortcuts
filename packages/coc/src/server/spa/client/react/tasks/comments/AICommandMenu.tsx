@@ -7,7 +7,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { Button, Spinner } from '../../shared';
-import { DEFAULT_AI_COMMANDS } from '@plusplusoneplusplus/pipeline-core/ai';
+import { DASHBOARD_AI_COMMANDS } from '../../shared/ai-commands';
 
 export interface AICommandMenuProps {
     onCommand: (commandId: string, customQuestion?: string) => void;
@@ -44,7 +44,7 @@ export function AICommandMenu({
         setMenuOpen(true);
     }, [menuOpen]);
 
-    const handleMenuCommand = (cmd: typeof DEFAULT_AI_COMMANDS[number]) => {
+    const handleMenuCommand = (cmd: (typeof DASHBOARD_AI_COMMANDS)[number]) => {
         if (cmd.isCustomInput) {
             setCustomInputOpen(true);
             requestAnimationFrame(() => customInputRef.current?.focus());
@@ -120,7 +120,7 @@ export function AICommandMenu({
                     onClick={e => e.stopPropagation()}
                 >
                     {!customInputOpen
-                        ? DEFAULT_AI_COMMANDS.map(cmd => (
+                        ? DASHBOARD_AI_COMMANDS.map(cmd => (
                             <button
                                 key={cmd.id}
                                 className="w-full text-left flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-[#1e1e1e] dark:text-[#cccccc]"

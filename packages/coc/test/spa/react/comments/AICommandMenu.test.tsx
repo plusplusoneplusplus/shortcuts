@@ -5,6 +5,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { AICommandMenu } from '../../../../src/server/spa/client/react/tasks/comments/AICommandMenu';
+import { DASHBOARD_AI_COMMANDS } from '../../../../src/server/spa/client/react/shared/ai-commands';
 
 const noop = () => {};
 
@@ -34,6 +35,15 @@ describe('AICommandMenu', () => {
         fireEvent.click(screen.getByTestId('ai-menu-trigger'));
         fireEvent.click(screen.getByTestId('ai-cmd-go-deeper'));
         expect(onCommand).toHaveBeenCalledWith('go-deeper');
+    });
+
+    it('renders commands from dashboard command config', () => {
+        render(<AICommandMenu onCommand={noop} />);
+        fireEvent.click(screen.getByTestId('ai-menu-trigger'));
+
+        for (const command of DASHBOARD_AI_COMMANDS) {
+            expect(screen.getByTestId(`ai-cmd-${command.id}`)).toBeTruthy();
+        }
     });
 
     it('shows custom input on Custom click and fires onCommand("custom", text) on Enter', () => {

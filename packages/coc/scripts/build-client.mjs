@@ -38,9 +38,6 @@ await esbuild.build({
     minify: false,
     sourcemap: false,
     logLevel: 'info',
-    // Mark Node.js built-ins as external so that tree-shaken pipeline-core
-    // server-side modules (ai, copilot-sdk) don't break the browser bundle.
-    external: ['child_process', 'fs', 'os', 'path', 'url', 'net', 'tls', 'http', 'https', 'stream', 'crypto', 'events', 'util'],
 });
 
 await buildTailwindBundle(

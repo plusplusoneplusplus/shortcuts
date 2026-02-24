@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import React from 'react';
 import { MarkdownReviewEditor } from '../../../src/server/spa/client/react/shared/MarkdownReviewEditor';
-import { DEFAULT_AI_COMMANDS } from '@plusplusoneplusplus/pipeline-core/ai';
+import { DASHBOARD_AI_COMMANDS } from '../../../src/server/spa/client/react/shared/ai-commands';
 
 /* ── Mock useTaskComments ── */
 const mockAddComment = vi.fn();
@@ -247,7 +247,7 @@ describe('MarkdownReviewEditor', () => {
 
             await waitFor(() => {
                 // Each non-custom command should appear
-                const nonCustomCommands = DEFAULT_AI_COMMANDS.filter(c => !c.isCustomInput);
+                const nonCustomCommands = DASHBOARD_AI_COMMANDS.filter(c => !c.isCustomInput);
                 for (const cmd of nonCustomCommands) {
                     const expectedLabel = `${cmd.icon ?? ''} ${cmd.label}`.trim();
                     expect(screen.getByText(expectedLabel)).toBeTruthy();
@@ -267,7 +267,7 @@ describe('MarkdownReviewEditor', () => {
             const askAiItem = screen.getByText('Ask AI').closest('[data-testid]')!;
             fireEvent.mouseEnter(askAiItem);
 
-            const clarifyCmd = DEFAULT_AI_COMMANDS.find(c => c.id === 'clarify')!;
+            const clarifyCmd = DASHBOARD_AI_COMMANDS.find(c => c.id === 'clarify')!;
             const label = `${clarifyCmd.icon ?? ''} ${clarifyCmd.label}`.trim();
 
             await waitFor(() => {
@@ -369,7 +369,7 @@ describe('MarkdownReviewEditor', () => {
             const askAiItem = screen.getByText('Ask AI').closest('[data-testid]')!;
             fireEvent.mouseEnter(askAiItem);
 
-            const clarifyCmd = DEFAULT_AI_COMMANDS.find(c => c.id === 'clarify')!;
+            const clarifyCmd = DASHBOARD_AI_COMMANDS.find(c => c.id === 'clarify')!;
             const label = `${clarifyCmd.icon ?? ''} ${clarifyCmd.label}`.trim();
 
             await waitFor(() => {

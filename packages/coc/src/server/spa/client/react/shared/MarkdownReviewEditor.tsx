@@ -20,7 +20,7 @@ import {
     createAnchorData,
     DEFAULT_ANCHOR_MATCH_CONFIG,
 } from '@plusplusoneplusplus/pipeline-core/editor/anchor';
-import { DEFAULT_AI_COMMANDS } from '@plusplusoneplusplus/pipeline-core/ai';
+import { DASHBOARD_AI_COMMANDS } from './ai-commands';
 import { extractDocumentContext } from '../utils/document-context';
 
 export interface MarkdownReviewEditorProps {
@@ -279,7 +279,7 @@ export function MarkdownReviewEditor({
             // proceed without anchor
         }
 
-        const cmd = DEFAULT_AI_COMMANDS.find(c => c.id === commandId);
+        const cmd = DASHBOARD_AI_COMMANDS.find(c => c.id === commandId);
         const commentText = cmd?.label ?? commandId;
 
         const newComment = await addComment({
@@ -407,7 +407,7 @@ export function MarkdownReviewEditor({
                             label: 'Ask AI',
                             icon: '🤖',
                             disabled: !savedSelection,
-                            children: DEFAULT_AI_COMMANDS.filter(c => !c.isCustomInput).map(cmd => ({
+                            children: DASHBOARD_AI_COMMANDS.filter(c => !c.isCustomInput).map(cmd => ({
                                 label: `${cmd.icon ?? ''} ${cmd.label}`.trim(),
                                 onClick: () => handleAskAIFromSelection(cmd.id),
                             })).concat([{
