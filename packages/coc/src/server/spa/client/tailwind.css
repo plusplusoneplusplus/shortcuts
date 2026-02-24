@@ -798,6 +798,167 @@
     font-size: 12px;
 }
 
+/* ============================================================
+   Source-mode view (dual-mode markdown: Preview / Source)
+   Layout and token-highlight classes emitted by renderSourceModeToHtml.
+   Mirrors the .md-* block above: light-mode rules first, then
+   .dark overrides grouped at the end.
+   ============================================================ */
+
+/* Source-mode container */
+.source-mode-body {
+    font-family: monospace;
+    white-space: pre-wrap;
+    word-break: break-word;
+    line-height: 1.6;
+}
+
+/* Source-mode line layout */
+.source-line {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+}
+
+.source-line .line-number {
+    min-width: 2.5rem;
+    text-align: right;
+    user-select: none;
+    color: #9ca3af;
+    font-size: 0.85em;
+    padding-top: 1px;
+}
+
+.source-line .line-content {
+    flex: 1;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+/* Headings */
+.source-mode-body .src-h1 { font-size: 1.4em; font-weight: 700; }
+.source-mode-body .src-h2 { font-size: 1.3em; font-weight: 700; }
+.source-mode-body .src-h3 { font-size: 1.2em; font-weight: 700; }
+.source-mode-body .src-h4 { font-size: 1.1em; font-weight: 700; }
+.source-mode-body .src-h5 { font-size: 1.05em; font-weight: 700; }
+.source-mode-body .src-h6 { font-size: 1em;   font-weight: 700; }
+.source-mode-body .src-hash { color: #9ca3af; }
+
+/* Inline formatting */
+.source-mode-body .src-bold        { font-weight: 700; }
+.source-mode-body .src-italic      { font-style: italic; }
+.source-mode-body .src-bold-italic { font-weight: 700; font-style: italic; }
+.source-mode-body .src-marker      { color: #9ca3af; }
+.source-mode-body .src-strike      { text-decoration: line-through; color: #6b7280; }
+
+/* Code */
+.source-mode-body .src-inline-code {
+    background: #f3f4f6;
+    color: #c7254e;
+    padding: 0.1em 0.3em;
+    border-radius: 3px;
+    font-family: monospace;
+}
+.source-mode-body .src-code-fence { color: #6b7280; opacity: 0.8; }
+
+/* Links and images */
+.source-mode-body .src-link      { color: #0078d4; }
+.source-mode-body .src-link-text { color: #0078d4; }
+.source-mode-body .src-link-url  { color: #9ca3af; }
+.source-mode-body .src-image     { color: #0078d4; }
+
+/* Blockquote */
+.source-mode-body .src-blockquote        { color: #6b7280; font-style: italic; }
+.source-mode-body .src-blockquote-marker { color: #0078d4; }
+
+/* Lists and checkboxes */
+.source-mode-body .src-list-marker          { color: #0078d4; font-weight: 600; }
+.source-mode-body .src-checkbox             { color: #0078d4; }
+.source-mode-body .src-checkbox-checked     { color: #16a34a; }
+.source-mode-body .src-checkbox-in-progress { color: #f59e0b; }
+
+/* Horizontal rule */
+.source-mode-body .src-hr { color: #e5e7eb; }
+
+/* Mode-toggle toolbar buttons (reusable across views) */
+.mode-toggle {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    padding: 2px;
+}
+
+.mode-btn {
+    border: 1px solid #c0c0c0;
+    background: #fff;
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+    padding: 3px 8px;
+    line-height: 1.4;
+    color: #1e1e1e;
+    user-select: none;
+}
+
+.mode-btn.active {
+    background: #0078d4;
+    color: #fff;
+    border-color: #0078d4;
+}
+
+.mode-btn:hover:not(.active) {
+    background: #e8e8e8;
+}
+
+/* Dark-mode overrides — source-mode */
+.dark .source-line .line-number { color: #9a9a9a; }
+
+.dark .source-mode-body .src-h1,
+.dark .source-mode-body .src-h2,
+.dark .source-mode-body .src-h3,
+.dark .source-mode-body .src-h4,
+.dark .source-mode-body .src-h5,
+.dark .source-mode-body .src-h6 { color: #d4d4d4; }
+
+.dark .source-mode-body .src-hash   { color: #9a9a9a; }
+.dark .source-mode-body .src-marker { color: #9a9a9a; }
+
+.dark .source-mode-body .src-strike { color: #9a9a9a; }
+
+.dark .source-mode-body .src-inline-code {
+    background: #2d2d2d;
+    color: #ff9da4;
+}
+
+.dark .source-mode-body .src-link-url  { color: #9a9a9a; }
+.dark .source-mode-body .src-link,
+.dark .source-mode-body .src-link-text,
+.dark .source-mode-body .src-image     { color: #7bbef3; }
+
+.dark .source-mode-body .src-blockquote        { color: #a8a8a8; }
+.dark .source-mode-body .src-blockquote-marker { color: #3794ff; }
+
+.dark .source-mode-body .src-list-marker,
+.dark .source-mode-body .src-checkbox  { color: #7bbef3; }
+
+.dark .source-mode-body .src-hr { color: #3c3c3c; }
+
+/* Dark-mode overrides — mode-toggle buttons */
+.dark .mode-btn {
+    border-color: #555;
+    background: #2d2d2d;
+    color: #d4d4d4;
+}
+
+.dark .mode-btn.active {
+    background: #0078d4;
+    color: #fff;
+}
+
+.dark .mode-btn:hover:not(.active) {
+    background: #3c3c3c;
+}
+
 /* Queue task repo/workspace badge */
 .queue-repo-badge {
     display: inline-block;
