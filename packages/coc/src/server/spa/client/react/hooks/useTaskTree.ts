@@ -46,6 +46,28 @@ export function isContextFile(fileName: string): boolean {
     return CONTEXT_FILES.has(fileName.toLowerCase());
 }
 
+function getPathSegments(relativePath: string): string[] {
+    return relativePath.split(/[\\/]/).filter(Boolean);
+}
+
+export function isGitMetadataFolder(folder: TaskFolder): boolean {
+    if (folder.name === '.git') {
+        return true;
+    }
+    return getPathSegments(folder.relativePath ?? '').includes('.git');
+}
+
+export function filterGitMetadataFolders(folder: TaskFolder): TaskFolder {
+    const children = Array.isArray(folder.children) ? folder.children : [];
+
+    return {
+        ...folder,
+        children: children
+            .filter((child) => !isGitMetadataFolder(child))
+            .map((child) => filterGitMetadataFolders(child)),
+    };
+}
+
 // ── Type guards ────────────────────────────────────────────────────────
 
 export function isTaskFolder(node: TaskNode): node is TaskFolder {
@@ -111,7 +133,10 @@ export function useTaskTree(wsId: string): UseTaskTreeResult {
             fetchApi(`/workspaces/${encodeURIComponent(wsId)}/tasks?showArchived=true`),
             fetchApi(`/workspaces/${encodeURIComponent(wsId)}/tasks/comment-counts`).catch(() => null),
         ]).then(([tasksData, countsData]) => {
-            setTree(tasksData as TaskFolder);
+            const filteredTree = tasksData && typeof tasksData === 'object'
+                ? filterGitMetadataFolders(tasksData as TaskFolder)
+                : (tasksData as TaskFolder | null);
+            setTree(filteredTree);
             if (countsData && typeof countsData === 'object') {
                 setCommentCounts(countsData as Record<string, number>);
             }

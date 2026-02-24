@@ -171,6 +171,53 @@ describe('TasksPanel', () => {
         });
     });
 
+    it('filters out .git folders from the task tree UI', async () => {
+        const treeWithGit: TaskFolder = {
+            ...mockTree,
+            children: [
+                {
+                    name: '.git',
+                    relativePath: '.git',
+                    children: [],
+                    documentGroups: [],
+                    singleDocuments: [],
+                },
+                {
+                    ...mockTree.children[0],
+                    children: [
+                        {
+                            name: '.git',
+                            relativePath: 'feature1/.git',
+                            children: [],
+                            documentGroups: [],
+                            singleDocuments: [],
+                        },
+                    ],
+                },
+            ],
+        };
+
+        fetchSpy.mockImplementation((url: string) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve(treeWithGit) });
+        });
+
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree-item-feature1')).toBeTruthy();
+        });
+
+        expect(screen.queryByTestId('task-tree-item-.git')).toBeNull();
+
+        fireEvent.click(screen.getByTestId('task-tree-item-feature1'));
+        await waitFor(() => {
+            expect(screen.getByTestId('miller-column-1')).toBeTruthy();
+        });
+        expect(screen.queryByTestId('task-tree-item-.git')).toBeNull();
+    });
+
     it('renders context files toggle', async () => {
         fetchSpy.mockImplementation((url: string) => {
             if (url.includes('comment-counts')) {

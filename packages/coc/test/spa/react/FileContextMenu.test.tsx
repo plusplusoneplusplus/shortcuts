@@ -350,4 +350,33 @@ describe('File context menu', () => {
 
         expect(screen.getByTestId('file-move-dest-root')).toBeTruthy();
     });
+
+    it('move dialog excludes .git folders from destination options', async () => {
+        const treeWithGit = {
+            ...mockTree,
+            children: [
+                ...mockTree.children,
+                {
+                    name: '.git',
+                    relativePath: '.git',
+                    children: [],
+                    documentGroups: [],
+                    singleDocuments: [],
+                },
+            ],
+        };
+        global.fetch = setupFetch(treeWithGit as typeof mockTree);
+
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree-item-notes')).toBeTruthy();
+        });
+
+        fireEvent.contextMenu(screen.getByTestId('task-tree-item-notes'));
+        fireEvent.click(screen.getByText('Move File'));
+
+        expect(screen.getByTestId('file-move-destination-list')).toBeTruthy();
+        expect(screen.getByTestId('file-move-dest-feature1')).toBeTruthy();
+        expect(screen.queryByTestId('file-move-dest-.git')).toBeNull();
+    });
 });

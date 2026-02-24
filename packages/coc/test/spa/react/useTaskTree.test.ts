@@ -10,6 +10,8 @@ import {
     isTaskDocument,
     isContextFile,
     folderToNodes,
+    isGitMetadataFolder,
+    filterGitMetadataFolders,
     type TaskFolder,
     type TaskDocumentGroup,
     type TaskDocument,
@@ -114,6 +116,80 @@ describe('folderToNodes', () => {
             singleDocuments: [],
         };
         expect(folderToNodes(emptyFolder)).toHaveLength(0);
+    });
+});
+
+describe('filterGitMetadataFolders', () => {
+    it('removes .git folders recursively and preserves non-git hidden folders', () => {
+        const tree: TaskFolder = {
+            name: 'tasks',
+            relativePath: '',
+            children: [
+                {
+                    name: '.git',
+                    relativePath: '.git',
+                    children: [
+                        {
+                            name: 'hooks',
+                            relativePath: '.git/hooks',
+                            children: [],
+                            documentGroups: [],
+                            singleDocuments: [],
+                        },
+                    ],
+                    documentGroups: [],
+                    singleDocuments: [],
+                },
+                {
+                    name: '.github',
+                    relativePath: '.github',
+                    children: [],
+                    documentGroups: [],
+                    singleDocuments: [],
+                },
+                {
+                    name: 'feature',
+                    relativePath: 'feature',
+                    children: [
+                        {
+                            name: '.git',
+                            relativePath: 'feature/.git',
+                            children: [],
+                            documentGroups: [],
+                            singleDocuments: [],
+                        },
+                        {
+                            name: 'docs',
+                            relativePath: 'feature/docs',
+                            children: [],
+                            documentGroups: [],
+                            singleDocuments: [],
+                        },
+                    ],
+                    documentGroups: [],
+                    singleDocuments: [],
+                },
+            ],
+            documentGroups: [],
+            singleDocuments: [],
+        };
+
+        const filtered = filterGitMetadataFolders(tree);
+
+        expect(filtered.children.map((child) => child.name)).toEqual(['.github', 'feature']);
+        expect(filtered.children[1].children.map((child) => child.name)).toEqual(['docs']);
+    });
+
+    it('detects .git folders from Windows-style relative paths', () => {
+        const windowsGitFolder: TaskFolder = {
+            name: 'hooks',
+            relativePath: 'feature\\.git\\hooks',
+            children: [],
+            documentGroups: [],
+            singleDocuments: [],
+        };
+
+        expect(isGitMetadataFolder(windowsGitFolder)).toBe(true);
     });
 });
 
