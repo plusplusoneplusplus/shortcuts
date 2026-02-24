@@ -56,6 +56,7 @@ export function MarkdownReviewEditor({
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const previewRef = useRef<HTMLDivElement>(null);
+    const [viewMode, setViewMode] = useState<'review' | 'source'>('review');
 
     // Selection & popup state
     const [contextMenuVisible, setContextMenuVisible] = useState(false);
@@ -101,6 +102,7 @@ export function MarkdownReviewEditor({
         containerRef: previewRef,
         loading,
         stripFrontmatter: true,
+        viewMode,
     });
 
     const showCommentListPanel = comments.length > 0;
@@ -142,7 +144,10 @@ export function MarkdownReviewEditor({
     useEffect(() => {
         const handleMouseUp = () => {
             const sel = window.getSelection();
-            if (sel && !sel.isCollapsed && sel.rangeCount && sel.toString().trim().length >= MIN_SELECTION_LENGTH) {
+            if (
+                viewMode !== 'source' &&
+                sel && !sel.isCollapsed && sel.rangeCount && sel.toString().trim().length >= MIN_SELECTION_LENGTH
+            ) {
                 if (previewRef.current?.contains(sel.anchorNode)) {
                     const range = sel.getRangeAt(0);
                     const text = sel.toString().trim();
@@ -167,13 +172,14 @@ export function MarkdownReviewEditor({
 
         document.addEventListener('mouseup', handleMouseUp);
         return () => document.removeEventListener('mouseup', handleMouseUp);
-    }, []);
+    }, [viewMode]);
 
     const handleContextMenu = useCallback((e: React.MouseEvent) => {
+        if (viewMode === 'source') return;
         e.preventDefault();
         setContextMenuPos({ x: e.clientX, y: e.clientY });
         setContextMenuVisible(true);
-    }, []);
+    }, [viewMode]);
 
     const handleAddCommentFromMenu = useCallback(() => {
         if (!savedSelection) return;
@@ -352,6 +358,18 @@ export function MarkdownReviewEditor({
         <div className="flex h-full flex-1 overflow-hidden min-h-0 min-w-0 p-2">
             <div className="flex h-full flex-1 overflow-hidden min-h-0 min-w-0 rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e]">
                 <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+                    {/* ── Mode toggle toolbar ── */}
+                    <div className="mode-toggle">
+                        <button
+                            className={`mode-btn${viewMode === 'review' ? ' active' : ''}`}
+                            onClick={() => setViewMode('review')}
+                        >Preview</button>
+                        <button
+                            className={`mode-btn${viewMode === 'source' ? ' active' : ''}`}
+                            onClick={() => setViewMode('source')}
+                        >Source</button>
+                    </div>
+
                     <div className="flex-1 overflow-y-auto p-4 min-h-0 min-w-0">
                         <div
                             ref={previewRef}

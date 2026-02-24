@@ -36,8 +36,12 @@ vi.mock('../../../src/server/spa/client/react/hooks/useTaskComments', () => ({
 
 /* ── Mock useMarkdownPreview ── */
 vi.mock('../../../src/server/spa/client/react/hooks/useMarkdownPreview', () => ({
-    useMarkdownPreview: ({ content }: { content: string }) => ({
-        html: content ? `<p>${content}</p>` : '',
+    useMarkdownPreview: ({ content, viewMode }: { content: string; viewMode?: string }) => ({
+        html: content
+            ? (viewMode === 'source'
+                ? `<pre class="src-block">${content}</pre>`
+                : `<p>${content}</p>`)
+            : '',
     }),
 }));
 
@@ -388,6 +392,75 @@ describe('MarkdownReviewEditor', () => {
             await act(async () => {
                 resolveAddComment!({ id: 'new-comment-1', comment: 'Clarify', category: 'question' });
             });
+        });
+    });
+
+    // ── Mode toggle tests ──
+
+    describe('mode toggle', () => {
+        async function renderAndWaitForContent() {
+            const result = render(
+                <MarkdownReviewEditor wsId="ws1" filePath="test.md" fetchMode="tasks" />
+            );
+            await waitFor(() => {
+                expect(document.querySelector('#task-preview-body')).toBeTruthy();
+            });
+            return result;
+        }
+
+        function openContextMenu() {
+            const preview = document.querySelector('#task-preview-body')!;
+            fireEvent.contextMenu(preview, { clientX: 100, clientY: 100 });
+        }
+
+        it('renders Preview and Source buttons', async () => {
+            await renderAndWaitForContent();
+            expect(screen.getByText('Preview')).toBeTruthy();
+            expect(screen.getByText('Source')).toBeTruthy();
+        });
+
+        it('Preview button is active by default', async () => {
+            await renderAndWaitForContent();
+            const previewBtn = screen.getByText('Preview');
+            const sourceBtn = screen.getByText('Source');
+            expect(previewBtn.className).toContain('active');
+            expect(sourceBtn.className).not.toContain('active');
+        });
+
+        it('clicking Source switches active class to Source button', async () => {
+            await renderAndWaitForContent();
+            await act(async () => {
+                fireEvent.click(screen.getByText('Source'));
+            });
+            const previewBtn = screen.getByText('Preview');
+            const sourceBtn = screen.getByText('Source');
+            expect(sourceBtn.className).toContain('active');
+            expect(previewBtn.className).not.toContain('active');
+        });
+
+        it('source mode suppresses context menu on right-click', async () => {
+            await renderAndWaitForContent();
+            await act(async () => {
+                fireEvent.click(screen.getByText('Source'));
+            });
+            openContextMenu();
+            expect(screen.queryByTestId('context-menu')).toBeNull();
+        });
+
+        it('switching back to Preview re-enables context menu', async () => {
+            await renderAndWaitForContent();
+            // Enter source mode
+            await act(async () => {
+                fireEvent.click(screen.getByText('Source'));
+            });
+            // Switch back to preview
+            await act(async () => {
+                fireEvent.click(screen.getByText('Preview'));
+            });
+            const preview = document.querySelector('#task-preview-body')! as HTMLElement;
+            simulateTextSelection(preview);
+            openContextMenu();
+            expect(screen.getByTestId('context-menu')).toBeTruthy();
         });
     });
 });

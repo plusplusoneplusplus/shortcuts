@@ -24809,7 +24809,7 @@
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.generateAnchorId = generateAnchorId;
       exports.escapeHtml = escapeHtml2;
-      exports.applySourceModeHighlighting = applySourceModeHighlighting;
+      exports.applySourceModeHighlighting = applySourceModeHighlighting2;
       exports.applySourceModeInlineHighlighting = applySourceModeInlineHighlighting;
       exports.applyInlineMarkdown = applyInlineMarkdown;
       exports.resolveImagePath = resolveImagePath;
@@ -24822,7 +24822,7 @@
       function escapeHtml2(text) {
         return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
       }
-      function applySourceModeHighlighting(line, inCodeBlock) {
+      function applySourceModeHighlighting2(line, inCodeBlock) {
         const cleanLine = line.replace(/\r$/, "");
         if (cleanLine.match(/^[ \t]*```/)) {
           return {
@@ -28229,6 +28229,23 @@
       htmlParts.push(lineHtml);
     }
     return htmlParts.join("\n");
+  }
+  function renderSourceModeToHtml(content) {
+    if (!content) return "";
+    const text = content.replace(/\r\n/g, "\n");
+    const lines = text.split("\n");
+    let inCodeBlock = false;
+    const htmlParts = [];
+    for (let i = 0; i < lines.length; i++) {
+      const lineNum = i + 1;
+      const result = (0, import_rendering.applySourceModeHighlighting)(lines[i], inCodeBlock);
+      inCodeBlock = result.inCodeBlock;
+      const lineContent = result.html === "" ? "<br>" : result.html;
+      htmlParts.push(
+        `<div class="source-line" data-line="${lineNum}"><span class="line-number">${lineNum}</span><span class="line-content">${lineContent}</span></div>`
+      );
+    }
+    return '<div class="source-mode-body">' + htmlParts.join("\n") + "</div>";
   }
   function buildBlockRanges(codeBlocks, mermaidBlocks, tables) {
     const ranges = [];
@@ -32081,11 +32098,13 @@
     content,
     containerRef,
     loading,
+    viewMode,
     ...renderOptions
   }) {
-    const html = !loading && content ? renderMarkdownToHtml(content, renderOptions) : "";
+    const isSourceMode = viewMode === "source";
+    const html = !loading && content ? isSourceMode ? renderSourceModeToHtml(content) : renderMarkdownToHtml(content, renderOptions) : "";
     (0, import_react35.useEffect)(() => {
-      if (!html || !containerRef.current) return;
+      if (!html || !containerRef.current || isSourceMode) return;
       const hljs2 = window.hljs;
       if (hljs2) {
         containerRef.current.querySelectorAll("pre code").forEach((block) => {
@@ -32094,7 +32113,8 @@
         });
       }
     }, [html, containerRef]);
-    useMermaid(containerRef);
+    const mermaidRef = isSourceMode ? { current: null } : containerRef;
+    useMermaid(mermaidRef);
     useCodeBlockActions(containerRef, [html]);
     return { html };
   }
@@ -33385,6 +33405,7 @@
     const [loading, setLoading] = (0, import_react44.useState)(true);
     const [error, setError] = (0, import_react44.useState)(null);
     const previewRef = (0, import_react44.useRef)(null);
+    const [viewMode, setViewMode] = (0, import_react44.useState)("review");
     const [contextMenuVisible, setContextMenuVisible] = (0, import_react44.useState)(false);
     const [contextMenuPos, setContextMenuPos] = (0, import_react44.useState)({ x: 0, y: 0 });
     const [savedSelection, setSavedSelection] = (0, import_react44.useState)(null);
@@ -33410,7 +33431,8 @@
       content: rawContent,
       containerRef: previewRef,
       loading,
-      stripFrontmatter: true
+      stripFrontmatter: true,
+      viewMode
     });
     const showCommentListPanel = comments.length > 0;
     (0, import_react44.useEffect)(() => {
@@ -33447,7 +33469,7 @@
     (0, import_react44.useEffect)(() => {
       const handleMouseUp = () => {
         const sel = window.getSelection();
-        if (sel && !sel.isCollapsed && sel.rangeCount && sel.toString().trim().length >= MIN_SELECTION_LENGTH) {
+        if (viewMode !== "source" && sel && !sel.isCollapsed && sel.rangeCount && sel.toString().trim().length >= MIN_SELECTION_LENGTH) {
           if (previewRef.current?.contains(sel.anchorNode)) {
             const range = sel.getRangeAt(0);
             const text = sel.toString().trim();
@@ -33471,12 +33493,13 @@
       };
       document.addEventListener("mouseup", handleMouseUp);
       return () => document.removeEventListener("mouseup", handleMouseUp);
-    }, []);
+    }, [viewMode]);
     const handleContextMenu = (0, import_react44.useCallback)((e) => {
+      if (viewMode === "source") return;
       e.preventDefault();
       setContextMenuPos({ x: e.clientX, y: e.clientY });
       setContextMenuVisible(true);
-    }, []);
+    }, [viewMode]);
     const handleAddCommentFromMenu = (0, import_react44.useCallback)(() => {
       if (!savedSelection) return;
       const rect = savedSelection.range.getBoundingClientRect();
@@ -33617,26 +33640,46 @@
     }
     return /* @__PURE__ */ (0, import_jsx_runtime41.jsxs)("div", { className: "flex h-full flex-1 overflow-hidden min-h-0 min-w-0 p-2", children: [
       /* @__PURE__ */ (0, import_jsx_runtime41.jsxs)("div", { className: "flex h-full flex-1 overflow-hidden min-h-0 min-w-0 rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e]", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime41.jsx)("div", { className: "flex min-h-0 min-w-0 flex-1 flex-col", children: /* @__PURE__ */ (0, import_jsx_runtime41.jsxs)("div", { className: "flex-1 overflow-y-auto p-4 min-h-0 min-w-0", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime41.jsx)(
-            "div",
-            {
-              ref: previewRef,
-              id: "task-preview-body",
-              className: "markdown-body text-sm text-[#1e1e1e] dark:text-[#cccccc]",
-              dangerouslySetInnerHTML: { __html: html },
-              onContextMenu: handleContextMenu
-            }
-          ),
-          /* @__PURE__ */ (0, import_jsx_runtime41.jsx)(
-            CommentHighlight,
-            {
-              comments,
-              containerRef: previewRef,
-              onCommentClick: handleCommentClick
-            }
-          )
-        ] }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime41.jsxs)("div", { className: "flex min-h-0 min-w-0 flex-1 flex-col", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime41.jsxs)("div", { className: "mode-toggle", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime41.jsx)(
+              "button",
+              {
+                className: `mode-btn${viewMode === "review" ? " active" : ""}`,
+                onClick: () => setViewMode("review"),
+                children: "Preview"
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime41.jsx)(
+              "button",
+              {
+                className: `mode-btn${viewMode === "source" ? " active" : ""}`,
+                onClick: () => setViewMode("source"),
+                children: "Source"
+              }
+            )
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime41.jsxs)("div", { className: "flex-1 overflow-y-auto p-4 min-h-0 min-w-0", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime41.jsx)(
+              "div",
+              {
+                ref: previewRef,
+                id: "task-preview-body",
+                className: "markdown-body text-sm text-[#1e1e1e] dark:text-[#cccccc]",
+                dangerouslySetInnerHTML: { __html: html },
+                onContextMenu: handleContextMenu
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime41.jsx)(
+              CommentHighlight,
+              {
+                comments,
+                containerRef: previewRef,
+                onCommentClick: handleCommentClick
+              }
+            )
+          ] })
+        ] }),
         showCommentListPanel && /* @__PURE__ */ (0, import_jsx_runtime41.jsx)(
           CommentSidebar,
           {
