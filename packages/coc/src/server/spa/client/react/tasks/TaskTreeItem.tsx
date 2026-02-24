@@ -100,6 +100,8 @@ export function TaskTreeItem({
 
     const displayName = getDisplayName(item);
     const path = getItemPath(item);
+    const isNestedContextDoc = isContext && fileName.toLowerCase() === 'context.md' && !!path && path.includes('/');
+    const canOpenFileContextMenu = !isFolder && (!isContext || isNestedContextDoc);
     const status = isTaskDocument(item) ? item.status : undefined;
     const isArchived = isTaskDocument(item) ? item.isArchived : isTaskDocumentGroup(item) ? item.isArchived : false;
     const tooltip = !isFolder ? buildFileTooltip(path, commentCount, status) : undefined;
@@ -137,7 +139,7 @@ export function TaskTreeItem({
                     e.preventDefault();
                     e.stopPropagation();
                     onFolderContextMenu(item as TaskFolder, e.clientX, e.clientY);
-                } else if (!isFolder && !isContext && onFileContextMenu) {
+                } else if (canOpenFileContextMenu && onFileContextMenu) {
                     e.preventDefault();
                     e.stopPropagation();
                     onFileContextMenu(item as TaskDocument | TaskDocumentGroup, e.clientX, e.clientY);

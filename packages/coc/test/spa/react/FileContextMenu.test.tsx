@@ -46,6 +46,9 @@ const mockTree = {
             singleDocuments: [
                 { baseName: 'design', fileName: 'design.md', relativePath: 'feature1', isArchived: false, status: 'pending' },
             ],
+            contextDocuments: [
+                { baseName: 'CONTEXT', fileName: 'CONTEXT.md', relativePath: 'feature1', isArchived: false },
+            ],
         },
     ],
     documentGroups: [
@@ -150,6 +153,23 @@ describe('File context menu', () => {
 
         fireEvent.contextMenu(screen.getByTestId('task-tree-item-README'));
         expect(screen.queryByTestId('context-menu')).toBeNull();
+    });
+
+    it('renders file context menu for CONTEXT.md inside a folder', async () => {
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree-item-feature1')).toBeTruthy();
+        });
+
+        fireEvent.click(screen.getByTestId('task-tree-item-feature1'));
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree-item-CONTEXT')).toBeTruthy();
+        });
+
+        fireEvent.contextMenu(screen.getByTestId('task-tree-item-CONTEXT'));
+        expect(screen.queryByTestId('context-menu')).not.toBeNull();
+        expect(screen.getByText('Rename')).toBeTruthy();
+        expect(screen.getByText('Delete')).toBeTruthy();
     });
 
     it('closes file context menu when Escape is pressed', async () => {
@@ -282,6 +302,39 @@ describe('File context menu', () => {
         });
     });
 
+    it('renaming CONTEXT.md in a folder calls PATCH with nested path', async () => {
+        const fetchMock = setupFetch();
+        global.fetch = fetchMock;
+
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree-item-feature1')).toBeTruthy();
+        });
+
+        fireEvent.click(screen.getByTestId('task-tree-item-feature1'));
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree-item-CONTEXT')).toBeTruthy();
+        });
+
+        fireEvent.contextMenu(screen.getByTestId('task-tree-item-CONTEXT'));
+        fireEvent.click(screen.getByText('Rename'));
+
+        const input = screen.getByTestId('folder-action-input');
+        fireEvent.change(input, { target: { value: 'UPDATED_CONTEXT' } });
+        fireEvent.click(screen.getByText('Rename', { selector: 'button' }));
+
+        await waitFor(() => {
+            const renameCall = (fetchMock as Mock).mock.calls.find(
+                ([url, opts]: [string, RequestInit]) => opts?.method === 'PATCH' && url.includes('/tasks')
+            );
+            expect(renameCall).toBeTruthy();
+            const [, opts] = renameCall as [string, RequestInit];
+            const body = JSON.parse(String(opts.body));
+            expect(body.path).toBe('feature1/CONTEXT.md');
+            expect(body.newName).toBe('UPDATED_CONTEXT');
+        });
+    });
+
     // ── Delete dialog ──────────────────────────────────────────────────
 
     it('clicking Delete opens the delete confirmation dialog', async () => {
@@ -322,6 +375,38 @@ describe('File context menu', () => {
                 ([url, opts]: [string, RequestInit]) => opts?.method === 'DELETE'
             );
             expect(deleteCalls.length).toBeGreaterThan(0);
+        });
+    });
+
+    it('deleting CONTEXT.md in a folder calls DELETE with nested path', async () => {
+        const fetchMock = setupFetch();
+        global.fetch = fetchMock;
+
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree-item-feature1')).toBeTruthy();
+        });
+
+        fireEvent.click(screen.getByTestId('task-tree-item-feature1'));
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree-item-CONTEXT')).toBeTruthy();
+        });
+
+        fireEvent.contextMenu(screen.getByTestId('task-tree-item-CONTEXT'));
+        fireEvent.click(screen.getByText('Delete'));
+
+        const deleteBtns = screen.getAllByText('Delete');
+        const confirmBtn = deleteBtns[deleteBtns.length - 1];
+        fireEvent.click(confirmBtn);
+
+        await waitFor(() => {
+            const deleteCall = (fetchMock as Mock).mock.calls.find(
+                ([url, opts]: [string, RequestInit]) => opts?.method === 'DELETE' && url.includes('/tasks')
+            );
+            expect(deleteCall).toBeTruthy();
+            const [, opts] = deleteCall as [string, RequestInit];
+            const body = JSON.parse(String(opts.body));
+            expect(body.path).toBe('feature1/CONTEXT.md');
         });
     });
 
