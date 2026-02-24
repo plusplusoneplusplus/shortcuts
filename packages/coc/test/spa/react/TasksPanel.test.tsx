@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
 import { QueueProvider } from '../../../src/server/spa/client/react/context/QueueContext';
@@ -1062,15 +1062,16 @@ describe('TasksPanel — preserves navigation on refresh', () => {
         });
 
         // Trigger refresh where misc is gone (archived/deleted)
-        window.dispatchEvent(new CustomEvent('tasks-changed', { detail: { wsId: 'ws1' } }));
+        await act(async () => {
+            window.dispatchEvent(new CustomEvent('tasks-changed', { detail: { wsId: 'ws1' } }));
+        });
 
         await waitFor(() => {
             expect(fetchCount).toBeGreaterThanOrEqual(2);
+            expect(screen.queryByTestId('miller-column-1')).toBeNull();
         });
 
-        // Should fall back to root column only since misc no longer exists
         expect(screen.getByTestId('miller-column-0')).toBeTruthy();
-        expect(screen.queryByTestId('miller-column-1')).toBeNull();
     });
 });
 
