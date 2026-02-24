@@ -5,9 +5,10 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { TaskProvider, useTaskPanel } from '../context/TaskContext';
-import { useTaskTree, countMarkdownFilesInFolder } from '../hooks/useTaskTree';
-import type { TaskFolder } from '../hooks/useTaskTree';
+import { useTaskTree, countMarkdownFilesInFolder, isTaskDocument, isTaskDocumentGroup } from '../hooks/useTaskTree';
+import type { TaskFolder, TaskDocument, TaskDocumentGroup } from '../hooks/useTaskTree';
 import { useFolderActions } from '../hooks/useFolderActions';
+import { useFileActions } from '../hooks/useFileActions';
 import { useApp } from '../context/AppContext';
 import { useQueue } from '../context/QueueContext';
 import { useGlobalToast } from '../context/ToastContext';
@@ -18,6 +19,7 @@ import { ContextMenu } from './comments/ContextMenu';
 import type { ContextMenuItem } from './comments/ContextMenu';
 import { FolderActionDialog } from './FolderActionDialog';
 import { FolderMoveDialog } from './FolderMoveDialog';
+import { FileMoveDialog } from './FileMoveDialog';
 import { Dialog } from '../shared/Dialog';
 import { Button } from '../shared/Button';
 import { FollowPromptDialog } from '../shared/FollowPromptDialog';
@@ -71,6 +73,101 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
     const { dispatch: queueDispatch } = useQueue();
     const { addToast } = useGlobalToast();
     const folderActions = useFolderActions(wsId);
+    const fileActions = useFileActions(wsId);
+
+    // ── File context-menu state ────────────────────────────────────────
+    interface FileCtxInfo {
+        item: TaskDocument | TaskDocumentGroup;
+        /** All file paths — multiple for document groups. */
+        paths: string[];
+        /** Path used for rename (server detects and renames whole group). */
+        renamePath: string;
+        displayName: string;
+        isArchived: boolean;
+    }
+    interface FileCtxMenu { ctxItem: FileCtxInfo; x: number; y: number }
+    const [fileCtxMenu, setFileCtxMenu] = useState<FileCtxMenu | null>(null);
+
+    type FileDialogAction = 'rename' | 'delete' | null;
+    const [fileDialog, setFileDialog] = useState<{
+        action: FileDialogAction;
+        ctxItem: FileCtxInfo | null;
+        submitting: boolean;
+    }>({ action: null, ctxItem: null, submitting: false });
+
+    const [fileMoveDialogOpen, setFileMoveDialogOpen] = useState(false);
+    const [fileMoveCtxItem, setFileMoveCtxItem] = useState<FileCtxInfo | null>(null);
+
+    const closeFileDialog = useCallback(
+        () => setFileDialog({ action: null, ctxItem: null, submitting: false }),
+        []
+    );
+
+    function buildFileCtxInfo(item: TaskDocument | TaskDocumentGroup): FileCtxInfo {
+        if (isTaskDocument(item)) {
+            const rel = item.relativePath || '';
+            const p = rel ? `${rel}/${item.fileName}` : item.fileName;
+            return { item, paths: [p], renamePath: p, displayName: item.baseName, isArchived: item.isArchived };
+        }
+        // TaskDocumentGroup
+        const paths = item.documents.map(doc => {
+            const rel = doc.relativePath || '';
+            return rel ? `${rel}/${doc.fileName}` : doc.fileName;
+        });
+        return {
+            item,
+            paths,
+            renamePath: paths[0] ?? '',
+            displayName: item.baseName,
+            isArchived: item.isArchived,
+        };
+    }
+
+    const handleFileContextMenu = useCallback(
+        (item: TaskDocument | TaskDocumentGroup, x: number, y: number) => {
+            setFileCtxMenu({ ctxItem: buildFileCtxInfo(item), x, y });
+        },
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        []
+    );
+
+    const handleFileRename = useCallback(async (newName: string) => {
+        if (!fileDialog.ctxItem) return;
+        setFileDialog(s => ({ ...s, submitting: true }));
+        try {
+            await fileActions.renameFile(fileDialog.ctxItem.renamePath, newName);
+            refresh();
+            closeFileDialog();
+        } catch (err: any) {
+            addToast(err.message || 'Rename failed', 'error');
+            setFileDialog(s => ({ ...s, submitting: false }));
+        }
+    }, [fileDialog.ctxItem, fileActions, refresh, closeFileDialog, addToast]);
+
+    const handleFileDelete = useCallback(async () => {
+        if (!fileDialog.ctxItem) return;
+        setFileDialog(s => ({ ...s, submitting: true }));
+        try {
+            for (const p of fileDialog.ctxItem.paths) {
+                await fileActions.deleteFile(p);
+            }
+            refresh();
+            closeFileDialog();
+        } catch (err: any) {
+            addToast(err.message || 'Delete failed', 'error');
+            setFileDialog(s => ({ ...s, submitting: false }));
+        }
+    }, [fileDialog.ctxItem, fileActions, refresh, closeFileDialog, addToast]);
+
+    const handleFileMoveConfirm = useCallback(async (destinationRelativePath: string) => {
+        if (!fileMoveCtxItem) return;
+        for (const p of fileMoveCtxItem.paths) {
+            await fileActions.moveFile(p, destinationRelativePath);
+        }
+        refresh();
+        setFileMoveDialogOpen(false);
+        setFileMoveCtxItem(null);
+    }, [fileMoveCtxItem, fileActions, refresh]);
 
     // ── Folder context-menu state ──────────────────────────────────────
     interface FolderCtxMenu { folder: TaskFolder; x: number; y: number }
@@ -213,9 +310,84 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
         );
     }
 
-    // ── Build folder context-menu items ────────────────────────────────
+    // ── Build file context-menu items ──────────────────────────────────
     const noop = () => {};
     const ws = appState.workspaces.find((w: any) => w.id === wsId);
+    const fileMenuItems: ContextMenuItem[] = fileCtxMenu ? (() => {
+        const { ctxItem } = fileCtxMenu;
+        const tasksFolder = '.vscode/tasks';
+        return [
+            // ── Clipboard ──
+            {
+                label: 'Copy Path',
+                icon: '📋',
+                onClick: () => {
+                    navigator.clipboard.writeText(ctxItem.renamePath);
+                },
+            },
+            {
+                label: 'Copy Absolute Path',
+                icon: '📂',
+                onClick: () => {
+                    const rootPath = ws?.rootPath ?? '';
+                    const abs = [rootPath, tasksFolder, ctxItem.renamePath].filter(Boolean).join('/');
+                    navigator.clipboard.writeText(abs);
+                },
+            },
+            { separator: true, label: '', onClick: noop },
+            // ── Archive ──
+            {
+                label: ctxItem.isArchived ? 'Unarchive' : 'Archive',
+                icon: ctxItem.isArchived ? '📤' : '🗄️',
+                onClick: async () => {
+                    setFileCtxMenu(null);
+                    try {
+                        for (const p of ctxItem.paths) {
+                            if (ctxItem.isArchived) {
+                                await fileActions.unarchiveFile(p);
+                            } else {
+                                await fileActions.archiveFile(p);
+                            }
+                        }
+                        refresh();
+                    } catch (err: any) {
+                        addToast(err.message || 'Archive failed', 'error');
+                    }
+                },
+            },
+            { separator: true, label: '', onClick: noop },
+            // ── Rename / Move ──
+            {
+                label: 'Rename',
+                icon: '✏️',
+                onClick: () => {
+                    setFileCtxMenu(null);
+                    setFileDialog({ action: 'rename', ctxItem, submitting: false });
+                },
+            },
+            {
+                label: 'Move File',
+                icon: '📦',
+                onClick: () => {
+                    setFileCtxMenu(null);
+                    setFileMoveCtxItem(ctxItem);
+                    setFileMoveDialogOpen(true);
+                },
+            },
+            { separator: true, label: '', onClick: noop },
+            // ── Danger ──
+            {
+                label: 'Delete',
+                icon: '🗑️',
+                onClick: () => {
+                    setFileCtxMenu(null);
+                    setFileDialog({ action: 'delete', ctxItem, submitting: false });
+                },
+            },
+        ];
+    })() : [];
+
+    // ── Build folder context-menu items ────────────────────────────────
     const folderMenuItems: ContextMenuItem[] = folderCtxMenu ? (() => {
         const folder = folderCtxMenu.folder;
         const folderPath = folder.relativePath || folder.name;
@@ -346,6 +518,7 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
                             initialFilePath={initialParams.initialFilePath}
                             onColumnsChange={handleColumnsChange}
                             onFolderContextMenu={handleFolderContextMenu}
+                            onFileContextMenu={handleFileContextMenu}
                         />
                     </div>
 
@@ -361,6 +534,66 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
                     position={{ x: folderCtxMenu.x, y: folderCtxMenu.y }}
                     items={folderMenuItems}
                     onClose={() => setFolderCtxMenu(null)}
+                />
+            )}
+
+            {/* File context menu */}
+            {fileCtxMenu && (
+                <ContextMenu
+                    position={{ x: fileCtxMenu.x, y: fileCtxMenu.y }}
+                    items={fileMenuItems}
+                    onClose={() => setFileCtxMenu(null)}
+                />
+            )}
+
+            {/* Rename File dialog */}
+            {fileDialog.action === 'rename' && fileDialog.ctxItem && (
+                <FolderActionDialog
+                    open
+                    title="Rename File"
+                    label="New name"
+                    initialValue={fileDialog.ctxItem.displayName}
+                    placeholder="Enter new file name"
+                    confirmLabel="Rename"
+                    submitting={fileDialog.submitting}
+                    onClose={closeFileDialog}
+                    onConfirm={handleFileRename}
+                />
+            )}
+
+            {/* Delete File confirmation dialog */}
+            {fileDialog.action === 'delete' && fileDialog.ctxItem && (
+                <Dialog
+                    open
+                    onClose={closeFileDialog}
+                    title="Delete File"
+                    footer={
+                        <>
+                            <Button variant="secondary" onClick={closeFileDialog}>Cancel</Button>
+                            <Button
+                                variant="danger"
+                                loading={fileDialog.submitting}
+                                onClick={handleFileDelete}
+                            >
+                                Delete
+                            </Button>
+                        </>
+                    }
+                >
+                    Are you sure you want to delete{' '}
+                    <strong>{fileDialog.ctxItem.displayName}</strong>?
+                    This cannot be undone.
+                </Dialog>
+            )}
+
+            {/* Move File dialog */}
+            {tree && (
+                <FileMoveDialog
+                    open={fileMoveDialogOpen}
+                    onClose={() => { setFileMoveDialogOpen(false); setFileMoveCtxItem(null); }}
+                    sourceName={fileMoveCtxItem?.displayName ?? null}
+                    tree={tree}
+                    onConfirm={handleFileMoveConfirm}
                 />
             )}
 

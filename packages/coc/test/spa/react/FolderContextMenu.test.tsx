@@ -322,7 +322,7 @@ describe('Folder context menu', () => {
         expect(separators.length).toBe(4);
     });
 
-    it('does not render context menu when right-clicking a document group row', async () => {
+    it('renders file context menu when right-clicking a document group row', async () => {
         const treeWithGroup = {
             ...mockTree,
             documentGroups: [
@@ -343,7 +343,7 @@ describe('Folder context menu', () => {
         });
 
         fireEvent.contextMenu(screen.getByTestId('task-tree-item-task1'));
-        expect(screen.queryByTestId('context-menu')).toBeNull();
+        expect(screen.queryByTestId('context-menu')).not.toBeNull();
     });
 
     it('"Copy Path" uses folder.name for root-level folders (empty relativePath)', async () => {

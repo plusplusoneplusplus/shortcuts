@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTaskPanel } from '../context/TaskContext';
 import { useQueueActivity } from '../hooks/useQueueActivity';
-import type { TaskFolder, TaskNode } from '../hooks/useTaskTree';
+import type { TaskFolder, TaskNode, TaskDocument, TaskDocumentGroup } from '../hooks/useTaskTree';
 import { countMarkdownFilesInFolder, folderToNodes, isTaskFolder } from '../hooks/useTaskTree';
 import { TaskTreeItem } from './TaskTreeItem';
 
@@ -17,6 +17,7 @@ interface TaskTreeProps {
     initialFilePath?: string | null;
     onColumnsChange?: () => void;
     onFolderContextMenu?: (folder: TaskFolder, x: number, y: number) => void;
+    onFileContextMenu?: (item: TaskDocument | TaskDocumentGroup, x: number, y: number) => void;
 }
 
 function getNodePath(node: TaskNode): string | null {
@@ -59,7 +60,7 @@ export function rebuildColumnsFromKeys(tree: TaskFolder, keys: (string | null)[]
     return cols;
 }
 
-export function TaskTree({ tree, commentCounts, wsId, initialFolderPath, initialFilePath, onColumnsChange, onFolderContextMenu }: TaskTreeProps) {
+export function TaskTree({ tree, commentCounts, wsId, initialFolderPath, initialFilePath, onColumnsChange, onFolderContextMenu, onFileContextMenu }: TaskTreeProps) {
     const { openFilePath, setOpenFilePath, selectedFilePaths, toggleSelectedFile, showContextFiles, setSelectedFolderPath } = useTaskPanel();
     const { fileMap: queueActivity, folderMap: queueFolderActivity } = useQueueActivity(wsId);
     const [columns, setColumns] = useState<TaskNode[][]>([]);
@@ -179,6 +180,7 @@ export function TaskTree({ tree, commentCounts, wsId, initialFolderPath, initial
                                         onFileClick={(path) => handleFileClick(path, colIndex)}
                                         onCheckboxChange={handleCheckboxChange}
                                         onFolderContextMenu={onFolderContextMenu}
+                                        onFileContextMenu={onFileContextMenu}
                                     />
                                 );
                             })}

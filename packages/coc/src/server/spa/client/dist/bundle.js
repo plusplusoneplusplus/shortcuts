@@ -6,7 +6,13 @@
   var __getOwnPropNames = Object.getOwnPropertyNames;
   var __getProtoOf = Object.getPrototypeOf;
   var __hasOwnProp = Object.prototype.hasOwnProperty;
-  var __commonJS = (cb, mod) => function __require() {
+  var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
+    get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
+  }) : x)(function(x) {
+    if (typeof require !== "undefined") return require.apply(this, arguments);
+    throw Error('Dynamic require of "' + x + '" is not supported');
+  });
+  var __commonJS = (cb, mod) => function __require2() {
     return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
   };
   var __copyProps = (to, from, except, desc) => {
@@ -1085,7 +1091,7 @@
             }
             return dispatcher.useContext(Context);
           }
-          function useState54(initialState4) {
+          function useState56(initialState4) {
             var dispatcher = resolveDispatcher();
             return dispatcher.useState(initialState4);
           }
@@ -1093,11 +1099,11 @@
             var dispatcher = resolveDispatcher();
             return dispatcher.useReducer(reducer, initialArg, init);
           }
-          function useRef24(initialValue) {
+          function useRef25(initialValue) {
             var dispatcher = resolveDispatcher();
             return dispatcher.useRef(initialValue);
           }
-          function useEffect49(create, deps) {
+          function useEffect51(create, deps) {
             var dispatcher = resolveDispatcher();
             return dispatcher.useEffect(create, deps);
           }
@@ -1109,11 +1115,11 @@
             var dispatcher = resolveDispatcher();
             return dispatcher.useLayoutEffect(create, deps);
           }
-          function useCallback39(callback, deps) {
+          function useCallback41(callback, deps) {
             var dispatcher = resolveDispatcher();
             return dispatcher.useCallback(callback, deps);
           }
-          function useMemo10(create, deps) {
+          function useMemo11(create, deps) {
             var dispatcher = resolveDispatcher();
             return dispatcher.useMemo(create, deps);
           }
@@ -1876,19 +1882,19 @@
           exports.memo = memo;
           exports.startTransition = startTransition;
           exports.unstable_act = act;
-          exports.useCallback = useCallback39;
+          exports.useCallback = useCallback41;
           exports.useContext = useContext6;
           exports.useDebugValue = useDebugValue;
           exports.useDeferredValue = useDeferredValue;
-          exports.useEffect = useEffect49;
+          exports.useEffect = useEffect51;
           exports.useId = useId;
           exports.useImperativeHandle = useImperativeHandle;
           exports.useInsertionEffect = useInsertionEffect;
           exports.useLayoutEffect = useLayoutEffect;
-          exports.useMemo = useMemo10;
+          exports.useMemo = useMemo11;
           exports.useReducer = useReducer4;
-          exports.useRef = useRef24;
-          exports.useState = useState54;
+          exports.useRef = useRef25;
+          exports.useState = useState56;
           exports.useSyncExternalStore = useSyncExternalStore;
           exports.useTransition = useTransition;
           exports.version = ReactVersion;
@@ -2435,7 +2441,7 @@
           var HostPortal = 4;
           var HostComponent = 5;
           var HostText = 6;
-          var Fragment23 = 7;
+          var Fragment25 = 7;
           var Mode = 8;
           var ContextConsumer = 9;
           var ContextProvider = 10;
@@ -3591,7 +3597,7 @@
                 return "DehydratedFragment";
               case ForwardRef:
                 return getWrappedName$1(type2, type2.render, "ForwardRef");
-              case Fragment23:
+              case Fragment25:
                 return "Fragment";
               case HostComponent:
                 return type2;
@@ -11974,7 +11980,7 @@
               }
             }
             function updateFragment2(returnFiber, current2, fragment, lanes, key) {
-              if (current2 === null || current2.tag !== Fragment23) {
+              if (current2 === null || current2.tag !== Fragment25) {
                 var created = createFiberFromFragment(fragment, returnFiber.mode, lanes, key);
                 created.return = returnFiber;
                 return created;
@@ -12377,7 +12383,7 @@
                 if (child.key === key) {
                   var elementType = element.type;
                   if (elementType === REACT_FRAGMENT_TYPE) {
-                    if (child.tag === Fragment23) {
+                    if (child.tag === Fragment25) {
                       deleteRemainingChildren(returnFiber, child.sibling);
                       var existing = useFiber(child, element.props.children);
                       existing.return = returnFiber;
@@ -17852,7 +17858,7 @@
                 var _resolvedProps2 = workInProgress2.elementType === type2 ? _unresolvedProps2 : resolveDefaultProps(type2, _unresolvedProps2);
                 return updateForwardRef(current2, workInProgress2, type2, _resolvedProps2, renderLanes2);
               }
-              case Fragment23:
+              case Fragment25:
                 return updateFragment(current2, workInProgress2, renderLanes2);
               case Mode:
                 return updateMode(current2, workInProgress2, renderLanes2);
@@ -18124,7 +18130,7 @@
               case SimpleMemoComponent:
               case FunctionComponent:
               case ForwardRef:
-              case Fragment23:
+              case Fragment25:
               case Mode:
               case Profiler:
               case ContextConsumer:
@@ -22375,7 +22381,7 @@
             return fiber;
           }
           function createFiberFromFragment(elements, mode, lanes, key) {
-            var fiber = createFiber(Fragment23, elements, key, mode);
+            var fiber = createFiber(Fragment25, elements, key, mode);
             fiber.lanes = lanes;
             return fiber;
           }
@@ -24407,11 +24413,11 @@
               return jsxWithValidation(type2, props, key, false);
             }
           }
-          var jsx69 = jsxWithValidationDynamic;
-          var jsxs55 = jsxWithValidationStatic;
+          var jsx71 = jsxWithValidationDynamic;
+          var jsxs57 = jsxWithValidationStatic;
           exports.Fragment = REACT_FRAGMENT_TYPE;
-          exports.jsx = jsx69;
-          exports.jsxs = jsxs55;
+          exports.jsx = jsx71;
+          exports.jsxs = jsxs57;
         })();
       }
     }
@@ -26339,6 +26345,2789 @@
     }
   });
 
+  // ../pipeline-core/dist/copilot-sdk-wrapper/model-registry.js
+  var require_model_registry = __commonJS({
+    "../pipeline-core/dist/copilot-sdk-wrapper/model-registry.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.DEFAULT_MODEL_ID = exports.VALID_MODELS = exports.MODEL_REGISTRY = void 0;
+      exports.getModelLabel = getModelLabel;
+      exports.getModelDescription = getModelDescription;
+      exports.getModelDefinition = getModelDefinition;
+      exports.getAllModels = getAllModels;
+      exports.getActiveModels = getActiveModels;
+      exports.isValidModelId = isValidModelId;
+      exports.getModelCount = getModelCount;
+      exports.getModelsByTier = getModelsByTier;
+      var MODEL_DEFINITIONS = [
+        {
+          id: "claude-sonnet-4.6",
+          label: "Claude Sonnet 4.6",
+          description: "(Recommended)",
+          tier: "standard"
+        },
+        {
+          id: "claude-haiku-4.5",
+          label: "Claude Haiku 4.5",
+          description: "(Fast)",
+          tier: "fast"
+        },
+        {
+          id: "claude-opus-4.6",
+          label: "Claude Opus 4.6",
+          description: "(Premium)",
+          tier: "premium"
+        },
+        {
+          id: "gpt-5.2",
+          label: "GPT-5.2",
+          description: "",
+          tier: "standard"
+        },
+        {
+          id: "gpt-5.3-codex",
+          label: "GPT-5.3 Codex",
+          description: "",
+          tier: "premium"
+        },
+        {
+          id: "gemini-3-pro-preview",
+          label: "Gemini 3 Pro",
+          description: "(Preview)",
+          tier: "standard"
+        }
+      ];
+      exports.MODEL_REGISTRY = new Map(MODEL_DEFINITIONS.map((m) => [m.id, m]));
+      exports.VALID_MODELS = MODEL_DEFINITIONS.map((m) => m.id);
+      exports.DEFAULT_MODEL_ID = MODEL_DEFINITIONS[0].id;
+      function getModelLabel(modelId) {
+        return exports.MODEL_REGISTRY.get(modelId)?.label ?? modelId;
+      }
+      function getModelDescription(modelId) {
+        return exports.MODEL_REGISTRY.get(modelId)?.description ?? "";
+      }
+      function getModelDefinition(modelId) {
+        return exports.MODEL_REGISTRY.get(modelId);
+      }
+      function getAllModels() {
+        return MODEL_DEFINITIONS;
+      }
+      function getActiveModels() {
+        return MODEL_DEFINITIONS.filter((m) => !m.deprecated);
+      }
+      function isValidModelId(id) {
+        return exports.MODEL_REGISTRY.has(id);
+      }
+      function getModelCount() {
+        return MODEL_DEFINITIONS.length;
+      }
+      function getModelsByTier(tier) {
+        return MODEL_DEFINITIONS.filter((m) => m.tier === tier);
+      }
+    }
+  });
+
+  // ../pipeline-core/dist/ai/types.js
+  var require_types = __commonJS({
+    "../pipeline-core/dist/ai/types.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.DEFAULT_PROMPTS = exports.getModelsByTier = exports.getModelCount = exports.isValidModelId = exports.getActiveModels = exports.getAllModels = exports.getModelDefinition = exports.getModelDescription = exports.getModelLabel = exports.MODEL_REGISTRY = exports.DEFAULT_MODEL_ID = exports.VALID_MODELS = void 0;
+      var model_registry_1 = require_model_registry();
+      Object.defineProperty(exports, "VALID_MODELS", { enumerable: true, get: function() {
+        return model_registry_1.VALID_MODELS;
+      } });
+      Object.defineProperty(exports, "DEFAULT_MODEL_ID", { enumerable: true, get: function() {
+        return model_registry_1.DEFAULT_MODEL_ID;
+      } });
+      var model_registry_2 = require_model_registry();
+      Object.defineProperty(exports, "MODEL_REGISTRY", { enumerable: true, get: function() {
+        return model_registry_2.MODEL_REGISTRY;
+      } });
+      Object.defineProperty(exports, "getModelLabel", { enumerable: true, get: function() {
+        return model_registry_2.getModelLabel;
+      } });
+      Object.defineProperty(exports, "getModelDescription", { enumerable: true, get: function() {
+        return model_registry_2.getModelDescription;
+      } });
+      Object.defineProperty(exports, "getModelDefinition", { enumerable: true, get: function() {
+        return model_registry_2.getModelDefinition;
+      } });
+      Object.defineProperty(exports, "getAllModels", { enumerable: true, get: function() {
+        return model_registry_2.getAllModels;
+      } });
+      Object.defineProperty(exports, "getActiveModels", { enumerable: true, get: function() {
+        return model_registry_2.getActiveModels;
+      } });
+      Object.defineProperty(exports, "isValidModelId", { enumerable: true, get: function() {
+        return model_registry_2.isValidModelId;
+      } });
+      Object.defineProperty(exports, "getModelCount", { enumerable: true, get: function() {
+        return model_registry_2.getModelCount;
+      } });
+      Object.defineProperty(exports, "getModelsByTier", { enumerable: true, get: function() {
+        return model_registry_2.getModelsByTier;
+      } });
+      exports.DEFAULT_PROMPTS = {
+        clarify: `Please clarify the following snippet with more depth.
+
+- Explain what it does in plain language.
+- Walk through the key steps, including control flow and data flow.
+- State any assumptions you are making from limited context.
+- Call out ambiguities and ask up to 3 targeted questions.
+- Suggest 2 to 3 concrete next checks, such as what to inspect or test next.
+
+Snippet`,
+        goDeeper: `Please provide an in-depth explanation and analysis of the following snippet.
+
+Go beyond a summary and explore the surrounding implications.
+
+- Intent and responsibilities in the broader system.
+- Step-by-step control flow and data flow.
+- Edge cases and failure modes, including correctness, security, and performance.
+- Likely dependencies and impacts, and what else to inspect.
+- Concrete improvements or refactors with tradeoffs.
+- How to validate, including focused tests, repro steps, or logs.
+
+Snippet`,
+        customDefault: "Please explain the following snippet"
+      };
+    }
+  });
+
+  // ../pipeline-core/dist/copilot-sdk-wrapper/types.js
+  var require_types2 = __commonJS({
+    "../pipeline-core/dist/copilot-sdk-wrapper/types.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.denyAllPermissions = exports.approveAllPermissions = exports.getModelsByTier = exports.getModelCount = exports.isValidModelId = exports.getActiveModels = exports.getAllModels = exports.getModelDefinition = exports.getModelDescription = exports.getModelLabel = exports.MODEL_REGISTRY = exports.DEFAULT_MODEL_ID = exports.VALID_MODELS = void 0;
+      var model_registry_1 = require_model_registry();
+      Object.defineProperty(exports, "VALID_MODELS", { enumerable: true, get: function() {
+        return model_registry_1.VALID_MODELS;
+      } });
+      Object.defineProperty(exports, "DEFAULT_MODEL_ID", { enumerable: true, get: function() {
+        return model_registry_1.DEFAULT_MODEL_ID;
+      } });
+      Object.defineProperty(exports, "MODEL_REGISTRY", { enumerable: true, get: function() {
+        return model_registry_1.MODEL_REGISTRY;
+      } });
+      Object.defineProperty(exports, "getModelLabel", { enumerable: true, get: function() {
+        return model_registry_1.getModelLabel;
+      } });
+      Object.defineProperty(exports, "getModelDescription", { enumerable: true, get: function() {
+        return model_registry_1.getModelDescription;
+      } });
+      Object.defineProperty(exports, "getModelDefinition", { enumerable: true, get: function() {
+        return model_registry_1.getModelDefinition;
+      } });
+      Object.defineProperty(exports, "getAllModels", { enumerable: true, get: function() {
+        return model_registry_1.getAllModels;
+      } });
+      Object.defineProperty(exports, "getActiveModels", { enumerable: true, get: function() {
+        return model_registry_1.getActiveModels;
+      } });
+      Object.defineProperty(exports, "isValidModelId", { enumerable: true, get: function() {
+        return model_registry_1.isValidModelId;
+      } });
+      Object.defineProperty(exports, "getModelCount", { enumerable: true, get: function() {
+        return model_registry_1.getModelCount;
+      } });
+      Object.defineProperty(exports, "getModelsByTier", { enumerable: true, get: function() {
+        return model_registry_1.getModelsByTier;
+      } });
+      var approveAllPermissions = () => {
+        return { kind: "approved" };
+      };
+      exports.approveAllPermissions = approveAllPermissions;
+      var denyAllPermissions = () => {
+        return { kind: "denied-by-rules" };
+      };
+      exports.denyAllPermissions = denyAllPermissions;
+    }
+  });
+
+  // ../pipeline-core/dist/logger.js
+  var require_logger = __commonJS({
+    "../pipeline-core/dist/logger.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.nullLogger = exports.consoleLogger = exports.LogCategory = void 0;
+      exports.setLogger = setLogger;
+      exports.getLogger = getLogger;
+      exports.resetLogger = resetLogger;
+      var LogCategory;
+      (function(LogCategory2) {
+        LogCategory2["AI"] = "AI Service";
+        LogCategory2["MAP_REDUCE"] = "Map-Reduce";
+        LogCategory2["PIPELINE"] = "Pipeline";
+        LogCategory2["UTILS"] = "Utils";
+        LogCategory2["GENERAL"] = "General";
+        LogCategory2["TASKS"] = "Tasks";
+      })(LogCategory || (exports.LogCategory = LogCategory = {}));
+      exports.consoleLogger = {
+        debug: (cat, msg) => console.debug(`[DEBUG] [${cat}] ${msg}`),
+        info: (cat, msg) => console.log(`[INFO] [${cat}] ${msg}`),
+        warn: (cat, msg) => console.warn(`[WARN] [${cat}] ${msg}`),
+        error: (cat, msg, err) => console.error(`[ERROR] [${cat}] ${msg}`, err || "")
+      };
+      exports.nullLogger = {
+        debug: () => {
+        },
+        info: () => {
+        },
+        warn: () => {
+        },
+        error: () => {
+        }
+      };
+      var globalLogger = exports.consoleLogger;
+      function setLogger(logger) {
+        globalLogger = logger;
+      }
+      function getLogger() {
+        return globalLogger;
+      }
+      function resetLogger() {
+        globalLogger = exports.consoleLogger;
+      }
+    }
+  });
+
+  // ../pipeline-core/dist/copilot-sdk-wrapper/mcp-config-loader.js
+  var require_mcp_config_loader = __commonJS({
+    "../pipeline-core/dist/copilot-sdk-wrapper/mcp-config-loader.js"(exports) {
+      "use strict";
+      var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
+        if (k2 === void 0) k2 = k;
+        var desc = Object.getOwnPropertyDescriptor(m, k);
+        if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+          desc = { enumerable: true, get: function() {
+            return m[k];
+          } };
+        }
+        Object.defineProperty(o, k2, desc);
+      } : function(o, m, k, k2) {
+        if (k2 === void 0) k2 = k;
+        o[k2] = m[k];
+      });
+      var __setModuleDefault = exports && exports.__setModuleDefault || (Object.create ? function(o, v) {
+        Object.defineProperty(o, "default", { enumerable: true, value: v });
+      } : function(o, v) {
+        o["default"] = v;
+      });
+      var __importStar = exports && exports.__importStar || /* @__PURE__ */ function() {
+        var ownKeys = function(o) {
+          ownKeys = Object.getOwnPropertyNames || function(o2) {
+            var ar = [];
+            for (var k in o2) if (Object.prototype.hasOwnProperty.call(o2, k)) ar[ar.length] = k;
+            return ar;
+          };
+          return ownKeys(o);
+        };
+        return function(mod) {
+          if (mod && mod.__esModule) return mod;
+          var result = {};
+          if (mod != null) {
+            for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+          }
+          __setModuleDefault(result, mod);
+          return result;
+        };
+      }();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.setHomeDirectoryOverride = setHomeDirectoryOverride;
+      exports.getHomeDirectory = getHomeDirectory;
+      exports.getMcpConfigPath = getMcpConfigPath;
+      exports.loadDefaultMcpConfig = loadDefaultMcpConfig;
+      exports.loadDefaultMcpConfigAsync = loadDefaultMcpConfigAsync;
+      exports.mergeMcpConfigs = mergeMcpConfigs;
+      exports.clearMcpConfigCache = clearMcpConfigCache;
+      exports.mcpConfigExists = mcpConfigExists;
+      exports.getCachedMcpConfig = getCachedMcpConfig;
+      var os = __importStar(__require("os"));
+      var path = __importStar(__require("path"));
+      var fs = __importStar(__require("fs"));
+      var logger_1 = require_logger();
+      var CONFIG_DIR = ".copilot";
+      var CONFIG_FILE = "mcp-config.json";
+      var cachedConfig = null;
+      var homeDirectoryOverride = null;
+      function setHomeDirectoryOverride(dir) {
+        homeDirectoryOverride = dir;
+        cachedConfig = null;
+      }
+      function getHomeDirectory() {
+        if (homeDirectoryOverride !== null) {
+          return homeDirectoryOverride;
+        }
+        return os.homedir();
+      }
+      function getMcpConfigPath() {
+        return path.join(getHomeDirectory(), CONFIG_DIR, CONFIG_FILE);
+      }
+      function loadDefaultMcpConfig(forceReload = false) {
+        const logger = (0, logger_1.getLogger)();
+        const configPath = getMcpConfigPath();
+        if (cachedConfig && !forceReload) {
+          logger.debug(logger_1.LogCategory.AI, "MCPConfigLoader: Returning cached config");
+          return cachedConfig;
+        }
+        logger.debug(logger_1.LogCategory.AI, `MCPConfigLoader: Loading config from ${configPath}`);
+        if (!fs.existsSync(configPath)) {
+          logger.debug(logger_1.LogCategory.AI, "MCPConfigLoader: Config file not found (this is normal if not configured)");
+          cachedConfig = {
+            success: true,
+            mcpServers: {},
+            configPath,
+            fileExists: false
+          };
+          return cachedConfig;
+        }
+        try {
+          const content = fs.readFileSync(configPath, "utf-8");
+          const config = JSON.parse(content);
+          const mcpServers = config.mcpServers || {};
+          const serverCount = Object.keys(mcpServers).length;
+          logger.debug(logger_1.LogCategory.AI, `MCPConfigLoader: Loaded ${serverCount} MCP server(s) from config`);
+          cachedConfig = {
+            success: true,
+            mcpServers,
+            configPath,
+            fileExists: true
+          };
+          return cachedConfig;
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          logger.warn(logger_1.LogCategory.AI, `MCPConfigLoader: Failed to parse config file: ${errorMessage}`);
+          cachedConfig = {
+            success: false,
+            mcpServers: {},
+            configPath,
+            fileExists: true,
+            error: `Failed to parse MCP config: ${errorMessage}`
+          };
+          return cachedConfig;
+        }
+      }
+      async function loadDefaultMcpConfigAsync(forceReload = false) {
+        return loadDefaultMcpConfig(forceReload);
+      }
+      function mergeMcpConfigs(defaultConfig, explicitConfig) {
+        if (!explicitConfig) {
+          return { ...defaultConfig };
+        }
+        if (Object.keys(explicitConfig).length === 0) {
+          return {};
+        }
+        return {
+          ...defaultConfig,
+          ...explicitConfig
+        };
+      }
+      function clearMcpConfigCache() {
+        const logger = (0, logger_1.getLogger)();
+        logger.debug(logger_1.LogCategory.AI, "MCPConfigLoader: Clearing config cache");
+        cachedConfig = null;
+      }
+      function mcpConfigExists() {
+        return fs.existsSync(getMcpConfigPath());
+      }
+      function getCachedMcpConfig() {
+        return cachedConfig;
+      }
+    }
+  });
+
+  // ../pipeline-core/dist/copilot-sdk-wrapper/trusted-folder.js
+  var require_trusted_folder = __commonJS({
+    "../pipeline-core/dist/copilot-sdk-wrapper/trusted-folder.js"(exports) {
+      "use strict";
+      var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
+        if (k2 === void 0) k2 = k;
+        var desc = Object.getOwnPropertyDescriptor(m, k);
+        if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+          desc = { enumerable: true, get: function() {
+            return m[k];
+          } };
+        }
+        Object.defineProperty(o, k2, desc);
+      } : function(o, m, k, k2) {
+        if (k2 === void 0) k2 = k;
+        o[k2] = m[k];
+      });
+      var __setModuleDefault = exports && exports.__setModuleDefault || (Object.create ? function(o, v) {
+        Object.defineProperty(o, "default", { enumerable: true, value: v });
+      } : function(o, v) {
+        o["default"] = v;
+      });
+      var __importStar = exports && exports.__importStar || /* @__PURE__ */ function() {
+        var ownKeys = function(o) {
+          ownKeys = Object.getOwnPropertyNames || function(o2) {
+            var ar = [];
+            for (var k in o2) if (Object.prototype.hasOwnProperty.call(o2, k)) ar[ar.length] = k;
+            return ar;
+          };
+          return ownKeys(o);
+        };
+        return function(mod) {
+          if (mod && mod.__esModule) return mod;
+          var result = {};
+          if (mod != null) {
+            for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+          }
+          __setModuleDefault(result, mod);
+          return result;
+        };
+      }();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.setTrustedFolderHomeOverride = setTrustedFolderHomeOverride;
+      exports.getCopilotConfigPath = getCopilotConfigPath;
+      exports.isFolderTrusted = isFolderTrusted;
+      exports.ensureFolderTrusted = ensureFolderTrusted;
+      var path = __importStar(__require("path"));
+      var fs = __importStar(__require("fs"));
+      var os = __importStar(__require("os"));
+      var logger_1 = require_logger();
+      var CONFIG_DIR = ".copilot";
+      var CONFIG_FILE = "config.json";
+      var homeDirectoryOverride = null;
+      function setTrustedFolderHomeOverride(dir) {
+        homeDirectoryOverride = dir;
+      }
+      function getConfigDir() {
+        if (homeDirectoryOverride !== null) {
+          return path.join(homeDirectoryOverride, CONFIG_DIR);
+        }
+        return process.env["XDG_CONFIG_HOME"] ?? path.join(os.homedir(), CONFIG_DIR);
+      }
+      function getCopilotConfigPath() {
+        return path.join(getConfigDir(), CONFIG_FILE);
+      }
+      function readConfig(configPath) {
+        try {
+          if (!fs.existsSync(configPath)) {
+            return {};
+          }
+          const content = fs.readFileSync(configPath, "utf-8");
+          const parsed = JSON.parse(content);
+          return typeof parsed === "object" && parsed !== null ? parsed : {};
+        } catch {
+          return {};
+        }
+      }
+      function writeConfig(configPath, config) {
+        const dir = path.dirname(configPath);
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
+        }
+        fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
+      }
+      function normalizeFolderPath(folder) {
+        let resolved = path.resolve(folder);
+        while (resolved.length > 1 && (resolved.endsWith(path.sep) || resolved.endsWith("/"))) {
+          resolved = resolved.slice(0, -1);
+        }
+        return resolved;
+      }
+      function isFolderTrusted(folder) {
+        const configPath = getCopilotConfigPath();
+        const config = readConfig(configPath);
+        const trustedFolders = Array.isArray(config["trusted_folders"]) ? config["trusted_folders"] : [];
+        const normalized = normalizeFolderPath(folder);
+        return trustedFolders.some((f) => normalizeFolderPath(f) === normalized);
+      }
+      function ensureFolderTrusted(folder) {
+        const logger = (0, logger_1.getLogger)();
+        const normalized = normalizeFolderPath(folder);
+        const configPath = getCopilotConfigPath();
+        try {
+          const config = readConfig(configPath);
+          const trustedFolders = Array.isArray(config["trusted_folders"]) ? config["trusted_folders"] : [];
+          if (trustedFolders.some((f) => normalizeFolderPath(f) === normalized)) {
+            logger.debug(logger_1.LogCategory.AI, `TrustedFolder: '${normalized}' is already trusted`);
+            return;
+          }
+          trustedFolders.push(normalized);
+          config["trusted_folders"] = trustedFolders;
+          writeConfig(configPath, config);
+          logger.debug(logger_1.LogCategory.AI, `TrustedFolder: Added '${normalized}' to trusted_folders`);
+        } catch (error) {
+          logger.debug(logger_1.LogCategory.AI, `TrustedFolder: Failed to update config: ${error}`);
+        }
+      }
+    }
+  });
+
+  // ../pipeline-core/dist/config/defaults.js
+  var require_defaults = __commonJS({
+    "../pipeline-core/dist/config/defaults.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.DEFAULT_CASE_SENSITIVE = exports.DEFAULT_CONTEXT_LINES = exports.DEFAULT_FUZZY_MATCH_THRESHOLD = exports.DEFAULT_SKILLS_DIRECTORY = exports.DEFAULT_QUEUE_AUTO_PERSIST = exports.DEFAULT_QUEUE_AUTO_START = exports.DEFAULT_QUEUE_PROCESS_ON_STARTUP = exports.DEFAULT_QUEUE_MAX_CONCURRENT = exports.DEFAULT_RETRY_DELAY_MS = exports.DEFAULT_RETRY_ATTEMPTS = exports.DEFAULT_CSV_TRIM_FIELDS = exports.DEFAULT_CSV_SKIP_EMPTY_LINES = exports.DEFAULT_CSV_HAS_HEADER = exports.DEFAULT_CSV_QUOTE = exports.DEFAULT_CSV_DELIMITER = exports.DEFAULT_CHUNK_PRESERVE_BOUNDARIES = exports.DEFAULT_CHUNK_STRATEGY = exports.DEFAULT_CHUNK_OVERLAP_SIZE = exports.DEFAULT_CHUNK_MAX_SIZE = exports.DEFAULT_MAX_CONCURRENCY = exports.DEFAULT_PARALLEL_LIMIT = exports.DEFAULT_POLL_INTERVAL_MS = exports.DEFAULT_AI_TIMEOUT_MS = void 0;
+      exports.DEFAULT_AI_TIMEOUT_MS = 60 * 60 * 1e3;
+      exports.DEFAULT_POLL_INTERVAL_MS = 5e3;
+      exports.DEFAULT_PARALLEL_LIMIT = 5;
+      exports.DEFAULT_MAX_CONCURRENCY = 5;
+      exports.DEFAULT_CHUNK_MAX_SIZE = 4e3;
+      exports.DEFAULT_CHUNK_OVERLAP_SIZE = 200;
+      exports.DEFAULT_CHUNK_STRATEGY = "character";
+      exports.DEFAULT_CHUNK_PRESERVE_BOUNDARIES = true;
+      exports.DEFAULT_CSV_DELIMITER = ",";
+      exports.DEFAULT_CSV_QUOTE = '"';
+      exports.DEFAULT_CSV_HAS_HEADER = true;
+      exports.DEFAULT_CSV_SKIP_EMPTY_LINES = true;
+      exports.DEFAULT_CSV_TRIM_FIELDS = true;
+      exports.DEFAULT_RETRY_ATTEMPTS = 3;
+      exports.DEFAULT_RETRY_DELAY_MS = 1e3;
+      exports.DEFAULT_QUEUE_MAX_CONCURRENT = 3;
+      exports.DEFAULT_QUEUE_PROCESS_ON_STARTUP = true;
+      exports.DEFAULT_QUEUE_AUTO_START = true;
+      exports.DEFAULT_QUEUE_AUTO_PERSIST = true;
+      exports.DEFAULT_SKILLS_DIRECTORY = ".github/skills";
+      exports.DEFAULT_FUZZY_MATCH_THRESHOLD = 0.7;
+      exports.DEFAULT_CONTEXT_LINES = 3;
+      exports.DEFAULT_CASE_SENSITIVE = false;
+    }
+  });
+
+  // ../pipeline-core/dist/ai/timeouts.js
+  var require_timeouts = __commonJS({
+    "../pipeline-core/dist/ai/timeouts.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.DEFAULT_AI_TIMEOUT_MS = void 0;
+      var defaults_1 = require_defaults();
+      Object.defineProperty(exports, "DEFAULT_AI_TIMEOUT_MS", { enumerable: true, get: function() {
+        return defaults_1.DEFAULT_AI_TIMEOUT_MS;
+      } });
+    }
+  });
+
+  // ../pipeline-core/dist/copilot-sdk-wrapper/copilot-sdk-service.js
+  var require_copilot_sdk_service = __commonJS({
+    "../pipeline-core/dist/copilot-sdk-wrapper/copilot-sdk-service.js"(exports) {
+      "use strict";
+      var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
+        if (k2 === void 0) k2 = k;
+        var desc = Object.getOwnPropertyDescriptor(m, k);
+        if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+          desc = { enumerable: true, get: function() {
+            return m[k];
+          } };
+        }
+        Object.defineProperty(o, k2, desc);
+      } : function(o, m, k, k2) {
+        if (k2 === void 0) k2 = k;
+        o[k2] = m[k];
+      });
+      var __setModuleDefault = exports && exports.__setModuleDefault || (Object.create ? function(o, v) {
+        Object.defineProperty(o, "default", { enumerable: true, value: v });
+      } : function(o, v) {
+        o["default"] = v;
+      });
+      var __importStar = exports && exports.__importStar || /* @__PURE__ */ function() {
+        var ownKeys = function(o) {
+          ownKeys = Object.getOwnPropertyNames || function(o2) {
+            var ar = [];
+            for (var k in o2) if (Object.prototype.hasOwnProperty.call(o2, k)) ar[ar.length] = k;
+            return ar;
+          };
+          return ownKeys(o);
+        };
+        return function(mod) {
+          if (mod && mod.__esModule) return mod;
+          var result = {};
+          if (mod != null) {
+            for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+          }
+          __setModuleDefault(result, mod);
+          return result;
+        };
+      }();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.CopilotSDKService = exports.denyAllPermissions = exports.approveAllPermissions = void 0;
+      exports.getCopilotSDKService = getCopilotSDKService;
+      exports.resetCopilotSDKService = resetCopilotSDKService;
+      var path = __importStar(__require("path"));
+      var fs = __importStar(__require("fs"));
+      var logger_1 = require_logger();
+      var mcp_config_loader_1 = require_mcp_config_loader();
+      var trusted_folder_1 = require_trusted_folder();
+      var timeouts_1 = require_timeouts();
+      var types_1 = require_types2();
+      Object.defineProperty(exports, "approveAllPermissions", { enumerable: true, get: function() {
+        return types_1.approveAllPermissions;
+      } });
+      Object.defineProperty(exports, "denyAllPermissions", { enumerable: true, get: function() {
+        return types_1.denyAllPermissions;
+      } });
+      var CopilotSDKService = class _CopilotSDKService {
+        constructor() {
+          this.client = null;
+          this.clientCwd = void 0;
+          this.sdkModule = null;
+          this.initializationPromise = null;
+          this.availabilityCache = null;
+          this.disposed = false;
+          this.activeSessions = /* @__PURE__ */ new Map();
+          this.keptAliveSessions = /* @__PURE__ */ new Map();
+          this.streamErrorGuardHandler = null;
+        }
+        /**
+         * Get the singleton instance of CopilotSDKService
+         */
+        static getInstance() {
+          if (!_CopilotSDKService.instance) {
+            _CopilotSDKService.instance = new _CopilotSDKService();
+          }
+          return _CopilotSDKService.instance;
+        }
+        /**
+         * Reset the singleton instance (primarily for testing)
+         */
+        static resetInstance() {
+          if (_CopilotSDKService.instance) {
+            _CopilotSDKService.instance.dispose();
+            _CopilotSDKService.instance = null;
+          }
+        }
+        /**
+         * Check if the Copilot SDK is available and can be used.
+         * Results are cached after the first check.
+         *
+         * @returns Availability result with status and optional error
+         */
+        async isAvailable() {
+          if (this.disposed) {
+            return { available: false, error: "Service has been disposed" };
+          }
+          if (this.availabilityCache) {
+            return this.availabilityCache;
+          }
+          const logger = (0, logger_1.getLogger)();
+          logger.debug(logger_1.LogCategory.AI, "CopilotSDKService: Checking SDK availability");
+          try {
+            const sdkPath = this.findSDKPath();
+            if (!sdkPath) {
+              this.availabilityCache = {
+                available: false,
+                error: "Copilot SDK not found. Please ensure @github/copilot-sdk is installed."
+              };
+              logger.debug(logger_1.LogCategory.AI, "CopilotSDKService: SDK not found");
+              return this.availabilityCache;
+            }
+            await this.loadSDKModule(sdkPath);
+            this.availabilityCache = {
+              available: true,
+              sdkPath
+            };
+            logger.debug(logger_1.LogCategory.AI, `CopilotSDKService: SDK available at: ${sdkPath}`);
+            return this.availabilityCache;
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            this.availabilityCache = {
+              available: false,
+              error: `Failed to load Copilot SDK: ${errorMessage}`
+            };
+            logger.error(logger_1.LogCategory.AI, "CopilotSDKService: SDK availability check failed", error instanceof Error ? error : void 0);
+            return this.availabilityCache;
+          }
+        }
+        /**
+         * Clear the availability cache, forcing a re-check on next isAvailable() call.
+         * Useful when the SDK might have been installed after initial check.
+         */
+        clearAvailabilityCache() {
+          this.availabilityCache = null;
+        }
+        /**
+         * Check whether an error message indicates the underlying JSON-RPC stream
+         * has been destroyed (broken pipe, reset, etc.).  These errors mean the
+         * current client can no longer communicate and must be replaced.
+         */
+        static isStreamDestroyedError(errorMessage) {
+          const lower = errorMessage.toLowerCase();
+          return _CopilotSDKService.STREAM_DESTROYED_PATTERNS.some((p) => lower.includes(p.toLowerCase()));
+        }
+        /**
+         * Discard the current client without waiting for a graceful stop.
+         * Called when the underlying stream is known to be broken — attempting
+         * `client.stop()` would itself fail on the destroyed stream.
+         */
+        invalidateClient() {
+          if (this.client) {
+            this.client.stop().catch(() => {
+            });
+            this.client = null;
+            this.clientCwd = void 0;
+            this.initializationPromise = null;
+          }
+          this.removeStreamErrorGuard();
+        }
+        /**
+         * Ensure the SDK client is initialized with the specified working directory.
+         * If the working directory changes, a new client is created.
+         * Uses lazy initialization to avoid startup overhead.
+         *
+         * @param cwd Optional working directory for the client
+         * @throws Error if SDK is not available or initialization fails
+         */
+        async ensureClient(cwd) {
+          if (this.disposed) {
+            throw new Error("CopilotSDKService has been disposed");
+          }
+          if (this.client && this.clientCwd === cwd) {
+            return this.client;
+          }
+          if (this.client && this.clientCwd !== cwd) {
+            const logger2 = (0, logger_1.getLogger)();
+            logger2.debug(logger_1.LogCategory.AI, `CopilotSDKService: Working directory changed from '${this.clientCwd}' to '${cwd}', creating new client`);
+            try {
+              await this.client.stop();
+            } catch (error) {
+              logger2.debug(logger_1.LogCategory.AI, `CopilotSDKService: Warning: Error stopping old client: ${error}`);
+            }
+            this.client = null;
+            this.clientCwd = void 0;
+          }
+          if (this.initializationPromise) {
+            await this.initializationPromise;
+            if (this.client && this.clientCwd === cwd) {
+              return this.client;
+            }
+          }
+          const logger = (0, logger_1.getLogger)();
+          logger.debug(logger_1.LogCategory.AI, `CopilotSDKService: Initializing SDK client with cwd: ${cwd || "(default)"}`);
+          this.initializationPromise = this.initializeClient(cwd);
+          await this.initializationPromise;
+          this.initializationPromise = null;
+          if (!this.client) {
+            throw new Error("Failed to initialize Copilot SDK client");
+          }
+          return this.client;
+        }
+        /**
+         * Send a message to Copilot via the SDK.
+         * Creates a new session for each request (session-per-request pattern).
+         *
+         * @param options Message options including prompt and optional settings
+         * @returns Invocation result with response or error
+         */
+        async sendMessage(options) {
+          const logger = (0, logger_1.getLogger)();
+          const startTime = Date.now();
+          const availability = await this.isAvailable();
+          if (!availability.available) {
+            return {
+              success: false,
+              error: availability.error || "Copilot SDK is not available"
+            };
+          }
+          let session = null;
+          let result = null;
+          try {
+            const client = await this.ensureClient(options.workingDirectory);
+            const sessionOptions = {};
+            if (options.model) {
+              sessionOptions.model = options.model;
+            }
+            if (options.streaming) {
+              sessionOptions.streaming = options.streaming;
+            }
+            if (options.availableTools) {
+              sessionOptions.availableTools = options.availableTools;
+            }
+            if (options.excludedTools) {
+              sessionOptions.excludedTools = options.excludedTools;
+            }
+            const shouldLoadDefaultMcp = options.loadDefaultMcpConfig !== false;
+            if (shouldLoadDefaultMcp || options.mcpServers !== void 0) {
+              let finalMcpServers;
+              if (shouldLoadDefaultMcp) {
+                const defaultConfig = (0, mcp_config_loader_1.loadDefaultMcpConfig)();
+                logger.debug(logger_1.LogCategory.AI, `CopilotSDKService: Default MCP config load result: success=${defaultConfig.success}, fileExists=${defaultConfig.fileExists}, serverCount=${Object.keys(defaultConfig.mcpServers).length}`);
+                if (defaultConfig.error) {
+                  logger.debug(logger_1.LogCategory.AI, `CopilotSDKService: Default MCP config error: ${defaultConfig.error}`);
+                }
+                if (defaultConfig.success && Object.keys(defaultConfig.mcpServers).length > 0) {
+                  logger.debug(logger_1.LogCategory.AI, `CopilotSDKService: Loaded ${Object.keys(defaultConfig.mcpServers).length} default MCP server(s): ${JSON.stringify(defaultConfig.mcpServers)}`);
+                }
+                finalMcpServers = (0, mcp_config_loader_1.mergeMcpConfigs)(defaultConfig.mcpServers, options.mcpServers);
+              } else if (options.mcpServers !== void 0) {
+                finalMcpServers = options.mcpServers;
+              }
+              if (finalMcpServers && Object.keys(finalMcpServers).length > 0) {
+                sessionOptions.mcpServers = finalMcpServers;
+                logger.debug(logger_1.LogCategory.AI, `CopilotSDKService: Using ${Object.keys(finalMcpServers).length} MCP server(s): ${Object.keys(finalMcpServers).join(", ")}`);
+                logger.debug(logger_1.LogCategory.AI, `CopilotSDKService: MCP servers config: ${JSON.stringify(finalMcpServers)}`);
+              } else if (options.mcpServers !== void 0 && Object.keys(options.mcpServers).length === 0) {
+                sessionOptions.mcpServers = {};
+                logger.debug(logger_1.LogCategory.AI, "CopilotSDKService: MCP servers explicitly disabled");
+              }
+            }
+            const toolCallsMap = /* @__PURE__ */ new Map();
+            if (options.onPermissionRequest) {
+              const originalHandler = options.onPermissionRequest;
+              sessionOptions.onPermissionRequest = (request, invocation) => {
+                logger.debug(logger_1.LogCategory.AI, `CopilotSDKService [${invocation.sessionId}]: Permission request: kind=${request.kind}, toolCallId=${request.toolCallId || "(none)"}`);
+                const capturePermission = (permResult) => {
+                  if (request.toolCallId) {
+                    const tc = toolCallsMap.get(request.toolCallId);
+                    if (tc) {
+                      tc.permissionRequest = {
+                        kind: request.kind,
+                        timestamp: /* @__PURE__ */ new Date(),
+                        resource: request.resource,
+                        operation: request.operation
+                      };
+                      tc.permissionResult = {
+                        approved: permResult.kind === "approved",
+                        timestamp: /* @__PURE__ */ new Date(),
+                        reason: permResult.kind !== "approved" ? permResult.kind : void 0
+                      };
+                    }
+                  }
+                };
+                const result2 = originalHandler(request, invocation);
+                if (result2 && typeof result2.then === "function") {
+                  return result2.then((r) => {
+                    logger.debug(logger_1.LogCategory.AI, `CopilotSDKService [${invocation.sessionId}]: Permission result: ${r.kind} (for ${request.kind})`);
+                    capturePermission(r);
+                    return r;
+                  });
+                }
+                logger.debug(logger_1.LogCategory.AI, `CopilotSDKService [${invocation.sessionId}]: Permission result: ${result2.kind} (for ${request.kind})`);
+                capturePermission(result2);
+                return result2;
+              };
+            }
+            const sessionOptionsStr = Object.keys(sessionOptions).length > 0 ? JSON.stringify(sessionOptions) : "(default)";
+            logger.debug(logger_1.LogCategory.AI, `CopilotSDKService: Creating session (cwd: ${options.workingDirectory || "(default)"}, options: ${sessionOptionsStr})`);
+            session = await client.createSession(sessionOptions);
+            logger.debug(logger_1.LogCategory.AI, `CopilotSDKService: Session created: ${session.sessionId}`);
+            this.trackSession(session);
+            const timeoutMs = options.timeoutMs ?? _CopilotSDKService.DEFAULT_TIMEOUT_MS;
+            let response;
+            let tokenUsage;
+            let turnCount = 0;
+            let capturedToolCalls;
+            if ((options.streaming || options.onStreamingChunk || timeoutMs > 12e4) && session.on && session.send) {
+              const streamingResult = await this.sendWithStreaming(session, options.prompt, timeoutMs, options.onStreamingChunk, toolCallsMap, options.onToolEvent);
+              response = streamingResult.response;
+              tokenUsage = streamingResult.tokenUsage;
+              turnCount = streamingResult.turnCount;
+              capturedToolCalls = streamingResult.toolCalls;
+            } else {
+              const result2 = await this.sendWithTimeout(session, options.prompt, timeoutMs);
+              response = result2?.data?.content || "";
+            }
+            const durationMs = Date.now() - startTime;
+            logger.debug(logger_1.LogCategory.AI, `CopilotSDKService [${session.sessionId}]: Request completed in ${durationMs}ms`);
+            if (!response) {
+              if (turnCount > 0) {
+                logger.debug(logger_1.LogCategory.AI, `CopilotSDKService [${session.sessionId}]: Empty text response but ${turnCount} turns completed \u2014 treating as success (tool-based execution)`);
+                result = {
+                  success: true,
+                  response: "",
+                  sessionId: session.sessionId,
+                  tokenUsage,
+                  toolCalls: capturedToolCalls
+                };
+                return result;
+              }
+              result = {
+                success: false,
+                error: "No response received from Copilot SDK",
+                sessionId: session.sessionId,
+                tokenUsage,
+                toolCalls: capturedToolCalls
+              };
+              return result;
+            }
+            result = {
+              success: true,
+              response,
+              sessionId: session.sessionId,
+              tokenUsage,
+              toolCalls: capturedToolCalls
+            };
+            return result;
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            const durationMs = Date.now() - startTime;
+            logger.error(logger_1.LogCategory.AI, `CopilotSDKService [${session?.sessionId ?? "no-session"}]: Request failed after ${durationMs}ms`, error instanceof Error ? error : void 0);
+            if (_CopilotSDKService.isStreamDestroyedError(errorMessage)) {
+              logger.debug(logger_1.LogCategory.AI, "CopilotSDKService: Stream destroyed \u2014 invalidating client for next retry");
+              this.invalidateClient();
+            }
+            result = {
+              success: false,
+              error: `Copilot SDK error: ${errorMessage}`,
+              sessionId: session?.sessionId
+            };
+            return result;
+          } finally {
+            if (session) {
+              this.untrackSession(session.sessionId);
+              if (options.keepAlive && result?.success) {
+                const now = Date.now();
+                this.keptAliveSessions.set(session.sessionId, {
+                  session,
+                  createdAt: now,
+                  lastUsedAt: now,
+                  workingDirectory: options.workingDirectory
+                });
+                this.ensureKeepAliveCleanupTimer();
+                logger.debug(logger_1.LogCategory.AI, `CopilotSDKService [${session.sessionId}]: Session kept alive for follow-up`);
+              } else {
+                try {
+                  await session.destroy();
+                  logger.debug(logger_1.LogCategory.AI, `CopilotSDKService [${session.sessionId}]: Session destroyed`);
+                } catch (destroyError) {
+                  logger.debug(logger_1.LogCategory.AI, `CopilotSDKService [${session.sessionId}]: Warning: Error destroying session: ${destroyError}`);
+                }
+              }
+            }
+          }
+        }
+        /**
+         * Try to resume a session from the SDK backing store and register it as kept-alive.
+         */
+        async resumeKeptAliveSession(sessionId, options) {
+          const logger = (0, logger_1.getLogger)();
+          const timeoutMs = options?.timeoutMs ?? _CopilotSDKService.DEFAULT_TIMEOUT_MS;
+          try {
+            const client = await this.ensureClient(options?.workingDirectory);
+            if (typeof client.resumeSession !== "function") {
+              return void 0;
+            }
+            const resumeOptions = {};
+            if (options?.onPermissionRequest) {
+              resumeOptions.onPermissionRequest = options.onPermissionRequest;
+            }
+            if (options?.onStreamingChunk || timeoutMs > 12e4) {
+              resumeOptions.streaming = true;
+            }
+            const session = await client.resumeSession(sessionId, resumeOptions);
+            const now = Date.now();
+            const entry = {
+              session,
+              createdAt: now,
+              lastUsedAt: now,
+              workingDirectory: options?.workingDirectory
+            };
+            this.keptAliveSessions.set(sessionId, entry);
+            this.ensureKeepAliveCleanupTimer();
+            logger.debug(logger_1.LogCategory.AI, `CopilotSDKService [${sessionId}]: Session resumed for follow-up`);
+            return entry;
+          } catch (error) {
+            logger.debug(logger_1.LogCategory.AI, `CopilotSDKService [${sessionId}]: Resume failed: ${error}`);
+            return void 0;
+          }
+        }
+        /**
+         * Check whether a session is available for follow-up.
+         * If needed, attempts to resume it from the SDK by session ID.
+         */
+        async canResumeSession(sessionId, options) {
+          if (this.keptAliveSessions.has(sessionId)) {
+            return true;
+          }
+          const resumed = await this.resumeKeptAliveSession(sessionId, options);
+          return resumed !== void 0;
+        }
+        /**
+         * Send a follow-up message to a kept-alive session.
+         *
+         * @param sessionId - The session ID returned from a previous sendMessage({ keepAlive: true }) call
+         * @param prompt - The follow-up prompt
+         * @param options - Optional timeout and streaming settings
+         * @returns SDKInvocationResult with the same sessionId
+         */
+        async sendFollowUp(sessionId, prompt, options) {
+          const logger = (0, logger_1.getLogger)();
+          let entry = this.keptAliveSessions.get(sessionId);
+          if (!entry) {
+            entry = await this.resumeKeptAliveSession(sessionId, options);
+          }
+          if (!entry) {
+            return {
+              success: false,
+              error: `Session ${sessionId} not found or has expired`
+            };
+          }
+          const { session } = entry;
+          const startTime = Date.now();
+          const timeoutMs = options?.timeoutMs ?? _CopilotSDKService.DEFAULT_TIMEOUT_MS;
+          this.trackSession(session);
+          try {
+            let response;
+            let tokenUsage;
+            let turnCount = 0;
+            let capturedToolCalls;
+            if ((options?.onStreamingChunk || timeoutMs > 12e4) && session.on && session.send) {
+              const streamingResult = await this.sendWithStreaming(session, prompt, timeoutMs, options?.onStreamingChunk, void 0, options?.onToolEvent);
+              response = streamingResult.response;
+              tokenUsage = streamingResult.tokenUsage;
+              turnCount = streamingResult.turnCount;
+              capturedToolCalls = streamingResult.toolCalls;
+            } else {
+              const sendResult = await this.sendWithTimeout(session, prompt, timeoutMs);
+              response = sendResult?.data?.content || "";
+            }
+            entry.lastUsedAt = Date.now();
+            const durationMs = Date.now() - startTime;
+            logger.debug(logger_1.LogCategory.AI, `CopilotSDKService [${sessionId}]: Follow-up completed in ${durationMs}ms`);
+            if (!response && turnCount > 0) {
+              return { success: true, response: "", sessionId, tokenUsage, toolCalls: capturedToolCalls };
+            }
+            if (!response) {
+              return { success: false, error: "No response received", sessionId, tokenUsage, toolCalls: capturedToolCalls };
+            }
+            return { success: true, response, sessionId, tokenUsage, toolCalls: capturedToolCalls };
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            logger.error(logger_1.LogCategory.AI, `CopilotSDKService [${sessionId}]: Follow-up failed: ${errorMessage}`, error instanceof Error ? error : void 0);
+            this.keptAliveSessions.delete(sessionId);
+            try {
+              await session.destroy();
+            } catch {
+            }
+            return { success: false, error: `Follow-up error: ${errorMessage}`, sessionId };
+          } finally {
+            this.untrackSession(sessionId);
+          }
+        }
+        /**
+         * Explicitly destroy a kept-alive session and free its resources.
+         *
+         * @param sessionId - The session ID to destroy
+         * @returns true if the session was found and destroyed, false if not found
+         */
+        async destroyKeptAliveSession(sessionId) {
+          const logger = (0, logger_1.getLogger)();
+          const entry = this.keptAliveSessions.get(sessionId);
+          if (!entry) {
+            logger.debug(logger_1.LogCategory.AI, `CopilotSDKService [${sessionId}]: Kept-alive session not found for destroy`);
+            return false;
+          }
+          this.keptAliveSessions.delete(sessionId);
+          try {
+            await entry.session.destroy();
+            logger.debug(logger_1.LogCategory.AI, `CopilotSDKService [${sessionId}]: Kept-alive session destroyed`);
+          } catch (error) {
+            logger.debug(logger_1.LogCategory.AI, `CopilotSDKService [${sessionId}]: Warning: Error destroying kept-alive session: ${error}`);
+          }
+          return true;
+        }
+        /**
+         * Check whether a kept-alive session exists (without modifying it).
+         */
+        hasKeptAliveSession(sessionId) {
+          return this.keptAliveSessions.has(sessionId);
+        }
+        /**
+         * Start the keep-alive cleanup timer (idempotent).
+         */
+        ensureKeepAliveCleanupTimer() {
+          if (this.keepAliveCleanupTimer) {
+            return;
+          }
+          this.keepAliveCleanupTimer = setInterval(() => {
+            this.cleanupIdleKeptAliveSessions().catch(() => {
+            });
+          }, _CopilotSDKService.KEEP_ALIVE_CLEANUP_INTERVAL_MS);
+          if (this.keepAliveCleanupTimer.unref) {
+            this.keepAliveCleanupTimer.unref();
+          }
+        }
+        /**
+         * Destroy kept-alive sessions that have been idle beyond the timeout.
+         */
+        async cleanupIdleKeptAliveSessions() {
+          const logger = (0, logger_1.getLogger)();
+          const now = Date.now();
+          const expired = [];
+          for (const [sessionId, entry] of this.keptAliveSessions) {
+            if (now - entry.lastUsedAt > _CopilotSDKService.KEEP_ALIVE_IDLE_TIMEOUT_MS) {
+              expired.push(sessionId);
+            }
+          }
+          for (const sessionId of expired) {
+            const entry = this.keptAliveSessions.get(sessionId);
+            if (entry) {
+              this.keptAliveSessions.delete(sessionId);
+              try {
+                await entry.session.destroy();
+              } catch {
+              }
+              logger.debug(logger_1.LogCategory.AI, `CopilotSDKService [${sessionId}]: Idle kept-alive session cleaned up`);
+            }
+          }
+          if (expired.length > 0) {
+            logger.debug(logger_1.LogCategory.AI, `CopilotSDKService: Cleaned up ${expired.length} idle kept-alive session(s)`);
+          }
+          if (this.keptAliveSessions.size === 0 && this.keepAliveCleanupTimer) {
+            clearInterval(this.keepAliveCleanupTimer);
+            this.keepAliveCleanupTimer = void 0;
+          }
+          return expired.length;
+        }
+        /**
+         * Abort an active session by its ID.
+         * This destroys the session and removes it from tracking.
+         * Used for cancellation support in the AI Processes panel.
+         *
+         * @param sessionId The session ID to abort
+         * @returns True if the session was found and aborted, false otherwise
+         */
+        async abortSession(sessionId) {
+          const logger = (0, logger_1.getLogger)();
+          const session = this.activeSessions.get(sessionId);
+          if (!session) {
+            logger.debug(logger_1.LogCategory.AI, `CopilotSDKService [${sessionId}]: Session not found for abort`);
+            return false;
+          }
+          logger.debug(logger_1.LogCategory.AI, `CopilotSDKService [${sessionId}]: Aborting session`);
+          try {
+            await session.destroy();
+            this.activeSessions.delete(sessionId);
+            logger.debug(logger_1.LogCategory.AI, `CopilotSDKService [${sessionId}]: Session aborted successfully`);
+            return true;
+          } catch (error) {
+            logger.error(logger_1.LogCategory.AI, `CopilotSDKService [${sessionId}]: Error aborting session`, error instanceof Error ? error : void 0);
+            this.activeSessions.delete(sessionId);
+            return false;
+          }
+        }
+        /**
+         * Check if a session is currently active.
+         *
+         * @param sessionId The session ID to check
+         * @returns True if the session is active
+         */
+        hasActiveSession(sessionId) {
+          return this.activeSessions.has(sessionId);
+        }
+        /**
+         * Get the count of currently active sessions.
+         *
+         * @returns Number of active sessions
+         */
+        getActiveSessionCount() {
+          return this.activeSessions.size;
+        }
+        /**
+         * Track an active session for potential cancellation.
+         * Called internally when a session is created.
+         *
+         * @param session The session to track
+         */
+        trackSession(session) {
+          this.activeSessions.set(session.sessionId, session);
+        }
+        /**
+         * Untrack a session (called when session is destroyed normally).
+         *
+         * @param sessionId The session ID to untrack
+         */
+        untrackSession(sessionId) {
+          this.activeSessions.delete(sessionId);
+        }
+        /**
+         * Clean up resources. Should be called when the extension deactivates.
+         */
+        async cleanup() {
+          const logger = (0, logger_1.getLogger)();
+          logger.debug(logger_1.LogCategory.AI, "CopilotSDKService: Cleaning up SDK service");
+          const abortPromises = [];
+          for (const [sessionId] of this.activeSessions) {
+            abortPromises.push(this.abortSession(sessionId).then(() => {
+            }));
+          }
+          await Promise.allSettled(abortPromises);
+          this.activeSessions.clear();
+          const keepAlivePromises = [];
+          for (const [, entry] of this.keptAliveSessions) {
+            keepAlivePromises.push(entry.session.destroy().catch(() => {
+            }));
+          }
+          this.keptAliveSessions.clear();
+          if (this.keepAliveCleanupTimer) {
+            clearInterval(this.keepAliveCleanupTimer);
+            this.keepAliveCleanupTimer = void 0;
+          }
+          await Promise.allSettled(keepAlivePromises);
+          if (this.client) {
+            try {
+              await this.client.stop();
+              logger.debug(logger_1.LogCategory.AI, "CopilotSDKService: Client stopped");
+            } catch (error) {
+              logger.debug(logger_1.LogCategory.AI, `CopilotSDKService: Warning: Error stopping client: ${error}`);
+            }
+            this.client = null;
+            this.clientCwd = void 0;
+          }
+          this.removeStreamErrorGuard();
+          this.sdkModule = null;
+          this.availabilityCache = null;
+        }
+        /**
+         * Dispose of the service and release all resources.
+         */
+        dispose() {
+          this.disposed = true;
+          this.cleanup().catch(() => {
+          });
+        }
+        /**
+         * Find the SDK package path by checking multiple possible locations.
+         * This handles both development and packaged extension scenarios.
+         */
+        findSDKPath() {
+          const possiblePaths = [
+            // Development: running from dist/
+            path.join(__dirname, "..", "node_modules", "@github", "copilot-sdk"),
+            // Development: running from out/shortcuts/ai-service
+            path.join(__dirname, "..", "..", "..", "node_modules", "@github", "copilot-sdk"),
+            // Packaged extension
+            path.join(__dirname, "node_modules", "@github", "copilot-sdk"),
+            // Workspace root (for development)
+            path.join(__dirname, "..", "..", "..", "..", "node_modules", "@github", "copilot-sdk")
+          ];
+          for (const testPath of possiblePaths) {
+            const indexPath = path.join(testPath, "dist", "index.js");
+            if (fs.existsSync(indexPath)) {
+              return testPath;
+            }
+          }
+          return void 0;
+        }
+        /**
+         * Load the SDK module using ESM dynamic import workaround.
+         * This is necessary because webpack transforms import() in ways that break ESM loading.
+         */
+        async loadSDKModule(sdkPath) {
+          if (this.sdkModule) {
+            return;
+          }
+          const sdkIndexPath = path.join(sdkPath, "dist", "index.js");
+          const { pathToFileURL } = await Promise.resolve().then(() => __importStar(__require("url")));
+          const sdkUrl = pathToFileURL(sdkIndexPath).href;
+          const dynamicImport = new Function("specifier", "return import(specifier)");
+          const sdk = await dynamicImport(sdkUrl);
+          if (!sdk.CopilotClient) {
+            throw new Error("CopilotClient not found in SDK module");
+          }
+          this.sdkModule = sdk;
+        }
+        /**
+         * Initialize the SDK client with optional working directory.
+         *
+         * @param cwd Optional working directory for the CLI process
+         */
+        async initializeClient(cwd) {
+          const sdkPath = this.findSDKPath();
+          if (!sdkPath) {
+            throw new Error("Copilot SDK not found");
+          }
+          await this.loadSDKModule(sdkPath);
+          if (!this.sdkModule) {
+            throw new Error("SDK module not loaded");
+          }
+          const options = {};
+          if (cwd) {
+            if (!fs.existsSync(cwd)) {
+              const logger2 = (0, logger_1.getLogger)();
+              logger2.warn(logger_1.LogCategory.AI, `CopilotSDKService: Working directory does not exist: ${cwd}. The SDK will fail with ERR_STREAM_DESTROYED because child_process.spawn requires an existing cwd. Ensure the caller passes a valid directory.`);
+            }
+            options.cwd = cwd;
+            try {
+              (0, trusted_folder_1.ensureFolderTrusted)(cwd);
+            } catch {
+            }
+          }
+          const logger = (0, logger_1.getLogger)();
+          logger.debug(logger_1.LogCategory.AI, `CopilotSDKService: Creating CopilotClient with options: ${JSON.stringify(options)}`);
+          this.installStreamErrorGuard();
+          this.client = new this.sdkModule.CopilotClient(options);
+          this.clientCwd = cwd;
+        }
+        /**
+         * Install a process-level `uncaughtException` handler that absorbs
+         * `ERR_STREAM_DESTROYED` errors originating from the SDK's stdio layer.
+         *
+         * The Copilot SDK's `connectViaStdio()` installs an `error` listener on
+         * the child process's stdin that **re-throws** if `forceStopping` is false.
+         * When the CLI process exits unexpectedly, any subsequent JSON-RPC write
+         * triggers this re-throw, which surfaces as an uncaught exception that
+         * crashes the host process.
+         *
+         * This handler catches exactly that class of errors so the normal
+         * error-return path in `sendMessage` can surface them gracefully.
+         */
+        installStreamErrorGuard() {
+          this.removeStreamErrorGuard();
+          const logger = (0, logger_1.getLogger)();
+          this.streamErrorGuardHandler = (err) => {
+            if (_CopilotSDKService.isStreamDestroyedError(err.message || String(err))) {
+              logger.debug(logger_1.LogCategory.AI, `CopilotSDKService: Absorbed uncaught stream error: ${err.message}`);
+              this.invalidateClient();
+              return;
+            }
+            throw err;
+          };
+          process.on("uncaughtException", this.streamErrorGuardHandler);
+        }
+        /**
+         * Remove the stream-error guard.
+         */
+        removeStreamErrorGuard() {
+          if (this.streamErrorGuardHandler) {
+            process.removeListener("uncaughtException", this.streamErrorGuardHandler);
+            this.streamErrorGuardHandler = null;
+          }
+        }
+        /**
+         * Send a message with timeout support (non-streaming).
+         * WARNING: SDK's sendAndWait has a hardcoded 120-second timeout for session.idle event.
+         * For longer timeouts, use sendWithStreaming instead (automatically done for timeoutMs > 120s).
+         */
+        async sendWithTimeout(session, prompt, timeoutMs) {
+          return session.sendAndWait({ prompt }, timeoutMs);
+        }
+        /**
+         * Send a message with streaming support.
+         * Accumulates deltaContent chunks until a completion event fires.
+         *
+         * The Copilot SDK fires events with `event.type` as a plain string:
+         * - "assistant.message_delta" with `data.deltaContent` for streaming chunks
+         * - "assistant.message" with `data.content` for the final message
+         * - "assistant.turn_end" with `data.turnId` when the turn is complete
+         * - "session.idle" with empty data when the session finishes processing
+         * - "session.error" with `data.message` for errors
+         *
+         * Completion is detected by:
+         * 1. `session.idle` — the most explicit signal that the session is done
+         * 2. `assistant.turn_end` — indicates the assistant's turn ended; used as a
+         *    fallback completion signal because some SDK versions may not fire
+         *    `session.idle` reliably or may delay it significantly.
+         *
+         * When `assistant.turn_end` fires and we already have content (from deltas
+         * or a final message), we schedule a short grace period to allow a
+         * `session.idle` or `assistant.message` event to arrive. If nothing else
+         * arrives within the grace period, we settle with the content we have.
+         */
+        async sendWithStreaming(session, prompt, timeoutMs, onStreamingChunk, toolCallsMap, onToolEvent) {
+          return new Promise((resolve, reject) => {
+            const logger = (0, logger_1.getLogger)();
+            const sid = session.sessionId;
+            const streamingStartTime = Date.now();
+            let response = "";
+            let allMessages = [];
+            let settled = false;
+            let turnEndGraceTimer = null;
+            let turnCount = 0;
+            const activeToolCalls = /* @__PURE__ */ new Map();
+            if (!toolCallsMap) {
+              toolCallsMap = /* @__PURE__ */ new Map();
+            }
+            let usageInputTokens = 0;
+            let usageOutputTokens = 0;
+            let usageCacheReadTokens = 0;
+            let usageCacheWriteTokens = 0;
+            let usageCost;
+            let usageDuration;
+            let usageTurnCount = 0;
+            let usageTokenLimit;
+            let usageCurrentTokens;
+            const cleanup = () => {
+              if (unsubscribe) {
+                unsubscribe();
+              }
+              clearTimeout(timeoutId);
+              if (turnEndGraceTimer) {
+                clearTimeout(turnEndGraceTimer);
+                turnEndGraceTimer = null;
+              }
+            };
+            const settle = (resolver, value) => {
+              if (!settled) {
+                settled = true;
+                cleanup();
+                resolver(value);
+              }
+            };
+            const settleError = (error) => {
+              if (!settled) {
+                settled = true;
+                cleanup();
+                reject(error);
+              }
+            };
+            const buildTokenUsage = () => {
+              if (usageTurnCount === 0) {
+                return void 0;
+              }
+              return {
+                inputTokens: usageInputTokens,
+                outputTokens: usageOutputTokens,
+                cacheReadTokens: usageCacheReadTokens,
+                cacheWriteTokens: usageCacheWriteTokens,
+                totalTokens: usageInputTokens + usageOutputTokens,
+                cost: usageCost,
+                duration: usageDuration,
+                turnCount: usageTurnCount,
+                tokenLimit: usageTokenLimit,
+                currentTokens: usageCurrentTokens
+              };
+            };
+            const settleWithResult = () => {
+              const joinedMessages = allMessages.length > 0 ? allMessages.filter((m) => m.trim()).join("\n\n") : "";
+              const result = joinedMessages || response;
+              const elapsedMs = Date.now() - streamingStartTime;
+              logger.debug(logger_1.LogCategory.AI, `CopilotSDKService [${sid}]: Streaming completed (${result.length} chars, ${turnCount} turns, ${allMessages.length} messages, ${elapsedMs}ms elapsed)`);
+              if (activeToolCalls.size > 0) {
+                const staleTools = [...activeToolCalls.entries()].map(([id, t]) => `${t.toolName}(${id}, ${Date.now() - t.startTime}ms)`);
+                logger.debug(logger_1.LogCategory.AI, `CopilotSDKService [${sid}]: WARNING: ${activeToolCalls.size} tool call(s) still active at settle: ${staleTools.join(", ")}`);
+              }
+              const capturedToolCalls = toolCallsMap.size > 0 ? Array.from(toolCallsMap.values()) : void 0;
+              settle(resolve, { response: result, tokenUsage: buildTokenUsage(), turnCount, toolCalls: capturedToolCalls });
+            };
+            const timeoutId = setTimeout(() => {
+              if (activeToolCalls.size > 0) {
+                const staleTools = [...activeToolCalls.entries()].map(([id, t]) => `${t.toolName}(${id}, ${Date.now() - t.startTime}ms)`);
+                logger.error(logger_1.LogCategory.AI, `CopilotSDKService [${sid}]: Timeout with ${activeToolCalls.size} active tool call(s): ${staleTools.join(", ")}`);
+              }
+              logger.error(logger_1.LogCategory.AI, `CopilotSDKService [${sid}]: Force-destroying session due to timeout after ${timeoutMs}ms`);
+              session.destroy().catch(() => {
+              });
+              settleError(new Error(`Request timed out after ${timeoutMs}ms`));
+            }, timeoutMs);
+            const unsubscribe = session.on((event) => {
+              const eventType = event.type;
+              if (eventType === "assistant.message_delta") {
+                const delta = event.data?.deltaContent || "";
+                response += delta;
+                if (onStreamingChunk && delta) {
+                  try {
+                    onStreamingChunk(delta);
+                  } catch (cbError) {
+                    logger.debug(logger_1.LogCategory.AI, `CopilotSDKService [${sid}]: onStreamingChunk callback error: ${cbError}`);
+                  }
+                }
+              } else if (eventType === "assistant.message") {
+                const messageContent = event.data?.content || "";
+                if (messageContent) {
+                  allMessages.push(messageContent);
+                }
+                logger.debug(logger_1.LogCategory.AI, `CopilotSDKService [${sid}]: Received message #${allMessages.length} (${messageContent.length} chars)`);
+                if (event.data?.toolRequests?.length) {
+                  const toolNames = event.data.toolRequests.map((t) => t.name).join(", ");
+                  logger.debug(logger_1.LogCategory.AI, `CopilotSDKService [${sid}]: Message includes ${event.data.toolRequests.length} tool request(s): ${toolNames}`);
+                }
+                if (onStreamingChunk && messageContent && !response) {
+                  try {
+                    onStreamingChunk(messageContent);
+                  } catch (cbError) {
+                    logger.debug(logger_1.LogCategory.AI, `CopilotSDKService [${sid}]: onStreamingChunk callback error: ${cbError}`);
+                  }
+                }
+              } else if (eventType === "assistant.turn_start") {
+                const elapsedMs = Date.now() - streamingStartTime;
+                logger.debug(logger_1.LogCategory.AI, `CopilotSDKService [${sid}]: Turn starting (${elapsedMs}ms elapsed, ${activeToolCalls.size} active tool calls)`);
+                if (turnEndGraceTimer) {
+                  clearTimeout(turnEndGraceTimer);
+                  turnEndGraceTimer = null;
+                  logger.debug(logger_1.LogCategory.AI, `CopilotSDKService [${sid}]: Cancelled turn_end grace timer \u2014 new turn starting`);
+                }
+              } else if (eventType === "assistant.turn_end") {
+                turnCount++;
+                logger.debug(logger_1.LogCategory.AI, `CopilotSDKService [${sid}]: Turn ${turnCount} ended (${allMessages.length} messages so far)`);
+                if (!settled && !turnEndGraceTimer) {
+                  turnEndGraceTimer = setTimeout(() => {
+                    turnEndGraceTimer = null;
+                    if (!settled && (allMessages.length > 0 || response)) {
+                      logger.debug(logger_1.LogCategory.AI, `CopilotSDKService [${sid}]: Settling after turn_end grace period (turn ${turnCount})`);
+                      settleWithResult();
+                    }
+                  }, 2e3);
+                }
+              } else if (eventType === "session.idle") {
+                logger.debug(logger_1.LogCategory.AI, `CopilotSDKService [${sid}]: Session idle after ${turnCount} turns`);
+                settleWithResult();
+              } else if (eventType === "session.error") {
+                const errorMessage = event.data?.message || "Unknown session error";
+                logger.error(logger_1.LogCategory.AI, `CopilotSDKService [${sid}]: Session error: ${errorMessage}`);
+                settleError(new Error(`Copilot session error: ${errorMessage}`));
+              } else if (eventType === "assistant.usage") {
+                usageTurnCount++;
+                usageInputTokens += event.data?.inputTokens ?? 0;
+                usageOutputTokens += event.data?.outputTokens ?? 0;
+                usageCacheReadTokens += event.data?.cacheReadTokens ?? 0;
+                usageCacheWriteTokens += event.data?.cacheWriteTokens ?? 0;
+                if (event.data?.cost != null) {
+                  usageCost = (usageCost ?? 0) + event.data.cost;
+                }
+                if (event.data?.duration != null) {
+                  usageDuration = (usageDuration ?? 0) + event.data.duration;
+                }
+                logger.debug(logger_1.LogCategory.AI, `CopilotSDKService [${sid}]: Usage turn ${usageTurnCount}: in=${event.data?.inputTokens ?? 0} out=${event.data?.outputTokens ?? 0}`);
+              } else if (eventType === "session.usage_info") {
+                if (event.data?.tokenLimit != null) {
+                  usageTokenLimit = event.data.tokenLimit;
+                }
+                if (event.data?.currentTokens != null) {
+                  usageCurrentTokens = event.data.currentTokens;
+                }
+                logger.debug(logger_1.LogCategory.AI, `CopilotSDKService [${sid}]: Session usage info: limit=${usageTokenLimit} current=${usageCurrentTokens}`);
+              } else if (eventType === "tool.execution_start") {
+                const toolCallId = event.data?.toolCallId || "(unknown)";
+                const toolName = event.data?.toolName || "(unknown)";
+                const parentToolCallId = event.data?.parentToolCallId;
+                activeToolCalls.set(toolCallId, { toolName, startTime: Date.now() });
+                const argsStr = event.data?.arguments ? ` args=${JSON.stringify(event.data.arguments).substring(0, 200)}` : "";
+                logger.debug(logger_1.LogCategory.AI, `CopilotSDKService [${sid}]: Tool execution started: ${toolName} [${toolCallId}]${argsStr}`);
+                const toolCall = {
+                  id: toolCallId !== "(unknown)" ? toolCallId : `tool-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                  name: toolName !== "(unknown)" ? toolName : "unknown",
+                  status: "running",
+                  startTime: /* @__PURE__ */ new Date(),
+                  args: event.data?.arguments ?? {},
+                  ...parentToolCallId ? { parentToolCallId } : {}
+                };
+                toolCallsMap.set(toolCall.id, toolCall);
+                if (onToolEvent) {
+                  try {
+                    onToolEvent({
+                      type: "tool-start",
+                      toolCallId: toolCall.id,
+                      toolName: toolCall.name,
+                      parentToolCallId: toolCall.parentToolCallId,
+                      parameters: toolCall.args
+                    });
+                  } catch {
+                  }
+                }
+              } else if (eventType === "tool.execution_complete") {
+                const toolCallId = event.data?.toolCallId || "(unknown)";
+                const tracked = activeToolCalls.get(toolCallId);
+                const durationStr = tracked ? ` (${Date.now() - tracked.startTime}ms)` : "";
+                activeToolCalls.delete(toolCallId);
+                const toolSuccess = event.data?.success;
+                if (toolSuccess) {
+                  const resultLen = event.data?.result?.content?.length ?? 0;
+                  logger.debug(logger_1.LogCategory.AI, `CopilotSDKService [${sid}]: Tool execution completed: ${tracked?.toolName || "?"} [${toolCallId}] success${durationStr} (${resultLen} chars)`);
+                } else {
+                  const errorMsg = event.data?.error?.message || "(no error message)";
+                  logger.debug(logger_1.LogCategory.AI, `CopilotSDKService [${sid}]: Tool execution FAILED: ${tracked?.toolName || "?"} [${toolCallId}]${durationStr} error=${errorMsg}`);
+                }
+                const capturedTool = toolCallsMap.get(toolCallId);
+                if (capturedTool) {
+                  capturedTool.status = toolSuccess ? "completed" : "failed";
+                  capturedTool.endTime = /* @__PURE__ */ new Date();
+                  if (toolSuccess) {
+                    capturedTool.result = event.data?.result?.content;
+                  } else {
+                    capturedTool.error = event.data?.error?.message || "Unknown error";
+                  }
+                } else {
+                  toolCallsMap.set(toolCallId, {
+                    id: toolCallId,
+                    name: tracked?.toolName || "unknown",
+                    status: "failed",
+                    startTime: new Date(tracked?.startTime ?? Date.now()),
+                    endTime: /* @__PURE__ */ new Date(),
+                    args: {},
+                    ...event.data?.parentToolCallId ? { parentToolCallId: event.data.parentToolCallId } : {},
+                    error: "Started outside observation window"
+                  });
+                }
+                if (onToolEvent) {
+                  try {
+                    if (toolSuccess) {
+                      onToolEvent({
+                        type: "tool-complete",
+                        toolCallId,
+                        toolName: tracked?.toolName,
+                        parentToolCallId: capturedTool?.parentToolCallId,
+                        result: event.data?.result?.content
+                      });
+                    } else {
+                      onToolEvent({
+                        type: "tool-failed",
+                        toolCallId,
+                        toolName: tracked?.toolName,
+                        parentToolCallId: capturedTool?.parentToolCallId,
+                        error: event.data?.error?.message || "Unknown error"
+                      });
+                    }
+                  } catch {
+                  }
+                }
+              } else if (eventType === "tool.execution_progress") {
+                const toolCallId = event.data?.toolCallId || "(unknown)";
+                const tracked = activeToolCalls.get(toolCallId);
+                logger.debug(logger_1.LogCategory.AI, `CopilotSDKService [${sid}]: Tool progress: ${tracked?.toolName || "?"} [${toolCallId}]: ${event.data?.progressMessage || ""}`);
+                const capturedProgress = toolCallsMap.get(toolCallId);
+                if (capturedProgress && event.data?.progressMessage) {
+                  capturedProgress.progressMessage = event.data.progressMessage;
+                }
+              } else if (eventType === "assistant.intent") {
+                logger.debug(logger_1.LogCategory.AI, `CopilotSDKService [${sid}]: Assistant intent: ${event.data?.intent || "(none)"}`);
+              } else if (eventType === "session.info") {
+                logger.debug(logger_1.LogCategory.AI, `CopilotSDKService [${sid}]: Session info [${event.data?.infoType || "?"}]: ${event.data?.message || ""}`);
+              } else if (eventType === "abort") {
+                logger.debug(logger_1.LogCategory.AI, `CopilotSDKService [${sid}]: Session aborted: ${event.data?.reason || "(no reason)"}`);
+              }
+            });
+            session.send({ prompt }).catch((error) => {
+              settleError(error instanceof Error ? error : new Error(String(error)));
+            });
+          });
+        }
+      };
+      exports.CopilotSDKService = CopilotSDKService;
+      CopilotSDKService.instance = null;
+      CopilotSDKService.KEEP_ALIVE_IDLE_TIMEOUT_MS = 10 * 60 * 1e3;
+      CopilotSDKService.KEEP_ALIVE_CLEANUP_INTERVAL_MS = 60 * 1e3;
+      CopilotSDKService.DEFAULT_TIMEOUT_MS = timeouts_1.DEFAULT_AI_TIMEOUT_MS;
+      CopilotSDKService.STREAM_DESTROYED_PATTERNS = [
+        "stream was destroyed",
+        "ERR_STREAM_DESTROYED",
+        "cannot call write after a stream was destroyed",
+        "EPIPE",
+        "ECONNRESET"
+      ];
+      function getCopilotSDKService() {
+        return CopilotSDKService.getInstance();
+      }
+      function resetCopilotSDKService() {
+        CopilotSDKService.resetInstance();
+      }
+    }
+  });
+
+  // ../pipeline-core/dist/copilot-sdk-wrapper/index.js
+  var require_copilot_sdk_wrapper = __commonJS({
+    "../pipeline-core/dist/copilot-sdk-wrapper/index.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.setTrustedFolderHomeOverride = exports.getCopilotConfigPath = exports.isFolderTrusted = exports.ensureFolderTrusted = exports.setHomeDirectoryOverride = exports.getCachedMcpConfig = exports.mcpConfigExists = exports.clearMcpConfigCache = exports.mergeMcpConfigs = exports.loadDefaultMcpConfigAsync = exports.loadDefaultMcpConfig = exports.getMcpConfigPath = exports.getHomeDirectory = exports.resetCopilotSDKService = exports.getCopilotSDKService = exports.CopilotSDKService = exports.getModelsByTier = exports.getModelCount = exports.isValidModelId = exports.getActiveModels = exports.getAllModels = exports.getModelDefinition = exports.getModelDescription = exports.getModelLabel = exports.MODEL_REGISTRY = exports.DEFAULT_MODEL_ID = exports.VALID_MODELS = exports.denyAllPermissions = exports.approveAllPermissions = void 0;
+      var types_1 = require_types2();
+      Object.defineProperty(exports, "approveAllPermissions", { enumerable: true, get: function() {
+        return types_1.approveAllPermissions;
+      } });
+      Object.defineProperty(exports, "denyAllPermissions", { enumerable: true, get: function() {
+        return types_1.denyAllPermissions;
+      } });
+      var model_registry_1 = require_model_registry();
+      Object.defineProperty(exports, "VALID_MODELS", { enumerable: true, get: function() {
+        return model_registry_1.VALID_MODELS;
+      } });
+      Object.defineProperty(exports, "DEFAULT_MODEL_ID", { enumerable: true, get: function() {
+        return model_registry_1.DEFAULT_MODEL_ID;
+      } });
+      Object.defineProperty(exports, "MODEL_REGISTRY", { enumerable: true, get: function() {
+        return model_registry_1.MODEL_REGISTRY;
+      } });
+      Object.defineProperty(exports, "getModelLabel", { enumerable: true, get: function() {
+        return model_registry_1.getModelLabel;
+      } });
+      Object.defineProperty(exports, "getModelDescription", { enumerable: true, get: function() {
+        return model_registry_1.getModelDescription;
+      } });
+      Object.defineProperty(exports, "getModelDefinition", { enumerable: true, get: function() {
+        return model_registry_1.getModelDefinition;
+      } });
+      Object.defineProperty(exports, "getAllModels", { enumerable: true, get: function() {
+        return model_registry_1.getAllModels;
+      } });
+      Object.defineProperty(exports, "getActiveModels", { enumerable: true, get: function() {
+        return model_registry_1.getActiveModels;
+      } });
+      Object.defineProperty(exports, "isValidModelId", { enumerable: true, get: function() {
+        return model_registry_1.isValidModelId;
+      } });
+      Object.defineProperty(exports, "getModelCount", { enumerable: true, get: function() {
+        return model_registry_1.getModelCount;
+      } });
+      Object.defineProperty(exports, "getModelsByTier", { enumerable: true, get: function() {
+        return model_registry_1.getModelsByTier;
+      } });
+      var copilot_sdk_service_1 = require_copilot_sdk_service();
+      Object.defineProperty(exports, "CopilotSDKService", { enumerable: true, get: function() {
+        return copilot_sdk_service_1.CopilotSDKService;
+      } });
+      Object.defineProperty(exports, "getCopilotSDKService", { enumerable: true, get: function() {
+        return copilot_sdk_service_1.getCopilotSDKService;
+      } });
+      Object.defineProperty(exports, "resetCopilotSDKService", { enumerable: true, get: function() {
+        return copilot_sdk_service_1.resetCopilotSDKService;
+      } });
+      var mcp_config_loader_1 = require_mcp_config_loader();
+      Object.defineProperty(exports, "getHomeDirectory", { enumerable: true, get: function() {
+        return mcp_config_loader_1.getHomeDirectory;
+      } });
+      Object.defineProperty(exports, "getMcpConfigPath", { enumerable: true, get: function() {
+        return mcp_config_loader_1.getMcpConfigPath;
+      } });
+      Object.defineProperty(exports, "loadDefaultMcpConfig", { enumerable: true, get: function() {
+        return mcp_config_loader_1.loadDefaultMcpConfig;
+      } });
+      Object.defineProperty(exports, "loadDefaultMcpConfigAsync", { enumerable: true, get: function() {
+        return mcp_config_loader_1.loadDefaultMcpConfigAsync;
+      } });
+      Object.defineProperty(exports, "mergeMcpConfigs", { enumerable: true, get: function() {
+        return mcp_config_loader_1.mergeMcpConfigs;
+      } });
+      Object.defineProperty(exports, "clearMcpConfigCache", { enumerable: true, get: function() {
+        return mcp_config_loader_1.clearMcpConfigCache;
+      } });
+      Object.defineProperty(exports, "mcpConfigExists", { enumerable: true, get: function() {
+        return mcp_config_loader_1.mcpConfigExists;
+      } });
+      Object.defineProperty(exports, "getCachedMcpConfig", { enumerable: true, get: function() {
+        return mcp_config_loader_1.getCachedMcpConfig;
+      } });
+      Object.defineProperty(exports, "setHomeDirectoryOverride", { enumerable: true, get: function() {
+        return mcp_config_loader_1.setHomeDirectoryOverride;
+      } });
+      var trusted_folder_1 = require_trusted_folder();
+      Object.defineProperty(exports, "ensureFolderTrusted", { enumerable: true, get: function() {
+        return trusted_folder_1.ensureFolderTrusted;
+      } });
+      Object.defineProperty(exports, "isFolderTrusted", { enumerable: true, get: function() {
+        return trusted_folder_1.isFolderTrusted;
+      } });
+      Object.defineProperty(exports, "getCopilotConfigPath", { enumerable: true, get: function() {
+        return trusted_folder_1.getCopilotConfigPath;
+      } });
+      Object.defineProperty(exports, "setTrustedFolderHomeOverride", { enumerable: true, get: function() {
+        return trusted_folder_1.setTrustedFolderHomeOverride;
+      } });
+    }
+  });
+
+  // ../pipeline-core/dist/ai/command-types.js
+  var require_command_types = __commonJS({
+    "../pipeline-core/dist/ai/command-types.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.DEFAULT_AI_COMMANDS = void 0;
+      exports.serializeCommand = serializeCommand;
+      exports.serializeCommands = serializeCommands;
+      var types_1 = require_types();
+      exports.DEFAULT_AI_COMMANDS = [
+        {
+          id: "clarify",
+          label: "Clarify",
+          icon: "\u{1F4A1}",
+          prompt: types_1.DEFAULT_PROMPTS.clarify,
+          order: 1,
+          commentType: "ai-clarification",
+          responseLabel: "\u{1F916} **AI Clarification:**"
+        },
+        {
+          id: "go-deeper",
+          label: "Go Deeper",
+          icon: "\u{1F50D}",
+          prompt: types_1.DEFAULT_PROMPTS.goDeeper,
+          order: 2,
+          commentType: "ai-clarification",
+          responseLabel: "\u{1F50D} **AI Deep Analysis:**"
+        },
+        {
+          id: "custom",
+          label: "Custom...",
+          icon: "\u{1F4AC}",
+          prompt: types_1.DEFAULT_PROMPTS.customDefault,
+          order: 99,
+          isCustomInput: true,
+          responseLabel: "\u{1F916} **AI Response:**"
+        }
+      ];
+      function serializeCommand(command) {
+        return {
+          id: command.id,
+          label: command.label,
+          icon: command.icon,
+          order: command.order,
+          isCustomInput: command.isCustomInput,
+          prompt: command.prompt
+        };
+      }
+      function serializeCommands(commands) {
+        return commands.map(serializeCommand);
+      }
+    }
+  });
+
+  // ../pipeline-core/dist/errors/error-codes.js
+  var require_error_codes = __commonJS({
+    "../pipeline-core/dist/errors/error-codes.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.ErrorCode = void 0;
+      exports.mapSystemErrorCode = mapSystemErrorCode;
+      exports.ErrorCode = {
+        // =========================================================================
+        // Control Flow
+        // =========================================================================
+        /** Operation was cancelled by user or system */
+        CANCELLED: "CANCELLED",
+        /** Operation exceeded its timeout limit */
+        TIMEOUT: "TIMEOUT",
+        /** All retry attempts have been exhausted */
+        RETRY_EXHAUSTED: "RETRY_EXHAUSTED",
+        // =========================================================================
+        // AI Operations
+        // =========================================================================
+        /** AI invocation failed (SDK, CLI, or other backend) */
+        AI_INVOCATION_FAILED: "AI_INVOCATION_FAILED",
+        /** AI response could not be parsed */
+        AI_RESPONSE_PARSE_FAILED: "AI_RESPONSE_PARSE_FAILED",
+        /** AI session pool exhausted */
+        AI_POOL_EXHAUSTED: "AI_POOL_EXHAUSTED",
+        // =========================================================================
+        // Pipeline Execution
+        // =========================================================================
+        /** Generic pipeline execution failure */
+        PIPELINE_EXECUTION_FAILED: "PIPELINE_EXECUTION_FAILED",
+        /** Pipeline filter phase failed */
+        PIPELINE_FILTER_FAILED: "PIPELINE_FILTER_FAILED",
+        /** Pipeline input validation failed */
+        PIPELINE_INPUT_INVALID: "PIPELINE_INPUT_INVALID",
+        /** Pipeline configuration is invalid */
+        PIPELINE_CONFIG_INVALID: "PIPELINE_CONFIG_INVALID",
+        // =========================================================================
+        // Map-Reduce
+        // =========================================================================
+        /** Split phase failed */
+        MAP_REDUCE_SPLIT_FAILED: "MAP_REDUCE_SPLIT_FAILED",
+        /** Map phase failed for one or more items */
+        MAP_REDUCE_MAP_FAILED: "MAP_REDUCE_MAP_FAILED",
+        /** Reduce phase failed */
+        MAP_REDUCE_REDUCE_FAILED: "MAP_REDUCE_REDUCE_FAILED",
+        // =========================================================================
+        // Queue Operations
+        // =========================================================================
+        /** Task exceeded its timeout */
+        QUEUE_TASK_TIMEOUT: "QUEUE_TASK_TIMEOUT",
+        /** Task execution failed */
+        QUEUE_TASK_FAILED: "QUEUE_TASK_FAILED",
+        /** Queue is not running */
+        QUEUE_NOT_RUNNING: "QUEUE_NOT_RUNNING",
+        // =========================================================================
+        // Data Operations
+        // =========================================================================
+        /** CSV parsing failed */
+        CSV_PARSE_ERROR: "CSV_PARSE_ERROR",
+        /** Template rendering failed */
+        TEMPLATE_ERROR: "TEMPLATE_ERROR",
+        /** Required template variable is missing */
+        MISSING_VARIABLE: "MISSING_VARIABLE",
+        /** Prompt file resolution failed */
+        PROMPT_RESOLUTION_FAILED: "PROMPT_RESOLUTION_FAILED",
+        /** Skill resolution failed */
+        SKILL_RESOLUTION_FAILED: "SKILL_RESOLUTION_FAILED",
+        /** Input generation failed */
+        INPUT_GENERATION_FAILED: "INPUT_GENERATION_FAILED",
+        // =========================================================================
+        // File System
+        // =========================================================================
+        /** File not found (wrapper for ENOENT) */
+        FILE_NOT_FOUND: "FILE_NOT_FOUND",
+        /** Permission denied (wrapper for EACCES) */
+        PERMISSION_DENIED: "PERMISSION_DENIED",
+        /** Generic file system error */
+        FILE_SYSTEM_ERROR: "FILE_SYSTEM_ERROR",
+        // =========================================================================
+        // Unknown / Fallback
+        // =========================================================================
+        /** Error code could not be determined */
+        UNKNOWN: "UNKNOWN"
+      };
+      function mapSystemErrorCode(nodeCode) {
+        switch (nodeCode) {
+          case "ENOENT":
+            return exports.ErrorCode.FILE_NOT_FOUND;
+          case "EACCES":
+          case "EPERM":
+            return exports.ErrorCode.PERMISSION_DENIED;
+          case "ETIMEDOUT":
+          case "ESOCKETTIMEDOUT":
+            return exports.ErrorCode.TIMEOUT;
+          case "ECONNREFUSED":
+          case "ENOTFOUND":
+          case "EAI_AGAIN":
+            return exports.ErrorCode.AI_INVOCATION_FAILED;
+          default:
+            if (nodeCode.startsWith("E")) {
+              return exports.ErrorCode.FILE_SYSTEM_ERROR;
+            }
+            return exports.ErrorCode.UNKNOWN;
+        }
+      }
+    }
+  });
+
+  // ../pipeline-core/dist/errors/pipeline-core-error.js
+  var require_pipeline_core_error = __commonJS({
+    "../pipeline-core/dist/errors/pipeline-core-error.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.mapSystemErrorCode = exports.ErrorCode = exports.PipelineCoreError = void 0;
+      exports.isPipelineCoreError = isPipelineCoreError;
+      exports.toPipelineCoreError = toPipelineCoreError;
+      exports.wrapError = wrapError;
+      exports.getErrorCauseMessage = getErrorCauseMessage;
+      exports.logError = logError;
+      var error_codes_1 = require_error_codes();
+      var logger_1 = require_logger();
+      var PipelineCoreError = class extends Error {
+        constructor(message, options) {
+          super(message);
+          this.name = "PipelineCoreError";
+          this.code = options?.code ?? error_codes_1.ErrorCode.UNKNOWN;
+          this.cause = options?.cause;
+          this.meta = options?.meta;
+          Object.setPrototypeOf(this, new.target.prototype);
+        }
+        /**
+         * Get a formatted string representation including code and metadata
+         */
+        toDetailedString() {
+          const parts = [`[${this.code}] ${this.message}`];
+          if (this.meta && Object.keys(this.meta).length > 0) {
+            parts.push(`Meta: ${JSON.stringify(this.meta)}`);
+          }
+          if (this.cause instanceof Error) {
+            parts.push(`Caused by: ${this.cause.message}`);
+          } else if (this.cause !== void 0) {
+            parts.push(`Caused by: ${String(this.cause)}`);
+          }
+          return parts.join("\n");
+        }
+        /**
+         * Convert to a plain object for serialization
+         */
+        toJSON() {
+          return {
+            name: this.name,
+            code: this.code,
+            message: this.message,
+            meta: this.meta,
+            cause: this.cause instanceof Error ? { name: this.cause.name, message: this.cause.message } : this.cause,
+            stack: this.stack
+          };
+        }
+      };
+      exports.PipelineCoreError = PipelineCoreError;
+      function isPipelineCoreError(error) {
+        return error instanceof PipelineCoreError;
+      }
+      function toPipelineCoreError(error, defaultCode = error_codes_1.ErrorCode.UNKNOWN, meta) {
+        if (isPipelineCoreError(error)) {
+          if (meta) {
+            return new PipelineCoreError(error.message, {
+              code: error.code,
+              cause: error.cause,
+              meta: { ...error.meta, ...meta }
+            });
+          }
+          return error;
+        }
+        if (error instanceof Error) {
+          const nodeCode = error.code;
+          const detectedCode = nodeCode ? (0, error_codes_1.mapSystemErrorCode)(nodeCode) : defaultCode;
+          return new PipelineCoreError(error.message, {
+            code: detectedCode !== error_codes_1.ErrorCode.UNKNOWN ? detectedCode : defaultCode,
+            cause: error,
+            meta
+          });
+        }
+        const message = typeof error === "string" ? error : String(error);
+        return new PipelineCoreError(message, {
+          code: defaultCode,
+          cause: error,
+          meta
+        });
+      }
+      function wrapError(message, cause, code, meta) {
+        const causeError = isPipelineCoreError(cause) ? cause : void 0;
+        const effectiveCode = code ?? causeError?.code ?? error_codes_1.ErrorCode.UNKNOWN;
+        const effectiveMeta = meta ?? causeError?.meta;
+        return new PipelineCoreError(message, {
+          code: effectiveCode,
+          cause,
+          meta: effectiveMeta
+        });
+      }
+      function getErrorCauseMessage(error, maxDepth = 5) {
+        const messages = [];
+        let current = error;
+        let depth = 0;
+        while (current && depth < maxDepth) {
+          if (current instanceof Error) {
+            messages.push(current.message);
+            current = current.cause;
+          } else if (typeof current === "string") {
+            messages.push(current);
+            break;
+          } else {
+            messages.push(String(current));
+            break;
+          }
+          depth++;
+        }
+        return messages.join(" -> ");
+      }
+      function logError(category, message, error) {
+        const logger = (0, logger_1.getLogger)();
+        if (isPipelineCoreError(error)) {
+          const details = [
+            `[${error.code}]`,
+            error.message
+          ];
+          if (error.meta && Object.keys(error.meta).length > 0) {
+            details.push(`(${JSON.stringify(error.meta)})`);
+          }
+          logger.error(category, `${message}: ${details.join(" ")}`, error);
+        } else if (error instanceof Error) {
+          logger.error(category, `${message}: ${error.message}`, error);
+        } else {
+          logger.error(category, `${message}: ${String(error)}`);
+        }
+      }
+      var error_codes_2 = require_error_codes();
+      Object.defineProperty(exports, "ErrorCode", { enumerable: true, get: function() {
+        return error_codes_2.ErrorCode;
+      } });
+      Object.defineProperty(exports, "mapSystemErrorCode", { enumerable: true, get: function() {
+        return error_codes_2.mapSystemErrorCode;
+      } });
+    }
+  });
+
+  // ../pipeline-core/dist/errors/index.js
+  var require_errors = __commonJS({
+    "../pipeline-core/dist/errors/index.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.logError = exports.getErrorCauseMessage = exports.wrapError = exports.toPipelineCoreError = exports.isPipelineCoreError = exports.PipelineCoreError = exports.mapSystemErrorCode = exports.ErrorCode = void 0;
+      var error_codes_1 = require_error_codes();
+      Object.defineProperty(exports, "ErrorCode", { enumerable: true, get: function() {
+        return error_codes_1.ErrorCode;
+      } });
+      Object.defineProperty(exports, "mapSystemErrorCode", { enumerable: true, get: function() {
+        return error_codes_1.mapSystemErrorCode;
+      } });
+      var pipeline_core_error_1 = require_pipeline_core_error();
+      Object.defineProperty(exports, "PipelineCoreError", { enumerable: true, get: function() {
+        return pipeline_core_error_1.PipelineCoreError;
+      } });
+      Object.defineProperty(exports, "isPipelineCoreError", { enumerable: true, get: function() {
+        return pipeline_core_error_1.isPipelineCoreError;
+      } });
+      Object.defineProperty(exports, "toPipelineCoreError", { enumerable: true, get: function() {
+        return pipeline_core_error_1.toPipelineCoreError;
+      } });
+      Object.defineProperty(exports, "wrapError", { enumerable: true, get: function() {
+        return pipeline_core_error_1.wrapError;
+      } });
+      Object.defineProperty(exports, "getErrorCauseMessage", { enumerable: true, get: function() {
+        return pipeline_core_error_1.getErrorCauseMessage;
+      } });
+      Object.defineProperty(exports, "logError", { enumerable: true, get: function() {
+        return pipeline_core_error_1.logError;
+      } });
+    }
+  });
+
+  // ../pipeline-core/dist/utils/template-engine.js
+  var require_template_engine = __commonJS({
+    "../pipeline-core/dist/utils/template-engine.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.TemplateVariableError = exports.SPECIAL_VARIABLES = exports.TEMPLATE_VARIABLE_REGEX = void 0;
+      exports.substituteVariables = substituteVariables;
+      exports.extractVariables = extractVariables;
+      exports.hasVariables = hasVariables;
+      exports.containsVariables = containsVariables;
+      exports.validateVariables = validateVariables;
+      var errors_1 = require_errors();
+      exports.TEMPLATE_VARIABLE_REGEX = /\{\{(\w+)\}\}/g;
+      exports.SPECIAL_VARIABLES = /* @__PURE__ */ new Set([
+        "ITEMS",
+        "RESULTS",
+        "RESULTS_FILE",
+        "COUNT",
+        "SUCCESS_COUNT",
+        "FAILURE_COUNT"
+      ]);
+      var TemplateVariableError = class extends errors_1.PipelineCoreError {
+        constructor(message, variableName) {
+          super(message, {
+            code: errors_1.ErrorCode.MISSING_VARIABLE,
+            meta: variableName ? { variableName } : void 0
+          });
+          this.name = "TemplateVariableError";
+          this.variableName = variableName;
+        }
+      };
+      exports.TemplateVariableError = TemplateVariableError;
+      function substituteVariables(template, variables, options = {}) {
+        const { strict = false, missingValueBehavior = "empty", preserveSpecialVariables = true } = options;
+        const regex = new RegExp(exports.TEMPLATE_VARIABLE_REGEX.source, "g");
+        return template.replace(regex, (match, variableName) => {
+          if (preserveSpecialVariables && exports.SPECIAL_VARIABLES.has(variableName)) {
+            return match;
+          }
+          if (variableName in variables) {
+            const value = variables[variableName];
+            if (value === null || value === void 0) {
+              return "";
+            }
+            if (typeof value === "object") {
+              return JSON.stringify(value);
+            }
+            return String(value);
+          }
+          if (strict) {
+            throw new TemplateVariableError(`Missing variable "${variableName}" in template`, variableName);
+          }
+          if (missingValueBehavior === "preserve") {
+            return match;
+          }
+          return "";
+        });
+      }
+      function extractVariables(template, excludeSpecial = true) {
+        const variables = /* @__PURE__ */ new Set();
+        const regex = new RegExp(exports.TEMPLATE_VARIABLE_REGEX.source, "g");
+        const matches = template.matchAll(regex);
+        for (const match of matches) {
+          const varName = match[1];
+          if (!excludeSpecial || !exports.SPECIAL_VARIABLES.has(varName)) {
+            variables.add(varName);
+          }
+        }
+        return Array.from(variables);
+      }
+      function hasVariables(template) {
+        return exports.TEMPLATE_VARIABLE_REGEX.test(template);
+      }
+      function containsVariables(template, variableNames) {
+        const found = extractVariables(template, false);
+        return variableNames.some((name) => found.includes(name));
+      }
+      function validateVariables(template, variables) {
+        const requiredVariables = extractVariables(template, true);
+        const missingVariables = requiredVariables.filter((v) => !(v in variables));
+        return {
+          valid: missingVariables.length === 0,
+          missingVariables
+        };
+      }
+    }
+  });
+
+  // ../pipeline-core/dist/ai/prompt-builder.js
+  var require_prompt_builder = __commonJS({
+    "../pipeline-core/dist/ai/prompt-builder.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.substitutePromptVariables = substitutePromptVariables;
+      exports.buildPromptFromContext = buildPromptFromContext;
+      exports.usesTemplateVariables = usesTemplateVariables;
+      exports.getAvailableVariables = getAvailableVariables;
+      var template_engine_1 = require_template_engine();
+      var PROMPT_VARIABLE_NAMES = ["selection", "file", "heading", "context", "headings"];
+      function substitutePromptVariables(template, context) {
+        const variables = {
+          selection: context.selectedText,
+          file: context.filePath,
+          heading: context.nearestHeading ?? "",
+          context: context.surroundingContent ?? "",
+          headings: context.headings?.join(", ") ?? ""
+        };
+        return (0, template_engine_1.substituteVariables)(template, variables, {
+          strict: false,
+          missingValueBehavior: "empty",
+          preserveSpecialVariables: false
+        });
+      }
+      function buildPromptFromContext(promptTemplate, context, isCustomInstruction = false) {
+        let prompt = substitutePromptVariables(promptTemplate, context);
+        if (!prompt.includes("{{")) {
+          if (isCustomInstruction) {
+            return `${prompt}: "${context.selectedText}" in the file ${context.filePath}`;
+          }
+          return `${prompt} "${context.selectedText}" in the file ${context.filePath}`;
+        }
+        return prompt;
+      }
+      function usesTemplateVariables(template) {
+        const pattern = new RegExp(`\\{\\{(${PROMPT_VARIABLE_NAMES.join("|")})\\}\\}`);
+        return pattern.test(template);
+      }
+      function getAvailableVariables() {
+        return [
+          { name: "{{selection}}", description: "The selected text" },
+          { name: "{{file}}", description: "The file path being reviewed" },
+          { name: "{{heading}}", description: "The nearest heading above the selection" },
+          { name: "{{context}}", description: "Surrounding content for context" },
+          { name: "{{headings}}", description: "All document headings (comma-separated)" }
+        ];
+      }
+    }
+  });
+
+  // ../pipeline-core/dist/ai/program-utils.js
+  var require_program_utils = __commonJS({
+    "../pipeline-core/dist/ai/program-utils.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.checkProgramExists = checkProgramExists;
+      exports.clearProgramExistsCache = clearProgramExistsCache;
+      exports.parseCopilotOutput = parseCopilotOutput;
+      var child_process_1 = __require("child_process");
+      var logger_1 = require_logger();
+      var programExistsCache = /* @__PURE__ */ new Map();
+      function checkProgramExists(programName, platform) {
+        const cacheKey = `${programName}:${platform ?? process.platform}`;
+        const cached = programExistsCache.get(cacheKey);
+        if (cached !== void 0) {
+          return cached;
+        }
+        const isWindows = (platform ?? process.platform) === "win32";
+        const checkCommand = isWindows ? `where ${programName}` : `which ${programName}`;
+        let result;
+        const logger = (0, logger_1.getLogger)();
+        try {
+          const output = (0, child_process_1.execSync)(checkCommand, {
+            encoding: "utf-8",
+            stdio: ["pipe", "pipe", "pipe"],
+            timeout: 5e3
+            // 5 second timeout for the check
+          });
+          const programPath = output.trim().split("\n")[0].trim();
+          result = {
+            exists: true,
+            path: programPath
+          };
+          logger.debug("ProgramCheck", `Program '${programName}' found at: ${programPath}`);
+        } catch (error) {
+          const errorMsg = `'${programName}' is not installed or not found in PATH. Please install it first.`;
+          result = {
+            exists: false,
+            error: errorMsg
+          };
+          logger.debug("ProgramCheck", `Program '${programName}' not found: ${errorMsg}`);
+        }
+        programExistsCache.set(cacheKey, result);
+        return result;
+      }
+      function clearProgramExistsCache(programName) {
+        if (programName) {
+          for (const key of programExistsCache.keys()) {
+            if (key.startsWith(`${programName}:`)) {
+              programExistsCache.delete(key);
+            }
+          }
+        } else {
+          programExistsCache.clear();
+        }
+      }
+      function parseCopilotOutput(output) {
+        const lines = output.split("\n");
+        const resultLines = [];
+        let inContent = false;
+        for (const line of lines) {
+          const cleanLine = line.replace(/\x1b\[[0-9;]*m/g, "").trim();
+          if (!inContent && cleanLine === "") {
+            continue;
+          }
+          if (cleanLine.startsWith("\u2713") || cleanLine.startsWith("\u2717") || cleanLine.startsWith("\u2514") || cleanLine.startsWith("\u251C")) {
+            continue;
+          }
+          if (cleanLine.startsWith("Invalid session") || cleanLine.includes("session ID") || cleanLine.startsWith("Error:") || cleanLine.startsWith("Warning:")) {
+            continue;
+          }
+          if (cleanLine.match(/^(Read|Glob|Search|List|Edit|Write|Delete|Run)\s/i)) {
+            continue;
+          }
+          if (cleanLine.startsWith("Total usage") || cleanLine.startsWith("Total duration") || cleanLine.startsWith("Total code changes") || cleanLine.startsWith("Usage by model")) {
+            break;
+          }
+          inContent = true;
+          resultLines.push(cleanLine);
+        }
+        while (resultLines.length > 0 && resultLines[resultLines.length - 1] === "") {
+          resultLines.pop();
+        }
+        return resultLines.join("\n").trim();
+      }
+    }
+  });
+
+  // ../pipeline-core/dist/ai/process-types.js
+  var require_process_types = __commonJS({
+    "../pipeline-core/dist/ai/process-types.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.serializeProcess = serializeProcess;
+      exports.deserializeProcess = deserializeProcess;
+      function serializeProcess(process2) {
+        return {
+          id: process2.id,
+          type: process2.type,
+          promptPreview: process2.promptPreview,
+          fullPrompt: process2.fullPrompt,
+          status: process2.status,
+          startTime: process2.startTime.toISOString(),
+          endTime: process2.endTime?.toISOString(),
+          error: process2.error,
+          result: process2.result,
+          resultFilePath: process2.resultFilePath,
+          rawStdoutFilePath: process2.rawStdoutFilePath,
+          metadata: process2.metadata,
+          groupMetadata: process2.groupMetadata,
+          codeReviewMetadata: process2.codeReviewMetadata,
+          discoveryMetadata: process2.discoveryMetadata,
+          codeReviewGroupMetadata: process2.codeReviewGroupMetadata,
+          structuredResult: process2.structuredResult,
+          parentProcessId: process2.parentProcessId,
+          // Session resume fields
+          sdkSessionId: process2.sdkSessionId,
+          backend: process2.backend,
+          workingDirectory: process2.workingDirectory,
+          // Conversation turns (Date → ISO string)
+          conversationTurns: process2.conversationTurns?.map((turn) => ({
+            role: turn.role,
+            content: turn.content,
+            timestamp: turn.timestamp.toISOString(),
+            turnIndex: turn.turnIndex,
+            streaming: turn.streaming,
+            toolCalls: turn.toolCalls?.map((tc) => ({
+              id: tc.id,
+              name: tc.name,
+              status: tc.status,
+              startTime: tc.startTime.toISOString(),
+              endTime: tc.endTime?.toISOString(),
+              args: tc.args,
+              result: tc.result,
+              error: tc.error,
+              ...tc.parentToolCallId ? { parentToolCallId: tc.parentToolCallId } : {},
+              permissionRequest: tc.permissionRequest ? {
+                kind: tc.permissionRequest.kind,
+                timestamp: tc.permissionRequest.timestamp.toISOString(),
+                resource: tc.permissionRequest.resource,
+                operation: tc.permissionRequest.operation
+              } : void 0,
+              permissionResult: tc.permissionResult ? {
+                approved: tc.permissionResult.approved,
+                timestamp: tc.permissionResult.timestamp.toISOString(),
+                reason: tc.permissionResult.reason
+              } : void 0
+            })),
+            timeline: (turn.timeline ?? []).map((item) => ({
+              type: item.type,
+              timestamp: item.timestamp.toISOString(),
+              content: item.content,
+              toolCall: item.toolCall ? {
+                id: item.toolCall.id,
+                name: item.toolCall.name,
+                status: item.toolCall.status,
+                startTime: item.toolCall.startTime.toISOString(),
+                endTime: item.toolCall.endTime?.toISOString(),
+                args: item.toolCall.args,
+                result: item.toolCall.result,
+                error: item.toolCall.error,
+                ...item.toolCall.parentToolCallId ? { parentToolCallId: item.toolCall.parentToolCallId } : {},
+                permissionRequest: item.toolCall.permissionRequest ? {
+                  kind: item.toolCall.permissionRequest.kind,
+                  timestamp: item.toolCall.permissionRequest.timestamp.toISOString(),
+                  resource: item.toolCall.permissionRequest.resource,
+                  operation: item.toolCall.permissionRequest.operation
+                } : void 0,
+                permissionResult: item.toolCall.permissionResult ? {
+                  approved: item.toolCall.permissionResult.approved,
+                  timestamp: item.toolCall.permissionResult.timestamp.toISOString(),
+                  reason: item.toolCall.permissionResult.reason
+                } : void 0
+              } : void 0
+            }))
+          }))
+        };
+      }
+      function deserializeProcess(serialized) {
+        return {
+          id: serialized.id,
+          type: serialized.type || "clarification",
+          promptPreview: serialized.promptPreview,
+          fullPrompt: serialized.fullPrompt,
+          status: serialized.status,
+          startTime: new Date(serialized.startTime),
+          endTime: serialized.endTime ? new Date(serialized.endTime) : void 0,
+          error: serialized.error,
+          result: serialized.result,
+          resultFilePath: serialized.resultFilePath,
+          rawStdoutFilePath: serialized.rawStdoutFilePath,
+          metadata: serialized.metadata,
+          groupMetadata: serialized.groupMetadata,
+          codeReviewMetadata: serialized.codeReviewMetadata,
+          discoveryMetadata: serialized.discoveryMetadata,
+          codeReviewGroupMetadata: serialized.codeReviewGroupMetadata,
+          structuredResult: serialized.structuredResult,
+          parentProcessId: serialized.parentProcessId,
+          // Session resume fields
+          sdkSessionId: serialized.sdkSessionId,
+          backend: serialized.backend,
+          workingDirectory: serialized.workingDirectory,
+          // Conversation turns (ISO string → Date)
+          conversationTurns: serialized.conversationTurns?.map((turn) => ({
+            role: turn.role,
+            content: turn.content,
+            timestamp: new Date(turn.timestamp),
+            turnIndex: turn.turnIndex,
+            streaming: turn.streaming,
+            toolCalls: turn.toolCalls?.map((tc) => ({
+              id: tc.id,
+              name: tc.name,
+              status: tc.status,
+              startTime: new Date(tc.startTime),
+              endTime: tc.endTime ? new Date(tc.endTime) : void 0,
+              args: tc.args,
+              result: tc.result,
+              error: tc.error,
+              parentToolCallId: tc.parentToolCallId,
+              permissionRequest: tc.permissionRequest ? {
+                kind: tc.permissionRequest.kind,
+                timestamp: new Date(tc.permissionRequest.timestamp),
+                resource: tc.permissionRequest.resource,
+                operation: tc.permissionRequest.operation
+              } : void 0,
+              permissionResult: tc.permissionResult ? {
+                approved: tc.permissionResult.approved,
+                timestamp: new Date(tc.permissionResult.timestamp),
+                reason: tc.permissionResult.reason
+              } : void 0
+            })),
+            timeline: (turn.timeline ?? []).map((item) => ({
+              type: item.type,
+              timestamp: new Date(item.timestamp),
+              content: item.content,
+              toolCall: item.toolCall ? {
+                id: item.toolCall.id,
+                name: item.toolCall.name,
+                status: item.toolCall.status,
+                startTime: new Date(item.toolCall.startTime),
+                endTime: item.toolCall.endTime ? new Date(item.toolCall.endTime) : void 0,
+                args: item.toolCall.args,
+                result: item.toolCall.result,
+                error: item.toolCall.error,
+                parentToolCallId: item.toolCall.parentToolCallId,
+                permissionRequest: item.toolCall.permissionRequest ? {
+                  kind: item.toolCall.permissionRequest.kind,
+                  timestamp: new Date(item.toolCall.permissionRequest.timestamp),
+                  resource: item.toolCall.permissionRequest.resource,
+                  operation: item.toolCall.permissionRequest.operation
+                } : void 0,
+                permissionResult: item.toolCall.permissionResult ? {
+                  approved: item.toolCall.permissionResult.approved,
+                  timestamp: new Date(item.toolCall.permissionResult.timestamp),
+                  reason: item.toolCall.permissionResult.reason
+                } : void 0
+              } : void 0
+            }))
+          }))
+        };
+      }
+    }
+  });
+
+  // ../pipeline-core/dist/ai/cli-utils.js
+  var require_cli_utils = __commonJS({
+    "../pipeline-core/dist/ai/cli-utils.js"(exports) {
+      "use strict";
+      var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
+        if (k2 === void 0) k2 = k;
+        var desc = Object.getOwnPropertyDescriptor(m, k);
+        if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+          desc = { enumerable: true, get: function() {
+            return m[k];
+          } };
+        }
+        Object.defineProperty(o, k2, desc);
+      } : function(o, m, k, k2) {
+        if (k2 === void 0) k2 = k;
+        o[k2] = m[k];
+      });
+      var __setModuleDefault = exports && exports.__setModuleDefault || (Object.create ? function(o, v) {
+        Object.defineProperty(o, "default", { enumerable: true, value: v });
+      } : function(o, v) {
+        o["default"] = v;
+      });
+      var __importStar = exports && exports.__importStar || /* @__PURE__ */ function() {
+        var ownKeys = function(o) {
+          ownKeys = Object.getOwnPropertyNames || function(o2) {
+            var ar = [];
+            for (var k in o2) if (Object.prototype.hasOwnProperty.call(o2, k)) ar[ar.length] = k;
+            return ar;
+          };
+          return ownKeys(o);
+        };
+        return function(mod) {
+          if (mod && mod.__esModule) return mod;
+          var result = {};
+          if (mod != null) {
+            for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+          }
+          __setModuleDefault(result, mod);
+          return result;
+        };
+      }();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.COPILOT_BASE_FLAGS = exports.PROBLEMATIC_CHARS_PATTERN = exports.PROMPT_LENGTH_THRESHOLD = void 0;
+      exports.escapeShellArg = escapeShellArg;
+      exports.shouldUseFileDelivery = shouldUseFileDelivery;
+      exports.writePromptToTempFile = writePromptToTempFile;
+      exports.buildCliCommand = buildCliCommand;
+      var os = __importStar(__require("os"));
+      var path = __importStar(__require("path"));
+      var fs = __importStar(__require("fs"));
+      exports.PROMPT_LENGTH_THRESHOLD = 500;
+      exports.PROBLEMATIC_CHARS_PATTERN = /['"$!%`\\<>|&(){}\[\]#*?~\n\r\t]/;
+      exports.COPILOT_BASE_FLAGS = "--allow-all-tools --allow-all-paths --disable-builtin-mcps";
+      function escapeShellArg(str2, platform) {
+        const isWindows = (platform ?? process.platform) === "win32";
+        if (isWindows) {
+          const escaped = str2.replace(/\r\n/g, "\\n").replace(/\r/g, "").replace(/\n/g, "\\n").replace(/%/g, "%%").replace(/!/g, "^!").replace(/"/g, '""');
+          return `"${escaped}"`;
+        } else {
+          const escaped = str2.replace(/'/g, "'\\''");
+          return `'${escaped}'`;
+        }
+      }
+      function shouldUseFileDelivery(prompt) {
+        if (prompt.length > exports.PROMPT_LENGTH_THRESHOLD) {
+          return true;
+        }
+        return exports.PROBLEMATIC_CHARS_PATTERN.test(prompt);
+      }
+      function writePromptToTempFile(prompt) {
+        const tmpDir = os.tmpdir();
+        const timestamp2 = Date.now();
+        const randomSuffix = Math.random().toString(36).slice(2, 8);
+        const filename = `copilot-prompt-${timestamp2}-${randomSuffix}.txt`;
+        const filepath = path.join(tmpDir, filename);
+        fs.writeFileSync(filepath, prompt, "utf-8");
+        return filepath;
+      }
+      function buildCliCommand(tool, options) {
+        const baseCommand = tool === "copilot" ? "copilot" : "claude";
+        const { prompt, model, platform, resumeSessionId } = options ?? {};
+        const modelFlag = model ? ` --model ${model}` : "";
+        if (resumeSessionId) {
+          return {
+            command: `${baseCommand} ${exports.COPILOT_BASE_FLAGS}${modelFlag} --resume=${resumeSessionId}`,
+            deliveryMethod: "resume"
+          };
+        }
+        if (!prompt) {
+          return {
+            command: `${baseCommand} ${exports.COPILOT_BASE_FLAGS}${modelFlag}`,
+            deliveryMethod: "direct"
+          };
+        }
+        if (shouldUseFileDelivery(prompt)) {
+          const tempFilePath = writePromptToTempFile(prompt);
+          const redirectPrompt = `Follow the instructions in ${tempFilePath}`;
+          const escapedRedirect = escapeShellArg(redirectPrompt, platform);
+          return {
+            command: `${baseCommand} ${exports.COPILOT_BASE_FLAGS}${modelFlag} -i ${escapedRedirect}`,
+            deliveryMethod: "file",
+            tempFilePath
+          };
+        }
+        const escapedPrompt = escapeShellArg(prompt, platform);
+        return {
+          command: `${baseCommand} ${exports.COPILOT_BASE_FLAGS}${modelFlag} -i ${escapedPrompt}`,
+          deliveryMethod: "direct"
+        };
+      }
+    }
+  });
+
+  // ../pipeline-core/dist/ai/index.js
+  var require_ai = __commonJS({
+    "../pipeline-core/dist/ai/index.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.DEFAULT_AI_TIMEOUT_MS = exports.buildCliCommand = exports.writePromptToTempFile = exports.shouldUseFileDelivery = exports.escapeShellArg = exports.COPILOT_BASE_FLAGS = exports.PROBLEMATIC_CHARS_PATTERN = exports.PROMPT_LENGTH_THRESHOLD = exports.deserializeProcess = exports.serializeProcess = exports.parseCopilotOutput = exports.clearProgramExistsCache = exports.checkProgramExists = exports.getAvailableVariables = exports.usesTemplateVariables = exports.buildPromptFromContext = exports.substitutePromptVariables = exports.serializeCommands = exports.serializeCommand = exports.DEFAULT_AI_COMMANDS = exports.setTrustedFolderHomeOverride = exports.getCopilotConfigPath = exports.isFolderTrusted = exports.ensureFolderTrusted = exports.setHomeDirectoryOverride = exports.getCachedMcpConfig = exports.mcpConfigExists = exports.clearMcpConfigCache = exports.mergeMcpConfigs = exports.loadDefaultMcpConfigAsync = exports.loadDefaultMcpConfig = exports.getMcpConfigPath = exports.getHomeDirectory = exports.resetCopilotSDKService = exports.getCopilotSDKService = exports.CopilotSDKService = exports.denyAllPermissions = exports.approveAllPermissions = exports.getModelsByTier = exports.getModelCount = exports.isValidModelId = exports.getActiveModels = exports.getAllModels = exports.getModelDefinition = exports.getModelDescription = exports.getModelLabel = exports.MODEL_REGISTRY = exports.DEFAULT_MODEL_ID = exports.VALID_MODELS = exports.DEFAULT_PROMPTS = void 0;
+      var types_1 = require_types();
+      Object.defineProperty(exports, "DEFAULT_PROMPTS", { enumerable: true, get: function() {
+        return types_1.DEFAULT_PROMPTS;
+      } });
+      var copilot_sdk_wrapper_1 = require_copilot_sdk_wrapper();
+      Object.defineProperty(exports, "VALID_MODELS", { enumerable: true, get: function() {
+        return copilot_sdk_wrapper_1.VALID_MODELS;
+      } });
+      Object.defineProperty(exports, "DEFAULT_MODEL_ID", { enumerable: true, get: function() {
+        return copilot_sdk_wrapper_1.DEFAULT_MODEL_ID;
+      } });
+      Object.defineProperty(exports, "MODEL_REGISTRY", { enumerable: true, get: function() {
+        return copilot_sdk_wrapper_1.MODEL_REGISTRY;
+      } });
+      Object.defineProperty(exports, "getModelLabel", { enumerable: true, get: function() {
+        return copilot_sdk_wrapper_1.getModelLabel;
+      } });
+      Object.defineProperty(exports, "getModelDescription", { enumerable: true, get: function() {
+        return copilot_sdk_wrapper_1.getModelDescription;
+      } });
+      Object.defineProperty(exports, "getModelDefinition", { enumerable: true, get: function() {
+        return copilot_sdk_wrapper_1.getModelDefinition;
+      } });
+      Object.defineProperty(exports, "getAllModels", { enumerable: true, get: function() {
+        return copilot_sdk_wrapper_1.getAllModels;
+      } });
+      Object.defineProperty(exports, "getActiveModels", { enumerable: true, get: function() {
+        return copilot_sdk_wrapper_1.getActiveModels;
+      } });
+      Object.defineProperty(exports, "isValidModelId", { enumerable: true, get: function() {
+        return copilot_sdk_wrapper_1.isValidModelId;
+      } });
+      Object.defineProperty(exports, "getModelCount", { enumerable: true, get: function() {
+        return copilot_sdk_wrapper_1.getModelCount;
+      } });
+      Object.defineProperty(exports, "getModelsByTier", { enumerable: true, get: function() {
+        return copilot_sdk_wrapper_1.getModelsByTier;
+      } });
+      Object.defineProperty(exports, "approveAllPermissions", { enumerable: true, get: function() {
+        return copilot_sdk_wrapper_1.approveAllPermissions;
+      } });
+      Object.defineProperty(exports, "denyAllPermissions", { enumerable: true, get: function() {
+        return copilot_sdk_wrapper_1.denyAllPermissions;
+      } });
+      Object.defineProperty(exports, "CopilotSDKService", { enumerable: true, get: function() {
+        return copilot_sdk_wrapper_1.CopilotSDKService;
+      } });
+      Object.defineProperty(exports, "getCopilotSDKService", { enumerable: true, get: function() {
+        return copilot_sdk_wrapper_1.getCopilotSDKService;
+      } });
+      Object.defineProperty(exports, "resetCopilotSDKService", { enumerable: true, get: function() {
+        return copilot_sdk_wrapper_1.resetCopilotSDKService;
+      } });
+      Object.defineProperty(exports, "getHomeDirectory", { enumerable: true, get: function() {
+        return copilot_sdk_wrapper_1.getHomeDirectory;
+      } });
+      Object.defineProperty(exports, "getMcpConfigPath", { enumerable: true, get: function() {
+        return copilot_sdk_wrapper_1.getMcpConfigPath;
+      } });
+      Object.defineProperty(exports, "loadDefaultMcpConfig", { enumerable: true, get: function() {
+        return copilot_sdk_wrapper_1.loadDefaultMcpConfig;
+      } });
+      Object.defineProperty(exports, "loadDefaultMcpConfigAsync", { enumerable: true, get: function() {
+        return copilot_sdk_wrapper_1.loadDefaultMcpConfigAsync;
+      } });
+      Object.defineProperty(exports, "mergeMcpConfigs", { enumerable: true, get: function() {
+        return copilot_sdk_wrapper_1.mergeMcpConfigs;
+      } });
+      Object.defineProperty(exports, "clearMcpConfigCache", { enumerable: true, get: function() {
+        return copilot_sdk_wrapper_1.clearMcpConfigCache;
+      } });
+      Object.defineProperty(exports, "mcpConfigExists", { enumerable: true, get: function() {
+        return copilot_sdk_wrapper_1.mcpConfigExists;
+      } });
+      Object.defineProperty(exports, "getCachedMcpConfig", { enumerable: true, get: function() {
+        return copilot_sdk_wrapper_1.getCachedMcpConfig;
+      } });
+      Object.defineProperty(exports, "setHomeDirectoryOverride", { enumerable: true, get: function() {
+        return copilot_sdk_wrapper_1.setHomeDirectoryOverride;
+      } });
+      Object.defineProperty(exports, "ensureFolderTrusted", { enumerable: true, get: function() {
+        return copilot_sdk_wrapper_1.ensureFolderTrusted;
+      } });
+      Object.defineProperty(exports, "isFolderTrusted", { enumerable: true, get: function() {
+        return copilot_sdk_wrapper_1.isFolderTrusted;
+      } });
+      Object.defineProperty(exports, "getCopilotConfigPath", { enumerable: true, get: function() {
+        return copilot_sdk_wrapper_1.getCopilotConfigPath;
+      } });
+      Object.defineProperty(exports, "setTrustedFolderHomeOverride", { enumerable: true, get: function() {
+        return copilot_sdk_wrapper_1.setTrustedFolderHomeOverride;
+      } });
+      var command_types_1 = require_command_types();
+      Object.defineProperty(exports, "DEFAULT_AI_COMMANDS", { enumerable: true, get: function() {
+        return command_types_1.DEFAULT_AI_COMMANDS;
+      } });
+      Object.defineProperty(exports, "serializeCommand", { enumerable: true, get: function() {
+        return command_types_1.serializeCommand;
+      } });
+      Object.defineProperty(exports, "serializeCommands", { enumerable: true, get: function() {
+        return command_types_1.serializeCommands;
+      } });
+      var prompt_builder_1 = require_prompt_builder();
+      Object.defineProperty(exports, "substitutePromptVariables", { enumerable: true, get: function() {
+        return prompt_builder_1.substitutePromptVariables;
+      } });
+      Object.defineProperty(exports, "buildPromptFromContext", { enumerable: true, get: function() {
+        return prompt_builder_1.buildPromptFromContext;
+      } });
+      Object.defineProperty(exports, "usesTemplateVariables", { enumerable: true, get: function() {
+        return prompt_builder_1.usesTemplateVariables;
+      } });
+      Object.defineProperty(exports, "getAvailableVariables", { enumerable: true, get: function() {
+        return prompt_builder_1.getAvailableVariables;
+      } });
+      var program_utils_1 = require_program_utils();
+      Object.defineProperty(exports, "checkProgramExists", { enumerable: true, get: function() {
+        return program_utils_1.checkProgramExists;
+      } });
+      Object.defineProperty(exports, "clearProgramExistsCache", { enumerable: true, get: function() {
+        return program_utils_1.clearProgramExistsCache;
+      } });
+      Object.defineProperty(exports, "parseCopilotOutput", { enumerable: true, get: function() {
+        return program_utils_1.parseCopilotOutput;
+      } });
+      var process_types_1 = require_process_types();
+      Object.defineProperty(exports, "serializeProcess", { enumerable: true, get: function() {
+        return process_types_1.serializeProcess;
+      } });
+      Object.defineProperty(exports, "deserializeProcess", { enumerable: true, get: function() {
+        return process_types_1.deserializeProcess;
+      } });
+      var cli_utils_1 = require_cli_utils();
+      Object.defineProperty(exports, "PROMPT_LENGTH_THRESHOLD", { enumerable: true, get: function() {
+        return cli_utils_1.PROMPT_LENGTH_THRESHOLD;
+      } });
+      Object.defineProperty(exports, "PROBLEMATIC_CHARS_PATTERN", { enumerable: true, get: function() {
+        return cli_utils_1.PROBLEMATIC_CHARS_PATTERN;
+      } });
+      Object.defineProperty(exports, "COPILOT_BASE_FLAGS", { enumerable: true, get: function() {
+        return cli_utils_1.COPILOT_BASE_FLAGS;
+      } });
+      Object.defineProperty(exports, "escapeShellArg", { enumerable: true, get: function() {
+        return cli_utils_1.escapeShellArg;
+      } });
+      Object.defineProperty(exports, "shouldUseFileDelivery", { enumerable: true, get: function() {
+        return cli_utils_1.shouldUseFileDelivery;
+      } });
+      Object.defineProperty(exports, "writePromptToTempFile", { enumerable: true, get: function() {
+        return cli_utils_1.writePromptToTempFile;
+      } });
+      Object.defineProperty(exports, "buildCliCommand", { enumerable: true, get: function() {
+        return cli_utils_1.buildCliCommand;
+      } });
+      var timeouts_1 = require_timeouts();
+      Object.defineProperty(exports, "DEFAULT_AI_TIMEOUT_MS", { enumerable: true, get: function() {
+        return timeouts_1.DEFAULT_AI_TIMEOUT_MS;
+      } });
+    }
+  });
+
   // ../pipeline-core/dist/utils/text-matching.js
   var require_text_matching = __commonJS({
     "../pipeline-core/dist/utils/text-matching.js"(exports) {
@@ -26692,7 +29481,7 @@
   var import_client = __toESM(require_client());
 
   // src/server/spa/client/react/App.tsx
-  var import_react67 = __toESM(require_react());
+  var import_react69 = __toESM(require_react());
 
   // src/server/spa/client/react/context/AppContext.tsx
   var import_react = __toESM(require_react());
@@ -27159,7 +29948,7 @@
   }
 
   // src/server/spa/client/react/layout/Router.tsx
-  var import_react65 = __toESM(require_react());
+  var import_react67 = __toESM(require_react());
 
   // src/server/spa/client/react/processes/ProcessFilters.tsx
   var import_react6 = __toESM(require_react());
@@ -29686,7 +32475,7 @@
   }
 
   // src/server/spa/client/react/repos/ReposView.tsx
-  var import_react53 = __toESM(require_react());
+  var import_react55 = __toESM(require_react());
 
   // src/server/spa/client/react/hooks/useWebSocket.ts
   var import_react18 = __toESM(require_react());
@@ -30230,7 +33019,7 @@
   }
 
   // src/server/spa/client/react/repos/RepoDetail.tsx
-  var import_react52 = __toESM(require_react());
+  var import_react54 = __toESM(require_react());
 
   // src/server/spa/client/react/repos/RepoInfoTab.tsx
   var import_react21 = __toESM(require_react());
@@ -30630,7 +33419,7 @@
   }
 
   // src/server/spa/client/react/tasks/TasksPanel.tsx
-  var import_react48 = __toESM(require_react());
+  var import_react50 = __toESM(require_react());
 
   // src/server/spa/client/react/context/TaskContext.tsx
   var import_react25 = __toESM(require_react());
@@ -30805,6 +33594,29 @@
       unarchiveFolder: (folderPath) => apiFetch("POST", `${base}/archive`, { path: folderPath, action: "unarchive" }),
       moveFolder: (sourcePath, destinationFolder) => apiFetch("POST", `${base}/move`, { sourcePath, destinationFolder }),
       deleteFolder: (folderPath) => apiFetch("DELETE", base, { path: folderPath })
+    };
+  }
+
+  // src/server/spa/client/react/hooks/useFileActions.ts
+  async function apiFetch2(method, url, body) {
+    const res = await fetch(getApiBase() + url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`${method} ${url} failed (${res.status}): ${text}`);
+    }
+  }
+  function useFileActions(wsId) {
+    const base = `/workspaces/${encodeURIComponent(wsId)}/tasks`;
+    return {
+      renameFile: (filePath, newName) => apiFetch2("PATCH", base, { path: filePath, newName }),
+      archiveFile: (filePath) => apiFetch2("POST", `${base}/archive`, { path: filePath, action: "archive" }),
+      unarchiveFile: (filePath) => apiFetch2("POST", `${base}/archive`, { path: filePath, action: "unarchive" }),
+      deleteFile: (filePath) => apiFetch2("DELETE", base, { path: filePath }),
+      moveFile: (sourcePath, destinationFolder) => apiFetch2("POST", `${base}/move`, { sourcePath, destinationFolder })
     };
   }
 
@@ -31413,7 +34225,8 @@
     onFolderClick,
     onFileClick,
     onCheckboxChange,
-    onFolderContextMenu
+    onFolderContextMenu,
+    onFileContextMenu
   }) {
     const isFolder = isTaskFolder(item);
     const fileName = getItemFileName(item);
@@ -31456,6 +34269,10 @@
             e.preventDefault();
             e.stopPropagation();
             onFolderContextMenu(item, e.clientX, e.clientY);
+          } else if (!isFolder && !isContext && onFileContextMenu) {
+            e.preventDefault();
+            e.stopPropagation();
+            onFileContextMenu(item, e.clientX, e.clientY);
           }
         },
         title: tooltip,
@@ -31549,7 +34366,7 @@
     }
     return cols;
   }
-  function TaskTree({ tree, commentCounts, wsId, initialFolderPath, initialFilePath, onColumnsChange, onFolderContextMenu }) {
+  function TaskTree({ tree, commentCounts, wsId, initialFolderPath, initialFilePath, onColumnsChange, onFolderContextMenu, onFileContextMenu }) {
     const { openFilePath, setOpenFilePath, selectedFilePaths, toggleSelectedFile, showContextFiles, setSelectedFolderPath } = useTaskPanel();
     const { fileMap: queueActivity, folderMap: queueFolderActivity } = useQueueActivity(wsId);
     const [columns, setColumns] = (0, import_react32.useState)([]);
@@ -31644,7 +34461,8 @@
                     onFolderClick: (folder) => handleFolderClick(folder, colIndex),
                     onFileClick: (path2) => handleFileClick(path2, colIndex),
                     onCheckboxChange: handleCheckboxChange,
-                    onFolderContextMenu
+                    onFolderContextMenu,
+                    onFileContextMenu
                   },
                   nodeIndex
                 );
@@ -31658,7 +34476,7 @@
   }
 
   // src/server/spa/client/react/shared/MarkdownReviewEditor.tsx
-  var import_react42 = __toESM(require_react());
+  var import_react43 = __toESM(require_react());
 
   // src/server/spa/client/react/hooks/useMarkdownPreview.ts
   var import_react34 = __toESM(require_react());
@@ -31942,6 +34760,8 @@
     const [commentCounts, setCommentCounts] = (0, import_react35.useState)({});
     const [loading, setLoading] = (0, import_react35.useState)(true);
     const [error, setError] = (0, import_react35.useState)(null);
+    const [aiLoadingIds, setAiLoadingIds] = (0, import_react35.useState)(/* @__PURE__ */ new Set());
+    const [aiErrors, setAiErrors] = (0, import_react35.useState)(/* @__PURE__ */ new Map());
     const mountedRef = (0, import_react35.useRef)(true);
     (0, import_react35.useEffect)(() => {
       mountedRef.current = true;
@@ -32024,19 +34844,48 @@
     const unresolveComment = (0, import_react35.useCallback)(async (id) => {
       return updateCommentFn(id, { status: "open" });
     }, [updateCommentFn]);
-    const askAI = (0, import_react35.useCallback)(async (id, question) => {
-      const url = commentUrl(wsId, taskPath, id) + "/ask-ai";
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question })
+    const askAI = (0, import_react35.useCallback)(async (id, options = {}) => {
+      const { commandId, customQuestion, documentContext } = options;
+      setAiLoadingIds((prev) => new Set(prev).add(id));
+      setAiErrors((prev) => {
+        const m = new Map(prev);
+        m.delete(id);
+        return m;
       });
-      if (!res.ok) throw new Error("AI request failed");
-      const data = await res.json();
-      if (mountedRef.current) {
-        setComments((prev) => prev.map((c) => c.id === id ? { ...c, aiResponse: data.aiResponse } : c));
+      try {
+        const url = commentUrl(wsId, taskPath, id) + "/ask-ai";
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ commandId, customQuestion, documentContext })
+        });
+        if (!res.ok) throw new Error("AI request failed");
+        const data = await res.json();
+        if (mountedRef.current) {
+          setComments((prev) => prev.map((c) => c.id === id ? { ...c, aiResponse: data.aiResponse } : c));
+        }
+      } catch (err) {
+        if (mountedRef.current) {
+          const msg = err instanceof Error ? err.message : "AI request failed";
+          setAiErrors((prev) => new Map(prev).set(id, msg));
+        }
+      } finally {
+        if (mountedRef.current) {
+          setAiLoadingIds((prev) => {
+            const s = new Set(prev);
+            s.delete(id);
+            return s;
+          });
+        }
       }
     }, [wsId, taskPath]);
+    const clearAiError = (0, import_react35.useCallback)((id) => {
+      setAiErrors((prev) => {
+        const m = new Map(prev);
+        m.delete(id);
+        return m;
+      });
+    }, []);
     const refresh = (0, import_react35.useCallback)(async () => {
       await Promise.all([fetchComments(), fetchCounts()]);
     }, [fetchComments, fetchCounts]);
@@ -32051,15 +34900,18 @@
       resolveComment,
       unresolveComment,
       askAI,
+      aiLoadingIds,
+      aiErrors,
+      clearAiError,
       refresh
     };
   }
 
   // src/server/spa/client/react/tasks/comments/CommentSidebar.tsx
-  var import_react37 = __toESM(require_react());
+  var import_react38 = __toESM(require_react());
 
   // src/server/spa/client/react/tasks/comments/CommentCard.tsx
-  var import_react36 = __toESM(require_react());
+  var import_react37 = __toESM(require_react());
 
   // src/server/spa/client/react/tasks/comments/CommentReply.tsx
   var import_jsx_runtime34 = __toESM(require_jsx_runtime());
@@ -32094,6 +34946,142 @@
     );
   }
 
+  // src/server/spa/client/react/tasks/comments/AICommandMenu.tsx
+  var import_react36 = __toESM(require_react());
+  var import_react_dom4 = __toESM(require_react_dom());
+  var import_ai = __toESM(require_ai());
+  var import_jsx_runtime35 = __toESM(require_jsx_runtime());
+  function AICommandMenu({
+    onCommand,
+    loading,
+    disabled,
+    triggerClassName,
+    "data-testid": testIdPrefix = "ai"
+  }) {
+    const [menuOpen, setMenuOpen] = (0, import_react36.useState)(false);
+    const [customInputOpen, setCustomInputOpen] = (0, import_react36.useState)(false);
+    const [customText, setCustomText] = (0, import_react36.useState)("");
+    const [menuPos, setMenuPos] = (0, import_react36.useState)({ top: 0, left: 0 });
+    const triggerRef = (0, import_react36.useRef)(null);
+    const menuRef = (0, import_react36.useRef)(null);
+    const customInputRef = (0, import_react36.useRef)(null);
+    const handleToggleMenu = (0, import_react36.useCallback)((e) => {
+      e.stopPropagation();
+      if (menuOpen) {
+        setMenuOpen(false);
+        return;
+      }
+      const el = triggerRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      setMenuPos({ top: rect.bottom + 4, left: rect.left });
+      setCustomInputOpen(false);
+      setCustomText("");
+      setMenuOpen(true);
+    }, [menuOpen]);
+    const handleMenuCommand = (cmd) => {
+      if (cmd.isCustomInput) {
+        setCustomInputOpen(true);
+        requestAnimationFrame(() => customInputRef.current?.focus());
+      } else {
+        setMenuOpen(false);
+        onCommand(cmd.id);
+      }
+    };
+    const handleCustomSubmit = () => {
+      const text = customText.trim();
+      if (!text) return;
+      setMenuOpen(false);
+      setCustomInputOpen(false);
+      setCustomText("");
+      onCommand("custom", text);
+    };
+    (0, import_react36.useEffect)(() => {
+      if (!menuOpen || !menuRef.current || !triggerRef.current) return;
+      const menu = menuRef.current.getBoundingClientRect();
+      const trigger = triggerRef.current.getBoundingClientRect();
+      let { top, left } = menuPos;
+      if (left + menu.width > window.innerWidth - 8) left = trigger.right - menu.width;
+      if (top + menu.height > window.innerHeight - 8) top = trigger.top - menu.height - 4;
+      if (top !== menuPos.top || left !== menuPos.left) setMenuPos({ top, left });
+    }, [menuOpen]);
+    (0, import_react36.useEffect)(() => {
+      if (!menuOpen) return;
+      const handler = (e) => {
+        if (menuRef.current && !menuRef.current.contains(e.target) && triggerRef.current && !triggerRef.current.contains(e.target)) setMenuOpen(false);
+      };
+      requestAnimationFrame(() => document.addEventListener("mousedown", handler));
+      return () => document.removeEventListener("mousedown", handler);
+    }, [menuOpen]);
+    (0, import_react36.useEffect)(() => {
+      if (!menuOpen) return;
+      const handler = (e) => {
+        if (e.key === "Escape") setMenuOpen(false);
+      };
+      document.addEventListener("keydown", handler);
+      return () => document.removeEventListener("keydown", handler);
+    }, [menuOpen]);
+    return /* @__PURE__ */ (0, import_jsx_runtime35.jsxs)(import_jsx_runtime35.Fragment, { children: [
+      /* @__PURE__ */ (0, import_jsx_runtime35.jsx)(
+        "button",
+        {
+          ref: triggerRef,
+          className: triggerClassName,
+          onClick: handleToggleMenu,
+          title: "Ask AI",
+          "aria-label": "Ask AI",
+          disabled: disabled || loading,
+          "data-testid": `${testIdPrefix}-menu-trigger`,
+          children: loading ? /* @__PURE__ */ (0, import_jsx_runtime35.jsx)(Spinner, { size: "sm", "data-testid": `${testIdPrefix}-loading-spinner` }) : "\u{1F916}"
+        }
+      ),
+      menuOpen && import_react_dom4.default.createPortal(
+        /* @__PURE__ */ (0, import_jsx_runtime35.jsx)(
+          "div",
+          {
+            ref: menuRef,
+            className: "fixed z-[10004] min-w-[160px] rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#252526] shadow-lg py-1",
+            style: { top: menuPos.top, left: menuPos.left },
+            "data-testid": `${testIdPrefix}-command-menu`,
+            onClick: (e) => e.stopPropagation(),
+            children: !customInputOpen ? import_ai.DEFAULT_AI_COMMANDS.map((cmd) => /* @__PURE__ */ (0, import_jsx_runtime35.jsxs)(
+              "button",
+              {
+                className: "w-full text-left flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-[#1e1e1e] dark:text-[#cccccc]",
+                onClick: () => handleMenuCommand(cmd),
+                "data-testid": `${testIdPrefix}-cmd-${cmd.id}`,
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime35.jsx)("span", { children: cmd.icon }),
+                  /* @__PURE__ */ (0, import_jsx_runtime35.jsx)("span", { children: cmd.label })
+                ]
+              },
+              cmd.id
+            )) : /* @__PURE__ */ (0, import_jsx_runtime35.jsxs)("div", { className: "px-2 py-1.5 flex flex-col gap-1", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime35.jsx)(
+                "input",
+                {
+                  ref: customInputRef,
+                  type: "text",
+                  className: "w-full p-1 text-xs rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc]",
+                  placeholder: "Ask anything\u2026",
+                  value: customText,
+                  onChange: (e) => setCustomText(e.target.value),
+                  onKeyDown: (e) => {
+                    if (e.key === "Enter" && customText.trim()) handleCustomSubmit();
+                    if (e.key === "Escape") setMenuOpen(false);
+                  },
+                  "data-testid": `${testIdPrefix}-custom-input`
+                }
+              ),
+              /* @__PURE__ */ (0, import_jsx_runtime35.jsx)(Button, { size: "sm", disabled: !customText.trim(), onClick: handleCustomSubmit, children: "Ask" })
+            ] })
+          }
+        ),
+        document.body
+      )
+    ] });
+  }
+
   // src/server/spa/client/task-comments-types.ts
   var CATEGORY_INFO = {
     bug: { label: "Bug", icon: "\u{1F41B}" },
@@ -32114,7 +35102,7 @@
   }
 
   // src/server/spa/client/react/tasks/comments/CommentCard.tsx
-  var import_jsx_runtime35 = __toESM(require_jsx_runtime());
+  var import_jsx_runtime36 = __toESM(require_jsx_runtime());
   var ACTION_BTN = "inline-flex items-center justify-center w-6 h-6 rounded transition-colors text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/[0.06] dark:hover:bg-white/[0.08]";
   function formatRelative2(dateStr) {
     if (!dateStr) return "";
@@ -32137,12 +35125,16 @@
     onEdit,
     onDelete,
     onAskAI,
-    onClick
+    onClick,
+    aiLoading,
+    aiError,
+    onClearAiError
   }) {
-    const [editing, setEditing] = (0, import_react36.useState)(false);
-    const [editText, setEditText] = (0, import_react36.useState)(comment.comment);
-    const [confirmDelete, setConfirmDelete] = (0, import_react36.useState)(false);
-    const [showAllReplies, setShowAllReplies] = (0, import_react36.useState)(false);
+    const [editing, setEditing] = (0, import_react37.useState)(false);
+    const [editText, setEditText] = (0, import_react37.useState)(comment.comment);
+    const [confirmDelete, setConfirmDelete] = (0, import_react37.useState)(false);
+    const [showAllReplies, setShowAllReplies] = (0, import_react37.useState)(false);
+    const [aiExpanded, setAiExpanded] = (0, import_react37.useState)(false);
     const category = getCommentCategory(comment);
     const info = CATEGORY_INFO[category];
     const isResolved = comment.status === "resolved";
@@ -32155,7 +35147,7 @@
       }
       setEditing(false);
     };
-    return /* @__PURE__ */ (0, import_jsx_runtime35.jsxs)(
+    return /* @__PURE__ */ (0, import_jsx_runtime36.jsxs)(
       "div",
       {
         className: cn(
@@ -32168,21 +35160,21 @@
         role: "article",
         "aria-label": `Comment by ${comment.author || "Anonymous"}`,
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime35.jsxs)("div", { className: "flex items-center gap-1.5", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime35.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime36.jsxs)("div", { className: "flex items-center gap-1.5", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime36.jsx)(
               "span",
               {
                 className: cn("w-2 h-2 rounded-full shrink-0", isResolved ? "bg-green-500" : "bg-[#0078d4]"),
                 title: isResolved ? "Resolved" : "Open"
               }
             ),
-            /* @__PURE__ */ (0, import_jsx_runtime35.jsx)("span", { className: "text-[10px] text-[#848484]", title: info.label, children: info.icon }),
-            /* @__PURE__ */ (0, import_jsx_runtime35.jsx)("span", { className: "text-[10px] text-[#848484] truncate", children: comment.author || "Anonymous" }),
-            /* @__PURE__ */ (0, import_jsx_runtime35.jsx)("span", { className: "text-[10px] text-[#a0a0a0] ml-auto shrink-0", children: formatRelative2(comment.createdAt) })
+            /* @__PURE__ */ (0, import_jsx_runtime36.jsx)("span", { className: "text-[10px] text-[#848484]", title: info.label, children: info.icon }),
+            /* @__PURE__ */ (0, import_jsx_runtime36.jsx)("span", { className: "text-[10px] text-[#848484] truncate", children: comment.author || "Anonymous" }),
+            /* @__PURE__ */ (0, import_jsx_runtime36.jsx)("span", { className: "text-[10px] text-[#a0a0a0] ml-auto shrink-0", children: formatRelative2(comment.createdAt) })
           ] }),
-          comment.selectedText && /* @__PURE__ */ (0, import_jsx_runtime35.jsx)("blockquote", { className: "border-l-2 border-[#0078d4] dark:border-[#3794ff] pl-2 text-[11px] text-[#848484] italic truncate max-w-full", children: comment.selectedText.length > 120 ? comment.selectedText.substring(0, 120) + "\u2026" : comment.selectedText }),
-          editing ? /* @__PURE__ */ (0, import_jsx_runtime35.jsxs)("div", { className: "flex flex-col gap-1", onClick: (e) => e.stopPropagation(), children: [
-            /* @__PURE__ */ (0, import_jsx_runtime35.jsx)(
+          comment.selectedText && /* @__PURE__ */ (0, import_jsx_runtime36.jsx)("blockquote", { className: "border-l-2 border-[#0078d4] dark:border-[#3794ff] pl-2 text-[11px] text-[#848484] italic truncate max-w-full", children: comment.selectedText.length > 120 ? comment.selectedText.substring(0, 120) + "\u2026" : comment.selectedText }),
+          editing ? /* @__PURE__ */ (0, import_jsx_runtime36.jsxs)("div", { className: "flex flex-col gap-1", onClick: (e) => e.stopPropagation(), children: [
+            /* @__PURE__ */ (0, import_jsx_runtime36.jsx)(
               "textarea",
               {
                 className: "w-full p-1.5 text-xs rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#252526] text-[#1e1e1e] dark:text-[#cccccc] resize-y min-h-[60px]",
@@ -32192,17 +35184,51 @@
                 "data-testid": "comment-edit-textarea"
               }
             ),
-            /* @__PURE__ */ (0, import_jsx_runtime35.jsxs)("div", { className: "flex gap-1 justify-end", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime35.jsx)(Button, { size: "sm", variant: "secondary", onClick: () => setEditing(false), children: "Cancel" }),
-              /* @__PURE__ */ (0, import_jsx_runtime35.jsx)(Button, { size: "sm", onClick: handleSave, children: "Save" })
+            /* @__PURE__ */ (0, import_jsx_runtime36.jsxs)("div", { className: "flex gap-1 justify-end", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime36.jsx)(Button, { size: "sm", variant: "secondary", onClick: () => setEditing(false), children: "Cancel" }),
+              /* @__PURE__ */ (0, import_jsx_runtime36.jsx)(Button, { size: "sm", onClick: handleSave, children: "Save" })
             ] })
-          ] }) : /* @__PURE__ */ (0, import_jsx_runtime35.jsx)("div", { className: "text-[#1e1e1e] dark:text-[#cccccc] line-clamp-3", children: comment.comment }),
-          comment.aiResponse && /* @__PURE__ */ (0, import_jsx_runtime35.jsxs)("div", { className: "p-1.5 rounded bg-[#0078d4]/5 dark:bg-[#3794ff]/5 border-l-2 border-[#0078d4] dark:border-[#3794ff]", "data-testid": "ai-response", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime35.jsx)("div", { className: "text-[10px] text-[#0078d4] dark:text-[#3794ff] font-medium mb-0.5", children: "\u{1F916} AI" }),
-            /* @__PURE__ */ (0, import_jsx_runtime35.jsx)("div", { className: "text-[#1e1e1e] dark:text-[#cccccc] line-clamp-2", children: comment.aiResponse })
-          ] }),
-          replies.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime35.jsxs)("div", { className: "flex flex-col gap-1", children: [
-            replies.length > 2 && !showAllReplies && /* @__PURE__ */ (0, import_jsx_runtime35.jsxs)(
+          ] }) : /* @__PURE__ */ (0, import_jsx_runtime36.jsx)("div", { className: "text-[#1e1e1e] dark:text-[#cccccc] line-clamp-3", children: comment.comment }),
+          comment.aiResponse && /* @__PURE__ */ (0, import_jsx_runtime36.jsxs)(
+            "div",
+            {
+              className: "p-1.5 rounded bg-[#0078d4]/5 dark:bg-[#3794ff]/5 border-l-2 border-[#0078d4] dark:border-[#3794ff]",
+              "data-testid": "ai-response",
+              onClick: (e) => e.stopPropagation(),
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime36.jsxs)("div", { className: "flex items-center justify-between mb-0.5", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime36.jsx)("span", { className: "text-[10px] text-[#0078d4] dark:text-[#3794ff] font-medium", children: "\u{1F916} AI" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime36.jsxs)("div", { className: "flex gap-1", children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime36.jsx)(
+                      "button",
+                      {
+                        className: "text-[10px] text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]",
+                        onClick: () => navigator.clipboard.writeText(comment.aiResponse),
+                        title: "Copy response",
+                        "aria-label": "Copy AI response",
+                        "data-testid": "ai-response-copy",
+                        children: "\u29C9"
+                      }
+                    ),
+                    /* @__PURE__ */ (0, import_jsx_runtime36.jsx)(
+                      "button",
+                      {
+                        className: "text-[10px] text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]",
+                        onClick: () => setAiExpanded((prev) => !prev),
+                        title: aiExpanded ? "Collapse" : "Expand",
+                        "aria-label": aiExpanded ? "Collapse AI response" : "Expand AI response",
+                        "data-testid": "ai-response-expand",
+                        children: aiExpanded ? "\u25B2" : "\u25BC"
+                      }
+                    )
+                  ] })
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime36.jsx)("div", { className: cn(!aiExpanded && "line-clamp-3"), children: /* @__PURE__ */ (0, import_jsx_runtime36.jsx)(MarkdownView, { html: renderMarkdownToHtml(comment.aiResponse) }) })
+              ]
+            }
+          ),
+          replies.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime36.jsxs)("div", { className: "flex flex-col gap-1", children: [
+            replies.length > 2 && !showAllReplies && /* @__PURE__ */ (0, import_jsx_runtime36.jsxs)(
               "button",
               {
                 className: "text-[10px] text-[#0078d4] dark:text-[#3794ff] text-left hover:underline",
@@ -32218,27 +35244,46 @@
                 ]
               }
             ),
-            visibleReplies.map((r) => /* @__PURE__ */ (0, import_jsx_runtime35.jsx)(CommentReply, { reply: r }, r.id))
+            visibleReplies.map((r) => /* @__PURE__ */ (0, import_jsx_runtime36.jsx)(CommentReply, { reply: r }, r.id))
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime35.jsxs)("div", { className: "flex items-center gap-0.5 pt-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]", onClick: (e) => e.stopPropagation(), children: [
-            isResolved ? /* @__PURE__ */ (0, import_jsx_runtime35.jsx)("button", { className: ACTION_BTN, onClick: onUnresolve, title: "Reopen", "aria-label": "Reopen", children: "\u{1F513}" }) : /* @__PURE__ */ (0, import_jsx_runtime35.jsx)("button", { className: ACTION_BTN, onClick: onResolve, title: "Resolve", "aria-label": "Resolve", children: "\u2705" }),
-            /* @__PURE__ */ (0, import_jsx_runtime35.jsx)("button", { className: ACTION_BTN, onClick: () => {
+          /* @__PURE__ */ (0, import_jsx_runtime36.jsxs)("div", { className: "flex items-center gap-0.5 pt-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]", onClick: (e) => e.stopPropagation(), children: [
+            isResolved ? /* @__PURE__ */ (0, import_jsx_runtime36.jsx)("button", { className: ACTION_BTN, onClick: onUnresolve, title: "Reopen", "aria-label": "Reopen", children: "\u{1F513}" }) : /* @__PURE__ */ (0, import_jsx_runtime36.jsx)("button", { className: ACTION_BTN, onClick: onResolve, title: "Resolve", "aria-label": "Resolve", children: "\u2705" }),
+            /* @__PURE__ */ (0, import_jsx_runtime36.jsx)("button", { className: ACTION_BTN, onClick: () => {
               setEditing(true);
               setEditText(comment.comment);
             }, title: "Edit", "aria-label": "Edit", children: "\u270F\uFE0F" }),
-            confirmDelete ? /* @__PURE__ */ (0, import_jsx_runtime35.jsxs)(import_jsx_runtime35.Fragment, { children: [
-              /* @__PURE__ */ (0, import_jsx_runtime35.jsx)(Button, { size: "sm", variant: "danger", onClick: onDelete, className: "!px-1.5 !py-0.5 !text-[10px]", children: "Confirm" }),
-              /* @__PURE__ */ (0, import_jsx_runtime35.jsx)(Button, { size: "sm", variant: "secondary", onClick: () => setConfirmDelete(false), className: "!px-1.5 !py-0.5 !text-[10px]", children: "Cancel" })
-            ] }) : /* @__PURE__ */ (0, import_jsx_runtime35.jsx)("button", { className: ACTION_BTN, onClick: () => setConfirmDelete(true), title: "Delete", "aria-label": "Delete", children: "\u{1F5D1}\uFE0F" }),
-            /* @__PURE__ */ (0, import_jsx_runtime35.jsx)("button", { className: ACTION_BTN, onClick: onAskAI, title: "Ask AI", "aria-label": "Ask AI", children: "\u{1F916}" })
-          ] })
+            confirmDelete ? /* @__PURE__ */ (0, import_jsx_runtime36.jsxs)(import_jsx_runtime36.Fragment, { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime36.jsx)(Button, { size: "sm", variant: "danger", onClick: onDelete, className: "!px-1.5 !py-0.5 !text-[10px]", children: "Confirm" }),
+              /* @__PURE__ */ (0, import_jsx_runtime36.jsx)(Button, { size: "sm", variant: "secondary", onClick: () => setConfirmDelete(false), className: "!px-1.5 !py-0.5 !text-[10px]", children: "Cancel" })
+            ] }) : /* @__PURE__ */ (0, import_jsx_runtime36.jsx)("button", { className: ACTION_BTN, onClick: () => setConfirmDelete(true), title: "Delete", "aria-label": "Delete", children: "\u{1F5D1}\uFE0F" }),
+            /* @__PURE__ */ (0, import_jsx_runtime36.jsx)(
+              AICommandMenu,
+              {
+                onCommand: (cmdId, q) => q !== void 0 ? onAskAI(cmdId, q) : onAskAI(cmdId),
+                loading: aiLoading,
+                triggerClassName: ACTION_BTN
+              }
+            )
+          ] }),
+          aiError && /* @__PURE__ */ (0, import_jsx_runtime36.jsxs)(
+            "div",
+            {
+              className: "flex items-start gap-1.5 p-1.5 rounded bg-red-500/10 border border-red-500/20 text-[11px] text-red-600 dark:text-red-400",
+              "data-testid": "ai-error-banner",
+              onClick: (e) => e.stopPropagation(),
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime36.jsx)("span", { className: "flex-1", children: aiError }),
+                onClearAiError && /* @__PURE__ */ (0, import_jsx_runtime36.jsx)("button", { className: "shrink-0 hover:opacity-70", onClick: onClearAiError, "aria-label": "Dismiss error", children: "\xD7" })
+              ]
+            }
+          )
         ]
       }
     );
   }
 
   // src/server/spa/client/react/tasks/comments/CommentSidebar.tsx
-  var import_jsx_runtime36 = __toESM(require_jsx_runtime());
+  var import_jsx_runtime37 = __toESM(require_jsx_runtime());
   function CommentSidebar({
     comments,
     filteredComments,
@@ -32252,10 +35297,13 @@
     onDelete,
     onEdit,
     onAskAI,
-    onCommentClick
+    onCommentClick,
+    aiLoadingIds,
+    aiErrors,
+    onClearAiError
   }) {
-    const [statusFilter, setStatusFilter] = (0, import_react37.useState)("all");
-    const [categoryFilter, setCategoryFilter] = (0, import_react37.useState)("all");
+    const [statusFilter, setStatusFilter] = (0, import_react38.useState)("all");
+    const [categoryFilter, setCategoryFilter] = (0, import_react38.useState)("all");
     const filtered = filteredComments ?? comments.filter((c) => {
       if (statusFilter !== "all" && c.status !== statusFilter) return false;
       if (categoryFilter !== "all" && getCommentCategory(c) !== categoryFilter) return false;
@@ -32266,7 +35314,7 @@
       { key: "open", label: "Open" },
       { key: "resolved", label: "Resolved" }
     ];
-    return /* @__PURE__ */ (0, import_jsx_runtime36.jsxs)(
+    return /* @__PURE__ */ (0, import_jsx_runtime37.jsxs)(
       "div",
       {
         className: cn(
@@ -32278,12 +35326,12 @@
         role: "complementary",
         "aria-label": "Comments",
         children: [
-          showHeader && /* @__PURE__ */ (0, import_jsx_runtime36.jsx)("div", { className: "flex items-center justify-between px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]", children: /* @__PURE__ */ (0, import_jsx_runtime36.jsxs)("span", { className: "text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc]", children: [
+          showHeader && /* @__PURE__ */ (0, import_jsx_runtime37.jsx)("div", { className: "flex items-center justify-between px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]", children: /* @__PURE__ */ (0, import_jsx_runtime37.jsxs)("span", { className: "text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc]", children: [
             "Comments (",
             comments.length,
             ")"
           ] }) }),
-          showFilters && /* @__PURE__ */ (0, import_jsx_runtime36.jsx)("div", { className: "flex gap-1 px-2 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c]", children: statusTabs.map((tab) => /* @__PURE__ */ (0, import_jsx_runtime36.jsx)(
+          showFilters && /* @__PURE__ */ (0, import_jsx_runtime37.jsx)("div", { className: "flex gap-1 px-2 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c]", children: statusTabs.map((tab) => /* @__PURE__ */ (0, import_jsx_runtime37.jsx)(
             "button",
             {
               onClick: () => setStatusFilter(tab.key),
@@ -32296,8 +35344,8 @@
             },
             tab.key
           )) }),
-          showFilters && /* @__PURE__ */ (0, import_jsx_runtime36.jsxs)("div", { className: "flex gap-1 px-2 py-1.5 flex-wrap border-b border-[#e0e0e0] dark:border-[#3c3c3c]", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime36.jsx)(
+          showFilters && /* @__PURE__ */ (0, import_jsx_runtime37.jsxs)("div", { className: "flex gap-1 px-2 py-1.5 flex-wrap border-b border-[#e0e0e0] dark:border-[#3c3c3c]", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime37.jsx)(
               "button",
               {
                 onClick: () => setCategoryFilter("all"),
@@ -32311,7 +35359,7 @@
             ),
             ALL_CATEGORIES.map((cat) => {
               const info = CATEGORY_INFO[cat];
-              return /* @__PURE__ */ (0, import_jsx_runtime36.jsx)(
+              return /* @__PURE__ */ (0, import_jsx_runtime37.jsx)(
                 "button",
                 {
                   onClick: () => setCategoryFilter(cat),
@@ -32327,7 +35375,7 @@
               );
             })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime36.jsxs)(
+          /* @__PURE__ */ (0, import_jsx_runtime37.jsxs)(
             "div",
             {
               className: cn(
@@ -32337,9 +35385,9 @@
               role: "list",
               "data-testid": "comment-list",
               children: [
-                loading && /* @__PURE__ */ (0, import_jsx_runtime36.jsx)("div", { className: "text-center text-xs text-[#848484] py-4", children: "Loading comments\u2026" }),
-                !loading && filtered.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime36.jsx)("div", { className: "text-center text-xs text-[#848484] py-4", "data-testid": "empty-comments", children: "No comments match the current filter." }),
-                filtered.map((comment) => /* @__PURE__ */ (0, import_jsx_runtime36.jsx)(
+                loading && /* @__PURE__ */ (0, import_jsx_runtime37.jsx)("div", { className: "text-center text-xs text-[#848484] py-4", children: "Loading comments\u2026" }),
+                !loading && filtered.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime37.jsx)("div", { className: "text-center text-xs text-[#848484] py-4", "data-testid": "empty-comments", children: "No comments match the current filter." }),
+                filtered.map((comment) => /* @__PURE__ */ (0, import_jsx_runtime37.jsx)(
                   CommentCard,
                   {
                     comment,
@@ -32347,8 +35395,11 @@
                     onUnresolve: () => onUnresolve(comment.id),
                     onEdit: (text) => onEdit(comment.id, text),
                     onDelete: () => onDelete(comment.id),
-                    onAskAI: () => onAskAI(comment.id),
-                    onClick: () => onCommentClick(comment)
+                    onAskAI: (commandId, question) => onAskAI(comment.id, commandId, question),
+                    onClick: () => onCommentClick(comment),
+                    aiLoading: aiLoadingIds?.has(comment.id),
+                    aiError: aiErrors?.get(comment.id) ?? null,
+                    onClearAiError: onClearAiError ? () => onClearAiError(comment.id) : void 0
                   },
                   comment.id
                 ))
@@ -32361,9 +35412,9 @@
   }
 
   // src/server/spa/client/react/tasks/comments/ContextMenu.tsx
-  var import_react38 = __toESM(require_react());
-  var import_react_dom4 = __toESM(require_react_dom());
-  var import_jsx_runtime37 = __toESM(require_jsx_runtime());
+  var import_react39 = __toESM(require_react());
+  var import_react_dom5 = __toESM(require_react_dom());
+  var import_jsx_runtime38 = __toESM(require_jsx_runtime());
   var VIEWPORT_MARGIN = 8;
   function clampMenuPosition(pos, menuWidth, menuHeight, vpWidth = window.innerWidth, vpHeight = window.innerHeight, margin = VIEWPORT_MARGIN) {
     let { x, y } = pos;
@@ -32382,16 +35433,16 @@
     idx,
     onClose
   }) {
-    const [open, setOpen] = (0, import_react38.useState)(false);
-    const rowRef = (0, import_react38.useRef)(null);
-    const subRef = (0, import_react38.useRef)(null);
-    const handleEnter = (0, import_react38.useCallback)(() => setOpen(true), []);
-    const handleLeave = (0, import_react38.useCallback)((e) => {
+    const [open, setOpen] = (0, import_react39.useState)(false);
+    const rowRef = (0, import_react39.useRef)(null);
+    const subRef = (0, import_react39.useRef)(null);
+    const handleEnter = (0, import_react39.useCallback)(() => setOpen(true), []);
+    const handleLeave = (0, import_react39.useCallback)((e) => {
       const related = e.relatedTarget;
       if (subRef.current?.contains(related) || rowRef.current?.contains(related)) return;
       setOpen(false);
     }, []);
-    return /* @__PURE__ */ (0, import_jsx_runtime37.jsxs)(
+    return /* @__PURE__ */ (0, import_jsx_runtime38.jsxs)(
       "div",
       {
         ref: rowRef,
@@ -32400,7 +35451,7 @@
         onMouseLeave: handleLeave,
         "data-testid": `context-menu-item-${idx}`,
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime37.jsxs)(
+          /* @__PURE__ */ (0, import_jsx_runtime38.jsxs)(
             "button",
             {
               className: `w-full text-left px-3 py-1.5 text-xs transition-colors flex items-center justify-between ${item.disabled ? "text-[#a0a0a0] dark:text-[#5a5a5a] cursor-default" : "text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer"}`,
@@ -32413,15 +35464,15 @@
                 setOpen((prev) => !prev);
               },
               children: [
-                /* @__PURE__ */ (0, import_jsx_runtime37.jsxs)("span", { children: [
-                  item.icon && /* @__PURE__ */ (0, import_jsx_runtime37.jsx)("span", { className: "mr-1.5", children: item.icon }),
+                /* @__PURE__ */ (0, import_jsx_runtime38.jsxs)("span", { children: [
+                  item.icon && /* @__PURE__ */ (0, import_jsx_runtime38.jsx)("span", { className: "mr-1.5", children: item.icon }),
                   item.label
                 ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime37.jsx)("span", { className: "ml-2 text-[10px] text-[#848484]", children: "\u25B6" })
+                /* @__PURE__ */ (0, import_jsx_runtime38.jsx)("span", { className: "ml-2 text-[10px] text-[#848484]", children: "\u25B6" })
               ]
             }
           ),
-          open && item.children && /* @__PURE__ */ (0, import_jsx_runtime37.jsx)(
+          open && item.children && /* @__PURE__ */ (0, import_jsx_runtime38.jsx)(
             "div",
             {
               ref: subRef,
@@ -32431,7 +35482,7 @@
               role: "menu",
               children: item.children.map((child, ci) => {
                 if (child.separator) {
-                  return /* @__PURE__ */ (0, import_jsx_runtime37.jsx)(
+                  return /* @__PURE__ */ (0, import_jsx_runtime38.jsx)(
                     "div",
                     {
                       className: "my-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]",
@@ -32440,7 +35491,7 @@
                     `sub-sep-${ci}`
                   );
                 }
-                return /* @__PURE__ */ (0, import_jsx_runtime37.jsxs)(
+                return /* @__PURE__ */ (0, import_jsx_runtime38.jsxs)(
                   "button",
                   {
                     className: `w-full text-left px-3 py-1.5 text-xs transition-colors ${child.disabled ? "text-[#a0a0a0] dark:text-[#5a5a5a] cursor-default" : "text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer"}`,
@@ -32455,7 +35506,7 @@
                     role: "menuitem",
                     "data-testid": `context-submenu-${idx}-item-${ci}`,
                     children: [
-                      child.icon && /* @__PURE__ */ (0, import_jsx_runtime37.jsx)("span", { className: "mr-1.5", children: child.icon }),
+                      child.icon && /* @__PURE__ */ (0, import_jsx_runtime38.jsx)("span", { className: "mr-1.5", children: child.icon }),
                       child.label
                     ]
                   },
@@ -32469,21 +35520,21 @@
     );
   }
   function ContextMenu({ position, items, onClose }) {
-    const menuRef = (0, import_react38.useRef)(null);
-    const [clamped, setClamped] = (0, import_react38.useState)(position);
-    (0, import_react38.useEffect)(() => {
+    const menuRef = (0, import_react39.useRef)(null);
+    const [clamped, setClamped] = (0, import_react39.useState)(position);
+    (0, import_react39.useEffect)(() => {
       if (!menuRef.current) return;
       const rect = menuRef.current.getBoundingClientRect();
       setClamped(clampMenuPosition(position, rect.width, rect.height));
     }, [position]);
-    (0, import_react38.useEffect)(() => {
+    (0, import_react39.useEffect)(() => {
       const handler = (e) => {
         if (e.key === "Escape") onClose();
       };
       document.addEventListener("keydown", handler);
       return () => document.removeEventListener("keydown", handler);
     }, [onClose]);
-    (0, import_react38.useEffect)(() => {
+    (0, import_react39.useEffect)(() => {
       const handler = (e) => {
         if (menuRef.current && !menuRef.current.contains(e.target)) {
           onClose();
@@ -32498,8 +35549,8 @@
       };
     }, [onClose]);
     let itemIndex = 0;
-    return import_react_dom4.default.createPortal(
-      /* @__PURE__ */ (0, import_jsx_runtime37.jsx)(
+    return import_react_dom5.default.createPortal(
+      /* @__PURE__ */ (0, import_jsx_runtime38.jsx)(
         "div",
         {
           ref: menuRef,
@@ -32509,7 +35560,7 @@
           role: "menu",
           children: items.map((item, i) => {
             if (item.separator) {
-              return /* @__PURE__ */ (0, import_jsx_runtime37.jsx)(
+              return /* @__PURE__ */ (0, import_jsx_runtime38.jsx)(
                 "div",
                 {
                   className: "my-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]",
@@ -32521,7 +35572,7 @@
             }
             const idx = itemIndex++;
             if (item.children && item.children.length > 0) {
-              return /* @__PURE__ */ (0, import_jsx_runtime37.jsx)(
+              return /* @__PURE__ */ (0, import_jsx_runtime38.jsx)(
                 SubmenuItem,
                 {
                   item,
@@ -32531,7 +35582,7 @@
                 i
               );
             }
-            return /* @__PURE__ */ (0, import_jsx_runtime37.jsxs)(
+            return /* @__PURE__ */ (0, import_jsx_runtime38.jsxs)(
               "button",
               {
                 className: `w-full text-left px-3 py-1.5 text-xs transition-colors ${item.disabled ? "text-[#a0a0a0] dark:text-[#5a5a5a] cursor-default" : "text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer"}`,
@@ -32546,7 +35597,7 @@
                 role: "menuitem",
                 "data-testid": `context-menu-item-${idx}`,
                 children: [
-                  item.icon && /* @__PURE__ */ (0, import_jsx_runtime37.jsx)("span", { className: "mr-1.5", children: item.icon }),
+                  item.icon && /* @__PURE__ */ (0, import_jsx_runtime38.jsx)("span", { className: "mr-1.5", children: item.icon }),
                   item.label
                 ]
               },
@@ -32560,9 +35611,9 @@
   }
 
   // src/server/spa/client/react/tasks/comments/InlineCommentPopup.tsx
-  var import_react39 = __toESM(require_react());
-  var import_react_dom5 = __toESM(require_react_dom());
-  var import_jsx_runtime38 = __toESM(require_jsx_runtime());
+  var import_react40 = __toESM(require_react());
+  var import_react_dom6 = __toESM(require_react_dom());
+  var import_jsx_runtime39 = __toESM(require_jsx_runtime());
   var VIEWPORT_MARGIN2 = 8;
   function clampToViewport(position, popupWidth, popupHeight, viewportWidth = window.innerWidth, viewportHeight = window.innerHeight, margin = VIEWPORT_MARGIN2) {
     let { top, left } = position;
@@ -32581,19 +35632,19 @@
     return { top, left };
   }
   function InlineCommentPopup({ position, onSubmit, onCancel }) {
-    const [text, setText] = (0, import_react39.useState)("");
-    const [category, setCategory] = (0, import_react39.useState)("general");
-    const [clampedPos, setClampedPos] = (0, import_react39.useState)(position);
-    const textareaRef = (0, import_react39.useRef)(null);
-    const popupRef = (0, import_react39.useRef)(null);
-    (0, import_react39.useEffect)(() => {
+    const [text, setText] = (0, import_react40.useState)("");
+    const [category, setCategory] = (0, import_react40.useState)("general");
+    const [clampedPos, setClampedPos] = (0, import_react40.useState)(position);
+    const textareaRef = (0, import_react40.useRef)(null);
+    const popupRef = (0, import_react40.useRef)(null);
+    (0, import_react40.useEffect)(() => {
       textareaRef.current?.focus();
       if (popupRef.current) {
         const rect = popupRef.current.getBoundingClientRect();
         setClampedPos(clampToViewport(position, rect.width, rect.height));
       }
     }, [position]);
-    (0, import_react39.useEffect)(() => {
+    (0, import_react40.useEffect)(() => {
       const handler = (e) => {
         if (e.key === "Escape") onCancel();
         if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
@@ -32604,7 +35655,7 @@
       document.addEventListener("keydown", handler);
       return () => document.removeEventListener("keydown", handler);
     }, [text, category]);
-    (0, import_react39.useEffect)(() => {
+    (0, import_react40.useEffect)(() => {
       const handler = (e) => {
         if (popupRef.current && !popupRef.current.contains(e.target)) {
           onCancel();
@@ -32623,8 +35674,8 @@
       if (!trimmed) return;
       onSubmit(trimmed, category);
     };
-    return import_react_dom5.default.createPortal(
-      /* @__PURE__ */ (0, import_jsx_runtime38.jsxs)(
+    return import_react_dom6.default.createPortal(
+      /* @__PURE__ */ (0, import_jsx_runtime39.jsxs)(
         "div",
         {
           ref: popupRef,
@@ -32632,9 +35683,9 @@
           style: { top: clampedPos.top, left: clampedPos.left },
           "data-testid": "inline-comment-popup",
           children: [
-            /* @__PURE__ */ (0, import_jsx_runtime38.jsx)("div", { className: "flex gap-1 flex-wrap", children: ALL_CATEGORIES.map((cat) => {
+            /* @__PURE__ */ (0, import_jsx_runtime39.jsx)("div", { className: "flex gap-1 flex-wrap", children: ALL_CATEGORIES.map((cat) => {
               const info = CATEGORY_INFO[cat];
-              return /* @__PURE__ */ (0, import_jsx_runtime38.jsxs)(
+              return /* @__PURE__ */ (0, import_jsx_runtime39.jsxs)(
                 "button",
                 {
                   onClick: () => setCategory(cat),
@@ -32650,7 +35701,7 @@
                 cat
               );
             }) }),
-            /* @__PURE__ */ (0, import_jsx_runtime38.jsx)(
+            /* @__PURE__ */ (0, import_jsx_runtime39.jsx)(
               "textarea",
               {
                 ref: textareaRef,
@@ -32662,11 +35713,11 @@
                 "data-testid": "comment-textarea"
               }
             ),
-            /* @__PURE__ */ (0, import_jsx_runtime38.jsxs)("div", { className: "flex justify-end gap-1", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime38.jsx)(Button, { size: "sm", variant: "secondary", onClick: onCancel, children: "Cancel" }),
-              /* @__PURE__ */ (0, import_jsx_runtime38.jsxs)(Button, { size: "sm", onClick: handleSubmit, disabled: !text.trim(), children: [
+            /* @__PURE__ */ (0, import_jsx_runtime39.jsxs)("div", { className: "flex justify-end gap-1", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime39.jsx)(Button, { size: "sm", variant: "secondary", onClick: onCancel, children: "Cancel" }),
+              /* @__PURE__ */ (0, import_jsx_runtime39.jsxs)(Button, { size: "sm", onClick: handleSubmit, disabled: !text.trim(), children: [
                 "Submit ",
-                /* @__PURE__ */ (0, import_jsx_runtime38.jsx)("kbd", { className: "ml-1 text-[9px] opacity-60", children: "Ctrl+Enter" })
+                /* @__PURE__ */ (0, import_jsx_runtime39.jsx)("kbd", { className: "ml-1 text-[9px] opacity-60", children: "Ctrl+Enter" })
               ] })
             ] })
           ]
@@ -32677,7 +35728,7 @@
   }
 
   // src/server/spa/client/react/tasks/comments/CommentHighlight.tsx
-  var import_react40 = __toESM(require_react());
+  var import_react41 = __toESM(require_react());
   function buildTextRange(container2, needle) {
     const fullText = container2.textContent || "";
     const idx = fullText.indexOf(needle);
@@ -32720,7 +35771,7 @@
   }
   var MARK_CLASS = "bg-yellow-200 dark:bg-yellow-800/50 cursor-pointer rounded-sm";
   function CommentHighlight({ comments, containerRef, onCommentClick }) {
-    (0, import_react40.useEffect)(() => {
+    (0, import_react41.useEffect)(() => {
       const container2 = containerRef.current;
       if (!container2) return;
       container2.querySelectorAll("mark[data-comment-id]").forEach((el) => {
@@ -32755,9 +35806,9 @@
   }
 
   // src/server/spa/client/react/tasks/comments/CommentPopover.tsx
-  var import_react41 = __toESM(require_react());
-  var import_react_dom6 = __toESM(require_react_dom());
-  var import_jsx_runtime39 = __toESM(require_jsx_runtime());
+  var import_react42 = __toESM(require_react());
+  var import_react_dom7 = __toESM(require_react_dom());
+  var import_jsx_runtime40 = __toESM(require_jsx_runtime());
   var ACTION_BTN2 = "inline-flex items-center justify-center w-6 h-6 rounded transition-colors text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/[0.06] dark:hover:bg-white/[0.08]";
   function CommentPopover({
     comment,
@@ -32766,29 +35817,33 @@
     onResolve,
     onUnresolve,
     onDelete,
-    onEdit
+    onEdit,
+    onAskAI,
+    aiLoading,
+    aiError,
+    onClearAiError
   }) {
-    const popoverRef = (0, import_react41.useRef)(null);
-    const [clampedPos, setClampedPos] = (0, import_react41.useState)(position);
-    const [editing, setEditing] = (0, import_react41.useState)(false);
-    const [editText, setEditText] = (0, import_react41.useState)(comment.comment);
+    const popoverRef = (0, import_react42.useRef)(null);
+    const [clampedPos, setClampedPos] = (0, import_react42.useState)(position);
+    const [editing, setEditing] = (0, import_react42.useState)(false);
+    const [editText, setEditText] = (0, import_react42.useState)(comment.comment);
     const category = getCommentCategory(comment);
     const info = CATEGORY_INFO[category];
     const isResolved = comment.status === "resolved";
-    (0, import_react41.useEffect)(() => {
+    (0, import_react42.useEffect)(() => {
       if (popoverRef.current) {
         const rect = popoverRef.current.getBoundingClientRect();
         setClampedPos(clampToViewport(position, rect.width, rect.height));
       }
     }, [position]);
-    (0, import_react41.useEffect)(() => {
+    (0, import_react42.useEffect)(() => {
       const handler = (e) => {
         if (e.key === "Escape") onClose();
       };
       document.addEventListener("keydown", handler);
       return () => document.removeEventListener("keydown", handler);
     }, [onClose]);
-    (0, import_react41.useEffect)(() => {
+    (0, import_react42.useEffect)(() => {
       const handler = (e) => {
         if (popoverRef.current && !popoverRef.current.contains(e.target)) {
           onClose();
@@ -32809,8 +35864,8 @@
       }
       setEditing(false);
     };
-    return import_react_dom6.default.createPortal(
-      /* @__PURE__ */ (0, import_jsx_runtime39.jsxs)(
+    return import_react_dom7.default.createPortal(
+      /* @__PURE__ */ (0, import_jsx_runtime40.jsxs)(
         "div",
         {
           ref: popoverRef,
@@ -32818,18 +35873,18 @@
           style: { top: clampedPos.top, left: clampedPos.left },
           "data-testid": "comment-popover",
           children: [
-            /* @__PURE__ */ (0, import_jsx_runtime39.jsxs)("div", { className: "flex items-center gap-1.5", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime39.jsx)(
+            /* @__PURE__ */ (0, import_jsx_runtime40.jsxs)("div", { className: "flex items-center gap-1.5", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime40.jsx)(
                 "span",
                 {
                   className: cn("w-2 h-2 rounded-full shrink-0", isResolved ? "bg-green-500" : "bg-[#0078d4]"),
                   title: isResolved ? "Resolved" : "Open"
                 }
               ),
-              /* @__PURE__ */ (0, import_jsx_runtime39.jsx)("span", { className: "text-[10px] text-[#848484]", title: info.label, children: info.icon }),
-              /* @__PURE__ */ (0, import_jsx_runtime39.jsx)("span", { className: "text-[10px] text-[#848484] truncate", children: comment.author || "Anonymous" }),
-              comment.createdAt && /* @__PURE__ */ (0, import_jsx_runtime39.jsx)("span", { className: "text-[10px] text-[#a0a0a0] ml-auto shrink-0", children: new Date(comment.createdAt).toLocaleString() }),
-              /* @__PURE__ */ (0, import_jsx_runtime39.jsx)(
+              /* @__PURE__ */ (0, import_jsx_runtime40.jsx)("span", { className: "text-[10px] text-[#848484]", title: info.label, children: info.icon }),
+              /* @__PURE__ */ (0, import_jsx_runtime40.jsx)("span", { className: "text-[10px] text-[#848484] truncate", children: comment.author || "Anonymous" }),
+              comment.createdAt && /* @__PURE__ */ (0, import_jsx_runtime40.jsx)("span", { className: "text-[10px] text-[#a0a0a0] ml-auto shrink-0", children: new Date(comment.createdAt).toLocaleString() }),
+              /* @__PURE__ */ (0, import_jsx_runtime40.jsx)(
                 "button",
                 {
                   className: "shrink-0 w-5 h-5 inline-flex items-center justify-center rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/[0.06] dark:hover:bg-white/[0.08] text-sm leading-none",
@@ -32840,9 +35895,9 @@
                 }
               )
             ] }),
-            comment.selectedText && /* @__PURE__ */ (0, import_jsx_runtime39.jsx)("blockquote", { className: "border-l-2 border-[#0078d4] dark:border-[#3794ff] pl-2 text-[11px] text-[#848484] italic line-clamp-2", children: comment.selectedText.length > 200 ? comment.selectedText.substring(0, 200) + "\u2026" : comment.selectedText }),
-            editing ? /* @__PURE__ */ (0, import_jsx_runtime39.jsxs)("div", { className: "flex flex-col gap-1", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime39.jsx)(
+            comment.selectedText && /* @__PURE__ */ (0, import_jsx_runtime40.jsx)("blockquote", { className: "border-l-2 border-[#0078d4] dark:border-[#3794ff] pl-2 text-[11px] text-[#848484] italic line-clamp-2", children: comment.selectedText.length > 200 ? comment.selectedText.substring(0, 200) + "\u2026" : comment.selectedText }),
+            editing ? /* @__PURE__ */ (0, import_jsx_runtime40.jsxs)("div", { className: "flex flex-col gap-1", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime40.jsx)(
                 "textarea",
                 {
                   className: "w-full p-1.5 text-xs rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] resize-y min-h-[60px]",
@@ -32853,25 +35908,45 @@
                   autoFocus: true
                 }
               ),
-              /* @__PURE__ */ (0, import_jsx_runtime39.jsxs)("div", { className: "flex gap-1 justify-end", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime39.jsx)(Button, { size: "sm", variant: "secondary", onClick: () => setEditing(false), children: "Cancel" }),
-                /* @__PURE__ */ (0, import_jsx_runtime39.jsx)(Button, { size: "sm", onClick: handleSave, children: "Save" })
+              /* @__PURE__ */ (0, import_jsx_runtime40.jsxs)("div", { className: "flex gap-1 justify-end", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime40.jsx)(Button, { size: "sm", variant: "secondary", onClick: () => setEditing(false), children: "Cancel" }),
+                /* @__PURE__ */ (0, import_jsx_runtime40.jsx)(Button, { size: "sm", onClick: handleSave, children: "Save" })
               ] })
-            ] }) : /* @__PURE__ */ (0, import_jsx_runtime39.jsx)("div", { className: "text-xs text-[#1e1e1e] dark:text-[#cccccc]", "data-testid": "popover-comment-body", children: comment.comment }),
-            comment.aiResponse && /* @__PURE__ */ (0, import_jsx_runtime39.jsxs)("div", { className: "p-1.5 rounded bg-[#0078d4]/5 dark:bg-[#3794ff]/5 border-l-2 border-[#0078d4] dark:border-[#3794ff]", "data-testid": "popover-ai-response", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime39.jsx)("div", { className: "text-[10px] text-[#0078d4] dark:text-[#3794ff] font-medium mb-0.5", children: "\u{1F916} AI" }),
-              /* @__PURE__ */ (0, import_jsx_runtime39.jsx)("div", { className: "text-xs text-[#1e1e1e] dark:text-[#cccccc]", children: comment.aiResponse })
+            ] }) : /* @__PURE__ */ (0, import_jsx_runtime40.jsx)("div", { className: "text-xs text-[#1e1e1e] dark:text-[#cccccc]", "data-testid": "popover-comment-body", children: comment.comment }),
+            (comment.aiResponse || aiLoading && !comment.aiResponse) && /* @__PURE__ */ (0, import_jsx_runtime40.jsxs)("div", { className: "p-1.5 rounded bg-[#0078d4]/5 dark:bg-[#3794ff]/5 border-l-2 border-[#0078d4] dark:border-[#3794ff]", "data-testid": "popover-ai-response", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime40.jsx)("div", { className: "text-[10px] text-[#0078d4] dark:text-[#3794ff] font-medium mb-0.5", children: "\u{1F916} AI" }),
+              aiLoading && !comment.aiResponse ? /* @__PURE__ */ (0, import_jsx_runtime40.jsx)("div", { "data-testid": "popover-ai-loading", children: /* @__PURE__ */ (0, import_jsx_runtime40.jsx)(Spinner, { size: "sm" }) }) : /* @__PURE__ */ (0, import_jsx_runtime40.jsx)("div", { className: "max-h-[180px] overflow-y-auto text-[11px] text-[#1e1e1e] dark:text-[#cccccc]", children: /* @__PURE__ */ (0, import_jsx_runtime40.jsx)(MarkdownView, { html: renderMarkdownToHtml(comment.aiResponse) }) })
             ] }),
-            !editing && /* @__PURE__ */ (0, import_jsx_runtime39.jsxs)("div", { className: "flex items-center gap-0.5 pt-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]", children: [
-              isResolved ? /* @__PURE__ */ (0, import_jsx_runtime39.jsx)("button", { className: ACTION_BTN2, onClick: () => onUnresolve(comment.id), title: "Reopen", "aria-label": "Reopen", children: "\u{1F513}" }) : /* @__PURE__ */ (0, import_jsx_runtime39.jsx)("button", { className: ACTION_BTN2, onClick: () => onResolve(comment.id), title: "Resolve", "aria-label": "Resolve", children: "\u2705" }),
-              /* @__PURE__ */ (0, import_jsx_runtime39.jsx)("button", { className: ACTION_BTN2, onClick: () => {
+            aiError && /* @__PURE__ */ (0, import_jsx_runtime40.jsxs)(
+              "div",
+              {
+                className: "flex items-start gap-1.5 p-1.5 rounded bg-red-500/10 border border-red-500/20 text-[11px] text-red-600 dark:text-red-400",
+                "data-testid": "popover-ai-error",
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime40.jsx)("span", { className: "flex-1", children: aiError }),
+                  onClearAiError && /* @__PURE__ */ (0, import_jsx_runtime40.jsx)("button", { className: "shrink-0 hover:opacity-70", onClick: () => onClearAiError(comment.id), "aria-label": "Dismiss error", children: "\xD7" })
+                ]
+              }
+            ),
+            !editing && /* @__PURE__ */ (0, import_jsx_runtime40.jsxs)("div", { className: "flex items-center gap-0.5 pt-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]", children: [
+              isResolved ? /* @__PURE__ */ (0, import_jsx_runtime40.jsx)("button", { className: ACTION_BTN2, onClick: () => onUnresolve(comment.id), title: "Reopen", "aria-label": "Reopen", children: "\u{1F513}" }) : /* @__PURE__ */ (0, import_jsx_runtime40.jsx)("button", { className: ACTION_BTN2, onClick: () => onResolve(comment.id), title: "Resolve", "aria-label": "Resolve", children: "\u2705" }),
+              /* @__PURE__ */ (0, import_jsx_runtime40.jsx)("button", { className: ACTION_BTN2, onClick: () => {
                 setEditing(true);
                 setEditText(comment.comment);
               }, title: "Edit", "aria-label": "Edit", children: "\u270F\uFE0F" }),
-              /* @__PURE__ */ (0, import_jsx_runtime39.jsx)("button", { className: ACTION_BTN2, onClick: () => {
+              /* @__PURE__ */ (0, import_jsx_runtime40.jsx)("button", { className: ACTION_BTN2, onClick: () => {
                 onDelete(comment.id);
                 onClose();
-              }, title: "Delete", "aria-label": "Delete", children: "\u{1F5D1}\uFE0F" })
+              }, title: "Delete", "aria-label": "Delete", children: "\u{1F5D1}\uFE0F" }),
+              onAskAI && /* @__PURE__ */ (0, import_jsx_runtime40.jsx)(
+                AICommandMenu,
+                {
+                  onCommand: (cmdId, q) => onAskAI(comment.id, cmdId, q),
+                  loading: aiLoading,
+                  triggerClassName: ACTION_BTN2,
+                  "data-testid": "popover-ai"
+                }
+              )
             ] })
           ]
         }
@@ -32882,7 +35957,39 @@
 
   // src/server/spa/client/react/shared/MarkdownReviewEditor.tsx
   var import_anchor = __toESM(require_anchor());
-  var import_jsx_runtime40 = __toESM(require_jsx_runtime());
+  var import_ai2 = __toESM(require_ai());
+
+  // src/server/spa/client/react/utils/document-context.ts
+  function extractDocumentContext(rawContent, comment, contextRadius = 5) {
+    if (!comment) {
+      return { surroundingLines: "", nearestHeading: null, allHeadings: [] };
+    }
+    const lines = rawContent.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+    const lineCount = Math.max(lines.length, 1);
+    const startLine = Math.min(Math.max(comment.selection.startLine, 1), lineCount);
+    const endLine = Math.min(Math.max(comment.selection.endLine, startLine), lineCount);
+    const headingRe = /^(#{1,6})\s+(.+)$/;
+    const allHeadings = [];
+    let nearestHeading = null;
+    lines.forEach((line, i) => {
+      const m = line.match(headingRe);
+      if (!m) return;
+      allHeadings.push(m[2].trim());
+      if (i + 1 <= startLine) nearestHeading = m[2].trim();
+    });
+    const ctxStart = Math.max(0, startLine - 1 - contextRadius);
+    const ctxEnd = Math.min(lines.length, endLine + contextRadius);
+    const surrounding = [];
+    for (let i = ctxStart; i < ctxEnd; i++) {
+      const lineNo = i + 1;
+      if (lineNo >= startLine && lineNo <= endLine) continue;
+      surrounding.push(lines[i]);
+    }
+    return { surroundingLines: surrounding.join("\n"), nearestHeading, allHeadings };
+  }
+
+  // src/server/spa/client/react/shared/MarkdownReviewEditor.tsx
+  var import_jsx_runtime41 = __toESM(require_jsx_runtime());
   var MIN_SELECTION_LENGTH = 3;
   async function fetchTaskContent(wsId, filePath) {
     const data = await fetchApi(`/workspaces/${encodeURIComponent(wsId)}/tasks/content?path=${encodeURIComponent(filePath)}`);
@@ -32902,18 +36009,18 @@
     filePath,
     fetchMode = "tasks"
   }) {
-    const [rawContent, setRawContent] = (0, import_react42.useState)("");
-    const [loading, setLoading] = (0, import_react42.useState)(true);
-    const [error, setError] = (0, import_react42.useState)(null);
-    const previewRef = (0, import_react42.useRef)(null);
-    const [contextMenuVisible, setContextMenuVisible] = (0, import_react42.useState)(false);
-    const [contextMenuPos, setContextMenuPos] = (0, import_react42.useState)({ x: 0, y: 0 });
-    const [savedSelection, setSavedSelection] = (0, import_react42.useState)(null);
-    const [popupVisible, setPopupVisible] = (0, import_react42.useState)(false);
-    const [popupPos, setPopupPos] = (0, import_react42.useState)({ top: 0, left: 0 });
-    const [pendingSelection, setPendingSelection] = (0, import_react42.useState)(null);
-    const [activePopoverComment, setActivePopoverComment] = (0, import_react42.useState)(null);
-    const [popoverPos, setPopoverPos] = (0, import_react42.useState)({ top: 0, left: 0 });
+    const [rawContent, setRawContent] = (0, import_react43.useState)("");
+    const [loading, setLoading] = (0, import_react43.useState)(true);
+    const [error, setError] = (0, import_react43.useState)(null);
+    const previewRef = (0, import_react43.useRef)(null);
+    const [contextMenuVisible, setContextMenuVisible] = (0, import_react43.useState)(false);
+    const [contextMenuPos, setContextMenuPos] = (0, import_react43.useState)({ x: 0, y: 0 });
+    const [savedSelection, setSavedSelection] = (0, import_react43.useState)(null);
+    const [popupVisible, setPopupVisible] = (0, import_react43.useState)(false);
+    const [popupPos, setPopupPos] = (0, import_react43.useState)({ top: 0, left: 0 });
+    const [pendingSelection, setPendingSelection] = (0, import_react43.useState)(null);
+    const [activePopoverComment, setActivePopoverComment] = (0, import_react43.useState)(null);
+    const [popoverPos, setPopoverPos] = (0, import_react43.useState)({ top: 0, left: 0 });
     const {
       comments,
       loading: commentsLoading,
@@ -32922,7 +36029,10 @@
       deleteComment,
       resolveComment,
       unresolveComment,
-      askAI
+      askAI,
+      aiLoadingIds,
+      aiErrors,
+      clearAiError
     } = useTaskComments(wsId, filePath);
     const { html } = useMarkdownPreview({
       content: rawContent,
@@ -32931,7 +36041,7 @@
       stripFrontmatter: true
     });
     const showCommentListPanel = comments.length > 0;
-    (0, import_react42.useEffect)(() => {
+    (0, import_react43.useEffect)(() => {
       let cancelled = false;
       setLoading(true);
       setError(null);
@@ -32962,7 +36072,7 @@
         cancelled = true;
       };
     }, [wsId, filePath, fetchMode]);
-    (0, import_react42.useEffect)(() => {
+    (0, import_react43.useEffect)(() => {
       const handleMouseUp = () => {
         const sel = window.getSelection();
         if (sel && !sel.isCollapsed && sel.rangeCount && sel.toString().trim().length >= MIN_SELECTION_LENGTH) {
@@ -32990,12 +36100,12 @@
       document.addEventListener("mouseup", handleMouseUp);
       return () => document.removeEventListener("mouseup", handleMouseUp);
     }, []);
-    const handleContextMenu = (0, import_react42.useCallback)((e) => {
+    const handleContextMenu = (0, import_react43.useCallback)((e) => {
       e.preventDefault();
       setContextMenuPos({ x: e.clientX, y: e.clientY });
       setContextMenuVisible(true);
     }, []);
-    const handleAddCommentFromMenu = (0, import_react42.useCallback)(() => {
+    const handleAddCommentFromMenu = (0, import_react43.useCallback)(() => {
       if (!savedSelection) return;
       const rect = savedSelection.range.getBoundingClientRect();
       setPopupPos({ top: rect.bottom + 8, left: Math.max(8, rect.left) });
@@ -33009,7 +36119,7 @@
       setContextMenuVisible(false);
       setPopupVisible(true);
     }, [savedSelection]);
-    const handlePopupSubmit = (0, import_react42.useCallback)(async (text, category) => {
+    const handlePopupSubmit = (0, import_react43.useCallback)(async (text, category) => {
       if (!pendingSelection) return;
       const selection = {
         startLine: pendingSelection.startLine,
@@ -33040,11 +36150,11 @@
       setPopupVisible(false);
       setPendingSelection(null);
     }, [pendingSelection, rawContent, filePath, addComment]);
-    const handlePopupCancel = (0, import_react42.useCallback)(() => {
+    const handlePopupCancel = (0, import_react43.useCallback)(() => {
       setPopupVisible(false);
       setPendingSelection(null);
     }, []);
-    const handleCommentClick = (0, import_react42.useCallback)((comment) => {
+    const handleCommentClick = (0, import_react43.useCallback)((comment) => {
       if (!previewRef.current) return;
       const mark = previewRef.current.querySelector(`mark[data-comment-id="${comment.id}"]`);
       if (!mark) return;
@@ -33059,16 +36169,84 @@
       setPopoverPos({ top: rect.bottom + 8, left: Math.max(8, rect.left) });
       setActivePopoverComment(comment);
     }, []);
+    const handleAskAIFromSelection = (0, import_react43.useCallback)(async (commandId) => {
+      if (!savedSelection) return;
+      setContextMenuVisible(false);
+      const selection = {
+        startLine: savedSelection.startLine,
+        startColumn: savedSelection.startColumn,
+        endLine: savedSelection.endLine,
+        endColumn: savedSelection.endColumn
+      };
+      let anchor;
+      try {
+        anchor = (0, import_anchor.createAnchorData)(
+          rawContent,
+          savedSelection.startLine,
+          savedSelection.endLine,
+          savedSelection.startColumn,
+          savedSelection.endColumn,
+          import_anchor.DEFAULT_ANCHOR_MATCH_CONFIG
+        );
+      } catch {
+      }
+      const cmd = import_ai2.DEFAULT_AI_COMMANDS.find((c) => c.id === commandId);
+      const commentText = cmd?.label ?? commandId;
+      const newComment = await addComment({
+        filePath,
+        selection,
+        selectedText: savedSelection.text,
+        comment: commentText,
+        category: "question",
+        anchor
+      });
+      const context = extractDocumentContext(rawContent, newComment);
+      await askAI(newComment.id, { commandId, documentContext: context });
+    }, [savedSelection, rawContent, filePath, addComment, askAI]);
+    const handleCustomAskAIFromSelection = (0, import_react43.useCallback)(async () => {
+      if (!savedSelection) return;
+      setContextMenuVisible(false);
+      const question = window.prompt("Ask AI a custom question about the selection:");
+      if (!question?.trim()) return;
+      const selection = {
+        startLine: savedSelection.startLine,
+        startColumn: savedSelection.startColumn,
+        endLine: savedSelection.endLine,
+        endColumn: savedSelection.endColumn
+      };
+      let anchor;
+      try {
+        anchor = (0, import_anchor.createAnchorData)(
+          rawContent,
+          savedSelection.startLine,
+          savedSelection.endLine,
+          savedSelection.startColumn,
+          savedSelection.endColumn,
+          import_anchor.DEFAULT_ANCHOR_MATCH_CONFIG
+        );
+      } catch {
+      }
+      const newComment = await addComment({
+        filePath,
+        selection,
+        selectedText: savedSelection.text,
+        comment: question.trim(),
+        category: "question",
+        anchor
+      });
+      const context = extractDocumentContext(rawContent, newComment);
+      await askAI(newComment.id, { customQuestion: question.trim(), documentContext: context });
+    }, [savedSelection, rawContent, filePath, addComment, askAI]);
     if (loading) {
-      return /* @__PURE__ */ (0, import_jsx_runtime40.jsx)("div", { className: "flex items-center justify-center h-full", children: /* @__PURE__ */ (0, import_jsx_runtime40.jsx)(Spinner, { size: "lg" }) });
+      return /* @__PURE__ */ (0, import_jsx_runtime41.jsx)("div", { className: "flex items-center justify-center h-full", children: /* @__PURE__ */ (0, import_jsx_runtime41.jsx)(Spinner, { size: "lg" }) });
     }
     if (error) {
-      return /* @__PURE__ */ (0, import_jsx_runtime40.jsx)("div", { className: "p-4 text-sm text-[#f14c4c]", children: error });
+      return /* @__PURE__ */ (0, import_jsx_runtime41.jsx)("div", { className: "p-4 text-sm text-[#f14c4c]", children: error });
     }
-    return /* @__PURE__ */ (0, import_jsx_runtime40.jsxs)("div", { className: "flex h-full flex-1 overflow-hidden min-h-0 min-w-0 p-2", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime40.jsxs)("div", { className: "flex h-full flex-1 overflow-hidden min-h-0 min-w-0 rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e]", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime40.jsx)("div", { className: "flex min-h-0 min-w-0 flex-1 flex-col", children: /* @__PURE__ */ (0, import_jsx_runtime40.jsxs)("div", { className: "flex-1 overflow-y-auto p-4 min-h-0 min-w-0", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime40.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime41.jsxs)("div", { className: "flex h-full flex-1 overflow-hidden min-h-0 min-w-0 p-2", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime41.jsxs)("div", { className: "flex h-full flex-1 overflow-hidden min-h-0 min-w-0 rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e]", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime41.jsx)("div", { className: "flex min-h-0 min-w-0 flex-1 flex-col", children: /* @__PURE__ */ (0, import_jsx_runtime41.jsxs)("div", { className: "flex-1 overflow-y-auto p-4 min-h-0 min-w-0", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime41.jsx)(
             "div",
             {
               ref: previewRef,
@@ -33078,7 +36256,7 @@
               onContextMenu: handleContextMenu
             }
           ),
-          /* @__PURE__ */ (0, import_jsx_runtime40.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime41.jsx)(
             CommentHighlight,
             {
               comments,
@@ -33087,7 +36265,7 @@
             }
           )
         ] }) }),
-        showCommentListPanel && /* @__PURE__ */ (0, import_jsx_runtime40.jsx)(
+        showCommentListPanel && /* @__PURE__ */ (0, import_jsx_runtime41.jsx)(
           CommentSidebar,
           {
             taskId: filePath,
@@ -33099,12 +36277,19 @@
             onUnresolve: (id) => unresolveComment(id),
             onDelete: (id) => deleteComment(id),
             onEdit: (id, text) => updateComment(id, { comment: text }),
-            onAskAI: (id) => askAI(id),
-            onCommentClick: handleCommentClick
+            onAskAI: (id, commandId, customQuestion) => {
+              const comment = comments.find((c) => c.id === id);
+              const context = extractDocumentContext(rawContent, comment);
+              askAI(id, { commandId, customQuestion, documentContext: context });
+            },
+            onCommentClick: handleCommentClick,
+            aiLoadingIds,
+            aiErrors,
+            onClearAiError: clearAiError
           }
         )
       ] }),
-      contextMenuVisible && /* @__PURE__ */ (0, import_jsx_runtime40.jsx)(
+      contextMenuVisible && /* @__PURE__ */ (0, import_jsx_runtime41.jsx)(
         ContextMenu,
         {
           position: contextMenuPos,
@@ -33114,12 +36299,26 @@
               icon: "\u{1F4AC}",
               disabled: !savedSelection,
               onClick: handleAddCommentFromMenu
+            },
+            { label: "", separator: true, onClick: () => {
+            } },
+            {
+              label: "Ask AI",
+              icon: "\u{1F916}",
+              disabled: !savedSelection,
+              children: import_ai2.DEFAULT_AI_COMMANDS.filter((c) => !c.isCustomInput).map((cmd) => ({
+                label: `${cmd.icon ?? ""} ${cmd.label}`.trim(),
+                onClick: () => handleAskAIFromSelection(cmd.id)
+              })).concat([{
+                label: "\u{1F4AC} Custom...",
+                onClick: () => handleCustomAskAIFromSelection()
+              }])
             }
           ],
           onClose: () => setContextMenuVisible(false)
         }
       ),
-      popupVisible && /* @__PURE__ */ (0, import_jsx_runtime40.jsx)(
+      popupVisible && /* @__PURE__ */ (0, import_jsx_runtime41.jsx)(
         InlineCommentPopup,
         {
           position: popupPos,
@@ -33127,7 +36326,7 @@
           onCancel: handlePopupCancel
         }
       ),
-      activePopoverComment && /* @__PURE__ */ (0, import_jsx_runtime40.jsx)(
+      activePopoverComment && /* @__PURE__ */ (0, import_jsx_runtime41.jsx)(
         CommentPopover,
         {
           comment: activePopoverComment,
@@ -33145,7 +36344,14 @@
             deleteComment(id);
             setActivePopoverComment(null);
           },
-          onEdit: (id, text) => updateComment(id, { comment: text })
+          onEdit: (id, text) => updateComment(id, { comment: text }),
+          onAskAI: (id, commandId, customQuestion) => {
+            const context = extractDocumentContext(rawContent, activePopoverComment);
+            askAI(id, { commandId, customQuestion, documentContext: context });
+          },
+          aiLoading: aiLoadingIds.has(activePopoverComment.id),
+          aiError: aiErrors.get(activePopoverComment.id) ?? null,
+          onClearAiError: (id) => clearAiError(id)
         }
       )
     ] });
@@ -33167,9 +36373,9 @@
   }
 
   // src/server/spa/client/react/tasks/TaskPreview.tsx
-  var import_jsx_runtime41 = __toESM(require_jsx_runtime());
+  var import_jsx_runtime42 = __toESM(require_jsx_runtime());
   function TaskPreview({ wsId, filePath }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime41.jsx)("div", { className: "flex h-full min-h-0 min-w-0 overflow-hidden", children: /* @__PURE__ */ (0, import_jsx_runtime41.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime42.jsx)("div", { className: "flex h-full min-h-0 min-w-0 overflow-hidden", children: /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(
       MarkdownReviewEditor,
       {
         wsId,
@@ -33180,7 +36386,7 @@
   }
 
   // src/server/spa/client/react/tasks/TaskActions.tsx
-  var import_jsx_runtime42 = __toESM(require_jsx_runtime());
+  var import_jsx_runtime43 = __toESM(require_jsx_runtime());
   function copyToClipboard(text) {
     if (navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(text).catch(() => {
@@ -33211,14 +36417,14 @@
       } catch {
       }
     };
-    return /* @__PURE__ */ (0, import_jsx_runtime42.jsxs)("div", { className: "flex items-center gap-2 px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c] text-xs", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(Button, { variant: "secondary", size: "sm", "data-testid": "generate-with-ai-btn", onClick: onGenerateWithAI, children: "\u2728 Generate with AI" }),
-      openFilePath && /* @__PURE__ */ (0, import_jsx_runtime42.jsxs)(import_jsx_runtime42.Fragment, { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(Button, { variant: "ghost", size: "sm", onClick: handleCopyPath, children: "Copy path" }),
-        /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(Button, { variant: "ghost", size: "sm", onClick: handleOpenInEditor, children: "Open in editor" })
+    return /* @__PURE__ */ (0, import_jsx_runtime43.jsxs)("div", { className: "flex items-center gap-2 px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c] text-xs", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(Button, { variant: "secondary", size: "sm", "data-testid": "generate-with-ai-btn", onClick: onGenerateWithAI, children: "\u2728 Generate with AI" }),
+      openFilePath && /* @__PURE__ */ (0, import_jsx_runtime43.jsxs)(import_jsx_runtime43.Fragment, { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(Button, { variant: "ghost", size: "sm", onClick: handleCopyPath, children: "Copy path" }),
+        /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(Button, { variant: "ghost", size: "sm", onClick: handleOpenInEditor, children: "Open in editor" })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime42.jsxs)("label", { className: "flex items-center gap-1 ml-auto cursor-pointer text-[#616161] dark:text-[#999]", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime43.jsxs)("label", { className: "flex items-center gap-1 ml-auto cursor-pointer text-[#616161] dark:text-[#999]", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(
           "input",
           {
             type: "checkbox",
@@ -33229,12 +36435,12 @@
         ),
         "Context files"
       ] }),
-      nonContextSelected.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime42.jsxs)("div", { className: "flex items-center gap-1 ml-2", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime42.jsxs)("span", { className: "text-[#616161] dark:text-[#999]", children: [
+      nonContextSelected.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime43.jsxs)("div", { className: "flex items-center gap-1 ml-2", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime43.jsxs)("span", { className: "text-[#616161] dark:text-[#999]", children: [
           nonContextSelected.length,
           " selected"
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(
+        /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(
           Button,
           {
             variant: "primary",
@@ -33244,14 +36450,14 @@
             children: "Queue all"
           }
         ),
-        /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(Button, { variant: "ghost", size: "sm", onClick: onClearSelection, children: "Clear" })
+        /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(Button, { variant: "ghost", size: "sm", onClick: onClearSelection, children: "Clear" })
       ] })
     ] });
   }
 
   // src/server/spa/client/react/tasks/FolderActionDialog.tsx
-  var import_react43 = __toESM(require_react());
-  var import_jsx_runtime43 = __toESM(require_jsx_runtime());
+  var import_react44 = __toESM(require_react());
+  var import_jsx_runtime44 = __toESM(require_jsx_runtime());
   function FolderActionDialog({
     open,
     title,
@@ -33263,15 +36469,15 @@
     onClose,
     onConfirm
   }) {
-    const [name, setName] = (0, import_react43.useState)(initialValue);
-    (0, import_react43.useEffect)(() => {
+    const [name, setName] = (0, import_react44.useState)(initialValue);
+    (0, import_react44.useEffect)(() => {
       if (open) setName(initialValue);
     }, [open, initialValue]);
-    const handleConfirm = (0, import_react43.useCallback)(() => {
+    const handleConfirm = (0, import_react44.useCallback)(() => {
       const trimmed = name.trim();
       if (trimmed) onConfirm(trimmed);
     }, [name, onConfirm]);
-    const handleKeyDown = (0, import_react43.useCallback)(
+    const handleKeyDown = (0, import_react44.useCallback)(
       (e) => {
         if (e.key === "Enter") {
           e.preventDefault();
@@ -33280,15 +36486,15 @@
       },
       [handleConfirm]
     );
-    return /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime44.jsx)(
       Dialog,
       {
         open,
         onClose,
         title,
-        footer: /* @__PURE__ */ (0, import_jsx_runtime43.jsxs)(import_jsx_runtime43.Fragment, { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(Button, { variant: "secondary", onClick: onClose, children: "Cancel" }),
-          /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(
+        footer: /* @__PURE__ */ (0, import_jsx_runtime44.jsxs)(import_jsx_runtime44.Fragment, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime44.jsx)(Button, { variant: "secondary", onClick: onClose, children: "Cancel" }),
+          /* @__PURE__ */ (0, import_jsx_runtime44.jsx)(
             Button,
             {
               variant: "primary",
@@ -33299,9 +36505,9 @@
             }
           )
         ] }),
-        children: /* @__PURE__ */ (0, import_jsx_runtime43.jsxs)("div", { className: "flex flex-col gap-1", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime43.jsx)("label", { className: "text-xs text-[#616161] dark:text-[#999]", children: label }),
-          /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(
+        children: /* @__PURE__ */ (0, import_jsx_runtime44.jsxs)("div", { className: "flex flex-col gap-1", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime44.jsx)("label", { className: "text-xs text-[#616161] dark:text-[#999]", children: label }),
+          /* @__PURE__ */ (0, import_jsx_runtime44.jsx)(
             "input",
             {
               type: "text",
@@ -33320,8 +36526,8 @@
   }
 
   // src/server/spa/client/react/tasks/FolderMoveDialog.tsx
-  var import_react44 = __toESM(require_react());
-  var import_jsx_runtime44 = __toESM(require_jsx_runtime());
+  var import_react45 = __toESM(require_react());
+  var import_jsx_runtime45 = __toESM(require_jsx_runtime());
   function buildDestinations(folder, sourceRelativePath, depth = 0, acc = []) {
     if (folder.relativePath === sourceRelativePath) return acc;
     if (depth > 0) {
@@ -33339,17 +36545,17 @@
     tree,
     onConfirm
   }) {
-    const [selected, setSelected] = (0, import_react44.useState)("");
-    const [error, setError] = (0, import_react44.useState)(null);
-    const [submitting, setSubmitting] = (0, import_react44.useState)(false);
-    const options = (0, import_react44.useMemo)(() => {
+    const [selected, setSelected] = (0, import_react45.useState)("");
+    const [error, setError] = (0, import_react45.useState)(null);
+    const [submitting, setSubmitting] = (0, import_react45.useState)(false);
+    const options = (0, import_react45.useMemo)(() => {
       if (!sourceFolder) return [];
       return [
         { label: "Tasks Root", relativePath: "", depth: 0 },
         ...buildDestinations(tree, sourceFolder.relativePath)
       ];
     }, [tree, sourceFolder]);
-    const handleConfirm = (0, import_react44.useCallback)(async () => {
+    const handleConfirm = (0, import_react45.useCallback)(async () => {
       setError(null);
       setSubmitting(true);
       try {
@@ -33360,15 +36566,15 @@
       }
     }, [selected, onConfirm]);
     if (!sourceFolder) return null;
-    return /* @__PURE__ */ (0, import_jsx_runtime44.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime45.jsx)(
       Dialog,
       {
         open,
         onClose,
         title: "Move Folder",
-        footer: /* @__PURE__ */ (0, import_jsx_runtime44.jsxs)(import_jsx_runtime44.Fragment, { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime44.jsx)(Button, { variant: "secondary", onClick: onClose, children: "Cancel" }),
-          /* @__PURE__ */ (0, import_jsx_runtime44.jsx)(
+        footer: /* @__PURE__ */ (0, import_jsx_runtime45.jsxs)(import_jsx_runtime45.Fragment, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime45.jsx)(Button, { variant: "secondary", onClick: onClose, children: "Cancel" }),
+          /* @__PURE__ */ (0, import_jsx_runtime45.jsx)(
             Button,
             {
               variant: "primary",
@@ -33378,18 +36584,18 @@
             }
           )
         ] }),
-        children: /* @__PURE__ */ (0, import_jsx_runtime44.jsxs)("div", { className: "flex flex-col gap-2", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime44.jsxs)("p", { className: "text-xs text-[#616161] dark:text-[#999]", children: [
+        children: /* @__PURE__ */ (0, import_jsx_runtime45.jsxs)("div", { className: "flex flex-col gap-2", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime45.jsxs)("p", { className: "text-xs text-[#616161] dark:text-[#999]", children: [
             "Select destination for ",
-            /* @__PURE__ */ (0, import_jsx_runtime44.jsx)("strong", { children: sourceFolder.name }),
+            /* @__PURE__ */ (0, import_jsx_runtime45.jsx)("strong", { children: sourceFolder.name }),
             ":"
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime44.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime45.jsx)(
             "div",
             {
               className: "max-h-64 overflow-y-auto border border-[#e0e0e0] dark:border-[#3c3c3c] rounded",
               "data-testid": "move-destination-list",
-              children: options.map((opt) => /* @__PURE__ */ (0, import_jsx_runtime44.jsxs)(
+              children: options.map((opt) => /* @__PURE__ */ (0, import_jsx_runtime45.jsxs)(
                 "button",
                 {
                   type: "button",
@@ -33409,15 +36615,98 @@
               ))
             }
           ),
-          error && /* @__PURE__ */ (0, import_jsx_runtime44.jsx)("p", { className: "text-xs text-[#f14c4c]", "data-testid": "move-error", children: error })
+          error && /* @__PURE__ */ (0, import_jsx_runtime45.jsx)("p", { className: "text-xs text-[#f14c4c]", "data-testid": "move-error", children: error })
+        ] })
+      }
+    );
+  }
+
+  // src/server/spa/client/react/tasks/FileMoveDialog.tsx
+  var import_react46 = __toESM(require_react());
+  var import_jsx_runtime46 = __toESM(require_jsx_runtime());
+  function FileMoveDialog({
+    open,
+    onClose,
+    sourceName,
+    tree,
+    onConfirm
+  }) {
+    const [selected, setSelected] = (0, import_react46.useState)("");
+    const [error, setError] = (0, import_react46.useState)(null);
+    const [submitting, setSubmitting] = (0, import_react46.useState)(false);
+    const options = (0, import_react46.useMemo)(() => [
+      { label: "Tasks Root", relativePath: "", depth: 0 },
+      ...buildDestinations(tree, "\0")
+    ], [tree]);
+    const handleConfirm = (0, import_react46.useCallback)(async () => {
+      setError(null);
+      setSubmitting(true);
+      try {
+        await onConfirm(selected);
+      } catch (err) {
+        setError(err.message || "Move failed");
+        setSubmitting(false);
+      }
+    }, [selected, onConfirm]);
+    if (!sourceName) return null;
+    return /* @__PURE__ */ (0, import_jsx_runtime46.jsx)(
+      Dialog,
+      {
+        open,
+        onClose,
+        title: "Move File",
+        footer: /* @__PURE__ */ (0, import_jsx_runtime46.jsxs)(import_jsx_runtime46.Fragment, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime46.jsx)(Button, { variant: "secondary", onClick: onClose, children: "Cancel" }),
+          /* @__PURE__ */ (0, import_jsx_runtime46.jsx)(
+            Button,
+            {
+              variant: "primary",
+              loading: submitting,
+              onClick: handleConfirm,
+              children: "Move"
+            }
+          )
+        ] }),
+        children: /* @__PURE__ */ (0, import_jsx_runtime46.jsxs)("div", { className: "flex flex-col gap-2", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime46.jsxs)("p", { className: "text-xs text-[#616161] dark:text-[#999]", children: [
+            "Select destination for ",
+            /* @__PURE__ */ (0, import_jsx_runtime46.jsx)("strong", { children: sourceName }),
+            ":"
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime46.jsx)(
+            "div",
+            {
+              className: "max-h-64 overflow-y-auto border border-[#e0e0e0] dark:border-[#3c3c3c] rounded",
+              "data-testid": "file-move-destination-list",
+              children: options.map((opt) => /* @__PURE__ */ (0, import_jsx_runtime46.jsxs)(
+                "button",
+                {
+                  type: "button",
+                  className: `w-full text-left px-3 py-1.5 text-xs cursor-pointer transition-colors ${selected === opt.relativePath ? "bg-[#0066b8]/10 dark:bg-[#264f78]/30" : "hover:bg-black/[0.04] dark:hover:bg-white/[0.04]"}`,
+                  style: { paddingLeft: `calc(0.75rem + ${opt.depth}rem)` },
+                  onClick: () => {
+                    setSelected(opt.relativePath);
+                    setError(null);
+                  },
+                  "data-testid": `file-move-dest-${opt.relativePath || "root"}`,
+                  children: [
+                    opt.relativePath ? "\u{1F4C1} " : "\u{1F3E0} ",
+                    opt.label
+                  ]
+                },
+                opt.relativePath || "__root__"
+              ))
+            }
+          ),
+          error && /* @__PURE__ */ (0, import_jsx_runtime46.jsx)("p", { className: "text-xs text-[#f14c4c]", "data-testid": "file-move-error", children: error })
         ] })
       }
     );
   }
 
   // src/server/spa/client/react/shared/BulkFollowPromptDialog.tsx
-  var import_react45 = __toESM(require_react());
-  var import_jsx_runtime45 = __toESM(require_jsx_runtime());
+  var import_react47 = __toESM(require_react());
+  var import_jsx_runtime47 = __toESM(require_jsx_runtime());
   var DEFAULT_TASKS_FOLDER3 = ".vscode/tasks";
   async function getTasksFolderPath3(wsId) {
     try {
@@ -33454,14 +36743,14 @@
     const { state } = useApp();
     const { model, setModel } = usePreferences();
     const { addToast } = useGlobalToast();
-    const [models, setModels] = (0, import_react45.useState)([]);
-    const [selectedWsId, setSelectedWsId] = (0, import_react45.useState)(wsId);
-    const [prompts, setPrompts] = (0, import_react45.useState)([]);
-    const [skills, setSkills] = (0, import_react45.useState)([]);
-    const [loading, setLoading] = (0, import_react45.useState)(true);
-    const [submitting, setSubmitting] = (0, import_react45.useState)(false);
-    const taskFiles = (0, import_react45.useMemo)(() => collectMarkdownFiles(folder), [folder]);
-    (0, import_react45.useEffect)(() => {
+    const [models, setModels] = (0, import_react47.useState)([]);
+    const [selectedWsId, setSelectedWsId] = (0, import_react47.useState)(wsId);
+    const [prompts, setPrompts] = (0, import_react47.useState)([]);
+    const [skills, setSkills] = (0, import_react47.useState)([]);
+    const [loading, setLoading] = (0, import_react47.useState)(true);
+    const [submitting, setSubmitting] = (0, import_react47.useState)(false);
+    const taskFiles = (0, import_react47.useMemo)(() => collectMarkdownFiles(folder), [folder]);
+    (0, import_react47.useEffect)(() => {
       let cancelled = false;
       (async () => {
         try {
@@ -33483,7 +36772,7 @@
         cancelled = true;
       };
     }, [selectedWsId]);
-    const handleSubmit = (0, import_react45.useCallback)(async (type2, name, path) => {
+    const handleSubmit = (0, import_react47.useCallback)(async (type2, name, path) => {
       setSubmitting(true);
       try {
         const ws = state.workspaces.find((w) => w.id === selectedWsId);
@@ -33537,8 +36826,8 @@
         setSubmitting(false);
       }
     }, [selectedWsId, taskFiles, model, state.workspaces, addToast, onClose]);
-    return /* @__PURE__ */ (0, import_jsx_runtime45.jsx)(Dialog, { open: true, onClose, title: "Follow Prompt", id: "bulk-follow-prompt-dialog", children: /* @__PURE__ */ (0, import_jsx_runtime45.jsxs)("div", { className: "flex flex-col gap-4", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime45.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime47.jsx)(Dialog, { open: true, onClose, title: "Follow Prompt", id: "bulk-follow-prompt-dialog", children: /* @__PURE__ */ (0, import_jsx_runtime47.jsxs)("div", { className: "flex flex-col gap-4", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime47.jsx)(
         "button",
         {
           id: "bfp-close",
@@ -33548,20 +36837,20 @@
           children: "\xD7"
         }
       ),
-      /* @__PURE__ */ (0, import_jsx_runtime45.jsxs)("div", { className: "text-xs text-[#616161] dark:text-[#999]", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime45.jsx)("strong", { children: folder.name }),
+      /* @__PURE__ */ (0, import_jsx_runtime47.jsxs)("div", { className: "text-xs text-[#616161] dark:text-[#999]", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime47.jsx)("strong", { children: folder.name }),
         " \u2014 ",
         taskFiles.length,
         " task",
         taskFiles.length !== 1 ? "s" : "",
         " will be queued"
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime45.jsxs)("div", { className: "flex flex-col gap-1", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime45.jsxs)("label", { className: "text-xs text-[#616161] dark:text-[#999]", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime47.jsxs)("div", { className: "flex flex-col gap-1", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime47.jsxs)("label", { className: "text-xs text-[#616161] dark:text-[#999]", children: [
           "Model ",
-          /* @__PURE__ */ (0, import_jsx_runtime45.jsx)("span", { className: "text-[#848484]", children: "(optional)" })
+          /* @__PURE__ */ (0, import_jsx_runtime47.jsx)("span", { className: "text-[#848484]", children: "(optional)" })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime45.jsxs)(
+        /* @__PURE__ */ (0, import_jsx_runtime47.jsxs)(
           "select",
           {
             id: "bfp-model",
@@ -33569,34 +36858,34 @@
             value: model,
             onChange: (e) => setModel(e.target.value),
             children: [
-              /* @__PURE__ */ (0, import_jsx_runtime45.jsx)("option", { value: "", children: "Default" }),
-              models.map((m) => /* @__PURE__ */ (0, import_jsx_runtime45.jsx)("option", { value: m, children: m }, m))
+              /* @__PURE__ */ (0, import_jsx_runtime47.jsx)("option", { value: "", children: "Default" }),
+              models.map((m) => /* @__PURE__ */ (0, import_jsx_runtime47.jsx)("option", { value: m, children: m }, m))
             ]
           }
         )
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime45.jsxs)("div", { className: "flex flex-col gap-1", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime45.jsx)("label", { className: "text-xs text-[#616161] dark:text-[#999]", children: "Workspace" }),
-        /* @__PURE__ */ (0, import_jsx_runtime45.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime47.jsxs)("div", { className: "flex flex-col gap-1", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime47.jsx)("label", { className: "text-xs text-[#616161] dark:text-[#999]", children: "Workspace" }),
+        /* @__PURE__ */ (0, import_jsx_runtime47.jsx)(
           "select",
           {
             className: "w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]",
             value: selectedWsId,
             onChange: (e) => setSelectedWsId(e.target.value),
-            children: state.workspaces.map((ws) => /* @__PURE__ */ (0, import_jsx_runtime45.jsx)("option", { value: ws.id, children: ws.name || ws.rootPath || ws.id }, ws.id))
+            children: state.workspaces.map((ws) => /* @__PURE__ */ (0, import_jsx_runtime47.jsx)("option", { value: ws.id, children: ws.name || ws.rootPath || ws.id }, ws.id))
           }
         )
       ] }),
-      loading ? /* @__PURE__ */ (0, import_jsx_runtime45.jsxs)("div", { className: "flex items-center gap-2 py-4 text-xs text-[#848484]", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime45.jsx)(Spinner, { size: "sm" }),
+      loading ? /* @__PURE__ */ (0, import_jsx_runtime47.jsxs)("div", { className: "flex items-center gap-2 py-4 text-xs text-[#848484]", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime47.jsx)(Spinner, { size: "sm" }),
         " Loading prompts and skills\u2026"
-      ] }) : prompts.length === 0 && skills.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime45.jsxs)("div", { className: "text-xs text-[#848484] py-2", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime45.jsx)("p", { children: "No prompts or skills found in this workspace." }),
-        /* @__PURE__ */ (0, import_jsx_runtime45.jsx)("p", { className: "mt-1 text-[10px]", children: "Create .prompt.md files in .vscode/pipelines/ or skills in .github/skills/" })
-      ] }) : /* @__PURE__ */ (0, import_jsx_runtime45.jsxs)("div", { className: "flex flex-col gap-2 max-h-[300px] overflow-y-auto", children: [
-        prompts.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime45.jsxs)("div", { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime45.jsx)("div", { className: "text-[10px] uppercase tracking-wider text-[#848484] mb-1", children: "Prompts" }),
-          prompts.map((p) => /* @__PURE__ */ (0, import_jsx_runtime45.jsxs)(
+      ] }) : prompts.length === 0 && skills.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime47.jsxs)("div", { className: "text-xs text-[#848484] py-2", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime47.jsx)("p", { children: "No prompts or skills found in this workspace." }),
+        /* @__PURE__ */ (0, import_jsx_runtime47.jsx)("p", { className: "mt-1 text-[10px]", children: "Create .prompt.md files in .vscode/pipelines/ or skills in .github/skills/" })
+      ] }) : /* @__PURE__ */ (0, import_jsx_runtime47.jsxs)("div", { className: "flex flex-col gap-2 max-h-[300px] overflow-y-auto", children: [
+        prompts.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime47.jsxs)("div", { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime47.jsx)("div", { className: "text-[10px] uppercase tracking-wider text-[#848484] mb-1", children: "Prompts" }),
+          prompts.map((p) => /* @__PURE__ */ (0, import_jsx_runtime47.jsxs)(
             "button",
             {
               className: "fp-item w-full text-left flex items-center gap-2 px-2 py-1.5 text-sm rounded hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:opacity-50",
@@ -33604,16 +36893,16 @@
               disabled: submitting || taskFiles.length === 0,
               onClick: () => handleSubmit("prompt", p.name, p.relativePath),
               children: [
-                /* @__PURE__ */ (0, import_jsx_runtime45.jsx)("span", { children: "\u{1F4DD}" }),
-                /* @__PURE__ */ (0, import_jsx_runtime45.jsx)("span", { className: "truncate", children: p.name })
+                /* @__PURE__ */ (0, import_jsx_runtime47.jsx)("span", { children: "\u{1F4DD}" }),
+                /* @__PURE__ */ (0, import_jsx_runtime47.jsx)("span", { className: "truncate", children: p.name })
               ]
             },
             p.relativePath
           ))
         ] }),
-        skills.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime45.jsxs)("div", { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime45.jsx)("div", { className: "text-[10px] uppercase tracking-wider text-[#848484] mb-1", children: "Skills" }),
-          skills.map((s) => /* @__PURE__ */ (0, import_jsx_runtime45.jsxs)(
+        skills.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime47.jsxs)("div", { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime47.jsx)("div", { className: "text-[10px] uppercase tracking-wider text-[#848484] mb-1", children: "Skills" }),
+          skills.map((s) => /* @__PURE__ */ (0, import_jsx_runtime47.jsxs)(
             "button",
             {
               className: "fp-item w-full text-left flex items-center gap-2 px-2 py-1.5 text-sm rounded hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:opacity-50",
@@ -33621,9 +36910,9 @@
               disabled: submitting || taskFiles.length === 0,
               onClick: () => handleSubmit("skill", s.name),
               children: [
-                /* @__PURE__ */ (0, import_jsx_runtime45.jsx)("span", { children: "\u26A1" }),
-                /* @__PURE__ */ (0, import_jsx_runtime45.jsx)("span", { className: "flex-shrink-0 font-medium", children: s.name }),
-                s.description && /* @__PURE__ */ (0, import_jsx_runtime45.jsx)("span", { className: "text-xs text-[#848484] truncate", children: s.description })
+                /* @__PURE__ */ (0, import_jsx_runtime47.jsx)("span", { children: "\u26A1" }),
+                /* @__PURE__ */ (0, import_jsx_runtime47.jsx)("span", { className: "flex-shrink-0 font-medium", children: s.name }),
+                s.description && /* @__PURE__ */ (0, import_jsx_runtime47.jsx)("span", { className: "text-xs text-[#848484] truncate", children: s.description })
               ]
             },
             s.name
@@ -33634,35 +36923,35 @@
   }
 
   // src/server/spa/client/react/tasks/GenerateTaskDialog.tsx
-  var import_react47 = __toESM(require_react());
+  var import_react49 = __toESM(require_react());
 
   // src/server/spa/client/react/hooks/useTaskGeneration.ts
-  var import_react46 = __toESM(require_react());
+  var import_react48 = __toESM(require_react());
   function useTaskGeneration(wsId) {
-    const [status, setStatus] = (0, import_react46.useState)("idle");
-    const [progressMessage, setProgressMessage] = (0, import_react46.useState)(null);
-    const [chunks, setChunks] = (0, import_react46.useState)([]);
-    const [result, setResult] = (0, import_react46.useState)(null);
-    const [error, setError] = (0, import_react46.useState)(null);
-    const abortRef = (0, import_react46.useRef)(null);
-    const mountedRef = (0, import_react46.useRef)(true);
-    (0, import_react46.useEffect)(() => {
+    const [status, setStatus] = (0, import_react48.useState)("idle");
+    const [progressMessage, setProgressMessage] = (0, import_react48.useState)(null);
+    const [chunks, setChunks] = (0, import_react48.useState)([]);
+    const [result, setResult] = (0, import_react48.useState)(null);
+    const [error, setError] = (0, import_react48.useState)(null);
+    const abortRef = (0, import_react48.useRef)(null);
+    const mountedRef = (0, import_react48.useRef)(true);
+    (0, import_react48.useEffect)(() => {
       mountedRef.current = true;
       return () => {
         mountedRef.current = false;
       };
     }, []);
-    const reset = (0, import_react46.useCallback)(() => {
+    const reset = (0, import_react48.useCallback)(() => {
       setStatus("idle");
       setProgressMessage(null);
       setChunks([]);
       setResult(null);
       setError(null);
     }, []);
-    const cancel = (0, import_react46.useCallback)(() => {
+    const cancel = (0, import_react48.useCallback)(() => {
       abortRef.current?.abort();
     }, []);
-    const generate = (0, import_react46.useCallback)(async (params) => {
+    const generate = (0, import_react48.useCallback)(async (params) => {
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
@@ -33787,7 +37076,7 @@
   }
 
   // src/server/spa/client/react/tasks/GenerateTaskDialog.tsx
-  var import_jsx_runtime46 = __toESM(require_jsx_runtime());
+  var import_jsx_runtime48 = __toESM(require_jsx_runtime());
   function flattenFolders(folder, acc = []) {
     acc.push(folder.relativePath);
     for (const child of folder.children) flattenFolders(child, acc);
@@ -33800,17 +37089,17 @@
     onClose
   }) {
     const { model: savedModel, setModel: persistModel } = usePreferences();
-    const [prompt, setPrompt] = (0, import_react47.useState)("");
-    const [name, setName] = (0, import_react47.useState)("");
-    const [targetFolder, setTargetFolder] = (0, import_react47.useState)(initialFolder);
-    const [model, setModel] = (0, import_react47.useState)("");
-    (0, import_react47.useEffect)(() => {
+    const [prompt, setPrompt] = (0, import_react49.useState)("");
+    const [name, setName] = (0, import_react49.useState)("");
+    const [targetFolder, setTargetFolder] = (0, import_react49.useState)(initialFolder);
+    const [model, setModel] = (0, import_react49.useState)("");
+    (0, import_react49.useEffect)(() => {
       if (savedModel && !model) setModel(savedModel);
     }, [savedModel]);
-    const [models, setModels] = (0, import_react47.useState)([]);
-    const [folders, setFolders] = (0, import_react47.useState)([""]);
+    const [models, setModels] = (0, import_react49.useState)([]);
+    const [folders, setFolders] = (0, import_react49.useState)([""]);
     const { status, chunks, progressMessage, result, error, generate, cancel, reset } = useTaskGeneration(wsId);
-    (0, import_react47.useEffect)(() => {
+    (0, import_react49.useEffect)(() => {
       let cancelled = false;
       fetch(getApiBase() + "/queue/models").then((r) => r.ok ? r.json() : []).then((data) => {
         if (!cancelled) setModels(data?.models ?? (Array.isArray(data) ? data : []));
@@ -33820,7 +37109,7 @@
         cancelled = true;
       };
     }, []);
-    (0, import_react47.useEffect)(() => {
+    (0, import_react49.useEffect)(() => {
       let cancelled = false;
       fetch(getApiBase() + `/workspaces/${encodeURIComponent(wsId)}/tasks`).then((r) => r.ok ? r.json() : null).then((data) => {
         if (!cancelled && data) {
@@ -33833,16 +37122,16 @@
         cancelled = true;
       };
     }, [wsId]);
-    const outputRef = (0, import_react47.useRef)(null);
-    (0, import_react47.useEffect)(() => {
+    const outputRef = (0, import_react49.useRef)(null);
+    (0, import_react49.useEffect)(() => {
       if (outputRef.current) outputRef.current.scrollTop = outputRef.current.scrollHeight;
     }, [chunks]);
-    (0, import_react47.useEffect)(() => {
+    (0, import_react49.useEffect)(() => {
       if (status === "complete" && result?.filePath) {
         onSuccess(result.filePath);
       }
     }, [status, result, onSuccess]);
-    const handleGenerate = (0, import_react47.useCallback)(() => {
+    const handleGenerate = (0, import_react49.useCallback)(() => {
       generate({
         prompt: prompt.trim(),
         name: name.trim() || void 0,
@@ -33855,10 +37144,10 @@
     const isGenerating = status === "generating";
     const isComplete = status === "complete";
     const isError = status === "error";
-    const noop = (0, import_react47.useCallback)(() => {
+    const noop = (0, import_react49.useCallback)(() => {
     }, []);
-    const footer = /* @__PURE__ */ (0, import_jsx_runtime46.jsxs)(import_jsx_runtime46.Fragment, { children: [
-      /* @__PURE__ */ (0, import_jsx_runtime46.jsx)(
+    const footer = /* @__PURE__ */ (0, import_jsx_runtime48.jsxs)(import_jsx_runtime48.Fragment, { children: [
+      /* @__PURE__ */ (0, import_jsx_runtime48.jsx)(
         Button,
         {
           id: "gen-task-cancel",
@@ -33870,7 +37159,7 @@
           children: isGenerating ? "Cancel" : "Close"
         }
       ),
-      /* @__PURE__ */ (0, import_jsx_runtime46.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime48.jsx)(
         Button,
         {
           id: "gen-task-generate",
@@ -33881,7 +37170,7 @@
         }
       )
     ] });
-    return /* @__PURE__ */ (0, import_jsx_runtime46.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime48.jsx)(
       Dialog,
       {
         open: true,
@@ -33890,8 +37179,8 @@
         title: "Generate Task",
         className: "max-w-[600px]",
         footer,
-        children: /* @__PURE__ */ (0, import_jsx_runtime46.jsxs)("div", { className: "flex flex-col gap-4", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime46.jsx)(
+        children: /* @__PURE__ */ (0, import_jsx_runtime48.jsxs)("div", { className: "flex flex-col gap-4", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime48.jsx)(
             "button",
             {
               id: "gen-task-close",
@@ -33901,9 +37190,9 @@
               children: "\xD7"
             }
           ),
-          /* @__PURE__ */ (0, import_jsx_runtime46.jsxs)("div", { className: "flex flex-col gap-1", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime46.jsx)("label", { className: "text-xs text-[#616161] dark:text-[#999]", children: "Prompt" }),
-            /* @__PURE__ */ (0, import_jsx_runtime46.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime48.jsxs)("div", { className: "flex flex-col gap-1", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime48.jsx)("label", { className: "text-xs text-[#616161] dark:text-[#999]", children: "Prompt" }),
+            /* @__PURE__ */ (0, import_jsx_runtime48.jsx)(
               "textarea",
               {
                 id: "gen-task-prompt",
@@ -33916,12 +37205,12 @@
               }
             )
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime46.jsxs)("div", { className: "flex flex-col gap-1", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime46.jsxs)("label", { className: "text-xs text-[#616161] dark:text-[#999]", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime48.jsxs)("div", { className: "flex flex-col gap-1", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime48.jsxs)("label", { className: "text-xs text-[#616161] dark:text-[#999]", children: [
               "Task name ",
-              /* @__PURE__ */ (0, import_jsx_runtime46.jsx)("span", { className: "text-[#848484]", children: "(optional)" })
+              /* @__PURE__ */ (0, import_jsx_runtime48.jsx)("span", { className: "text-[#848484]", children: "(optional)" })
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime46.jsx)(
+            /* @__PURE__ */ (0, import_jsx_runtime48.jsx)(
               "input",
               {
                 id: "gen-task-name",
@@ -33934,12 +37223,12 @@
               }
             )
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime46.jsxs)("div", { className: "flex flex-col gap-1", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime46.jsxs)("label", { className: "text-xs text-[#616161] dark:text-[#999]", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime48.jsxs)("div", { className: "flex flex-col gap-1", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime48.jsxs)("label", { className: "text-xs text-[#616161] dark:text-[#999]", children: [
               "Target folder ",
-              /* @__PURE__ */ (0, import_jsx_runtime46.jsx)("span", { className: "text-[#848484]", children: "(optional)" })
+              /* @__PURE__ */ (0, import_jsx_runtime48.jsx)("span", { className: "text-[#848484]", children: "(optional)" })
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime46.jsxs)(
+            /* @__PURE__ */ (0, import_jsx_runtime48.jsxs)(
               "select",
               {
                 id: "gen-task-folder",
@@ -33948,18 +37237,18 @@
                 onChange: (e) => setTargetFolder(e.target.value),
                 disabled: isGenerating || isComplete,
                 children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime46.jsx)("option", { value: "", children: "Root" }),
-                  folders.filter((f) => f !== "").map((f) => /* @__PURE__ */ (0, import_jsx_runtime46.jsx)("option", { value: f, children: f }, f))
+                  /* @__PURE__ */ (0, import_jsx_runtime48.jsx)("option", { value: "", children: "Root" }),
+                  folders.filter((f) => f !== "").map((f) => /* @__PURE__ */ (0, import_jsx_runtime48.jsx)("option", { value: f, children: f }, f))
                 ]
               }
             )
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime46.jsxs)("div", { className: "flex flex-col gap-1", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime46.jsxs)("label", { className: "text-xs text-[#616161] dark:text-[#999]", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime48.jsxs)("div", { className: "flex flex-col gap-1", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime48.jsxs)("label", { className: "text-xs text-[#616161] dark:text-[#999]", children: [
               "Model ",
-              /* @__PURE__ */ (0, import_jsx_runtime46.jsx)("span", { className: "text-[#848484]", children: "(optional)" })
+              /* @__PURE__ */ (0, import_jsx_runtime48.jsx)("span", { className: "text-[#848484]", children: "(optional)" })
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime46.jsxs)(
+            /* @__PURE__ */ (0, import_jsx_runtime48.jsxs)(
               "select",
               {
                 id: "gen-task-model",
@@ -33971,23 +37260,23 @@
                 },
                 disabled: isGenerating || isComplete,
                 children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime46.jsx)("option", { value: "", children: "Default" }),
-                  models.map((m) => /* @__PURE__ */ (0, import_jsx_runtime46.jsx)("option", { value: m, children: m }, m))
+                  /* @__PURE__ */ (0, import_jsx_runtime48.jsx)("option", { value: "", children: "Default" }),
+                  models.map((m) => /* @__PURE__ */ (0, import_jsx_runtime48.jsx)("option", { value: m, children: m }, m))
                 ]
               }
             )
           ] }),
-          status !== "idle" && /* @__PURE__ */ (0, import_jsx_runtime46.jsxs)("div", { className: "flex flex-col gap-1", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime46.jsxs)("div", { className: "text-xs text-[#616161] dark:text-[#999]", children: [
-              isGenerating && /* @__PURE__ */ (0, import_jsx_runtime46.jsxs)(import_jsx_runtime46.Fragment, { children: [
-                /* @__PURE__ */ (0, import_jsx_runtime46.jsx)(Spinner, { size: "sm" }),
+          status !== "idle" && /* @__PURE__ */ (0, import_jsx_runtime48.jsxs)("div", { className: "flex flex-col gap-1", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime48.jsxs)("div", { className: "text-xs text-[#616161] dark:text-[#999]", children: [
+              isGenerating && /* @__PURE__ */ (0, import_jsx_runtime48.jsxs)(import_jsx_runtime48.Fragment, { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime48.jsx)(Spinner, { size: "sm" }),
                 " ",
                 progressMessage || "Generating\u2026"
               ] }),
-              isComplete && /* @__PURE__ */ (0, import_jsx_runtime46.jsx)("span", { className: "text-green-600 dark:text-green-400", children: "\u2713 Done" }),
-              isError && /* @__PURE__ */ (0, import_jsx_runtime46.jsx)("span", { className: "text-red-500", children: "\u2717 Error" })
+              isComplete && /* @__PURE__ */ (0, import_jsx_runtime48.jsx)("span", { className: "text-green-600 dark:text-green-400", children: "\u2713 Done" }),
+              isError && /* @__PURE__ */ (0, import_jsx_runtime48.jsx)("span", { className: "text-red-500", children: "\u2717 Error" })
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime46.jsx)(
+            /* @__PURE__ */ (0, import_jsx_runtime48.jsx)(
               "pre",
               {
                 ref: outputRef,
@@ -33997,7 +37286,7 @@
               }
             )
           ] }),
-          isComplete && result?.filePath && /* @__PURE__ */ (0, import_jsx_runtime46.jsxs)(
+          isComplete && result?.filePath && /* @__PURE__ */ (0, import_jsx_runtime48.jsxs)(
             "div",
             {
               id: "gen-task-success",
@@ -34008,14 +37297,14 @@
               ]
             }
           ),
-          isError && /* @__PURE__ */ (0, import_jsx_runtime46.jsxs)(
+          isError && /* @__PURE__ */ (0, import_jsx_runtime48.jsxs)(
             "div",
             {
               id: "gen-task-error",
               className: "flex items-center gap-2 text-xs text-red-500",
               children: [
-                /* @__PURE__ */ (0, import_jsx_runtime46.jsx)("span", { children: error }),
-                /* @__PURE__ */ (0, import_jsx_runtime46.jsx)("button", { className: "underline", onClick: reset, children: "Retry" })
+                /* @__PURE__ */ (0, import_jsx_runtime48.jsx)("span", { children: error }),
+                /* @__PURE__ */ (0, import_jsx_runtime48.jsx)("button", { className: "underline", onClick: reset, children: "Retry" })
               ]
             }
           )
@@ -34025,7 +37314,7 @@
   }
 
   // src/server/spa/client/react/tasks/TasksPanel.tsx
-  var import_jsx_runtime47 = __toESM(require_jsx_runtime());
+  var import_jsx_runtime49 = __toESM(require_jsx_runtime());
   function parseTaskHashParams(hash, wsId) {
     const parts = hash.replace(/^#/, "").split("/");
     if (parts[0] !== "repos" || decodeURIComponent(parts[1] || "") !== wsId || parts[2] !== "tasks")
@@ -34055,26 +37344,95 @@
   function TasksPanelInner({ wsId }) {
     const { tree, commentCounts, loading, error, refresh } = useTaskTree(wsId);
     const { openFilePath, selectedFilePaths, clearSelection, selectedFolderPath } = useTaskPanel();
-    const [initialParams] = (0, import_react48.useState)(() => parseTaskHashParams(location.hash, wsId));
-    const scrollRef = (0, import_react48.useRef)(null);
-    const [generateDialog, setGenerateDialog] = (0, import_react48.useState)({ open: false, targetFolder: void 0 });
+    const [initialParams] = (0, import_react50.useState)(() => parseTaskHashParams(location.hash, wsId));
+    const scrollRef = (0, import_react50.useRef)(null);
+    const [generateDialog, setGenerateDialog] = (0, import_react50.useState)({ open: false, targetFolder: void 0 });
     const { state: appState } = useApp();
     const { dispatch: queueDispatch } = useQueue();
     const { addToast } = useGlobalToast();
     const folderActions = useFolderActions(wsId);
-    const [folderCtxMenu, setFolderCtxMenu] = (0, import_react48.useState)(null);
-    const handleFolderContextMenu = (0, import_react48.useCallback)(
+    const fileActions = useFileActions(wsId);
+    const [fileCtxMenu, setFileCtxMenu] = (0, import_react50.useState)(null);
+    const [fileDialog, setFileDialog] = (0, import_react50.useState)({ action: null, ctxItem: null, submitting: false });
+    const [fileMoveDialogOpen, setFileMoveDialogOpen] = (0, import_react50.useState)(false);
+    const [fileMoveCtxItem, setFileMoveCtxItem] = (0, import_react50.useState)(null);
+    const closeFileDialog = (0, import_react50.useCallback)(
+      () => setFileDialog({ action: null, ctxItem: null, submitting: false }),
+      []
+    );
+    function buildFileCtxInfo(item) {
+      if (isTaskDocument(item)) {
+        const rel = item.relativePath || "";
+        const p = rel ? `${rel}/${item.fileName}` : item.fileName;
+        return { item, paths: [p], renamePath: p, displayName: item.baseName, isArchived: item.isArchived };
+      }
+      const paths = item.documents.map((doc) => {
+        const rel = doc.relativePath || "";
+        return rel ? `${rel}/${doc.fileName}` : doc.fileName;
+      });
+      return {
+        item,
+        paths,
+        renamePath: paths[0] ?? "",
+        displayName: item.baseName,
+        isArchived: item.isArchived
+      };
+    }
+    const handleFileContextMenu = (0, import_react50.useCallback)(
+      (item, x, y) => {
+        setFileCtxMenu({ ctxItem: buildFileCtxInfo(item), x, y });
+      },
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      []
+    );
+    const handleFileRename = (0, import_react50.useCallback)(async (newName) => {
+      if (!fileDialog.ctxItem) return;
+      setFileDialog((s) => ({ ...s, submitting: true }));
+      try {
+        await fileActions.renameFile(fileDialog.ctxItem.renamePath, newName);
+        refresh();
+        closeFileDialog();
+      } catch (err) {
+        addToast(err.message || "Rename failed", "error");
+        setFileDialog((s) => ({ ...s, submitting: false }));
+      }
+    }, [fileDialog.ctxItem, fileActions, refresh, closeFileDialog, addToast]);
+    const handleFileDelete = (0, import_react50.useCallback)(async () => {
+      if (!fileDialog.ctxItem) return;
+      setFileDialog((s) => ({ ...s, submitting: true }));
+      try {
+        for (const p of fileDialog.ctxItem.paths) {
+          await fileActions.deleteFile(p);
+        }
+        refresh();
+        closeFileDialog();
+      } catch (err) {
+        addToast(err.message || "Delete failed", "error");
+        setFileDialog((s) => ({ ...s, submitting: false }));
+      }
+    }, [fileDialog.ctxItem, fileActions, refresh, closeFileDialog, addToast]);
+    const handleFileMoveConfirm = (0, import_react50.useCallback)(async (destinationRelativePath) => {
+      if (!fileMoveCtxItem) return;
+      for (const p of fileMoveCtxItem.paths) {
+        await fileActions.moveFile(p, destinationRelativePath);
+      }
+      refresh();
+      setFileMoveDialogOpen(false);
+      setFileMoveCtxItem(null);
+    }, [fileMoveCtxItem, fileActions, refresh]);
+    const [folderCtxMenu, setFolderCtxMenu] = (0, import_react50.useState)(null);
+    const handleFolderContextMenu = (0, import_react50.useCallback)(
       (folder, x, y) => setFolderCtxMenu({ folder, x, y }),
       []
     );
-    const [folderDialog, setFolderDialog] = (0, import_react48.useState)({ action: null, folder: null, submitting: false });
-    const [moveDialogOpen, setMoveDialogOpen] = (0, import_react48.useState)(false);
-    const [moveSourceFolder, setMoveSourceFolder] = (0, import_react48.useState)(null);
-    const closeFolderDialog = (0, import_react48.useCallback)(
+    const [folderDialog, setFolderDialog] = (0, import_react50.useState)({ action: null, folder: null, submitting: false });
+    const [moveDialogOpen, setMoveDialogOpen] = (0, import_react50.useState)(false);
+    const [moveSourceFolder, setMoveSourceFolder] = (0, import_react50.useState)(null);
+    const closeFolderDialog = (0, import_react50.useCallback)(
       () => setFolderDialog({ action: null, folder: null, submitting: false }),
       []
     );
-    const handleFolderContextMenuAction = (0, import_react48.useCallback)(
+    const handleFolderContextMenuAction = (0, import_react50.useCallback)(
       (actionKey, folder) => {
         setFolderCtxMenu(null);
         if (actionKey === "rename") setFolderDialog({ action: "rename", folder, submitting: false });
@@ -34095,7 +37453,7 @@
       },
       []
     );
-    const handleRename = (0, import_react48.useCallback)(async (newName) => {
+    const handleRename = (0, import_react50.useCallback)(async (newName) => {
       if (!folderDialog.folder) return;
       setFolderDialog((s) => ({ ...s, submitting: true }));
       try {
@@ -34107,7 +37465,7 @@
         setFolderDialog((s) => ({ ...s, submitting: false }));
       }
     }, [folderDialog.folder, folderActions, refresh, closeFolderDialog, addToast]);
-    const handleCreateSubfolder = (0, import_react48.useCallback)(async (name) => {
+    const handleCreateSubfolder = (0, import_react50.useCallback)(async (name) => {
       if (!folderDialog.folder) return;
       setFolderDialog((s) => ({ ...s, submitting: true }));
       try {
@@ -34119,7 +37477,7 @@
         setFolderDialog((s) => ({ ...s, submitting: false }));
       }
     }, [folderDialog.folder, folderActions, refresh, closeFolderDialog, addToast]);
-    const handleCreateTask = (0, import_react48.useCallback)(async (taskName) => {
+    const handleCreateTask = (0, import_react50.useCallback)(async (taskName) => {
       if (!folderDialog.folder) return;
       setFolderDialog((s) => ({ ...s, submitting: true }));
       try {
@@ -34131,7 +37489,7 @@
         setFolderDialog((s) => ({ ...s, submitting: false }));
       }
     }, [folderDialog.folder, folderActions, refresh, closeFolderDialog, addToast]);
-    const handleDelete = (0, import_react48.useCallback)(async () => {
+    const handleDelete = (0, import_react50.useCallback)(async () => {
       if (!folderDialog.folder) return;
       setFolderDialog((s) => ({ ...s, submitting: true }));
       try {
@@ -34143,38 +37501,111 @@
         setFolderDialog((s) => ({ ...s, submitting: false }));
       }
     }, [folderDialog.folder, folderActions, refresh, closeFolderDialog, addToast]);
-    const handleMoveConfirm = (0, import_react48.useCallback)(async (destinationRelativePath) => {
+    const handleMoveConfirm = (0, import_react50.useCallback)(async (destinationRelativePath) => {
       if (!moveSourceFolder) return;
       await folderActions.moveFolder(moveSourceFolder.relativePath, destinationRelativePath);
       refresh();
       setMoveDialogOpen(false);
       setMoveSourceFolder(null);
     }, [moveSourceFolder, folderActions, refresh]);
-    (0, import_react48.useEffect)(() => {
+    (0, import_react50.useEffect)(() => {
       scrollToEnd(scrollRef.current);
     }, [openFilePath]);
     const handleColumnsChange = () => {
       scrollToEnd(scrollRef.current);
     };
     if (loading) {
-      return /* @__PURE__ */ (0, import_jsx_runtime47.jsxs)("div", { className: "flex items-center justify-center h-full gap-2 text-sm text-[#848484]", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime47.jsx)(Spinner, {}),
+      return /* @__PURE__ */ (0, import_jsx_runtime49.jsxs)("div", { className: "flex items-center justify-center h-full gap-2 text-sm text-[#848484]", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(Spinner, {}),
         " Loading tasks\u2026"
       ] });
     }
     if (error) {
-      return /* @__PURE__ */ (0, import_jsx_runtime47.jsx)("div", { className: "p-4 text-sm text-[#f14c4c]", "data-testid": "tasks-error", children: error });
+      return /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("div", { className: "p-4 text-sm text-[#f14c4c]", "data-testid": "tasks-error", children: error });
     }
     if (!tree) {
-      return /* @__PURE__ */ (0, import_jsx_runtime47.jsxs)("div", { className: "p-4 text-sm text-[#848484]", children: [
+      return /* @__PURE__ */ (0, import_jsx_runtime49.jsxs)("div", { className: "p-4 text-sm text-[#848484]", children: [
         "No tasks folder found. Create a ",
-        /* @__PURE__ */ (0, import_jsx_runtime47.jsx)("code", { children: ".vscode/tasks/" }),
+        /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("code", { children: ".vscode/tasks/" }),
         " directory to get started."
       ] });
     }
     const noop = () => {
     };
     const ws = appState.workspaces.find((w) => w.id === wsId);
+    const fileMenuItems = fileCtxMenu ? (() => {
+      const { ctxItem } = fileCtxMenu;
+      const tasksFolder = ".vscode/tasks";
+      return [
+        // ── Clipboard ──
+        {
+          label: "Copy Path",
+          icon: "\u{1F4CB}",
+          onClick: () => {
+            navigator.clipboard.writeText(ctxItem.renamePath);
+          }
+        },
+        {
+          label: "Copy Absolute Path",
+          icon: "\u{1F4C2}",
+          onClick: () => {
+            const rootPath = ws?.rootPath ?? "";
+            const abs = [rootPath, tasksFolder, ctxItem.renamePath].filter(Boolean).join("/");
+            navigator.clipboard.writeText(abs);
+          }
+        },
+        { separator: true, label: "", onClick: noop },
+        // ── Archive ──
+        {
+          label: ctxItem.isArchived ? "Unarchive" : "Archive",
+          icon: ctxItem.isArchived ? "\u{1F4E4}" : "\u{1F5C4}\uFE0F",
+          onClick: async () => {
+            setFileCtxMenu(null);
+            try {
+              for (const p of ctxItem.paths) {
+                if (ctxItem.isArchived) {
+                  await fileActions.unarchiveFile(p);
+                } else {
+                  await fileActions.archiveFile(p);
+                }
+              }
+              refresh();
+            } catch (err) {
+              addToast(err.message || "Archive failed", "error");
+            }
+          }
+        },
+        { separator: true, label: "", onClick: noop },
+        // ── Rename / Move ──
+        {
+          label: "Rename",
+          icon: "\u270F\uFE0F",
+          onClick: () => {
+            setFileCtxMenu(null);
+            setFileDialog({ action: "rename", ctxItem, submitting: false });
+          }
+        },
+        {
+          label: "Move File",
+          icon: "\u{1F4E6}",
+          onClick: () => {
+            setFileCtxMenu(null);
+            setFileMoveCtxItem(ctxItem);
+            setFileMoveDialogOpen(true);
+          }
+        },
+        { separator: true, label: "", onClick: noop },
+        // ── Danger ──
+        {
+          label: "Delete",
+          icon: "\u{1F5D1}\uFE0F",
+          onClick: () => {
+            setFileCtxMenu(null);
+            setFileDialog({ action: "delete", ctxItem, submitting: false });
+          }
+        }
+      ];
+    })() : [];
     const folderMenuItems = folderCtxMenu ? (() => {
       const folder = folderCtxMenu.folder;
       const folderPath = folder.relativePath || folder.name;
@@ -34278,8 +37709,8 @@
         }
       ];
     })() : [];
-    return /* @__PURE__ */ (0, import_jsx_runtime47.jsxs)("div", { className: "flex flex-col h-full", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime47.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime49.jsxs)("div", { className: "flex flex-col h-full", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(
         TaskActions,
         {
           wsId,
@@ -34291,14 +37722,14 @@
           onGenerateWithAI: () => setGenerateDialog({ open: true, targetFolder: void 0 })
         }
       ),
-      /* @__PURE__ */ (0, import_jsx_runtime47.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(
         "div",
         {
           ref: scrollRef,
           className: "flex-1 overflow-x-auto overflow-y-hidden min-h-0 min-w-0",
           "data-testid": "tasks-miller-scroll-container",
-          children: /* @__PURE__ */ (0, import_jsx_runtime47.jsxs)("div", { className: "flex h-full min-h-0 w-max min-w-full", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime47.jsx)("div", { className: "flex-shrink-0 h-full min-h-0", children: /* @__PURE__ */ (0, import_jsx_runtime47.jsx)(
+          children: /* @__PURE__ */ (0, import_jsx_runtime49.jsxs)("div", { className: "flex h-full min-h-0 w-max min-w-full", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("div", { className: "flex-shrink-0 h-full min-h-0", children: /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(
               TaskTree,
               {
                 tree,
@@ -34307,14 +37738,15 @@
                 initialFolderPath: initialParams.initialFolderPath,
                 initialFilePath: initialParams.initialFilePath,
                 onColumnsChange: handleColumnsChange,
-                onFolderContextMenu: handleFolderContextMenu
+                onFolderContextMenu: handleFolderContextMenu,
+                onFileContextMenu: handleFileContextMenu
               }
             ) }),
-            openFilePath && /* @__PURE__ */ (0, import_jsx_runtime47.jsx)("div", { className: "h-full min-h-0 min-w-[72rem] w-[72rem] max-w-[72rem] border-r border-[#e0e0e0] dark:border-[#3c3c3c]", children: /* @__PURE__ */ (0, import_jsx_runtime47.jsx)(TaskPreview, { wsId, filePath: openFilePath }) })
+            openFilePath && /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("div", { className: "h-full min-h-0 min-w-[72rem] w-[72rem] max-w-[72rem] border-r border-[#e0e0e0] dark:border-[#3c3c3c]", children: /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(TaskPreview, { wsId, filePath: openFilePath }) })
           ] })
         }
       ),
-      folderCtxMenu && /* @__PURE__ */ (0, import_jsx_runtime47.jsx)(
+      folderCtxMenu && /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(
         ContextMenu,
         {
           position: { x: folderCtxMenu.x, y: folderCtxMenu.y },
@@ -34322,7 +37754,68 @@
           onClose: () => setFolderCtxMenu(null)
         }
       ),
-      folderDialog.action === "rename" && folderDialog.folder && /* @__PURE__ */ (0, import_jsx_runtime47.jsx)(
+      fileCtxMenu && /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(
+        ContextMenu,
+        {
+          position: { x: fileCtxMenu.x, y: fileCtxMenu.y },
+          items: fileMenuItems,
+          onClose: () => setFileCtxMenu(null)
+        }
+      ),
+      fileDialog.action === "rename" && fileDialog.ctxItem && /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(
+        FolderActionDialog,
+        {
+          open: true,
+          title: "Rename File",
+          label: "New name",
+          initialValue: fileDialog.ctxItem.displayName,
+          placeholder: "Enter new file name",
+          confirmLabel: "Rename",
+          submitting: fileDialog.submitting,
+          onClose: closeFileDialog,
+          onConfirm: handleFileRename
+        }
+      ),
+      fileDialog.action === "delete" && fileDialog.ctxItem && /* @__PURE__ */ (0, import_jsx_runtime49.jsxs)(
+        Dialog,
+        {
+          open: true,
+          onClose: closeFileDialog,
+          title: "Delete File",
+          footer: /* @__PURE__ */ (0, import_jsx_runtime49.jsxs)(import_jsx_runtime49.Fragment, { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(Button, { variant: "secondary", onClick: closeFileDialog, children: "Cancel" }),
+            /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(
+              Button,
+              {
+                variant: "danger",
+                loading: fileDialog.submitting,
+                onClick: handleFileDelete,
+                children: "Delete"
+              }
+            )
+          ] }),
+          children: [
+            "Are you sure you want to delete",
+            " ",
+            /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("strong", { children: fileDialog.ctxItem.displayName }),
+            "? This cannot be undone."
+          ]
+        }
+      ),
+      tree && /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(
+        FileMoveDialog,
+        {
+          open: fileMoveDialogOpen,
+          onClose: () => {
+            setFileMoveDialogOpen(false);
+            setFileMoveCtxItem(null);
+          },
+          sourceName: fileMoveCtxItem?.displayName ?? null,
+          tree,
+          onConfirm: handleFileMoveConfirm
+        }
+      ),
+      folderDialog.action === "rename" && folderDialog.folder && /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(
         FolderActionDialog,
         {
           open: true,
@@ -34336,7 +37829,7 @@
           onConfirm: handleRename
         }
       ),
-      folderDialog.action === "create-subfolder" && folderDialog.folder && /* @__PURE__ */ (0, import_jsx_runtime47.jsx)(
+      folderDialog.action === "create-subfolder" && folderDialog.folder && /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(
         FolderActionDialog,
         {
           open: true,
@@ -34350,7 +37843,7 @@
           onConfirm: handleCreateSubfolder
         }
       ),
-      folderDialog.action === "create-task" && folderDialog.folder && /* @__PURE__ */ (0, import_jsx_runtime47.jsx)(
+      folderDialog.action === "create-task" && folderDialog.folder && /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(
         FolderActionDialog,
         {
           open: true,
@@ -34364,15 +37857,15 @@
           onConfirm: handleCreateTask
         }
       ),
-      folderDialog.action === "delete" && folderDialog.folder && /* @__PURE__ */ (0, import_jsx_runtime47.jsxs)(
+      folderDialog.action === "delete" && folderDialog.folder && /* @__PURE__ */ (0, import_jsx_runtime49.jsxs)(
         Dialog,
         {
           open: true,
           onClose: closeFolderDialog,
           title: "Delete Folder",
-          footer: /* @__PURE__ */ (0, import_jsx_runtime47.jsxs)(import_jsx_runtime47.Fragment, { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime47.jsx)(Button, { variant: "secondary", onClick: closeFolderDialog, children: "Cancel" }),
-            /* @__PURE__ */ (0, import_jsx_runtime47.jsx)(
+          footer: /* @__PURE__ */ (0, import_jsx_runtime49.jsxs)(import_jsx_runtime49.Fragment, { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(Button, { variant: "secondary", onClick: closeFolderDialog, children: "Cancel" }),
+            /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(
               Button,
               {
                 variant: "danger",
@@ -34385,12 +37878,12 @@
           children: [
             "Are you sure you want to delete",
             " ",
-            /* @__PURE__ */ (0, import_jsx_runtime47.jsx)("strong", { children: folderDialog.folder.name }),
+            /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("strong", { children: folderDialog.folder.name }),
             " and all its contents? This cannot be undone."
           ]
         }
       ),
-      folderDialog.action === "follow-prompt" && folderDialog.folder && /* @__PURE__ */ (0, import_jsx_runtime47.jsx)(
+      folderDialog.action === "follow-prompt" && folderDialog.folder && /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(
         BulkFollowPromptDialog,
         {
           wsId,
@@ -34398,7 +37891,7 @@
           onClose: closeFolderDialog
         }
       ),
-      tree && /* @__PURE__ */ (0, import_jsx_runtime47.jsx)(
+      tree && /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(
         FolderMoveDialog,
         {
           open: moveDialogOpen,
@@ -34411,7 +37904,7 @@
           onConfirm: handleMoveConfirm
         }
       ),
-      generateDialog.open && /* @__PURE__ */ (0, import_jsx_runtime47.jsx)(
+      generateDialog.open && /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(
         GenerateTaskDialog,
         {
           wsId,
@@ -34426,19 +37919,19 @@
     ] });
   }
   function TasksPanel({ wsId }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime47.jsx)(TaskProvider, { children: /* @__PURE__ */ (0, import_jsx_runtime47.jsx)(TasksPanelInner, { wsId }) });
+    return /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(TaskProvider, { children: /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(TasksPanelInner, { wsId }) });
   }
 
   // src/server/spa/client/react/repos/RepoQueueTab.tsx
-  var import_react49 = __toESM(require_react());
-  var import_jsx_runtime48 = __toESM(require_jsx_runtime());
+  var import_react51 = __toESM(require_react());
+  var import_jsx_runtime50 = __toESM(require_jsx_runtime());
   function RepoQueueTab({ workspaceId }) {
-    const [running, setRunning] = (0, import_react49.useState)([]);
-    const [queued, setQueued] = (0, import_react49.useState)([]);
-    const [history2, setHistory] = (0, import_react49.useState)([]);
-    const [showHistory, setShowHistory] = (0, import_react49.useState)(false);
-    const [loading, setLoading] = (0, import_react49.useState)(true);
-    const [now, setNow] = (0, import_react49.useState)(Date.now());
+    const [running, setRunning] = (0, import_react51.useState)([]);
+    const [queued, setQueued] = (0, import_react51.useState)([]);
+    const [history2, setHistory] = (0, import_react51.useState)([]);
+    const [showHistory, setShowHistory] = (0, import_react51.useState)(false);
+    const [loading, setLoading] = (0, import_react51.useState)(true);
+    const [now, setNow] = (0, import_react51.useState)(Date.now());
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const repoQueue = queueState.repoQueueMap[workspaceId];
     const fetchQueue = async () => {
@@ -34455,19 +37948,19 @@
       }
       setLoading(false);
     };
-    (0, import_react49.useEffect)(() => {
+    (0, import_react51.useEffect)(() => {
       setLoading(true);
       fetchQueue();
     }, [workspaceId]);
-    (0, import_react49.useEffect)(() => {
+    (0, import_react51.useEffect)(() => {
       if (!repoQueue) return;
       setRunning(repoQueue.running);
       setQueued(repoQueue.queued);
       setHistory(repoQueue.history);
       setLoading(false);
     }, [repoQueue]);
-    const hasActive = (0, import_react49.useMemo)(() => running.length > 0, [running]);
-    (0, import_react49.useEffect)(() => {
+    const hasActive = (0, import_react51.useMemo)(() => running.length > 0, [running]);
+    (0, import_react51.useEffect)(() => {
       if (!hasActive) return;
       const timer = setInterval(() => setNow(Date.now()), 1e3);
       return () => clearInterval(timer);
@@ -34485,22 +37978,22 @@
       fetchQueue();
     };
     if (loading) {
-      return /* @__PURE__ */ (0, import_jsx_runtime48.jsx)("div", { className: "p-4 text-sm text-[#848484]", children: "Loading queue..." });
+      return /* @__PURE__ */ (0, import_jsx_runtime50.jsx)("div", { className: "p-4 text-sm text-[#848484]", children: "Loading queue..." });
     }
     if (running.length === 0 && queued.length === 0 && history2.length === 0) {
-      return /* @__PURE__ */ (0, import_jsx_runtime48.jsx)("div", { className: "p-4 text-center text-sm text-[#848484]", children: "No tasks in queue for this repository" });
+      return /* @__PURE__ */ (0, import_jsx_runtime50.jsx)("div", { className: "p-4 text-center text-sm text-[#848484]", children: "No tasks in queue for this repository" });
     }
-    return /* @__PURE__ */ (0, import_jsx_runtime48.jsxs)("div", { className: "p-4 flex flex-col gap-3", children: [
-      running.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime48.jsxs)("div", { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime48.jsxs)("div", { className: "text-[11px] uppercase text-[#848484] mb-1 font-medium", children: [
+    return /* @__PURE__ */ (0, import_jsx_runtime50.jsxs)("div", { className: "p-4 flex flex-col gap-3", children: [
+      running.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime50.jsxs)("div", { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime50.jsxs)("div", { className: "text-[11px] uppercase text-[#848484] mb-1 font-medium", children: [
           "Running Tasks ",
-          /* @__PURE__ */ (0, import_jsx_runtime48.jsxs)("span", { className: "text-[10px]", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime50.jsxs)("span", { className: "text-[10px]", children: [
             "(",
             running.length,
             ")"
           ] })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime48.jsx)("div", { className: "flex flex-col gap-1", children: running.map((task) => /* @__PURE__ */ (0, import_jsx_runtime48.jsx)(
+        /* @__PURE__ */ (0, import_jsx_runtime50.jsx)("div", { className: "flex flex-col gap-1", children: running.map((task) => /* @__PURE__ */ (0, import_jsx_runtime50.jsx)(
           QueueTaskItem,
           {
             task,
@@ -34512,16 +38005,16 @@
           task.id
         )) })
       ] }),
-      queued.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime48.jsxs)("div", { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime48.jsxs)("div", { className: "text-[11px] uppercase text-[#848484] mb-1 font-medium", children: [
+      queued.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime50.jsxs)("div", { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime50.jsxs)("div", { className: "text-[11px] uppercase text-[#848484] mb-1 font-medium", children: [
           "Queued Tasks ",
-          /* @__PURE__ */ (0, import_jsx_runtime48.jsxs)("span", { className: "text-[10px]", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime50.jsxs)("span", { className: "text-[10px]", children: [
             "(",
             queued.length,
             ")"
           ] })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime48.jsx)("div", { className: "flex flex-col gap-1", children: queued.map((task, index) => /* @__PURE__ */ (0, import_jsx_runtime48.jsx)(
+        /* @__PURE__ */ (0, import_jsx_runtime50.jsx)("div", { className: "flex flex-col gap-1", children: queued.map((task, index) => /* @__PURE__ */ (0, import_jsx_runtime50.jsx)(
           QueueTaskItem,
           {
             task,
@@ -34535,8 +38028,8 @@
           task.id
         )) })
       ] }),
-      history2.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime48.jsxs)("div", { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime48.jsxs)(
+      history2.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime50.jsxs)("div", { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime50.jsxs)(
           "button",
           {
             className: "flex items-center gap-1 text-[11px] uppercase text-[#848484] font-medium hover:text-[#0078d4] dark:hover:text-[#3794ff] transition-colors",
@@ -34549,16 +38042,16 @@
             ]
           }
         ),
-        showHistory && /* @__PURE__ */ (0, import_jsx_runtime48.jsx)("div", { className: "flex flex-col gap-1 mt-1", children: history2.map((task) => /* @__PURE__ */ (0, import_jsx_runtime48.jsxs)(Card, { className: "p-2", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime48.jsxs)("div", { className: "flex items-center justify-between text-xs", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime48.jsxs)("span", { children: [
+        showHistory && /* @__PURE__ */ (0, import_jsx_runtime50.jsx)("div", { className: "flex flex-col gap-1 mt-1", children: history2.map((task) => /* @__PURE__ */ (0, import_jsx_runtime50.jsxs)(Card, { className: "p-2", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime50.jsxs)("div", { className: "flex items-center justify-between text-xs", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime50.jsxs)("span", { children: [
               task.status === "completed" ? "\u2705" : task.status === "failed" ? "\u274C" : "\u{1F6AB}",
               " ",
               (task.displayName || task.type || "Task").substring(0, 35)
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime48.jsx)("span", { className: "text-[10px] text-[#848484]", children: task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : "" })
+            /* @__PURE__ */ (0, import_jsx_runtime50.jsx)("span", { className: "text-[10px] text-[#848484]", children: task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : "" })
           ] }),
-          task.error && /* @__PURE__ */ (0, import_jsx_runtime48.jsx)("div", { className: "text-[10px] text-red-500 mt-0.5 truncate", children: task.error.length > 80 ? task.error.substring(0, 77) + "..." : task.error })
+          task.error && /* @__PURE__ */ (0, import_jsx_runtime50.jsx)("div", { className: "text-[10px] text-red-500 mt-0.5 truncate", children: task.error.length > 80 ? task.error.substring(0, 77) + "..." : task.error })
         ] }, task.id)) })
       ] })
     ] });
@@ -34572,22 +38065,22 @@
     } else if (task.createdAt) {
       elapsed = formatRelativeTime(new Date(task.createdAt).toISOString());
     }
-    return /* @__PURE__ */ (0, import_jsx_runtime48.jsx)(Card, { className: "p-2", onClick, children: /* @__PURE__ */ (0, import_jsx_runtime48.jsxs)("div", { className: "flex items-center justify-between", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime48.jsxs)("div", { className: "flex items-center gap-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc]", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime48.jsx)("span", { children: icon }),
-        /* @__PURE__ */ (0, import_jsx_runtime48.jsx)("span", { children: name }),
-        elapsed && /* @__PURE__ */ (0, import_jsx_runtime48.jsx)("span", { className: "text-[10px] text-[#848484]", children: elapsed })
+    return /* @__PURE__ */ (0, import_jsx_runtime50.jsx)(Card, { className: "p-2", onClick, children: /* @__PURE__ */ (0, import_jsx_runtime50.jsxs)("div", { className: "flex items-center justify-between", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime50.jsxs)("div", { className: "flex items-center gap-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc]", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime50.jsx)("span", { children: icon }),
+        /* @__PURE__ */ (0, import_jsx_runtime50.jsx)("span", { children: name }),
+        elapsed && /* @__PURE__ */ (0, import_jsx_runtime50.jsx)("span", { className: "text-[10px] text-[#848484]", children: elapsed })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime48.jsxs)("div", { className: "flex items-center gap-1", children: [
-        status === "queued" && onMoveUp && /* @__PURE__ */ (0, import_jsx_runtime48.jsx)("button", { className: "text-[10px] px-1 hover:text-[#0078d4]", onClick: (e) => {
+      /* @__PURE__ */ (0, import_jsx_runtime50.jsxs)("div", { className: "flex items-center gap-1", children: [
+        status === "queued" && onMoveUp && /* @__PURE__ */ (0, import_jsx_runtime50.jsx)("button", { className: "text-[10px] px-1 hover:text-[#0078d4]", onClick: (e) => {
           e.stopPropagation();
           onMoveUp();
         }, title: "Move up", children: "\u25B2" }),
-        status === "queued" && onMoveToTop && /* @__PURE__ */ (0, import_jsx_runtime48.jsx)("button", { className: "text-[10px] px-1 hover:text-[#0078d4]", onClick: (e) => {
+        status === "queued" && onMoveToTop && /* @__PURE__ */ (0, import_jsx_runtime50.jsx)("button", { className: "text-[10px] px-1 hover:text-[#0078d4]", onClick: (e) => {
           e.stopPropagation();
           onMoveToTop();
         }, title: "Move to top", children: "\u23EC" }),
-        /* @__PURE__ */ (0, import_jsx_runtime48.jsx)("button", { className: "text-[10px] px-1 text-red-500 hover:text-red-700", onClick: (e) => {
+        /* @__PURE__ */ (0, import_jsx_runtime50.jsx)("button", { className: "text-[10px] px-1 text-red-500 hover:text-red-700", onClick: (e) => {
           e.stopPropagation();
           onCancel();
         }, title: "Cancel", children: "\u2715" })
@@ -34596,15 +38089,15 @@
   }
 
   // src/server/spa/client/react/repos/RepoSchedulesTab.tsx
-  var import_react50 = __toESM(require_react());
-  var import_jsx_runtime49 = __toESM(require_jsx_runtime());
+  var import_react52 = __toESM(require_react());
+  var import_jsx_runtime51 = __toESM(require_jsx_runtime());
   function RepoSchedulesTab({ workspaceId }) {
-    const [schedules, setSchedules] = (0, import_react50.useState)([]);
-    const [loading, setLoading] = (0, import_react50.useState)(true);
-    const [expandedId, setExpandedId] = (0, import_react50.useState)(null);
-    const [history2, setHistory] = (0, import_react50.useState)([]);
-    const [showCreate, setShowCreate] = (0, import_react50.useState)(false);
-    const fetchSchedules = (0, import_react50.useCallback)(async () => {
+    const [schedules, setSchedules] = (0, import_react52.useState)([]);
+    const [loading, setLoading] = (0, import_react52.useState)(true);
+    const [expandedId, setExpandedId] = (0, import_react52.useState)(null);
+    const [history2, setHistory] = (0, import_react52.useState)([]);
+    const [showCreate, setShowCreate] = (0, import_react52.useState)(false);
+    const fetchSchedules = (0, import_react52.useCallback)(async () => {
       try {
         const data = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/schedules`);
         setSchedules(data?.schedules || []);
@@ -34613,11 +38106,11 @@
       }
       setLoading(false);
     }, [workspaceId]);
-    (0, import_react50.useEffect)(() => {
+    (0, import_react52.useEffect)(() => {
       setLoading(true);
       fetchSchedules();
     }, [workspaceId, fetchSchedules]);
-    (0, import_react50.useEffect)(() => {
+    (0, import_react52.useEffect)(() => {
       const handler = (e) => {
         try {
           const msg = JSON.parse(e.data);
@@ -34672,22 +38165,22 @@
       fetchSchedules();
     };
     if (loading) {
-      return /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("div", { className: "p-4 text-sm text-[#848484]", children: "Loading schedules..." });
+      return /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("div", { className: "p-4 text-sm text-[#848484]", children: "Loading schedules..." });
     }
-    return /* @__PURE__ */ (0, import_jsx_runtime49.jsxs)("div", { className: "p-4 flex flex-col gap-3", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime49.jsxs)("div", { className: "flex items-center justify-between", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime49.jsxs)("span", { className: "text-[11px] uppercase text-[#848484] font-medium", children: [
+    return /* @__PURE__ */ (0, import_jsx_runtime51.jsxs)("div", { className: "p-4 flex flex-col gap-3", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime51.jsxs)("div", { className: "flex items-center justify-between", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime51.jsxs)("span", { className: "text-[11px] uppercase text-[#848484] font-medium", children: [
           "Schedules ",
           schedules.length > 0 && `(${schedules.length})`
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(Button, { variant: "primary", size: "sm", onClick: () => setShowCreate(true), children: "+ New" })
+        /* @__PURE__ */ (0, import_jsx_runtime51.jsx)(Button, { variant: "primary", size: "sm", onClick: () => setShowCreate(true), children: "+ New" })
       ] }),
-      schedules.length === 0 && !showCreate && /* @__PURE__ */ (0, import_jsx_runtime49.jsxs)("div", { className: "p-4 text-center text-sm text-[#848484]", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("div", { className: "text-2xl mb-2", children: "\u{1F550}" }),
-        /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("div", { children: "No schedules for this repo yet." }),
-        /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("div", { className: "text-xs mt-1", children: 'Click "+ New" to automate a pipeline or script.' })
+      schedules.length === 0 && !showCreate && /* @__PURE__ */ (0, import_jsx_runtime51.jsxs)("div", { className: "p-4 text-center text-sm text-[#848484]", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("div", { className: "text-2xl mb-2", children: "\u{1F550}" }),
+        /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("div", { children: "No schedules for this repo yet." }),
+        /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("div", { className: "text-xs mt-1", children: 'Click "+ New" to automate a pipeline or script.' })
       ] }),
-      showCreate && /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(
+      showCreate && /* @__PURE__ */ (0, import_jsx_runtime51.jsx)(
         CreateScheduleForm,
         {
           workspaceId,
@@ -34698,84 +38191,84 @@
           onCancel: () => setShowCreate(false)
         }
       ),
-      schedules.map((schedule) => /* @__PURE__ */ (0, import_jsx_runtime49.jsxs)(Card, { className: "p-0 overflow-hidden", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime49.jsxs)(
+      schedules.map((schedule) => /* @__PURE__ */ (0, import_jsx_runtime51.jsxs)(Card, { className: "p-0 overflow-hidden", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime51.jsxs)(
           "button",
           {
             className: "w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-[#f3f3f3] dark:hover:bg-[#2a2a2a] transition-colors",
             onClick: () => handleToggleExpand(schedule.id),
             children: [
-              /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("span", { className: "flex-shrink-0", children: /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(StatusDot, { status: schedule.status, isRunning: schedule.isRunning }) }),
-              /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("span", { className: "flex-1 text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc] truncate", children: schedule.name }),
-              /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("span", { className: "text-[10px] text-[#848484] font-mono flex-shrink-0", children: schedule.cronDescription }),
-              schedule.nextRun && schedule.status === "active" && /* @__PURE__ */ (0, import_jsx_runtime49.jsxs)("span", { className: "text-[10px] text-[#848484] flex-shrink-0", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("span", { className: "flex-shrink-0", children: /* @__PURE__ */ (0, import_jsx_runtime51.jsx)(StatusDot, { status: schedule.status, isRunning: schedule.isRunning }) }),
+              /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("span", { className: "flex-1 text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc] truncate", children: schedule.name }),
+              /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("span", { className: "text-[10px] text-[#848484] font-mono flex-shrink-0", children: schedule.cronDescription }),
+              schedule.nextRun && schedule.status === "active" && /* @__PURE__ */ (0, import_jsx_runtime51.jsxs)("span", { className: "text-[10px] text-[#848484] flex-shrink-0", children: [
                 "next: ",
                 formatRelativeTime(schedule.nextRun).replace(" ago", "") || new Date(schedule.nextRun).toLocaleString()
               ] }),
-              /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("span", { className: "text-[10px] text-[#848484]", children: expandedId === schedule.id ? "\u25BC" : "\u25B6" })
+              /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("span", { className: "text-[10px] text-[#848484]", children: expandedId === schedule.id ? "\u25BC" : "\u25B6" })
             ]
           }
         ),
-        expandedId === schedule.id && /* @__PURE__ */ (0, import_jsx_runtime49.jsxs)("div", { className: "border-t border-[#e0e0e0] dark:border-[#3c3c3c] px-3 py-2.5", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime49.jsxs)("div", { className: "flex gap-1.5 mb-2.5", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(Button, { variant: "primary", size: "sm", onClick: () => handleRunNow(schedule.id), children: "Run Now" }),
-            /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(Button, { variant: "secondary", size: "sm", onClick: () => handlePauseResume(schedule), children: schedule.status === "active" ? "Pause" : "Resume" }),
-            /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(Button, { variant: "danger", size: "sm", onClick: () => handleDelete(schedule.id), children: "Delete" })
+        expandedId === schedule.id && /* @__PURE__ */ (0, import_jsx_runtime51.jsxs)("div", { className: "border-t border-[#e0e0e0] dark:border-[#3c3c3c] px-3 py-2.5", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime51.jsxs)("div", { className: "flex gap-1.5 mb-2.5", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime51.jsx)(Button, { variant: "primary", size: "sm", onClick: () => handleRunNow(schedule.id), children: "Run Now" }),
+            /* @__PURE__ */ (0, import_jsx_runtime51.jsx)(Button, { variant: "secondary", size: "sm", onClick: () => handlePauseResume(schedule), children: schedule.status === "active" ? "Pause" : "Resume" }),
+            /* @__PURE__ */ (0, import_jsx_runtime51.jsx)(Button, { variant: "danger", size: "sm", onClick: () => handleDelete(schedule.id), children: "Delete" })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime49.jsxs)("div", { className: "text-xs text-[#616161] dark:text-[#999] space-y-1 mb-2.5", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime49.jsxs)("div", { children: [
-              /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("span", { className: "font-medium", children: "Target:" }),
+          /* @__PURE__ */ (0, import_jsx_runtime51.jsxs)("div", { className: "text-xs text-[#616161] dark:text-[#999] space-y-1 mb-2.5", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime51.jsxs)("div", { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("span", { className: "font-medium", children: "Target:" }),
               " ",
               schedule.target
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime49.jsxs)("div", { children: [
-              /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("span", { className: "font-medium", children: "Schedule:" }),
+            /* @__PURE__ */ (0, import_jsx_runtime51.jsxs)("div", { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("span", { className: "font-medium", children: "Schedule:" }),
               " ",
               schedule.cron,
               " \xB7 ",
               schedule.cronDescription
             ] }),
-            Object.keys(schedule.params).length > 0 && /* @__PURE__ */ (0, import_jsx_runtime49.jsxs)("div", { children: [
-              /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("span", { className: "font-medium", children: "Params:" }),
+            Object.keys(schedule.params).length > 0 && /* @__PURE__ */ (0, import_jsx_runtime51.jsxs)("div", { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("span", { className: "font-medium", children: "Params:" }),
               " ",
               JSON.stringify(schedule.params)
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime49.jsxs)("div", { children: [
-              /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("span", { className: "font-medium", children: "On Failure:" }),
+            /* @__PURE__ */ (0, import_jsx_runtime51.jsxs)("div", { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("span", { className: "font-medium", children: "On Failure:" }),
               " ",
               schedule.onFailure
             ] })
           ] }),
-          history2.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime49.jsxs)("div", { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("div", { className: "text-[10px] uppercase text-[#848484] font-medium mb-1", children: "Run History" }),
-            /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("div", { className: "flex flex-col gap-0.5", children: history2.map((run) => /* @__PURE__ */ (0, import_jsx_runtime49.jsxs)("div", { className: "flex items-center gap-2 text-[10px] text-[#616161] dark:text-[#999] py-0.5", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("span", { children: run.status === "completed" ? "\u2714" : run.status === "failed" ? "\u2716" : run.status === "running" ? "\u{1F504}" : "\u26A0" }),
-              /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("span", { className: "flex-1", children: formatRelativeTime(run.startedAt) }),
-              run.durationMs != null && /* @__PURE__ */ (0, import_jsx_runtime49.jsxs)("span", { children: [
+          history2.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime51.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("div", { className: "text-[10px] uppercase text-[#848484] font-medium mb-1", children: "Run History" }),
+            /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("div", { className: "flex flex-col gap-0.5", children: history2.map((run) => /* @__PURE__ */ (0, import_jsx_runtime51.jsxs)("div", { className: "flex items-center gap-2 text-[10px] text-[#616161] dark:text-[#999] py-0.5", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("span", { children: run.status === "completed" ? "\u2714" : run.status === "failed" ? "\u2716" : run.status === "running" ? "\u{1F504}" : "\u26A0" }),
+              /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("span", { className: "flex-1", children: formatRelativeTime(run.startedAt) }),
+              run.durationMs != null && /* @__PURE__ */ (0, import_jsx_runtime51.jsxs)("span", { children: [
                 Math.round(run.durationMs / 1e3),
                 "s"
               ] }),
-              /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("span", { className: cn(
+              /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("span", { className: cn(
                 run.status === "completed" ? "text-green-600" : run.status === "failed" ? "text-red-500" : ""
               ), children: run.status })
             ] }, run.id)) })
           ] }),
-          history2.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("div", { className: "text-[10px] text-[#848484]", children: "No runs yet" })
+          history2.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("div", { className: "text-[10px] text-[#848484]", children: "No runs yet" })
         ] })
       ] }, schedule.id))
     ] });
   }
   function StatusDot({ status, isRunning }) {
-    if (isRunning) return /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("span", { title: "Running", children: "\u{1F535}" });
+    if (isRunning) return /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("span", { title: "Running", children: "\u{1F535}" });
     switch (status) {
       case "active":
-        return /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("span", { title: "Active", children: "\u{1F7E2}" });
+        return /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("span", { title: "Active", children: "\u{1F7E2}" });
       case "paused":
-        return /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("span", { title: "Paused", children: "\u23F8" });
+        return /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("span", { title: "Paused", children: "\u23F8" });
       case "stopped":
-        return /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("span", { title: "Stopped", children: "\u{1F534}" });
+        return /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("span", { title: "Stopped", children: "\u{1F534}" });
       default:
-        return /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("span", { children: "\u26AA" });
+        return /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("span", { children: "\u26AA" });
     }
   }
   var SCHEDULE_TEMPLATES = [
@@ -34843,17 +38336,17 @@
     }
   ];
   function CreateScheduleForm({ workspaceId, onCreated, onCancel }) {
-    const [name, setName] = (0, import_react50.useState)("");
-    const [target, setTarget] = (0, import_react50.useState)("");
-    const [mode, setMode] = (0, import_react50.useState)("interval");
-    const [cron, setCron] = (0, import_react50.useState)("0 9 * * *");
-    const [intervalValue, setIntervalValue] = (0, import_react50.useState)("1");
-    const [intervalUnit, setIntervalUnit] = (0, import_react50.useState)("hours");
-    const [onFailure, setOnFailure] = (0, import_react50.useState)("notify");
-    const [error, setError] = (0, import_react50.useState)("");
-    const [submitting, setSubmitting] = (0, import_react50.useState)(false);
-    const [selectedTemplate, setSelectedTemplate] = (0, import_react50.useState)(null);
-    const [params, setParams] = (0, import_react50.useState)({});
+    const [name, setName] = (0, import_react52.useState)("");
+    const [target, setTarget] = (0, import_react52.useState)("");
+    const [mode, setMode] = (0, import_react52.useState)("interval");
+    const [cron, setCron] = (0, import_react52.useState)("0 9 * * *");
+    const [intervalValue, setIntervalValue] = (0, import_react52.useState)("1");
+    const [intervalUnit, setIntervalUnit] = (0, import_react52.useState)("hours");
+    const [onFailure, setOnFailure] = (0, import_react52.useState)("notify");
+    const [error, setError] = (0, import_react52.useState)("");
+    const [submitting, setSubmitting] = (0, import_react52.useState)(false);
+    const [selectedTemplate, setSelectedTemplate] = (0, import_react52.useState)(null);
+    const [params, setParams] = (0, import_react52.useState)({});
     const applyTemplate = (templateId) => {
       if (selectedTemplate === templateId) {
         setSelectedTemplate(null);
@@ -34927,9 +38420,9 @@
         setSubmitting(false);
       }
     };
-    return /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(Card, { className: "p-3", children: /* @__PURE__ */ (0, import_jsx_runtime49.jsxs)("form", { onSubmit: handleSubmit, className: "flex flex-col gap-2", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("div", { className: "text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc]", children: "New Schedule" }),
-      /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("div", { className: "flex gap-1.5 overflow-x-auto pb-1", "data-testid": "template-picker", children: SCHEDULE_TEMPLATES.map((tpl) => /* @__PURE__ */ (0, import_jsx_runtime49.jsxs)(
+    return /* @__PURE__ */ (0, import_jsx_runtime51.jsx)(Card, { className: "p-3", children: /* @__PURE__ */ (0, import_jsx_runtime51.jsxs)("form", { onSubmit: handleSubmit, className: "flex flex-col gap-2", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("div", { className: "text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc]", children: "New Schedule" }),
+      /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("div", { className: "flex gap-1.5 overflow-x-auto pb-1", "data-testid": "template-picker", children: SCHEDULE_TEMPLATES.map((tpl) => /* @__PURE__ */ (0, import_jsx_runtime51.jsxs)(
         "button",
         {
           type: "button",
@@ -34947,7 +38440,7 @@
         },
         tpl.id
       )) }),
-      /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime51.jsx)(
         "input",
         {
           className: "text-xs px-2 py-1.5 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc]",
@@ -34956,7 +38449,7 @@
           onChange: (e) => setName(e.target.value)
         }
       ),
-      /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime51.jsx)(
         "input",
         {
           className: "text-xs px-2 py-1.5 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc]",
@@ -34965,8 +38458,8 @@
           onChange: (e) => setTarget(e.target.value)
         }
       ),
-      /* @__PURE__ */ (0, import_jsx_runtime49.jsxs)("div", { className: "flex items-center gap-2", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime51.jsxs)("div", { className: "flex items-center gap-2", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime51.jsx)(
           "button",
           {
             type: "button",
@@ -34975,7 +38468,7 @@
             children: "Interval"
           }
         ),
-        /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(
+        /* @__PURE__ */ (0, import_jsx_runtime51.jsx)(
           "button",
           {
             type: "button",
@@ -34985,9 +38478,9 @@
           }
         )
       ] }),
-      mode === "interval" ? /* @__PURE__ */ (0, import_jsx_runtime49.jsxs)("div", { className: "flex items-center gap-1.5 text-xs", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("span", { className: "text-[#616161] dark:text-[#999]", children: "Run every" }),
-        /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(
+      mode === "interval" ? /* @__PURE__ */ (0, import_jsx_runtime51.jsxs)("div", { className: "flex items-center gap-1.5 text-xs", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("span", { className: "text-[#616161] dark:text-[#999]", children: "Run every" }),
+        /* @__PURE__ */ (0, import_jsx_runtime51.jsx)(
           "input",
           {
             type: "number",
@@ -34997,20 +38490,20 @@
             onChange: (e) => setIntervalValue(e.target.value)
           }
         ),
-        /* @__PURE__ */ (0, import_jsx_runtime49.jsxs)(
+        /* @__PURE__ */ (0, import_jsx_runtime51.jsxs)(
           "select",
           {
             className: "px-2 py-1 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc]",
             value: intervalUnit,
             onChange: (e) => setIntervalUnit(e.target.value),
             children: [
-              /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("option", { value: "minutes", children: "minutes" }),
-              /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("option", { value: "hours", children: "hours" }),
-              /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("option", { value: "days", children: "days" })
+              /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("option", { value: "minutes", children: "minutes" }),
+              /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("option", { value: "hours", children: "hours" }),
+              /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("option", { value: "days", children: "days" })
             ]
           }
         )
-      ] }) : /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(
+      ] }) : /* @__PURE__ */ (0, import_jsx_runtime51.jsx)(
         "input",
         {
           className: "text-xs px-2 py-1.5 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc] font-mono",
@@ -35019,17 +38512,17 @@
           onChange: (e) => setCron(e.target.value)
         }
       ),
-      /* @__PURE__ */ (0, import_jsx_runtime49.jsxs)("div", { className: "flex items-center gap-2 text-xs", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("span", { className: "text-[#616161] dark:text-[#999]", children: "On failure:" }),
-        /* @__PURE__ */ (0, import_jsx_runtime49.jsxs)(
+      /* @__PURE__ */ (0, import_jsx_runtime51.jsxs)("div", { className: "flex items-center gap-2 text-xs", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("span", { className: "text-[#616161] dark:text-[#999]", children: "On failure:" }),
+        /* @__PURE__ */ (0, import_jsx_runtime51.jsxs)(
           "select",
           {
             className: "px-2 py-1 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc]",
             value: onFailure,
             onChange: (e) => setOnFailure(e.target.value),
             children: [
-              /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("option", { value: "notify", children: "Notify" }),
-              /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("option", { value: "stop", children: "Stop" })
+              /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("option", { value: "notify", children: "Notify" }),
+              /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("option", { value: "stop", children: "Stop" })
             ]
           }
         )
@@ -35037,14 +38530,14 @@
       selectedTemplate && (() => {
         const tpl = SCHEDULE_TEMPLATES.find((t) => t.id === selectedTemplate);
         if (!tpl || tpl.params.length === 0) return null;
-        return /* @__PURE__ */ (0, import_jsx_runtime49.jsxs)("div", { className: "flex flex-col gap-1.5", "data-testid": "template-params", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("div", { className: "text-[10px] uppercase text-[#848484] font-medium", children: "Parameters" }),
-          tpl.params.map((p) => /* @__PURE__ */ (0, import_jsx_runtime49.jsxs)("div", { className: "flex items-center gap-1.5 text-xs", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime49.jsxs)("span", { className: "text-[#616161] dark:text-[#999] w-20 text-right flex-shrink-0", children: [
+        return /* @__PURE__ */ (0, import_jsx_runtime51.jsxs)("div", { className: "flex flex-col gap-1.5", "data-testid": "template-params", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("div", { className: "text-[10px] uppercase text-[#848484] font-medium", children: "Parameters" }),
+          tpl.params.map((p) => /* @__PURE__ */ (0, import_jsx_runtime51.jsxs)("div", { className: "flex items-center gap-1.5 text-xs", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime51.jsxs)("span", { className: "text-[#616161] dark:text-[#999] w-20 text-right flex-shrink-0", children: [
               p.key,
               ":"
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(
+            /* @__PURE__ */ (0, import_jsx_runtime51.jsx)(
               "input",
               {
                 className: "flex-1 px-2 py-1 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc]",
@@ -35060,19 +38553,19 @@
       selectedTemplate && (() => {
         const tpl = SCHEDULE_TEMPLATES.find((t) => t.id === selectedTemplate);
         if (!tpl) return null;
-        return /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("div", { className: "text-[10px] italic text-[#848484]", "data-testid": "template-hint", children: tpl.hint });
+        return /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("div", { className: "text-[10px] italic text-[#848484]", "data-testid": "template-hint", children: tpl.hint });
       })(),
-      error && /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("div", { className: "text-[10px] text-red-500", children: error }),
-      /* @__PURE__ */ (0, import_jsx_runtime49.jsxs)("div", { className: "flex justify-end gap-1.5", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(Button, { variant: "secondary", size: "sm", onClick: onCancel, children: "Cancel" }),
-        /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(Button, { variant: "primary", size: "sm", disabled: submitting, children: submitting ? "Creating..." : "Create" })
+      error && /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("div", { className: "text-[10px] text-red-500", children: error }),
+      /* @__PURE__ */ (0, import_jsx_runtime51.jsxs)("div", { className: "flex justify-end gap-1.5", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime51.jsx)(Button, { variant: "secondary", size: "sm", onClick: onCancel, children: "Cancel" }),
+        /* @__PURE__ */ (0, import_jsx_runtime51.jsx)(Button, { variant: "primary", size: "sm", disabled: submitting, children: submitting ? "Creating..." : "Create" })
       ] })
     ] }) });
   }
 
   // src/server/spa/client/react/repos/RepoChatTab.tsx
-  var import_react51 = __toESM(require_react());
-  var import_jsx_runtime50 = __toESM(require_jsx_runtime());
+  var import_react53 = __toESM(require_react());
+  var import_jsx_runtime52 = __toESM(require_jsx_runtime());
   function getConversationTurns3(data) {
     const process2 = data?.process;
     if (process2?.conversationTurns && Array.isArray(process2.conversationTurns) && process2.conversationTurns.length > 0) {
@@ -35099,17 +38592,17 @@
   }
   function RepoChatTab({ workspaceId, workspacePath }) {
     const STORAGE_KEY = `coc-chat-task-${workspaceId}`;
-    const [chatTaskId, setChatTaskId] = (0, import_react51.useState)(null);
-    const [task, setTask] = (0, import_react51.useState)(null);
-    const [turns, setTurns] = (0, import_react51.useState)([]);
-    const [loading, setLoading] = (0, import_react51.useState)(false);
-    const [inputValue, setInputValue] = (0, import_react51.useState)("");
-    const [sending, setSending] = (0, import_react51.useState)(false);
-    const [error, setError] = (0, import_react51.useState)(null);
-    const [sessionExpired, setSessionExpired] = (0, import_react51.useState)(false);
-    const [isStreaming, setIsStreaming] = (0, import_react51.useState)(false);
-    const turnsRef = (0, import_react51.useRef)([]);
-    const eventSourceRef = (0, import_react51.useRef)(null);
+    const [chatTaskId, setChatTaskId] = (0, import_react53.useState)(null);
+    const [task, setTask] = (0, import_react53.useState)(null);
+    const [turns, setTurns] = (0, import_react53.useState)([]);
+    const [loading, setLoading] = (0, import_react53.useState)(false);
+    const [inputValue, setInputValue] = (0, import_react53.useState)("");
+    const [sending, setSending] = (0, import_react53.useState)(false);
+    const [error, setError] = (0, import_react53.useState)(null);
+    const [sessionExpired, setSessionExpired] = (0, import_react53.useState)(false);
+    const [isStreaming, setIsStreaming] = (0, import_react53.useState)(false);
+    const turnsRef = (0, import_react53.useRef)([]);
+    const eventSourceRef = (0, import_react53.useRef)(null);
     const processId = task?.processId ?? (chatTaskId ? `queue_${chatTaskId}` : null);
     const setTurnsAndCache = (next) => {
       const resolved = typeof next === "function" ? next(turnsRef.current) : next;
@@ -35161,7 +38654,7 @@
         finish();
       };
     });
-    (0, import_react51.useEffect)(() => {
+    (0, import_react53.useEffect)(() => {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (!stored) return;
       setChatTaskId(stored);
@@ -35177,7 +38670,7 @@
         }
       }).finally(() => setLoading(false));
     }, [workspaceId]);
-    (0, import_react51.useEffect)(() => {
+    (0, import_react53.useEffect)(() => {
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
         eventSourceRef.current = null;
@@ -35208,7 +38701,7 @@
         eventSourceRef.current = null;
       };
     }, [chatTaskId, task?.status]);
-    (0, import_react51.useEffect)(() => () => stopStreaming(), []);
+    (0, import_react53.useEffect)(() => () => stopStreaming(), []);
     const handleStartChat = async () => {
       const prompt = inputValue.trim();
       if (!prompt) return;
@@ -35305,9 +38798,9 @@
       setInputValue("");
     };
     if (!chatTaskId) {
-      return /* @__PURE__ */ (0, import_jsx_runtime50.jsxs)("div", { className: "flex flex-col items-center justify-center h-full p-8 gap-4", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime50.jsx)("div", { className: "text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]", children: "Chat with this repository" }),
-        /* @__PURE__ */ (0, import_jsx_runtime50.jsx)(
+      return /* @__PURE__ */ (0, import_jsx_runtime52.jsxs)("div", { className: "flex flex-col items-center justify-center h-full p-8 gap-4", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime52.jsx)("div", { className: "text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]", children: "Chat with this repository" }),
+        /* @__PURE__ */ (0, import_jsx_runtime52.jsx)(
           "textarea",
           {
             className: "w-full max-w-md border rounded p-2 text-sm resize-none bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] border-[#e0e0e0] dark:border-[#3c3c3c]",
@@ -35323,23 +38816,23 @@
             }
           }
         ),
-        error && /* @__PURE__ */ (0, import_jsx_runtime50.jsx)("div", { className: "text-xs text-red-500", children: error }),
-        /* @__PURE__ */ (0, import_jsx_runtime50.jsx)(Button, { disabled: !inputValue.trim() || sending, onClick: () => void handleStartChat(), children: sending ? "..." : "Start Chat" })
+        error && /* @__PURE__ */ (0, import_jsx_runtime52.jsx)("div", { className: "text-xs text-red-500", children: error }),
+        /* @__PURE__ */ (0, import_jsx_runtime52.jsx)(Button, { disabled: !inputValue.trim() || sending, onClick: () => void handleStartChat(), children: sending ? "..." : "Start Chat" })
       ] });
     }
-    return /* @__PURE__ */ (0, import_jsx_runtime50.jsxs)("div", { className: "flex flex-col min-h-0 flex-1", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime50.jsxs)("div", { className: "flex items-center justify-between px-4 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime50.jsx)("span", { className: "text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]", children: "Chat" }),
-        /* @__PURE__ */ (0, import_jsx_runtime50.jsxs)("div", { className: "flex gap-2", children: [
-          isStreaming && /* @__PURE__ */ (0, import_jsx_runtime50.jsx)(Button, { size: "sm", variant: "secondary", onClick: stopStreaming, children: "Stop" }),
-          /* @__PURE__ */ (0, import_jsx_runtime50.jsx)(Button, { size: "sm", variant: "ghost", onClick: handleNewChat, children: "New Chat" })
+    return /* @__PURE__ */ (0, import_jsx_runtime52.jsxs)("div", { className: "flex flex-col min-h-0 flex-1", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime52.jsxs)("div", { className: "flex items-center justify-between px-4 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime52.jsx)("span", { className: "text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]", children: "Chat" }),
+        /* @__PURE__ */ (0, import_jsx_runtime52.jsxs)("div", { className: "flex gap-2", children: [
+          isStreaming && /* @__PURE__ */ (0, import_jsx_runtime52.jsx)(Button, { size: "sm", variant: "secondary", onClick: stopStreaming, children: "Stop" }),
+          /* @__PURE__ */ (0, import_jsx_runtime52.jsx)(Button, { size: "sm", variant: "ghost", onClick: handleNewChat, children: "New Chat" })
         ] })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime50.jsx)("div", { className: "flex-1 min-h-0 overflow-y-auto p-4 space-y-3", children: loading ? /* @__PURE__ */ (0, import_jsx_runtime50.jsx)(Spinner, {}) : turns.map((turn, i) => /* @__PURE__ */ (0, import_jsx_runtime50.jsx)(ConversationTurnBubble, { turn }, i)) }),
-      /* @__PURE__ */ (0, import_jsx_runtime50.jsxs)("div", { className: "border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3 space-y-2", children: [
-        error && /* @__PURE__ */ (0, import_jsx_runtime50.jsx)("div", { className: "text-xs text-red-500", children: error }),
-        /* @__PURE__ */ (0, import_jsx_runtime50.jsxs)("div", { className: "flex items-end gap-2", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime50.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime52.jsx)("div", { className: "flex-1 min-h-0 overflow-y-auto p-4 space-y-3", children: loading ? /* @__PURE__ */ (0, import_jsx_runtime52.jsx)(Spinner, {}) : turns.map((turn, i) => /* @__PURE__ */ (0, import_jsx_runtime52.jsx)(ConversationTurnBubble, { turn }, i)) }),
+      /* @__PURE__ */ (0, import_jsx_runtime52.jsxs)("div", { className: "border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3 space-y-2", children: [
+        error && /* @__PURE__ */ (0, import_jsx_runtime52.jsx)("div", { className: "text-xs text-red-500", children: error }),
+        /* @__PURE__ */ (0, import_jsx_runtime52.jsxs)("div", { className: "flex items-end gap-2", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime52.jsx)(
             "textarea",
             {
               rows: 1,
@@ -35356,14 +38849,14 @@
               className: "flex-1 border rounded p-2 text-sm resize-none bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] border-[#e0e0e0] dark:border-[#3c3c3c]"
             }
           ),
-          /* @__PURE__ */ (0, import_jsx_runtime50.jsx)(Button, { disabled: sending || !inputValue.trim() || sessionExpired, onClick: () => void sendFollowUp(), children: sending ? "..." : "Send" })
+          /* @__PURE__ */ (0, import_jsx_runtime52.jsx)(Button, { disabled: sending || !inputValue.trim() || sessionExpired, onClick: () => void sendFollowUp(), children: sending ? "..." : "Send" })
         ] })
       ] })
     ] });
   }
 
   // src/server/spa/client/react/repos/RepoDetail.tsx
-  var import_jsx_runtime51 = __toESM(require_jsx_runtime());
+  var import_jsx_runtime53 = __toESM(require_jsx_runtime());
   var SUB_TABS = [
     { key: "info", label: "Info" },
     { key: "pipelines", label: "Pipelines" },
@@ -35374,11 +38867,21 @@
   ];
   function RepoDetail({ repo, repos, onRefresh }) {
     const { state, dispatch } = useApp();
-    const [editOpen, setEditOpen] = (0, import_react52.useState)(false);
+    const { state: queueState, dispatch: queueDispatch } = useQueue();
+    const [editOpen, setEditOpen] = (0, import_react54.useState)(false);
     const ws = repo.workspace;
     const color = ws.color || "#848484";
     const activeSubTab = state.activeRepoSubTab;
     const taskCount = repo.taskCount || 0;
+    const repoQueue = queueState.repoQueueMap[ws.id];
+    const queueCount = repoQueue ? repoQueue.running.length + repoQueue.queued.length : 0;
+    (0, import_react54.useEffect)(() => {
+      if (queueState.repoQueueMap[ws.id]) return;
+      fetchApi("/queue?repoId=" + encodeURIComponent(ws.id)).then((data) => {
+        if (data) queueDispatch({ type: "REPO_QUEUE_UPDATED", repoId: ws.id, queue: data });
+      }).catch(() => {
+      });
+    }, [ws.id]);
     const switchSubTab = (tab) => {
       dispatch({ type: "SET_REPO_SUB_TAB", tab });
       const suffix = tab !== "info" ? "/" + tab : "";
@@ -35391,20 +38894,20 @@
       location.hash = "#repos";
       onRefresh();
     };
-    return /* @__PURE__ */ (0, import_jsx_runtime51.jsxs)("div", { id: "repo-detail-content", className: "flex flex-col h-full min-h-0 min-w-0", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime51.jsxs)("div", { className: "flex items-center gap-3 px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c]", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime51.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime53.jsxs)("div", { id: "repo-detail-content", className: "flex flex-col h-full min-h-0 min-w-0", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime53.jsxs)("div", { className: "flex items-center gap-3 px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c]", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime53.jsx)(
           "span",
           {
             className: "inline-block w-3.5 h-3.5 rounded-full flex-shrink-0",
             style: { background: color }
           }
         ),
-        /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("h1", { className: "text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc] flex-1", children: ws.name }),
-        /* @__PURE__ */ (0, import_jsx_runtime51.jsx)(Button, { variant: "secondary", size: "sm", onClick: () => setEditOpen(true), children: "Edit" }),
-        /* @__PURE__ */ (0, import_jsx_runtime51.jsx)(Button, { variant: "danger", size: "sm", onClick: handleRemove, children: "Remove" })
+        /* @__PURE__ */ (0, import_jsx_runtime53.jsx)("h1", { className: "text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc] flex-1", children: ws.name }),
+        /* @__PURE__ */ (0, import_jsx_runtime53.jsx)(Button, { variant: "secondary", size: "sm", onClick: () => setEditOpen(true), children: "Edit" }),
+        /* @__PURE__ */ (0, import_jsx_runtime53.jsx)(Button, { variant: "danger", size: "sm", onClick: handleRemove, children: "Remove" })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("div", { className: "flex border-b border-[#e0e0e0] dark:border-[#3c3c3c] px-4", children: SUB_TABS.map((t) => /* @__PURE__ */ (0, import_jsx_runtime51.jsxs)(
+      /* @__PURE__ */ (0, import_jsx_runtime53.jsx)("div", { className: "flex border-b border-[#e0e0e0] dark:border-[#3c3c3c] px-4", children: SUB_TABS.map((t) => /* @__PURE__ */ (0, import_jsx_runtime53.jsxs)(
         "button",
         {
           "data-subtab": t.key,
@@ -35415,20 +38918,21 @@
           onClick: () => switchSubTab(t.key),
           children: [
             t.label,
-            t.key === "tasks" && taskCount > 0 && /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("span", { className: "ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full", children: taskCount }),
-            activeSubTab === t.key && /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("span", { className: "absolute bottom-0 left-0 right-0 h-0.5 bg-[#0078d4] dark:bg-[#3794ff]" })
+            t.key === "tasks" && taskCount > 0 && /* @__PURE__ */ (0, import_jsx_runtime53.jsx)("span", { className: "ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full", children: taskCount }),
+            t.key === "queue" && queueCount > 0 && /* @__PURE__ */ (0, import_jsx_runtime53.jsx)("span", { className: "ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full", children: queueCount }),
+            activeSubTab === t.key && /* @__PURE__ */ (0, import_jsx_runtime53.jsx)("span", { className: "absolute bottom-0 left-0 right-0 h-0.5 bg-[#0078d4] dark:bg-[#3794ff]" })
           ]
         },
         t.key
       )) }),
-      /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("div", { className: "flex-1 min-h-0 min-w-0 overflow-hidden", children: activeSubTab === "tasks" ? /* @__PURE__ */ (0, import_jsx_runtime51.jsx)(TasksPanel, { wsId: ws.id }) : /* @__PURE__ */ (0, import_jsx_runtime51.jsxs)("div", { className: "h-full overflow-y-auto min-w-0", children: [
-        activeSubTab === "info" && /* @__PURE__ */ (0, import_jsx_runtime51.jsx)(RepoInfoTab, { repo }),
-        activeSubTab === "pipelines" && /* @__PURE__ */ (0, import_jsx_runtime51.jsx)(PipelinesTab, { repo }),
-        activeSubTab === "queue" && /* @__PURE__ */ (0, import_jsx_runtime51.jsx)(RepoQueueTab, { workspaceId: ws.id }),
-        activeSubTab === "schedules" && /* @__PURE__ */ (0, import_jsx_runtime51.jsx)(RepoSchedulesTab, { workspaceId: ws.id }),
-        activeSubTab === "chat" && /* @__PURE__ */ (0, import_jsx_runtime51.jsx)(RepoChatTab, { workspaceId: ws.id, workspacePath: ws.rootPath })
+      /* @__PURE__ */ (0, import_jsx_runtime53.jsx)("div", { className: "flex-1 min-h-0 min-w-0 overflow-hidden", children: activeSubTab === "tasks" ? /* @__PURE__ */ (0, import_jsx_runtime53.jsx)(TasksPanel, { wsId: ws.id }) : /* @__PURE__ */ (0, import_jsx_runtime53.jsxs)("div", { className: "h-full overflow-y-auto min-w-0", children: [
+        activeSubTab === "info" && /* @__PURE__ */ (0, import_jsx_runtime53.jsx)(RepoInfoTab, { repo }),
+        activeSubTab === "pipelines" && /* @__PURE__ */ (0, import_jsx_runtime53.jsx)(PipelinesTab, { repo }),
+        activeSubTab === "queue" && /* @__PURE__ */ (0, import_jsx_runtime53.jsx)(RepoQueueTab, { workspaceId: ws.id }),
+        activeSubTab === "schedules" && /* @__PURE__ */ (0, import_jsx_runtime53.jsx)(RepoSchedulesTab, { workspaceId: ws.id }),
+        activeSubTab === "chat" && /* @__PURE__ */ (0, import_jsx_runtime53.jsx)(RepoChatTab, { workspaceId: ws.id, workspacePath: ws.rootPath })
       ] }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime51.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime53.jsx)(
         AddRepoDialog,
         {
           open: editOpen,
@@ -35445,12 +38949,12 @@
   }
 
   // src/server/spa/client/react/repos/ReposView.tsx
-  var import_jsx_runtime52 = __toESM(require_jsx_runtime());
+  var import_jsx_runtime54 = __toESM(require_jsx_runtime());
   function ReposView() {
     const { state, dispatch } = useApp();
-    const [repos, setRepos] = (0, import_react53.useState)([]);
-    const [loading, setLoading] = (0, import_react53.useState)(true);
-    const fetchRepos = (0, import_react53.useCallback)(async () => {
+    const [repos, setRepos] = (0, import_react55.useState)([]);
+    const [loading, setLoading] = (0, import_react55.useState)(true);
+    const fetchRepos = (0, import_react55.useCallback)(async () => {
       try {
         const wsRes = await fetchApi("/workspaces");
         const workspaces = wsRes?.workspaces || wsRes || [];
@@ -35493,7 +38997,7 @@
       }
       setLoading(false);
     }, [dispatch, state.selectedRepoId]);
-    const refreshPipelinesForWorkspace = (0, import_react53.useCallback)(async (wsId) => {
+    const refreshPipelinesForWorkspace = (0, import_react55.useCallback)(async (wsId) => {
       try {
         const updated = await fetchPipelines(wsId);
         setRepos((prev) => prev.map(
@@ -35503,23 +39007,23 @@
       }
     }, []);
     const { connect, disconnect } = useWebSocket({
-      onMessage: (0, import_react53.useCallback)((msg) => {
+      onMessage: (0, import_react55.useCallback)((msg) => {
         if (msg.type === "pipelines-changed" && msg.workspaceId) {
           refreshPipelinesForWorkspace(msg.workspaceId);
         }
       }, [refreshPipelinesForWorkspace])
     });
-    (0, import_react53.useEffect)(() => {
+    (0, import_react55.useEffect)(() => {
       fetchRepos();
       connect();
       return () => disconnect();
     }, []);
     const selectedRepo = repos.find((r) => r.workspace.id === state.selectedRepoId) || null;
     if (loading && repos.length === 0) {
-      return /* @__PURE__ */ (0, import_jsx_runtime52.jsx)("div", { id: "view-repos", className: "flex items-center justify-center h-[calc(100vh-48px)] text-sm text-[#848484]", children: "Loading repositories..." });
+      return /* @__PURE__ */ (0, import_jsx_runtime54.jsx)("div", { id: "view-repos", className: "flex items-center justify-center h-[calc(100vh-48px)] text-sm text-[#848484]", children: "Loading repositories..." });
     }
-    return /* @__PURE__ */ (0, import_jsx_runtime52.jsxs)("div", { id: "view-repos", className: "flex h-[calc(100vh-48px)] overflow-hidden", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime52.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime54.jsxs)("div", { id: "view-repos", className: "flex h-[calc(100vh-48px)] overflow-hidden", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime54.jsx)(
         "aside",
         {
           id: "repos-sidebar",
@@ -35529,21 +39033,21 @@
             "shrink-0 min-h-0 flex flex-col overflow-hidden transition-[width,min-width] duration-150 ease-out border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]",
             state.reposSidebarCollapsed ? "w-0 min-w-0 border-r-0" : "w-[280px] min-w-[240px]"
           ),
-          children: /* @__PURE__ */ (0, import_jsx_runtime52.jsx)(ReposGrid, { repos, onRefresh: fetchRepos })
+          children: /* @__PURE__ */ (0, import_jsx_runtime54.jsx)(ReposGrid, { repos, onRefresh: fetchRepos })
         }
       ),
-      /* @__PURE__ */ (0, import_jsx_runtime52.jsx)("main", { className: "flex-1 min-w-0 min-h-0 flex flex-col bg-white dark:bg-[#1e1e1e] overflow-hidden", children: selectedRepo ? /* @__PURE__ */ (0, import_jsx_runtime52.jsx)(RepoDetail, { repo: selectedRepo, repos, onRefresh: fetchRepos }) : /* @__PURE__ */ (0, import_jsx_runtime52.jsx)("div", { className: "flex-1 flex items-center justify-center text-sm text-[#848484]", children: "\u{1F448} Select a repository to view details" }) })
+      /* @__PURE__ */ (0, import_jsx_runtime54.jsx)("main", { className: "flex-1 min-w-0 min-h-0 flex flex-col bg-white dark:bg-[#1e1e1e] overflow-hidden", children: selectedRepo ? /* @__PURE__ */ (0, import_jsx_runtime54.jsx)(RepoDetail, { repo: selectedRepo, repos, onRefresh: fetchRepos }) : /* @__PURE__ */ (0, import_jsx_runtime54.jsx)("div", { className: "flex-1 flex items-center justify-center text-sm text-[#848484]", children: "\u{1F448} Select a repository to view details" }) })
     ] });
   }
 
   // src/server/spa/client/react/wiki/WikiList.tsx
-  var import_react57 = __toESM(require_react());
+  var import_react59 = __toESM(require_react());
 
   // src/server/spa/client/react/hooks/useWiki.ts
-  var import_react54 = __toESM(require_react());
+  var import_react56 = __toESM(require_react());
   function useWiki() {
     const { state, dispatch } = useApp();
-    const reload = (0, import_react54.useCallback)(async () => {
+    const reload = (0, import_react56.useCallback)(async () => {
       try {
         const data = await fetchApi("/wikis");
         const wikis = Array.isArray(data) ? data : data?.wikis ?? [];
@@ -35552,7 +39056,7 @@
         dispatch({ type: "SET_WIKIS", wikis: [] });
       }
     }, [dispatch]);
-    (0, import_react54.useEffect)(() => {
+    (0, import_react56.useEffect)(() => {
       reload();
     }, [reload]);
     return {
@@ -35564,16 +39068,16 @@
   }
 
   // src/server/spa/client/react/wiki/AddWikiDialog.tsx
-  var import_react55 = __toESM(require_react());
-  var import_jsx_runtime53 = __toESM(require_jsx_runtime());
+  var import_react57 = __toESM(require_react());
+  var import_jsx_runtime55 = __toESM(require_jsx_runtime());
   var COLOR_PRESETS = ["#3b82f6", "#ef4444", "#22c55e", "#f59e0b", "#8b5cf6", "#ec4899", "#848484"];
   function AddWikiDialog({ open, onClose, onAdded }) {
-    const [name, setName] = (0, import_react55.useState)("");
-    const [repoPath, setRepoPath] = (0, import_react55.useState)("");
-    const [color, setColor] = (0, import_react55.useState)(COLOR_PRESETS[0]);
-    const [error, setError] = (0, import_react55.useState)("");
-    const [submitting, setSubmitting] = (0, import_react55.useState)(false);
-    const handleSubmit = (0, import_react55.useCallback)(async () => {
+    const [name, setName] = (0, import_react57.useState)("");
+    const [repoPath, setRepoPath] = (0, import_react57.useState)("");
+    const [color, setColor] = (0, import_react57.useState)(COLOR_PRESETS[0]);
+    const [error, setError] = (0, import_react57.useState)("");
+    const [submitting, setSubmitting] = (0, import_react57.useState)(false);
+    const handleSubmit = (0, import_react57.useCallback)(async () => {
       if (!name.trim()) {
         setError("Name is required");
         return;
@@ -35606,20 +39110,20 @@
       }
       setSubmitting(false);
     }, [name, repoPath, color, onAdded, onClose]);
-    return /* @__PURE__ */ (0, import_jsx_runtime53.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(
       Dialog,
       {
         open,
         onClose,
         title: "Add Wiki",
-        footer: /* @__PURE__ */ (0, import_jsx_runtime53.jsxs)(import_jsx_runtime53.Fragment, { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime53.jsx)(Button, { variant: "secondary", onClick: onClose, children: "Cancel" }),
-          /* @__PURE__ */ (0, import_jsx_runtime53.jsx)(Button, { loading: submitting, onClick: handleSubmit, children: "Create" })
+        footer: /* @__PURE__ */ (0, import_jsx_runtime55.jsxs)(import_jsx_runtime55.Fragment, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(Button, { variant: "secondary", onClick: onClose, children: "Cancel" }),
+          /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(Button, { loading: submitting, onClick: handleSubmit, children: "Create" })
         ] }),
-        children: /* @__PURE__ */ (0, import_jsx_runtime53.jsxs)("div", { className: "space-y-3", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime53.jsxs)("div", { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime53.jsx)("label", { className: "block text-xs font-medium mb-1", children: "Name" }),
-            /* @__PURE__ */ (0, import_jsx_runtime53.jsx)(
+        children: /* @__PURE__ */ (0, import_jsx_runtime55.jsxs)("div", { className: "space-y-3", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime55.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime55.jsx)("label", { className: "block text-xs font-medium mb-1", children: "Name" }),
+            /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(
               "input",
               {
                 className: "w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4]",
@@ -35632,9 +39136,9 @@
               }
             )
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime53.jsxs)("div", { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime53.jsx)("label", { className: "block text-xs font-medium mb-1", children: "Repository Path" }),
-            /* @__PURE__ */ (0, import_jsx_runtime53.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime55.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime55.jsx)("label", { className: "block text-xs font-medium mb-1", children: "Repository Path" }),
+            /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(
               "input",
               {
                 className: "w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4]",
@@ -35647,9 +39151,9 @@
               }
             )
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime53.jsxs)("div", { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime53.jsx)("label", { className: "block text-xs font-medium mb-1", children: "Color" }),
-            /* @__PURE__ */ (0, import_jsx_runtime53.jsx)("div", { className: "flex gap-2", children: COLOR_PRESETS.map((c) => /* @__PURE__ */ (0, import_jsx_runtime53.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime55.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime55.jsx)("label", { className: "block text-xs font-medium mb-1", children: "Color" }),
+            /* @__PURE__ */ (0, import_jsx_runtime55.jsx)("div", { className: "flex gap-2", children: COLOR_PRESETS.map((c) => /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(
               "button",
               {
                 className: `w-6 h-6 rounded-full border-2 transition-all ${color === c ? "border-[#0078d4] scale-110" : "border-transparent"}`,
@@ -35660,22 +39164,22 @@
               c
             )) })
           ] }),
-          error && /* @__PURE__ */ (0, import_jsx_runtime53.jsx)("p", { className: "text-xs text-[#f14c4c]", children: error })
+          error && /* @__PURE__ */ (0, import_jsx_runtime55.jsx)("p", { className: "text-xs text-[#f14c4c]", children: error })
         ] })
       }
     );
   }
 
   // src/server/spa/client/react/wiki/EditWikiDialog.tsx
-  var import_react56 = __toESM(require_react());
-  var import_jsx_runtime54 = __toESM(require_jsx_runtime());
+  var import_react58 = __toESM(require_react());
+  var import_jsx_runtime56 = __toESM(require_jsx_runtime());
   var COLOR_PRESETS2 = ["#3b82f6", "#ef4444", "#22c55e", "#f59e0b", "#8b5cf6", "#ec4899", "#848484"];
   function EditWikiDialog({ open, wiki, onClose, onUpdated }) {
-    const [name, setName] = (0, import_react56.useState)(wiki.name || wiki.title || wiki.id);
-    const [color, setColor] = (0, import_react56.useState)(wiki.color || "#848484");
-    const [error, setError] = (0, import_react56.useState)("");
-    const [submitting, setSubmitting] = (0, import_react56.useState)(false);
-    const handleSubmit = (0, import_react56.useCallback)(async () => {
+    const [name, setName] = (0, import_react58.useState)(wiki.name || wiki.title || wiki.id);
+    const [color, setColor] = (0, import_react58.useState)(wiki.color || "#848484");
+    const [error, setError] = (0, import_react58.useState)("");
+    const [submitting, setSubmitting] = (0, import_react58.useState)(false);
+    const handleSubmit = (0, import_react58.useCallback)(async () => {
       if (!name.trim()) {
         setError("Name is required");
         return;
@@ -35701,20 +39205,20 @@
       }
       setSubmitting(false);
     }, [name, color, wiki.id, onUpdated, onClose]);
-    return /* @__PURE__ */ (0, import_jsx_runtime54.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime56.jsx)(
       Dialog,
       {
         open,
         onClose,
         title: "Edit Wiki",
-        footer: /* @__PURE__ */ (0, import_jsx_runtime54.jsxs)(import_jsx_runtime54.Fragment, { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime54.jsx)(Button, { variant: "secondary", onClick: onClose, children: "Cancel" }),
-          /* @__PURE__ */ (0, import_jsx_runtime54.jsx)(Button, { loading: submitting, onClick: handleSubmit, children: "Save" })
+        footer: /* @__PURE__ */ (0, import_jsx_runtime56.jsxs)(import_jsx_runtime56.Fragment, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime56.jsx)(Button, { variant: "secondary", onClick: onClose, children: "Cancel" }),
+          /* @__PURE__ */ (0, import_jsx_runtime56.jsx)(Button, { loading: submitting, onClick: handleSubmit, children: "Save" })
         ] }),
-        children: /* @__PURE__ */ (0, import_jsx_runtime54.jsxs)("div", { className: "space-y-3", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime54.jsxs)("div", { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime54.jsx)("label", { className: "block text-xs font-medium mb-1", children: "Name" }),
-            /* @__PURE__ */ (0, import_jsx_runtime54.jsx)(
+        children: /* @__PURE__ */ (0, import_jsx_runtime56.jsxs)("div", { className: "space-y-3", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime56.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime56.jsx)("label", { className: "block text-xs font-medium mb-1", children: "Name" }),
+            /* @__PURE__ */ (0, import_jsx_runtime56.jsx)(
               "input",
               {
                 className: "w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4]",
@@ -35726,9 +39230,9 @@
               }
             )
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime54.jsxs)("div", { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime54.jsx)("label", { className: "block text-xs font-medium mb-1", children: "Repository Path" }),
-            /* @__PURE__ */ (0, import_jsx_runtime54.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime56.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime56.jsx)("label", { className: "block text-xs font-medium mb-1", children: "Repository Path" }),
+            /* @__PURE__ */ (0, import_jsx_runtime56.jsx)(
               "input",
               {
                 className: "w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none opacity-60",
@@ -35737,9 +39241,9 @@
               }
             )
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime54.jsxs)("div", { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime54.jsx)("label", { className: "block text-xs font-medium mb-1", children: "Color" }),
-            /* @__PURE__ */ (0, import_jsx_runtime54.jsx)("div", { className: "flex gap-2", children: COLOR_PRESETS2.map((c) => /* @__PURE__ */ (0, import_jsx_runtime54.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime56.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime56.jsx)("label", { className: "block text-xs font-medium mb-1", children: "Color" }),
+            /* @__PURE__ */ (0, import_jsx_runtime56.jsx)("div", { className: "flex gap-2", children: COLOR_PRESETS2.map((c) => /* @__PURE__ */ (0, import_jsx_runtime56.jsx)(
               "button",
               {
                 className: `w-6 h-6 rounded-full border-2 transition-all ${color === c ? "border-[#0078d4] scale-110" : "border-transparent"}`,
@@ -35750,14 +39254,14 @@
               c
             )) })
           ] }),
-          error && /* @__PURE__ */ (0, import_jsx_runtime54.jsx)("p", { className: "text-xs text-[#f14c4c]", children: error })
+          error && /* @__PURE__ */ (0, import_jsx_runtime56.jsx)("p", { className: "text-xs text-[#f14c4c]", children: error })
         ] })
       }
     );
   }
 
   // src/server/spa/client/react/wiki/WikiList.tsx
-  var import_jsx_runtime55 = __toESM(require_jsx_runtime());
+  var import_jsx_runtime57 = __toESM(require_jsx_runtime());
   function getWikiStatus(wiki) {
     if (wiki.status) return wiki.status;
     if (wiki.loaded) return "loaded";
@@ -35796,18 +39300,18 @@
   function WikiList() {
     const { wikis, reload } = useWiki();
     const { dispatch } = useApp();
-    const [addOpen, setAddOpen] = (0, import_react57.useState)(false);
-    const [editWiki, setEditWiki] = (0, import_react57.useState)(null);
-    const [deleting, setDeleting] = (0, import_react57.useState)(null);
-    const selectWiki = (0, import_react57.useCallback)((wikiId) => {
+    const [addOpen, setAddOpen] = (0, import_react59.useState)(false);
+    const [editWiki, setEditWiki] = (0, import_react59.useState)(null);
+    const [deleting, setDeleting] = (0, import_react59.useState)(null);
+    const selectWiki = (0, import_react59.useCallback)((wikiId) => {
       dispatch({ type: "SELECT_WIKI", wikiId });
       location.hash = "#wiki/" + encodeURIComponent(wikiId);
     }, [dispatch]);
-    const setupWiki = (0, import_react57.useCallback)((wikiId) => {
+    const setupWiki = (0, import_react59.useCallback)((wikiId) => {
       dispatch({ type: "SELECT_WIKI_WITH_TAB", wikiId, tab: "admin" });
       location.hash = "#wiki/" + encodeURIComponent(wikiId) + "/admin";
     }, [dispatch]);
-    const handleDelete = (0, import_react57.useCallback)(async (wikiId) => {
+    const handleDelete = (0, import_react59.useCallback)(async (wikiId) => {
       if (!confirm("Are you sure you want to delete this wiki?")) return;
       setDeleting(wikiId);
       try {
@@ -35819,47 +39323,47 @@
       }
       setDeleting(null);
     }, [dispatch]);
-    return /* @__PURE__ */ (0, import_jsx_runtime55.jsxs)("div", { className: "p-4 space-y-4", id: "view-wiki", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime55.jsxs)("div", { className: "flex items-center justify-between", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime55.jsx)("h2", { className: "text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc]", children: "Wikis" }),
-        /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(Button, { size: "sm", onClick: () => setAddOpen(true), children: "+ Add Wiki" })
+    return /* @__PURE__ */ (0, import_jsx_runtime57.jsxs)("div", { className: "p-4 space-y-4", id: "view-wiki", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime57.jsxs)("div", { className: "flex items-center justify-between", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime57.jsx)("h2", { className: "text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc]", children: "Wikis" }),
+        /* @__PURE__ */ (0, import_jsx_runtime57.jsx)(Button, { size: "sm", onClick: () => setAddOpen(true), children: "+ Add Wiki" })
       ] }),
-      wikis.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime55.jsxs)("div", { className: "flex flex-col items-center justify-center py-16 text-center text-sm text-[#848484]", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime55.jsx)("div", { className: "text-4xl mb-3", children: "\u{1F4DA}" }),
-        /* @__PURE__ */ (0, import_jsx_runtime55.jsx)("p", { className: "mb-2", children: "No wikis registered." }),
-        /* @__PURE__ */ (0, import_jsx_runtime55.jsx)("p", { className: "mb-4", children: 'Click "Add Wiki" to generate a wiki for a repository.' }),
-        /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(Button, { size: "sm", onClick: () => setAddOpen(true), children: "+ Add Wiki" })
-      ] }) : /* @__PURE__ */ (0, import_jsx_runtime55.jsx)("div", { className: "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3", id: "wiki-card-list", children: wikis.map((wiki) => {
+      wikis.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime57.jsxs)("div", { className: "flex flex-col items-center justify-center py-16 text-center text-sm text-[#848484]", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime57.jsx)("div", { className: "text-4xl mb-3", children: "\u{1F4DA}" }),
+        /* @__PURE__ */ (0, import_jsx_runtime57.jsx)("p", { className: "mb-2", children: "No wikis registered." }),
+        /* @__PURE__ */ (0, import_jsx_runtime57.jsx)("p", { className: "mb-4", children: 'Click "Add Wiki" to generate a wiki for a repository.' }),
+        /* @__PURE__ */ (0, import_jsx_runtime57.jsx)(Button, { size: "sm", onClick: () => setAddOpen(true), children: "+ Add Wiki" })
+      ] }) : /* @__PURE__ */ (0, import_jsx_runtime57.jsx)("div", { className: "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3", id: "wiki-card-list", children: wikis.map((wiki) => {
         const status = getWikiStatus(wiki);
         const cfg = statusConfig[status];
         const name = wiki.name || wiki.title || wiki.id;
-        return /* @__PURE__ */ (0, import_jsx_runtime55.jsxs)(
+        return /* @__PURE__ */ (0, import_jsx_runtime57.jsxs)(
           Card,
           {
             className: "p-3 hover:shadow-md transition-shadow",
             onClick: () => selectWiki(wiki.id),
             children: [
-              /* @__PURE__ */ (0, import_jsx_runtime55.jsxs)("div", { className: "flex items-center gap-2 mb-2", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(
+              /* @__PURE__ */ (0, import_jsx_runtime57.jsxs)("div", { className: "flex items-center gap-2 mb-2", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime57.jsx)(
                   "span",
                   {
                     className: "w-3 h-3 rounded-full flex-shrink-0",
                     style: { background: wiki.color || "#848484" }
                   }
                 ),
-                /* @__PURE__ */ (0, import_jsx_runtime55.jsx)("span", { className: "font-medium text-sm text-[#1e1e1e] dark:text-[#cccccc] truncate flex-1", children: name }),
-                /* @__PURE__ */ (0, import_jsx_runtime55.jsxs)(Badge, { status: cfg.badge, children: [
-                  status === "generating" && /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(Spinner, { size: "sm" }),
+                /* @__PURE__ */ (0, import_jsx_runtime57.jsx)("span", { className: "font-medium text-sm text-[#1e1e1e] dark:text-[#cccccc] truncate flex-1", children: name }),
+                /* @__PURE__ */ (0, import_jsx_runtime57.jsxs)(Badge, { status: cfg.badge, children: [
+                  status === "generating" && /* @__PURE__ */ (0, import_jsx_runtime57.jsx)(Spinner, { size: "sm" }),
                   cfg.label
                 ] })
               ] }),
-              /* @__PURE__ */ (0, import_jsx_runtime55.jsxs)("div", { className: "flex items-center gap-2 text-xs text-[#848484]", children: [
-                status === "loaded" && typeof wiki.componentCount === "number" && /* @__PURE__ */ (0, import_jsx_runtime55.jsxs)("span", { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime57.jsxs)("div", { className: "flex items-center gap-2 text-xs text-[#848484]", children: [
+                status === "loaded" && typeof wiki.componentCount === "number" && /* @__PURE__ */ (0, import_jsx_runtime57.jsxs)("span", { children: [
                   wiki.componentCount,
                   " components"
                 ] }),
-                wiki.generatedAt && /* @__PURE__ */ (0, import_jsx_runtime55.jsx)("span", { children: relativeTime(wiki.generatedAt) }),
-                status === "pending" && /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(
+                wiki.generatedAt && /* @__PURE__ */ (0, import_jsx_runtime57.jsx)("span", { children: relativeTime(wiki.generatedAt) }),
+                status === "pending" && /* @__PURE__ */ (0, import_jsx_runtime57.jsx)(
                   Button,
                   {
                     size: "sm",
@@ -35873,20 +39377,20 @@
                   }
                 )
               ] }),
-              wiki.repoPath && /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(
+              wiki.repoPath && /* @__PURE__ */ (0, import_jsx_runtime57.jsx)(
                 "div",
                 {
                   className: "text-xs text-[#848484] truncate mt-1",
                   style: { direction: "rtl", textAlign: "left" },
                   title: wiki.repoPath,
-                  children: /* @__PURE__ */ (0, import_jsx_runtime55.jsxs)("span", { style: { direction: "ltr", unicodeBidi: "embed" }, children: [
+                  children: /* @__PURE__ */ (0, import_jsx_runtime57.jsxs)("span", { style: { direction: "ltr", unicodeBidi: "embed" }, children: [
                     "\u{1F4C2} ",
                     shortenPath2(wiki.repoPath)
                   ] })
                 }
               ),
-              /* @__PURE__ */ (0, import_jsx_runtime55.jsxs)("div", { className: "flex justify-end gap-1 mt-2", onClick: (e) => e.stopPropagation(), children: [
-                /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(
+              /* @__PURE__ */ (0, import_jsx_runtime57.jsxs)("div", { className: "flex justify-end gap-1 mt-2", onClick: (e) => e.stopPropagation(), children: [
+                /* @__PURE__ */ (0, import_jsx_runtime57.jsx)(
                   "button",
                   {
                     className: "p-1 text-xs text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]",
@@ -35895,7 +39399,7 @@
                     children: "\u270F\uFE0F"
                   }
                 ),
-                /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(
+                /* @__PURE__ */ (0, import_jsx_runtime57.jsx)(
                   "button",
                   {
                     className: cn(
@@ -35914,8 +39418,8 @@
           wiki.id
         );
       }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(AddWikiDialog, { open: addOpen, onClose: () => setAddOpen(false), onAdded: reload }),
-      editWiki && /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime57.jsx)(AddWikiDialog, { open: addOpen, onClose: () => setAddOpen(false), onAdded: reload }),
+      editWiki && /* @__PURE__ */ (0, import_jsx_runtime57.jsx)(
         EditWikiDialog,
         {
           open: true,
@@ -35928,11 +39432,11 @@
   }
 
   // src/server/spa/client/react/wiki/WikiDetail.tsx
-  var import_react63 = __toESM(require_react());
+  var import_react65 = __toESM(require_react());
 
   // src/server/spa/client/react/wiki/WikiComponentTree.tsx
-  var import_react58 = __toESM(require_react());
-  var import_jsx_runtime56 = __toESM(require_jsx_runtime());
+  var import_react60 = __toESM(require_react());
+  var import_jsx_runtime58 = __toESM(require_jsx_runtime());
   function buildGroups(graph) {
     if (graph.domains && graph.domains.length > 0) {
       const componentMap = /* @__PURE__ */ new Map();
@@ -35960,10 +39464,10 @@
     return Array.from(categoryMap.entries()).sort(([a], [b]) => a.localeCompare(b)).map(([cat, comps]) => ({ id: cat, name: cat, components: comps }));
   }
   function WikiComponentTree({ graph, selectedComponentId, onSelect }) {
-    const [filter, setFilter] = (0, import_react58.useState)("");
-    const [collapsed, setCollapsed] = (0, import_react58.useState)(/* @__PURE__ */ new Set());
-    const groups = (0, import_react58.useMemo)(() => buildGroups(graph), [graph]);
-    const filteredGroups = (0, import_react58.useMemo)(() => {
+    const [filter, setFilter] = (0, import_react60.useState)("");
+    const [collapsed, setCollapsed] = (0, import_react60.useState)(/* @__PURE__ */ new Set());
+    const groups = (0, import_react60.useMemo)(() => buildGroups(graph), [graph]);
+    const filteredGroups = (0, import_react60.useMemo)(() => {
       if (!filter.trim()) return groups;
       const q = filter.toLowerCase();
       return groups.map((g) => ({
@@ -35979,8 +39483,8 @@
         return next;
       });
     };
-    return /* @__PURE__ */ (0, import_jsx_runtime56.jsxs)("div", { id: "wiki-component-tree", className: "flex flex-col h-full text-sm", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime56.jsx)("div", { className: "p-2", children: /* @__PURE__ */ (0, import_jsx_runtime56.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)("div", { id: "wiki-component-tree", className: "flex flex-col h-full text-sm", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("div", { className: "p-2", children: /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(
         "input",
         {
           className: "w-full px-2 py-1 text-xs rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4]",
@@ -35989,20 +39493,20 @@
           onChange: (e) => setFilter(e.target.value)
         }
       ) }),
-      /* @__PURE__ */ (0, import_jsx_runtime56.jsxs)("div", { className: "flex-1 overflow-y-auto", children: [
-        filteredGroups.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime56.jsx)("div", { className: "wiki-tree-empty px-3 py-2 text-xs text-[#848484]", children: "No components found" }),
+      /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)("div", { className: "flex-1 overflow-y-auto", children: [
+        filteredGroups.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("div", { className: "wiki-tree-empty px-3 py-2 text-xs text-[#848484]", children: "No components found" }),
         filteredGroups.map((group) => {
           const isCollapsed = collapsed.has(group.id);
-          return /* @__PURE__ */ (0, import_jsx_runtime56.jsxs)("div", { className: "wiki-tree-group", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime56.jsxs)(
+          return /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)("div", { className: "wiki-tree-group", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)(
               "div",
               {
                 className: "wiki-tree-item flex items-center gap-1 px-3 py-1.5 cursor-pointer hover:bg-black/[0.04] dark:hover:bg-white/[0.04] select-none",
                 onClick: () => toggleGroup(group.id),
                 children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime56.jsx)("span", { className: cn("text-[10px] transition-transform", !isCollapsed && "rotate-90"), children: "\u25B6" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime56.jsx)("span", { className: "font-medium", children: group.name }),
-                  /* @__PURE__ */ (0, import_jsx_runtime56.jsxs)("span", { className: "wiki-tree-count text-xs text-[#848484] ml-auto", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("span", { className: cn("text-[10px] transition-transform", !isCollapsed && "rotate-90"), children: "\u25B6" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("span", { className: "font-medium", children: group.name }),
+                  /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)("span", { className: "wiki-tree-count text-xs text-[#848484] ml-auto", children: [
                     "(",
                     group.components.length,
                     ")"
@@ -36010,7 +39514,7 @@
                 ]
               }
             ),
-            !isCollapsed && /* @__PURE__ */ (0, import_jsx_runtime56.jsx)("div", { className: "wiki-tree-children", children: group.components.map((comp) => /* @__PURE__ */ (0, import_jsx_runtime56.jsx)(
+            !isCollapsed && /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("div", { className: "wiki-tree-children", children: group.components.map((comp) => /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(
               "div",
               {
                 className: cn(
@@ -36031,8 +39535,8 @@
   }
 
   // src/server/spa/client/react/wiki/WikiComponent.tsx
-  var import_react59 = __toESM(require_react());
-  var import_jsx_runtime57 = __toESM(require_jsx_runtime());
+  var import_react61 = __toESM(require_react());
+  var import_jsx_runtime59 = __toESM(require_jsx_runtime());
   function preserveMermaidBlocks(md) {
     return md.replace(/```mermaid\n([\s\S]*?)```/g, (_match, code) => {
       const preserved = code.replace(/\n\n/g, "\n \n");
@@ -36040,18 +39544,18 @@
     });
   }
   function WikiComponent({ wikiId, componentId, graph, onSelectComponent }) {
-    const [html, setHtml] = (0, import_react59.useState)("");
-    const [loading, setLoading] = (0, import_react59.useState)(false);
-    const [toc, setToc] = (0, import_react59.useState)([]);
-    const [activeHeading, setActiveHeading] = (0, import_react59.useState)(null);
-    const contentRef = (0, import_react59.useRef)(null);
-    const scrollRef = (0, import_react59.useRef)(null);
-    const cacheRef = (0, import_react59.useRef)({});
-    const comp = (0, import_react59.useMemo)(
+    const [html, setHtml] = (0, import_react61.useState)("");
+    const [loading, setLoading] = (0, import_react61.useState)(false);
+    const [toc, setToc] = (0, import_react61.useState)([]);
+    const [activeHeading, setActiveHeading] = (0, import_react61.useState)(null);
+    const contentRef = (0, import_react61.useRef)(null);
+    const scrollRef = (0, import_react61.useRef)(null);
+    const cacheRef = (0, import_react61.useRef)({});
+    const comp = (0, import_react61.useMemo)(
       () => graph.components.find((c) => c.id === componentId),
       [graph.components, componentId]
     );
-    (0, import_react59.useEffect)(() => {
+    (0, import_react61.useEffect)(() => {
       if (cacheRef.current[componentId]) {
         setHtml(cacheRef.current[componentId]);
         setLoading(false);
@@ -36070,7 +39574,7 @@
         }
       }).catch(() => setHtml('<p style="color:var(--status-failed)">Failed to load article</p>')).finally(() => setLoading(false));
     }, [wikiId, componentId]);
-    (0, import_react59.useEffect)(() => {
+    (0, import_react61.useEffect)(() => {
       if (!contentRef.current || !html) return;
       const container2 = contentRef.current;
       if (typeof hljs !== "undefined") {
@@ -36110,7 +39614,7 @@
       window.addEventListener("scroll", onScroll);
       return () => window.removeEventListener("scroll", onScroll);
     }, [html]);
-    (0, import_react59.useEffect)(() => {
+    (0, import_react61.useEffect)(() => {
       const container2 = contentRef.current;
       if (!container2) return;
       const handleClick = (e) => {
@@ -36129,35 +39633,35 @@
       return () => container2.removeEventListener("click", handleClick);
     }, [html]);
     useMermaid(contentRef, html);
-    (0, import_react59.useEffect)(() => {
+    (0, import_react61.useEffect)(() => {
       if (typeof scrollRef.current?.scrollIntoView === "function") {
         scrollRef.current.scrollIntoView({ block: "start" });
       }
     }, [componentId]);
-    const scrollToHeading = (0, import_react59.useCallback)((id) => {
+    const scrollToHeading = (0, import_react61.useCallback)((id) => {
       const el = contentRef.current?.querySelector("#" + CSS.escape(id));
       if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
     }, []);
     if (loading) {
-      return /* @__PURE__ */ (0, import_jsx_runtime57.jsx)("div", { className: "flex items-center justify-center h-full", children: /* @__PURE__ */ (0, import_jsx_runtime57.jsx)(Spinner, { size: "lg" }) });
+      return /* @__PURE__ */ (0, import_jsx_runtime59.jsx)("div", { className: "flex items-center justify-center h-full", children: /* @__PURE__ */ (0, import_jsx_runtime59.jsx)(Spinner, { size: "lg" }) });
     }
     const complexityColors = {
       low: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
       medium: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400",
       high: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
     };
-    return /* @__PURE__ */ (0, import_jsx_runtime57.jsx)("div", { className: "h-full", ref: scrollRef, id: "wiki-article-content", children: /* @__PURE__ */ (0, import_jsx_runtime57.jsxs)("div", { className: "flex items-start", id: "wiki-content-scroll", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime57.jsxs)("div", { className: "flex-1 min-w-0 p-4 wiki-content-scroll", children: [
-        comp && /* @__PURE__ */ (0, import_jsx_runtime57.jsxs)("div", { className: "mb-4 space-y-2", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime57.jsxs)("div", { className: "flex items-center gap-2 flex-wrap", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime57.jsx)("h2", { className: "text-lg font-semibold text-[#1e1e1e] dark:text-[#cccccc]", children: comp.name }),
-            comp.complexity && /* @__PURE__ */ (0, import_jsx_runtime57.jsx)("span", { className: cn("text-[10px] px-1.5 py-0.5 rounded font-medium", complexityColors[comp.complexity]), children: comp.complexity }),
-            /* @__PURE__ */ (0, import_jsx_runtime57.jsx)("span", { className: "text-xs text-[#848484]", children: comp.category })
+    return /* @__PURE__ */ (0, import_jsx_runtime59.jsx)("div", { className: "h-full", ref: scrollRef, id: "wiki-article-content", children: /* @__PURE__ */ (0, import_jsx_runtime59.jsxs)("div", { className: "flex items-start", id: "wiki-content-scroll", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime59.jsxs)("div", { className: "flex-1 min-w-0 p-4 wiki-content-scroll", children: [
+        comp && /* @__PURE__ */ (0, import_jsx_runtime59.jsxs)("div", { className: "mb-4 space-y-2", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime59.jsxs)("div", { className: "flex items-center gap-2 flex-wrap", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime59.jsx)("h2", { className: "text-lg font-semibold text-[#1e1e1e] dark:text-[#cccccc]", children: comp.name }),
+            comp.complexity && /* @__PURE__ */ (0, import_jsx_runtime59.jsx)("span", { className: cn("text-[10px] px-1.5 py-0.5 rounded font-medium", complexityColors[comp.complexity]), children: comp.complexity }),
+            /* @__PURE__ */ (0, import_jsx_runtime59.jsx)("span", { className: "text-xs text-[#848484]", children: comp.category })
           ] }),
-          comp.purpose && /* @__PURE__ */ (0, import_jsx_runtime57.jsx)("p", { className: "text-xs text-[#848484]", children: comp.purpose }),
-          comp.dependencies && comp.dependencies.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime57.jsxs)("div", { className: "flex items-center gap-1 flex-wrap", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime57.jsx)("span", { className: "text-[10px] text-[#848484]", children: "Depends on:" }),
-            comp.dependencies.map((dep) => /* @__PURE__ */ (0, import_jsx_runtime57.jsx)(
+          comp.purpose && /* @__PURE__ */ (0, import_jsx_runtime59.jsx)("p", { className: "text-xs text-[#848484]", children: comp.purpose }),
+          comp.dependencies && comp.dependencies.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime59.jsxs)("div", { className: "flex items-center gap-1 flex-wrap", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime59.jsx)("span", { className: "text-[10px] text-[#848484]", children: "Depends on:" }),
+            comp.dependencies.map((dep) => /* @__PURE__ */ (0, import_jsx_runtime59.jsx)(
               "button",
               {
                 className: "text-[10px] px-1.5 py-0.5 rounded bg-[#0078d4]/10 text-[#0078d4] hover:bg-[#0078d4]/20",
@@ -36167,9 +39671,9 @@
               dep
             ))
           ] }),
-          comp.dependents && comp.dependents.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime57.jsxs)("div", { className: "flex items-center gap-1 flex-wrap", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime57.jsx)("span", { className: "text-[10px] text-[#848484]", children: "Used by:" }),
-            comp.dependents.map((dep) => /* @__PURE__ */ (0, import_jsx_runtime57.jsx)(
+          comp.dependents && comp.dependents.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime59.jsxs)("div", { className: "flex items-center gap-1 flex-wrap", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime59.jsx)("span", { className: "text-[10px] text-[#848484]", children: "Used by:" }),
+            comp.dependents.map((dep) => /* @__PURE__ */ (0, import_jsx_runtime59.jsx)(
               "button",
               {
                 className: "text-[10px] px-1.5 py-0.5 rounded bg-[#0078d4]/10 text-[#0078d4] hover:bg-[#0078d4]/20",
@@ -36180,7 +39684,7 @@
             ))
           ] })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime57.jsx)(
+        /* @__PURE__ */ (0, import_jsx_runtime59.jsx)(
           "div",
           {
             ref: contentRef,
@@ -36189,9 +39693,9 @@
           }
         )
       ] }),
-      toc.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime57.jsxs)("aside", { className: "wiki-toc-sidebar w-48 flex-shrink-0 border-l border-[#e0e0e0] dark:border-[#3c3c3c] p-3 hidden lg:block sticky top-0 max-h-screen overflow-y-auto", id: "wiki-toc-sidebar", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime57.jsx)("h4", { className: "text-[10px] font-semibold uppercase text-[#848484] mb-2", children: "On this page" }),
-        /* @__PURE__ */ (0, import_jsx_runtime57.jsx)("nav", { id: "wiki-toc-nav", className: "space-y-0.5", children: toc.map((item) => /* @__PURE__ */ (0, import_jsx_runtime57.jsx)(
+      toc.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime59.jsxs)("aside", { className: "wiki-toc-sidebar w-48 flex-shrink-0 border-l border-[#e0e0e0] dark:border-[#3c3c3c] p-3 hidden lg:block sticky top-0 max-h-screen overflow-y-auto", id: "wiki-toc-sidebar", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime59.jsx)("h4", { className: "text-[10px] font-semibold uppercase text-[#848484] mb-2", children: "On this page" }),
+        /* @__PURE__ */ (0, import_jsx_runtime59.jsx)("nav", { id: "wiki-toc-nav", className: "space-y-0.5", children: toc.map((item) => /* @__PURE__ */ (0, import_jsx_runtime59.jsx)(
           "a",
           {
             href: "#" + item.id,
@@ -36214,8 +39718,8 @@
   }
 
   // src/server/spa/client/react/wiki/WikiGraph.tsx
-  var import_react60 = __toESM(require_react());
-  var import_jsx_runtime58 = __toESM(require_jsx_runtime());
+  var import_react62 = __toESM(require_react());
+  var import_jsx_runtime60 = __toESM(require_jsx_runtime());
   var D3_CDN_URL = "https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js";
   var CATEGORY_COLORS = [
     "#3b82f6",
@@ -36232,11 +39736,10 @@
   var COMPLEXITY_RADIUS = { low: 8, medium: 12, high: 18 };
   var d3Promise = null;
   function ensureD3() {
-    if (d3Promise) return d3Promise;
     if (typeof window.d3 !== "undefined") {
-      d3Promise = Promise.resolve();
-      return d3Promise;
+      return Promise.resolve();
     }
+    if (d3Promise) return d3Promise;
     d3Promise = new Promise((resolve, reject) => {
       const script = document.createElement("script");
       script.src = D3_CDN_URL;
@@ -36251,16 +39754,16 @@
     return CATEGORY_COLORS[idx % CATEGORY_COLORS.length];
   }
   function WikiGraph({ wikiId, graph, onSelectComponent }) {
-    const svgRef = (0, import_react60.useRef)(null);
-    const containerRef = (0, import_react60.useRef)(null);
-    const [loading, setLoading] = (0, import_react60.useState)(true);
-    const [error, setError] = (0, import_react60.useState)(null);
-    const [disabledCategories, setDisabledCategories] = (0, import_react60.useState)(/* @__PURE__ */ new Set());
-    const simulationRef = (0, import_react60.useRef)(null);
-    const nodeRef = (0, import_react60.useRef)(null);
-    const linkRef = (0, import_react60.useRef)(null);
-    const allCategories = (0, import_react60.useRef)([]);
-    (0, import_react60.useEffect)(() => {
+    const svgRef = (0, import_react62.useRef)(null);
+    const containerRef = (0, import_react62.useRef)(null);
+    const [loading, setLoading] = (0, import_react62.useState)(true);
+    const [error, setError] = (0, import_react62.useState)(null);
+    const [disabledCategories, setDisabledCategories] = (0, import_react62.useState)(/* @__PURE__ */ new Set());
+    const simulationRef = (0, import_react62.useRef)(null);
+    const nodeRef = (0, import_react62.useRef)(null);
+    const linkRef = (0, import_react62.useRef)(null);
+    const allCategories = (0, import_react62.useRef)([]);
+    (0, import_react62.useEffect)(() => {
       const cats = [];
       graph.components.forEach((m) => {
         if (!cats.includes(m.category)) cats.push(m.category);
@@ -36268,7 +39771,7 @@
       cats.sort();
       allCategories.current = cats;
     }, [graph]);
-    const renderGraph = (0, import_react60.useCallback)(() => {
+    const renderGraph = (0, import_react62.useCallback)(() => {
       const d3 = window.d3;
       if (!d3 || !svgRef.current || !containerRef.current) return;
       const svg = d3.select(svgRef.current);
@@ -36323,21 +39826,23 @@
       const zoom = d3.zoom().scaleExtent([0.1, 4]).on("zoom", (event) => g.attr("transform", event.transform));
       svg.call(zoom);
     }, [graph, onSelectComponent]);
-    (0, import_react60.useEffect)(() => {
+    (0, import_react62.useEffect)(() => {
       setLoading(true);
       setError(null);
-      ensureD3().then(() => {
-        setLoading(false);
-        renderGraph();
-      }).catch(() => {
+      ensureD3().then(() => setLoading(false)).catch(() => {
         setLoading(false);
         setError("Failed to load graph library");
       });
       return () => {
         if (simulationRef.current) simulationRef.current.stop();
       };
-    }, [renderGraph]);
-    (0, import_react60.useEffect)(() => {
+    }, []);
+    (0, import_react62.useEffect)(() => {
+      if (!loading && !error) {
+        renderGraph();
+      }
+    }, [loading, error, renderGraph]);
+    (0, import_react62.useEffect)(() => {
       if (!nodeRef.current || !linkRef.current) return;
       nodeRef.current.style("display", (d) => disabledCategories.has(d.category) ? "none" : null);
       linkRef.current.style("display", (d) => {
@@ -36355,16 +39860,16 @@
       });
     };
     if (loading) {
-      return /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("div", { className: "flex items-center justify-center h-full", children: /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(Spinner, { size: "lg" }) });
+      return /* @__PURE__ */ (0, import_jsx_runtime60.jsx)("div", { className: "flex items-center justify-center h-full", children: /* @__PURE__ */ (0, import_jsx_runtime60.jsx)(Spinner, { size: "lg" }) });
     }
     if (error) {
-      return /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("div", { className: "flex items-center justify-center h-full text-sm text-[#848484]", children: error });
+      return /* @__PURE__ */ (0, import_jsx_runtime60.jsx)("div", { className: "flex items-center justify-center h-full text-sm text-[#848484]", children: error });
     }
-    return /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)("div", { ref: containerRef, className: "relative h-full w-full", id: "wiki-graph-container", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("svg", { ref: svgRef, className: "w-full h-full" }),
-      /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)("div", { className: "absolute top-2 right-2 bg-white/90 dark:bg-[#252526]/90 border border-[#e0e0e0] dark:border-[#3c3c3c] rounded p-2 text-xs max-h-60 overflow-y-auto", id: "wiki-graph-legend", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("div", { className: "font-medium mb-1 text-[#1e1e1e] dark:text-[#cccccc]", children: "Categories" }),
-        allCategories.current.map((cat) => /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)(
+    return /* @__PURE__ */ (0, import_jsx_runtime60.jsxs)("div", { ref: containerRef, className: "relative h-full w-full", id: "wiki-graph-container", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime60.jsx)("svg", { ref: svgRef, className: "w-full h-full" }),
+      /* @__PURE__ */ (0, import_jsx_runtime60.jsxs)("div", { className: "absolute top-2 right-2 bg-white/90 dark:bg-[#252526]/90 border border-[#e0e0e0] dark:border-[#3c3c3c] rounded p-2 text-xs max-h-60 overflow-y-auto", id: "wiki-graph-legend", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime60.jsx)("div", { className: "font-medium mb-1 text-[#1e1e1e] dark:text-[#cccccc]", children: "Categories" }),
+        allCategories.current.map((cat) => /* @__PURE__ */ (0, import_jsx_runtime60.jsxs)(
           "div",
           {
             className: cn(
@@ -36374,14 +39879,14 @@
             "data-category": cat,
             onClick: () => toggleCategory(cat),
             children: [
-              /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(
+              /* @__PURE__ */ (0, import_jsx_runtime60.jsx)(
                 "div",
                 {
                   className: "wiki-graph-legend-swatch w-3 h-3 rounded-full flex-shrink-0",
                   style: { background: getCategoryColor(cat, allCategories.current) }
                 }
               ),
-              /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("span", { children: cat })
+              /* @__PURE__ */ (0, import_jsx_runtime60.jsx)("span", { children: cat })
             ]
           },
           cat
@@ -36391,24 +39896,24 @@
   }
 
   // src/server/spa/client/react/wiki/WikiAsk.tsx
-  var import_react61 = __toESM(require_react());
-  var import_jsx_runtime59 = __toESM(require_jsx_runtime());
+  var import_react63 = __toESM(require_react());
+  var import_jsx_runtime61 = __toESM(require_jsx_runtime());
   function WikiAsk({ wikiId, wikiName, currentComponentId }) {
-    const [messages, setMessages] = (0, import_react61.useState)([]);
-    const [input, setInput] = (0, import_react61.useState)("");
-    const [streaming, setStreaming] = (0, import_react61.useState)(false);
-    const [sessionId, setSessionId] = (0, import_react61.useState)(null);
-    const messagesEndRef = (0, import_react61.useRef)(null);
-    const historyRef = (0, import_react61.useRef)([]);
-    const scrollToBottom = (0, import_react61.useCallback)(() => {
+    const [messages, setMessages] = (0, import_react63.useState)([]);
+    const [input, setInput] = (0, import_react63.useState)("");
+    const [streaming, setStreaming] = (0, import_react63.useState)(false);
+    const [sessionId, setSessionId] = (0, import_react63.useState)(null);
+    const messagesEndRef = (0, import_react63.useRef)(null);
+    const historyRef = (0, import_react63.useRef)([]);
+    const scrollToBottom = (0, import_react63.useCallback)(() => {
       if (messagesEndRef.current && typeof messagesEndRef.current.scrollIntoView === "function") {
         messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
       }
     }, []);
-    (0, import_react61.useEffect)(() => {
+    (0, import_react63.useEffect)(() => {
       scrollToBottom();
     }, [messages, scrollToBottom]);
-    const handleSend = (0, import_react61.useCallback)(async () => {
+    const handleSend = (0, import_react63.useCallback)(async () => {
       if (streaming || !input.trim()) return;
       const question = input.trim();
       setInput("");
@@ -36528,7 +40033,7 @@
         setStreaming(false);
       }
     }, [input, streaming, wikiId, sessionId, currentComponentId]);
-    const handleClear = (0, import_react61.useCallback)(() => {
+    const handleClear = (0, import_react63.useCallback)(() => {
       if (sessionId) {
         fetch(getApiBase() + "/wikis/" + encodeURIComponent(wikiId) + "/ask/session/" + encodeURIComponent(sessionId), { method: "DELETE" }).catch(() => {
         });
@@ -36541,17 +40046,17 @@
       if (typeof marked !== "undefined") return marked.parse(content);
       return content.replace(/</g, "&lt;").replace(/>/g, "&gt;");
     };
-    return /* @__PURE__ */ (0, import_jsx_runtime59.jsxs)("div", { className: "flex flex-col h-full", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime59.jsxs)("div", { className: "flex items-center justify-between px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime59.jsxs)("div", { className: "text-xs text-[#848484]", children: [
+    return /* @__PURE__ */ (0, import_jsx_runtime61.jsxs)("div", { className: "flex flex-col h-full", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime61.jsxs)("div", { className: "flex items-center justify-between px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime61.jsxs)("div", { className: "text-xs text-[#848484]", children: [
           "Ask about ",
           wikiName,
-          currentComponentId && /* @__PURE__ */ (0, import_jsx_runtime59.jsxs)("span", { className: "ml-1 text-[#0078d4]", children: [
+          currentComponentId && /* @__PURE__ */ (0, import_jsx_runtime61.jsxs)("span", { className: "ml-1 text-[#0078d4]", children: [
             "\u2022 ",
             currentComponentId
           ] })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime59.jsx)(
+        /* @__PURE__ */ (0, import_jsx_runtime61.jsx)(
           "button",
           {
             className: "text-xs text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]",
@@ -36560,33 +40065,33 @@
           }
         )
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime59.jsxs)("div", { className: "flex-1 overflow-y-auto p-3 space-y-3", id: "wiki-ask-messages", children: [
-        messages.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime59.jsx)("div", { className: "flex items-center justify-center h-full text-sm text-[#848484]", children: "Ask a question about the codebase" }),
-        messages.map((msg, i) => /* @__PURE__ */ (0, import_jsx_runtime59.jsxs)("div", { className: "ask-message", children: [
-          msg.role === "user" && /* @__PURE__ */ (0, import_jsx_runtime59.jsx)("div", { className: "ask-message-user bg-[#0078d4]/10 rounded-lg px-3 py-2 text-sm text-[#1e1e1e] dark:text-[#cccccc] ml-8", children: msg.content }),
-          msg.role === "assistant" && /* @__PURE__ */ (0, import_jsx_runtime59.jsxs)("div", { className: "ask-message-assistant", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime59.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime61.jsxs)("div", { className: "flex-1 overflow-y-auto p-3 space-y-3", id: "wiki-ask-messages", children: [
+        messages.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("div", { className: "flex items-center justify-center h-full text-sm text-[#848484]", children: "Ask a question about the codebase" }),
+        messages.map((msg, i) => /* @__PURE__ */ (0, import_jsx_runtime61.jsxs)("div", { className: "ask-message", children: [
+          msg.role === "user" && /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("div", { className: "ask-message-user bg-[#0078d4]/10 rounded-lg px-3 py-2 text-sm text-[#1e1e1e] dark:text-[#cccccc] ml-8", children: msg.content }),
+          msg.role === "assistant" && /* @__PURE__ */ (0, import_jsx_runtime61.jsxs)("div", { className: "ask-message-assistant", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime61.jsx)(
               "div",
               {
                 className: "markdown-body text-sm text-[#1e1e1e] dark:text-[#cccccc]",
                 dangerouslySetInnerHTML: { __html: renderContent(msg.content) }
               }
             ),
-            streaming && i === messages.length - 1 && !msg.content && /* @__PURE__ */ (0, import_jsx_runtime59.jsxs)("div", { className: "flex items-center gap-1 text-xs text-[#848484]", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime59.jsx)(Spinner, { size: "sm" }),
+            streaming && i === messages.length - 1 && !msg.content && /* @__PURE__ */ (0, import_jsx_runtime61.jsxs)("div", { className: "flex items-center gap-1 text-xs text-[#848484]", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime61.jsx)(Spinner, { size: "sm" }),
               " Thinking\u2026"
             ] })
           ] }),
-          msg.role === "context" && /* @__PURE__ */ (0, import_jsx_runtime59.jsx)("div", { className: "ask-message-context text-[10px] text-[#848484] px-2 py-1 bg-[#f3f3f3] dark:bg-[#1e1e1e] rounded", children: msg.content }),
-          msg.role === "error" && /* @__PURE__ */ (0, import_jsx_runtime59.jsxs)("div", { className: "ask-message-error text-xs text-[#f14c4c] px-2 py-1", children: [
+          msg.role === "context" && /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("div", { className: "ask-message-context text-[10px] text-[#848484] px-2 py-1 bg-[#f3f3f3] dark:bg-[#1e1e1e] rounded", children: msg.content }),
+          msg.role === "error" && /* @__PURE__ */ (0, import_jsx_runtime61.jsxs)("div", { className: "ask-message-error text-xs text-[#f14c4c] px-2 py-1", children: [
             "Error: ",
             msg.content
           ] })
         ] }, i)),
-        /* @__PURE__ */ (0, import_jsx_runtime59.jsx)("div", { ref: messagesEndRef })
+        /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("div", { ref: messagesEndRef })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime59.jsxs)("div", { className: "flex items-end gap-2 p-3 border-t border-[#e0e0e0] dark:border-[#3c3c3c]", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime59.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime61.jsxs)("div", { className: "flex items-end gap-2 p-3 border-t border-[#e0e0e0] dark:border-[#3c3c3c]", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime61.jsx)(
           "textarea",
           {
             className: "flex-1 resize-none px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4] max-h-[120px]",
@@ -36604,7 +40109,7 @@
             disabled: streaming
           }
         ),
-        /* @__PURE__ */ (0, import_jsx_runtime59.jsx)(
+        /* @__PURE__ */ (0, import_jsx_runtime61.jsx)(
           Button,
           {
             size: "sm",
@@ -36619,7 +40124,7 @@
   }
 
   // src/server/spa/client/react/wiki/WikiAdmin.tsx
-  var import_react62 = __toESM(require_react());
+  var import_react64 = __toESM(require_react());
 
   // ../../node_modules/js-yaml/dist/js-yaml.mjs
   function isNothing(subject) {
@@ -39205,7 +42710,7 @@
   var safeDump = renamed("safeDump", "dump");
 
   // src/server/spa/client/react/wiki/WikiAdmin.tsx
-  var import_jsx_runtime60 = __toESM(require_jsx_runtime());
+  var import_jsx_runtime62 = __toESM(require_jsx_runtime());
   var ADMIN_TABS = ["generate", "seeds", "config", "delete"];
   var DEFAULT_CONFIG_TEMPLATE = `# deep-wiki configuration
 # This file is optional \u2014 remove any lines you don't need.
@@ -39263,20 +42768,20 @@
     5: { name: "Website", desc: "Build static site output" }
   };
   function WikiAdmin({ wikiId, initialTab, onTabChange }) {
-    const [tab, setTab] = (0, import_react62.useState)(
+    const [tab, setTab] = (0, import_react64.useState)(
       initialTab && ADMIN_TABS.includes(initialTab) ? initialTab : "generate"
     );
-    (0, import_react62.useEffect)(() => {
+    (0, import_react64.useEffect)(() => {
       if (initialTab && ADMIN_TABS.includes(initialTab)) {
         setTab(initialTab);
       }
     }, [initialTab]);
-    const changeTab = (0, import_react62.useCallback)((t) => {
+    const changeTab = (0, import_react64.useCallback)((t) => {
       setTab(t);
       onTabChange?.(t);
     }, [onTabChange]);
-    return /* @__PURE__ */ (0, import_jsx_runtime60.jsxs)("div", { className: "flex flex-col h-full", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime60.jsx)("div", { className: "flex gap-1 px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]", children: ADMIN_TABS.map((t) => /* @__PURE__ */ (0, import_jsx_runtime60.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime62.jsxs)("div", { className: "flex flex-col h-full", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime62.jsx)("div", { className: "flex gap-1 px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]", children: ADMIN_TABS.map((t) => /* @__PURE__ */ (0, import_jsx_runtime62.jsx)(
         "button",
         {
           className: cn(
@@ -39289,24 +42794,24 @@
         },
         t
       )) }),
-      /* @__PURE__ */ (0, import_jsx_runtime60.jsxs)("div", { className: "flex-1 overflow-y-auto p-3", children: [
-        tab === "generate" && /* @__PURE__ */ (0, import_jsx_runtime60.jsx)(GenerateTab, { wikiId }),
-        tab === "seeds" && /* @__PURE__ */ (0, import_jsx_runtime60.jsx)(EditorTab, { wikiId, kind: "seeds" }),
-        tab === "config" && /* @__PURE__ */ (0, import_jsx_runtime60.jsx)(EditorTab, { wikiId, kind: "config" }),
-        tab === "delete" && /* @__PURE__ */ (0, import_jsx_runtime60.jsx)(DangerZone, { wikiId })
+      /* @__PURE__ */ (0, import_jsx_runtime62.jsxs)("div", { className: "flex-1 overflow-y-auto p-3", children: [
+        tab === "generate" && /* @__PURE__ */ (0, import_jsx_runtime62.jsx)(GenerateTab, { wikiId }),
+        tab === "seeds" && /* @__PURE__ */ (0, import_jsx_runtime62.jsx)(EditorTab, { wikiId, kind: "seeds" }),
+        tab === "config" && /* @__PURE__ */ (0, import_jsx_runtime62.jsx)(EditorTab, { wikiId, kind: "config" }),
+        tab === "delete" && /* @__PURE__ */ (0, import_jsx_runtime62.jsx)(DangerZone, { wikiId })
       ] })
     ] });
   }
   function GenerateTab({ wikiId }) {
-    const [cache, setCache2] = (0, import_react62.useState)({});
-    const [metadata, setMetadata] = (0, import_react62.useState)(null);
-    const [runningPhase, setRunningPhase] = (0, import_react62.useState)(null);
-    const [logs, setLogs] = (0, import_react62.useState)({});
-    const [fromPhase, setFromPhase] = (0, import_react62.useState)(1);
-    const [phase4Components, setPhase4Components] = (0, import_react62.useState)([]);
-    const [phase4Expanded, setPhase4Expanded] = (0, import_react62.useState)(false);
-    const abortRef = (0, import_react62.useRef)(null);
-    const loadCacheStatus = (0, import_react62.useCallback)(() => {
+    const [cache, setCache2] = (0, import_react64.useState)({});
+    const [metadata, setMetadata] = (0, import_react64.useState)(null);
+    const [runningPhase, setRunningPhase] = (0, import_react64.useState)(null);
+    const [logs, setLogs] = (0, import_react64.useState)({});
+    const [fromPhase, setFromPhase] = (0, import_react64.useState)(1);
+    const [phase4Components, setPhase4Components] = (0, import_react64.useState)([]);
+    const [phase4Expanded, setPhase4Expanded] = (0, import_react64.useState)(false);
+    const abortRef = (0, import_react64.useRef)(null);
+    const loadCacheStatus = (0, import_react64.useCallback)(() => {
       fetchApi("/wikis/" + encodeURIComponent(wikiId) + "/admin/generate/status").then((data) => {
         if (data?.phases && typeof data.phases === "object") {
           const m = {};
@@ -39321,10 +42826,10 @@
       }).catch(() => {
       });
     }, [wikiId]);
-    (0, import_react62.useEffect)(() => {
+    (0, import_react64.useEffect)(() => {
       loadCacheStatus();
     }, [loadCacheStatus]);
-    const runPhase = (0, import_react62.useCallback)((startPhase, endPhase, force = false) => {
+    const runPhase = (0, import_react64.useCallback)((startPhase, endPhase, force = false) => {
       if (runningPhase !== null) return;
       setRunningPhase(startPhase);
       setLogs((prev) => {
@@ -39401,10 +42906,10 @@
         setRunningPhase(null);
       });
     }, [wikiId, runningPhase, loadCacheStatus]);
-    const runAll = (0, import_react62.useCallback)((force = false) => {
+    const runAll = (0, import_react64.useCallback)((force = false) => {
       runPhase(fromPhase, 5, force);
     }, [runPhase, fromPhase]);
-    const handleAbort = (0, import_react62.useCallback)(() => {
+    const handleAbort = (0, import_react64.useCallback)(() => {
       if (abortRef.current) abortRef.current.abort();
       fetch(getApiBase() + "/wikis/" + encodeURIComponent(wikiId) + "/admin/generate/cancel", { method: "POST" }).catch(() => {
       });
@@ -39415,17 +42920,17 @@
       if (v === "stale") return { label: "Stale", status: "cancelled" };
       return { label: "None", status: "queued" };
     };
-    return /* @__PURE__ */ (0, import_jsx_runtime60.jsxs)("div", { className: "space-y-3", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime60.jsxs)("div", { className: "flex items-center gap-2", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime60.jsx)("label", { className: "text-xs text-[#848484]", children: "Start from:" }),
-        /* @__PURE__ */ (0, import_jsx_runtime60.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime62.jsxs)("div", { className: "space-y-3", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime62.jsxs)("div", { className: "flex items-center gap-2", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime62.jsx)("label", { className: "text-xs text-[#848484]", children: "Start from:" }),
+        /* @__PURE__ */ (0, import_jsx_runtime62.jsx)(
           "select",
           {
             className: "text-xs px-2 py-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc]",
             value: fromPhase,
             onChange: (e) => setFromPhase(parseInt(e.target.value)),
             disabled: runningPhase !== null,
-            children: [1, 2, 3, 4, 5].map((p) => /* @__PURE__ */ (0, import_jsx_runtime60.jsxs)("option", { value: p, children: [
+            children: [1, 2, 3, 4, 5].map((p) => /* @__PURE__ */ (0, import_jsx_runtime62.jsxs)("option", { value: p, children: [
               "Phase ",
               p,
               ": ",
@@ -39433,26 +42938,26 @@
             ] }, p))
           }
         ),
-        runningPhase !== null ? /* @__PURE__ */ (0, import_jsx_runtime60.jsx)(Button, { variant: "danger", size: "sm", onClick: handleAbort, children: "Abort" }) : /* @__PURE__ */ (0, import_jsx_runtime60.jsxs)(import_jsx_runtime60.Fragment, { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime60.jsx)(Button, { size: "sm", onClick: () => runAll(false), children: "Run All" }),
-          /* @__PURE__ */ (0, import_jsx_runtime60.jsx)(Button, { size: "sm", variant: "secondary", onClick: () => runAll(true), id: "force-run-all", children: "Force All" })
+        runningPhase !== null ? /* @__PURE__ */ (0, import_jsx_runtime62.jsx)(Button, { variant: "danger", size: "sm", onClick: handleAbort, children: "Abort" }) : /* @__PURE__ */ (0, import_jsx_runtime62.jsxs)(import_jsx_runtime62.Fragment, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime62.jsx)(Button, { size: "sm", onClick: () => runAll(false), children: "Run All" }),
+          /* @__PURE__ */ (0, import_jsx_runtime62.jsx)(Button, { size: "sm", variant: "secondary", onClick: () => runAll(true), id: "force-run-all", children: "Force All" })
         ] })
       ] }),
-      metadata && hasCachedPhases(cache) && /* @__PURE__ */ (0, import_jsx_runtime60.jsx)(MetadataSummary, { metadata }),
+      metadata && hasCachedPhases(cache) && /* @__PURE__ */ (0, import_jsx_runtime62.jsx)(MetadataSummary, { metadata }),
       [1, 2, 3, 4, 5].map((phase) => {
         const p = PHASE_NAMES[phase];
         const cacheBadge = getCacheBadge(phase);
         const isRunning = runningPhase === phase;
         const phaseLog = logs[phase] || [];
-        return /* @__PURE__ */ (0, import_jsx_runtime60.jsxs)(Card, { className: "p-3", id: `phase-card-${phase}`, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime60.jsxs)("div", { className: "flex items-center gap-2", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime60.jsx)("span", { className: "w-6 h-6 rounded-full bg-[#0078d4]/10 text-[#0078d4] text-xs font-bold flex items-center justify-center flex-shrink-0", children: phase }),
-            /* @__PURE__ */ (0, import_jsx_runtime60.jsxs)("div", { className: "flex-1 min-w-0", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime60.jsx)("div", { className: "text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]", children: p.name }),
-              /* @__PURE__ */ (0, import_jsx_runtime60.jsx)("div", { className: "text-[10px] text-[#848484]", children: p.desc })
+        return /* @__PURE__ */ (0, import_jsx_runtime62.jsxs)(Card, { className: "p-3", id: `phase-card-${phase}`, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime62.jsxs)("div", { className: "flex items-center gap-2", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime62.jsx)("span", { className: "w-6 h-6 rounded-full bg-[#0078d4]/10 text-[#0078d4] text-xs font-bold flex items-center justify-center flex-shrink-0", children: phase }),
+            /* @__PURE__ */ (0, import_jsx_runtime62.jsxs)("div", { className: "flex-1 min-w-0", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime62.jsx)("div", { className: "text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]", children: p.name }),
+              /* @__PURE__ */ (0, import_jsx_runtime62.jsx)("div", { className: "text-[10px] text-[#848484]", children: p.desc })
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime60.jsx)(Badge, { status: cacheBadge.status, id: `phase-cache-${phase}`, children: cacheBadge.label }),
-            cacheBadge.label === "Cached" && /* @__PURE__ */ (0, import_jsx_runtime60.jsx)(
+            /* @__PURE__ */ (0, import_jsx_runtime62.jsx)(Badge, { status: cacheBadge.status, id: `phase-cache-${phase}`, children: cacheBadge.label }),
+            cacheBadge.label === "Cached" && /* @__PURE__ */ (0, import_jsx_runtime62.jsx)(
               Button,
               {
                 size: "sm",
@@ -39464,7 +42969,7 @@
                 children: "Force"
               }
             ),
-            /* @__PURE__ */ (0, import_jsx_runtime60.jsx)(
+            /* @__PURE__ */ (0, import_jsx_runtime62.jsx)(
               Button,
               {
                 size: "sm",
@@ -39477,24 +42982,24 @@
               }
             )
           ] }),
-          phase === 4 && phase4Components.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime60.jsxs)("div", { className: "mt-2", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime60.jsxs)(
+          phase === 4 && phase4Components.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime62.jsxs)("div", { className: "mt-2", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime62.jsxs)(
               "button",
               {
                 className: "text-xs text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] flex items-center gap-1",
                 id: "phase4-component-toggle",
                 onClick: () => setPhase4Expanded((p2) => !p2),
                 children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime60.jsx)("span", { className: cn("transition-transform text-[10px]", phase4Expanded && "rotate-90"), children: "\u25B6" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime62.jsx)("span", { className: cn("transition-transform text-[10px]", phase4Expanded && "rotate-90"), children: "\u25B6" }),
                   "Components (",
-                  /* @__PURE__ */ (0, import_jsx_runtime60.jsx)("span", { id: "phase4-component-count", children: phase4Components.length }),
+                  /* @__PURE__ */ (0, import_jsx_runtime62.jsx)("span", { id: "phase4-component-count", children: phase4Components.length }),
                   ")"
                 ]
               }
             ),
-            phase4Expanded && /* @__PURE__ */ (0, import_jsx_runtime60.jsx)("div", { className: "mt-1 pl-4 text-[10px] text-[#848484] space-y-0.5", id: "phase4-component-list", children: phase4Components.map((c, i) => /* @__PURE__ */ (0, import_jsx_runtime60.jsx)("div", { children: c }, i)) })
+            phase4Expanded && /* @__PURE__ */ (0, import_jsx_runtime62.jsx)("div", { className: "mt-1 pl-4 text-[10px] text-[#848484] space-y-0.5", id: "phase4-component-list", children: phase4Components.map((c, i) => /* @__PURE__ */ (0, import_jsx_runtime62.jsx)("div", { children: c }, i)) })
           ] }),
-          phaseLog.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime60.jsx)(
+          phaseLog.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime62.jsx)(
             "pre",
             {
               className: "mt-2 text-[10px] leading-4 text-[#848484] bg-[#1e1e1e] dark:bg-black rounded p-2 max-h-48 overflow-y-auto font-mono",
@@ -39523,23 +43028,23 @@
       return typeof val === "number" && val > 0;
     });
     if (items.length === 0) return null;
-    return /* @__PURE__ */ (0, import_jsx_runtime60.jsxs)(Card, { className: "p-3", id: "cache-metadata-summary", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime60.jsxs)("div", { className: "flex items-center gap-2 mb-2", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime60.jsx)("span", { className: "text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc]", children: "Cache Summary" }),
-        metadata.projectName && /* @__PURE__ */ (0, import_jsx_runtime60.jsxs)("span", { className: "text-[10px] text-[#848484]", id: "metadata-project-name", children: [
+    return /* @__PURE__ */ (0, import_jsx_runtime62.jsxs)(Card, { className: "p-3", id: "cache-metadata-summary", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime62.jsxs)("div", { className: "flex items-center gap-2 mb-2", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime62.jsx)("span", { className: "text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc]", children: "Cache Summary" }),
+        metadata.projectName && /* @__PURE__ */ (0, import_jsx_runtime62.jsxs)("span", { className: "text-[10px] text-[#848484]", id: "metadata-project-name", children: [
           metadata.projectName,
           metadata.projectLanguage ? ` \xB7 ${metadata.projectLanguage}` : ""
         ] })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime60.jsx)("div", { className: "grid grid-cols-3 gap-2", id: "metadata-grid", children: items.map((item) => /* @__PURE__ */ (0, import_jsx_runtime60.jsxs)(
+      /* @__PURE__ */ (0, import_jsx_runtime62.jsx)("div", { className: "grid grid-cols-3 gap-2", id: "metadata-grid", children: items.map((item) => /* @__PURE__ */ (0, import_jsx_runtime62.jsxs)(
         "div",
         {
           className: "flex items-center gap-1.5 px-2 py-1 rounded bg-[#f5f5f5] dark:bg-[#2d2d2d]",
           "data-metadata-item": item.key,
           children: [
-            /* @__PURE__ */ (0, import_jsx_runtime60.jsx)("span", { className: "text-[10px]", children: item.icon }),
-            /* @__PURE__ */ (0, import_jsx_runtime60.jsx)("span", { className: "text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc]", "data-metadata-value": item.key, children: metadata[item.key] }),
-            /* @__PURE__ */ (0, import_jsx_runtime60.jsx)("span", { className: "text-[10px] text-[#848484]", children: item.label })
+            /* @__PURE__ */ (0, import_jsx_runtime62.jsx)("span", { className: "text-[10px]", children: item.icon }),
+            /* @__PURE__ */ (0, import_jsx_runtime62.jsx)("span", { className: "text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc]", "data-metadata-value": item.key, children: metadata[item.key] }),
+            /* @__PURE__ */ (0, import_jsx_runtime62.jsx)("span", { className: "text-[10px] text-[#848484]", children: item.label })
           ]
         },
         item.key
@@ -39547,15 +43052,15 @@
     ] });
   }
   function EditorTab({ wikiId, kind }) {
-    const [content, setContent] = (0, import_react62.useState)("");
-    const [original, setOriginal] = (0, import_react62.useState)("");
-    const [resourcePath, setResourcePath] = (0, import_react62.useState)(null);
-    const [isNewFile, setIsNewFile] = (0, import_react62.useState)(false);
-    const [saving, setSaving] = (0, import_react62.useState)(false);
-    const [status, setStatus] = (0, import_react62.useState)(null);
-    const [generating, setGenerating] = (0, import_react62.useState)(false);
-    const [genLogs, setGenLogs] = (0, import_react62.useState)([]);
-    (0, import_react62.useEffect)(() => {
+    const [content, setContent] = (0, import_react64.useState)("");
+    const [original, setOriginal] = (0, import_react64.useState)("");
+    const [resourcePath, setResourcePath] = (0, import_react64.useState)(null);
+    const [isNewFile, setIsNewFile] = (0, import_react64.useState)(false);
+    const [saving, setSaving] = (0, import_react64.useState)(false);
+    const [status, setStatus] = (0, import_react64.useState)(null);
+    const [generating, setGenerating] = (0, import_react64.useState)(false);
+    const [genLogs, setGenLogs] = (0, import_react64.useState)([]);
+    (0, import_react64.useEffect)(() => {
       fetchApi("/wikis/" + encodeURIComponent(wikiId) + "/admin/" + kind).then((data) => {
         let text = "";
         let resolvedPath = null;
@@ -39581,7 +43086,7 @@
         setStatus(null);
       }).catch(() => setStatus("Failed to load"));
     }, [wikiId, kind]);
-    const handleSave = (0, import_react62.useCallback)(async () => {
+    const handleSave = (0, import_react64.useCallback)(async () => {
       setSaving(true);
       setStatus(null);
       try {
@@ -39602,12 +43107,12 @@
       }
       setSaving(false);
     }, [wikiId, kind, content]);
-    const handleReset = (0, import_react62.useCallback)(() => {
+    const handleReset = (0, import_react64.useCallback)(() => {
       setContent(original);
       setStatus(null);
     }, [original]);
     const isModified = content !== original;
-    const handleGenerateSeeds = (0, import_react62.useCallback)(async () => {
+    const handleGenerateSeeds = (0, import_react64.useCallback)(async () => {
       setGenerating(true);
       setGenLogs([]);
       try {
@@ -39657,24 +43162,24 @@
       }
       setGenerating(false);
     }, [wikiId]);
-    return /* @__PURE__ */ (0, import_jsx_runtime60.jsxs)("div", { className: "space-y-2", children: [
-      kind === "seeds" && /* @__PURE__ */ (0, import_jsx_runtime60.jsxs)("div", { className: "flex items-center justify-between pb-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime60.jsx)("span", { className: "text-xs text-[#848484]", children: "Generate theme seeds via AI" }),
-        /* @__PURE__ */ (0, import_jsx_runtime60.jsx)(Button, { size: "sm", loading: generating, onClick: handleGenerateSeeds, id: "seeds-generate", children: "Generate Seeds" })
+    return /* @__PURE__ */ (0, import_jsx_runtime62.jsxs)("div", { className: "space-y-2", children: [
+      kind === "seeds" && /* @__PURE__ */ (0, import_jsx_runtime62.jsxs)("div", { className: "flex items-center justify-between pb-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime62.jsx)("span", { className: "text-xs text-[#848484]", children: "Generate theme seeds via AI" }),
+        /* @__PURE__ */ (0, import_jsx_runtime62.jsx)(Button, { size: "sm", loading: generating, onClick: handleGenerateSeeds, id: "seeds-generate", children: "Generate Seeds" })
       ] }),
-      kind === "seeds" && genLogs.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime60.jsx)("pre", { className: "text-[10px] leading-4 text-[#848484] bg-[#1e1e1e] dark:bg-black rounded p-2 max-h-24 overflow-y-auto font-mono", id: "seeds-gen-log", children: genLogs.join("\n") }),
-      /* @__PURE__ */ (0, import_jsx_runtime60.jsxs)("div", { className: "flex items-center justify-between", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime60.jsxs)("div", { className: "flex items-center gap-2", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime60.jsx)("span", { className: "text-xs text-[#848484]", id: `${kind}-path`, children: resourcePath || (kind === "config" ? "deep-wiki.config.yaml" : "seeds.yaml") }),
-          isNewFile && /* @__PURE__ */ (0, import_jsx_runtime60.jsx)("span", { className: "text-xs px-1.5 py-0.5 rounded bg-[#0078d4]/10 text-[#0078d4]", id: `${kind}-new-badge`, children: "New file \u2014 save to create" }),
-          status && /* @__PURE__ */ (0, import_jsx_runtime60.jsx)("span", { className: cn("text-xs", status === "Saved" ? "text-green-600" : "text-[#f14c4c]"), id: `${kind}-status`, children: status })
+      kind === "seeds" && genLogs.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime62.jsx)("pre", { className: "text-[10px] leading-4 text-[#848484] bg-[#1e1e1e] dark:bg-black rounded p-2 max-h-24 overflow-y-auto font-mono", id: "seeds-gen-log", children: genLogs.join("\n") }),
+      /* @__PURE__ */ (0, import_jsx_runtime62.jsxs)("div", { className: "flex items-center justify-between", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime62.jsxs)("div", { className: "flex items-center gap-2", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime62.jsx)("span", { className: "text-xs text-[#848484]", id: `${kind}-path`, children: resourcePath || (kind === "config" ? "deep-wiki.config.yaml" : "seeds.yaml") }),
+          isNewFile && /* @__PURE__ */ (0, import_jsx_runtime62.jsx)("span", { className: "text-xs px-1.5 py-0.5 rounded bg-[#0078d4]/10 text-[#0078d4]", id: `${kind}-new-badge`, children: "New file \u2014 save to create" }),
+          status && /* @__PURE__ */ (0, import_jsx_runtime62.jsx)("span", { className: cn("text-xs", status === "Saved" ? "text-green-600" : "text-[#f14c4c]"), id: `${kind}-status`, children: status })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime60.jsxs)("div", { className: "flex gap-1", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime60.jsx)(Button, { variant: "secondary", size: "sm", disabled: !isModified, onClick: handleReset, id: `${kind}-reset`, children: "Reset" }),
-          /* @__PURE__ */ (0, import_jsx_runtime60.jsx)(Button, { size: "sm", disabled: !isModified, loading: saving, onClick: handleSave, id: `${kind}-save`, children: "Save" })
+        /* @__PURE__ */ (0, import_jsx_runtime62.jsxs)("div", { className: "flex gap-1", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime62.jsx)(Button, { variant: "secondary", size: "sm", disabled: !isModified, onClick: handleReset, id: `${kind}-reset`, children: "Reset" }),
+          /* @__PURE__ */ (0, import_jsx_runtime62.jsx)(Button, { size: "sm", disabled: !isModified, loading: saving, onClick: handleSave, id: `${kind}-save`, children: "Save" })
         ] })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime60.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime62.jsx)(
         "textarea",
         {
           className: "w-full h-64 px-3 py-2 text-xs font-mono rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4] resize-y",
@@ -39690,8 +43195,8 @@
     ] });
   }
   function DangerZone({ wikiId }) {
-    const [deleting, setDeleting] = (0, import_react62.useState)(false);
-    const handleDelete = (0, import_react62.useCallback)(async () => {
+    const [deleting, setDeleting] = (0, import_react64.useState)(false);
+    const handleDelete = (0, import_react64.useCallback)(async () => {
       if (!confirm("Are you sure you want to delete this wiki? This cannot be undone.")) return;
       setDeleting(true);
       try {
@@ -39703,15 +43208,15 @@
       }
       setDeleting(false);
     }, [wikiId]);
-    return /* @__PURE__ */ (0, import_jsx_runtime60.jsxs)("div", { className: "mt-8 p-3 border border-[#f14c4c]/30 rounded", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime60.jsx)("h4", { className: "text-xs font-semibold text-[#f14c4c] mb-2", children: "Danger Zone" }),
-      /* @__PURE__ */ (0, import_jsx_runtime60.jsx)("p", { className: "text-[10px] text-[#848484] mb-2", children: "Permanently delete this wiki and all its data." }),
-      /* @__PURE__ */ (0, import_jsx_runtime60.jsx)(Button, { variant: "danger", size: "sm", loading: deleting, onClick: handleDelete, children: "Delete Wiki" })
+    return /* @__PURE__ */ (0, import_jsx_runtime62.jsxs)("div", { className: "mt-8 p-3 border border-[#f14c4c]/30 rounded", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime62.jsx)("h4", { className: "text-xs font-semibold text-[#f14c4c] mb-2", children: "Danger Zone" }),
+      /* @__PURE__ */ (0, import_jsx_runtime62.jsx)("p", { className: "text-[10px] text-[#848484] mb-2", children: "Permanently delete this wiki and all its data." }),
+      /* @__PURE__ */ (0, import_jsx_runtime62.jsx)(Button, { variant: "danger", size: "sm", loading: deleting, onClick: handleDelete, children: "Delete Wiki" })
     ] });
   }
 
   // src/server/spa/client/react/wiki/WikiDetail.tsx
-  var import_jsx_runtime61 = __toESM(require_jsx_runtime());
+  var import_jsx_runtime63 = __toESM(require_jsx_runtime());
   var statusConfig2 = {
     loaded: { label: "Ready", badge: "completed" },
     generating: { label: "Generating", badge: "running" },
@@ -39732,11 +43237,11 @@
   }
   function WikiDetail({ wikiId }) {
     const { state, dispatch } = useApp();
-    const [graph, setGraph] = (0, import_react63.useState)(null);
-    const [loadingGraph, setLoadingGraph] = (0, import_react63.useState)(true);
-    const [activeTab, setActiveTab] = (0, import_react63.useState)("browse");
-    const [adminSubTab, setAdminSubTab] = (0, import_react63.useState)(null);
-    (0, import_react63.useEffect)(() => {
+    const [graph, setGraph] = (0, import_react65.useState)(null);
+    const [loadingGraph, setLoadingGraph] = (0, import_react65.useState)(true);
+    const [activeTab, setActiveTab] = (0, import_react65.useState)("browse");
+    const [adminSubTab, setAdminSubTab] = (0, import_react65.useState)(null);
+    (0, import_react65.useEffect)(() => {
       if (state.wikiDetailInitialTab) {
         const tab = state.wikiDetailInitialTab;
         if (WIKI_TABS.includes(tab)) {
@@ -39748,31 +43253,31 @@
         dispatch({ type: "CLEAR_WIKI_INITIAL_TAB" });
       }
     }, [state.wikiDetailInitialTab]);
-    const wiki = (0, import_react63.useMemo)(
+    const wiki = (0, import_react65.useMemo)(
       () => state.wikis.find((w) => w.id === wikiId),
       [state.wikis, wikiId]
     );
     const wikiName = wiki?.name || wiki?.title || wikiId;
     const wikiStatus = wiki?.status || (wiki?.loaded ? "loaded" : "pending");
     const cfg = statusConfig2[wikiStatus];
-    (0, import_react63.useEffect)(() => {
+    (0, import_react65.useEffect)(() => {
       setLoadingGraph(true);
       fetchApi("/wikis/" + encodeURIComponent(wikiId) + "/graph").then((data) => setGraph(data)).catch(() => setGraph(null)).finally(() => setLoadingGraph(false));
     }, [wikiId]);
-    const handleBack = (0, import_react63.useCallback)(() => {
+    const handleBack = (0, import_react65.useCallback)(() => {
       dispatch({ type: "SELECT_WIKI", wikiId: null });
       location.hash = "#wiki";
     }, [dispatch]);
-    const changeTab = (0, import_react63.useCallback)((tab) => {
+    const changeTab = (0, import_react65.useCallback)((tab) => {
       setActiveTab(tab);
       if (tab !== "admin") setAdminSubTab(null);
       location.hash = buildWikiHash(wikiId, tab, tab === "browse" ? state.selectedWikiComponentId : null);
     }, [wikiId, state.selectedWikiComponentId]);
-    const handleAdminTabChange = (0, import_react63.useCallback)((subTab) => {
+    const handleAdminTabChange = (0, import_react65.useCallback)((subTab) => {
       setAdminSubTab(subTab);
       location.hash = buildWikiHash(wikiId, "admin", null, subTab);
     }, [wikiId]);
-    const handleSelectComponent = (0, import_react63.useCallback)((componentId) => {
+    const handleSelectComponent = (0, import_react65.useCallback)((componentId) => {
       dispatch({ type: "SELECT_WIKI_COMPONENT", componentId });
       location.hash = buildWikiHash(wikiId, "browse", componentId);
       setActiveTab("browse");
@@ -39780,26 +43285,26 @@
     const selectedComponentId = state.selectedWikiComponentId;
     const renderContent = () => {
       if (loadingGraph) {
-        return /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("div", { className: "flex items-center justify-center h-full", children: /* @__PURE__ */ (0, import_jsx_runtime61.jsx)(Spinner, { size: "lg" }) });
+        return /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("div", { className: "flex items-center justify-center h-full", children: /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(Spinner, { size: "lg" }) });
       }
       if (!graph) {
         if (wikiStatus === "pending") {
           if (activeTab === "admin") {
-            return /* @__PURE__ */ (0, import_jsx_runtime61.jsx)(WikiAdmin, { wikiId, initialTab: adminSubTab, onTabChange: handleAdminTabChange });
+            return /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(WikiAdmin, { wikiId, initialTab: adminSubTab, onTabChange: handleAdminTabChange });
           }
-          return /* @__PURE__ */ (0, import_jsx_runtime61.jsxs)("div", { className: "flex flex-col items-center justify-center h-full text-center", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("div", { className: "text-4xl mb-3", children: "\u26A0" }),
-            /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("div", { className: "text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-1", children: "Setup Required" }),
-            /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("div", { className: "text-xs text-[#848484] mb-4 max-w-xs", children: "This wiki has been registered but has not been generated yet." }),
-            /* @__PURE__ */ (0, import_jsx_runtime61.jsx)(Button, { size: "sm", onClick: () => changeTab("admin"), children: "\u2192 Run Setup Wizard" })
+          return /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "flex flex-col items-center justify-center h-full text-center", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("div", { className: "text-4xl mb-3", children: "\u26A0" }),
+            /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("div", { className: "text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-1", children: "Setup Required" }),
+            /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("div", { className: "text-xs text-[#848484] mb-4 max-w-xs", children: "This wiki has been registered but has not been generated yet." }),
+            /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(Button, { size: "sm", onClick: () => changeTab("admin"), children: "\u2192 Run Setup Wizard" })
           ] });
         }
-        return /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("div", { className: "flex items-center justify-center h-full text-sm text-[#848484]", children: "No graph data available. Try generating the wiki first." });
+        return /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("div", { className: "flex items-center justify-center h-full text-sm text-[#848484]", children: "No graph data available. Try generating the wiki first." });
       }
       switch (activeTab) {
         case "browse":
           if (selectedComponentId) {
-            return /* @__PURE__ */ (0, import_jsx_runtime61.jsx)(
+            return /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(
               WikiComponent,
               {
                 wikiId,
@@ -39809,9 +43314,9 @@
               }
             );
           }
-          return /* @__PURE__ */ (0, import_jsx_runtime61.jsx)(ProjectOverview, { graph, onSelectComponent: handleSelectComponent });
+          return /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(ProjectOverview, { graph, onSelectComponent: handleSelectComponent });
         case "ask":
-          return /* @__PURE__ */ (0, import_jsx_runtime61.jsx)(
+          return /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(
             WikiAsk,
             {
               wikiId,
@@ -39820,7 +43325,7 @@
             }
           );
         case "graph":
-          return /* @__PURE__ */ (0, import_jsx_runtime61.jsx)(
+          return /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(
             WikiGraph,
             {
               wikiId,
@@ -39831,12 +43336,12 @@
             }
           );
         case "admin":
-          return /* @__PURE__ */ (0, import_jsx_runtime61.jsx)(WikiAdmin, { wikiId, initialTab: adminSubTab, onTabChange: handleAdminTabChange });
+          return /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(WikiAdmin, { wikiId, initialTab: adminSubTab, onTabChange: handleAdminTabChange });
       }
     };
-    return /* @__PURE__ */ (0, import_jsx_runtime61.jsxs)("div", { className: "flex flex-col h-full", id: "view-wiki", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime61.jsxs)("div", { className: "flex items-center gap-2 px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime61.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "flex flex-col h-[calc(100vh-48px)] overflow-hidden", id: "view-wiki", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "flex items-center gap-2 px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(
           "button",
           {
             className: "text-sm text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]",
@@ -39845,20 +43350,20 @@
             children: "\u2190"
           }
         ),
-        /* @__PURE__ */ (0, import_jsx_runtime61.jsx)(
+        /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(
           "span",
           {
             className: "w-2.5 h-2.5 rounded-full flex-shrink-0",
             style: { background: wiki?.color || "#848484" }
           }
         ),
-        /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("h2", { className: "text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] truncate", id: "wiki-project-title", children: wikiName }),
-        /* @__PURE__ */ (0, import_jsx_runtime61.jsxs)(Badge, { status: cfg.badge, children: [
-          wikiStatus === "generating" && /* @__PURE__ */ (0, import_jsx_runtime61.jsx)(Spinner, { size: "sm" }),
+        /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("h2", { className: "text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] truncate", id: "wiki-project-title", children: wikiName }),
+        /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)(Badge, { status: cfg.badge, children: [
+          wikiStatus === "generating" && /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(Spinner, { size: "sm" }),
           cfg.label
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("div", { className: "flex-1" }),
-        /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("div", { className: "flex gap-0.5", id: "wiki-project-tabs", children: WIKI_TABS.map((t) => /* @__PURE__ */ (0, import_jsx_runtime61.jsx)(
+        /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("div", { className: "flex-1" }),
+        /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("div", { className: "flex gap-0.5", id: "wiki-project-tabs", children: WIKI_TABS.map((t) => /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(
           "button",
           {
             className: cn(
@@ -39872,8 +43377,8 @@
           t
         )) })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime61.jsxs)("div", { className: "flex flex-1 min-h-0", children: [
-        graph && activeTab === "browse" && /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("div", { className: "w-56 flex-shrink-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c] overflow-hidden", children: /* @__PURE__ */ (0, import_jsx_runtime61.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "flex flex-1 min-h-0", children: [
+        graph && activeTab === "browse" && /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("div", { className: "w-56 flex-shrink-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c] overflow-hidden", children: /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(
           WikiComponentTree,
           {
             graph,
@@ -39881,7 +43386,7 @@
             onSelect: handleSelectComponent
           }
         ) }),
-        /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("div", { className: "flex-1 min-w-0", children: renderContent() })
+        /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("div", { className: "flex-1 min-w-0", children: renderContent() })
       ] })
     ] });
   }
@@ -39892,63 +43397,63 @@
       language: graph.project.mainLanguage || "N/A"
     };
     const hasDomains = graph.domains && graph.domains.length > 0;
-    return /* @__PURE__ */ (0, import_jsx_runtime61.jsxs)("div", { className: "p-4 overflow-y-auto h-full", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("h1", { className: "text-lg font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-1", children: graph.project.name }),
-      /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("p", { className: "text-sm text-[#848484] mb-4", children: graph.project.description }),
-      /* @__PURE__ */ (0, import_jsx_runtime61.jsxs)("div", { className: "grid grid-cols-3 gap-3 mb-6", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime61.jsxs)("div", { className: "rounded border border-[#e0e0e0] dark:border-[#3c3c3c] p-3 text-center", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("div", { className: "text-xs text-[#848484]", children: "Components" }),
-          /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("div", { className: "text-xl font-semibold text-[#1e1e1e] dark:text-[#cccccc]", children: stats.components })
+    return /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "p-4 overflow-y-auto h-full", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("h1", { className: "text-lg font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-1", children: graph.project.name }),
+      /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("p", { className: "text-sm text-[#848484] mb-4", children: graph.project.description }),
+      /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "grid grid-cols-3 gap-3 mb-6", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "rounded border border-[#e0e0e0] dark:border-[#3c3c3c] p-3 text-center", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("div", { className: "text-xs text-[#848484]", children: "Components" }),
+          /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("div", { className: "text-xl font-semibold text-[#1e1e1e] dark:text-[#cccccc]", children: stats.components })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime61.jsxs)("div", { className: "rounded border border-[#e0e0e0] dark:border-[#3c3c3c] p-3 text-center", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("div", { className: "text-xs text-[#848484]", children: "Categories" }),
-          /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("div", { className: "text-xl font-semibold text-[#1e1e1e] dark:text-[#cccccc]", children: stats.categories })
+        /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "rounded border border-[#e0e0e0] dark:border-[#3c3c3c] p-3 text-center", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("div", { className: "text-xs text-[#848484]", children: "Categories" }),
+          /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("div", { className: "text-xl font-semibold text-[#1e1e1e] dark:text-[#cccccc]", children: stats.categories })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime61.jsxs)("div", { className: "rounded border border-[#e0e0e0] dark:border-[#3c3c3c] p-3 text-center", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("div", { className: "text-xs text-[#848484]", children: "Language" }),
-          /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("div", { className: "text-lg font-semibold text-[#1e1e1e] dark:text-[#cccccc]", children: stats.language })
+        /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "rounded border border-[#e0e0e0] dark:border-[#3c3c3c] p-3 text-center", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("div", { className: "text-xs text-[#848484]", children: "Language" }),
+          /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("div", { className: "text-lg font-semibold text-[#1e1e1e] dark:text-[#cccccc]", children: stats.language })
         ] })
       ] }),
-      hasDomains ? /* @__PURE__ */ (0, import_jsx_runtime61.jsxs)(import_jsx_runtime61.Fragment, { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("h3", { className: "text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2", children: "Domains" }),
-        /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-2", children: graph.domains.filter((d) => (d.components || []).length > 0).map((domain) => /* @__PURE__ */ (0, import_jsx_runtime61.jsxs)(
+      hasDomains ? /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)(import_jsx_runtime63.Fragment, { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("h3", { className: "text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2", children: "Domains" }),
+        /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-2", children: graph.domains.filter((d) => (d.components || []).length > 0).map((domain) => /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)(
           "div",
           {
             className: "component-card wiki-component-card rounded border border-[#e0e0e0] dark:border-[#3c3c3c] p-3 cursor-pointer hover:border-[#0078d4]",
             children: [
-              /* @__PURE__ */ (0, import_jsx_runtime61.jsxs)("h4", { className: "text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("h4", { className: "text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]", children: [
                 domain.name,
                 " ",
-                /* @__PURE__ */ (0, import_jsx_runtime61.jsxs)("span", { className: "text-[#848484] font-normal", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("span", { className: "text-[#848484] font-normal", children: [
                   "(",
                   (domain.components || []).length,
                   ")"
                 ] })
               ] }),
-              domain.description && /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("p", { className: "text-xs text-[#848484] mt-1", children: domain.description })
+              domain.description && /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("p", { className: "text-xs text-[#848484] mt-1", children: domain.description })
             ]
           },
           domain.id
         )) })
-      ] }) : /* @__PURE__ */ (0, import_jsx_runtime61.jsxs)(import_jsx_runtime61.Fragment, { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("h3", { className: "text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2", children: "Components" }),
-        /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-2", children: graph.components.map((comp) => /* @__PURE__ */ (0, import_jsx_runtime61.jsxs)(
+      ] }) : /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)(import_jsx_runtime63.Fragment, { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("h3", { className: "text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2", children: "Components" }),
+        /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-2", children: graph.components.map((comp) => /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)(
           "div",
           {
             className: "component-card wiki-component-card rounded border border-[#e0e0e0] dark:border-[#3c3c3c] p-3 cursor-pointer hover:border-[#0078d4]",
             "data-component-id": comp.id,
             onClick: () => onSelectComponent(comp.id),
             children: [
-              /* @__PURE__ */ (0, import_jsx_runtime61.jsxs)("h4", { className: "text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("h4", { className: "text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]", children: [
                 comp.name,
-                comp.complexity && /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("span", { className: cn(
+                comp.complexity && /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("span", { className: cn(
                   "ml-1 text-[10px] px-1 py-0.5 rounded",
                   comp.complexity === "low" && "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
                   comp.complexity === "medium" && "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400",
                   comp.complexity === "high" && "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
                 ), children: comp.complexity })
               ] }),
-              /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("p", { className: "text-xs text-[#848484] mt-1 line-clamp-2", children: comp.purpose })
+              /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("p", { className: "text-xs text-[#848484] mt-1 line-clamp-2", children: comp.purpose })
             ]
           },
           comp.id
@@ -39958,18 +43463,18 @@
   }
 
   // src/server/spa/client/react/wiki/WikiView.tsx
-  var import_jsx_runtime62 = __toESM(require_jsx_runtime());
+  var import_jsx_runtime64 = __toESM(require_jsx_runtime());
   function WikiView() {
     const { state } = useApp();
     if (state.selectedWikiId) {
-      return /* @__PURE__ */ (0, import_jsx_runtime62.jsx)(WikiDetail, { wikiId: state.selectedWikiId });
+      return /* @__PURE__ */ (0, import_jsx_runtime64.jsx)(WikiDetail, { wikiId: state.selectedWikiId });
     }
-    return /* @__PURE__ */ (0, import_jsx_runtime62.jsx)(WikiList, {});
+    return /* @__PURE__ */ (0, import_jsx_runtime64.jsx)(WikiList, {});
   }
 
   // src/server/spa/client/react/admin/AdminPanel.tsx
-  var import_react64 = __toESM(require_react());
-  var import_jsx_runtime63 = __toESM(require_jsx_runtime());
+  var import_react66 = __toESM(require_react());
+  var import_jsx_runtime65 = __toESM(require_jsx_runtime());
   function formatBytes(bytes) {
     if (bytes === 0) return "0 B";
     const units = ["B", "KB", "MB", "GB"];
@@ -39980,25 +43485,25 @@
   var VALID_OUTPUT_OPTIONS = ["table", "json", "csv", "markdown"];
   function AdminPanel() {
     const { toasts, addToast, removeToast } = useToast();
-    const [stats, setStats] = (0, import_react64.useState)(null);
-    const [statsLoading, setStatsLoading] = (0, import_react64.useState)(true);
-    const [config, setConfig] = (0, import_react64.useState)(null);
-    const [configLoading, setConfigLoading] = (0, import_react64.useState)(true);
-    const [configError, setConfigError] = (0, import_react64.useState)(null);
-    const [configForm, setConfigForm] = (0, import_react64.useState)({});
-    const [configSaving, setConfigSaving] = (0, import_react64.useState)(false);
-    const [showReportIntent, setShowReportIntent] = (0, import_react64.useState)(false);
-    const [displaySaving, setDisplaySaving] = (0, import_react64.useState)(false);
-    const [exportStatus, setExportStatus] = (0, import_react64.useState)("");
-    const [importFile, setImportFile] = (0, import_react64.useState)(null);
-    const [importMode, setImportMode] = (0, import_react64.useState)("replace");
-    const [importPreview, setImportPreview] = (0, import_react64.useState)(null);
-    const [importStatus, setImportStatus] = (0, import_react64.useState)("");
-    const [wipeToken, setWipeToken] = (0, import_react64.useState)(null);
-    const [includeWikis, setIncludeWikis] = (0, import_react64.useState)(false);
-    const [wipeStatus, setWipeStatus] = (0, import_react64.useState)("");
-    const [wipePreview, setWipePreview] = (0, import_react64.useState)(null);
-    const loadStats = (0, import_react64.useCallback)(async () => {
+    const [stats, setStats] = (0, import_react66.useState)(null);
+    const [statsLoading, setStatsLoading] = (0, import_react66.useState)(true);
+    const [config, setConfig] = (0, import_react66.useState)(null);
+    const [configLoading, setConfigLoading] = (0, import_react66.useState)(true);
+    const [configError, setConfigError] = (0, import_react66.useState)(null);
+    const [configForm, setConfigForm] = (0, import_react66.useState)({});
+    const [configSaving, setConfigSaving] = (0, import_react66.useState)(false);
+    const [showReportIntent, setShowReportIntent] = (0, import_react66.useState)(false);
+    const [displaySaving, setDisplaySaving] = (0, import_react66.useState)(false);
+    const [exportStatus, setExportStatus] = (0, import_react66.useState)("");
+    const [importFile, setImportFile] = (0, import_react66.useState)(null);
+    const [importMode, setImportMode] = (0, import_react66.useState)("replace");
+    const [importPreview, setImportPreview] = (0, import_react66.useState)(null);
+    const [importStatus, setImportStatus] = (0, import_react66.useState)("");
+    const [wipeToken, setWipeToken] = (0, import_react66.useState)(null);
+    const [includeWikis, setIncludeWikis] = (0, import_react66.useState)(false);
+    const [wipeStatus, setWipeStatus] = (0, import_react66.useState)("");
+    const [wipePreview, setWipePreview] = (0, import_react66.useState)(null);
+    const loadStats = (0, import_react66.useCallback)(async () => {
       setStatsLoading(true);
       try {
         const res = await fetch(getApiBase() + "/admin/data/stats?includeWikis=true");
@@ -40015,7 +43520,7 @@
         setStatsLoading(false);
       }
     }, []);
-    const loadConfig = (0, import_react64.useCallback)(async () => {
+    const loadConfig = (0, import_react66.useCallback)(async () => {
       setConfigLoading(true);
       setConfigError(null);
       try {
@@ -40037,11 +43542,11 @@
         setConfigLoading(false);
       }
     }, []);
-    (0, import_react64.useEffect)(() => {
+    (0, import_react66.useEffect)(() => {
       loadStats();
       loadConfig();
     }, [loadStats, loadConfig]);
-    const handleSaveConfig = (0, import_react64.useCallback)(async () => {
+    const handleSaveConfig = (0, import_react66.useCallback)(async () => {
       const errors = [];
       if (!configForm.model?.trim()) errors.push("Model must be non-empty");
       const parallel = Number(configForm.parallel);
@@ -40084,7 +43589,7 @@
         setConfigSaving(false);
       }
     }, [configForm, addToast, loadConfig]);
-    const handleToggleShowReportIntent = (0, import_react64.useCallback)(async (newValue) => {
+    const handleToggleShowReportIntent = (0, import_react66.useCallback)(async (newValue) => {
       const prevValue = showReportIntent;
       setShowReportIntent(newValue);
       setDisplaySaving(true);
@@ -40107,7 +43612,7 @@
         setDisplaySaving(false);
       }
     }, [showReportIntent, addToast]);
-    const handleExport = (0, import_react64.useCallback)(async () => {
+    const handleExport = (0, import_react66.useCallback)(async () => {
       setExportStatus("Exporting\u2026");
       try {
         const res = await fetch(getApiBase() + "/admin/export");
@@ -40132,7 +43637,7 @@
         setExportStatus("Export failed: " + (err.message || "Network error"));
       }
     }, []);
-    const handlePreviewImport = (0, import_react64.useCallback)(async () => {
+    const handlePreviewImport = (0, import_react66.useCallback)(async () => {
       if (!importFile) {
         setImportStatus("Please select a JSON file first.");
         return;
@@ -40164,7 +43669,7 @@
         setImportStatus("Invalid JSON file.");
       }
     }, [importFile]);
-    const handleImport = (0, import_react64.useCallback)(async () => {
+    const handleImport = (0, import_react66.useCallback)(async () => {
       if (!importFile) {
         setImportStatus("Please select a JSON file first.");
         return;
@@ -40195,7 +43700,7 @@
         setImportStatus("Import failed: " + (err.message || "Network error"));
       }
     }, [importFile, importMode, addToast, loadStats]);
-    const handlePreviewWipe = (0, import_react64.useCallback)(async () => {
+    const handlePreviewWipe = (0, import_react66.useCallback)(async () => {
       try {
         const res = await fetch(getApiBase() + "/admin/data/stats?includeWikis=" + includeWikis);
         if (!res.ok) {
@@ -40212,7 +43717,7 @@
         setWipePreview("Failed to load preview.");
       }
     }, [includeWikis]);
-    const handleWipeStep1 = (0, import_react64.useCallback)(async () => {
+    const handleWipeStep1 = (0, import_react66.useCallback)(async () => {
       setWipeStatus("Requesting confirmation token\u2026");
       try {
         const res = await fetch(getApiBase() + "/admin/data/wipe-token");
@@ -40225,7 +43730,7 @@
         setWipeStatus(err.message);
       }
     }, []);
-    const handleWipeConfirm = (0, import_react64.useCallback)(async () => {
+    const handleWipeConfirm = (0, import_react66.useCallback)(async () => {
       if (!wipeToken) return;
       setWipeStatus("Wiping data\u2026");
       try {
@@ -40246,52 +43751,52 @@
         setWipeStatus("Wipe failed: " + (err.message || "Network error"));
       }
     }, [wipeToken, includeWikis, addToast, loadStats]);
-    const handleWipeCancel = (0, import_react64.useCallback)(() => {
+    const handleWipeCancel = (0, import_react66.useCallback)(() => {
       setWipeToken(null);
       setWipeStatus("Cancelled.");
     }, []);
     const sources = config?.sources ?? {};
     const resolved = config?.resolved ?? {};
-    return /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "p-6 space-y-6", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("header", { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("h1", { className: "text-xl font-semibold text-[#1e1e1e] dark:text-[#cccccc]", children: "Admin" }),
-        /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("p", { className: "text-sm text-[#616161] dark:text-[#999]", children: "Server management and data administration" })
+    return /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("div", { className: "p-6 space-y-6", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("header", { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("h1", { className: "text-xl font-semibold text-[#1e1e1e] dark:text-[#cccccc]", children: "Admin" }),
+        /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("p", { className: "text-sm text-[#616161] dark:text-[#999]", children: "Server management and data administration" })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)(Card, { className: "p-4", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("h3", { className: "text-sm font-semibold mb-3 text-[#1e1e1e] dark:text-[#cccccc]", children: "Storage Stats" }),
-        statsLoading ? /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "flex items-center gap-2 text-sm text-[#848484]", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(Spinner, { size: "sm" }),
+      /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)(Card, { className: "p-4", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("h3", { className: "text-sm font-semibold mb-3 text-[#1e1e1e] dark:text-[#cccccc]", children: "Storage Stats" }),
+        statsLoading ? /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("div", { className: "flex items-center gap-2 text-sm text-[#848484]", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(Spinner, { size: "sm" }),
           " Loading\u2026"
-        ] }) : /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "grid grid-cols-1 md:grid-cols-3 gap-4 mb-3", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "text-center p-3 rounded bg-white dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#3c3c3c]", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("div", { className: "text-2xl font-bold text-[#0078d4]", "data-testid": "stat-processes", children: stats?.processCount ?? "\u2014" }),
-            /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("div", { className: "text-xs text-[#616161] dark:text-[#999]", children: "Processes" })
+        ] }) : /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("div", { className: "grid grid-cols-1 md:grid-cols-3 gap-4 mb-3", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("div", { className: "text-center p-3 rounded bg-white dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#3c3c3c]", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("div", { className: "text-2xl font-bold text-[#0078d4]", "data-testid": "stat-processes", children: stats?.processCount ?? "\u2014" }),
+            /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("div", { className: "text-xs text-[#616161] dark:text-[#999]", children: "Processes" })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "text-center p-3 rounded bg-white dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#3c3c3c]", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("div", { className: "text-2xl font-bold text-[#0078d4]", "data-testid": "stat-wikis", children: stats?.wikiCount ?? "\u2014" }),
-            /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("div", { className: "text-xs text-[#616161] dark:text-[#999]", children: "Wikis" })
+          /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("div", { className: "text-center p-3 rounded bg-white dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#3c3c3c]", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("div", { className: "text-2xl font-bold text-[#0078d4]", "data-testid": "stat-wikis", children: stats?.wikiCount ?? "\u2014" }),
+            /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("div", { className: "text-xs text-[#616161] dark:text-[#999]", children: "Wikis" })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "text-center p-3 rounded bg-white dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#3c3c3c]", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("div", { className: "text-2xl font-bold text-[#0078d4]", "data-testid": "stat-disk", children: stats?.totalBytes != null ? formatBytes(stats.totalBytes) : "\u2014" }),
-            /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("div", { className: "text-xs text-[#616161] dark:text-[#999]", children: "Disk Usage" })
+          /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("div", { className: "text-center p-3 rounded bg-white dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#3c3c3c]", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("div", { className: "text-2xl font-bold text-[#0078d4]", "data-testid": "stat-disk", children: stats?.totalBytes != null ? formatBytes(stats.totalBytes) : "\u2014" }),
+            /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("div", { className: "text-xs text-[#616161] dark:text-[#999]", children: "Disk Usage" })
           ] })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(Button, { variant: "secondary", size: "sm", onClick: loadStats, children: "Refresh" })
+        /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(Button, { variant: "secondary", size: "sm", onClick: loadStats, children: "Refresh" })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)(Card, { className: "p-4", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("h3", { className: "text-sm font-semibold mb-3 text-[#1e1e1e] dark:text-[#cccccc]", children: "Configuration" }),
-        configLoading ? /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "flex items-center gap-2 text-sm text-[#848484]", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(Spinner, { size: "sm" }),
+      /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)(Card, { className: "p-4", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("h3", { className: "text-sm font-semibold mb-3 text-[#1e1e1e] dark:text-[#cccccc]", children: "Configuration" }),
+        configLoading ? /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("div", { className: "flex items-center gap-2 text-sm text-[#848484]", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(Spinner, { size: "sm" }),
           " Loading\u2026"
-        ] }) : configError ? /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("div", { className: "text-sm text-red-500", children: configError }) : /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)(import_jsx_runtime63.Fragment, { children: [
-          config?.configFilePath && /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "text-xs text-[#848484] mb-3", children: [
+        ] }) : configError ? /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("div", { className: "text-sm text-red-500", children: configError }) : /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)(import_jsx_runtime65.Fragment, { children: [
+          config?.configFilePath && /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("div", { className: "text-xs text-[#848484] mb-3", children: [
             "Config file: ",
-            /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("code", { className: "bg-black/5 dark:bg-white/5 px-1 rounded", children: config.configFilePath })
+            /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("code", { className: "bg-black/5 dark:bg-white/5 px-1 rounded", children: config.configFilePath })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "space-y-2 mb-3", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "flex items-center gap-2", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("label", { className: "text-xs w-24 text-[#616161] dark:text-[#999]", children: "Model" }),
-              /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("div", { className: "space-y-2 mb-3", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("div", { className: "flex items-center gap-2", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("label", { className: "text-xs w-24 text-[#616161] dark:text-[#999]", children: "Model" }),
+              /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(
                 "input",
                 {
                   className: "flex-1 px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]",
@@ -40299,11 +43804,11 @@
                   onChange: (e) => setConfigForm((f) => ({ ...f, model: e.target.value }))
                 }
               ),
-              /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(SourceBadge, { source: sources["model"] })
+              /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(SourceBadge, { source: sources["model"] })
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "flex items-center gap-2", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("label", { className: "text-xs w-24 text-[#616161] dark:text-[#999]", children: "Parallelism" }),
-              /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(
+            /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("div", { className: "flex items-center gap-2", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("label", { className: "text-xs w-24 text-[#616161] dark:text-[#999]", children: "Parallelism" }),
+              /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(
                 "input",
                 {
                   type: "number",
@@ -40313,11 +43818,11 @@
                   onChange: (e) => setConfigForm((f) => ({ ...f, parallel: e.target.value }))
                 }
               ),
-              /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(SourceBadge, { source: sources["parallel"] })
+              /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(SourceBadge, { source: sources["parallel"] })
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "flex items-center gap-2", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("label", { className: "text-xs w-24 text-[#616161] dark:text-[#999]", children: "Timeout" }),
-              /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(
+            /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("div", { className: "flex items-center gap-2", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("label", { className: "text-xs w-24 text-[#616161] dark:text-[#999]", children: "Timeout" }),
+              /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(
                 "input",
                 {
                   type: "number",
@@ -40328,78 +43833,78 @@
                   onChange: (e) => setConfigForm((f) => ({ ...f, timeout: e.target.value }))
                 }
               ),
-              /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("span", { className: "inline-block px-1.5 py-0.5 text-[10px] rounded bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300", children: "s" }),
-              /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(SourceBadge, { source: sources["timeout"] })
+              /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("span", { className: "inline-block px-1.5 py-0.5 text-[10px] rounded bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300", children: "s" }),
+              /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(SourceBadge, { source: sources["timeout"] })
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("div", { className: "text-[10px] text-[#848484] ml-[6.5rem]", children: "AI task execution timeout. Leave empty to use the system default (1 hour)." }),
-            /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "flex items-center gap-2", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("label", { className: "text-xs w-24 text-[#616161] dark:text-[#999]", children: "Output" }),
-              /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(
+            /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("div", { className: "text-[10px] text-[#848484] ml-[6.5rem]", children: "AI task execution timeout. Leave empty to use the system default (1 hour)." }),
+            /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("div", { className: "flex items-center gap-2", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("label", { className: "text-xs w-24 text-[#616161] dark:text-[#999]", children: "Output" }),
+              /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(
                 "select",
                 {
                   className: "flex-1 px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]",
                   value: configForm.output,
                   onChange: (e) => setConfigForm((f) => ({ ...f, output: e.target.value })),
-                  children: VALID_OUTPUT_OPTIONS.map((o) => /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("option", { value: o, children: o }, o))
+                  children: VALID_OUTPUT_OPTIONS.map((o) => /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("option", { value: o, children: o }, o))
                 }
               ),
-              /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(SourceBadge, { source: sources["output"] })
+              /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(SourceBadge, { source: sources["output"] })
             ] })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "text-xs space-y-1 mb-3 text-[#616161] dark:text-[#999]", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("div", { className: "text-xs space-y-1 mb-3 text-[#616161] dark:text-[#999]", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("div", { children: [
               "Approve Permissions: ",
               String(resolved.approvePermissions ?? "\u2014"),
               " ",
-              /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(SourceBadge, { source: sources["approvePermissions"] })
+              /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(SourceBadge, { source: sources["approvePermissions"] })
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("div", { children: [
               "MCP Config: ",
               String(resolved.mcpConfig ?? "\u2014"),
               " ",
-              /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(SourceBadge, { source: sources["mcpConfig"] })
+              /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(SourceBadge, { source: sources["mcpConfig"] })
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("div", { children: [
               "Persist: ",
               String(resolved.persist ?? "\u2014"),
               " ",
-              /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(SourceBadge, { source: sources["persist"] })
+              /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(SourceBadge, { source: sources["persist"] })
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("div", { children: [
               "Serve Port: ",
               String(resolved.serve?.port ?? "\u2014"),
               " ",
-              /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(SourceBadge, { source: sources["serve.port"] })
+              /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(SourceBadge, { source: sources["serve.port"] })
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("div", { children: [
               "Serve Host: ",
               String(resolved.serve?.host ?? "\u2014"),
               " ",
-              /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(SourceBadge, { source: sources["serve.host"] })
+              /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(SourceBadge, { source: sources["serve.host"] })
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("div", { children: [
               "Serve Data Dir: ",
               String(resolved.serve?.dataDir ?? "\u2014"),
               " ",
-              /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(SourceBadge, { source: sources["serve.dataDir"] })
+              /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(SourceBadge, { source: sources["serve.dataDir"] })
             ] })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(Button, { size: "sm", onClick: handleSaveConfig, loading: configSaving, children: "Save" })
+          /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(Button, { size: "sm", onClick: handleSaveConfig, loading: configSaving, children: "Save" })
         ] })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)(Card, { className: "p-4", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("h3", { className: "text-sm font-semibold mb-3 text-[#1e1e1e] dark:text-[#cccccc]", children: "Display" }),
-        /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "flex items-center justify-between", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("div", { className: "text-sm text-[#1e1e1e] dark:text-[#cccccc]", children: "Show intent announcements" }),
-            /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "text-xs text-[#616161] dark:text-[#999]", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)(Card, { className: "p-4", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("h3", { className: "text-sm font-semibold mb-3 text-[#1e1e1e] dark:text-[#cccccc]", children: "Display" }),
+        /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("div", { className: "flex items-center justify-between", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("div", { className: "text-sm text-[#1e1e1e] dark:text-[#cccccc]", children: "Show intent announcements" }),
+            /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("div", { className: "text-xs text-[#616161] dark:text-[#999]", children: [
               "Show or hide ",
-              /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("code", { className: "bg-black/5 dark:bg-white/5 px-1 rounded", children: "report_intent" }),
+              /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("code", { className: "bg-black/5 dark:bg-white/5 px-1 rounded", children: "report_intent" }),
               " tool calls in the conversation view."
             ] })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("label", { className: "relative inline-flex items-center cursor-pointer ml-4", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("label", { className: "relative inline-flex items-center cursor-pointer ml-4", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(
               "input",
               {
                 type: "checkbox",
@@ -40410,22 +43915,22 @@
                 "data-testid": "toggle-show-report-intent"
               }
             ),
-            /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("div", { className: "w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" })
+            /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("div", { className: "w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" })
           ] })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("div", { className: "mt-1", children: /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(SourceBadge, { source: sources["showReportIntent"] }) })
+        /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("div", { className: "mt-1", children: /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(SourceBadge, { source: sources["showReportIntent"] }) })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)(Card, { className: "p-4", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("h3", { className: "text-sm font-semibold mb-2 text-[#1e1e1e] dark:text-[#cccccc]", children: "Export Data" }),
-        /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("p", { className: "text-xs text-[#616161] dark:text-[#999] mb-3", children: "Download all server data as a JSON file." }),
-        /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(Button, { variant: "secondary", size: "sm", onClick: handleExport, children: "Export" }),
-        exportStatus && /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("div", { className: "text-xs text-[#848484] mt-2", children: exportStatus })
+      /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)(Card, { className: "p-4", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("h3", { className: "text-sm font-semibold mb-2 text-[#1e1e1e] dark:text-[#cccccc]", children: "Export Data" }),
+        /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("p", { className: "text-xs text-[#616161] dark:text-[#999] mb-3", children: "Download all server data as a JSON file." }),
+        /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(Button, { variant: "secondary", size: "sm", onClick: handleExport, children: "Export" }),
+        exportStatus && /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("div", { className: "text-xs text-[#848484] mt-2", children: exportStatus })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)(Card, { className: "p-4", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("h3", { className: "text-sm font-semibold mb-2 text-[#1e1e1e] dark:text-[#cccccc]", children: "Import Data" }),
-        /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("p", { className: "text-xs text-[#616161] dark:text-[#999] mb-3", children: "Restore data from a previously exported JSON file." }),
-        /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "flex flex-col gap-2 mb-3", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)(Card, { className: "p-4", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("h3", { className: "text-sm font-semibold mb-2 text-[#1e1e1e] dark:text-[#cccccc]", children: "Import Data" }),
+        /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("p", { className: "text-xs text-[#616161] dark:text-[#999] mb-3", children: "Restore data from a previously exported JSON file." }),
+        /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("div", { className: "flex flex-col gap-2 mb-3", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(
             "input",
             {
               type: "file",
@@ -40434,42 +43939,42 @@
               onChange: (e) => setImportFile(e.target.files?.[0] ?? null)
             }
           ),
-          /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "flex items-center gap-3 text-xs", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("label", { className: "flex items-center gap-1", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("input", { type: "radio", name: "import-mode", checked: importMode === "replace", onChange: () => setImportMode("replace") }),
+          /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("div", { className: "flex items-center gap-3 text-xs", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("label", { className: "flex items-center gap-1", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("input", { type: "radio", name: "import-mode", checked: importMode === "replace", onChange: () => setImportMode("replace") }),
               " Replace"
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("label", { className: "flex items-center gap-1", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("input", { type: "radio", name: "import-mode", checked: importMode === "merge", onChange: () => setImportMode("merge") }),
+            /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("label", { className: "flex items-center gap-1", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("input", { type: "radio", name: "import-mode", checked: importMode === "merge", onChange: () => setImportMode("merge") }),
               " Merge"
             ] })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "flex gap-2", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(Button, { variant: "secondary", size: "sm", onClick: handlePreviewImport, children: "Preview" }),
-            /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(Button, { size: "sm", onClick: handleImport, children: "Import" })
+          /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("div", { className: "flex gap-2", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(Button, { variant: "secondary", size: "sm", onClick: handlePreviewImport, children: "Preview" }),
+            /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(Button, { size: "sm", onClick: handleImport, children: "Import" })
           ] })
         ] }),
-        importPreview && /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("pre", { className: "text-xs bg-black/5 dark:bg-white/5 p-2 rounded mb-2 whitespace-pre-wrap", children: importPreview }),
-        importStatus && /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("div", { className: "text-xs text-[#848484]", children: importStatus })
+        importPreview && /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("pre", { className: "text-xs bg-black/5 dark:bg-white/5 p-2 rounded mb-2 whitespace-pre-wrap", children: importPreview }),
+        importStatus && /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("div", { className: "text-xs text-[#848484]", children: importStatus })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)(Card, { className: "p-4 border-red-300 dark:border-red-800", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("h3", { className: "text-sm font-semibold mb-2 text-red-600 dark:text-red-400", children: "Danger Zone" }),
-        /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("p", { className: "text-xs text-[#616161] dark:text-[#999] mb-3", children: "Permanently delete all stored data. This cannot be undone." }),
-        /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("div", { className: "flex items-center gap-2 mb-3", children: /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("label", { className: "flex items-center gap-1 text-xs", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("input", { type: "checkbox", checked: includeWikis, onChange: (e) => setIncludeWikis(e.target.checked), className: "accent-red-500" }),
+      /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)(Card, { className: "p-4 border-red-300 dark:border-red-800", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("h3", { className: "text-sm font-semibold mb-2 text-red-600 dark:text-red-400", children: "Danger Zone" }),
+        /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("p", { className: "text-xs text-[#616161] dark:text-[#999] mb-3", children: "Permanently delete all stored data. This cannot be undone." }),
+        /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("div", { className: "flex items-center gap-2 mb-3", children: /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("label", { className: "flex items-center gap-1 text-xs", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("input", { type: "checkbox", checked: includeWikis, onChange: (e) => setIncludeWikis(e.target.checked), className: "accent-red-500" }),
           "Include wikis"
         ] }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "flex gap-2 mb-2", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(Button, { variant: "secondary", size: "sm", onClick: handlePreviewWipe, children: "Preview" }),
-          wipeToken === null ? /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(Button, { variant: "danger", size: "sm", onClick: handleWipeStep1, children: "Wipe Data" }) : /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)(import_jsx_runtime63.Fragment, { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(Button, { variant: "danger", size: "sm", onClick: handleWipeConfirm, children: "Confirm Wipe" }),
-            /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(Button, { variant: "secondary", size: "sm", onClick: handleWipeCancel, children: "Cancel" })
+        /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("div", { className: "flex gap-2 mb-2", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(Button, { variant: "secondary", size: "sm", onClick: handlePreviewWipe, children: "Preview" }),
+          wipeToken === null ? /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(Button, { variant: "danger", size: "sm", onClick: handleWipeStep1, children: "Wipe Data" }) : /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)(import_jsx_runtime65.Fragment, { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(Button, { variant: "danger", size: "sm", onClick: handleWipeConfirm, children: "Confirm Wipe" }),
+            /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(Button, { variant: "secondary", size: "sm", onClick: handleWipeCancel, children: "Cancel" })
           ] })
         ] }),
-        wipePreview && /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("pre", { className: "text-xs bg-black/5 dark:bg-white/5 p-2 rounded mb-2 whitespace-pre-wrap", children: wipePreview }),
-        wipeStatus && /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("div", { className: "text-xs text-[#848484]", children: wipeStatus })
+        wipePreview && /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("pre", { className: "text-xs bg-black/5 dark:bg-white/5 p-2 rounded mb-2 whitespace-pre-wrap", children: wipePreview }),
+        wipeStatus && /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("div", { className: "text-xs text-[#848484]", children: wipeStatus })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(ToastContainer, { toasts, removeToast })
+      /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(ToastContainer, { toasts, removeToast })
     ] });
   }
   function SourceBadge({ source }) {
@@ -40480,13 +43985,13 @@
       cli: "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300",
       env: "bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300"
     };
-    return /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("span", { className: `inline-block px-1.5 py-0.5 text-[10px] rounded ${colors[s] || colors.default}`, children: s });
+    return /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("span", { className: `inline-block px-1.5 py-0.5 text-[10px] rounded ${colors[s] || colors.default}`, children: s });
   }
 
   // src/server/spa/client/react/layout/Router.tsx
-  var import_jsx_runtime64 = __toESM(require_jsx_runtime());
+  var import_jsx_runtime66 = __toESM(require_jsx_runtime());
   function StubView({ id, label }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("div", { id, children: label });
+    return /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("div", { id, children: label });
   }
   function tabFromHash(hash) {
     const h = hash.replace(/^#/, "").split("/")[0];
@@ -40533,16 +44038,16 @@
   function Router() {
     const { state, dispatch } = useApp();
     const { dispatch: queueDispatch } = useQueue();
-    const switchTab = (0, import_react65.useCallback)((tab) => {
+    const switchTab = (0, import_react67.useCallback)((tab) => {
       dispatch({ type: "SET_ACTIVE_TAB", tab });
     }, [dispatch]);
-    (0, import_react65.useEffect)(() => {
+    (0, import_react67.useEffect)(() => {
       window.switchTab = switchTab;
       return () => {
         delete window.switchTab;
       };
     }, [switchTab]);
-    (0, import_react65.useEffect)(() => {
+    (0, import_react67.useEffect)(() => {
       const handleHash = () => {
         const hash = location.hash.replace(/^#/, "");
         const tab = tabFromHash("#" + hash);
@@ -40599,7 +44104,7 @@
       window.addEventListener("hashchange", handleHash);
       return () => window.removeEventListener("hashchange", handleHash);
     }, [dispatch, queueDispatch]);
-    (0, import_react65.useEffect)(() => {
+    (0, import_react67.useEffect)(() => {
       const handler = (e) => {
         const target = e.target;
         if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) return;
@@ -40615,25 +44120,25 @@
     }, [dispatch, state.activeTab, state.selectedRepoId]);
     switch (state.activeTab) {
       case "processes":
-        return /* @__PURE__ */ (0, import_jsx_runtime64.jsxs)(import_jsx_runtime64.Fragment, { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime64.jsx)(ProcessesView, {}),
-          /* @__PURE__ */ (0, import_jsx_runtime64.jsx)(QueueView, {})
+        return /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)(import_jsx_runtime66.Fragment, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(ProcessesView, {}),
+          /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(QueueView, {})
         ] });
       case "repos":
-        return /* @__PURE__ */ (0, import_jsx_runtime64.jsx)(ReposView, {});
+        return /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(ReposView, {});
       case "wiki":
-        return /* @__PURE__ */ (0, import_jsx_runtime64.jsx)(WikiView, {});
+        return /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(WikiView, {});
       case "admin":
-        return /* @__PURE__ */ (0, import_jsx_runtime64.jsx)(AdminPanel, {});
+        return /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(AdminPanel, {});
       case "reports":
-        return /* @__PURE__ */ (0, import_jsx_runtime64.jsx)(StubView, { id: "view-reports", label: "Reports" });
+        return /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(StubView, { id: "view-reports", label: "Reports" });
       default:
-        return /* @__PURE__ */ (0, import_jsx_runtime64.jsx)(ReposView, {});
+        return /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(ReposView, {});
     }
   }
 
   // src/server/spa/client/react/processes/MarkdownReviewDialog.tsx
-  var import_jsx_runtime65 = __toESM(require_jsx_runtime());
+  var import_jsx_runtime67 = __toESM(require_jsx_runtime());
   function getTitle(displayPath, filePath) {
     const source = displayPath || filePath || "";
     if (!source) return "Markdown Review";
@@ -40649,16 +44154,16 @@
     fetchMode
   }) {
     if (!open || !wsId || !filePath) return null;
-    return /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(
       Dialog,
       {
         open,
         onClose,
         className: "max-w-[95vw] w-[95vw] h-[92vh] p-0 gap-0",
-        children: /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("div", { className: "flex h-[92vh] flex-col", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("div", { className: "px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#252526]", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("div", { className: "text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc]", children: getTitle(displayPath, filePath) }),
-            /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(
+        children: /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)("div", { className: "flex h-[92vh] flex-col", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)("div", { className: "px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#252526]", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("div", { className: "text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc]", children: getTitle(displayPath, filePath) }),
+            /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(
               "div",
               {
                 className: "text-xs text-[#848484] truncate mt-0.5",
@@ -40667,7 +44172,7 @@
               }
             )
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("div", { className: "flex-1 min-h-0 overflow-hidden", children: /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("div", { className: "flex-1 min-h-0 overflow-hidden", children: /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(
             MarkdownReviewEditor,
             {
               wsId,
@@ -40681,8 +44186,8 @@
   }
 
   // src/server/spa/client/react/queue/EnqueueDialog.tsx
-  var import_react66 = __toESM(require_react());
-  var import_jsx_runtime66 = __toESM(require_jsx_runtime());
+  var import_react68 = __toESM(require_react());
+  var import_jsx_runtime68 = __toESM(require_jsx_runtime());
   function flattenFolders2(node, depth = 0) {
     const indent = "\xA0\xA0".repeat(depth);
     const options = [];
@@ -40699,17 +44204,17 @@
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { state: appState } = useApp();
     const { model: savedModel, setModel: persistModel } = usePreferences();
-    const [prompt, setPrompt] = (0, import_react66.useState)("");
-    const [model, setModel] = (0, import_react66.useState)("");
-    const [workspaceId, setWorkspaceId] = (0, import_react66.useState)("");
-    const [models, setModels] = (0, import_react66.useState)([]);
-    const [folders, setFolders] = (0, import_react66.useState)([]);
-    const [folderPath, setFolderPath] = (0, import_react66.useState)("");
-    const [submitting, setSubmitting] = (0, import_react66.useState)(false);
-    (0, import_react66.useEffect)(() => {
+    const [prompt, setPrompt] = (0, import_react68.useState)("");
+    const [model, setModel] = (0, import_react68.useState)("");
+    const [workspaceId, setWorkspaceId] = (0, import_react68.useState)("");
+    const [models, setModels] = (0, import_react68.useState)([]);
+    const [folders, setFolders] = (0, import_react68.useState)([]);
+    const [folderPath, setFolderPath] = (0, import_react68.useState)("");
+    const [submitting, setSubmitting] = (0, import_react68.useState)(false);
+    (0, import_react68.useEffect)(() => {
       if (savedModel && !model) setModel(savedModel);
     }, [savedModel]);
-    (0, import_react66.useEffect)(() => {
+    (0, import_react68.useEffect)(() => {
       if (!queueState.showDialog) return;
       setFolderPath(queueState.dialogInitialFolderPath ?? "");
       fetchApi("/queue/models").then((data) => {
@@ -40718,7 +44223,7 @@
       }).catch(() => {
       });
     }, [queueState.showDialog]);
-    (0, import_react66.useEffect)(() => {
+    (0, import_react68.useEffect)(() => {
       setFolders([]);
       if (!workspaceId) return;
       fetchApi("/workspaces/" + encodeURIComponent(workspaceId) + "/tasks").then((data) => {
@@ -40728,11 +44233,11 @@
       }).catch(() => {
       });
     }, [workspaceId]);
-    const handleModelChange = (0, import_react66.useCallback)((value) => {
+    const handleModelChange = (0, import_react68.useCallback)((value) => {
       setModel(value);
       persistModel(value);
     }, [persistModel]);
-    const handleSubmit = (0, import_react66.useCallback)(async () => {
+    const handleSubmit = (0, import_react68.useCallback)(async () => {
       if (!prompt.trim()) return;
       setSubmitting(true);
       try {
@@ -40753,15 +44258,15 @@
         setSubmitting(false);
       }
     }, [prompt, model, workspaceId, folderPath, queueDispatch]);
-    return /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime68.jsx)(
       Dialog,
       {
         open: queueState.showDialog,
         onClose: () => queueDispatch({ type: "CLOSE_DIALOG" }),
         title: "Enqueue AI Task",
-        footer: /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)(import_jsx_runtime66.Fragment, { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(Button, { variant: "secondary", onClick: () => queueDispatch({ type: "CLOSE_DIALOG" }), children: "Cancel" }),
-          /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(
+        footer: /* @__PURE__ */ (0, import_jsx_runtime68.jsxs)(import_jsx_runtime68.Fragment, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime68.jsx)(Button, { variant: "secondary", onClick: () => queueDispatch({ type: "CLOSE_DIALOG" }), children: "Cancel" }),
+          /* @__PURE__ */ (0, import_jsx_runtime68.jsx)(
             Button,
             {
               variant: "primary",
@@ -40772,10 +44277,10 @@
             }
           )
         ] }),
-        children: /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)("div", { className: "flex flex-col gap-3", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)("div", { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("label", { className: "block text-xs font-medium text-[#848484] mb-1", children: "Prompt" }),
-            /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(
+        children: /* @__PURE__ */ (0, import_jsx_runtime68.jsxs)("div", { className: "flex flex-col gap-3", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime68.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime68.jsx)("label", { className: "block text-xs font-medium text-[#848484] mb-1", children: "Prompt" }),
+            /* @__PURE__ */ (0, import_jsx_runtime68.jsx)(
               "textarea",
               {
                 value: prompt,
@@ -40786,46 +44291,46 @@
               }
             )
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)("div", { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("label", { className: "block text-xs font-medium text-[#848484] mb-1", children: "Model" }),
-            /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)(
+          /* @__PURE__ */ (0, import_jsx_runtime68.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime68.jsx)("label", { className: "block text-xs font-medium text-[#848484] mb-1", children: "Model" }),
+            /* @__PURE__ */ (0, import_jsx_runtime68.jsxs)(
               "select",
               {
                 value: model,
                 onChange: (e) => handleModelChange(e.target.value),
                 className: "w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]",
                 children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("option", { value: "", children: "Default" }),
-                  models.map((m) => /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("option", { value: m, children: m }, m))
+                  /* @__PURE__ */ (0, import_jsx_runtime68.jsx)("option", { value: "", children: "Default" }),
+                  models.map((m) => /* @__PURE__ */ (0, import_jsx_runtime68.jsx)("option", { value: m, children: m }, m))
                 ]
               }
             )
           ] }),
-          appState.workspaces.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)("div", { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("label", { className: "block text-xs font-medium text-[#848484] mb-1", children: "Workspace" }),
-            /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)(
+          appState.workspaces.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime68.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime68.jsx)("label", { className: "block text-xs font-medium text-[#848484] mb-1", children: "Workspace" }),
+            /* @__PURE__ */ (0, import_jsx_runtime68.jsxs)(
               "select",
               {
                 value: workspaceId,
                 onChange: (e) => setWorkspaceId(e.target.value),
                 className: "w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]",
                 children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("option", { value: "", children: "None" }),
-                  appState.workspaces.map((ws) => /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("option", { value: ws.id, children: ws.name || ws.path || ws.id }, ws.id))
+                  /* @__PURE__ */ (0, import_jsx_runtime68.jsx)("option", { value: "", children: "None" }),
+                  appState.workspaces.map((ws) => /* @__PURE__ */ (0, import_jsx_runtime68.jsx)("option", { value: ws.id, children: ws.name || ws.path || ws.id }, ws.id))
                 ]
               }
             )
           ] }),
-          workspaceId && folders.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)("div", { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("label", { className: "block text-xs font-medium text-[#848484] mb-1", children: "Folder" }),
-            /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(
+          workspaceId && folders.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime68.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime68.jsx)("label", { className: "block text-xs font-medium text-[#848484] mb-1", children: "Folder" }),
+            /* @__PURE__ */ (0, import_jsx_runtime68.jsx)(
               "select",
               {
                 value: folderPath,
                 onChange: (e) => setFolderPath(e.target.value),
                 className: "w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]",
                 "data-testid": "folder-select",
-                children: folders.map((f) => /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("option", { value: f.value, children: f.label }, f.value))
+                children: folders.map((f) => /* @__PURE__ */ (0, import_jsx_runtime68.jsx)("option", { value: f.value, children: f.label }, f.value))
               }
             )
           ] })
@@ -40835,7 +44340,7 @@
   }
 
   // src/server/spa/client/react/App.tsx
-  var import_jsx_runtime67 = __toESM(require_jsx_runtime());
+  var import_jsx_runtime69 = __toESM(require_jsx_runtime());
   function normalizePath2(pathValue) {
     return pathValue.replace(/\\/g, "/");
   }
@@ -40867,20 +44372,20 @@
     const { state: appState, dispatch: appDispatch } = useApp();
     const { dispatch: queueDispatch } = useQueue();
     const { toasts, addToast, removeToast } = useToast();
-    const [reviewDialog, setReviewDialog] = (0, import_react67.useState)({
+    const [reviewDialog, setReviewDialog] = (0, import_react69.useState)({
       open: false,
       wsId: null,
       filePath: null,
       displayPath: null,
       fetchMode: "auto"
     });
-    const handleConnect = (0, import_react67.useCallback)(async () => {
+    const handleConnect = (0, import_react69.useCallback)(async () => {
       const data = await fetchApi("/queue").catch(() => null);
       if (data && Array.isArray(data.queued) && Array.isArray(data.running)) {
         queueDispatch({ type: "QUEUE_UPDATED", queue: data });
       }
     }, [queueDispatch]);
-    const onMessage = (0, import_react67.useCallback)((msg) => {
+    const onMessage = (0, import_react69.useCallback)((msg) => {
       if (!msg || !msg.type) return;
       switch (msg.type) {
         case "process-added":
@@ -40950,7 +44455,7 @@
       }
     }, [appDispatch, queueDispatch]);
     const { connect } = useWebSocket({ onMessage, onConnect: handleConnect });
-    (0, import_react67.useEffect)(() => {
+    (0, import_react69.useEffect)(() => {
       async function bootstrap() {
         try {
           const [wsRes, pRes, qRes] = await Promise.all([
@@ -40971,7 +44476,7 @@
       }
       bootstrap();
     }, [connect, appDispatch, queueDispatch]);
-    (0, import_react67.useEffect)(() => {
+    (0, import_react69.useEffect)(() => {
       const handleOpenMarkdownReview = (event) => {
         const detail = event.detail;
         const fullPath = typeof detail?.filePath === "string" ? detail.filePath : "";
@@ -40994,12 +44499,12 @@
         window.removeEventListener("coc-open-markdown-review", handleOpenMarkdownReview);
       };
     }, [appState.workspaces]);
-    return /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)(ToastProvider, { value: { addToast, removeToast, toasts }, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(TopBar, {}),
-      /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(Router, {}),
-      /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(ToastContainer, { toasts, removeToast }),
-      /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(EnqueueDialog, {}),
-      /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime69.jsxs)(ToastProvider, { value: { addToast, removeToast, toasts }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime69.jsx)(TopBar, {}),
+      /* @__PURE__ */ (0, import_jsx_runtime69.jsx)(Router, {}),
+      /* @__PURE__ */ (0, import_jsx_runtime69.jsx)(ToastContainer, { toasts, removeToast }),
+      /* @__PURE__ */ (0, import_jsx_runtime69.jsx)(EnqueueDialog, {}),
+      /* @__PURE__ */ (0, import_jsx_runtime69.jsx)(
         MarkdownReviewDialog,
         {
           open: reviewDialog.open,
@@ -41013,7 +44518,7 @@
     ] });
   }
   function App() {
-    return /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(AppProvider, { children: /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(QueueProvider, { children: /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(ThemeProvider, { children: /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(AppInner, {}) }) }) });
+    return /* @__PURE__ */ (0, import_jsx_runtime69.jsx)(AppProvider, { children: /* @__PURE__ */ (0, import_jsx_runtime69.jsx)(QueueProvider, { children: /* @__PURE__ */ (0, import_jsx_runtime69.jsx)(ThemeProvider, { children: /* @__PURE__ */ (0, import_jsx_runtime69.jsx)(AppInner, {}) }) }) });
   }
 
   // src/server/spa/client/react/file-path-preview.ts
@@ -41258,11 +44763,11 @@
   }
 
   // src/server/spa/client/index.tsx
-  var import_jsx_runtime68 = __toESM(require_jsx_runtime());
+  var import_jsx_runtime70 = __toESM(require_jsx_runtime());
   var container = document.getElementById("app-root");
   if (!container) throw new Error("No #app-root element found");
   var root = (0, import_client.createRoot)(container);
-  root.render(/* @__PURE__ */ (0, import_jsx_runtime68.jsx)(App, {}));
+  root.render(/* @__PURE__ */ (0, import_jsx_runtime70.jsx)(App, {}));
 })();
 /*! Bundled license information:
 

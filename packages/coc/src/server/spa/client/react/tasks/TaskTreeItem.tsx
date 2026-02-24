@@ -22,6 +22,7 @@ export interface TaskTreeItemProps {
     onFileClick: (path: string) => void;
     onCheckboxChange: (path: string, checked: boolean) => void;
     onFolderContextMenu?: (folder: TaskFolder, x: number, y: number) => void;
+    onFileContextMenu?: (item: TaskDocument | TaskDocumentGroup, x: number, y: number) => void;
 }
 
 function getItemFileName(item: TaskNode): string {
@@ -89,6 +90,7 @@ export function TaskTreeItem({
     onFileClick,
     onCheckboxChange,
     onFolderContextMenu,
+    onFileContextMenu,
 }: TaskTreeItemProps) {
     const isFolder = isTaskFolder(item);
     const fileName = getItemFileName(item);
@@ -135,6 +137,10 @@ export function TaskTreeItem({
                     e.preventDefault();
                     e.stopPropagation();
                     onFolderContextMenu(item as TaskFolder, e.clientX, e.clientY);
+                } else if (!isFolder && !isContext && onFileContextMenu) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onFileContextMenu(item as TaskDocument | TaskDocumentGroup, e.clientX, e.clientY);
                 }
             }}
             title={tooltip}
