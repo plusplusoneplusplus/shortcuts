@@ -81,8 +81,8 @@ export interface StaticFileHandler {
 export interface SharedRouterOptions {
     /** Route table */
     routes: Route[];
-    /** SPA HTML content (served for non-API, non-static paths) */
-    spaHtml: string;
+    /** SPA HTML content or factory (served for non-API, non-static paths). A function is called on each request to support hot-reloading. */
+    spaHtml: string | (() => string);
     /** Static file handlers (evaluated in order) */
     staticHandlers?: StaticFileHandler[];
 }
@@ -163,8 +163,9 @@ export function createRouter(options: SharedRouterOptions): (req: http.IncomingM
         }
 
         // SPA fallback (index page or client-side routing)
+        const html = typeof spaHtml === 'function' ? spaHtml() : spaHtml;
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(spaHtml);
+        res.end(html);
     };
 }
 

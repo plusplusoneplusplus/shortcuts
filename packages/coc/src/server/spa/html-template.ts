@@ -14,15 +14,35 @@ import * as path from 'path';
 import type { DashboardOptions } from './types';
 import { escapeHtml } from './helpers';
 
-/** Read the esbuild-bundled client CSS (built by npm run build:client). */
-const bundleCss = fs.readFileSync(
-    path.join(__dirname, 'client', 'dist', 'bundle.css'), 'utf-8'
-);
+const bundleCssPath = path.join(__dirname, 'client', 'dist', 'bundle.css');
+const bundleJsPath = path.join(__dirname, 'client', 'dist', 'bundle.js');
 
-/** Read the esbuild-bundled client JS (built by npm run build:client). */
-const bundleJs = fs.readFileSync(
-    path.join(__dirname, 'client', 'dist', 'bundle.js'), 'utf-8'
-);
+let cachedCss: { content: string; mtime: number } | null = null;
+let cachedJs: { content: string; mtime: number } | null = null;
+
+function readBundleFile(filePath: string, cache: { content: string; mtime: number } | null): { content: string; mtime: number } {
+    try {
+        const stat = fs.statSync(filePath);
+        const mtime = stat.mtimeMs;
+        if (cache && cache.mtime === mtime) {
+            return cache;
+        }
+        return { content: fs.readFileSync(filePath, 'utf-8'), mtime };
+    } catch {
+        if (cache) return cache;
+        return { content: '', mtime: 0 };
+    }
+}
+
+function getBundleCss(): string {
+    cachedCss = readBundleFile(bundleCssPath, cachedCss);
+    return cachedCss.content;
+}
+
+function getBundleJs(): string {
+    cachedJs = readBundleFile(bundleJsPath, cachedJs);
+    return cachedJs.content;
+}
 
 export function generateDashboardHtml(options: DashboardOptions = {}): string {
     const {
@@ -52,7 +72,7 @@ export function generateDashboardHtml(options: DashboardOptions = {}): string {
     <!-- marked — markdown-to-HTML parser (wiki) -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"><\/script>` : ''}
     <style>
-${bundleCss}
+${getBundleCss()}
     </style>
 </head>
 <body>
@@ -72,7 +92,7 @@ ${bundleCss}
         };
     </script>` : ''}
     <script>
-${bundleJs}
+${getBundleJs()}
     </script>
 </body>
 </html>`;

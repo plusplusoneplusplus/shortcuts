@@ -31,8 +31,8 @@ import {
 export interface RouterOptions {
     /** Route table — health route is prepended automatically. */
     routes: Route[];
-    /** SPA HTML content (served for non-API, non-static paths). */
-    spaHtml: string;
+    /** SPA HTML content or factory (served for non-API, non-static paths). A function is called on each request to support hot-reloading. */
+    spaHtml: string | (() => string);
     /** Optional directory for static assets. */
     staticDir?: string;
     /** Injected process store so /api/health can read count. */

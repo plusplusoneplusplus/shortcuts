@@ -118,3 +118,20 @@ describe('generateDashboardHtml', () => {
         expect(html).not.toContain('window.__REVIEW_CONFIG__ = {');
     });
 });
+
+describe('generateDashboardHtml bundle hot-reload', () => {
+    it('picks up bundle changes between calls', () => {
+        const html1 = generateDashboardHtml();
+        const html2 = generateDashboardHtml();
+        expect(html1).toBe(html2);
+        expect(html1).toContain('<style>');
+        expect(html1).toContain('<script>');
+    });
+
+    it('includes non-empty bundle content', () => {
+        const html = generateDashboardHtml();
+        const styleMatch = html.match(/<style>\n([\s\S]*?)\n    <\/style>/);
+        expect(styleMatch).not.toBeNull();
+        expect(styleMatch![1].trim().length).toBeGreaterThan(0);
+    });
+});

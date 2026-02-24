@@ -392,6 +392,41 @@ describe('SPA fallback', () => {
     });
 });
 
+describe('SPA fallback with function factory', () => {
+    let server: http.Server;
+    let baseUrl: string;
+    let callCount = 0;
+
+    beforeAll(async () => {
+        callCount = 0;
+        const result = await createTestServer({
+            routes: [],
+            spaHtml: () => {
+                callCount++;
+                return `<html><body>Call ${callCount}</body></html>`;
+            },
+        });
+        server = result.server;
+        baseUrl = result.baseUrl;
+    });
+
+    afterAll(async () => {
+        await closeServer(server);
+    });
+
+    it('calls the factory on each request', async () => {
+        const res1 = await request(`${baseUrl}/`);
+        expect(res1.status).toBe(200);
+        expect(res1.body).toBe('<html><body>Call 1</body></html>');
+
+        const res2 = await request(`${baseUrl}/other-path`);
+        expect(res2.status).toBe(200);
+        expect(res2.body).toBe('<html><body>Call 2</body></html>');
+
+        expect(callCount).toBe(2);
+    });
+});
+
 // ============================================================================
 // CORS Handling Tests
 // ============================================================================

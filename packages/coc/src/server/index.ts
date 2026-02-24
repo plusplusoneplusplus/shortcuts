@@ -201,8 +201,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     outputPruner.cleanupOrphans().catch(() => {});
     outputPruner.cleanupStaleQueueEntries().catch(() => {});
 
-    // Generate SPA dashboard HTML (cached — it's static)
-    const spaHtml = generateDashboardHtml({ enableWiki: true });
+    const spaHtmlFactory = () => generateDashboardHtml({ enableWiki: true });
 
     // Build API routes
     const routes: Route[] = [];
@@ -260,7 +259,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // Build request handler (health route is prepended automatically)
     const handler = createRequestHandler({
         routes,
-        spaHtml,
+        spaHtml: spaHtmlFactory,
         store,
 
     });
