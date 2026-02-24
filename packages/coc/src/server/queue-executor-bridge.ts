@@ -718,7 +718,9 @@ export class CLITaskExecutor implements TaskExecutor {
             const dir = path.dirname(planFilePath);
             const contextPath = path.join(dir, 'CONTEXT.md');
             if (fs.existsSync(contextPath)) {
-                return `See context details in ${contextPath}`;
+                // Use forward slashes in prompt for cross-platform consistency (Unix-style paths in context references)
+                const normalizedPath = contextPath.replace(/\\/g, '/');
+                return `See context details in ${normalizedPath}`;
             }
         } catch {
             // Non-fatal

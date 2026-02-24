@@ -791,7 +791,7 @@ describe('CLITaskExecutor', () => {
             it('should append CONTEXT.md reference for new-style prompt (promptFilePath + planFilePath)', async () => {
                 const existsSyncMock = vi.mocked(fs.existsSync);
                 existsSyncMock.mockImplementation((p: fs.PathLike) => {
-                    const s = String(p);
+                    const s = String(p).replace(/\\/g, '/');
                     if (s === '/workspace/.github/prompts/impl.prompt.md') return true;
                     if (s === '/workspace/.vscode/tasks/feature/CONTEXT.md') return true;
                     return false;
@@ -822,7 +822,7 @@ describe('CLITaskExecutor', () => {
             it('should append CONTEXT.md reference for skill-type prompt (promptContent + planFilePath)', async () => {
                 const existsSyncMock = vi.mocked(fs.existsSync);
                 existsSyncMock.mockImplementation((p: fs.PathLike) => {
-                    const s = String(p);
+                    const s = String(p).replace(/\\/g, '/');
                     if (s === '/workspace/.vscode/tasks/coc/CONTEXT.md') return true;
                     return false;
                 });
@@ -853,7 +853,7 @@ describe('CLITaskExecutor', () => {
             it('should not append CONTEXT.md reference when file does not exist', async () => {
                 const existsSyncMock = vi.mocked(fs.existsSync);
                 existsSyncMock.mockImplementation((p: fs.PathLike) => {
-                    const s = String(p);
+                    const s = String(p).replace(/\\/g, '/');
                     if (s === '/workspace/.github/prompts/review.prompt.md') return true;
                     return false;
                 });
@@ -884,14 +884,14 @@ describe('CLITaskExecutor', () => {
                 const existsSyncMock = vi.mocked(fs.existsSync);
                 const readFileSyncMock = vi.mocked(fs.readFileSync);
                 existsSyncMock.mockImplementation((p: fs.PathLike) => {
-                    const s = String(p);
+                    const s = String(p).replace(/\\/g, '/');
                     if (s === '/workspace/.github/skills/impl/SKILL.md') return true;
                     if (s === '/workspace/plan.md') return true;
                     if (s === '/workspace/CONTEXT.md') return true;
                     return false;
                 });
                 readFileSyncMock.mockImplementation((p: fs.PathOrFileDescriptor, _opts?: any) => {
-                    if (String(p) === '/workspace/plan.md') return '# Plan content';
+                    if (String(p).replace(/\\/g, '/') === '/workspace/plan.md') return '# Plan content';
                     throw new Error('not found');
                 });
 

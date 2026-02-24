@@ -104,14 +104,13 @@ function getInArticleTocLink(href: string): HTMLAnchorElement | null {
 
 describe('WikiComponent in-article anchor click interception', () => {
     it('prevents default navigation on hash-only anchor clicks', async () => {
-        mockFetchApi.mockResolvedValueOnce({ markdown: MARKDOWN_WITH_TOC });
+        // Use mockResolvedValue so multiple fetch calls (e.g. React 18 Strict Mode) all succeed
+        mockFetchApi.mockResolvedValue({ markdown: MARKDOWN_WITH_TOC });
         renderWikiComponent();
 
-        await waitFor(() => {
-            expect(getInArticleTocLink('#purpose--scope')).toBeTruthy();
-        });
-
-        const tocLink = getInArticleTocLink('#purpose--scope')!;
+        // findByRole has built-in wait/retry; more robust than custom getInArticleTocLink + waitFor
+        const tocLink = (await screen.findByRole('link', { name: 'Purpose & Scope' })) as HTMLAnchorElement;
+        expect(tocLink.closest('.wiki-body')).toBeTruthy(); // must be in-article, not sidebar
         expect(tocLink.textContent).toBe('Purpose & Scope');
 
         const scrollIntoViewMock = vi.fn();
@@ -128,7 +127,7 @@ describe('WikiComponent in-article anchor click interception', () => {
     });
 
     it('heading IDs use GitHub-style slugification preserving consecutive dashes', async () => {
-        mockFetchApi.mockResolvedValueOnce({ markdown: MARKDOWN_WITH_TOC });
+        mockFetchApi.mockResolvedValue({ markdown: MARKDOWN_WITH_TOC });
         renderWikiComponent();
 
         await waitFor(() => {
@@ -142,7 +141,7 @@ describe('WikiComponent in-article anchor click interception', () => {
 
     it('does not intercept non-hash links', async () => {
         const mdWithExternalLink = '# Title\n\n[External](https://example.com)';
-        mockFetchApi.mockResolvedValueOnce({ markdown: mdWithExternalLink });
+        mockFetchApi.mockResolvedValue({ markdown: mdWithExternalLink });
         renderWikiComponent();
 
         await waitFor(() => {
@@ -161,7 +160,7 @@ describe('WikiComponent in-article anchor click interception', () => {
 
     it('does not intercept bare # links', async () => {
         const mdWithBareHash = '# Title\n\n[Top](#)';
-        mockFetchApi.mockResolvedValueOnce({ markdown: mdWithBareHash });
+        mockFetchApi.mockResolvedValue({ markdown: mdWithBareHash });
         renderWikiComponent();
 
         await waitFor(() => {
@@ -180,7 +179,7 @@ describe('WikiComponent in-article anchor click interception', () => {
 
     it('does not intercept when target heading does not exist', async () => {
         const mdWithBadAnchor = '# Title\n\n[Missing](#nonexistent-heading)';
-        mockFetchApi.mockResolvedValueOnce({ markdown: mdWithBadAnchor });
+        mockFetchApi.mockResolvedValue({ markdown: mdWithBadAnchor });
         renderWikiComponent();
 
         await waitFor(() => {
@@ -333,7 +332,7 @@ describe('WikiComponent TOC sidebar sticky layout', () => {
     });
 
     it('renders TOC sidebar element when article has headings', async () => {
-        mockFetchApi.mockResolvedValueOnce({ markdown: MARKDOWN_WITH_TOC });
+        mockFetchApi.mockResolvedValue({ markdown: MARKDOWN_WITH_TOC });
         renderWikiComponent();
 
         await waitFor(() => {
@@ -350,7 +349,7 @@ describe('WikiComponent TOC sidebar sticky layout', () => {
     });
 
     it('renders article content container as scrollable pane', async () => {
-        mockFetchApi.mockResolvedValueOnce({ markdown: MARKDOWN_WITH_TOC });
+        mockFetchApi.mockResolvedValue({ markdown: MARKDOWN_WITH_TOC });
         renderWikiComponent();
 
         await waitFor(() => {
@@ -363,7 +362,7 @@ describe('WikiComponent TOC sidebar sticky layout', () => {
     });
 
     it('does not render TOC sidebar when article has no headings', async () => {
-        mockFetchApi.mockResolvedValueOnce({ markdown: 'Just plain text without headings.' });
+        mockFetchApi.mockResolvedValue({ markdown: 'Just plain text without headings.' });
         renderWikiComponent();
 
         await waitFor(() => {
@@ -375,7 +374,7 @@ describe('WikiComponent TOC sidebar sticky layout', () => {
     });
 
     it('TOC sidebar contains headings from article', async () => {
-        mockFetchApi.mockResolvedValueOnce({ markdown: MARKDOWN_WITH_TOC });
+        mockFetchApi.mockResolvedValue({ markdown: MARKDOWN_WITH_TOC });
         renderWikiComponent();
 
         await waitFor(() => {
@@ -394,7 +393,7 @@ describe('WikiComponent TOC sidebar sticky layout', () => {
 
     it('TOC sidebar applies indentation classes for nested headings', async () => {
         const htmlWithNesting = '<h2>Top Level</h2><h3>Mid Level</h3><h4>Deep Level</h4>';
-        mockFetchApi.mockResolvedValueOnce({ markdown: 'ignored' });
+        mockFetchApi.mockResolvedValue({ markdown: 'ignored' });
         renderWikiComponent();
 
         await waitFor(() => {

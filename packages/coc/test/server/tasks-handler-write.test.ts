@@ -543,8 +543,8 @@ describe('Tasks Handler Write', () => {
             });
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
-            // Should have timestamp suffix
-            expect(body.path).toMatch(/archive\/task-\d+\.md/);
+            // Should have timestamp suffix (accept both / and \ for cross-platform)
+            expect(body.path).toMatch(/archive[\\/]task-\d+\.md$/);
         });
 
         it('should unarchive a file back to tasks root', async () => {

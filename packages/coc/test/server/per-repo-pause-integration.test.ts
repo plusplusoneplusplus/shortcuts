@@ -374,7 +374,8 @@ describe('Per-Repo Pause Integration', () => {
             const repo2 = reposBody.repos.find((r: any) => r.repoId === repo2Id);
             expect(repo2).toBeDefined();
             expect(repo2.isPaused).toBe(true);
-            expect(repo2.rootPath).toBe(repo2Path);
+            // rootPath may be normalized (e.g. backslashes on Windows); compare resolved forms
+            expect(path.resolve(repo2.rootPath)).toBe(path.resolve(repo2Path));
 
             // Verify others are not paused
             const repo1 = reposBody.repos.find((r: any) => r.repoId === computeRepoId(repo1Path));
