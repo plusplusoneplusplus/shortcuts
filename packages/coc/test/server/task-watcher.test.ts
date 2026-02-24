@@ -66,12 +66,15 @@ describe('TaskWatcher', () => {
         cleanupWatchers.push(watcher);
         watcher.watchWorkspace('ws1', root);
 
+        // Let the watcher fully register (macOS FSEvents can be slow)
+        await wait(200);
+
         // Create a file
         const tasksDir = path.join(root, '.vscode', 'tasks');
         fs.writeFileSync(path.join(tasksDir, 'test.md'), '# Task');
 
-        // Wait for debounce (300ms) + some margin
-        await wait(600);
+        // Wait for debounce (300ms) + generous margin for CI
+        await wait(1500);
 
         expect(callback).toHaveBeenCalledWith('ws1');
     });
