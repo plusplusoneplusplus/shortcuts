@@ -495,7 +495,9 @@ describe('WikiManager', () => {
             manager.disposeAll();
         });
 
-        it('should fire onWikiReloaded callback when FileWatcher triggers onChange', async () => {
+        // fs.watch recursive mode requires Node 19+ on Linux; skip on older runtimes
+        const supportsRecursiveWatch = process.platform !== 'linux' || parseInt(process.versions.node, 10) >= 19;
+        it.skipIf(!supportsRecursiveWatch)('should fire onWikiReloaded callback when FileWatcher triggers onChange', async () => {
             const wikiDir = makeTempDir();
             const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-wikimgr-repo-'));
             tempDirs.push(repoDir);

@@ -126,9 +126,12 @@ export function findGitRoot(pathLike: string): string | null {
 export function normalizeRepoPath(repoPath: string): string {
     let normalized = path.resolve(repoPath);
 
-    // Resolve symlinks (Unix) and 8.3 short names (Windows) for consistency
+    // Resolve symlinks (Unix) and 8.3 short names (Windows) for consistency.
+    // On Windows, realpathSync.native expands 8.3 short paths (e.g. RUNNER~1 → RunnerAdmin).
     try {
-        normalized = fs.realpathSync(normalized);
+        normalized = process.platform === 'win32'
+            ? fs.realpathSync.native(normalized)
+            : fs.realpathSync(normalized);
     } catch {
         // If realpath fails, continue with resolved path
     }
