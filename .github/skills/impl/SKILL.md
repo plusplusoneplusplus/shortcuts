@@ -34,15 +34,19 @@ Use this skill when the user asks you to **implement** a change in the codebase 
      - Regression coverage for the bug/behavior being changed
    - Ensure tests avoid OS-specific path assumptions (use `path` helpers, normalize separators, etc.).
 
-6. **Run the full test suite**
-   - Ensure all tests pass.
-   - If tests are flaky or OS-dependent, fix the test to be deterministic.
+6. **Verify build and tests pass before committing**
+   - Run the repo's build command to confirm there are no compilation errors.
+   - Run the full test suite and ensure all tests pass.
+   - If the repo uses a monorepo/workspace structure, also run the build and tests for any sub-packages that contain changed code.
+   - **Do not proceed to commit until the build is clean and all tests pass.**
+   - If tests are flaky or OS-dependent, fix them to be deterministic before committing.
 
 7. **If a plan file exists, keep it updated**
    - If a plan markdown file is provided with task checkboxes, mark tasks complete as you finish them.
 
 8. **Commit when clean**
-   - When tests pass, create a commit with a clear message describing the change and test additions.
+   - Only create a commit after the build succeeds and all tests pass (step 6).
+   - Write a clear commit message describing the change and the test additions.
 
 9. **Archive the task file (if applicable)**
    - If the task/plan file you followed lives under `.vscode/`, archive it after the commit succeeds:
@@ -54,8 +58,9 @@ Use this skill when the user asks you to **implement** a change in the codebase 
 
 ## Notes
 
-- Prefer existing repo commands (e.g. `npm test`, `npm run lint`) rather than introducing new tooling.
-- If the user requests a change that impacts multiple packages/workspaces, ensure the relevant package tests run as well.
+- Prefer existing repo commands rather than introducing new tooling.
+- If the change impacts multiple packages/workspaces, ensure the build and tests for each affected package pass — not just the root-level command.
+- Never commit if the build or any test is broken. Fix the issue first.
 
 ## Scripts
 
