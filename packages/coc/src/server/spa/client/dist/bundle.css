@@ -2321,6 +2321,8 @@ video {
 .markdown-body .code-block-content code {
     display: block;
     white-space: pre;
+    word-break: normal;
+    overflow-wrap: normal;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
     font-size: 12px;
     line-height: 1.55;

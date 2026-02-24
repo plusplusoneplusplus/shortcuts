@@ -6,6 +6,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 import { renderMarkdownToHtml } from '../../../../src/server/spa/client/markdown-renderer';
 
 // ============================================================================
@@ -237,5 +239,41 @@ describe('code block enhancements — edge cases', () => {
         expect(containers.length).toBeGreaterThanOrEqual(2);
         expect(html).toContain('data-language="js"');
         expect(html).toContain('data-language="py"');
+    });
+});
+
+// ============================================================================
+// CSS regression: code blocks must not inherit word-break from .markdown-body
+// ============================================================================
+
+describe('code block CSS — no word-break inheritance', () => {
+    const cssPath = resolve(__dirname, '../../../../src/server/spa/client/tailwind.css');
+    const css = readFileSync(cssPath, 'utf-8');
+
+    function extractBlock(selector: string): string {
+        const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const re = new RegExp(escaped + '\\s*\\{([^}]+)\\}');
+        const m = css.match(re);
+        return m ? m[1] : '';
+    }
+
+    it('.markdown-body sets word-break: break-word', () => {
+        const block = extractBlock('.markdown-body');
+        expect(block).toContain('word-break: break-word');
+    });
+
+    it('.markdown-body .code-block-content code resets word-break to normal', () => {
+        const block = extractBlock('.markdown-body .code-block-content code');
+        expect(block).toContain('word-break: normal');
+    });
+
+    it('.markdown-body .code-block-content code resets overflow-wrap to normal', () => {
+        const block = extractBlock('.markdown-body .code-block-content code');
+        expect(block).toContain('overflow-wrap: normal');
+    });
+
+    it('.markdown-body .code-block-content code preserves white-space: pre', () => {
+        const block = extractBlock('.markdown-body .code-block-content code');
+        expect(block).toContain('white-space: pre');
     });
 });
