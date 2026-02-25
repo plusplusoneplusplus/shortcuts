@@ -931,6 +931,29 @@
     background: #e8e8e8;
 }
 
+.save-btn {
+    border: 1px solid #0078d4;
+    background: #0078d4;
+    color: #fff;
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+    padding: 3px 10px;
+    line-height: 1.4;
+    user-select: none;
+    margin-left: 4px;
+}
+
+.save-btn:hover {
+    background: #106ebe;
+    border-color: #106ebe;
+}
+
+.save-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
 /* Dark-mode overrides — source-mode */
 .dark .source-line .line-number { color: #9a9a9a; }
 

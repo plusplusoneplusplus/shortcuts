@@ -27473,6 +27473,42 @@
   // src/server/spa/client/react/shared/SourceEditor.tsx
   var import_react9 = __toESM(require_react());
   var import_jsx_runtime13 = __toESM(require_jsx_runtime());
+  function SourceEditor({ content, onChange, readOnly, className }) {
+    const textareaRef = (0, import_react9.useRef)(null);
+    const handleKeyDown = (0, import_react9.useCallback)(
+      (e) => {
+        if (e.key === "Tab") {
+          e.preventDefault();
+          const textarea = textareaRef.current;
+          if (!textarea) return;
+          const { selectionStart, selectionEnd } = textarea;
+          const newValue = content.slice(0, selectionStart) + "	" + content.slice(selectionEnd);
+          onChange(newValue);
+          requestAnimationFrame(() => {
+            textarea.setSelectionRange(selectionStart + 1, selectionStart + 1);
+          });
+        }
+      },
+      [content, onChange]
+    );
+    const handleChange = (0, import_react9.useCallback)(
+      (e) => {
+        onChange(e.target.value);
+      },
+      [onChange]
+    );
+    return /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(
+      "textarea",
+      {
+        ref: textareaRef,
+        className: cn("source-editor-textarea", className),
+        value: content,
+        onChange: handleChange,
+        onKeyDown: handleKeyDown,
+        readOnly
+      }
+    );
+  }
 
   // src/server/spa/client/react/utils/format.ts
   function formatDuration(ms) {
@@ -33410,6 +33446,9 @@
     const [error, setError] = (0, import_react45.useState)(null);
     const previewRef = (0, import_react45.useRef)(null);
     const [viewMode, setViewMode] = (0, import_react45.useState)("review");
+    const [editedContent, setEditedContent] = (0, import_react45.useState)("");
+    const [saving, setSaving] = (0, import_react45.useState)(false);
+    const isDirty = viewMode === "source" && editedContent !== rawContent;
     const [contextMenuVisible, setContextMenuVisible] = (0, import_react45.useState)(false);
     const [contextMenuPos, setContextMenuPos] = (0, import_react45.useState)({ x: 0, y: 0 });
     const [savedSelection, setSavedSelection] = (0, import_react45.useState)(null);
@@ -33470,6 +33509,43 @@
         cancelled = true;
       };
     }, [wsId, filePath, fetchMode]);
+    (0, import_react45.useEffect)(() => {
+      if (viewMode === "source") {
+        setEditedContent(rawContent);
+      }
+    }, [viewMode, rawContent]);
+    const saveContent = (0, import_react45.useCallback)(async () => {
+      if (!isDirty || saving) return;
+      setSaving(true);
+      try {
+        const res = await fetch(getApiBase() + `/workspaces/${encodeURIComponent(wsId)}/tasks/content`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: filePath, content: editedContent })
+        });
+        if (!res.ok) {
+          const errBody = await res.text();
+          throw new Error(errBody || `Save failed (${res.status})`);
+        }
+        setRawContent(editedContent);
+        window.dispatchEvent(new CustomEvent("tasks-changed", { detail: { wsId } }));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to save");
+      } finally {
+        setSaving(false);
+      }
+    }, [isDirty, saving, wsId, filePath, editedContent]);
+    (0, import_react45.useEffect)(() => {
+      if (viewMode !== "source" || !isDirty) return;
+      const handler = (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+          e.preventDefault();
+          saveContent();
+        }
+      };
+      document.addEventListener("keydown", handler);
+      return () => document.removeEventListener("keydown", handler);
+    }, [viewMode, isDirty, saveContent]);
     (0, import_react45.useEffect)(() => {
       const handleMouseUp = () => {
         const sel = window.getSelection();
@@ -33661,9 +33737,16 @@
                 onClick: () => setViewMode("source"),
                 children: "Source"
               }
-            )
+            ),
+            viewMode === "source" && isDirty && /* @__PURE__ */ (0, import_jsx_runtime42.jsx)("button", { className: "save-btn", onClick: saveContent, disabled: saving, children: saving ? "Saving\u2026" : "Save" })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime42.jsxs)("div", { className: "flex-1 overflow-y-auto p-4 min-h-0 min-w-0", children: [
+          viewMode === "source" ? /* @__PURE__ */ (0, import_jsx_runtime42.jsx)("div", { className: "flex-1 overflow-y-auto min-h-0 min-w-0", children: /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(
+            SourceEditor,
+            {
+              content: editedContent,
+              onChange: setEditedContent
+            }
+          ) }) : /* @__PURE__ */ (0, import_jsx_runtime42.jsxs)("div", { className: "flex-1 overflow-y-auto p-4 min-h-0 min-w-0", children: [
             /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(
               "div",
               {

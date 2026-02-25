@@ -10,6 +10,7 @@ import { fetchApi } from '../hooks/useApi';
 import { useMarkdownPreview } from '../hooks/useMarkdownPreview';
 import { useTaskComments } from '../hooks/useTaskComments';
 import { Spinner } from './Spinner';
+import { SourceEditor } from './SourceEditor';
 import { CommentSidebar } from '../tasks/comments/CommentSidebar';
 import { ContextMenu } from '../tasks/comments/ContextMenu';
 import { InlineCommentPopup } from '../tasks/comments/InlineCommentPopup';
@@ -22,6 +23,7 @@ import {
 } from '@plusplusoneplusplus/pipeline-core/editor/anchor';
 import { DASHBOARD_AI_COMMANDS } from './ai-commands';
 import { extractDocumentContext } from '../utils/document-context';
+import { getApiBase } from '../utils/config';
 
 export interface MarkdownReviewEditorProps {
     wsId: string;
@@ -57,6 +59,10 @@ export function MarkdownReviewEditor({
     const [error, setError] = useState<string | null>(null);
     const previewRef = useRef<HTMLDivElement>(null);
     const [viewMode, setViewMode] = useState<'review' | 'source'>('review');
+    const [editedContent, setEditedContent] = useState('');
+    const [saving, setSaving] = useState(false);
+
+    const isDirty = viewMode === 'source' && editedContent !== rawContent;
 
     // Selection & popup state
     const [contextMenuVisible, setContextMenuVisible] = useState(false);
@@ -139,6 +145,48 @@ export function MarkdownReviewEditor({
         void load();
         return () => { cancelled = true; };
     }, [wsId, filePath, fetchMode]);
+
+    // Sync editedContent when switching to source mode or when rawContent changes
+    useEffect(() => {
+        if (viewMode === 'source') {
+            setEditedContent(rawContent);
+        }
+    }, [viewMode, rawContent]);
+
+    const saveContent = useCallback(async () => {
+        if (!isDirty || saving) return;
+        setSaving(true);
+        try {
+            const res = await fetch(getApiBase() + `/workspaces/${encodeURIComponent(wsId)}/tasks/content`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: filePath, content: editedContent }),
+            });
+            if (!res.ok) {
+                const errBody = await res.text();
+                throw new Error(errBody || `Save failed (${res.status})`);
+            }
+            setRawContent(editedContent);
+            window.dispatchEvent(new CustomEvent('tasks-changed', { detail: { wsId } }));
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to save');
+        } finally {
+            setSaving(false);
+        }
+    }, [isDirty, saving, wsId, filePath, editedContent]);
+
+    // Ctrl/Cmd+S keyboard shortcut for saving in source mode
+    useEffect(() => {
+        if (viewMode !== 'source' || !isDirty) return;
+        const handler = (e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                e.preventDefault();
+                saveContent();
+            }
+        };
+        document.addEventListener('keydown', handler);
+        return () => document.removeEventListener('keydown', handler);
+    }, [viewMode, isDirty, saveContent]);
 
     // Save selection silently on mouseup
     useEffect(() => {
@@ -368,22 +416,36 @@ export function MarkdownReviewEditor({
                             className={`mode-btn${viewMode === 'source' ? ' active' : ''}`}
                             onClick={() => setViewMode('source')}
                         >Source</button>
+                        {viewMode === 'source' && isDirty && (
+                            <button className="save-btn" onClick={saveContent} disabled={saving}>
+                                {saving ? 'Saving…' : 'Save'}
+                            </button>
+                        )}
                     </div>
 
-                    <div className="flex-1 overflow-y-auto p-4 min-h-0 min-w-0">
-                        <div
-                            ref={previewRef}
-                            id="task-preview-body"
-                            className="markdown-body text-sm text-[#1e1e1e] dark:text-[#cccccc]"
-                            dangerouslySetInnerHTML={{ __html: html }}
-                            onContextMenu={handleContextMenu}
-                        />
-                        <CommentHighlight
-                            comments={comments}
-                            containerRef={previewRef}
-                            onCommentClick={handleCommentClick}
-                        />
-                    </div>
+                    {viewMode === 'source' ? (
+                        <div className="flex-1 overflow-y-auto min-h-0 min-w-0">
+                            <SourceEditor
+                                content={editedContent}
+                                onChange={setEditedContent}
+                            />
+                        </div>
+                    ) : (
+                        <div className="flex-1 overflow-y-auto p-4 min-h-0 min-w-0">
+                            <div
+                                ref={previewRef}
+                                id="task-preview-body"
+                                className="markdown-body text-sm text-[#1e1e1e] dark:text-[#cccccc]"
+                                dangerouslySetInnerHTML={{ __html: html }}
+                                onContextMenu={handleContextMenu}
+                            />
+                            <CommentHighlight
+                                comments={comments}
+                                containerRef={previewRef}
+                                onCommentClick={handleCommentClick}
+                            />
+                        </div>
+                    )}
                 </div>
 
                 {showCommentListPanel && (

@@ -443,7 +443,8 @@ describe('MarkdownReviewEditor', () => {
             await act(async () => {
                 fireEvent.click(screen.getByText('Source'));
             });
-            openContextMenu();
+            // In source mode, #task-preview-body is not in the DOM, so context menu cannot appear
+            expect(document.querySelector('#task-preview-body')).toBeNull();
             expect(screen.queryByTestId('context-menu')).toBeNull();
         });
 
