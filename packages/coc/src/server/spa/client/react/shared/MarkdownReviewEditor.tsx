@@ -64,6 +64,10 @@ export function MarkdownReviewEditor({
 
     const isDirty = viewMode === 'source' && editedContent !== rawContent;
 
+    // Ref mirror so the content-fetch useEffect can read dirty state without depending on it
+    const isDirtyRef = useRef(false);
+    isDirtyRef.current = isDirty;
+
     // Selection & popup state
     const [contextMenuVisible, setContextMenuVisible] = useState(false);
     const [contextMenuPos, setContextMenuPos] = useState({ x: 0, y: 0 });
@@ -115,6 +119,15 @@ export function MarkdownReviewEditor({
 
     useEffect(() => {
         let cancelled = false;
+
+        // Guard: warn if switching files while dirty
+        if (isDirtyRef.current) {
+            if (!window.confirm('You have unsaved changes to the current file. Discard and load the new file?')) {
+                cancelled = true;
+                return;
+            }
+        }
+
         setLoading(true);
         setError(null);
         setRawContent('');
@@ -187,6 +200,14 @@ export function MarkdownReviewEditor({
         document.addEventListener('keydown', handler);
         return () => document.removeEventListener('keydown', handler);
     }, [viewMode, isDirty, saveContent]);
+
+    // Warn before closing tab with unsaved changes
+    useEffect(() => {
+        if (!isDirty) return;
+        const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+        window.addEventListener('beforeunload', handler);
+        return () => window.removeEventListener('beforeunload', handler);
+    }, [isDirty]);
 
     // Save selection silently on mouseup
     useEffect(() => {
@@ -388,6 +409,14 @@ export function MarkdownReviewEditor({
         await askAI(newComment.id, { customQuestion: question.trim(), documentContext: context });
     }, [savedSelection, rawContent, filePath, addComment, askAI]);
 
+    const handleSwitchToReview = useCallback(() => {
+        if (isDirty) {
+            if (!window.confirm('You have unsaved changes. Discard and switch to Preview?')) return;
+            setEditedContent(rawContent);
+        }
+        setViewMode('review');
+    }, [isDirty, rawContent]);
+
     if (loading) {
         return (
             <div className="flex items-center justify-center h-full">
@@ -410,12 +439,13 @@ export function MarkdownReviewEditor({
                     <div className="mode-toggle">
                         <button
                             className={`mode-btn${viewMode === 'review' ? ' active' : ''}`}
-                            onClick={() => setViewMode('review')}
+                            onClick={handleSwitchToReview}
                         >Preview</button>
                         <button
                             className={`mode-btn${viewMode === 'source' ? ' active' : ''}`}
                             onClick={() => setViewMode('source')}
-                        >Source</button>
+                            aria-label={isDirty ? 'Source (modified)' : undefined}
+                        >{isDirty ? 'Source ●' : 'Source'}</button>
                         {viewMode === 'source' && isDirty && (
                             <button className="save-btn" onClick={saveContent} disabled={saving}>
                                 {saving ? 'Saving…' : 'Save'}
