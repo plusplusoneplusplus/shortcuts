@@ -805,6 +805,28 @@
    .dark overrides grouped at the end.
    ============================================================ */
 
+/* Source-editor textarea (editable notepad) */
+.source-editor-textarea {
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    width: 100%;
+    height: 100%;
+    padding: 1rem;
+    border: none;
+    outline: none;
+    resize: none;
+    box-sizing: border-box;
+    tab-size: 4;
+    background: #ffffff;
+    color: #1e1e1e;
+}
+
+.dark .source-editor-textarea {
+    background: #1e1e1e;
+    color: #d4d4d4;
+}
+
 /* Source-mode container */
 .source-mode-body {
     font-family: monospace;

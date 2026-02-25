@@ -10,4 +10,6 @@ export { Spinner } from './Spinner';
 export type { SpinnerProps } from './Spinner';
 export { ToastContainer, useToast } from './Toast';
 export type { ToastProps } from './Toast';
+export { SourceEditor } from './SourceEditor';
+export type { SourceEditorProps } from './SourceEditor';
 export { cn } from './cn';
