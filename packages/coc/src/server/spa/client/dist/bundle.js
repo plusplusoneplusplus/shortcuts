@@ -1085,7 +1085,7 @@
             }
             return dispatcher.useContext(Context);
           }
-          function useState56(initialState4) {
+          function useState57(initialState4) {
             var dispatcher = resolveDispatcher();
             return dispatcher.useState(initialState4);
           }
@@ -1888,7 +1888,7 @@
           exports.useMemo = useMemo11;
           exports.useReducer = useReducer4;
           exports.useRef = useRef26;
-          exports.useState = useState56;
+          exports.useState = useState57;
           exports.useSyncExternalStore = useSyncExternalStore;
           exports.useTransition = useTransition;
           exports.version = ReactVersion;
@@ -36958,20 +36958,29 @@
   var import_react61 = __toESM(require_react());
   var import_jsx_runtime58 = __toESM(require_jsx_runtime());
   function DeleteWikiDialog({ open, wiki, onClose, onDeleted }) {
-    const handleConfirm = (0, import_react61.useCallback)(async () => {
-      if (!wiki) return;
+    const [error, setError] = (0, import_react61.useState)("");
+    const [submitting, setSubmitting] = (0, import_react61.useState)(false);
+    const name = wiki.name || wiki.title || wiki.id;
+    const handleDelete = (0, import_react61.useCallback)(async () => {
+      setSubmitting(true);
+      setError("");
       try {
-        const res = await fetch(getApiBase() + "/wikis/" + encodeURIComponent(wiki.id), { method: "DELETE" });
-        if (res.ok) {
-          onDeleted();
-          onClose();
+        const res = await fetch(getApiBase() + "/wikis/" + encodeURIComponent(wiki.id), {
+          method: "DELETE"
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({ error: "Failed to delete wiki" }));
+          setError(body.error || "Failed to delete wiki");
+          setSubmitting(false);
+          return;
         }
+        onDeleted();
       } catch {
+        setError("Network error");
       }
-    }, [wiki, onDeleted, onClose]);
-    if (!wiki) return null;
-    const wikiName = wiki.name || wiki.title || wiki.id;
-    return /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(
+      setSubmitting(false);
+    }, [wiki.id, onDeleted]);
+    return /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)(
       Dialog,
       {
         id: "delete-wiki-overlay",
@@ -36980,13 +36989,16 @@
         title: "Delete Wiki",
         footer: /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)(import_jsx_runtime58.Fragment, { children: [
           /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(Button, { variant: "secondary", id: "delete-wiki-cancel-btn", onClick: onClose, children: "Cancel" }),
-          /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(Button, { variant: "danger", id: "delete-wiki-confirm", onClick: handleConfirm, children: "Delete" })
+          /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(Button, { variant: "danger", loading: submitting, id: "delete-wiki-confirm", onClick: handleDelete, children: "Delete" })
         ] }),
-        children: /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)("p", { id: "delete-wiki-name", className: "text-sm", children: [
-          "Are you sure you want to delete ",
-          /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("strong", { children: wikiName }),
-          "? This cannot be undone."
-        ] })
+        children: [
+          /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)("p", { className: "text-sm text-[#1e1e1e] dark:text-[#cccccc]", children: [
+            "Are you sure you want to delete ",
+            /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("strong", { id: "delete-wiki-name", children: name }),
+            "? This action cannot be undone."
+          ] }),
+          error && /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("p", { className: "text-xs text-[#f14c4c] mt-2", children: error })
+        ]
       }
     );
   }

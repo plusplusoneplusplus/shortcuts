@@ -271,10 +271,12 @@ describe('TaskWatcher', () => {
         watcher.watchWorkspace('ws1', root);
         watcher.watchWorkspace('ws1', root); // second call should be no-op
 
+        await wait(200);
+
         const tasksDir = path.join(root, '.vscode', 'tasks');
         fs.writeFileSync(path.join(tasksDir, 'dup.md'), '# Dup');
 
-        await wait(600);
+        await wait(1200);
 
         // Should only get one callback, not two
         expect(callback).toHaveBeenCalledTimes(1);
