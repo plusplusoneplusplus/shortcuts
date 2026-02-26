@@ -30072,7 +30072,7 @@
       if (browserPath) {
         setPath(browserPath);
         if (!name.trim()) {
-          setName(browserPath.split("/").filter(Boolean).pop() || "");
+          setName(browserPath.split(/[/\\]/).filter(Boolean).pop() || "");
         }
       }
       setShowBrowser(false);
