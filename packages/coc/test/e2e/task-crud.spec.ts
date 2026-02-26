@@ -38,8 +38,8 @@ async function setupRepoWithTasks(
     await page.click('.repo-sub-tab[data-subtab="tasks"]');
     await expect(page.locator('.repo-sub-tab[data-subtab="tasks"]')).toHaveClass(/active/);
 
-    // Wait for miller columns to render
-    await expect(page.locator('.miller-columns')).toBeVisible({ timeout: 10000 });
+    // Wait for task tree to render
+    await expect(page.locator('[data-testid="task-tree"]')).toBeVisible({ timeout: 10000 });
 
     return repoDir;
 }
@@ -58,7 +58,7 @@ test.describe('Task CRUD (010)', () => {
             await expect(page.locator('#task-input-dialog-overlay')).toBeVisible({ timeout: 5000 });
 
             // Enter task name and submit
-            await page.fill('#task-dialog-input', 'my-new-task');
+            await page.fill('[data-testid="folder-action-input"]', 'my-new-task');
             await page.click('#task-dialog-form button[type="submit"]');
 
             // Dialog should close
@@ -85,7 +85,7 @@ test.describe('Task CRUD (010)', () => {
             await expect(page.locator('#task-input-dialog-overlay')).toBeVisible({ timeout: 5000 });
 
             // Enter name and select "plan" docType
-            await page.fill('#task-dialog-input', 'release-notes');
+            await page.fill('[data-testid="folder-action-input"]', 'release-notes');
             await page.selectOption('#task-dialog-doctype', 'plan');
 
             await page.click('#task-dialog-form button[type="submit"]');
@@ -112,14 +112,14 @@ test.describe('Task CRUD (010)', () => {
             await expect(page.locator('#task-input-dialog-overlay')).toBeVisible({ timeout: 5000 });
 
             // Enter folder name and submit
-            await page.fill('#task-dialog-input', 'sprint-42');
+            await page.fill('[data-testid="folder-action-input"]', 'sprint-42');
             await page.click('#task-dialog-form button[type="submit"]');
 
             // Dialog should close
             await expect(page.locator('#task-input-dialog-overlay')).toBeHidden({ timeout: 5000 });
 
-            // New folder should appear in the miller column with folder icon
-            await expect(page.locator('.miller-row[data-nav-folder]', { hasText: 'sprint-42' })).toBeVisible({ timeout: 10000 });
+            // New folder should appear in the task tree
+            await expect(page.locator('[data-testid="task-tree-item-sprint-42"]')).toBeVisible({ timeout: 10000 });
 
             // Verify directory was created on disk
             const folderPath = path.join(repoDir, '.vscode', 'tasks', 'sprint-42');
@@ -136,21 +136,21 @@ test.describe('Task CRUD (010)', () => {
             const repoDir = await setupRepoWithTasks(page, serverUrl, tmpDir);
 
             // Right-click on task-a file row
-            const taskRow = page.locator('.miller-file-row', { hasText: 'task-a' });
+            const taskRow = page.locator('[data-testid="task-tree-item-task-a"]');
             await expect(taskRow).toBeVisible();
             await taskRow.click({ button: 'right' });
 
             // Context menu should appear
-            await expect(page.locator('#task-context-menu')).toBeVisible({ timeout: 5000 });
+            await expect(page.locator('[data-testid="context-menu"]')).toBeVisible({ timeout: 5000 });
 
             // Click "Rename"
-            await page.locator('[data-ctx-action="rename-task"]').click();
+            await page.getByRole('menuitem', { name: /Rename/ }).click();
 
             // Input dialog should appear with current name
             await expect(page.locator('#task-input-dialog-overlay')).toBeVisible({ timeout: 5000 });
 
             // Clear and enter new name
-            await page.fill('#task-dialog-input', 'task-alpha');
+            await page.fill('[data-testid="folder-action-input"]', 'task-alpha');
             await page.click('#task-dialog-form button[type="submit"]');
 
             // Dialog should close
@@ -177,18 +177,19 @@ test.describe('Task CRUD (010)', () => {
             expect(fs.existsSync(taskFile)).toBe(true);
 
             // Right-click on task-b file row
-            const taskRow = page.locator('.miller-file-row', { hasText: 'task-b' });
+            const taskRow = page.locator('[data-testid="task-tree-item-task-b"]');
             await expect(taskRow).toBeVisible();
             await taskRow.click({ button: 'right' });
 
             // Context menu should appear
-            await expect(page.locator('#task-context-menu')).toBeVisible({ timeout: 5000 });
+            await expect(page.locator('[data-testid="context-menu"]')).toBeVisible({ timeout: 5000 });
 
-            // Accept the upcoming confirm dialog
-            page.on('dialog', dialog => dialog.accept());
+            // Click "Delete" — opens custom confirmation dialog
+            await page.getByRole('menuitem', { name: /Delete/ }).click();
 
-            // Click "Delete"
-            await page.locator('[data-ctx-action="delete-task"]').click();
+            // Confirm in the custom Delete File dialog (not native confirm)
+            await expect(page.getByText('Are you sure you want to delete')).toBeVisible({ timeout: 5000 });
+            await page.getByRole('button', { name: 'Delete' }).click();
 
             // Task should be removed from miller column
             await expect(page.locator('.miller-file-row', { hasText: 'task-b' })).toHaveCount(0, { timeout: 10000 });
@@ -210,21 +211,22 @@ test.describe('Task CRUD (010)', () => {
             expect(fs.existsSync(folderPath)).toBe(true);
 
             // Right-click on "backlog" folder row
-            const folderRow = page.locator('.miller-row[data-nav-folder]', { hasText: 'backlog' });
+            const folderRow = page.locator('[data-testid="task-tree-item-backlog"]');
             await expect(folderRow).toBeVisible();
             await folderRow.click({ button: 'right' });
 
             // Context menu should appear
-            await expect(page.locator('#task-context-menu')).toBeVisible({ timeout: 5000 });
+            await expect(page.locator('[data-testid="context-menu"]')).toBeVisible({ timeout: 5000 });
 
-            // Accept the upcoming confirm dialog
-            page.on('dialog', dialog => dialog.accept());
+            // Click "Delete Folder" — opens custom confirmation dialog
+            await page.getByRole('menuitem', { name: /Delete Folder/ }).click();
 
-            // Click "Delete Folder"
-            await page.locator('[data-ctx-action="delete-folder"]').click();
+            // Confirm in the custom Delete Folder dialog
+            await expect(page.getByText('Are you sure you want to delete')).toBeVisible({ timeout: 5000 });
+            await page.getByRole('button', { name: 'Delete' }).click();
 
-            // Folder should be removed from miller column
-            await expect(page.locator('.miller-row[data-nav-folder]', { hasText: 'backlog' })).toHaveCount(0, { timeout: 10000 });
+            // Folder should be removed from task tree
+            await expect(page.locator('[data-testid="task-tree-item-backlog"]')).toHaveCount(0, { timeout: 10000 });
 
             // Folder and contents should be deleted on disk
             expect(fs.existsSync(folderPath)).toBe(false);

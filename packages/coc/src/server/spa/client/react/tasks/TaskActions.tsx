@@ -16,6 +16,8 @@ interface TaskActionsProps {
     selectedFolderPath?: string | null;
     onClearSelection: () => void;
     onGenerateWithAI?: () => void;
+    /** When true, omit the bottom border (used when embedded in a toolbar with its own border). */
+    noBorder?: boolean;
 }
 
 function copyToClipboard(text: string): void {
@@ -24,7 +26,7 @@ function copyToClipboard(text: string): void {
     }
 }
 
-export function TaskActions({ wsId, openFilePath, selectedFilePaths, tasksFolderPath, selectedFolderPath, onClearSelection, onGenerateWithAI }: TaskActionsProps) {
+export function TaskActions({ wsId, openFilePath, selectedFilePaths, tasksFolderPath, selectedFolderPath, onClearSelection, onGenerateWithAI, noBorder }: TaskActionsProps) {
     const { showContextFiles, toggleShowContextFiles } = useTaskPanel();
     const { dispatch: queueDispatch } = useQueue();
 
@@ -52,7 +54,7 @@ export function TaskActions({ wsId, openFilePath, selectedFilePaths, tasksFolder
     };
 
     return (
-        <div className="flex items-center gap-2 px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c] text-xs">
+        <div className={`flex items-center gap-2 px-3 py-2 text-xs ${noBorder ? '' : 'border-b border-[#e0e0e0] dark:border-[#3c3c3c]'}`}>
             <Button variant="secondary" size="sm" data-testid="generate-with-ai-btn" onClick={onGenerateWithAI}>
                 ✨ Generate with AI
             </Button>

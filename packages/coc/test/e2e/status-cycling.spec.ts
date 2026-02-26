@@ -51,19 +51,15 @@ test.describe('Status Cycling (011)', () => {
         try {
             await setupRepoWithTasks(page, serverUrl, tmpDir);
 
-            // task-a is pending → should show ○
+            // task-a is pending → should show ⏳
             const taskARow = page.locator('.miller-file-row', { hasText: 'task-a' });
             await expect(taskARow).toBeVisible();
-            const taskAStatus = taskARow.locator('.miller-status.task-status-pending');
-            await expect(taskAStatus).toBeVisible();
-            await expect(taskAStatus).toHaveText('○');
+            await expect(taskARow).toContainText('⏳');
 
-            // task-b is done → should show ●
+            // task-b is done → should show ✅
             const taskBRow = page.locator('.miller-file-row', { hasText: 'task-b' });
             await expect(taskBRow).toBeVisible();
-            const taskBStatus = taskBRow.locator('.miller-status.task-status-done');
-            await expect(taskBStatus).toBeVisible();
-            await expect(taskBStatus).toHaveText('●');
+            await expect(taskBRow).toContainText('✅');
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         }
@@ -79,20 +75,19 @@ test.describe('Status Cycling (011)', () => {
             await expect(taskRow).toBeVisible();
             await taskRow.click({ button: 'right' });
 
-            // Context menu should appear
-            await expect(page.locator('#task-context-menu')).toBeVisible({ timeout: 5000 });
+            // Context menu should appear (React uses data-testid)
+            await expect(page.locator('[data-testid="context-menu"]')).toBeVisible({ timeout: 5000 });
 
             // Hover over "Change Status" submenu parent to reveal status options
-            await page.locator('.task-context-menu-item.has-submenu').hover();
-            await expect(page.locator('.task-context-submenu')).toBeVisible({ timeout: 5000 });
+            await page.getByRole('menuitem', { name: /change status/i }).hover();
+            await expect(page.locator('[data-testid^="context-submenu-"]').first()).toBeVisible({ timeout: 5000 });
 
             // Click "In Progress" status option to cycle from pending → in-progress
-            await page.locator('[data-ctx-action="set-status"][data-ctx-status="in-progress"]').click();
+            await page.getByRole('menuitem', { name: /in progress/i }).click();
 
-            // Status icon should update to ◐ (in-progress)
+            // Status icon should update to 🔄 (in-progress)
             const updatedRow = page.locator('.miller-file-row', { hasText: 'task-a' });
-            await expect(updatedRow.locator('.miller-status.task-status-in-progress')).toBeVisible({ timeout: 10000 });
-            await expect(updatedRow.locator('.miller-status.task-status-in-progress')).toHaveText('◐');
+            await expect(updatedRow).toContainText('🔄', { timeout: 10000 });
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         }
@@ -108,19 +103,18 @@ test.describe('Status Cycling (011)', () => {
             await expect(taskRow).toBeVisible();
             await taskRow.click({ button: 'right' });
 
-            await expect(page.locator('#task-context-menu')).toBeVisible({ timeout: 5000 });
+            await expect(page.locator('[data-testid="context-menu"]')).toBeVisible({ timeout: 5000 });
 
             // Hover over "Change Status" submenu parent to reveal status options
-            await page.locator('.task-context-menu-item.has-submenu').hover();
-            await expect(page.locator('.task-context-submenu')).toBeVisible({ timeout: 5000 });
+            await page.getByRole('menuitem', { name: /change status/i }).hover();
+            await expect(page.locator('[data-testid^="context-submenu-"]').first()).toBeVisible({ timeout: 5000 });
 
-            await page.locator('[data-ctx-action="set-status"][data-ctx-status="in-progress"]').click();
+            await page.getByRole('menuitem', { name: /in progress/i }).click();
 
-            // Wait for status to update
-            await expect(
-                page.locator('.miller-file-row', { hasText: 'task-a' })
-                    .locator('.miller-status.task-status-in-progress'),
-            ).toBeVisible({ timeout: 10000 });
+            // Wait for status to update to 🔄
+            await expect(page.locator('.miller-file-row', { hasText: 'task-a' })).toContainText('🔄', {
+                timeout: 10000,
+            });
 
             // Reload the page
             await page.goto(serverUrl);
@@ -133,10 +127,9 @@ test.describe('Status Cycling (011)', () => {
             await page.click('.repo-sub-tab[data-subtab="tasks"]');
             await expect(page.locator('.miller-columns')).toBeVisible({ timeout: 10000 });
 
-            // task-a should still show ◐ (in-progress) after refresh
+            // task-a should still show 🔄 (in-progress) after refresh
             const refreshedRow = page.locator('.miller-file-row', { hasText: 'task-a' });
-            await expect(refreshedRow.locator('.miller-status.task-status-in-progress')).toBeVisible({ timeout: 10000 });
-            await expect(refreshedRow.locator('.miller-status.task-status-in-progress')).toHaveText('◐');
+            await expect(refreshedRow).toContainText('🔄', { timeout: 10000 });
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         }

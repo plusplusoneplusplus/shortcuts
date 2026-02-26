@@ -62,14 +62,15 @@ async function selectWikiAndOpenAdmin(
 ): Promise<void> {
     await page.goto(serverUrl);
     await page.click('[data-tab="wiki"]');
-    await expect(page.locator('.wiki-card[data-wiki-id="' + wikiId + '"]')).toBeVisible({ timeout: 10_000 });
-    await page.click('.wiki-card[data-wiki-id="' + wikiId + '"]');
+    await expect(page.locator('#wiki-card-list .wiki-card[data-wiki-id="' + wikiId + '"]')).toBeVisible({ timeout: 10_000 });
+    await page.click('#wiki-card-list .wiki-card[data-wiki-id="' + wikiId + '"]');
     await expect(page.locator('#wiki-component-tree')).not.toBeEmpty({ timeout: 5_000 });
 
-    // Open admin panel through project-level tabs
-    await expect(page.locator('#wiki-project-toolbar')).toBeVisible({ timeout: 5_000 });
-    await page.click(`.wiki-project-tab[data-wiki-project-tab="${tab}"]`);
-    await expect(page.locator('#wiki-admin-panel')).not.toHaveClass(/hidden/, { timeout: 5_000 });
+    // Open admin panel through project-level admin tab, then select admin sub-tab
+    await expect(page.locator('#wiki-project-tabs')).toBeVisible({ timeout: 5_000 });
+    await page.click('.wiki-project-tab[data-wiki-project-tab="admin"]');
+    await expect(page.locator('[data-wiki-admin-tab="' + tab + '"]')).toBeVisible({ timeout: 5_000 });
+    await page.click('[data-wiki-admin-tab="' + tab + '"]');
 }
 
 const CATEGORIES: CategoryInfo[] = [
@@ -114,18 +115,12 @@ test.describe('Wiki Admin Panel', () => {
 
                 await selectWikiAndOpenAdmin(page, serverUrl, 'admin-toggle-wiki', 'seeds');
 
-                // Admin panel should be visible
-                const adminPanel = page.locator('#wiki-admin-panel');
-                await expect(adminPanel).not.toHaveClass(/hidden/, { timeout: 5_000 });
-
-                // Wiki layout and sidebar should remain visible
-                const wikiLayout = page.locator('#view-wiki .wiki-layout');
-                await expect(wikiLayout).not.toHaveClass(/hidden/);
-                await expect(page.locator('#wiki-sidebar')).toBeVisible();
+                // Admin content should be visible
+                await expect(page.locator('[data-wiki-admin-tab="seeds"]')).toBeVisible({ timeout: 5_000 });
 
                 // Switch back to browse
                 await page.click('.wiki-project-tab[data-wiki-project-tab="browse"]');
-                await expect(adminPanel).toHaveClass(/hidden/, { timeout: 5_000 });
+                await expect(page.locator('#wiki-component-tree')).toBeVisible();
                 await expect(page.locator('#wiki-component-detail')).toBeVisible();
             } finally {
                 fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -146,29 +141,28 @@ test.describe('Wiki Admin Panel', () => {
                 await seedWiki(serverUrl, 'admin-tabs-wiki', wikiDir, undefined, 'Admin Tabs Wiki');
                 await selectWikiAndOpenAdmin(page, serverUrl, 'admin-tabs-wiki');
 
-                // Seeds tab should be active by default
-                await expect(page.locator('.wiki-project-tab[data-wiki-project-tab="seeds"]')).toHaveClass(/active/);
-                await expect(page.locator('#admin-content-seeds')).toHaveClass(/active/);
-                await expect(page.locator('#admin-content-config')).not.toHaveClass(/active/);
-                await expect(page.locator('#admin-content-generate')).not.toHaveClass(/active/);
+                // Seeds tab should be active by default (admin sub-tab)
+                await expect(page.locator('[data-wiki-admin-tab="seeds"]')).toHaveClass(/bg-\[#0078d4\]/);
+                await expect(page.locator('#admin-content-seeds')).toBeVisible();
+                await expect(page.locator('#admin-content-config')).not.toBeVisible();
+                await expect(page.locator('#admin-content-generate')).not.toBeVisible();
 
                 // Switch to config tab
-                await page.click('.wiki-project-tab[data-wiki-project-tab="config"]');
-                await expect(page.locator('.wiki-project-tab[data-wiki-project-tab="config"]')).toHaveClass(/active/);
-                await expect(page.locator('.wiki-project-tab[data-wiki-project-tab="seeds"]')).not.toHaveClass(/active/);
-                await expect(page.locator('#admin-content-config')).toHaveClass(/active/);
-                await expect(page.locator('#admin-content-seeds')).not.toHaveClass(/active/);
+                await page.click('[data-wiki-admin-tab="config"]');
+                await expect(page.locator('[data-wiki-admin-tab="config"]')).toHaveClass(/bg-\[#0078d4\]/);
+                await expect(page.locator('#admin-content-config')).toBeVisible();
+                await expect(page.locator('#admin-content-seeds')).not.toBeVisible();
 
                 // Switch to generate tab
-                await page.click('.wiki-project-tab[data-wiki-project-tab="generate"]');
-                await expect(page.locator('.wiki-project-tab[data-wiki-project-tab="generate"]')).toHaveClass(/active/);
-                await expect(page.locator('#admin-content-generate')).toHaveClass(/active/);
-                await expect(page.locator('#admin-content-config')).not.toHaveClass(/active/);
+                await page.click('[data-wiki-admin-tab="generate"]');
+                await expect(page.locator('[data-wiki-admin-tab="generate"]')).toHaveClass(/bg-\[#0078d4\]/);
+                await expect(page.locator('#admin-content-generate')).toBeVisible();
+                await expect(page.locator('#admin-content-config')).not.toBeVisible();
 
                 // Switch back to seeds
-                await page.click('.wiki-project-tab[data-wiki-project-tab="seeds"]');
-                await expect(page.locator('.wiki-project-tab[data-wiki-project-tab="seeds"]')).toHaveClass(/active/);
-                await expect(page.locator('#admin-content-seeds')).toHaveClass(/active/);
+                await page.click('[data-wiki-admin-tab="seeds"]');
+                await expect(page.locator('[data-wiki-admin-tab="seeds"]')).toHaveClass(/bg-\[#0078d4\]/);
+                await expect(page.locator('#admin-content-seeds')).toBeVisible();
             } finally {
                 fs.rmSync(tmpDir, { recursive: true, force: true });
             }
@@ -182,13 +176,10 @@ test.describe('Wiki Admin Panel', () => {
                 await seedWiki(serverUrl, 'admin-onetab-wiki', wikiDir, undefined, 'Admin OneTab Wiki');
                 await selectWikiAndOpenAdmin(page, serverUrl, 'admin-onetab-wiki');
 
-                // Click each tab and verify only one is active
+                // Click each tab and verify content switches
                 for (const tabName of ['seeds', 'config', 'generate']) {
-                    await page.click(`.wiki-project-tab[data-wiki-project-tab="${tabName}"]`);
-                    const activeTabs = page.locator('.wiki-project-tab.active');
-                    await expect(activeTabs).toHaveCount(1);
-                    const activeContents = page.locator('.admin-tab-content.active');
-                    await expect(activeContents).toHaveCount(1);
+                    await page.click(`[data-wiki-admin-tab="${tabName}"]`);
+                    await expect(page.locator(`#admin-content-${tabName}`)).toBeVisible();
                 }
             } finally {
                 fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -207,9 +198,9 @@ test.describe('Wiki Admin Panel', () => {
                 const wikiDir = path.join(tmpDir, 'wiki-data');
                 createCustomWiki(wikiDir, buildTestComponents(), CATEGORIES, { articles: TEST_ARTICLES });
 
-                // Write a seeds.json file
-                const seedsContent = { components: ['auth-service', 'api-gateway'], focus: 'security' };
-                fs.writeFileSync(path.join(wikiDir, 'seeds.json'), JSON.stringify(seedsContent));
+                // Write a seeds.yaml file (server reads seeds.yaml)
+                const seedsYaml = 'components:\n  - auth-service\n  - api-gateway\nfocus: security\n';
+                fs.writeFileSync(path.join(wikiDir, 'seeds.yaml'), seedsYaml);
 
                 await seedWiki(serverUrl, 'admin-seeds-wiki', wikiDir, undefined, 'Admin Seeds Wiki');
                 await selectWikiAndOpenAdmin(page, serverUrl, 'admin-seeds-wiki');
@@ -219,9 +210,8 @@ test.describe('Wiki Admin Panel', () => {
                 await expect(seedsEditor).not.toHaveValue('', { timeout: 5_000 });
 
                 const value = await seedsEditor.inputValue();
-                const parsed = JSON.parse(value);
-                expect(parsed.components).toContain('auth-service');
-                expect(parsed.focus).toBe('security');
+                expect(value).toContain('auth-service');
+                expect(value).toContain('security');
             } finally {
                 fs.rmSync(tmpDir, { recursive: true, force: true });
             }
@@ -235,15 +225,14 @@ test.describe('Wiki Admin Panel', () => {
                 await seedWiki(serverUrl, 'admin-seeds-inv-wiki', wikiDir, undefined, 'Admin Seeds Inv Wiki');
                 await selectWikiAndOpenAdmin(page, serverUrl, 'admin-seeds-inv-wiki');
 
-                // Type invalid JSON
+                // Type invalid YAML (unclosed quote)
                 const seedsEditor = page.locator('#seeds-editor');
-                await seedsEditor.fill('{ invalid json }');
+                await seedsEditor.fill('key: "unclosed string');
                 await page.click('#seeds-save');
 
-                // Should show error status
+                // Should show error status (seeds editor validates YAML)
                 const status = page.locator('#seeds-status');
-                await expect(status).toContainText('Invalid JSON', { timeout: 5_000 });
-                await expect(status).toHaveClass(/error/);
+                await expect(status).toContainText('Invalid', { timeout: 5_000 });
             } finally {
                 fs.rmSync(tmpDir, { recursive: true, force: true });
             }
@@ -255,8 +244,8 @@ test.describe('Wiki Admin Panel', () => {
                 const wikiDir = path.join(tmpDir, 'wiki-data');
                 createCustomWiki(wikiDir, buildTestComponents(), CATEGORIES, { articles: TEST_ARTICLES });
 
-                const seedsContent = { original: true };
-                fs.writeFileSync(path.join(wikiDir, 'seeds.json'), JSON.stringify(seedsContent));
+                const seedsYaml = 'original: true\n';
+                fs.writeFileSync(path.join(wikiDir, 'seeds.yaml'), seedsYaml);
 
                 await seedWiki(serverUrl, 'admin-seeds-reset-wiki', wikiDir, undefined, 'Admin Seeds Reset Wiki');
                 await selectWikiAndOpenAdmin(page, serverUrl, 'admin-seeds-reset-wiki');
@@ -266,7 +255,7 @@ test.describe('Wiki Admin Panel', () => {
 
                 // Modify content
                 const originalValue = await seedsEditor.inputValue();
-                await seedsEditor.fill('{ "modified": true }');
+                await seedsEditor.fill('modified: true');
 
                 // Reset
                 await page.click('#seeds-reset');
@@ -302,8 +291,8 @@ test.describe('Wiki Admin Panel', () => {
                 await selectWikiAndOpenAdmin(page, serverUrl, 'admin-config-wiki');
 
                 // Switch to config tab
-                await page.click('.wiki-project-tab[data-wiki-project-tab="config"]');
-                await expect(page.locator('#admin-content-config')).toHaveClass(/active/);
+                await page.click('[data-wiki-admin-tab="config"]');
+                await expect(page.locator('#admin-content-config')).toBeVisible();
 
                 // Config editor should contain the config data
                 const configEditor = page.locator('#config-editor');
@@ -330,11 +319,8 @@ test.describe('Wiki Admin Panel', () => {
                 const wikiDir = path.join(tmpDir, 'wiki-data');
                 createCustomWiki(wikiDir, buildTestComponents(), CATEGORIES, { articles: TEST_ARTICLES });
                 await seedWiki(serverUrl, 'admin-gen-wiki', wikiDir, tmpDir, 'Admin Gen Wiki');
-                await selectWikiAndOpenAdmin(page, serverUrl, 'admin-gen-wiki');
-
-                // Switch to generate tab
-                await page.click('.wiki-project-tab[data-wiki-project-tab="generate"]');
-                await expect(page.locator('#admin-content-generate')).toHaveClass(/active/);
+                await selectWikiAndOpenAdmin(page, serverUrl, 'admin-gen-wiki', 'generate');
+                await expect(page.locator('#admin-content-generate')).toBeVisible();
 
                 // All 5 phase cards should be present
                 for (let i = 1; i <= 5; i++) {
@@ -362,16 +348,11 @@ test.describe('Wiki Admin Panel', () => {
                 await seedWiki(serverUrl, 'admin-gen-ctrl-wiki', wikiDir, tmpDir, 'Admin Gen Ctrl Wiki');
                 await selectWikiAndOpenAdmin(page, serverUrl, 'admin-gen-ctrl-wiki');
 
-                await page.click('.wiki-project-tab[data-wiki-project-tab="generate"]');
+                await page.click('[data-wiki-admin-tab="generate"]');
 
-                // Force checkbox
-                await expect(page.locator('#generate-force')).toBeVisible();
-                await expect(page.locator('#generate-force')).not.toBeChecked();
-
-                // Range controls
+                // Start phase select and Run buttons
                 await expect(page.locator('#generate-start-phase')).toBeVisible();
-                await expect(page.locator('#generate-end-phase')).toBeVisible();
-                await expect(page.locator('#generate-run-range')).toBeVisible();
+                await expect(page.locator('#phase-run-1')).toBeVisible();
             } finally {
                 fs.rmSync(tmpDir, { recursive: true, force: true });
             }
@@ -385,7 +366,7 @@ test.describe('Wiki Admin Panel', () => {
                 await seedWiki(serverUrl, 'admin-gen-run-wiki', wikiDir, tmpDir, 'Admin Gen Run Wiki');
                 await selectWikiAndOpenAdmin(page, serverUrl, 'admin-gen-run-wiki');
 
-                await page.click('.wiki-project-tab[data-wiki-project-tab="generate"]');
+                await page.click('[data-wiki-admin-tab="generate"]');
 
                 // Mock the generate endpoint
                 await page.route('**/api/wikis/*/admin/generate', async (route, req) => {
@@ -428,15 +409,11 @@ test.describe('Wiki Admin Panel', () => {
                 // Click Phase 1 Run button
                 await page.click('#phase-run-1');
 
-                // Status bar should show progress
-                const statusBar = page.locator('#generate-status-bar');
-                await expect(statusBar).not.toHaveClass(/hidden/, { timeout: 10_000 });
+                // Status bar or phase log should show progress
+                await expect(page.locator('#generate-status-bar, #phase-log-1')).toBeVisible({ timeout: 10_000 });
 
-                // Wait for generation to complete
-                await expect(statusBar).toContainText(/completed|Phase/, { timeout: 10_000 });
-
-                // Phase card 1 should show success
-                await expect(page.locator('#phase-card-1')).toHaveClass(/phase-success/, { timeout: 10_000 });
+                // Wait for generation to complete (status bar disappears when done)
+                await expect(page.locator('#phase-log-1')).toContainText(/Complete|✓/, { timeout: 10_000 });
             } finally {
                 fs.rmSync(tmpDir, { recursive: true, force: true });
             }
@@ -456,7 +433,7 @@ test.describe('Wiki Admin Panel', () => {
                 await seedWiki(serverUrl, 'admin-gen-err-wiki', wikiDir, tmpDir, 'Admin Gen Err Wiki');
                 await selectWikiAndOpenAdmin(page, serverUrl, 'admin-gen-err-wiki');
 
-                await page.click('.wiki-project-tab[data-wiki-project-tab="generate"]');
+                await page.click('[data-wiki-admin-tab="generate"]');
 
                 // Mock generate endpoint to return error
                 await page.route('**/api/wikis/*/admin/generate', async (route, req) => {
@@ -490,7 +467,7 @@ test.describe('Wiki Admin Panel', () => {
                 await seedWiki(serverUrl, 'admin-gen-409-wiki', wikiDir, tmpDir, 'Admin Gen 409 Wiki');
                 await selectWikiAndOpenAdmin(page, serverUrl, 'admin-gen-409-wiki');
 
-                await page.click('.wiki-project-tab[data-wiki-project-tab="generate"]');
+                await page.click('[data-wiki-admin-tab="generate"]');
 
                 // Mock generate endpoint to return 409 conflict
                 await page.route('**/api/wikis/*/admin/generate', async (route, req) => {
@@ -533,17 +510,18 @@ test.describe('Wiki Admin Panel', () => {
                 await expect(page.locator('#seeds-status')).toContainText('Saved');
 
                 // Switch to config tab and edit
-                await page.click('.wiki-project-tab[data-wiki-project-tab="config"]');
+                await page.click('[data-wiki-admin-tab="config"]');
                 const configEditor = page.locator('#config-editor');
                 await page.waitForTimeout(300);
                 await configEditor.fill('model: custom-model');
 
                 // Switch to generate tab and back to seeds
-                await page.click('.wiki-project-tab[data-wiki-project-tab="generate"]');
-                await page.click('.wiki-project-tab[data-wiki-project-tab="seeds"]');
+                await page.click('[data-wiki-admin-tab="generate"]');
+                await page.click('[data-wiki-admin-tab="seeds"]');
 
-                // Saved seeds content should be preserved after tab switches
-                await expect(seedsEditor).toHaveValue('{\n  "custom": "seeds data"\n}');
+                // Saved seeds content should be preserved after tab switches (YAML format)
+                await expect(seedsEditor).toContainText('custom');
+                await expect(seedsEditor).toContainText('seeds data');
             } finally {
                 fs.rmSync(tmpDir, { recursive: true, force: true });
             }

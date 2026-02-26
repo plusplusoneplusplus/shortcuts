@@ -74,14 +74,14 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     return (
         <div id="repo-detail-content" className="flex flex-col h-full min-h-0 min-w-0">
             {/* Header */}
-            <div className="flex items-center gap-3 px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
+            <div className="repo-detail-header flex items-center gap-3 px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
                 <span
                     className="inline-block w-3.5 h-3.5 rounded-full flex-shrink-0"
                     style={{ background: color }}
                 />
                 <h1 className="text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc] flex-1">{ws.name}</h1>
-                <Button variant="secondary" size="sm" onClick={() => setEditOpen(true)}>Edit</Button>
-                <Button variant="danger" size="sm" onClick={handleRemove}>Remove</Button>
+                <Button variant="secondary" size="sm" id="repo-edit-btn" data-testid="repo-edit-btn" onClick={() => setEditOpen(true)}>Edit</Button>
+                <Button variant="danger" size="sm" id="repo-remove-btn" data-testid="repo-remove-btn" onClick={handleRemove}>Remove</Button>
             </div>
 
             {/* Sub-tab bar */}
@@ -113,7 +113,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
             </div>
 
             {/* Sub-tab content */}
-            <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
+            <div id="repo-sub-tab-content" className="flex-1 min-h-0 min-w-0 overflow-hidden">
                 {activeSubTab === 'tasks' ? (
                     <TasksPanel wsId={ws.id} />
                 ) : (

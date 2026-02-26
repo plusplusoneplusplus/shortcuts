@@ -35,10 +35,10 @@ export function RepoCard({ repo, isSelected, inGroup, onClick }: RepoCardProps) 
             {/* Name row */}
             <div className="flex items-center gap-1.5">
                 <span
-                    className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0"
+                    className="repo-color-dot inline-block w-2.5 h-2.5 rounded-full flex-shrink-0"
                     style={{ background: color }}
                 />
-                <span className="text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc] truncate">
+                <span className="repo-item-name text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc] truncate">
                     {ws.name}
                 </span>
                 {inGroup && branch !== 'n/a' && (
@@ -60,7 +60,7 @@ export function RepoCard({ repo, isSelected, inGroup, onClick }: RepoCardProps) 
             <div className="flex items-center gap-2 mt-1 text-[10px] text-[#848484]">
                 <span>{branch}{taskCount > 0 ? ` · ${taskCount} task${taskCount !== 1 ? 's' : ''}` : ''}</span>
                 <span>Pipelines: {pipelineCount}</span>
-                <span className="ml-auto">
+                <span className="repo-stat-counts ml-auto">
                     ✓{stats.success} ✗{stats.failed} ⏗{stats.running}
                 </span>
             </div>

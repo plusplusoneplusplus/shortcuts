@@ -182,7 +182,7 @@ describe('FolderActionDialog', () => {
         );
         const input = screen.getByTestId('folder-action-input');
         fireEvent.keyDown(input, { key: 'Enter' });
-        expect(onConfirm).toHaveBeenCalledWith('hello');
+        expect(onConfirm).toHaveBeenCalledWith('hello', undefined);
     });
 
     it('pressing Enter with empty input does not call onConfirm', () => {
@@ -251,7 +251,7 @@ describe('FolderActionDialog', () => {
             />
         );
         fireEvent.click(screen.getByText('Save'));
-        expect(onConfirm).toHaveBeenCalledWith('my-folder');
+        expect(onConfirm).toHaveBeenCalledWith('my-folder', undefined);
     });
 });
 

@@ -57,7 +57,7 @@ export function TopBar() {
                             className={
                                 `h-8 px-3 rounded text-sm transition-colors ` +
                                 (state.activeTab === tab
-                                    ? 'bg-[#0078d4] text-white'
+                                    ? 'active bg-[#0078d4] text-white'
                                     : 'text-[#1e1e1e] dark:text-[#cccccc] hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
                             }
                             data-tab={tab}

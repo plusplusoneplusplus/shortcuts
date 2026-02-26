@@ -73,7 +73,7 @@ test.describe('Repo real-time: task list', () => {
             await expect(page.locator('.repo-sub-tab[data-subtab="tasks"]')).toHaveClass(/active/);
 
             // Wait for initial tasks to finish loading — fixture includes "task-a"
-            await expect(page.locator('#repo-tasks-tree')).toContainText('task-a', {
+            await expect(page.locator('[data-testid="task-tree"]')).toContainText('task-a', {
                 timeout: 15000,
             });
 
@@ -84,7 +84,7 @@ test.describe('Repo real-time: task list', () => {
             });
 
             // Task tree should re-render with the new task visible (no page refresh)
-            await expect(page.locator('#repo-tasks-tree')).toContainText('realtime-new-task', {
+            await expect(page.locator('[data-testid="task-tree"]')).toContainText('realtime-new-task', {
                 timeout: 10000,
             });
         } finally {

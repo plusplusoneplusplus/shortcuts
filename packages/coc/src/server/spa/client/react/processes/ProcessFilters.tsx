@@ -46,6 +46,7 @@ export function ProcessFilters() {
     return (
         <div className="filter-bar p-2 flex flex-col gap-2">
             <input
+                id="search-input"
                 type="text"
                 placeholder="Search processes..."
                 value={searchInput}
@@ -53,6 +54,7 @@ export function ProcessFilters() {
                 className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc] focus:outline-none focus:border-[#0078d4]"
             />
             <select
+                id="status-filter"
                 value={state.statusFilter}
                 onChange={e => onStatusChange(e.target.value)}
                 className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]"
@@ -66,6 +68,7 @@ export function ProcessFilters() {
             </select>
             {state.workspaces.length > 0 && (
                 <select
+                    id="workspace-select"
                     value={state.workspace}
                     onChange={e => onWorkspaceChange(e.target.value)}
                     className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]"

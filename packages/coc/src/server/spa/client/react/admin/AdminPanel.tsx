@@ -315,7 +315,8 @@ export function AdminPanel() {
     const resolved = config?.resolved ?? {};
 
     return (
-        <div className="p-6 space-y-6">
+        <div id="view-admin">
+            <div id="admin-page-content" className="p-6 space-y-6">
             <header>
                 <h1 className="text-xl font-semibold text-[#1e1e1e] dark:text-[#cccccc]">Admin</h1>
                 <p className="text-sm text-[#616161] dark:text-[#999]">Server management and data administration</p>
@@ -328,15 +329,15 @@ export function AdminPanel() {
                     <div className="flex items-center gap-2 text-sm text-[#848484]"><Spinner size="sm" /> Loading…</div>
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
-                        <div className="text-center p-3 rounded bg-white dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#3c3c3c]">
+                        <div id="admin-stat-processes" className="text-center p-3 rounded bg-white dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#3c3c3c]">
                             <div className="text-2xl font-bold text-[#0078d4]" data-testid="stat-processes">{stats?.processCount ?? '—'}</div>
                             <div className="text-xs text-[#616161] dark:text-[#999]">Processes</div>
                         </div>
-                        <div className="text-center p-3 rounded bg-white dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#3c3c3c]">
+                        <div id="admin-stat-wikis" className="text-center p-3 rounded bg-white dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#3c3c3c]">
                             <div className="text-2xl font-bold text-[#0078d4]" data-testid="stat-wikis">{stats?.wikiCount ?? '—'}</div>
                             <div className="text-xs text-[#616161] dark:text-[#999]">Wikis</div>
                         </div>
-                        <div className="text-center p-3 rounded bg-white dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#3c3c3c]">
+                        <div id="admin-stat-disk" className="text-center p-3 rounded bg-white dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#3c3c3c]">
                             <div className="text-2xl font-bold text-[#0078d4]" data-testid="stat-disk">
                                 {stats?.totalBytes != null ? formatBytes(stats.totalBytes) : '—'}
                             </div>
@@ -344,7 +345,7 @@ export function AdminPanel() {
                         </div>
                     </div>
                 )}
-                <Button variant="secondary" size="sm" onClick={loadStats}>Refresh</Button>
+                <Button id="admin-refresh-stats" variant="secondary" size="sm" onClick={loadStats}>Refresh</Button>
             </Card>
 
             {/* Configuration */}
@@ -455,8 +456,8 @@ export function AdminPanel() {
             <Card className="p-4">
                 <h3 className="text-sm font-semibold mb-2 text-[#1e1e1e] dark:text-[#cccccc]">Export Data</h3>
                 <p className="text-xs text-[#616161] dark:text-[#999] mb-3">Download all server data as a JSON file.</p>
-                <Button variant="secondary" size="sm" onClick={handleExport}>Export</Button>
-                {exportStatus && <div className="text-xs text-[#848484] mt-2">{exportStatus}</div>}
+                <Button id="admin-export-btn" variant="secondary" size="sm" onClick={handleExport}>Export</Button>
+                {exportStatus && <div id="admin-export-status" className="text-xs text-[#848484] mt-2">{exportStatus}</div>}
             </Card>
 
             {/* Import Data */}
@@ -465,6 +466,7 @@ export function AdminPanel() {
                 <p className="text-xs text-[#616161] dark:text-[#999] mb-3">Restore data from a previously exported JSON file.</p>
                 <div className="flex flex-col gap-2 mb-3">
                     <input
+                        id="admin-import-file"
                         type="file"
                         accept=".json,application/json"
                         className="text-xs"
@@ -472,21 +474,21 @@ export function AdminPanel() {
                     />
                     <div className="flex items-center gap-3 text-xs">
                         <label className="flex items-center gap-1">
-                            <input type="radio" name="import-mode" checked={importMode === 'replace'} onChange={() => setImportMode('replace')} /> Replace
+                            <input type="radio" name="import-mode" value="replace" checked={importMode === 'replace'} onChange={() => setImportMode('replace')} /> Replace
                         </label>
                         <label className="flex items-center gap-1">
-                            <input type="radio" name="import-mode" checked={importMode === 'merge'} onChange={() => setImportMode('merge')} /> Merge
+                            <input type="radio" name="import-mode" value="merge" checked={importMode === 'merge'} onChange={() => setImportMode('merge')} /> Merge
                         </label>
                     </div>
                     <div className="flex gap-2">
-                        <Button variant="secondary" size="sm" onClick={handlePreviewImport}>Preview</Button>
-                        <Button size="sm" onClick={handleImport}>Import</Button>
+                        <Button id="admin-import-preview-btn" variant="secondary" size="sm" onClick={handlePreviewImport}>Preview</Button>
+                        <Button id="admin-import-btn" size="sm" onClick={handleImport}>Import</Button>
                     </div>
                 </div>
                 {importPreview && (
-                    <pre className="text-xs bg-black/5 dark:bg-white/5 p-2 rounded mb-2 whitespace-pre-wrap">{importPreview}</pre>
+                    <pre id="admin-import-preview" className="text-xs bg-black/5 dark:bg-white/5 p-2 rounded mb-2 whitespace-pre-wrap">{importPreview}</pre>
                 )}
-                {importStatus && <div className="text-xs text-[#848484]">{importStatus}</div>}
+                {importStatus && <div id="admin-import-status" className="text-xs text-[#848484]">{importStatus}</div>}
             </Card>
 
             {/* Danger Zone */}
@@ -495,28 +497,29 @@ export function AdminPanel() {
                 <p className="text-xs text-[#616161] dark:text-[#999] mb-3">Permanently delete all stored data. This cannot be undone.</p>
                 <div className="flex items-center gap-2 mb-3">
                     <label className="flex items-center gap-1 text-xs">
-                        <input type="checkbox" checked={includeWikis} onChange={e => setIncludeWikis(e.target.checked)} className="accent-red-500" />
+                        <input id="admin-include-wikis" type="checkbox" checked={includeWikis} onChange={e => setIncludeWikis(e.target.checked)} className="accent-red-500" />
                         Include wikis
                     </label>
                 </div>
                 <div className="flex gap-2 mb-2">
-                    <Button variant="secondary" size="sm" onClick={handlePreviewWipe}>Preview</Button>
+                    <Button id="admin-preview-wipe" variant="secondary" size="sm" onClick={handlePreviewWipe}>Preview</Button>
                     {wipeToken === null ? (
-                        <Button variant="danger" size="sm" onClick={handleWipeStep1}>Wipe Data</Button>
+                        <Button id="admin-wipe-btn" variant="danger" size="sm" onClick={handleWipeStep1}>Wipe Data</Button>
                     ) : (
                         <>
-                            <Button variant="danger" size="sm" onClick={handleWipeConfirm}>Confirm Wipe</Button>
-                            <Button variant="secondary" size="sm" onClick={handleWipeCancel}>Cancel</Button>
+                            <Button id="admin-wipe-confirm" variant="danger" size="sm" onClick={handleWipeConfirm}>Confirm Wipe</Button>
+                            <Button id="admin-wipe-cancel" variant="secondary" size="sm" onClick={handleWipeCancel}>Cancel</Button>
                         </>
                     )}
                 </div>
                 {wipePreview && (
-                    <pre className="text-xs bg-black/5 dark:bg-white/5 p-2 rounded mb-2 whitespace-pre-wrap">{wipePreview}</pre>
+                    <pre id="admin-wipe-preview" className="text-xs bg-black/5 dark:bg-white/5 p-2 rounded mb-2 whitespace-pre-wrap">{wipePreview}</pre>
                 )}
-                {wipeStatus && <div className="text-xs text-[#848484]">{wipeStatus}</div>}
+                {wipeStatus && <div id="admin-wipe-status" className="text-xs text-[#848484]">{wipeStatus}</div>}
             </Card>
 
             <ToastContainer toasts={toasts} removeToast={removeToast} />
+            </div>
         </div>
     );
 }

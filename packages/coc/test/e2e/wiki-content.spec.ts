@@ -66,8 +66,8 @@ async function selectWikiAndComponent(
 ): Promise<void> {
     await page.goto(serverUrl);
     await page.click('[data-tab="wiki"]');
-    await expect(page.locator('.wiki-card[data-wiki-id="' + wikiId + '"]')).toBeVisible({ timeout: 10_000 });
-    await page.click('.wiki-card[data-wiki-id="' + wikiId + '"]');
+    await expect(page.locator('#wiki-card-list .wiki-card[data-wiki-id="' + wikiId + '"]')).toBeVisible({ timeout: 10_000 });
+    await page.click('#wiki-card-list .wiki-card[data-wiki-id="' + wikiId + '"]');
     await expect(page.locator('#wiki-component-tree')).not.toBeEmpty({ timeout: 5_000 });
     await page.click(`.wiki-tree-component[data-id="${componentId}"]`);
     await expect(page.locator('#wiki-article-content')).not.toBeEmpty({ timeout: 5_000 });
@@ -416,9 +416,11 @@ test.describe('Markdown rendering', () => {
             await selectWikiAndComponent(page, serverUrl, 'md-paras', 'long-article');
 
             const body = page.locator('#wiki-article-content .markdown-body');
+            await expect(body).toBeVisible({ timeout: 5000 });
 
-            // Verify multiple paragraphs exist
+            // Wait for paragraphs to render
             const paragraphs = body.locator('p');
+            await expect(paragraphs.first()).toBeVisible({ timeout: 5000 });
             const count = await paragraphs.count();
             expect(count).toBeGreaterThan(10);
 
@@ -582,12 +584,12 @@ test.describe('Mermaid diagrams', () => {
             const firstContainer = page.locator('.mermaid-container').first();
             await expect(firstContainer).toBeVisible({ timeout: 10_000 });
 
-            const svg = firstContainer.locator('.mermaid-viewport svg');
+            const svg = firstContainer.locator('.task-mermaid-viewport svg');
             await expect(svg).toBeVisible({ timeout: 10_000 });
 
             // Verify toolbar exists
-            await expect(firstContainer.locator('.mermaid-toolbar')).toBeVisible();
-            await expect(firstContainer.locator('.mermaid-toolbar-label')).toContainText('Diagram');
+            await expect(firstContainer.locator('.task-mermaid-toolbar')).toBeVisible();
+            await expect(firstContainer.locator('.mermaid-header')).toContainText('Diagram');
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         }
@@ -610,7 +612,7 @@ test.describe('Mermaid diagrams', () => {
 
             // Each should contain an SVG
             for (let i = 0; i < 3; i++) {
-                const svg = containers.nth(i).locator('.mermaid-viewport svg');
+                const svg = containers.nth(i).locator('.task-mermaid-viewport svg');
                 await expect(svg).toBeVisible({ timeout: 10_000 });
             }
         } finally {
@@ -630,12 +632,12 @@ test.describe('Mermaid diagrams', () => {
             await expect(firstContainer).toBeVisible({ timeout: 10_000 });
 
             // Verify zoom controls exist
-            await expect(firstContainer.locator('.mermaid-zoom-in')).toBeVisible();
-            await expect(firstContainer.locator('.mermaid-zoom-out')).toBeVisible();
-            await expect(firstContainer.locator('.mermaid-zoom-reset')).toBeVisible();
+            await expect(firstContainer.locator('.task-mermaid-zoom-in')).toBeVisible();
+            await expect(firstContainer.locator('.task-mermaid-zoom-out')).toBeVisible();
+            await expect(firstContainer.locator('.task-mermaid-zoom-reset')).toBeVisible();
 
             // Verify initial zoom level
-            await expect(firstContainer.locator('.mermaid-zoom-level')).toContainText('100%');
+            await expect(firstContainer.locator('.task-mermaid-zoom-level')).toContainText('100%');
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         }
@@ -659,13 +661,14 @@ test.describe('Table of contents', () => {
             const tocNav = page.locator('#wiki-toc-nav');
             await expect(tocNav).toBeVisible({ timeout: 5_000 });
 
-            // Verify ToC links match sections (7 h2s + 4 h3s = 11 links)
+            // Verify ToC links match sections (h1 + 7 h2s + 4 h3s = 12+ links)
             const tocLinks = tocNav.locator('a');
             const count = await tocLinks.count();
             expect(count).toBeGreaterThanOrEqual(7);
 
-            // Verify first link text
-            await expect(tocLinks.first()).toContainText('Section 1');
+            // First link is h1 "Long Article", verify a section link exists
+            await expect(tocLinks.first()).toContainText('Long Article');
+            await expect(tocNav.locator('a', { hasText: 'Section 1' })).toBeVisible();
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         }
@@ -710,7 +713,7 @@ test.describe('Table of contents', () => {
             // Constrain the scroll container so it becomes actually scrollable
             // (by default, flexbox min-height: auto allows it to grow to content height)
             await page.evaluate(() => {
-                const scrollEl = document.getElementById('wiki-content-scroll');
+                const scrollEl = document.getElementById('wiki-article-content');
                 if (scrollEl) {
                     scrollEl.style.maxHeight = '400px';
                     scrollEl.style.overflowY = 'auto';
@@ -719,7 +722,7 @@ test.describe('Table of contents', () => {
 
             // Scroll to the 5th h2 heading within the container
             await page.evaluate(() => {
-                const scrollEl = document.getElementById('wiki-content-scroll');
+                const scrollEl = document.getElementById('wiki-article-content');
                 const headings = document.querySelectorAll(
                     '#wiki-article-content .markdown-body h2',
                 );
@@ -774,27 +777,13 @@ test.describe('Table of contents', () => {
 // ================================================================
 
 /**
- * Helper: click graph button and fix the layout height issue.
- *
- * showWikiGraph() reads scrollEl.clientHeight AFTER replacing content,
- * at which point the scroll container has collapsed to 0. We capture
- * the height beforehand and re-apply it to the graph container.
+ * Helper: switch to graph tab and wait for graph to render.
  */
 async function openGraph(page: import('@playwright/test').Page): Promise<void> {
-    const scrollH = await page.evaluate(() => {
-        return document.getElementById('wiki-content-scroll')?.clientHeight ?? 400;
-    });
-    await page.click('#wiki-graph-btn');
+    await page.click('.wiki-project-tab[data-wiki-project-tab="graph"]');
     // Wait for D3 to load and render
     await page.waitForSelector('#wiki-graph-container', { state: 'attached', timeout: 10_000 });
     await page.waitForTimeout(2000);
-    // Fix container height (workaround for layout collapse after content replacement)
-    await page.evaluate((h) => {
-        const gc = document.getElementById('wiki-graph-container');
-        if (gc && gc.getBoundingClientRect().height === 0) {
-            gc.style.height = Math.max(h, 400) + 'px';
-        }
-    }, scrollH);
 }
 
 test.describe('Dependency graph', () => {
@@ -808,11 +797,7 @@ test.describe('Dependency graph', () => {
             // Select wiki and open a component first so detail panel has proper dimensions
             await selectWikiAndComponent(page, serverUrl, 'graph-toggle', 'overview');
 
-            // Graph button should be visible
-            const graphBtn = page.locator('#wiki-graph-btn');
-            await expect(graphBtn).toBeVisible({ timeout: 5_000 });
-
-            // Click graph button
+            // Switch to graph tab
             await openGraph(page);
 
             // Graph container should appear with SVG (D3 rendering)
@@ -823,8 +808,8 @@ test.describe('Dependency graph', () => {
             const svg = graphContainer.locator('svg');
             await expect(svg).toBeVisible({ timeout: 5_000 });
 
-            // Graph button should have active class
-            await expect(graphBtn).toHaveClass(/active/);
+            // Graph tab should be active
+            await expect(page.locator('.wiki-project-tab[data-wiki-project-tab="graph"]')).toHaveClass(/active|bg-\[#0078d4\]/);
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         }
@@ -884,11 +869,8 @@ test.describe('Dependency graph', () => {
                 }
             });
 
-            // Should navigate away from graph to component detail
-            await expect(page.locator('#wiki-article-content')).not.toBeEmpty({ timeout: 10_000 });
-            // Graph container should be gone (replaced by article content)
-            const gcCount = await page.locator('#wiki-graph-container').count();
-            expect(gcCount).toBe(0);
+            // Clicking node should switch to browse tab and show component
+            await expect(page.locator('#wiki-article-content, .wiki-component-card')).toBeVisible({ timeout: 10_000 });
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         }

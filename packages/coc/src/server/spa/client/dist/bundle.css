@@ -3032,6 +3032,10 @@ video {
   --tw-bg-opacity: 1;
   background-color: rgb(232 232 232 / var(--tw-bg-opacity, 1));
 }
+.hover\:bg-\[\#eee\]:hover {
+  --tw-bg-opacity: 1;
+  background-color: rgb(238 238 238 / var(--tw-bg-opacity, 1));
+}
 .hover\:bg-\[\#f14c4c\]\/10:hover {
   background-color: rgb(241 76 76 / 0.1);
 }

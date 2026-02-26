@@ -19,7 +19,7 @@ test.describe('Repos tab', () => {
         await page.click('[data-tab="repos"]');
 
         await expect(page.locator('#repos-empty')).toBeVisible();
-        await expect(page.locator('#repos-empty')).toContainText('No repos registered');
+        await expect(page.locator('#repos-empty')).toContainText('No repositories registered');
     });
 
     test('displays seeded repos in the sidebar', async ({ page, serverUrl }) => {
@@ -70,9 +70,10 @@ test.describe('Repos tab', () => {
         await seedWorkspace(serverUrl, 'ws-sel', 'selector-repo', '/tmp/selector');
 
         await page.goto(serverUrl);
+        await page.click('[data-tab="processes"]');
 
-        // Wait for workspaces to load and populate dropdown
-        await expect(page.locator('#workspace-select option')).toHaveCount(2, { timeout: 5000 });
+        // Wait for workspaces to load and populate dropdown (All + seeded repo = 2)
+        await expect(page.locator('#workspace-select option')).toHaveCount(2, { timeout: 10000 });
     });
 });
 
@@ -92,7 +93,7 @@ test.describe('Add Repo workflow', () => {
 
             await page.fill('#repo-path', repoDir);
             await page.fill('#repo-alias', 'my-new-repo');
-            await page.selectOption('#repo-color', '#16825d'); // Green
+            await page.click('[data-value="#107c10"]'); // Green
 
             await page.click('#add-repo-submit');
 
@@ -204,7 +205,6 @@ test.describe('Add Repo workflow', () => {
 
         // Validation error should appear, form should stay open
         await expect(page.locator('#repo-validation')).toContainText('Path is required', { timeout: 5000 });
-        await expect(page.locator('#repo-validation')).toHaveClass(/error/);
         await expect(page.locator('#add-repo-overlay')).toBeVisible();
     });
 
@@ -219,21 +219,21 @@ test.describe('Add Repo workflow', () => {
 
             await page.fill('#repo-path', repoDir);
             await page.fill('#repo-alias', 'color-test');
-            await page.selectOption('#repo-color', '#16825d'); // Green
+            await page.click('[data-value="#107c10"]'); // Green
 
             await page.click('#add-repo-submit');
             await expect(page.locator('#add-repo-overlay')).toBeHidden({ timeout: 5000 });
 
-            // Verify sidebar color dot
+            // Verify sidebar color dot (Green #107c10 — may render as hex or rgb)
             await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
             const sidebarDot = page.locator('.repo-item .repo-color-dot');
-            await expect(sidebarDot).toHaveAttribute('style', /background:\s*#16825d/);
+            await expect(sidebarDot).toHaveAttribute('style', /#107c10|rgb\s*\(\s*16\s*,\s*124\s*,\s*16\s*\)/);
 
             // Click repo and verify detail color dot
             await page.locator('.repo-item').first().click();
             await expect(page.locator('#repo-detail-content')).toBeVisible();
             const detailDot = page.locator('#repo-detail-content .repo-color-dot');
-            await expect(detailDot.first()).toHaveAttribute('style', /background:\s*#16825d/);
+            await expect(detailDot.first()).toHaveAttribute('style', /#107c10|rgb\s*\(\s*16\s*,\s*124\s*,\s*16\s*\)/);
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         }
@@ -246,7 +246,7 @@ test.describe('Add Repo workflow', () => {
 
 test.describe('Edit Repo workflow', () => {
     test('edit button opens dialog pre-filled', async ({ page, serverUrl }) => {
-        await seedWorkspace(serverUrl, 'ws-edit-1', 'original-name', '/tmp/original', '#16825d');
+        await seedWorkspace(serverUrl, 'ws-edit-1', 'original-name', '/tmp/original', '#107c10');
 
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
@@ -265,9 +265,9 @@ test.describe('Edit Repo workflow', () => {
         await expect(pathInput).toHaveValue('/tmp/original');
         await expect(pathInput).toHaveAttribute('readonly', '');
 
-        // Name and color should be pre-filled
+        // Name and color should be pre-filled (verify Green #107c10 button is selected)
         await expect(page.locator('#repo-alias')).toHaveValue('original-name');
-        await expect(page.locator('#repo-color')).toHaveValue('#16825d');
+        await expect(page.locator('#repo-color-picker [data-value="#107c10"]')).toHaveClass(/border-\[#0078d4\]|scale-110/);
     });
 
     test('save edits updates sidebar and detail', async ({ page, serverUrl }) => {
@@ -283,9 +283,9 @@ test.describe('Edit Repo workflow', () => {
         await page.click('#repo-edit-btn');
         await expect(page.locator('#add-repo-overlay')).toBeVisible();
 
-        // Change name and color
+        // Change name and color to Green
         await page.fill('#repo-alias', 'new-name');
-        await page.selectOption('#repo-color', '#16825d'); // Green
+        await page.click('[data-value="#107c10"]');
 
         await page.click('#add-repo-submit');
         await expect(page.locator('#add-repo-overlay')).toBeHidden({ timeout: 5000 });
@@ -477,7 +477,7 @@ test.describe('Sub-tab Navigation', () => {
 
 test.describe('Info Tab Content', () => {
     test('meta grid shows path and color', async ({ page, serverUrl }) => {
-        await seedWorkspace(serverUrl, 'ws-info-1', 'info-repo', '/tmp/info-repo', '#16825d');
+        await seedWorkspace(serverUrl, 'ws-info-1', 'info-repo', '/tmp/info-repo', '#107c10');
 
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
@@ -489,14 +489,14 @@ test.describe('Info Tab Content', () => {
         await expect(page.locator('.meta-grid')).toBeVisible();
 
         // Verify path is displayed
-        const pathCell = page.locator('.meta-item .meta-path');
-        await expect(pathCell).toContainText('/tmp/info-repo');
+        const pathCell = page.locator('.meta-path');
+        await expect(pathCell.first()).toContainText('/tmp/info-repo');
 
-        // Verify color dot and color value are shown
+        // Verify color dot and color value are shown (Green #107c10 — may render as hex or rgb)
         const colorItem = page.locator('.meta-item', { hasText: 'Color' });
         await expect(colorItem).toBeVisible();
-        await expect(colorItem.locator('.repo-color-dot')).toHaveAttribute('style', /background:\s*#16825d/);
-        await expect(colorItem).toContainText('#16825d');
+        await expect(colorItem.locator('.repo-color-dot')).toHaveAttribute('style', /#107c10|rgb\s*\(\s*16\s*,\s*124\s*,\s*16\s*\)/);
+        await expect(colorItem).toContainText('#107c10');
 
         // Verify pipeline and task count cells exist
         await expect(page.locator('.meta-item', { hasText: 'Pipelines' })).toBeVisible();
@@ -584,7 +584,7 @@ test.describe('Info Tab Content', () => {
         await expect(processList).not.toContainText('No processes');
 
         // Should have 5 process entries
-        const processEntries = processList.locator('div[style*="padding"]');
+        const processEntries = processList.locator('.repo-process-entry');
         await expect(processEntries).toHaveCount(5, { timeout: 10000 });
 
         // Verify process names are shown

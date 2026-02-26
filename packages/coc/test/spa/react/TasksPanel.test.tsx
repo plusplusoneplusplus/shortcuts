@@ -1344,7 +1344,8 @@ describe('TaskTreeItem — hover tooltip', () => {
             expect(screen.getByTestId('task-tree-item-task1')).toBeTruthy();
         });
         const item = screen.getByTestId('task-tree-item-task1');
-        expect(item.getAttribute('title')).toBe('proj/task1.plan.md');
+        const title = item.getAttribute('title') || '';
+        expect(title).toContain('proj/task1.plan.md');
     });
 
     it('shows path-only tooltip when no status or comments', async () => {

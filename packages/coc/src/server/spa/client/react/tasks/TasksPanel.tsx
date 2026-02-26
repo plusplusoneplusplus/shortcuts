@@ -254,11 +254,11 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
         }
     }, [folderDialog.folder, folderActions, refresh, closeFolderDialog, addToast]);
 
-    const handleCreateTask = useCallback(async (taskName: string) => {
+    const handleCreateTask = useCallback(async (taskName: string, docType?: string) => {
         if (!folderDialog.folder) return;
         setFolderDialog(s => ({ ...s, submitting: true }));
         try {
-            await folderActions.createTask(folderDialog.folder.relativePath, taskName);
+            await folderActions.createTask(folderDialog.folder.relativePath ?? '', taskName, docType);
             refresh();
             closeFolderDialog();
         } catch (err: any) {
@@ -384,6 +384,23 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
                     setFileMoveDialogOpen(true);
                 },
             },
+            { separator: true, label: '', onClick: noop },
+            // ── Change Status (submenu) ──
+            ...(isTaskDocument(ctxItem.item) || isTaskDocumentGroup(ctxItem.item)
+                ? [
+                    {
+                        label: 'Change Status',
+                        icon: '📌',
+                        onClick: noop,
+                        children: [
+                            { label: 'Pending', icon: '⏳', onClick: () => { setFileCtxMenu(null); (async () => { try { for (const p of ctxItem.paths) await fileActions.updateStatus(p, 'pending'); refresh(); } catch (err: any) { addToast(err.message || 'Status update failed', 'error'); } })(); } },
+                            { label: 'In Progress', icon: '🔄', onClick: () => { setFileCtxMenu(null); (async () => { try { for (const p of ctxItem.paths) await fileActions.updateStatus(p, 'in-progress'); refresh(); } catch (err: any) { addToast(err.message || 'Status update failed', 'error'); } })(); } },
+                            { label: 'Done', icon: '✅', onClick: () => { setFileCtxMenu(null); (async () => { try { for (const p of ctxItem.paths) await fileActions.updateStatus(p, 'done'); refresh(); } catch (err: any) { addToast(err.message || 'Status update failed', 'error'); } })(); } },
+                            { label: 'Future', icon: '📋', onClick: () => { setFileCtxMenu(null); (async () => { try { for (const p of ctxItem.paths) await fileActions.updateStatus(p, 'future'); refresh(); } catch (err: any) { addToast(err.message || 'Status update failed', 'error'); } })(); } },
+                        ],
+                    },
+                ]
+                : []),
             { separator: true, label: '', onClick: noop },
             // ── Danger ──
             {
@@ -514,18 +531,41 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
 
     return (
         <div className="flex flex-col h-full">
-            <TaskActions
-                wsId={wsId}
-                openFilePath={openFilePath}
-                selectedFilePaths={Array.from(selectedFilePaths)}
-                tasksFolderPath=".vscode/tasks"
-                selectedFolderPath={selectedFolderPath}
-                onClearSelection={clearSelection}
-                onGenerateWithAI={() => setGenerateDialog({ open: true, targetFolder: undefined })}
-            />
+            <div className="repo-tasks-toolbar flex items-center gap-2 px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
+                <Button
+                    variant="primary"
+                    size="sm"
+                    id="repo-tasks-new-btn"
+                    data-testid="repo-tasks-new-btn"
+                    onClick={() => setFolderDialog({ action: 'create-task', folder: tree!, submitting: false })}
+                >
+                    + New Task
+                </Button>
+                <Button
+                    variant="secondary"
+                    size="sm"
+                    id="repo-tasks-folder-btn"
+                    data-testid="repo-tasks-folder-btn"
+                    onClick={() => setFolderDialog({ action: 'create-subfolder', folder: tree!, submitting: false })}
+                >
+                    + New Folder
+                </Button>
+                <div className="flex-1 min-w-0">
+                    <TaskActions
+                        wsId={wsId}
+                        openFilePath={openFilePath}
+                        selectedFilePaths={Array.from(selectedFilePaths)}
+                        tasksFolderPath=".vscode/tasks"
+                        selectedFolderPath={selectedFolderPath}
+                        onClearSelection={clearSelection}
+                        onGenerateWithAI={() => setGenerateDialog({ open: true, targetFolder: undefined })}
+                        noBorder
+                    />
+                </div>
+            </div>
             <div
                 ref={scrollRef}
-                className="flex-1 overflow-x-auto overflow-y-hidden min-h-0 min-w-0"
+                className="miller-columns flex-1 overflow-x-auto overflow-y-hidden min-h-0 min-w-0"
                 data-testid="tasks-miller-scroll-container"
             >
                 <div className="flex h-full min-h-0 w-max min-w-full">
@@ -648,18 +688,19 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
                 />
             )}
 
-            {/* Create Task in Folder dialog */}
+            {/* Create Task in Folder dialog (or at root when folder is tree) */}
             {folderDialog.action === 'create-task' && folderDialog.folder && (
                 <FolderActionDialog
                     open
-                    title="Create Task in Folder"
+                    title={folderDialog.folder.relativePath ? 'Create Task in Folder' : 'Create Task'}
                     label="Task name"
                     initialValue=""
                     placeholder="Enter task name"
                     confirmLabel="Create"
+                    showDocType
                     submitting={folderDialog.submitting}
                     onClose={closeFolderDialog}
-                    onConfirm={handleCreateTask}
+                    onConfirm={(name, docType) => handleCreateTask(name, docType)}
                 />
             )}
 

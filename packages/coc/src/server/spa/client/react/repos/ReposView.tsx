@@ -82,13 +82,16 @@ export function ReposView() {
         } catch { /* fire-and-forget */ }
     }, []);
 
-    // WebSocket: auto-refresh pipelines on mutation events
+    // WebSocket: auto-refresh on mutation events (pipelines, processes)
     const { connect, disconnect } = useWebSocket({
         onMessage: useCallback((msg: any) => {
             if (msg.type === 'pipelines-changed' && msg.workspaceId) {
                 refreshPipelinesForWorkspace(msg.workspaceId);
             }
-        }, [refreshPipelinesForWorkspace]),
+            if (msg.type === 'process-added' || msg.type === 'process-updated' || msg.type === 'process-removed') {
+                fetchRepos();
+            }
+        }, [refreshPipelinesForWorkspace, fetchRepos]),
     });
 
     useEffect(() => {
@@ -129,7 +132,7 @@ export function ReposView() {
                 {selectedRepo ? (
                     <RepoDetail repo={selectedRepo} repos={repos} onRefresh={fetchRepos} />
                 ) : (
-                    <div className="flex-1 flex items-center justify-center text-sm text-[#848484]">
+                    <div id="repo-detail-empty" data-testid="repo-detail-empty" className="flex-1 flex items-center justify-center text-sm text-[#848484]">
                         👈 Select a repository to view details
                     </div>
                 )}

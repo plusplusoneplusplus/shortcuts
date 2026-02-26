@@ -55,6 +55,7 @@ export function WikiComponent({ wikiId, componentId, graph, onSelectComponent }:
     const [loading, setLoading] = useState(false);
     const [toc, setToc] = useState<TocItem[]>([]);
     const [activeHeading, setActiveHeading] = useState<string | null>(null);
+    const [sourceExpanded, setSourceExpanded] = useState(false);
     const contentRef = useRef<HTMLDivElement>(null);
     const scrollRef = useRef<HTMLDivElement>(null);
     const cacheRef = useRef<Record<string, string>>({});
@@ -151,7 +152,7 @@ export function WikiComponent({ wikiId, componentId, graph, onSelectComponent }:
         return () => scrollContainer.removeEventListener('scroll', onScroll);
     }, [html]);
 
-    // Intercept in-article anchor clicks so they scroll instead of replacing the hash route
+    // Intercept in-article anchor clicks: # anchors scroll, .md links navigate to components
     useEffect(() => {
         const container = contentRef.current;
         if (!container) return;
@@ -159,17 +160,28 @@ export function WikiComponent({ wikiId, componentId, graph, onSelectComponent }:
             const anchor = (e.target as HTMLElement).closest('a');
             if (!anchor) return;
             const href = anchor.getAttribute('href');
-            if (!href || !href.startsWith('#') || href === '#') return;
-            const targetId = href.slice(1);
-            const target = container.querySelector('#' + CSS.escape(targetId));
-            if (target) {
-                e.preventDefault();
-                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            if (!href) return;
+            if (href.startsWith('#') && href !== '#') {
+                const targetId = href.slice(1);
+                const target = container.querySelector('#' + CSS.escape(targetId));
+                if (target) {
+                    e.preventDefault();
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+                return;
+            }
+            // Internal .md link — navigate to component
+            if (href.endsWith('.md')) {
+                const componentId = href.replace(/\.md$/, '');
+                if (graph.components.some(c => c.id === componentId) && onSelectComponent) {
+                    e.preventDefault();
+                    onSelectComponent(componentId);
+                }
             }
         };
         container.addEventListener('click', handleClick);
         return () => container.removeEventListener('click', handleClick);
-    }, [html]);
+    }, [html, graph.components, onSelectComponent]);
 
     // Mermaid zoom/pan/source-toggle/collapse via shared hook
     useMermaid(contentRef, html);
@@ -244,6 +256,30 @@ export function WikiComponent({ wikiId, componentId, graph, onSelectComponent }:
                                     ))}
                                 </div>
                             )}
+                            {comp.keyFiles && comp.keyFiles.length > 0 && (
+                                <div
+                                    id="wiki-source-files"
+                                    className={cn('rounded border border-[#e0e0e0] dark:border-[#3c3c3c] overflow-hidden', sourceExpanded && 'expanded')}
+                                >
+                                    <button
+                                        id="wiki-source-toggle"
+                                        className="w-full flex items-center justify-between px-3 py-2 text-left text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc] bg-[#f5f5f5] dark:bg-[#2d2d2d] hover:bg-[#eee] dark:hover:bg-[#333]"
+                                        onClick={() => setSourceExpanded(v => !v)}
+                                    >
+                                        Key files
+                                        <span className="text-[10px] text-[#848484]">{comp.keyFiles.length} files</span>
+                                    </button>
+                                    {sourceExpanded && (
+                                        <div className="px-3 py-2 flex flex-wrap gap-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]">
+                                            {comp.keyFiles.map(f => (
+                                                <span key={f} className="source-pill text-[10px] px-2 py-0.5 rounded bg-[#e0e0e0] dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]">
+                                                    {f}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     )}
                     <div
@@ -263,8 +299,9 @@ export function WikiComponent({ wikiId, componentId, graph, onSelectComponent }:
                                     href={'#' + item.id}
                                     className={cn(
                                         'block text-xs py-0.5 truncate hover:text-[#0078d4]',
-                                        item.level >= 3 && 'pl-3',
+                                        item.level >= 3 && 'pl-3 toc-h3',
                                         item.level >= 4 && 'pl-6',
+                                        activeHeading === item.id && 'active',
                                         activeHeading === item.id ? 'text-[#0078d4] font-medium' : 'text-[#848484]'
                                     )}
                                     onClick={e => {

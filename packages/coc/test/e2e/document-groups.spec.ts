@@ -38,8 +38,8 @@ async function setupRepoWithTasks(
     await page.click('.repo-sub-tab[data-subtab="tasks"]');
     await expect(page.locator('.repo-sub-tab[data-subtab="tasks"]')).toHaveClass(/active/);
 
-    // Wait for miller columns to render
-    await expect(page.locator('.miller-columns')).toBeVisible({ timeout: 10000 });
+    // Wait for task tree to render
+    await expect(page.locator('[data-testid="task-tree"]')).toBeVisible({ timeout: 10000 });
 
     return repoDir;
 }
@@ -52,18 +52,12 @@ test.describe('Document Groups (013)', () => {
             await setupRepoWithTasks(page, serverUrl, tmpDir);
 
             // The fixture creates feature.plan.md and feature.spec.md.
-            // They should appear as separate rows with display names "feature.plan" and "feature.spec"
-            const planRow = page.locator('.miller-file-row', { hasText: 'feature.plan' });
-            const specRow = page.locator('.miller-file-row', { hasText: 'feature.spec' });
+            // With groupRelatedDocuments: true, they appear as one grouped row "feature"
+            const featureRow = page.locator('.miller-file-row', { hasText: 'feature' });
+            await expect(featureRow).toBeVisible({ timeout: 10000 });
 
-            await expect(planRow).toBeVisible({ timeout: 10000 });
-            await expect(specRow).toBeVisible({ timeout: 10000 });
-
-            // Both rows share the "feature" base name — no plain "feature" single-document row should exist
-            // (single documents use baseName only, without docType suffix)
-            // Verify there are exactly 2 rows whose name starts with "feature."
-            const featureRows = page.locator('.miller-file-row .miller-row-name').filter({ hasText: /^feature\./ });
-            await expect(featureRows).toHaveCount(2);
+            // Group row represents both docs — data-file-path uses first doc (feature.plan.md)
+            await expect(featureRow).toHaveAttribute('data-file-path', 'feature.plan.md');
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         }
@@ -74,21 +68,15 @@ test.describe('Document Groups (013)', () => {
         try {
             await setupRepoWithTasks(page, serverUrl, tmpDir);
 
-            // Verify "feature.plan" row shows in-progress status (◐)
-            const planRow = page.locator('.miller-file-row', { hasText: 'feature.plan' });
-            await expect(planRow).toBeVisible({ timeout: 10000 });
-            await expect(planRow.locator('.miller-status.task-status-in-progress')).toBeVisible();
-            await expect(planRow.locator('.miller-status.task-status-in-progress')).toHaveText('◐');
+            // With grouping, feature.plan+feature.spec appear as one "feature" row
+            // Group uses first doc's status (feature.plan has in-progress)
+            const featureRow = page.locator('.miller-file-row', { hasText: 'feature' });
+            await expect(featureRow).toBeVisible({ timeout: 10000 });
+            await expect(featureRow.locator('.miller-status.task-status-in-progress')).toBeVisible();
+            await expect(featureRow.locator('.miller-status.task-status-in-progress')).toHaveText('🔄');
 
-            // Verify "feature.spec" row shows pending status (○)
-            const specRow = page.locator('.miller-file-row', { hasText: 'feature.spec' });
-            await expect(specRow).toBeVisible();
-            await expect(specRow.locator('.miller-status.task-status-pending')).toBeVisible();
-            await expect(specRow.locator('.miller-status.task-status-pending')).toHaveText('○');
-
-            // Each row should have the correct data-file-path attribute
-            await expect(planRow).toHaveAttribute('data-file-path', 'feature.plan.md');
-            await expect(specRow).toHaveAttribute('data-file-path', 'feature.spec.md');
+            // Group row's data-file-path points to first doc
+            await expect(featureRow).toHaveAttribute('data-file-path', 'feature.plan.md');
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         }
@@ -104,35 +92,33 @@ test.describe('Document Groups (013)', () => {
             expect(fs.existsSync(path.join(tasksDir, 'feature.plan.md'))).toBe(true);
             expect(fs.existsSync(path.join(tasksDir, 'feature.spec.md'))).toBe(true);
 
-            // Right-click on the "feature.plan" row to open context menu
-            const planRow = page.locator('.miller-file-row', { hasText: 'feature.plan' });
-            await expect(planRow).toBeVisible({ timeout: 10000 });
-            await planRow.click({ button: 'right' });
+            // Right-click on the "feature" group row to open context menu
+            const featureRow = page.locator('[data-testid="task-tree-item-feature"]');
+            await expect(featureRow).toBeVisible({ timeout: 10000 });
+            await featureRow.click({ button: 'right' });
 
             // Context menu should appear with "Rename" option
-            await expect(page.locator('#task-context-menu')).toBeVisible({ timeout: 5000 });
-            await expect(page.locator('[data-ctx-action="rename-task"]')).toBeVisible();
+            await expect(page.locator('[data-testid="context-menu"]')).toBeVisible({ timeout: 5000 });
+            await expect(page.getByRole('menuitem', { name: /Rename/ })).toBeVisible();
 
             // Click "Rename"
-            await page.locator('[data-ctx-action="rename-task"]').click();
+            await page.getByRole('menuitem', { name: /Rename/ }).click();
 
             // Input dialog should appear
             await expect(page.locator('#task-input-dialog-overlay')).toBeVisible({ timeout: 5000 });
 
             // Clear and enter new name "redesign"
-            await page.fill('#task-dialog-input', 'redesign');
+            await page.fill('[data-testid="folder-action-input"]', 'redesign');
             await page.click('#task-dialog-form button[type="submit"]');
 
             // Dialog should close
             await expect(page.locator('#task-input-dialog-overlay')).toBeHidden({ timeout: 5000 });
 
-            // Wait for miller columns to refresh — renamed rows should appear
-            await expect(page.locator('.miller-file-row', { hasText: 'redesign.plan' })).toBeVisible({ timeout: 10000 });
-            await expect(page.locator('.miller-file-row', { hasText: 'redesign.spec' })).toBeVisible({ timeout: 10000 });
+            // Wait for task tree to refresh — renamed group should appear
+            await expect(page.locator('[data-testid="task-tree-item-redesign"]')).toBeVisible({ timeout: 10000 });
 
-            // Old rows should be gone
-            await expect(page.locator('.miller-file-row', { hasText: 'feature.plan' })).toHaveCount(0);
-            await expect(page.locator('.miller-file-row', { hasText: 'feature.spec' })).toHaveCount(0);
+            // Old row should be gone
+            await expect(page.locator('[data-testid="task-tree-item-feature"]')).toHaveCount(0);
 
             // Verify on disk: old files gone, new files exist
             expect(fs.existsSync(path.join(tasksDir, 'feature.plan.md'))).toBe(false);

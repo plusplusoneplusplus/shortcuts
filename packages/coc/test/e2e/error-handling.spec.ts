@@ -52,13 +52,13 @@ test.describe('Error Handling (008)', () => {
         await page.goto(serverUrl);
 
         // Page should still render (top bar, tab bar visible)
-        await expect(page.locator('.top-bar')).toBeVisible({ timeout: 5000 });
+        await expect(page.locator('header[data-react]')).toBeVisible({ timeout: 5000 });
         await expect(page.locator('[data-tab="repos"]')).toBeVisible();
 
-        // Switch to processes tab — no legacy processes should render
+        // Switch to processes tab — no processes should render
         await page.click('[data-tab="processes"]');
-        await expect(page.locator('#view-processes')).not.toHaveClass(/hidden/, { timeout: 5000 });
-        await expect(page.locator('.queue-task.legacy-process')).toHaveCount(0);
+        await expect(page.locator('#view-processes')).toBeVisible({ timeout: 5000 });
+        await expect(page.locator('.process-item')).toHaveCount(0);
     });
 
     // ----------------------------------------------------------------
@@ -73,11 +73,11 @@ test.describe('Error Handling (008)', () => {
         await page.goto(serverUrl);
 
         // Page should still render (SPA catches errors silently)
-        await expect(page.locator('.top-bar')).toBeVisible({ timeout: 5000 });
+        await expect(page.locator('header[data-react]')).toBeVisible({ timeout: 5000 });
 
         // Tab navigation should still work
         await page.click('[data-tab="processes"]');
-        await expect(page.locator('#view-processes')).not.toHaveClass(/hidden/, { timeout: 5000 });
+        await expect(page.locator('#view-processes')).toBeVisible({ timeout: 5000 });
     });
 
     // ----------------------------------------------------------------
@@ -103,8 +103,8 @@ test.describe('Error Handling (008)', () => {
             await page.click('.repo-sub-tab[data-subtab="tasks"]');
             await expect(page.locator('.miller-columns')).toBeVisible({ timeout: 10000 });
 
-            // Mock queue endpoint to return error
-            await page.route('**/api/queue', (route, req) => {
+            // Mock only the enqueue endpoint to return error (avoid breaking /queue/models)
+            await page.route('**/api/queue/tasks', (route, req) => {
                 if (req.method() === 'POST') {
                     return route.fulfill({
                         status: 500,
@@ -144,7 +144,7 @@ test.describe('Error Handling (008)', () => {
     test('8.14 wipe fails with invalid token', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
         await page.click('#admin-toggle');
-        await expect(page.locator('#view-admin')).not.toHaveClass(/hidden/, { timeout: 5000 });
+        await expect(page.locator('#view-admin')).toBeVisible({ timeout: 5000 });
         await expect(page.locator('#admin-page-content')).not.toBeEmpty({ timeout: 5000 });
 
         // Intercept wipe-token to return a fake token
@@ -168,12 +168,13 @@ test.describe('Error Handling (008)', () => {
             return route.continue();
         });
 
-        // Accept the confirm dialog
-        page.on('dialog', dialog => dialog.accept());
-
         await page.click('#admin-wipe-btn');
 
-        // Status should show failure message
+        // Wait for token → Confirm Wipe button appears, then click it
+        await expect(page.locator('#admin-wipe-confirm')).toBeVisible({ timeout: 5000 });
+        await page.click('#admin-wipe-confirm');
+
+        // Status should show failure message (DELETE returns 403)
         await expect(page.locator('#admin-wipe-status')).toContainText('failed', { timeout: 5000 });
     });
 
@@ -186,7 +187,7 @@ test.describe('Error Handling (008)', () => {
 
         // Navigate to admin first
         await page.click('#admin-toggle');
-        await expect(page.locator('#view-admin')).not.toHaveClass(/hidden/, { timeout: 5000 });
+        await expect(page.locator('#view-admin')).toBeVisible({ timeout: 5000 });
         await expect(page.locator('#admin-page-content')).not.toBeEmpty({ timeout: 5000 });
 
         // Now intercept stats API for preview
@@ -214,11 +215,10 @@ test.describe('Error Handling (008)', () => {
         // Seed a running process
         await seedProcess(serverUrl, 'err-reload-1', { status: 'running', promptPreview: 'Reload Test' });
 
-        await page.goto(serverUrl);
-        await page.click('[data-tab="processes"]');
+        await page.goto(serverUrl + '/#processes');
 
-        // Should show 1 legacy running process
-        await expect(page.locator('.queue-task.legacy-process')).toHaveCount(1, { timeout: 5000 });
+        // Should show 1 process
+        await expect(page.locator('.process-item')).toHaveCount(1, { timeout: 5000 });
 
         // Update process status via API
         await request(`${serverUrl}/api/processes/err-reload-1`, {
@@ -230,15 +230,10 @@ test.describe('Error Handling (008)', () => {
         await page.reload();
         await page.click('[data-tab="processes"]');
 
-        // Failed process moves to history section (collapsed by default)
-        // Expand history to see the failed process
-        const historyToggle = page.locator('.queue-history-toggle');
-        await expect(historyToggle).toBeVisible({ timeout: 5000 });
-        await expect(historyToggle).toContainText('History');
-        await historyToggle.click();
-
-        // Should show the process with failed status class
-        await expect(page.locator('.queue-task.legacy-process.failed')).toHaveCount(1, { timeout: 5000 });
+        // Failed process should appear in the list
+        await expect(page.locator('.process-item').filter({ hasText: /failed|Failed/i })).toHaveCount(1, {
+            timeout: 5000,
+        });
     });
 
     // ----------------------------------------------------------------
@@ -248,7 +243,7 @@ test.describe('Error Handling (008)', () => {
     test('8.17 wipe shows error when token request fails', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
         await page.click('#admin-toggle');
-        await expect(page.locator('#view-admin')).not.toHaveClass(/hidden/, { timeout: 5000 });
+        await expect(page.locator('#view-admin')).toBeVisible({ timeout: 5000 });
         await expect(page.locator('#admin-page-content')).not.toBeEmpty({ timeout: 5000 });
 
         // Mock wipe-token to fail
@@ -285,11 +280,10 @@ test.describe('Error Handling (008)', () => {
             return route.continue();
         });
 
-        await page.goto(serverUrl);
-        await page.click('[data-tab="processes"]');
+        await page.goto(serverUrl + '/#processes');
 
         // No processes should be visible
-        await expect(page.locator('.queue-task.legacy-process')).toHaveCount(0);
+        await expect(page.locator('.process-item')).toHaveCount(0);
 
         // Seed a process while page shows error
         await seedProcess(serverUrl, 'err-recover-1', { promptPreview: 'Recovered Process' });
@@ -300,8 +294,8 @@ test.describe('Error Handling (008)', () => {
         await page.click('[data-tab="processes"]');
 
         // Should now show the process
-        await expect(page.locator('.queue-task.legacy-process')).toHaveCount(1, { timeout: 5000 });
-        await expect(page.locator('.queue-task.legacy-process')).toContainText('Recovered');
+        await expect(page.locator('.process-item')).toHaveCount(1, { timeout: 5000 });
+        await expect(page.locator('.process-item')).toContainText('Recovered');
     });
 
     // ----------------------------------------------------------------
@@ -313,12 +307,12 @@ test.describe('Error Handling (008)', () => {
 
         // First visit to admin
         await page.click('#admin-toggle');
-        await expect(page.locator('#view-admin')).not.toHaveClass(/hidden/, { timeout: 5000 });
+        await expect(page.locator('#view-admin')).toBeVisible({ timeout: 5000 });
         await expect(page.locator('#admin-stat-processes')).not.toHaveText('…', { timeout: 5000 });
 
-        // Switch to repos
+        // Switch to repos (navigate away from admin)
         await page.click('[data-tab="repos"]');
-        await expect(page.locator('#view-admin')).toHaveClass(/hidden/);
+        await expect(page.locator('#view-repos')).toBeVisible();
 
         // Return to admin — intercept to verify stats API is called again
         const statsPromise = page.waitForRequest(req =>
@@ -326,7 +320,7 @@ test.describe('Error Handling (008)', () => {
         );
 
         await page.click('#admin-toggle');
-        await expect(page.locator('#view-admin')).not.toHaveClass(/hidden/, { timeout: 5000 });
+        await expect(page.locator('#view-admin')).toBeVisible({ timeout: 5000 });
 
         // Stats API should have been called on re-entry
         await statsPromise;
@@ -339,18 +333,21 @@ test.describe('Error Handling (008)', () => {
     test('8.20 wipe followed by reload shows no processes', async ({ page, serverUrl }) => {
         await seedProcess(serverUrl, 'wipe-reload-1', { status: 'running', promptPreview: 'Wipe Me' });
 
-        await page.goto(serverUrl);
+        await page.goto(serverUrl + '/#processes');
 
         // Verify process exists
-        await page.click('[data-tab="processes"]');
-        await expect(page.locator('.queue-task.legacy-process')).toHaveCount(1, { timeout: 5000 });
+        await expect(page.locator('.process-item')).toHaveCount(1, { timeout: 5000 });
 
         // Navigate to admin and wipe
         await page.click('#admin-toggle');
         await expect(page.locator('#admin-page-content')).not.toBeEmpty({ timeout: 5000 });
 
-        page.on('dialog', dialog => dialog.accept());
         await page.click('#admin-wipe-btn');
+
+        // Wait for Confirm Wipe button, then click it
+        await expect(page.locator('#admin-wipe-confirm')).toBeVisible({ timeout: 5000 });
+        await page.click('#admin-wipe-confirm');
+
         await expect(page.locator('#admin-wipe-status')).toContainText('wiped successfully', {
             timeout: 10000,
         });
@@ -358,6 +355,6 @@ test.describe('Error Handling (008)', () => {
         // Reload and check processes tab
         await page.reload();
         await page.click('[data-tab="processes"]');
-        await expect(page.locator('.queue-task.legacy-process')).toHaveCount(0, { timeout: 5000 });
+        await expect(page.locator('.process-item')).toHaveCount(0, { timeout: 5000 });
     });
 });

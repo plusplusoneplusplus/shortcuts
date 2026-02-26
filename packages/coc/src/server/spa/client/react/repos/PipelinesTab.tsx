@@ -46,7 +46,7 @@ export function PipelinesTab({ repo }: PipelinesTabProps) {
                     <Button variant="secondary" size="sm" onClick={() => setShowAddDialog(true)}>+ New Pipeline</Button>
                 </div>
                 {pipelines.length === 0 ? (
-                    <div className="p-4 text-center">
+                    <div className="empty-state p-4 text-center">
                         <div className="text-2xl mb-2">📋</div>
                         <div className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]">No pipelines found</div>
                         <div className="text-xs text-[#848484] mt-1">
@@ -54,22 +54,25 @@ export function PipelinesTab({ repo }: PipelinesTabProps) {
                         </div>
                     </div>
                 ) : (
-                    <ul className="px-4 pb-4 flex flex-col gap-1 overflow-y-auto">
+                    <ul className="repo-pipeline-list px-4 pb-4 flex flex-col gap-1 overflow-y-auto">
                         {pipelines.map(p => {
                             const isActive = p.name === state.selectedPipelineName;
                             return (
                                 <li
                                     key={p.name}
                                     className={
-                                        'flex items-center py-1.5 px-2 rounded cursor-pointer hover:bg-[#e8e8e8] dark:hover:bg-[#333]'
+                                        'repo-pipeline-item flex items-center justify-between gap-2 py-1.5 px-2 rounded cursor-pointer hover:bg-[#e8e8e8] dark:hover:bg-[#333]'
                                         + (isActive ? ' bg-[#e8e8e8] dark:bg-[#2a2d2e] border-l-2 border-[#0078d4]' : '')
                                     }
                                     role="option"
                                     aria-selected={isActive}
                                     onClick={() => handleSelect(p)}
                                 >
-                                    <span className={'text-sm text-[#1e1e1e] dark:text-[#cccccc]' + (isActive ? ' font-medium' : '')}>
+                                    <span className={'pipeline-name text-sm text-[#1e1e1e] dark:text-[#cccccc]' + (isActive ? ' font-medium' : '')}>
                                         📋 {p.name}
+                                    </span>
+                                    <span className="repo-pipeline-actions shrink-0" onClick={e => e.stopPropagation()}>
+                                        <Button variant="secondary" size="sm" className="action-btn" onClick={() => handleSelect(p)}>View</Button>
                                     </span>
                                 </li>
                             );

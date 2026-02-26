@@ -55,27 +55,39 @@ async function setupRepoForPrefs(
     return repoDir;
 }
 
-/** Helper: open the Follow Prompt submenu for the first file row. */
+/** Helper: open the Follow Prompt submenu for the first file row. Closes it first if already open. */
 async function openFollowPromptDialog(page: import('@playwright/test').Page): Promise<void> {
+    // Close dialog if already open (e.g. from previous call)
+    const existing = page.locator('#follow-prompt-submenu');
+    if (await existing.isVisible().catch(() => false)) {
+        await page.locator('#fp-close').click();
+        await existing.waitFor({ state: 'hidden', timeout: 3000 }).catch(() => {});
+    }
     const fileRow = page.locator('.miller-file-row').first();
     await fileRow.locator('[data-action="ai-action"]').click();
     await page.locator('[data-ai-action="follow-prompt"]').click();
     await expect(page.locator('#follow-prompt-submenu')).toBeVisible();
 }
 
-/** Helper: open the Update Document modal for the first file row. */
+/** Helper: open the Update Document modal for the first file row. Closes overlays first if open. */
 async function openUpdateDocumentDialog(page: import('@playwright/test').Page): Promise<void> {
+    // Close Follow Prompt dialog if open
+    const fp = page.locator('#follow-prompt-submenu');
+    if (await fp.isVisible().catch(() => false)) {
+        await page.locator('#fp-close').click();
+        await fp.waitFor({ state: 'hidden', timeout: 3000 }).catch(() => {});
+    }
     const fileRow = page.locator('.miller-file-row').first();
     await fileRow.locator('[data-action="ai-action"]').click();
     await page.locator('[data-ai-action="update-document"]').click();
     await expect(page.locator('#update-doc-overlay')).toBeVisible();
 }
 
-/** Helper: get a valid non-default model value from the enqueue-model select. */
+/** Helper: get a valid non-default model value from the fp-model select (Follow Prompt dialog must be open). */
 async function getFirstModelValue(page: import('@playwright/test').Page): Promise<string> {
     return page.evaluate(() => {
-        const sel = document.getElementById('enqueue-model') as HTMLSelectElement;
-        // Find first option with a non-empty value
+        const sel = document.getElementById('fp-model') as HTMLSelectElement | null;
+        if (!sel) return '';
         for (const opt of Array.from(sel.options)) {
             if (opt.value) return opt.value;
         }
@@ -83,10 +95,11 @@ async function getFirstModelValue(page: import('@playwright/test').Page): Promis
     });
 }
 
-/** Helper: get a second non-default model value from the enqueue-model select. */
+/** Helper: get a second non-default model value from the fp-model select (Follow Prompt dialog must be open). */
 async function getSecondModelValue(page: import('@playwright/test').Page): Promise<string> {
     return page.evaluate(() => {
-        const sel = document.getElementById('enqueue-model') as HTMLSelectElement;
+        const sel = document.getElementById('fp-model') as HTMLSelectElement | null;
+        if (!sel) return '';
         let found = 0;
         for (const opt of Array.from(sel.options)) {
             if (opt.value) {
@@ -99,6 +112,13 @@ async function getSecondModelValue(page: import('@playwright/test').Page): Promi
 }
 
 test.describe('Preferences (007)', () => {
+
+    // Mock /api/queue/models so Follow Prompt and Update Document dialogs have model options
+    test.beforeEach(async ({ page }) => {
+        await page.route('**/api/queue/models', route =>
+            route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ models: ['gpt-4', 'claude-3-5-sonnet', 'gemini-2.0'] }) }),
+        );
+    });
 
     test('7P.1 model preference defaults to empty (Default) on fresh server', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-prefs-'));
@@ -119,6 +139,7 @@ test.describe('Preferences (007)', () => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-prefs-'));
         try {
             await setupRepoForPrefs(page, serverUrl, tmpDir);
+            await openFollowPromptDialog(page);
 
             const modelValue = await getFirstModelValue(page);
             expect(modelValue).toBeTruthy();
@@ -144,6 +165,7 @@ test.describe('Preferences (007)', () => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-prefs-'));
         try {
             await setupRepoForPrefs(page, serverUrl, tmpDir);
+            await openFollowPromptDialog(page);
 
             const modelValue = await getFirstModelValue(page);
             expect(modelValue).toBeTruthy();
@@ -168,6 +190,7 @@ test.describe('Preferences (007)', () => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-prefs-'));
         try {
             await setupRepoForPrefs(page, serverUrl, tmpDir);
+            await openFollowPromptDialog(page);
 
             const modelValue = await getFirstModelValue(page);
             expect(modelValue).toBeTruthy();
@@ -198,6 +221,7 @@ test.describe('Preferences (007)', () => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-prefs-'));
         try {
             await setupRepoForPrefs(page, serverUrl, tmpDir);
+            await openFollowPromptDialog(page);
 
             const modelValue = await getFirstModelValue(page);
             expect(modelValue).toBeTruthy();
@@ -227,6 +251,7 @@ test.describe('Preferences (007)', () => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-prefs-'));
         try {
             await setupRepoForPrefs(page, serverUrl, tmpDir);
+            await openFollowPromptDialog(page);
 
             const modelValue = await getFirstModelValue(page);
             expect(modelValue).toBeTruthy();
@@ -249,6 +274,7 @@ test.describe('Preferences (007)', () => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-prefs-'));
         try {
             await setupRepoForPrefs(page, serverUrl, tmpDir);
+            await openFollowPromptDialog(page);
 
             const modelValue = await getFirstModelValue(page);
             expect(modelValue).toBeTruthy();
@@ -279,6 +305,7 @@ test.describe('Preferences (007)', () => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-prefs-'));
         try {
             await setupRepoForPrefs(page, serverUrl, tmpDir);
+            await openFollowPromptDialog(page);
 
             const model1 = await getFirstModelValue(page);
             const model2 = await getSecondModelValue(page);

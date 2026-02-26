@@ -235,8 +235,8 @@ export function ProcessesSidebar() {
 
             {/* Empty state */}
             {isEmpty && (
-                <div className="py-6 text-center text-sm text-[#848484]">
-                    No processes found
+                <div id="empty-state" className="py-6 text-center text-sm text-[#848484]">
+                    No processes yet
                 </div>
             )}
 
@@ -269,7 +269,7 @@ export function ProcessesSidebar() {
                                     }
                                 }}
                                 className={cn(
-                                    'p-2.5',
+                                    'p-2.5 process-item',
                                     isActive && 'ring-2 ring-[#0078d4] dark:ring-[#3794ff]'
                                 )}
                             >
@@ -363,7 +363,7 @@ function QueueTaskCard({ task, now, selected, onClick, compact = false }: {
     return (
         <Card
             onClick={onClick}
-            className={cn(compact ? 'px-2 py-1.5' : 'p-2', selected && 'ring-2 ring-[#0078d4] dark:ring-[#3794ff]')}
+            className={cn('process-item', compact ? 'px-2 py-1.5' : 'p-2', selected && 'ring-2 ring-[#0078d4] dark:ring-[#3794ff]')}
             aria-label={`Task ${statusLabel(task.status).toLowerCase()}: ${preview}`}
         >
             {compact ? (

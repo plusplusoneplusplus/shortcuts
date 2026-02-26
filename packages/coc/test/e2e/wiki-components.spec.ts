@@ -82,8 +82,8 @@ async function selectWiki(
 ): Promise<void> {
     await page.goto(serverUrl);
     await page.click('[data-tab="wiki"]');
-    await expect(page.locator('.wiki-card[data-wiki-id="' + wikiId + '"]')).toBeVisible({ timeout: 10_000 });
-    await page.click('.wiki-card[data-wiki-id="' + wikiId + '"]');
+    await expect(page.locator('#wiki-card-list .wiki-card[data-wiki-id="' + wikiId + '"]')).toBeVisible({ timeout: 10_000 });
+    await page.click('#wiki-card-list .wiki-card[data-wiki-id="' + wikiId + '"]');
     // Wait for tree to populate
     await expect(page.locator('#wiki-component-tree')).not.toBeEmpty({ timeout: 5_000 });
 }
@@ -148,8 +148,8 @@ test.describe('Component tree rendering', () => {
             await page.goto(serverUrl);
             await page.click('[data-tab="wiki"]');
 
-            await expect(page.locator('.wiki-card[data-wiki-id="empty-wiki"]')).toBeVisible({ timeout: 10_000 });
-            await page.click('.wiki-card[data-wiki-id="empty-wiki"]');
+            await expect(page.locator('#wiki-card-list .wiki-card[data-wiki-id="empty-wiki"]')).toBeVisible({ timeout: 10_000 });
+            await page.click('#wiki-card-list .wiki-card[data-wiki-id="empty-wiki"]');
 
             const tree = page.locator('#wiki-component-tree');
             await expect(tree.locator('.wiki-tree-empty')).toBeVisible({ timeout: 5_000 });
@@ -509,7 +509,8 @@ test.describe('Home view & edge cases', () => {
             await seedWiki(serverUrl, 'home-wiki', wikiDir, undefined, 'Home Wiki');
             await selectWiki(page, serverUrl, 'home-wiki');
 
-            const content = page.locator('#wiki-article-content');
+            // Home view content is inside wiki-component-detail (ProjectOverview)
+            const content = page.locator('#wiki-component-detail');
 
             // Project name should appear
             await expect(content).toContainText('My Test Project', { timeout: 5_000 });

@@ -238,7 +238,7 @@ export function WikiDetail({ wikiId }: WikiDetailProps) {
                 )}
 
                 {/* Right content */}
-                <div className="flex-1 min-w-0 min-h-0 overflow-hidden">
+                <div id="wiki-component-detail" className="flex-1 min-w-0 min-h-0 overflow-hidden">
                     {renderContent()}
                 </div>
             </div>
@@ -263,15 +263,15 @@ function ProjectOverview({ graph, onSelectComponent }: { graph: ComponentGraph; 
             <p className="text-sm text-[#848484] mb-4">{graph.project.description}</p>
 
             <div className="grid grid-cols-3 gap-3 mb-6">
-                <div className="rounded border border-[#e0e0e0] dark:border-[#3c3c3c] p-3 text-center">
+                <div className="stat-card rounded border border-[#e0e0e0] dark:border-[#3c3c3c] p-3 text-center">
                     <div className="text-xs text-[#848484]">Components</div>
                     <div className="text-xl font-semibold text-[#1e1e1e] dark:text-[#cccccc]">{stats.components}</div>
                 </div>
-                <div className="rounded border border-[#e0e0e0] dark:border-[#3c3c3c] p-3 text-center">
+                <div className="stat-card rounded border border-[#e0e0e0] dark:border-[#3c3c3c] p-3 text-center">
                     <div className="text-xs text-[#848484]">Categories</div>
                     <div className="text-xl font-semibold text-[#1e1e1e] dark:text-[#cccccc]">{stats.categories}</div>
                 </div>
-                <div className="rounded border border-[#e0e0e0] dark:border-[#3c3c3c] p-3 text-center">
+                <div className="stat-card rounded border border-[#e0e0e0] dark:border-[#3c3c3c] p-3 text-center">
                     <div className="text-xs text-[#848484]">Language</div>
                     <div className="text-lg font-semibold text-[#1e1e1e] dark:text-[#cccccc]">{stats.language}</div>
                 </div>

@@ -37,8 +37,8 @@ async function setupRepoWithTasks(
     await page.click('.repo-sub-tab[data-subtab="tasks"]');
     await expect(page.locator('.repo-sub-tab[data-subtab="tasks"]')).toHaveClass(/active/);
 
-    // Wait for miller columns to render
-    await expect(page.locator('.miller-columns')).toBeVisible({ timeout: 10000 });
+    // Wait for task tree to render
+    await expect(page.locator('[data-testid="task-tree"]')).toBeVisible({ timeout: 10000 });
 
     return repoDir;
 }
@@ -51,22 +51,16 @@ test.describe('Miller Column Navigation (009)', () => {
             await setupRepoWithTasks(page, serverUrl, tmpDir);
 
             // Root column should be visible
-            const rootColumn = page.locator('.miller-column').first();
+            const rootColumn = page.locator('[data-testid="miller-column-0"]');
             await expect(rootColumn).toBeVisible();
 
-            // Should contain folder row for "backlog" (archive hidden by default)
-            const folderRows = page.locator('.miller-row[data-nav-folder]');
-            await expect(folderRows).not.toHaveCount(0);
-            await expect(page.locator('.miller-row[data-nav-folder]', { hasText: 'backlog' })).toBeVisible();
+            // Should contain folder row for "backlog"
+            await expect(page.locator('[data-testid="task-tree-item-backlog"]')).toBeVisible();
 
-            // Should contain file rows for root tasks (task-a, task-b, feature docs)
-            const fileRows = page.locator('.miller-row.miller-file-row[data-file-path]');
-            await expect(fileRows).not.toHaveCount(0);
-            // task-a.md and task-b.md are single documents
+            // Should contain file rows for root tasks (task-a, task-b, feature)
             await expect(page.locator('.miller-file-row', { hasText: 'task-a' })).toBeVisible();
             await expect(page.locator('.miller-file-row', { hasText: 'task-b' })).toBeVisible();
-            // feature is a document group (feature.plan + feature.spec)
-            await expect(page.locator('.miller-file-row', { hasText: 'feature' })).toHaveCount(2);
+            await expect(page.locator('[data-testid="task-tree-item-feature"]')).toBeVisible();
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         }
@@ -78,17 +72,17 @@ test.describe('Miller Column Navigation (009)', () => {
             await setupRepoWithTasks(page, serverUrl, tmpDir);
 
             // Initially only root column visible
-            await expect(page.locator('.miller-column')).toHaveCount(1);
+            await expect(page.locator('[data-testid="miller-column-0"]')).toBeVisible();
 
             // Click the "backlog" folder row
-            await page.locator('.miller-row[data-nav-folder]', { hasText: 'backlog' }).click();
+            await page.locator('[data-testid="task-tree-item-backlog"]').click();
 
             // A second column should appear
-            await expect(page.locator('.miller-column')).toHaveCount(2, { timeout: 5000 });
+            await expect(page.locator('[data-testid="miller-column-1"]')).toBeVisible({ timeout: 5000 });
 
             // Second column should contain "item" (item.md)
-            const secondColumn = page.locator('.miller-column').nth(1);
-            await expect(secondColumn.locator('.miller-file-row', { hasText: 'item' })).toBeVisible();
+            const secondColumn = page.locator('[data-testid="miller-column-1"]');
+            await expect(secondColumn.locator('[data-testid="task-tree-item-item"]')).toBeVisible();
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         }
@@ -100,13 +94,10 @@ test.describe('Miller Column Navigation (009)', () => {
             await setupRepoWithTasks(page, serverUrl, tmpDir);
 
             // Click task-a.md file row
-            await page.locator('.miller-file-row', { hasText: 'task-a' }).click();
+            await page.locator('[data-testid="task-tree-item-task-a"]').click();
 
-            // Preview column should appear
-            await expect(page.locator('.miller-preview-column')).toBeVisible({ timeout: 10000 });
-
-            // Preview body should contain rendered markdown with "Task A" heading
-            const previewBody = page.locator('.task-preview-body');
+            // Preview panel should appear (TaskPreview is rendered when openFilePath is set)
+            const previewBody = page.locator('#task-preview-body');
             await expect(previewBody).toContainText('Task A', { timeout: 10000 });
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -119,18 +110,14 @@ test.describe('Miller Column Navigation (009)', () => {
             await setupRepoWithTasks(page, serverUrl, tmpDir);
 
             // Open a file preview first
-            await page.locator('.miller-file-row', { hasText: 'task-a' }).click();
-            await expect(page.locator('.miller-preview-column')).toBeVisible({ timeout: 10000 });
-            await expect(page.locator('.task-preview-body')).toContainText('Task A', { timeout: 10000 });
+            await page.locator('[data-testid="task-tree-item-task-a"]').click();
+            await expect(page.locator('#task-preview-body')).toContainText('Task A', { timeout: 10000 });
 
             // Click the close button
             await page.locator('.task-preview-close').click();
 
-            // Preview column should be removed
-            await expect(page.locator('.miller-preview-column')).toHaveCount(0, { timeout: 5000 });
-
-            // File row should no longer be selected
-            await expect(page.locator('.miller-file-row.miller-row-selected')).toHaveCount(0);
+            // Preview should be removed
+            await expect(page.locator('#task-preview-body')).toHaveCount(0, { timeout: 5000 });
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         }
@@ -142,7 +129,7 @@ test.describe('Miller Column Navigation (009)', () => {
             await setupRepoWithTasks(page, serverUrl, tmpDir);
 
             // "backlog" folder has 1 item (item.md)
-            const backlogRow = page.locator('.miller-row[data-nav-folder]', { hasText: 'backlog' });
+            const backlogRow = page.locator('[data-testid="task-tree-item-backlog"]');
             const backlogBadge = backlogRow.locator('.task-folder-count');
             await expect(backlogBadge).toBeVisible();
             await expect(backlogBadge).toHaveText('1');

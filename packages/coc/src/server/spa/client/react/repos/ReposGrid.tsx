@@ -30,7 +30,7 @@ export function ReposGrid({ repos, onRefresh }: ReposGridProps) {
 
     const selectRepo = (id: string) => {
         dispatch({ type: 'SET_SELECTED_REPO', id });
-        dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'info' });
+        // Preserve current sub-tab when switching repos (don't reset to info)
         location.hash = '#repos/' + encodeURIComponent(id);
     };
 
@@ -50,7 +50,7 @@ export function ReposGrid({ repos, onRefresh }: ReposGridProps) {
             {/* Header with add button */}
             <div className="flex items-center justify-between px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
                 <span className="text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc]">Repositories</span>
-                <Button variant="primary" size="sm" onClick={() => setAddOpen(true)}>
+                <Button variant="primary" size="sm" id="add-repo-btn" data-testid="add-repo-btn" onClick={() => setAddOpen(true)}>
                     + Add
                 </Button>
             </div>
@@ -58,7 +58,7 @@ export function ReposGrid({ repos, onRefresh }: ReposGridProps) {
             {/* Repo list */}
             <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-1">
                 {repos.length === 0 ? (
-                    <div className="text-center text-xs text-[#848484] py-8">
+                    <div id="repos-empty" data-testid="repos-empty" className="text-center text-xs text-[#848484] py-8">
                         No repositories registered.
                         <br />Click "+ Add" to register a workspace.
                     </div>

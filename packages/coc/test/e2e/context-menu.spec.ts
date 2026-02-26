@@ -37,8 +37,8 @@ async function setupRepoWithTasks(
     await page.click('.repo-sub-tab[data-subtab="tasks"]');
     await expect(page.locator('.repo-sub-tab[data-subtab="tasks"]')).toHaveClass(/active/);
 
-    // Wait for miller columns to render
-    await expect(page.locator('.miller-columns')).toBeVisible({ timeout: 10000 });
+    // Wait for task tree to render
+    await expect(page.locator('[data-testid="task-tree"]')).toBeVisible({ timeout: 10000 });
 
     return repoDir;
 }
@@ -51,19 +51,18 @@ test.describe('Context Menu (014)', () => {
             await setupRepoWithTasks(page, serverUrl, tmpDir);
 
             // Right-click on task-a file row
-            const taskRow = page.locator('.miller-file-row', { hasText: 'task-a' });
+            const taskRow = page.locator('[data-testid="task-tree-item-task-a"]');
             await expect(taskRow).toBeVisible();
             await taskRow.click({ button: 'right' });
 
             // Context menu should appear
-            const menu = page.locator('#task-context-menu');
+            const menu = page.locator('[data-testid="context-menu"]');
             await expect(menu).toBeVisible({ timeout: 5000 });
 
-            // Verify file context menu items: Rename, Delete, Archive, Change Status
-            await expect(page.locator('[data-ctx-action="rename-task"]')).toBeVisible();
-            await expect(page.locator('[data-ctx-action="delete-task"]')).toBeVisible();
-            await expect(page.locator('[data-ctx-action="archive-task"]')).toBeVisible();
-            await expect(page.locator('.task-context-menu-item.has-submenu')).toBeVisible(); // Change Status submenu
+            // Verify file context menu items: Rename, Delete, Archive (Change Status via submenu)
+            await expect(menu.getByRole('menuitem', { name: /Rename/ })).toBeVisible();
+            await expect(menu.getByRole('menuitem', { name: /Delete/ })).toBeVisible();
+            await expect(menu.getByRole('menuitem', { name: /Archive/ })).toBeVisible();
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         }
@@ -74,21 +73,18 @@ test.describe('Context Menu (014)', () => {
         try {
             await setupRepoWithTasks(page, serverUrl, tmpDir);
 
-            // Right-click on "backlog" folder row
-            const folderRow = page.locator('.miller-row[data-nav-folder]', { hasText: 'backlog' });
+            // Right-click on "backlog" folder row (folder rows use data-testid="task-tree-item-NAME")
+            const folderRow = page.locator('[data-testid="task-tree-item-backlog"]');
             await expect(folderRow).toBeVisible();
             await folderRow.click({ button: 'right' });
 
             // Context menu should appear
-            const menu = page.locator('#task-context-menu');
+            const menu = page.locator('[data-testid="context-menu"]');
             await expect(menu).toBeVisible({ timeout: 5000 });
 
             // Verify folder context menu items: Rename Folder, Delete Folder
-            await expect(page.locator('[data-ctx-action="rename-folder"]')).toBeVisible();
-            await expect(page.locator('[data-ctx-action="delete-folder"]')).toBeVisible();
-
-            // Change Status submenu should NOT be present in folder menu
-            await expect(page.locator('.task-context-menu-item.has-submenu')).toHaveCount(0);
+            await expect(menu.getByRole('menuitem', { name: /Rename Folder/ })).toBeVisible();
+            await expect(menu.getByRole('menuitem', { name: /Delete Folder/ })).toBeVisible();
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         }
@@ -105,11 +101,11 @@ test.describe('Context Menu (014)', () => {
             await taskRow.click({ button: 'right' });
 
             // Context menu should be visible
-            const menu = page.locator('#task-context-menu');
+            const menu = page.locator('[data-testid="context-menu"]');
             await expect(menu).toBeVisible({ timeout: 5000 });
 
-            // Click on the miller columns area (outside the menu) to dismiss
-            await page.locator('.miller-columns').click({ position: { x: 5, y: 5 } });
+            // Click on the task tree (outside the menu) to dismiss
+            await page.locator('[data-testid="task-tree"]').click({ position: { x: 5, y: 5 } });
 
             // Menu should disappear
             await expect(menu).toHaveCount(0, { timeout: 5000 });

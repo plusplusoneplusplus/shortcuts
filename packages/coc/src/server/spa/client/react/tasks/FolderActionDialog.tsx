@@ -7,6 +7,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { Dialog } from '../shared/Dialog';
 import { Button } from '../shared/Button';
 
+const DOC_TYPES = ['', 'plan', 'spec', 'test', 'notes', 'todo', 'design', 'impl', 'review'] as const;
+
 export interface FolderActionDialogProps {
     /** Controls Dialog visibility. */
     open: boolean;
@@ -20,12 +22,14 @@ export interface FolderActionDialogProps {
     placeholder?: string;
     /** Text on the confirm button, e.g. "Rename", "Create". */
     confirmLabel: string;
+    /** When true, show docType dropdown (for Create Task). */
+    showDocType?: boolean;
     /** Set to true while the async mutation is in flight — disables the confirm button and shows a spinner. */
     submitting?: boolean;
     /** Called when the user clicks Cancel or presses Escape. */
     onClose: () => void;
-    /** Called with the trimmed input value when the user confirms. Empty string is not submitted. */
-    onConfirm: (name: string) => void;
+    /** Called with the trimmed input value when the user confirms. When showDocType is true, called with (name, docType). */
+    onConfirm: (name: string, docType?: string) => void;
 }
 
 export function FolderActionDialog({
@@ -35,21 +39,26 @@ export function FolderActionDialog({
     initialValue,
     placeholder,
     confirmLabel,
+    showDocType,
     submitting,
     onClose,
     onConfirm,
 }: FolderActionDialogProps) {
     const [name, setName] = useState(initialValue);
+    const [docType, setDocType] = useState('');
 
     // Reset input when dialog opens
     useEffect(() => {
-        if (open) setName(initialValue);
+        if (open) {
+            setName(initialValue);
+            setDocType('');
+        }
     }, [open, initialValue]);
 
     const handleConfirm = useCallback(() => {
         const trimmed = name.trim();
-        if (trimmed) onConfirm(trimmed);
-    }, [name, onConfirm]);
+        if (trimmed) onConfirm(trimmed, showDocType ? docType || undefined : undefined);
+    }, [name, docType, showDocType, onConfirm]);
 
     const handleKeyDown = useCallback(
         (e: React.KeyboardEvent) => {
@@ -63,23 +72,25 @@ export function FolderActionDialog({
 
     return (
         <Dialog
+            id="task-input-dialog-overlay"
             open={open}
             onClose={onClose}
             title={title}
             footer={
-                <>
-                    <Button variant="secondary" onClick={onClose}>
+                <form id="task-dialog-form" data-testid="task-dialog-form" onSubmit={e => { e.preventDefault(); handleConfirm(); }}>
+                    <Button variant="secondary" type="button" onClick={onClose}>
                         Cancel
                     </Button>
                     <Button
                         variant="primary"
+                        type="submit"
                         loading={submitting}
                         disabled={!name.trim()}
-                        onClick={handleConfirm}
+                        onClick={e => { e.preventDefault(); handleConfirm(); }}
                     >
                         {confirmLabel}
                     </Button>
-                </>
+                </form>
             }
         >
             <div className="flex flex-col gap-1">
@@ -94,6 +105,23 @@ export function FolderActionDialog({
                     autoFocus
                     data-testid="folder-action-input"
                 />
+                {showDocType && (
+                    <>
+                        <label className="text-xs text-[#616161] dark:text-[#999] mt-1">Document type</label>
+                        <select
+                            id="task-dialog-doctype"
+                            data-testid="task-dialog-doctype"
+                            className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:border-[#0078d4]"
+                            value={docType}
+                            onChange={e => setDocType(e.target.value)}
+                        >
+                            <option value="">(none)</option>
+                            {DOC_TYPES.filter(Boolean).map(dt => (
+                                <option key={dt} value={dt}>{dt}</option>
+                            ))}
+                        </select>
+                    </>
+                )}
             </div>
         </Dialog>
     );

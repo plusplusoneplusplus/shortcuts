@@ -313,7 +313,7 @@ describe('WikiList', () => {
         }));
         render(<Wrap><WikiList /></Wrap>);
         await waitFor(() => {
-            expect(screen.getByText('No wikis registered.')).toBeTruthy();
+            expect(screen.getByText('No wikis yet')).toBeTruthy();
         });
     });
 

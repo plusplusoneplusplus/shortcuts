@@ -8,6 +8,7 @@ import { useWiki } from '../hooks/useWiki';
 import { Card, Badge, Button, Spinner } from '../shared';
 import { AddWikiDialog } from './AddWikiDialog';
 import { EditWikiDialog } from './EditWikiDialog';
+import { DeleteWikiDialog } from './DeleteWikiDialog';
 import { cn } from '../shared/cn';
 import { getApiBase } from '../utils/config';
 
@@ -77,7 +78,7 @@ export function WikiList() {
     const { dispatch } = useApp();
     const [addOpen, setAddOpen] = useState(false);
     const [editWiki, setEditWiki] = useState<WikiData | null>(null);
-    const [deleting, setDeleting] = useState<string | null>(null);
+    const [deleteWiki, setDeleteWiki] = useState<WikiData | null>(null);
 
     const selectWiki = useCallback((wikiId: string) => {
         dispatch({ type: 'SELECT_WIKI', wikiId });
@@ -89,29 +90,25 @@ export function WikiList() {
         location.hash = '#wiki/' + encodeURIComponent(wikiId) + '/admin';
     }, [dispatch]);
 
-    const handleDelete = useCallback(async (wikiId: string) => {
-        if (!confirm('Are you sure you want to delete this wiki?')) return;
-        setDeleting(wikiId);
-        try {
-            const res = await fetch(getApiBase() + '/wikis/' + encodeURIComponent(wikiId), { method: 'DELETE' });
-            if (res.ok) {
-                dispatch({ type: 'REMOVE_WIKI', wikiId });
-            }
-        } catch { /* ignore */ }
-        setDeleting(null);
+    const handleDeleteClick = useCallback((wiki: WikiData) => {
+        setDeleteWiki(wiki);
+    }, []);
+
+    const handleDeleted = useCallback((wikiId: string) => {
+        dispatch({ type: 'REMOVE_WIKI', wikiId });
     }, [dispatch]);
 
     return (
         <div className="p-4 space-y-4" id="view-wiki">
             <div className="flex items-center justify-between">
                 <h2 className="text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc]">Wikis</h2>
-                <Button size="sm" onClick={() => setAddOpen(true)}>+ Add Wiki</Button>
+                <Button size="sm" id="wiki-list-add-btn" onClick={() => setAddOpen(true)}>+ Add Wiki</Button>
             </div>
 
             {wikis.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-16 text-center text-sm text-[#848484]">
+                <div id="wiki-empty" className="flex flex-col items-center justify-center py-16 text-center text-sm text-[#848484]">
                     <div className="text-4xl mb-3">📚</div>
-                    <p className="mb-2">No wikis registered.</p>
+                    <p className="mb-2">No wikis yet</p>
                     <p className="mb-4">Click "Add Wiki" to generate a wiki for a repository.</p>
                     <Button size="sm" onClick={() => setAddOpen(true)}>+ Add Wiki</Button>
                 </div>
@@ -124,7 +121,8 @@ export function WikiList() {
                         return (
                             <Card
                                 key={wiki.id}
-                                className="p-3 hover:shadow-md transition-shadow"
+                                className="wiki-card p-3 hover:shadow-md transition-shadow"
+                                data-wiki-id={wiki.id}
                                 onClick={() => selectWiki(wiki.id)}
                             >
                                 <div className="flex items-center gap-2 mb-2">
@@ -171,18 +169,14 @@ export function WikiList() {
                                 )}
                                 <div className="flex justify-end gap-1 mt-2" onClick={e => e.stopPropagation()}>
                                     <button
-                                        className="p-1 text-xs text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]"
+                                        className="wiki-card-edit p-1 text-xs text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]"
                                         title="Edit wiki"
                                         onClick={() => setEditWiki(wiki)}
                                     >✏️</button>
                                     <button
-                                        className={cn(
-                                            'p-1 text-xs text-[#848484] hover:text-[#f14c4c]',
-                                            deleting === wiki.id && 'opacity-50'
-                                        )}
+                                        className="wiki-card-delete p-1 text-xs text-[#848484] hover:text-[#f14c4c]"
                                         title="Delete wiki"
-                                        disabled={deleting === wiki.id}
-                                        onClick={() => handleDelete(wiki.id)}
+                                        onClick={() => handleDeleteClick(wiki)}
                                     >🗑️</button>
                                 </div>
                             </Card>
@@ -198,6 +192,14 @@ export function WikiList() {
                     wiki={editWiki}
                     onClose={() => setEditWiki(null)}
                     onUpdated={reload}
+                />
+            )}
+            {deleteWiki && (
+                <DeleteWikiDialog
+                    open={true}
+                    wiki={deleteWiki}
+                    onClose={() => setDeleteWiki(null)}
+                    onDeleted={() => { handleDeleted(deleteWiki.id); setDeleteWiki(null); reload(); }}
                 />
             )}
         </div>

@@ -159,6 +159,8 @@ export function Router() {
                     } else {
                         dispatch({ type: 'SELECT_WIKI', wikiId: wikiLink.wikiId });
                     }
+                } else {
+                    dispatch({ type: 'SELECT_WIKI', wikiId: null });
                 }
             }
         };

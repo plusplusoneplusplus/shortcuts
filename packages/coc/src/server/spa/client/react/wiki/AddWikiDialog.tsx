@@ -6,7 +6,12 @@ import { useState, useCallback } from 'react';
 import { Dialog, Button } from '../shared';
 import { getApiBase } from '../utils/config';
 
-const COLOR_PRESETS = ['#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#8b5cf6', '#ec4899', '#848484'];
+const COLOR_PRESETS = ['#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#8b5cf6', '#ec4899', '#848484', '#16825d'];
+
+function slugify(name: string): string {
+    const s = name.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+    return s || 'wiki-' + Date.now();
+}
 
 interface AddWikiDialogProps {
     open: boolean;
@@ -27,10 +32,11 @@ export function AddWikiDialog({ open, onClose, onAdded }: AddWikiDialogProps) {
         setSubmitting(true);
         setError('');
         try {
+            const id = slugify(name.trim());
             const res = await fetch(getApiBase() + '/wikis', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: name.trim(), repoPath: repoPath.trim(), color }),
+                body: JSON.stringify({ id, name: name.trim(), repoPath: repoPath.trim(), color }),
             });
             if (!res.ok) {
                 const body = await res.json().catch(() => ({ error: 'Failed to create wiki' }));
@@ -51,13 +57,14 @@ export function AddWikiDialog({ open, onClose, onAdded }: AddWikiDialogProps) {
 
     return (
         <Dialog
+            id="add-wiki-overlay"
             open={open}
             onClose={onClose}
             title="Add Wiki"
             footer={
                 <>
-                    <Button variant="secondary" onClick={onClose}>Cancel</Button>
-                    <Button loading={submitting} onClick={handleSubmit}>Create</Button>
+                    <Button variant="secondary" id="add-wiki-cancel-btn" onClick={onClose}>Cancel</Button>
+                    <Button loading={submitting} id="add-wiki-submit" onClick={handleSubmit}>Create</Button>
                 </>
             }
         >
@@ -65,6 +72,7 @@ export function AddWikiDialog({ open, onClose, onAdded }: AddWikiDialogProps) {
                 <div>
                     <label className="block text-xs font-medium mb-1">Name</label>
                     <input
+                        id="wiki-name"
                         className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4]"
                         value={name}
                         onChange={e => { setName(e.target.value); setError(''); }}
@@ -74,6 +82,7 @@ export function AddWikiDialog({ open, onClose, onAdded }: AddWikiDialogProps) {
                 <div>
                     <label className="block text-xs font-medium mb-1">Repository Path</label>
                     <input
+                        id="wiki-path"
                         className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4]"
                         value={repoPath}
                         onChange={e => { setRepoPath(e.target.value); setError(''); }}
@@ -82,17 +91,16 @@ export function AddWikiDialog({ open, onClose, onAdded }: AddWikiDialogProps) {
                 </div>
                 <div>
                     <label className="block text-xs font-medium mb-1">Color</label>
-                    <div className="flex gap-2">
+                    <select
+                        id="wiki-color"
+                        className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4]"
+                        value={color}
+                        onChange={e => setColor(e.target.value)}
+                    >
                         {COLOR_PRESETS.map(c => (
-                            <button
-                                key={c}
-                                className={`w-6 h-6 rounded-full border-2 transition-all ${color === c ? 'border-[#0078d4] scale-110' : 'border-transparent'}`}
-                                style={{ background: c }}
-                                onClick={() => setColor(c)}
-                                type="button"
-                            />
+                            <option key={c} value={c}>{c}</option>
                         ))}
-                    </div>
+                    </select>
                 </div>
                 {error && <p className="text-xs text-[#f14c4c]">{error}</p>}
             </div>

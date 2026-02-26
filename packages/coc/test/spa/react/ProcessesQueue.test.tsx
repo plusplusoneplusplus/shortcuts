@@ -86,7 +86,7 @@ describe('ProcessFilters', () => {
 describe('ProcessesSidebar (legacy process list)', () => {
     it('shows empty state when no processes', () => {
         render(<Wrap><ProcessesSidebar /></Wrap>);
-        expect(screen.getByText('No processes found')).toBeDefined();
+        expect(screen.getByText('No processes yet')).toBeDefined();
     });
 
     it('updates hash route when selecting a process', async () => {
@@ -841,7 +841,7 @@ describe('ProcessesView', () => {
 describe('ProcessesSidebar – unified layout', () => {
     it('empty state uses compact non-expanding style', () => {
         const { container } = render(<Wrap><ProcessesSidebar /></Wrap>);
-        const emptyDiv = screen.getByText('No processes found').closest('div');
+        const emptyDiv = screen.getByText('No processes yet').closest('div');
         expect(emptyDiv).not.toBeNull();
         expect(emptyDiv!.className).toContain('py-6');
         expect(emptyDiv!.className).toContain('text-center');

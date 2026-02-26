@@ -118,7 +118,7 @@ export function WikiComponentTree({ graph, selectedComponentId, onSelect }: Wiki
                 {filteredGroups.map(group => {
                     const isCollapsed = collapsed.has(group.id);
                     return (
-                        <div key={group.id} className="wiki-tree-group">
+                        <div key={group.id} className={cn('wiki-tree-group', !isCollapsed && 'expanded')}>
                             <div
                                 className="wiki-tree-item flex items-center gap-1 px-3 py-1.5 cursor-pointer hover:bg-black/[0.04] dark:hover:bg-white/[0.04] select-none"
                                 onClick={() => toggleGroup(group.id)}

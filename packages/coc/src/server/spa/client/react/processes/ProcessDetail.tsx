@@ -160,7 +160,7 @@ export function ProcessDetail() {
 
     if (!selectedId || !process) {
         return (
-            <div className="flex-1 flex flex-col items-center justify-center text-[#848484]">
+            <div id="detail-empty" className="flex-1 flex flex-col items-center justify-center text-[#848484]">
                 <div className="text-4xl mb-2">👈</div>
                 <div className="text-sm">Select a process to view details</div>
             </div>
@@ -211,7 +211,7 @@ export function ProcessDetail() {
     };
 
     return (
-        <div className="flex-1 overflow-y-auto p-4">
+        <div id="detail-content" className="flex-1 overflow-y-auto p-4">
             {/* Header */}
             <div className="mb-4 pb-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
                 <div className="flex items-center justify-between gap-3 mb-2">

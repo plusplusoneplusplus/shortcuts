@@ -1109,7 +1109,7 @@
             var dispatcher = resolveDispatcher();
             return dispatcher.useLayoutEffect(create, deps);
           }
-          function useCallback42(callback, deps) {
+          function useCallback43(callback, deps) {
             var dispatcher = resolveDispatcher();
             return dispatcher.useCallback(callback, deps);
           }
@@ -1876,7 +1876,7 @@
           exports.memo = memo;
           exports.startTransition = startTransition;
           exports.unstable_act = act;
-          exports.useCallback = useCallback42;
+          exports.useCallback = useCallback43;
           exports.useContext = useContext6;
           exports.useDebugValue = useDebugValue;
           exports.useDeferredValue = useDeferredValue;
@@ -24407,11 +24407,11 @@
               return jsxWithValidation(type2, props, key, false);
             }
           }
-          var jsx72 = jsxWithValidationDynamic;
-          var jsxs57 = jsxWithValidationStatic;
+          var jsx73 = jsxWithValidationDynamic;
+          var jsxs59 = jsxWithValidationStatic;
           exports.Fragment = REACT_FRAGMENT_TYPE;
-          exports.jsx = jsx72;
-          exports.jsxs = jsxs57;
+          exports.jsx = jsx73;
+          exports.jsxs = jsxs59;
         })();
       }
     }
@@ -26701,7 +26701,7 @@
   var import_client = __toESM(require_client());
 
   // src/server/spa/client/react/App.tsx
-  var import_react71 = __toESM(require_react());
+  var import_react72 = __toESM(require_react());
 
   // src/server/spa/client/react/context/AppContext.tsx
   var import_react = __toESM(require_react());
@@ -27131,7 +27131,7 @@
             /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("nav", { className: "flex items-center gap-1 min-w-0", id: "tab-bar", children: TABS.map(({ label, tab }) => /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(
               "button",
               {
-                className: `h-8 px-3 rounded text-sm transition-colors ` + (state.activeTab === tab ? "bg-[#0078d4] text-white" : "text-[#1e1e1e] dark:text-[#cccccc] hover:bg-black/[0.05] dark:hover:bg-white/[0.08]"),
+                className: `h-8 px-3 rounded text-sm transition-colors ` + (state.activeTab === tab ? "active bg-[#0078d4] text-white" : "text-[#1e1e1e] dark:text-[#cccccc] hover:bg-black/[0.05] dark:hover:bg-white/[0.08]"),
                 "data-tab": tab,
                 onClick: () => switchTab(tab),
                 children: label
@@ -27168,7 +27168,7 @@
   }
 
   // src/server/spa/client/react/layout/Router.tsx
-  var import_react69 = __toESM(require_react());
+  var import_react70 = __toESM(require_react());
 
   // src/server/spa/client/react/processes/ProcessFilters.tsx
   var import_react6 = __toESM(require_react());
@@ -27221,6 +27221,7 @@
       /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
         "input",
         {
+          id: "search-input",
           type: "text",
           placeholder: "Search processes...",
           value: searchInput,
@@ -27231,6 +27232,7 @@
       /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
         "select",
         {
+          id: "status-filter",
           value: state.statusFilter,
           onChange: (e) => onStatusChange(e.target.value),
           className: "w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]",
@@ -27247,6 +27249,7 @@
       state.workspaces.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
         "select",
         {
+          id: "workspace-select",
           value: state.workspace,
           onChange: (e) => onWorkspaceChange(e.target.value),
           className: "w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]",
@@ -27339,11 +27342,12 @@
 
   // src/server/spa/client/react/shared/Card.tsx
   var import_jsx_runtime9 = __toESM(require_jsx_runtime());
-  function Card({ className, children, onClick, "aria-label": ariaLabel, id }) {
+  function Card({ className, children, onClick, "aria-label": ariaLabel, id, "data-wiki-id": dataWikiId }) {
     return /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
       "div",
       {
         id,
+        "data-wiki-id": dataWikiId,
         role: onClick ? "button" : void 0,
         tabIndex: onClick ? 0 : void 0,
         "aria-label": ariaLabel,
@@ -27410,10 +27414,11 @@
     cancelled: "bg-[#e8912d]/15 text-[#e8912d] dark:text-[#cca700]",
     warning: "bg-[#f59e0b]/15 text-[#f59e0b] dark:text-[#fbbf24]"
   };
-  function Badge({ status, children, className }) {
+  function Badge({ status, children, className, id }) {
     return /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(
       "span",
       {
+        id,
         className: cn(
           "inline-flex items-center gap-1 text-[11px] font-medium px-1.5 py-0.5 rounded",
           statusMap[status] ?? "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300",
@@ -27789,7 +27794,7 @@
           )) })
         ] }, folder ?? "__unassigned__"))
       ] }),
-      isEmpty && /* @__PURE__ */ (0, import_jsx_runtime14.jsx)("div", { className: "py-6 text-center text-sm text-[#848484]", children: "No processes found" }),
+      isEmpty && /* @__PURE__ */ (0, import_jsx_runtime14.jsx)("div", { id: "empty-state", className: "py-6 text-center text-sm text-[#848484]", children: "No processes yet" }),
       filteredLegacy.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime14.jsx)("div", { className: "flex flex-col gap-1", children: filteredLegacy.map((p) => {
         const isActive = state.selectedId === p.id;
         const duration = p.status === "running" && p.startTime ? formatDuration(now - new Date(p.startTime).getTime()) : p.duration != null ? formatDuration(p.duration) : "";
@@ -27809,7 +27814,7 @@
               }
             },
             className: cn(
-              "p-2.5",
+              "p-2.5 process-item",
               isActive && "ring-2 ring-[#0078d4] dark:ring-[#3794ff]"
             ),
             children: [
@@ -27885,7 +27890,7 @@
       Card,
       {
         onClick,
-        className: cn(compact ? "px-2 py-1.5" : "p-2", selected && "ring-2 ring-[#0078d4] dark:ring-[#3794ff]"),
+        className: cn("process-item", compact ? "px-2 py-1.5" : "p-2", selected && "ring-2 ring-[#0078d4] dark:ring-[#3794ff]"),
         "aria-label": `Task ${statusLabel(task.status).toLowerCase()}: ${preview}`,
         children: compact ? /* @__PURE__ */ (0, import_jsx_runtime14.jsxs)("div", { className: "flex items-center gap-1.5 min-w-0 text-[11px] leading-5", children: [
           /* @__PURE__ */ (0, import_jsx_runtime14.jsx)("span", { className: "shrink-0", children: statusIcon(task.status) }),
@@ -28995,7 +29000,7 @@
       if (wsId) location.hash = "#repos/" + encodeURIComponent(wsId);
     }, [wsId]);
     if (!selectedId || !process2) {
-      return /* @__PURE__ */ (0, import_jsx_runtime19.jsxs)("div", { className: "flex-1 flex flex-col items-center justify-center text-[#848484]", children: [
+      return /* @__PURE__ */ (0, import_jsx_runtime19.jsxs)("div", { id: "detail-empty", className: "flex-1 flex flex-col items-center justify-center text-[#848484]", children: [
         /* @__PURE__ */ (0, import_jsx_runtime19.jsx)("div", { className: "text-4xl mb-2", children: "\u{1F448}" }),
         /* @__PURE__ */ (0, import_jsx_runtime19.jsx)("div", { className: "text-sm", children: "Select a process to view details" })
       ] });
@@ -29036,7 +29041,7 @@
         setResumeLaunching(false);
       }
     };
-    return /* @__PURE__ */ (0, import_jsx_runtime19.jsxs)("div", { className: "flex-1 overflow-y-auto p-4", children: [
+    return /* @__PURE__ */ (0, import_jsx_runtime19.jsxs)("div", { id: "detail-content", className: "flex-1 overflow-y-auto p-4", children: [
       /* @__PURE__ */ (0, import_jsx_runtime19.jsxs)("div", { className: "mb-4 pb-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c]", children: [
         /* @__PURE__ */ (0, import_jsx_runtime19.jsxs)("div", { className: "flex items-center justify-between gap-3 mb-2", children: [
           /* @__PURE__ */ (0, import_jsx_runtime19.jsxs)("div", { className: "flex items-center gap-2 min-w-0", children: [
@@ -29971,11 +29976,11 @@
             /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(
               "span",
               {
-                className: "inline-block w-2.5 h-2.5 rounded-full flex-shrink-0",
+                className: "repo-color-dot inline-block w-2.5 h-2.5 rounded-full flex-shrink-0",
                 style: { background: color }
               }
             ),
-            /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("span", { className: "text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc] truncate", children: ws.name }),
+            /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("span", { className: "repo-item-name text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc] truncate", children: ws.name }),
             inGroup && branch !== "n/a" && /* @__PURE__ */ (0, import_jsx_runtime22.jsx)("span", { className: "text-[10px] px-1 py-px rounded bg-[#e0e0e0] dark:bg-[#3c3c3c] text-[#616161] dark:text-[#999] flex-shrink-0", children: branch })
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(
@@ -29995,7 +30000,7 @@
               "Pipelines: ",
               pipelineCount
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("span", { className: "ml-auto", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime22.jsxs)("span", { className: "repo-stat-counts ml-auto", children: [
               "\u2713",
               stats.success,
               " \u2717",
@@ -30127,12 +30132,13 @@
     return /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
       Dialog,
       {
+        id: "add-repo-overlay",
         open,
         onClose,
         title: isEdit ? "Edit Repository" : "Add Repository",
         footer: /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(import_jsx_runtime23.Fragment, { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Button, { variant: "secondary", onClick: onClose, children: "Cancel" }),
-          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Button, { variant: "primary", loading: submitting, onClick: handleSubmit, children: isEdit ? "Save Changes" : "Add Repo" })
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Button, { variant: "secondary", id: "add-repo-cancel-btn", onClick: onClose, children: "Cancel" }),
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Button, { variant: "primary", id: "add-repo-submit", loading: submitting, onClick: handleSubmit, children: isEdit ? "Save Changes" : "Add Repo" })
         ] }),
         children: /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex flex-col gap-3", children: [
           /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("label", { className: "text-xs font-medium text-[#616161] dark:text-[#999]", children: "Path" }),
@@ -30140,6 +30146,8 @@
             /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
               "input",
               {
+                id: "repo-path",
+                "data-testid": "repo-path",
                 className: "flex-1 px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4]",
                 value: path,
                 onChange: (e) => setPath(e.target.value),
@@ -30147,10 +30155,10 @@
                 placeholder: "/path/to/repo"
               }
             ),
-            !isEdit && /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Button, { variant: "secondary", size: "sm", onClick: openBrowser, children: "Browse" })
+            !isEdit && /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Button, { variant: "secondary", size: "sm", id: "browse-btn", "data-testid": "browse-btn", onClick: openBrowser, children: "Browse" })
           ] }),
-          showBrowser && /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "border border-[#e0e0e0] dark:border-[#3c3c3c] rounded p-2 max-h-48 overflow-y-auto text-xs", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "flex items-center gap-1 mb-1 text-[10px] text-[#848484] truncate", children: browserPath }),
+          showBrowser && /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { id: "path-browser", "data-testid": "path-browser", className: "border border-[#e0e0e0] dark:border-[#3c3c3c] rounded p-2 max-h-48 overflow-y-auto text-xs", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { id: "path-breadcrumb", className: "flex items-center gap-1 mb-1 text-[10px] text-[#848484] truncate", children: browserPath }),
             browserLoading ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "text-[#848484]", children: "Loading..." }) : /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(import_jsx_runtime23.Fragment, { children: [
               browserParent && /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
                 "div",
@@ -30164,11 +30172,12 @@
               browserEntries.map((entry) => /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(
                 "div",
                 {
-                  className: "flex items-center gap-1 px-1 py-0.5 cursor-pointer hover:bg-[#e8e8e8] dark:hover:bg-[#333] rounded",
+                  className: "path-browser-entry flex items-center gap-1 px-1 py-0.5 cursor-pointer hover:bg-[#e8e8e8] dark:hover:bg-[#333] rounded",
+                  "data-testid": "path-browser-entry",
                   onClick: () => navigateTo(browserPath + (browserPath.endsWith("/") ? "" : "/") + entry.name),
                   children: [
                     "\u{1F4C1} ",
-                    entry.name,
+                    /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "entry-name", children: entry.name }),
                     entry.isGitRepo && /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "text-[10px] px-1 bg-[#e0e0e0] dark:bg-[#3c3c3c] rounded", children: "git" })
                   ]
                 },
@@ -30177,13 +30186,15 @@
             ] }),
             /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { className: "flex justify-end gap-1 mt-1 pt-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]", children: [
               /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Button, { variant: "secondary", size: "sm", onClick: () => setShowBrowser(false), children: "Cancel" }),
-              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Button, { variant: "primary", size: "sm", onClick: selectBrowserDir, children: "Select" })
+              /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Button, { variant: "primary", size: "sm", id: "path-browser-select", "data-testid": "path-browser-select", onClick: selectBrowserDir, children: "Select" })
             ] })
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("label", { className: "text-xs font-medium text-[#616161] dark:text-[#999]", children: "Name" }),
           /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
             "input",
             {
+              id: "repo-alias",
+              "data-testid": "repo-alias",
               className: "px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4]",
               value: name,
               onChange: (e) => setName(e.target.value),
@@ -30191,18 +30202,19 @@
             }
           ),
           /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("label", { className: "text-xs font-medium text-[#616161] dark:text-[#999]", children: "Color" }),
-          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "flex gap-1.5", children: COLOR_PALETTE.map((c) => /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "flex gap-1.5", id: "repo-color-picker", "data-testid": "repo-color-picker", children: COLOR_PALETTE.map((c) => /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
             "button",
             {
               className: `w-6 h-6 rounded-full border-2 transition-transform ${color === c.value ? "border-[#0078d4] scale-110" : "border-transparent"}`,
               style: { background: c.value },
               onClick: () => setColor(c.value),
               title: c.label,
-              type: "button"
+              type: "button",
+              "data-value": c.value
             },
             c.value
           )) }),
-          validation && /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: `text-xs px-2 py-1 rounded ${validation.ok ? "bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400" : "bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400"}`, children: validation.msg })
+          validation && /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { id: "repo-validation", "data-testid": "repo-validation", className: `text-xs px-2 py-1 rounded ${validation.ok ? "bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400" : "bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400"}`, children: validation.msg })
         ] })
       }
     );
@@ -30220,7 +30232,6 @@
     };
     const selectRepo = (id) => {
       dispatch({ type: "SET_SELECTED_REPO", id });
-      dispatch({ type: "SET_REPO_SUB_TAB", tab: "info" });
       location.hash = "#repos/" + encodeURIComponent(id);
     };
     const cloneGroups = groups.filter((g) => g.repos.length >= 2);
@@ -30235,9 +30246,9 @@
     return /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "flex flex-col h-full", children: [
       /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "flex items-center justify-between px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]", children: [
         /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("span", { className: "text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc]", children: "Repositories" }),
-        /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(Button, { variant: "primary", size: "sm", onClick: () => setAddOpen(true), children: "+ Add" })
+        /* @__PURE__ */ (0, import_jsx_runtime24.jsx)(Button, { variant: "primary", size: "sm", id: "add-repo-btn", "data-testid": "add-repo-btn", onClick: () => setAddOpen(true), children: "+ Add" })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("div", { className: "flex-1 overflow-y-auto p-2 flex flex-col gap-1", children: repos.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { className: "text-center text-xs text-[#848484] py-8", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("div", { className: "flex-1 overflow-y-auto p-2 flex flex-col gap-1", children: repos.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime24.jsxs)("div", { id: "repos-empty", "data-testid": "repos-empty", className: "text-center text-xs text-[#848484] py-8", children: [
         "No repositories registered.",
         /* @__PURE__ */ (0, import_jsx_runtime24.jsx)("br", {}),
         'Click "+ Add" to register a workspace.'
@@ -30325,13 +30336,13 @@
       fetchApi(`/processes?workspace=${encodeURIComponent(ws.id)}&limit=10`).then((res) => setProcesses(res?.processes || [])).catch(() => setProcesses([])).finally(() => setLoadingProcesses(false));
     }, [ws.id]);
     return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "p-4 flex flex-col gap-4", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(MetaRow2, { label: "Path", value: ws.rootPath || "", mono: true }),
+      /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "meta-grid grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(MetaRow2, { label: "Path", value: ws.rootPath || "", mono: true, valueClass: "meta-path" }),
         /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(MetaRow2, { label: "Branch", value: branch + dirty }),
         /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(MetaRow2, { label: "Sync", value: syncLabel }),
         remoteUrl && /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(MetaRow2, { label: "Remote", value: remoteUrl, mono: true }),
         /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(MetaRow2, { label: "Color", children: /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("span", { className: "flex items-center gap-1.5", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "inline-block w-3 h-3 rounded-full", style: { background: color } }),
+          /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "repo-color-dot inline-block w-3 h-3 rounded-full", style: { background: color } }),
           color
         ] }) }),
         /* @__PURE__ */ (0, import_jsx_runtime25.jsx)(MetaRow2, { label: "Pipelines", value: String(repo.pipelines?.length || 0) }),
@@ -30342,12 +30353,12 @@
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { children: [
         /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("h3", { className: "text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2", children: "Recent Processes" }),
-        loadingProcesses ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "text-xs text-[#848484]", children: "Loading..." }) : processes.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "text-xs text-[#848484]", children: "No processes yet" }) : /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { className: "flex flex-col gap-0.5", children: processes.map((p) => {
+        loadingProcesses ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { id: "repo-processes-list", className: "text-xs text-[#848484]", children: "Loading..." }) : processes.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { id: "repo-processes-list", className: "text-xs text-[#848484]", children: "No processes yet" }) : /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("div", { id: "repo-processes-list", className: "flex flex-col gap-0.5", children: processes.map((p) => {
           const icon = STATUS_ICON[p.status] || "\u2022";
           const title = p.promptPreview || p.id || "Untitled";
           const display = title.length > 50 ? title.substring(0, 50) + "..." : title;
           const time = p.startTime ? formatRelativeTime(p.startTime) : "";
-          return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "flex items-center gap-2 py-1 text-xs", children: [
+          return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("div", { className: "repo-process-entry flex items-center gap-2 py-1 text-xs", children: [
             /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { children: icon }),
             /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "flex-1 truncate text-[#1e1e1e] dark:text-[#cccccc]", children: display }),
             /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "text-[#848484] text-[11px] flex-shrink-0", children: time })
@@ -30356,10 +30367,10 @@
       ] })
     ] });
   }
-  function MetaRow2({ label, value, mono, children }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)(import_jsx_runtime25.Fragment, { children: [
+  function MetaRow2({ label, value, mono, children, valueClass }) {
+    return /* @__PURE__ */ (0, import_jsx_runtime25.jsxs)("span", { className: "meta-item contents", children: [
       /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: "text-[#848484] text-xs font-medium", children: label }),
-      children ?? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: `text-[#1e1e1e] dark:text-[#cccccc] text-xs ${mono ? "font-mono break-all" : ""}`, children: value })
+      children ?? /* @__PURE__ */ (0, import_jsx_runtime25.jsx)("span", { className: `text-[#1e1e1e] dark:text-[#cccccc] text-xs ${mono ? "font-mono break-all" : ""} ${valueClass ?? ""}`.trim(), children: value })
     ] });
   }
 
@@ -30653,23 +30664,26 @@
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime28.jsx)(Button, { variant: "secondary", size: "sm", onClick: () => setShowAddDialog(true), children: "+ New Pipeline" })
         ] }),
-        pipelines.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime28.jsxs)("div", { className: "p-4 text-center", children: [
+        pipelines.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime28.jsxs)("div", { className: "empty-state p-4 text-center", children: [
           /* @__PURE__ */ (0, import_jsx_runtime28.jsx)("div", { className: "text-2xl mb-2", children: "\u{1F4CB}" }),
           /* @__PURE__ */ (0, import_jsx_runtime28.jsx)("div", { className: "text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]", children: "No pipelines found" }),
           /* @__PURE__ */ (0, import_jsx_runtime28.jsx)("div", { className: "text-xs text-[#848484] mt-1", children: "Add pipeline YAML files to .vscode/pipelines/ in this repository." })
-        ] }) : /* @__PURE__ */ (0, import_jsx_runtime28.jsx)("ul", { className: "px-4 pb-4 flex flex-col gap-1 overflow-y-auto", children: pipelines.map((p) => {
+        ] }) : /* @__PURE__ */ (0, import_jsx_runtime28.jsx)("ul", { className: "repo-pipeline-list px-4 pb-4 flex flex-col gap-1 overflow-y-auto", children: pipelines.map((p) => {
           const isActive = p.name === state.selectedPipelineName;
-          return /* @__PURE__ */ (0, import_jsx_runtime28.jsx)(
+          return /* @__PURE__ */ (0, import_jsx_runtime28.jsxs)(
             "li",
             {
-              className: "flex items-center py-1.5 px-2 rounded cursor-pointer hover:bg-[#e8e8e8] dark:hover:bg-[#333]" + (isActive ? " bg-[#e8e8e8] dark:bg-[#2a2d2e] border-l-2 border-[#0078d4]" : ""),
+              className: "repo-pipeline-item flex items-center justify-between gap-2 py-1.5 px-2 rounded cursor-pointer hover:bg-[#e8e8e8] dark:hover:bg-[#333]" + (isActive ? " bg-[#e8e8e8] dark:bg-[#2a2d2e] border-l-2 border-[#0078d4]" : ""),
               role: "option",
               "aria-selected": isActive,
               onClick: () => handleSelect(p),
-              children: /* @__PURE__ */ (0, import_jsx_runtime28.jsxs)("span", { className: "text-sm text-[#1e1e1e] dark:text-[#cccccc]" + (isActive ? " font-medium" : ""), children: [
-                "\u{1F4CB} ",
-                p.name
-              ] })
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime28.jsxs)("span", { className: "pipeline-name text-sm text-[#1e1e1e] dark:text-[#cccccc]" + (isActive ? " font-medium" : ""), children: [
+                  "\u{1F4CB} ",
+                  p.name
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime28.jsx)("span", { className: "repo-pipeline-actions shrink-0", onClick: (e) => e.stopPropagation(), children: /* @__PURE__ */ (0, import_jsx_runtime28.jsx)(Button, { variant: "secondary", size: "sm", className: "action-btn", onClick: () => handleSelect(p), children: "View" }) })
+              ]
             },
             p.name
           );
@@ -30910,7 +30924,8 @@
       archiveFile: (filePath) => apiFetch2("POST", `${base}/archive`, { path: filePath, action: "archive" }),
       unarchiveFile: (filePath) => apiFetch2("POST", `${base}/archive`, { path: filePath, action: "unarchive" }),
       deleteFile: (filePath) => apiFetch2("DELETE", base, { path: filePath }),
-      moveFile: (sourcePath, destinationFolder) => apiFetch2("POST", `${base}/move`, { sourcePath, destinationFolder })
+      moveFile: (sourcePath, destinationFolder) => apiFetch2("POST", `${base}/move`, { sourcePath, destinationFolder }),
+      updateStatus: (filePath, status) => apiFetch2("PATCH", base, { path: filePath, status })
     };
   }
 
@@ -31530,8 +31545,9 @@
     const path = getItemPath(item);
     const isNestedContextDoc = isContext && fileName.toLowerCase() === "context.md" && !!path && path.includes("/");
     const canOpenFileContextMenu = !isFolder && (!isContext || isNestedContextDoc);
-    const status = isTaskDocument(item) ? item.status : void 0;
+    const status = isTaskDocument(item) ? item.status : isTaskDocumentGroup(item) ? item.documents[0]?.status : void 0;
     const isArchived = isTaskDocument(item) ? item.isArchived : isTaskDocumentGroup(item) ? item.isArchived : false;
+    const isArchiveFolder = isFolder && (item.relativePath === "archive" || item.name === "archive");
     const tooltip = !isFolder ? buildFileTooltip(path, commentCount, status) : void 0;
     const handleClick = () => {
       if (isFolder) {
@@ -31557,6 +31573,7 @@
           isSelected && "bg-[#0078d4]/5",
           isContext && "opacity-50",
           isArchived && "opacity-60 italic",
+          isArchiveFolder && "opacity-60 italic",
           !isFolder && "miller-file-row"
         ),
         onClick: handleClick,
@@ -31590,8 +31607,16 @@
             }
           ),
           /* @__PURE__ */ (0, import_jsx_runtime33.jsx)("span", { className: "flex-shrink-0 text-[11px]", children: isFolder ? "\u{1F4C1}" : isContext ? "\u2139\uFE0F" : isTaskDocumentGroup(item) ? "\u{1F4C4}" : "\u{1F4DD}" }),
-          status && /* @__PURE__ */ (0, import_jsx_runtime33.jsx)("span", { className: "flex-shrink-0 text-[10px]", title: status, children: getStatusIcon(status) }),
-          /* @__PURE__ */ (0, import_jsx_runtime33.jsx)("span", { className: "flex-1 truncate text-[#1e1e1e] dark:text-[#cccccc]", children: displayName }),
+          status && /* @__PURE__ */ (0, import_jsx_runtime33.jsx)(
+            "span",
+            {
+              className: `miller-status task-status-${status} flex-shrink-0 text-[10px]`,
+              title: status,
+              "data-status": status,
+              children: getStatusIcon(status)
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime33.jsx)("span", { className: "miller-row-name flex-1 truncate text-[#1e1e1e] dark:text-[#cccccc]", children: displayName }),
           queueRunning > 0 && /* @__PURE__ */ (0, import_jsx_runtime33.jsx)(
             "span",
             {
@@ -33449,6 +33474,8 @@
     const [editedContent, setEditedContent] = (0, import_react45.useState)("");
     const [saving, setSaving] = (0, import_react45.useState)(false);
     const isDirty = viewMode === "source" && editedContent !== rawContent;
+    const isDirtyRef = (0, import_react45.useRef)(false);
+    isDirtyRef.current = isDirty;
     const [contextMenuVisible, setContextMenuVisible] = (0, import_react45.useState)(false);
     const [contextMenuPos, setContextMenuPos] = (0, import_react45.useState)({ x: 0, y: 0 });
     const [savedSelection, setSavedSelection] = (0, import_react45.useState)(null);
@@ -33480,6 +33507,12 @@
     const showCommentListPanel = comments.length > 0;
     (0, import_react45.useEffect)(() => {
       let cancelled = false;
+      if (isDirtyRef.current) {
+        if (!window.confirm("You have unsaved changes to the current file. Discard and load the new file?")) {
+          cancelled = true;
+          return;
+        }
+      }
       setLoading(true);
       setError(null);
       setRawContent("");
@@ -33546,6 +33579,14 @@
       document.addEventListener("keydown", handler);
       return () => document.removeEventListener("keydown", handler);
     }, [viewMode, isDirty, saveContent]);
+    (0, import_react45.useEffect)(() => {
+      if (!isDirty) return;
+      const handler = (e) => {
+        e.preventDefault();
+      };
+      window.addEventListener("beforeunload", handler);
+      return () => window.removeEventListener("beforeunload", handler);
+    }, [isDirty]);
     (0, import_react45.useEffect)(() => {
       const handleMouseUp = () => {
         const sel = window.getSelection();
@@ -33712,6 +33753,13 @@
       const context = extractDocumentContext(rawContent, newComment);
       await askAI(newComment.id, { customQuestion: question.trim(), documentContext: context });
     }, [savedSelection, rawContent, filePath, addComment, askAI]);
+    const handleSwitchToReview = (0, import_react45.useCallback)(() => {
+      if (isDirty) {
+        if (!window.confirm("You have unsaved changes. Discard and switch to Preview?")) return;
+        setEditedContent(rawContent);
+      }
+      setViewMode("review");
+    }, [isDirty, rawContent]);
     if (loading) {
       return /* @__PURE__ */ (0, import_jsx_runtime42.jsx)("div", { className: "flex items-center justify-center h-full", children: /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(Spinner, { size: "lg" }) });
     }
@@ -33726,7 +33774,7 @@
               "button",
               {
                 className: `mode-btn${viewMode === "review" ? " active" : ""}`,
-                onClick: () => setViewMode("review"),
+                onClick: handleSwitchToReview,
                 children: "Preview"
               }
             ),
@@ -33735,7 +33783,8 @@
               {
                 className: `mode-btn${viewMode === "source" ? " active" : ""}`,
                 onClick: () => setViewMode("source"),
-                children: "Source"
+                "aria-label": isDirty ? "Source (modified)" : void 0,
+                children: isDirty ? "Source \u25CF" : "Source"
               }
             ),
             viewMode === "source" && isDirty && /* @__PURE__ */ (0, import_jsx_runtime42.jsx)("button", { className: "save-btn", onClick: saveContent, disabled: saving, children: saving ? "Saving\u2026" : "Save" })
@@ -33877,14 +33926,18 @@
   // src/server/spa/client/react/tasks/TaskPreview.tsx
   var import_jsx_runtime43 = __toESM(require_jsx_runtime());
   function TaskPreview({ wsId, filePath }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime43.jsx)("div", { className: "flex h-full min-h-0 min-w-0 overflow-hidden", children: /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(
-      MarkdownReviewEditor,
-      {
-        wsId,
-        filePath,
-        fetchMode: "tasks"
-      }
-    ) });
+    const { setOpenFilePath } = useTaskPanel();
+    return /* @__PURE__ */ (0, import_jsx_runtime43.jsxs)("div", { className: "flex flex-col h-full min-h-0 min-w-0 overflow-hidden", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime43.jsx)("div", { className: "flex-shrink-0 flex items-center justify-end gap-1 px-2 py-1 border-b border-[#e0e0e0] dark:border-[#3c3c3c]", children: /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(Button, { variant: "ghost", size: "sm", className: "task-preview-close", onClick: () => setOpenFilePath(null), "aria-label": "Close preview", children: "\u2715" }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime43.jsx)("div", { className: "flex-1 min-h-0 overflow-hidden", children: /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(
+        MarkdownReviewEditor,
+        {
+          wsId,
+          filePath,
+          fetchMode: "tasks"
+        }
+      ) })
+    ] });
   }
 
   // src/server/spa/client/react/tasks/TaskActions.tsx
@@ -33895,7 +33948,7 @@
       });
     }
   }
-  function TaskActions({ wsId, openFilePath, selectedFilePaths, tasksFolderPath, selectedFolderPath, onClearSelection, onGenerateWithAI }) {
+  function TaskActions({ wsId, openFilePath, selectedFilePaths, tasksFolderPath, selectedFolderPath, onClearSelection, onGenerateWithAI, noBorder }) {
     const { showContextFiles, toggleShowContextFiles } = useTaskPanel();
     const { dispatch: queueDispatch } = useQueue();
     const nonContextSelected = selectedFilePaths.filter((p) => {
@@ -33919,7 +33972,7 @@
       } catch {
       }
     };
-    return /* @__PURE__ */ (0, import_jsx_runtime44.jsxs)("div", { className: "flex items-center gap-2 px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c] text-xs", children: [
+    return /* @__PURE__ */ (0, import_jsx_runtime44.jsxs)("div", { className: `flex items-center gap-2 px-3 py-2 text-xs ${noBorder ? "" : "border-b border-[#e0e0e0] dark:border-[#3c3c3c]"}`, children: [
       /* @__PURE__ */ (0, import_jsx_runtime44.jsx)(Button, { variant: "secondary", size: "sm", "data-testid": "generate-with-ai-btn", onClick: onGenerateWithAI, children: "\u2728 Generate with AI" }),
       openFilePath && /* @__PURE__ */ (0, import_jsx_runtime44.jsxs)(import_jsx_runtime44.Fragment, { children: [
         /* @__PURE__ */ (0, import_jsx_runtime44.jsx)(Button, { variant: "ghost", size: "sm", onClick: handleCopyPath, children: "Copy path" }),
@@ -33960,6 +34013,7 @@
   // src/server/spa/client/react/tasks/FolderActionDialog.tsx
   var import_react46 = __toESM(require_react());
   var import_jsx_runtime45 = __toESM(require_jsx_runtime());
+  var DOC_TYPES = ["", "plan", "spec", "test", "notes", "todo", "design", "impl", "review"];
   function FolderActionDialog({
     open,
     title,
@@ -33967,18 +34021,23 @@
     initialValue,
     placeholder,
     confirmLabel,
+    showDocType,
     submitting,
     onClose,
     onConfirm
   }) {
     const [name, setName] = (0, import_react46.useState)(initialValue);
+    const [docType, setDocType] = (0, import_react46.useState)("");
     (0, import_react46.useEffect)(() => {
-      if (open) setName(initialValue);
+      if (open) {
+        setName(initialValue);
+        setDocType("");
+      }
     }, [open, initialValue]);
     const handleConfirm = (0, import_react46.useCallback)(() => {
       const trimmed = name.trim();
-      if (trimmed) onConfirm(trimmed);
-    }, [name, onConfirm]);
+      if (trimmed) onConfirm(trimmed, showDocType ? docType || void 0 : void 0);
+    }, [name, docType, showDocType, onConfirm]);
     const handleKeyDown = (0, import_react46.useCallback)(
       (e) => {
         if (e.key === "Enter") {
@@ -33991,18 +34050,26 @@
     return /* @__PURE__ */ (0, import_jsx_runtime45.jsx)(
       Dialog,
       {
+        id: "task-input-dialog-overlay",
         open,
         onClose,
         title,
-        footer: /* @__PURE__ */ (0, import_jsx_runtime45.jsxs)(import_jsx_runtime45.Fragment, { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime45.jsx)(Button, { variant: "secondary", onClick: onClose, children: "Cancel" }),
+        footer: /* @__PURE__ */ (0, import_jsx_runtime45.jsxs)("form", { id: "task-dialog-form", "data-testid": "task-dialog-form", onSubmit: (e) => {
+          e.preventDefault();
+          handleConfirm();
+        }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime45.jsx)(Button, { variant: "secondary", type: "button", onClick: onClose, children: "Cancel" }),
           /* @__PURE__ */ (0, import_jsx_runtime45.jsx)(
             Button,
             {
               variant: "primary",
+              type: "submit",
               loading: submitting,
               disabled: !name.trim(),
-              onClick: handleConfirm,
+              onClick: (e) => {
+                e.preventDefault();
+                handleConfirm();
+              },
               children: confirmLabel
             }
           )
@@ -34021,7 +34088,24 @@
               autoFocus: true,
               "data-testid": "folder-action-input"
             }
-          )
+          ),
+          showDocType && /* @__PURE__ */ (0, import_jsx_runtime45.jsxs)(import_jsx_runtime45.Fragment, { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime45.jsx)("label", { className: "text-xs text-[#616161] dark:text-[#999] mt-1", children: "Document type" }),
+            /* @__PURE__ */ (0, import_jsx_runtime45.jsxs)(
+              "select",
+              {
+                id: "task-dialog-doctype",
+                "data-testid": "task-dialog-doctype",
+                className: "w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:border-[#0078d4]",
+                value: docType,
+                onChange: (e) => setDocType(e.target.value),
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime45.jsx)("option", { value: "", children: "(none)" }),
+                  DOC_TYPES.filter(Boolean).map((dt) => /* @__PURE__ */ (0, import_jsx_runtime45.jsx)("option", { value: dt, children: dt }, dt))
+                ]
+              }
+            )
+          ] })
         ] })
       }
     );
@@ -34983,11 +35067,11 @@
         setFolderDialog((s) => ({ ...s, submitting: false }));
       }
     }, [folderDialog.folder, folderActions, refresh, closeFolderDialog, addToast]);
-    const handleCreateTask = (0, import_react52.useCallback)(async (taskName) => {
+    const handleCreateTask = (0, import_react52.useCallback)(async (taskName, docType) => {
       if (!folderDialog.folder) return;
       setFolderDialog((s) => ({ ...s, submitting: true }));
       try {
-        await folderActions.createTask(folderDialog.folder.relativePath, taskName);
+        await folderActions.createTask(folderDialog.folder.relativePath ?? "", taskName, docType);
         refresh();
         closeFolderDialog();
       } catch (err) {
@@ -35100,6 +35184,61 @@
             setFileMoveDialogOpen(true);
           }
         },
+        { separator: true, label: "", onClick: noop },
+        // ── Change Status (submenu) ──
+        ...isTaskDocument(ctxItem.item) || isTaskDocumentGroup(ctxItem.item) ? [
+          {
+            label: "Change Status",
+            icon: "\u{1F4CC}",
+            onClick: noop,
+            children: [
+              { label: "Pending", icon: "\u23F3", onClick: () => {
+                setFileCtxMenu(null);
+                (async () => {
+                  try {
+                    for (const p of ctxItem.paths) await fileActions.updateStatus(p, "pending");
+                    refresh();
+                  } catch (err) {
+                    addToast(err.message || "Status update failed", "error");
+                  }
+                })();
+              } },
+              { label: "In Progress", icon: "\u{1F504}", onClick: () => {
+                setFileCtxMenu(null);
+                (async () => {
+                  try {
+                    for (const p of ctxItem.paths) await fileActions.updateStatus(p, "in-progress");
+                    refresh();
+                  } catch (err) {
+                    addToast(err.message || "Status update failed", "error");
+                  }
+                })();
+              } },
+              { label: "Done", icon: "\u2705", onClick: () => {
+                setFileCtxMenu(null);
+                (async () => {
+                  try {
+                    for (const p of ctxItem.paths) await fileActions.updateStatus(p, "done");
+                    refresh();
+                  } catch (err) {
+                    addToast(err.message || "Status update failed", "error");
+                  }
+                })();
+              } },
+              { label: "Future", icon: "\u{1F4CB}", onClick: () => {
+                setFileCtxMenu(null);
+                (async () => {
+                  try {
+                    for (const p of ctxItem.paths) await fileActions.updateStatus(p, "future");
+                    refresh();
+                  } catch (err) {
+                    addToast(err.message || "Status update failed", "error");
+                  }
+                })();
+              } }
+            ]
+          }
+        ] : [],
         { separator: true, label: "", onClick: noop },
         // ── Danger ──
         {
@@ -35225,23 +35364,48 @@
       ];
     })() : [];
     return /* @__PURE__ */ (0, import_jsx_runtime50.jsxs)("div", { className: "flex flex-col h-full", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime50.jsx)(
-        TaskActions,
-        {
-          wsId,
-          openFilePath,
-          selectedFilePaths: Array.from(selectedFilePaths),
-          tasksFolderPath: ".vscode/tasks",
-          selectedFolderPath,
-          onClearSelection: clearSelection,
-          onGenerateWithAI: () => setGenerateDialog({ open: true, targetFolder: void 0 })
-        }
-      ),
+      /* @__PURE__ */ (0, import_jsx_runtime50.jsxs)("div", { className: "repo-tasks-toolbar flex items-center gap-2 px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime50.jsx)(
+          Button,
+          {
+            variant: "primary",
+            size: "sm",
+            id: "repo-tasks-new-btn",
+            "data-testid": "repo-tasks-new-btn",
+            onClick: () => setFolderDialog({ action: "create-task", folder: tree, submitting: false }),
+            children: "+ New Task"
+          }
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime50.jsx)(
+          Button,
+          {
+            variant: "secondary",
+            size: "sm",
+            id: "repo-tasks-folder-btn",
+            "data-testid": "repo-tasks-folder-btn",
+            onClick: () => setFolderDialog({ action: "create-subfolder", folder: tree, submitting: false }),
+            children: "+ New Folder"
+          }
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime50.jsx)("div", { className: "flex-1 min-w-0", children: /* @__PURE__ */ (0, import_jsx_runtime50.jsx)(
+          TaskActions,
+          {
+            wsId,
+            openFilePath,
+            selectedFilePaths: Array.from(selectedFilePaths),
+            tasksFolderPath: ".vscode/tasks",
+            selectedFolderPath,
+            onClearSelection: clearSelection,
+            onGenerateWithAI: () => setGenerateDialog({ open: true, targetFolder: void 0 }),
+            noBorder: true
+          }
+        ) })
+      ] }),
       /* @__PURE__ */ (0, import_jsx_runtime50.jsx)(
         "div",
         {
           ref: scrollRef,
-          className: "flex-1 overflow-x-auto overflow-y-hidden min-h-0 min-w-0",
+          className: "miller-columns flex-1 overflow-x-auto overflow-y-hidden min-h-0 min-w-0",
           "data-testid": "tasks-miller-scroll-container",
           children: /* @__PURE__ */ (0, import_jsx_runtime50.jsxs)("div", { className: "flex h-full min-h-0 w-max min-w-full", children: [
             /* @__PURE__ */ (0, import_jsx_runtime50.jsx)("div", { className: "flex-shrink-0 h-full min-h-0", children: /* @__PURE__ */ (0, import_jsx_runtime50.jsx)(
@@ -35363,14 +35527,15 @@
         FolderActionDialog,
         {
           open: true,
-          title: "Create Task in Folder",
+          title: folderDialog.folder.relativePath ? "Create Task in Folder" : "Create Task",
           label: "Task name",
           initialValue: "",
           placeholder: "Enter task name",
           confirmLabel: "Create",
+          showDocType: true,
           submitting: folderDialog.submitting,
           onClose: closeFolderDialog,
-          onConfirm: handleCreateTask
+          onConfirm: (name, docType) => handleCreateTask(name, docType)
         }
       ),
       folderDialog.action === "delete" && folderDialog.folder && /* @__PURE__ */ (0, import_jsx_runtime50.jsxs)(
@@ -36411,7 +36576,7 @@
       onRefresh();
     };
     return /* @__PURE__ */ (0, import_jsx_runtime54.jsxs)("div", { id: "repo-detail-content", className: "flex flex-col h-full min-h-0 min-w-0", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime54.jsxs)("div", { className: "flex items-center gap-3 px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c]", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime54.jsxs)("div", { className: "repo-detail-header flex items-center gap-3 px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c]", children: [
         /* @__PURE__ */ (0, import_jsx_runtime54.jsx)(
           "span",
           {
@@ -36420,8 +36585,8 @@
           }
         ),
         /* @__PURE__ */ (0, import_jsx_runtime54.jsx)("h1", { className: "text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc] flex-1", children: ws.name }),
-        /* @__PURE__ */ (0, import_jsx_runtime54.jsx)(Button, { variant: "secondary", size: "sm", onClick: () => setEditOpen(true), children: "Edit" }),
-        /* @__PURE__ */ (0, import_jsx_runtime54.jsx)(Button, { variant: "danger", size: "sm", onClick: handleRemove, children: "Remove" })
+        /* @__PURE__ */ (0, import_jsx_runtime54.jsx)(Button, { variant: "secondary", size: "sm", id: "repo-edit-btn", "data-testid": "repo-edit-btn", onClick: () => setEditOpen(true), children: "Edit" }),
+        /* @__PURE__ */ (0, import_jsx_runtime54.jsx)(Button, { variant: "danger", size: "sm", id: "repo-remove-btn", "data-testid": "repo-remove-btn", onClick: handleRemove, children: "Remove" })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime54.jsx)("div", { className: "flex border-b border-[#e0e0e0] dark:border-[#3c3c3c] px-4", children: SUB_TABS.map((t) => /* @__PURE__ */ (0, import_jsx_runtime54.jsxs)(
         "button",
@@ -36441,7 +36606,7 @@
         },
         t.key
       )) }),
-      /* @__PURE__ */ (0, import_jsx_runtime54.jsx)("div", { className: "flex-1 min-h-0 min-w-0 overflow-hidden", children: activeSubTab === "tasks" ? /* @__PURE__ */ (0, import_jsx_runtime54.jsx)(TasksPanel, { wsId: ws.id }) : /* @__PURE__ */ (0, import_jsx_runtime54.jsxs)("div", { className: "h-full overflow-y-auto min-w-0", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime54.jsx)("div", { id: "repo-sub-tab-content", className: "flex-1 min-h-0 min-w-0 overflow-hidden", children: activeSubTab === "tasks" ? /* @__PURE__ */ (0, import_jsx_runtime54.jsx)(TasksPanel, { wsId: ws.id }) : /* @__PURE__ */ (0, import_jsx_runtime54.jsxs)("div", { className: "h-full overflow-y-auto min-w-0", children: [
         activeSubTab === "info" && /* @__PURE__ */ (0, import_jsx_runtime54.jsx)(RepoInfoTab, { repo }),
         activeSubTab === "pipelines" && /* @__PURE__ */ (0, import_jsx_runtime54.jsx)(PipelinesTab, { repo }),
         activeSubTab === "queue" && /* @__PURE__ */ (0, import_jsx_runtime54.jsx)(RepoQueueTab, { workspaceId: ws.id }),
@@ -36527,7 +36692,10 @@
         if (msg.type === "pipelines-changed" && msg.workspaceId) {
           refreshPipelinesForWorkspace(msg.workspaceId);
         }
-      }, [refreshPipelinesForWorkspace])
+        if (msg.type === "process-added" || msg.type === "process-updated" || msg.type === "process-removed") {
+          fetchRepos();
+        }
+      }, [refreshPipelinesForWorkspace, fetchRepos])
     });
     (0, import_react57.useEffect)(() => {
       fetchRepos();
@@ -36552,12 +36720,12 @@
           children: /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(ReposGrid, { repos, onRefresh: fetchRepos })
         }
       ),
-      /* @__PURE__ */ (0, import_jsx_runtime55.jsx)("main", { className: "flex-1 min-w-0 min-h-0 flex flex-col bg-white dark:bg-[#1e1e1e] overflow-hidden", children: selectedRepo ? /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(RepoDetail, { repo: selectedRepo, repos, onRefresh: fetchRepos }) : /* @__PURE__ */ (0, import_jsx_runtime55.jsx)("div", { className: "flex-1 flex items-center justify-center text-sm text-[#848484]", children: "\u{1F448} Select a repository to view details" }) })
+      /* @__PURE__ */ (0, import_jsx_runtime55.jsx)("main", { className: "flex-1 min-w-0 min-h-0 flex flex-col bg-white dark:bg-[#1e1e1e] overflow-hidden", children: selectedRepo ? /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(RepoDetail, { repo: selectedRepo, repos, onRefresh: fetchRepos }) : /* @__PURE__ */ (0, import_jsx_runtime55.jsx)("div", { id: "repo-detail-empty", "data-testid": "repo-detail-empty", className: "flex-1 flex items-center justify-center text-sm text-[#848484]", children: "\u{1F448} Select a repository to view details" }) })
     ] });
   }
 
   // src/server/spa/client/react/wiki/WikiList.tsx
-  var import_react61 = __toESM(require_react());
+  var import_react62 = __toESM(require_react());
 
   // src/server/spa/client/react/hooks/useWiki.ts
   var import_react58 = __toESM(require_react());
@@ -36586,7 +36754,11 @@
   // src/server/spa/client/react/wiki/AddWikiDialog.tsx
   var import_react59 = __toESM(require_react());
   var import_jsx_runtime56 = __toESM(require_jsx_runtime());
-  var COLOR_PRESETS = ["#3b82f6", "#ef4444", "#22c55e", "#f59e0b", "#8b5cf6", "#ec4899", "#848484"];
+  var COLOR_PRESETS = ["#3b82f6", "#ef4444", "#22c55e", "#f59e0b", "#8b5cf6", "#ec4899", "#848484", "#16825d"];
+  function slugify(name) {
+    const s = name.trim().toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+    return s || "wiki-" + Date.now();
+  }
   function AddWikiDialog({ open, onClose, onAdded }) {
     const [name, setName] = (0, import_react59.useState)("");
     const [repoPath, setRepoPath] = (0, import_react59.useState)("");
@@ -36605,10 +36777,11 @@
       setSubmitting(true);
       setError("");
       try {
+        const id = slugify(name.trim());
         const res = await fetch(getApiBase() + "/wikis", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: name.trim(), repoPath: repoPath.trim(), color })
+          body: JSON.stringify({ id, name: name.trim(), repoPath: repoPath.trim(), color })
         });
         if (!res.ok) {
           const body = await res.json().catch(() => ({ error: "Failed to create wiki" }));
@@ -36629,12 +36802,13 @@
     return /* @__PURE__ */ (0, import_jsx_runtime56.jsx)(
       Dialog,
       {
+        id: "add-wiki-overlay",
         open,
         onClose,
         title: "Add Wiki",
         footer: /* @__PURE__ */ (0, import_jsx_runtime56.jsxs)(import_jsx_runtime56.Fragment, { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime56.jsx)(Button, { variant: "secondary", onClick: onClose, children: "Cancel" }),
-          /* @__PURE__ */ (0, import_jsx_runtime56.jsx)(Button, { loading: submitting, onClick: handleSubmit, children: "Create" })
+          /* @__PURE__ */ (0, import_jsx_runtime56.jsx)(Button, { variant: "secondary", id: "add-wiki-cancel-btn", onClick: onClose, children: "Cancel" }),
+          /* @__PURE__ */ (0, import_jsx_runtime56.jsx)(Button, { loading: submitting, id: "add-wiki-submit", onClick: handleSubmit, children: "Create" })
         ] }),
         children: /* @__PURE__ */ (0, import_jsx_runtime56.jsxs)("div", { className: "space-y-3", children: [
           /* @__PURE__ */ (0, import_jsx_runtime56.jsxs)("div", { children: [
@@ -36642,6 +36816,7 @@
             /* @__PURE__ */ (0, import_jsx_runtime56.jsx)(
               "input",
               {
+                id: "wiki-name",
                 className: "w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4]",
                 value: name,
                 onChange: (e) => {
@@ -36657,6 +36832,7 @@
             /* @__PURE__ */ (0, import_jsx_runtime56.jsx)(
               "input",
               {
+                id: "wiki-path",
                 className: "w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4]",
                 value: repoPath,
                 onChange: (e) => {
@@ -36669,16 +36845,16 @@
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime56.jsxs)("div", { children: [
             /* @__PURE__ */ (0, import_jsx_runtime56.jsx)("label", { className: "block text-xs font-medium mb-1", children: "Color" }),
-            /* @__PURE__ */ (0, import_jsx_runtime56.jsx)("div", { className: "flex gap-2", children: COLOR_PRESETS.map((c) => /* @__PURE__ */ (0, import_jsx_runtime56.jsx)(
-              "button",
+            /* @__PURE__ */ (0, import_jsx_runtime56.jsx)(
+              "select",
               {
-                className: `w-6 h-6 rounded-full border-2 transition-all ${color === c ? "border-[#0078d4] scale-110" : "border-transparent"}`,
-                style: { background: c },
-                onClick: () => setColor(c),
-                type: "button"
-              },
-              c
-            )) })
+                id: "wiki-color",
+                className: "w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4]",
+                value: color,
+                onChange: (e) => setColor(e.target.value),
+                children: COLOR_PRESETS.map((c) => /* @__PURE__ */ (0, import_jsx_runtime56.jsx)("option", { value: c, children: c }, c))
+              }
+            )
           ] }),
           error && /* @__PURE__ */ (0, import_jsx_runtime56.jsx)("p", { className: "text-xs text-[#f14c4c]", children: error })
         ] })
@@ -36724,12 +36900,13 @@
     return /* @__PURE__ */ (0, import_jsx_runtime57.jsx)(
       Dialog,
       {
+        id: "edit-wiki-overlay",
         open,
         onClose,
         title: "Edit Wiki",
         footer: /* @__PURE__ */ (0, import_jsx_runtime57.jsxs)(import_jsx_runtime57.Fragment, { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime57.jsx)(Button, { variant: "secondary", onClick: onClose, children: "Cancel" }),
-          /* @__PURE__ */ (0, import_jsx_runtime57.jsx)(Button, { loading: submitting, onClick: handleSubmit, children: "Save" })
+          /* @__PURE__ */ (0, import_jsx_runtime57.jsx)(Button, { variant: "secondary", id: "edit-wiki-cancel-btn", onClick: onClose, children: "Cancel" }),
+          /* @__PURE__ */ (0, import_jsx_runtime57.jsx)(Button, { loading: submitting, id: "edit-wiki-submit", onClick: handleSubmit, children: "Save" })
         ] }),
         children: /* @__PURE__ */ (0, import_jsx_runtime57.jsxs)("div", { className: "space-y-3", children: [
           /* @__PURE__ */ (0, import_jsx_runtime57.jsxs)("div", { children: [
@@ -36737,6 +36914,7 @@
             /* @__PURE__ */ (0, import_jsx_runtime57.jsx)(
               "input",
               {
+                id: "edit-wiki-name",
                 className: "w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4]",
                 value: name,
                 onChange: (e) => {
@@ -36776,8 +36954,45 @@
     );
   }
 
-  // src/server/spa/client/react/wiki/WikiList.tsx
+  // src/server/spa/client/react/wiki/DeleteWikiDialog.tsx
+  var import_react61 = __toESM(require_react());
   var import_jsx_runtime58 = __toESM(require_jsx_runtime());
+  function DeleteWikiDialog({ open, wiki, onClose, onDeleted }) {
+    const handleConfirm = (0, import_react61.useCallback)(async () => {
+      if (!wiki) return;
+      try {
+        const res = await fetch(getApiBase() + "/wikis/" + encodeURIComponent(wiki.id), { method: "DELETE" });
+        if (res.ok) {
+          onDeleted();
+          onClose();
+        }
+      } catch {
+      }
+    }, [wiki, onDeleted, onClose]);
+    if (!wiki) return null;
+    const wikiName = wiki.name || wiki.title || wiki.id;
+    return /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(
+      Dialog,
+      {
+        id: "delete-wiki-overlay",
+        open,
+        onClose,
+        title: "Delete Wiki",
+        footer: /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)(import_jsx_runtime58.Fragment, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(Button, { variant: "secondary", id: "delete-wiki-cancel-btn", onClick: onClose, children: "Cancel" }),
+          /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(Button, { variant: "danger", id: "delete-wiki-confirm", onClick: handleConfirm, children: "Delete" })
+        ] }),
+        children: /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)("p", { id: "delete-wiki-name", className: "text-sm", children: [
+          "Are you sure you want to delete ",
+          /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("strong", { children: wikiName }),
+          "? This cannot be undone."
+        ] })
+      }
+    );
+  }
+
+  // src/server/spa/client/react/wiki/WikiList.tsx
+  var import_jsx_runtime59 = __toESM(require_jsx_runtime());
   function getWikiStatus(wiki) {
     if (wiki.status) return wiki.status;
     if (wiki.loaded) return "loaded";
@@ -36816,70 +37031,65 @@
   function WikiList() {
     const { wikis, reload } = useWiki();
     const { dispatch } = useApp();
-    const [addOpen, setAddOpen] = (0, import_react61.useState)(false);
-    const [editWiki, setEditWiki] = (0, import_react61.useState)(null);
-    const [deleting, setDeleting] = (0, import_react61.useState)(null);
-    const selectWiki = (0, import_react61.useCallback)((wikiId) => {
+    const [addOpen, setAddOpen] = (0, import_react62.useState)(false);
+    const [editWiki, setEditWiki] = (0, import_react62.useState)(null);
+    const [deleteWiki, setDeleteWiki] = (0, import_react62.useState)(null);
+    const selectWiki = (0, import_react62.useCallback)((wikiId) => {
       dispatch({ type: "SELECT_WIKI", wikiId });
       location.hash = "#wiki/" + encodeURIComponent(wikiId);
     }, [dispatch]);
-    const setupWiki = (0, import_react61.useCallback)((wikiId) => {
+    const setupWiki = (0, import_react62.useCallback)((wikiId) => {
       dispatch({ type: "SELECT_WIKI_WITH_TAB", wikiId, tab: "admin" });
       location.hash = "#wiki/" + encodeURIComponent(wikiId) + "/admin";
     }, [dispatch]);
-    const handleDelete = (0, import_react61.useCallback)(async (wikiId) => {
-      if (!confirm("Are you sure you want to delete this wiki?")) return;
-      setDeleting(wikiId);
-      try {
-        const res = await fetch(getApiBase() + "/wikis/" + encodeURIComponent(wikiId), { method: "DELETE" });
-        if (res.ok) {
-          dispatch({ type: "REMOVE_WIKI", wikiId });
-        }
-      } catch {
-      }
-      setDeleting(null);
+    const handleDeleteClick = (0, import_react62.useCallback)((wiki) => {
+      setDeleteWiki(wiki);
+    }, []);
+    const handleDeleted = (0, import_react62.useCallback)((wikiId) => {
+      dispatch({ type: "REMOVE_WIKI", wikiId });
     }, [dispatch]);
-    return /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)("div", { className: "p-4 space-y-4", id: "view-wiki", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)("div", { className: "flex items-center justify-between", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("h2", { className: "text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc]", children: "Wikis" }),
-        /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(Button, { size: "sm", onClick: () => setAddOpen(true), children: "+ Add Wiki" })
+    return /* @__PURE__ */ (0, import_jsx_runtime59.jsxs)("div", { className: "p-4 space-y-4", id: "view-wiki", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime59.jsxs)("div", { className: "flex items-center justify-between", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime59.jsx)("h2", { className: "text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc]", children: "Wikis" }),
+        /* @__PURE__ */ (0, import_jsx_runtime59.jsx)(Button, { size: "sm", id: "wiki-list-add-btn", onClick: () => setAddOpen(true), children: "+ Add Wiki" })
       ] }),
-      wikis.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)("div", { className: "flex flex-col items-center justify-center py-16 text-center text-sm text-[#848484]", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("div", { className: "text-4xl mb-3", children: "\u{1F4DA}" }),
-        /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("p", { className: "mb-2", children: "No wikis registered." }),
-        /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("p", { className: "mb-4", children: 'Click "Add Wiki" to generate a wiki for a repository.' }),
-        /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(Button, { size: "sm", onClick: () => setAddOpen(true), children: "+ Add Wiki" })
-      ] }) : /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("div", { className: "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3", id: "wiki-card-list", children: wikis.map((wiki) => {
+      wikis.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime59.jsxs)("div", { id: "wiki-empty", className: "flex flex-col items-center justify-center py-16 text-center text-sm text-[#848484]", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime59.jsx)("div", { className: "text-4xl mb-3", children: "\u{1F4DA}" }),
+        /* @__PURE__ */ (0, import_jsx_runtime59.jsx)("p", { className: "mb-2", children: "No wikis yet" }),
+        /* @__PURE__ */ (0, import_jsx_runtime59.jsx)("p", { className: "mb-4", children: 'Click "Add Wiki" to generate a wiki for a repository.' }),
+        /* @__PURE__ */ (0, import_jsx_runtime59.jsx)(Button, { size: "sm", onClick: () => setAddOpen(true), children: "+ Add Wiki" })
+      ] }) : /* @__PURE__ */ (0, import_jsx_runtime59.jsx)("div", { className: "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3", id: "wiki-card-list", children: wikis.map((wiki) => {
         const status = getWikiStatus(wiki);
         const cfg = statusConfig[status];
         const name = wiki.name || wiki.title || wiki.id;
-        return /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)(
+        return /* @__PURE__ */ (0, import_jsx_runtime59.jsxs)(
           Card,
           {
-            className: "p-3 hover:shadow-md transition-shadow",
+            className: "wiki-card p-3 hover:shadow-md transition-shadow",
+            "data-wiki-id": wiki.id,
             onClick: () => selectWiki(wiki.id),
             children: [
-              /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)("div", { className: "flex items-center gap-2 mb-2", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(
+              /* @__PURE__ */ (0, import_jsx_runtime59.jsxs)("div", { className: "flex items-center gap-2 mb-2", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime59.jsx)(
                   "span",
                   {
                     className: "w-3 h-3 rounded-full flex-shrink-0",
                     style: { background: wiki.color || "#848484" }
                   }
                 ),
-                /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("span", { className: "font-medium text-sm text-[#1e1e1e] dark:text-[#cccccc] truncate flex-1", children: name }),
-                /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)(Badge, { status: cfg.badge, children: [
-                  status === "generating" && /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(Spinner, { size: "sm" }),
+                /* @__PURE__ */ (0, import_jsx_runtime59.jsx)("span", { className: "font-medium text-sm text-[#1e1e1e] dark:text-[#cccccc] truncate flex-1", children: name }),
+                /* @__PURE__ */ (0, import_jsx_runtime59.jsxs)(Badge, { status: cfg.badge, children: [
+                  status === "generating" && /* @__PURE__ */ (0, import_jsx_runtime59.jsx)(Spinner, { size: "sm" }),
                   cfg.label
                 ] })
               ] }),
-              /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)("div", { className: "flex items-center gap-2 text-xs text-[#848484]", children: [
-                status === "loaded" && typeof wiki.componentCount === "number" && /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)("span", { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime59.jsxs)("div", { className: "flex items-center gap-2 text-xs text-[#848484]", children: [
+                status === "loaded" && typeof wiki.componentCount === "number" && /* @__PURE__ */ (0, import_jsx_runtime59.jsxs)("span", { children: [
                   wiki.componentCount,
                   " components"
                 ] }),
-                wiki.generatedAt && /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("span", { children: relativeTime(wiki.generatedAt) }),
-                status === "pending" && /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(
+                wiki.generatedAt && /* @__PURE__ */ (0, import_jsx_runtime59.jsx)("span", { children: relativeTime(wiki.generatedAt) }),
+                status === "pending" && /* @__PURE__ */ (0, import_jsx_runtime59.jsx)(
                   Button,
                   {
                     size: "sm",
@@ -36893,38 +37103,34 @@
                   }
                 )
               ] }),
-              wiki.repoPath && /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(
+              wiki.repoPath && /* @__PURE__ */ (0, import_jsx_runtime59.jsx)(
                 "div",
                 {
                   className: "text-xs text-[#848484] truncate mt-1",
                   style: { direction: "rtl", textAlign: "left" },
                   title: wiki.repoPath,
-                  children: /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)("span", { style: { direction: "ltr", unicodeBidi: "embed" }, children: [
+                  children: /* @__PURE__ */ (0, import_jsx_runtime59.jsxs)("span", { style: { direction: "ltr", unicodeBidi: "embed" }, children: [
                     "\u{1F4C2} ",
                     shortenPath2(wiki.repoPath)
                   ] })
                 }
               ),
-              /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)("div", { className: "flex justify-end gap-1 mt-2", onClick: (e) => e.stopPropagation(), children: [
-                /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(
+              /* @__PURE__ */ (0, import_jsx_runtime59.jsxs)("div", { className: "flex justify-end gap-1 mt-2", onClick: (e) => e.stopPropagation(), children: [
+                /* @__PURE__ */ (0, import_jsx_runtime59.jsx)(
                   "button",
                   {
-                    className: "p-1 text-xs text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]",
+                    className: "wiki-card-edit p-1 text-xs text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]",
                     title: "Edit wiki",
                     onClick: () => setEditWiki(wiki),
                     children: "\u270F\uFE0F"
                   }
                 ),
-                /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(
+                /* @__PURE__ */ (0, import_jsx_runtime59.jsx)(
                   "button",
                   {
-                    className: cn(
-                      "p-1 text-xs text-[#848484] hover:text-[#f14c4c]",
-                      deleting === wiki.id && "opacity-50"
-                    ),
+                    className: "wiki-card-delete p-1 text-xs text-[#848484] hover:text-[#f14c4c]",
                     title: "Delete wiki",
-                    disabled: deleting === wiki.id,
-                    onClick: () => handleDelete(wiki.id),
+                    onClick: () => handleDeleteClick(wiki),
                     children: "\u{1F5D1}\uFE0F"
                   }
                 )
@@ -36934,8 +37140,8 @@
           wiki.id
         );
       }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(AddWikiDialog, { open: addOpen, onClose: () => setAddOpen(false), onAdded: reload }),
-      editWiki && /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime59.jsx)(AddWikiDialog, { open: addOpen, onClose: () => setAddOpen(false), onAdded: reload }),
+      editWiki && /* @__PURE__ */ (0, import_jsx_runtime59.jsx)(
         EditWikiDialog,
         {
           open: true,
@@ -36943,16 +37149,29 @@
           onClose: () => setEditWiki(null),
           onUpdated: reload
         }
+      ),
+      deleteWiki && /* @__PURE__ */ (0, import_jsx_runtime59.jsx)(
+        DeleteWikiDialog,
+        {
+          open: true,
+          wiki: deleteWiki,
+          onClose: () => setDeleteWiki(null),
+          onDeleted: () => {
+            handleDeleted(deleteWiki.id);
+            setDeleteWiki(null);
+            reload();
+          }
+        }
       )
     ] });
   }
 
   // src/server/spa/client/react/wiki/WikiDetail.tsx
-  var import_react67 = __toESM(require_react());
+  var import_react68 = __toESM(require_react());
 
   // src/server/spa/client/react/wiki/WikiComponentTree.tsx
-  var import_react62 = __toESM(require_react());
-  var import_jsx_runtime59 = __toESM(require_jsx_runtime());
+  var import_react63 = __toESM(require_react());
+  var import_jsx_runtime60 = __toESM(require_jsx_runtime());
   function buildGroups(graph) {
     if (graph.domains && graph.domains.length > 0) {
       const componentMap = /* @__PURE__ */ new Map();
@@ -36980,10 +37199,10 @@
     return Array.from(categoryMap.entries()).sort(([a], [b]) => a.localeCompare(b)).map(([cat, comps]) => ({ id: cat, name: cat, components: comps }));
   }
   function WikiComponentTree({ graph, selectedComponentId, onSelect }) {
-    const [filter, setFilter] = (0, import_react62.useState)("");
-    const [collapsed, setCollapsed] = (0, import_react62.useState)(/* @__PURE__ */ new Set());
-    const groups = (0, import_react62.useMemo)(() => buildGroups(graph), [graph]);
-    const filteredGroups = (0, import_react62.useMemo)(() => {
+    const [filter, setFilter] = (0, import_react63.useState)("");
+    const [collapsed, setCollapsed] = (0, import_react63.useState)(/* @__PURE__ */ new Set());
+    const groups = (0, import_react63.useMemo)(() => buildGroups(graph), [graph]);
+    const filteredGroups = (0, import_react63.useMemo)(() => {
       if (!filter.trim()) return groups;
       const q = filter.toLowerCase();
       return groups.map((g) => ({
@@ -36999,8 +37218,8 @@
         return next;
       });
     };
-    return /* @__PURE__ */ (0, import_jsx_runtime59.jsxs)("div", { id: "wiki-component-tree", className: "flex flex-col h-full text-sm", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime59.jsx)("div", { className: "p-2", children: /* @__PURE__ */ (0, import_jsx_runtime59.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime60.jsxs)("div", { id: "wiki-component-tree", className: "flex flex-col h-full text-sm", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime60.jsx)("div", { className: "p-2", children: /* @__PURE__ */ (0, import_jsx_runtime60.jsx)(
         "input",
         {
           className: "w-full px-2 py-1 text-xs rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4]",
@@ -37009,20 +37228,20 @@
           onChange: (e) => setFilter(e.target.value)
         }
       ) }),
-      /* @__PURE__ */ (0, import_jsx_runtime59.jsxs)("div", { className: "flex-1 overflow-y-auto", children: [
-        filteredGroups.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime59.jsx)("div", { className: "wiki-tree-empty px-3 py-2 text-xs text-[#848484]", children: "No components found" }),
+      /* @__PURE__ */ (0, import_jsx_runtime60.jsxs)("div", { className: "flex-1 overflow-y-auto", children: [
+        filteredGroups.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime60.jsx)("div", { className: "wiki-tree-empty px-3 py-2 text-xs text-[#848484]", children: "No components found" }),
         filteredGroups.map((group) => {
           const isCollapsed = collapsed.has(group.id);
-          return /* @__PURE__ */ (0, import_jsx_runtime59.jsxs)("div", { className: "wiki-tree-group", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime59.jsxs)(
+          return /* @__PURE__ */ (0, import_jsx_runtime60.jsxs)("div", { className: cn("wiki-tree-group", !isCollapsed && "expanded"), children: [
+            /* @__PURE__ */ (0, import_jsx_runtime60.jsxs)(
               "div",
               {
                 className: "wiki-tree-item flex items-center gap-1 px-3 py-1.5 cursor-pointer hover:bg-black/[0.04] dark:hover:bg-white/[0.04] select-none",
                 onClick: () => toggleGroup(group.id),
                 children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime59.jsx)("span", { className: cn("text-[10px] transition-transform", !isCollapsed && "rotate-90"), children: "\u25B6" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime59.jsx)("span", { className: "font-medium", children: group.name }),
-                  /* @__PURE__ */ (0, import_jsx_runtime59.jsxs)("span", { className: "wiki-tree-count text-xs text-[#848484] ml-auto", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime60.jsx)("span", { className: cn("text-[10px] transition-transform", !isCollapsed && "rotate-90"), children: "\u25B6" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime60.jsx)("span", { className: "font-medium", children: group.name }),
+                  /* @__PURE__ */ (0, import_jsx_runtime60.jsxs)("span", { className: "wiki-tree-count text-xs text-[#848484] ml-auto", children: [
                     "(",
                     group.components.length,
                     ")"
@@ -37030,7 +37249,7 @@
                 ]
               }
             ),
-            !isCollapsed && /* @__PURE__ */ (0, import_jsx_runtime59.jsx)("div", { className: "wiki-tree-children", children: group.components.map((comp) => /* @__PURE__ */ (0, import_jsx_runtime59.jsx)(
+            !isCollapsed && /* @__PURE__ */ (0, import_jsx_runtime60.jsx)("div", { className: "wiki-tree-children", children: group.components.map((comp) => /* @__PURE__ */ (0, import_jsx_runtime60.jsx)(
               "div",
               {
                 className: cn(
@@ -37051,8 +37270,8 @@
   }
 
   // src/server/spa/client/react/wiki/WikiComponent.tsx
-  var import_react63 = __toESM(require_react());
-  var import_jsx_runtime60 = __toESM(require_jsx_runtime());
+  var import_react64 = __toESM(require_react());
+  var import_jsx_runtime61 = __toESM(require_jsx_runtime());
   function preserveMermaidBlocks(md) {
     return md.replace(/```mermaid\n([\s\S]*?)```/g, (_match, code) => {
       const preserved = code.replace(/\n\n/g, "\n \n");
@@ -37060,18 +37279,19 @@
     });
   }
   function WikiComponent({ wikiId, componentId, graph, onSelectComponent }) {
-    const [html, setHtml] = (0, import_react63.useState)("");
-    const [loading, setLoading] = (0, import_react63.useState)(false);
-    const [toc, setToc] = (0, import_react63.useState)([]);
-    const [activeHeading, setActiveHeading] = (0, import_react63.useState)(null);
-    const contentRef = (0, import_react63.useRef)(null);
-    const scrollRef = (0, import_react63.useRef)(null);
-    const cacheRef = (0, import_react63.useRef)({});
-    const comp = (0, import_react63.useMemo)(
+    const [html, setHtml] = (0, import_react64.useState)("");
+    const [loading, setLoading] = (0, import_react64.useState)(false);
+    const [toc, setToc] = (0, import_react64.useState)([]);
+    const [activeHeading, setActiveHeading] = (0, import_react64.useState)(null);
+    const [sourceExpanded, setSourceExpanded] = (0, import_react64.useState)(false);
+    const contentRef = (0, import_react64.useRef)(null);
+    const scrollRef = (0, import_react64.useRef)(null);
+    const cacheRef = (0, import_react64.useRef)({});
+    const comp = (0, import_react64.useMemo)(
       () => graph.components.find((c) => c.id === componentId),
       [graph.components, componentId]
     );
-    (0, import_react63.useEffect)(() => {
+    (0, import_react64.useEffect)(() => {
       if (cacheRef.current[componentId]) {
         setHtml(cacheRef.current[componentId]);
         setLoading(false);
@@ -37090,7 +37310,7 @@
         }
       }).catch(() => setHtml('<p style="color:var(--status-failed)">Failed to load article</p>')).finally(() => setLoading(false));
     }, [wikiId, componentId]);
-    (0, import_react63.useEffect)(() => {
+    (0, import_react64.useEffect)(() => {
       if (!contentRef.current || !html) return;
       const container2 = contentRef.current;
       if (typeof hljs !== "undefined") {
@@ -37133,54 +37353,64 @@
       scrollContainer.addEventListener("scroll", onScroll);
       return () => scrollContainer.removeEventListener("scroll", onScroll);
     }, [html]);
-    (0, import_react63.useEffect)(() => {
+    (0, import_react64.useEffect)(() => {
       const container2 = contentRef.current;
       if (!container2) return;
       const handleClick = (e) => {
         const anchor = e.target.closest("a");
         if (!anchor) return;
         const href = anchor.getAttribute("href");
-        if (!href || !href.startsWith("#") || href === "#") return;
-        const targetId = href.slice(1);
-        const target = container2.querySelector("#" + CSS.escape(targetId));
-        if (target) {
-          e.preventDefault();
-          target.scrollIntoView({ behavior: "smooth", block: "start" });
+        if (!href) return;
+        if (href.startsWith("#") && href !== "#") {
+          const targetId = href.slice(1);
+          const target = container2.querySelector("#" + CSS.escape(targetId));
+          if (target) {
+            e.preventDefault();
+            target.scrollIntoView({ behavior: "smooth", block: "start" });
+          }
+          return;
+        }
+        if (href.endsWith(".md")) {
+          const componentId2 = href.replace(/\.md$/, "");
+          if (graph.components.some((c) => c.id === componentId2) && onSelectComponent) {
+            e.preventDefault();
+            onSelectComponent(componentId2);
+          }
         }
       };
       container2.addEventListener("click", handleClick);
       return () => container2.removeEventListener("click", handleClick);
-    }, [html]);
+    }, [html, graph.components, onSelectComponent]);
     useMermaid(contentRef, html);
-    (0, import_react63.useEffect)(() => {
+    (0, import_react64.useEffect)(() => {
       if (scrollRef.current) {
         scrollRef.current.scrollTop = 0;
       }
     }, [componentId]);
-    const scrollToHeading = (0, import_react63.useCallback)((id) => {
+    const scrollToHeading = (0, import_react64.useCallback)((id) => {
       const el = contentRef.current?.querySelector("#" + CSS.escape(id));
       if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
     }, []);
     if (loading) {
-      return /* @__PURE__ */ (0, import_jsx_runtime60.jsx)("div", { className: "flex items-center justify-center h-full", children: /* @__PURE__ */ (0, import_jsx_runtime60.jsx)(Spinner, { size: "lg" }) });
+      return /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("div", { className: "flex items-center justify-center h-full", children: /* @__PURE__ */ (0, import_jsx_runtime61.jsx)(Spinner, { size: "lg" }) });
     }
     const complexityColors = {
       low: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
       medium: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400",
       high: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
     };
-    return /* @__PURE__ */ (0, import_jsx_runtime60.jsx)("div", { className: "h-full overflow-y-auto", ref: scrollRef, id: "wiki-article-content", children: /* @__PURE__ */ (0, import_jsx_runtime60.jsxs)("div", { className: "flex items-start", id: "wiki-content-scroll", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime60.jsxs)("div", { className: "flex-1 min-w-0 p-4 wiki-content-scroll", children: [
-        comp && /* @__PURE__ */ (0, import_jsx_runtime60.jsxs)("div", { className: "mb-4 space-y-2", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime60.jsxs)("div", { className: "flex items-center gap-2 flex-wrap", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime60.jsx)("h2", { className: "text-lg font-semibold text-[#1e1e1e] dark:text-[#cccccc]", children: comp.name }),
-            comp.complexity && /* @__PURE__ */ (0, import_jsx_runtime60.jsx)("span", { className: cn("text-[10px] px-1.5 py-0.5 rounded font-medium", complexityColors[comp.complexity]), children: comp.complexity }),
-            /* @__PURE__ */ (0, import_jsx_runtime60.jsx)("span", { className: "text-xs text-[#848484]", children: comp.category })
+    return /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("div", { className: "h-full overflow-y-auto", ref: scrollRef, id: "wiki-article-content", children: /* @__PURE__ */ (0, import_jsx_runtime61.jsxs)("div", { className: "flex items-start", id: "wiki-content-scroll", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime61.jsxs)("div", { className: "flex-1 min-w-0 p-4 wiki-content-scroll", children: [
+        comp && /* @__PURE__ */ (0, import_jsx_runtime61.jsxs)("div", { className: "mb-4 space-y-2", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime61.jsxs)("div", { className: "flex items-center gap-2 flex-wrap", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("h2", { className: "text-lg font-semibold text-[#1e1e1e] dark:text-[#cccccc]", children: comp.name }),
+            comp.complexity && /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("span", { className: cn("text-[10px] px-1.5 py-0.5 rounded font-medium", complexityColors[comp.complexity]), children: comp.complexity }),
+            /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("span", { className: "text-xs text-[#848484]", children: comp.category })
           ] }),
-          comp.purpose && /* @__PURE__ */ (0, import_jsx_runtime60.jsx)("p", { className: "text-xs text-[#848484]", children: comp.purpose }),
-          comp.dependencies && comp.dependencies.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime60.jsxs)("div", { className: "flex items-center gap-1 flex-wrap", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime60.jsx)("span", { className: "text-[10px] text-[#848484]", children: "Depends on:" }),
-            comp.dependencies.map((dep) => /* @__PURE__ */ (0, import_jsx_runtime60.jsx)(
+          comp.purpose && /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("p", { className: "text-xs text-[#848484]", children: comp.purpose }),
+          comp.dependencies && comp.dependencies.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime61.jsxs)("div", { className: "flex items-center gap-1 flex-wrap", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("span", { className: "text-[10px] text-[#848484]", children: "Depends on:" }),
+            comp.dependencies.map((dep) => /* @__PURE__ */ (0, import_jsx_runtime61.jsx)(
               "button",
               {
                 className: "text-[10px] px-1.5 py-0.5 rounded bg-[#0078d4]/10 text-[#0078d4] hover:bg-[#0078d4]/20",
@@ -37190,9 +37420,9 @@
               dep
             ))
           ] }),
-          comp.dependents && comp.dependents.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime60.jsxs)("div", { className: "flex items-center gap-1 flex-wrap", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime60.jsx)("span", { className: "text-[10px] text-[#848484]", children: "Used by:" }),
-            comp.dependents.map((dep) => /* @__PURE__ */ (0, import_jsx_runtime60.jsx)(
+          comp.dependents && comp.dependents.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime61.jsxs)("div", { className: "flex items-center gap-1 flex-wrap", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("span", { className: "text-[10px] text-[#848484]", children: "Used by:" }),
+            comp.dependents.map((dep) => /* @__PURE__ */ (0, import_jsx_runtime61.jsx)(
               "button",
               {
                 className: "text-[10px] px-1.5 py-0.5 rounded bg-[#0078d4]/10 text-[#0078d4] hover:bg-[#0078d4]/20",
@@ -37201,9 +37431,34 @@
               },
               dep
             ))
-          ] })
+          ] }),
+          comp.keyFiles && comp.keyFiles.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime61.jsxs)(
+            "div",
+            {
+              id: "wiki-source-files",
+              className: cn("rounded border border-[#e0e0e0] dark:border-[#3c3c3c] overflow-hidden", sourceExpanded && "expanded"),
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime61.jsxs)(
+                  "button",
+                  {
+                    id: "wiki-source-toggle",
+                    className: "w-full flex items-center justify-between px-3 py-2 text-left text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc] bg-[#f5f5f5] dark:bg-[#2d2d2d] hover:bg-[#eee] dark:hover:bg-[#333]",
+                    onClick: () => setSourceExpanded((v) => !v),
+                    children: [
+                      "Key files",
+                      /* @__PURE__ */ (0, import_jsx_runtime61.jsxs)("span", { className: "text-[10px] text-[#848484]", children: [
+                        comp.keyFiles.length,
+                        " files"
+                      ] })
+                    ]
+                  }
+                ),
+                sourceExpanded && /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("div", { className: "px-3 py-2 flex flex-wrap gap-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]", children: comp.keyFiles.map((f) => /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("span", { className: "source-pill text-[10px] px-2 py-0.5 rounded bg-[#e0e0e0] dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]", children: f }, f)) })
+              ]
+            }
+          )
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime60.jsx)(
+        /* @__PURE__ */ (0, import_jsx_runtime61.jsx)(
           "div",
           {
             ref: contentRef,
@@ -37212,16 +37467,17 @@
           }
         )
       ] }),
-      toc.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime60.jsxs)("aside", { className: "wiki-toc-sidebar w-48 flex-shrink-0 border-l border-[#e0e0e0] dark:border-[#3c3c3c] p-3 hidden lg:block sticky top-0 max-h-screen overflow-y-auto", id: "wiki-toc-sidebar", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime60.jsx)("h4", { className: "text-[10px] font-semibold uppercase text-[#848484] mb-2", children: "On this page" }),
-        /* @__PURE__ */ (0, import_jsx_runtime60.jsx)("nav", { id: "wiki-toc-nav", className: "space-y-0.5", children: toc.map((item) => /* @__PURE__ */ (0, import_jsx_runtime60.jsx)(
+      toc.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime61.jsxs)("aside", { className: "wiki-toc-sidebar w-48 flex-shrink-0 border-l border-[#e0e0e0] dark:border-[#3c3c3c] p-3 hidden lg:block sticky top-0 max-h-screen overflow-y-auto", id: "wiki-toc-sidebar", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("h4", { className: "text-[10px] font-semibold uppercase text-[#848484] mb-2", children: "On this page" }),
+        /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("nav", { id: "wiki-toc-nav", className: "space-y-0.5", children: toc.map((item) => /* @__PURE__ */ (0, import_jsx_runtime61.jsx)(
           "a",
           {
             href: "#" + item.id,
             className: cn(
               "block text-xs py-0.5 truncate hover:text-[#0078d4]",
-              item.level >= 3 && "pl-3",
+              item.level >= 3 && "pl-3 toc-h3",
               item.level >= 4 && "pl-6",
+              activeHeading === item.id && "active",
               activeHeading === item.id ? "text-[#0078d4] font-medium" : "text-[#848484]"
             ),
             onClick: (e) => {
@@ -37237,8 +37493,8 @@
   }
 
   // src/server/spa/client/react/wiki/WikiGraph.tsx
-  var import_react64 = __toESM(require_react());
-  var import_jsx_runtime61 = __toESM(require_jsx_runtime());
+  var import_react65 = __toESM(require_react());
+  var import_jsx_runtime62 = __toESM(require_jsx_runtime());
   var D3_CDN_URL = "https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js";
   var CATEGORY_COLORS = [
     "#3b82f6",
@@ -37273,16 +37529,16 @@
     return CATEGORY_COLORS[idx % CATEGORY_COLORS.length];
   }
   function WikiGraph({ wikiId, graph, onSelectComponent }) {
-    const svgRef = (0, import_react64.useRef)(null);
-    const containerRef = (0, import_react64.useRef)(null);
-    const [loading, setLoading] = (0, import_react64.useState)(true);
-    const [error, setError] = (0, import_react64.useState)(null);
-    const [disabledCategories, setDisabledCategories] = (0, import_react64.useState)(/* @__PURE__ */ new Set());
-    const simulationRef = (0, import_react64.useRef)(null);
-    const nodeRef = (0, import_react64.useRef)(null);
-    const linkRef = (0, import_react64.useRef)(null);
-    const allCategories = (0, import_react64.useRef)([]);
-    (0, import_react64.useEffect)(() => {
+    const svgRef = (0, import_react65.useRef)(null);
+    const containerRef = (0, import_react65.useRef)(null);
+    const [loading, setLoading] = (0, import_react65.useState)(true);
+    const [error, setError] = (0, import_react65.useState)(null);
+    const [disabledCategories, setDisabledCategories] = (0, import_react65.useState)(/* @__PURE__ */ new Set());
+    const simulationRef = (0, import_react65.useRef)(null);
+    const nodeRef = (0, import_react65.useRef)(null);
+    const linkRef = (0, import_react65.useRef)(null);
+    const allCategories = (0, import_react65.useRef)([]);
+    (0, import_react65.useEffect)(() => {
       const cats = [];
       graph.components.forEach((m) => {
         if (!cats.includes(m.category)) cats.push(m.category);
@@ -37290,7 +37546,7 @@
       cats.sort();
       allCategories.current = cats;
     }, [graph]);
-    const renderGraph = (0, import_react64.useCallback)(() => {
+    const renderGraph = (0, import_react65.useCallback)(() => {
       const d3 = window.d3;
       if (!d3 || !svgRef.current || !containerRef.current) return;
       const svg = d3.select(svgRef.current);
@@ -37345,7 +37601,7 @@
       const zoom = d3.zoom().scaleExtent([0.1, 4]).on("zoom", (event) => g.attr("transform", event.transform));
       svg.call(zoom);
     }, [graph, onSelectComponent]);
-    (0, import_react64.useEffect)(() => {
+    (0, import_react65.useEffect)(() => {
       setLoading(true);
       setError(null);
       ensureD3().then(() => setLoading(false)).catch(() => {
@@ -37356,12 +37612,12 @@
         if (simulationRef.current) simulationRef.current.stop();
       };
     }, []);
-    (0, import_react64.useEffect)(() => {
+    (0, import_react65.useEffect)(() => {
       if (!loading && !error) {
         renderGraph();
       }
     }, [loading, error, renderGraph]);
-    (0, import_react64.useEffect)(() => {
+    (0, import_react65.useEffect)(() => {
       if (!nodeRef.current || !linkRef.current) return;
       nodeRef.current.style("display", (d) => disabledCategories.has(d.category) ? "none" : null);
       linkRef.current.style("display", (d) => {
@@ -37379,16 +37635,16 @@
       });
     };
     if (loading) {
-      return /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("div", { className: "flex items-center justify-center h-full", children: /* @__PURE__ */ (0, import_jsx_runtime61.jsx)(Spinner, { size: "lg" }) });
+      return /* @__PURE__ */ (0, import_jsx_runtime62.jsx)("div", { className: "flex items-center justify-center h-full", children: /* @__PURE__ */ (0, import_jsx_runtime62.jsx)(Spinner, { size: "lg" }) });
     }
     if (error) {
-      return /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("div", { className: "flex items-center justify-center h-full text-sm text-[#848484]", children: error });
+      return /* @__PURE__ */ (0, import_jsx_runtime62.jsx)("div", { className: "flex items-center justify-center h-full text-sm text-[#848484]", children: error });
     }
-    return /* @__PURE__ */ (0, import_jsx_runtime61.jsxs)("div", { ref: containerRef, className: "relative h-full w-full", id: "wiki-graph-container", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("svg", { ref: svgRef, className: "w-full h-full" }),
-      /* @__PURE__ */ (0, import_jsx_runtime61.jsxs)("div", { className: "absolute top-2 right-2 bg-white/90 dark:bg-[#252526]/90 border border-[#e0e0e0] dark:border-[#3c3c3c] rounded p-2 text-xs max-h-60 overflow-y-auto", id: "wiki-graph-legend", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("div", { className: "font-medium mb-1 text-[#1e1e1e] dark:text-[#cccccc]", children: "Categories" }),
-        allCategories.current.map((cat) => /* @__PURE__ */ (0, import_jsx_runtime61.jsxs)(
+    return /* @__PURE__ */ (0, import_jsx_runtime62.jsxs)("div", { ref: containerRef, className: "relative h-full w-full", id: "wiki-graph-container", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime62.jsx)("svg", { ref: svgRef, className: "w-full h-full" }),
+      /* @__PURE__ */ (0, import_jsx_runtime62.jsxs)("div", { className: "absolute top-2 right-2 bg-white/90 dark:bg-[#252526]/90 border border-[#e0e0e0] dark:border-[#3c3c3c] rounded p-2 text-xs max-h-60 overflow-y-auto", id: "wiki-graph-legend", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime62.jsx)("div", { className: "font-medium mb-1 text-[#1e1e1e] dark:text-[#cccccc]", children: "Categories" }),
+        allCategories.current.map((cat) => /* @__PURE__ */ (0, import_jsx_runtime62.jsxs)(
           "div",
           {
             className: cn(
@@ -37398,14 +37654,14 @@
             "data-category": cat,
             onClick: () => toggleCategory(cat),
             children: [
-              /* @__PURE__ */ (0, import_jsx_runtime61.jsx)(
+              /* @__PURE__ */ (0, import_jsx_runtime62.jsx)(
                 "div",
                 {
                   className: "wiki-graph-legend-swatch w-3 h-3 rounded-full flex-shrink-0",
                   style: { background: getCategoryColor(cat, allCategories.current) }
                 }
               ),
-              /* @__PURE__ */ (0, import_jsx_runtime61.jsx)("span", { children: cat })
+              /* @__PURE__ */ (0, import_jsx_runtime62.jsx)("span", { children: cat })
             ]
           },
           cat
@@ -37415,30 +37671,45 @@
   }
 
   // src/server/spa/client/react/wiki/WikiAsk.tsx
-  var import_react65 = __toESM(require_react());
-  var import_jsx_runtime62 = __toESM(require_jsx_runtime());
+  var import_react66 = __toESM(require_react());
+  var import_jsx_runtime63 = __toESM(require_jsx_runtime());
   function WikiAsk({ wikiId, wikiName, currentComponentId }) {
-    const [messages, setMessages] = (0, import_react65.useState)([]);
-    const [input, setInput] = (0, import_react65.useState)("");
-    const [streaming, setStreaming] = (0, import_react65.useState)(false);
-    const [sessionId, setSessionId] = (0, import_react65.useState)(null);
-    const messagesEndRef = (0, import_react65.useRef)(null);
-    const historyRef = (0, import_react65.useRef)([]);
-    const scrollToBottom = (0, import_react65.useCallback)(() => {
+    const [messages, setMessages] = (0, import_react66.useState)([]);
+    const [input, setInput] = (0, import_react66.useState)("");
+    const [streaming, setStreaming] = (0, import_react66.useState)(false);
+    const [sessionId, setSessionId] = (0, import_react66.useState)(null);
+    const [isExpanded, setIsExpanded] = (0, import_react66.useState)(false);
+    const messagesEndRef = (0, import_react66.useRef)(null);
+    const historyRef = (0, import_react66.useRef)([]);
+    (0, import_react66.useEffect)(() => {
+      const onKeyDown = (e) => {
+        if (e.key === "i" && (e.ctrlKey || e.metaKey)) {
+          e.preventDefault();
+          setIsExpanded((v) => !v);
+        }
+        if (e.key === "Escape") {
+          setIsExpanded(false);
+        }
+      };
+      window.addEventListener("keydown", onKeyDown);
+      return () => window.removeEventListener("keydown", onKeyDown);
+    }, []);
+    const scrollToBottom = (0, import_react66.useCallback)(() => {
       if (messagesEndRef.current && typeof messagesEndRef.current.scrollIntoView === "function") {
         messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
       }
     }, []);
-    (0, import_react65.useEffect)(() => {
+    (0, import_react66.useEffect)(() => {
       scrollToBottom();
     }, [messages, scrollToBottom]);
-    const handleSend = (0, import_react65.useCallback)(async () => {
+    const handleSend = (0, import_react66.useCallback)(async () => {
       if (streaming || !input.trim()) return;
       const question = input.trim();
       setInput("");
       setMessages((prev) => [...prev, { role: "user", content: question }]);
       historyRef.current.push({ role: "user", content: question });
       setStreaming(true);
+      setIsExpanded(true);
       const requestBody = { question };
       if (sessionId) {
         requestBody.sessionId = sessionId;
@@ -37464,6 +37735,9 @@
           return;
         }
         const reader = response.body.getReader();
+        const done = () => {
+          setStreaming(false);
+        };
         const decoder = new TextDecoder();
         let buffer = "";
         let fullResponse = "";
@@ -37489,7 +37763,7 @@
               }
               return updated;
             });
-            setStreaming(false);
+            done();
             return;
           }
           buffer += decoder.decode(result.value, { stream: true });
@@ -37534,11 +37808,11 @@
                   }
                   return updated;
                 });
-                setStreaming(false);
+                done();
                 return;
               } else if (data.type === "error") {
                 setMessages((prev) => [...prev, { role: "error", content: data.message }]);
-                setStreaming(false);
+                done();
                 return;
               }
             } catch {
@@ -37549,10 +37823,11 @@
         await reader.read().then(processChunk);
       } catch (err) {
         setMessages((prev) => [...prev, { role: "error", content: err.message || "Failed to connect" }]);
+      } finally {
         setStreaming(false);
       }
     }, [input, streaming, wikiId, sessionId, currentComponentId]);
-    const handleClear = (0, import_react65.useCallback)(() => {
+    const handleClear = (0, import_react66.useCallback)(() => {
       if (sessionId) {
         fetch(getApiBase() + "/wikis/" + encodeURIComponent(wikiId) + "/ask/session/" + encodeURIComponent(sessionId), { method: "DELETE" }).catch(() => {
         });
@@ -37565,85 +37840,122 @@
       if (typeof marked !== "undefined") return marked.parse(content);
       return content.replace(/</g, "&lt;").replace(/>/g, "&gt;");
     };
-    return /* @__PURE__ */ (0, import_jsx_runtime62.jsxs)("div", { className: "flex flex-col h-full", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime62.jsxs)("div", { className: "flex items-center justify-between px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime62.jsxs)("div", { className: "text-xs text-[#848484]", children: [
-          "Ask about ",
-          wikiName,
-          currentComponentId && /* @__PURE__ */ (0, import_jsx_runtime62.jsxs)("span", { className: "ml-1 text-[#0078d4]", children: [
-            "\u2022 ",
-            currentComponentId
-          ] })
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime62.jsx)(
-          "button",
-          {
-            className: "text-xs text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]",
-            onClick: handleClear,
-            children: "Clear"
-          }
-        )
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime62.jsxs)("div", { className: "flex-1 overflow-y-auto p-3 space-y-3", id: "wiki-ask-messages", children: [
-        messages.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime62.jsx)("div", { className: "flex items-center justify-center h-full text-sm text-[#848484]", children: "Ask a question about the codebase" }),
-        messages.map((msg, i) => /* @__PURE__ */ (0, import_jsx_runtime62.jsxs)("div", { className: "ask-message", children: [
-          msg.role === "user" && /* @__PURE__ */ (0, import_jsx_runtime62.jsx)("div", { className: "ask-message-user bg-[#0078d4]/10 rounded-lg px-3 py-2 text-sm text-[#1e1e1e] dark:text-[#cccccc] ml-8", children: msg.content }),
-          msg.role === "assistant" && /* @__PURE__ */ (0, import_jsx_runtime62.jsxs)("div", { className: "ask-message-assistant", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime62.jsx)(
-              "div",
+    return /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)(
+      "div",
+      {
+        id: "wiki-ask-widget",
+        className: cn("flex flex-col h-full", isExpanded && "expanded"),
+        children: [
+          /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)(
+            "div",
+            {
+              id: "wiki-ask-widget-header",
+              className: cn(
+                "flex items-center justify-between px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]",
+                !isExpanded && "hidden"
+              ),
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "text-xs text-[#848484]", children: [
+                  "Ask about ",
+                  wikiName,
+                  currentComponentId && /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("span", { className: "ml-1 text-[#0078d4]", children: [
+                    "\u2022 ",
+                    currentComponentId
+                  ] })
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "flex items-center gap-2", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(
+                    "button",
+                    {
+                      className: "text-xs text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]",
+                      onClick: handleClear,
+                      children: "Clear"
+                    }
+                  ),
+                  /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(
+                    "button",
+                    {
+                      id: "wiki-ask-close",
+                      className: "text-xs text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]",
+                      onClick: () => setIsExpanded(false),
+                      title: "Close",
+                      children: "\u2715"
+                    }
+                  )
+                ] })
+              ]
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)(
+            "div",
+            {
+              className: cn("flex-1 overflow-y-auto p-3 space-y-3", !isExpanded && "hidden"),
+              id: "wiki-ask-messages",
+              children: [
+                messages.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("div", { className: "flex items-center justify-center h-full text-sm text-[#848484]", children: "Ask a question about the codebase" }),
+                messages.map((msg, i) => /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "ask-message", children: [
+                  msg.role === "user" && /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("div", { className: "ask-message-user bg-[#0078d4]/10 rounded-lg px-3 py-2 text-sm text-[#1e1e1e] dark:text-[#cccccc] ml-8", children: msg.content }),
+                  msg.role === "assistant" && /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "ask-message-assistant", children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(
+                      "div",
+                      {
+                        className: "markdown-body text-sm text-[#1e1e1e] dark:text-[#cccccc]",
+                        dangerouslySetInnerHTML: { __html: renderContent(msg.content) }
+                      }
+                    ),
+                    streaming && i === messages.length - 1 && !msg.content && /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "flex items-center gap-1 text-xs text-[#848484]", children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(Spinner, { size: "sm" }),
+                      " Thinking\u2026"
+                    ] })
+                  ] }),
+                  msg.role === "context" && /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("div", { className: "ask-message-context text-[10px] text-[#848484] px-2 py-1 bg-[#f3f3f3] dark:bg-[#1e1e1e] rounded", children: msg.content }),
+                  msg.role === "error" && /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "ask-message-error text-xs text-[#f14c4c] px-2 py-1", children: [
+                    "Error: ",
+                    msg.content
+                  ] })
+                ] }, i)),
+                /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("div", { ref: messagesEndRef })
+              ]
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "flex items-end gap-2 p-3 border-t border-[#e0e0e0] dark:border-[#3c3c3c]", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(
+              "textarea",
               {
-                className: "markdown-body text-sm text-[#1e1e1e] dark:text-[#cccccc]",
-                dangerouslySetInnerHTML: { __html: renderContent(msg.content) }
+                className: "flex-1 resize-none px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4] max-h-[120px]",
+                id: "wiki-ask-textarea",
+                value: input,
+                onChange: (e) => setInput(e.target.value),
+                onFocus: () => setIsExpanded(true),
+                onKeyDown: (e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSend();
+                  }
+                },
+                placeholder: "Ask a question\u2026",
+                rows: 1,
+                disabled: streaming
               }
             ),
-            streaming && i === messages.length - 1 && !msg.content && /* @__PURE__ */ (0, import_jsx_runtime62.jsxs)("div", { className: "flex items-center gap-1 text-xs text-[#848484]", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime62.jsx)(Spinner, { size: "sm" }),
-              " Thinking\u2026"
-            ] })
-          ] }),
-          msg.role === "context" && /* @__PURE__ */ (0, import_jsx_runtime62.jsx)("div", { className: "ask-message-context text-[10px] text-[#848484] px-2 py-1 bg-[#f3f3f3] dark:bg-[#1e1e1e] rounded", children: msg.content }),
-          msg.role === "error" && /* @__PURE__ */ (0, import_jsx_runtime62.jsxs)("div", { className: "ask-message-error text-xs text-[#f14c4c] px-2 py-1", children: [
-            "Error: ",
-            msg.content
-          ] })
-        ] }, i)),
-        /* @__PURE__ */ (0, import_jsx_runtime62.jsx)("div", { ref: messagesEndRef })
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime62.jsxs)("div", { className: "flex items-end gap-2 p-3 border-t border-[#e0e0e0] dark:border-[#3c3c3c]", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime62.jsx)(
-          "textarea",
-          {
-            className: "flex-1 resize-none px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4] max-h-[120px]",
-            id: "wiki-ask-textarea",
-            value: input,
-            onChange: (e) => setInput(e.target.value),
-            onKeyDown: (e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                handleSend();
+            /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(
+              Button,
+              {
+                size: "sm",
+                disabled: streaming || !input.trim(),
+                onClick: handleSend,
+                id: "wiki-ask-widget-send",
+                children: "Send"
               }
-            },
-            placeholder: "Ask a question\u2026",
-            rows: 1,
-            disabled: streaming
-          }
-        ),
-        /* @__PURE__ */ (0, import_jsx_runtime62.jsx)(
-          Button,
-          {
-            size: "sm",
-            disabled: streaming || !input.trim(),
-            onClick: handleSend,
-            id: "wiki-ask-widget-send",
-            children: "Send"
-          }
-        )
-      ] })
-    ] });
+            )
+          ] })
+        ]
+      }
+    );
   }
 
   // src/server/spa/client/react/wiki/WikiAdmin.tsx
-  var import_react66 = __toESM(require_react());
+  var import_react67 = __toESM(require_react());
 
   // ../../node_modules/js-yaml/dist/js-yaml.mjs
   function isNothing(subject) {
@@ -40229,7 +40541,7 @@
   var safeDump = renamed("safeDump", "dump");
 
   // src/server/spa/client/react/wiki/WikiAdmin.tsx
-  var import_jsx_runtime63 = __toESM(require_jsx_runtime());
+  var import_jsx_runtime64 = __toESM(require_jsx_runtime());
   var ADMIN_TABS = ["generate", "seeds", "config", "delete"];
   var DEFAULT_CONFIG_TEMPLATE = `# deep-wiki configuration
 # This file is optional \u2014 remove any lines you don't need.
@@ -40287,20 +40599,20 @@
     5: { name: "Website", desc: "Build static site output" }
   };
   function WikiAdmin({ wikiId, initialTab, onTabChange }) {
-    const [tab, setTab] = (0, import_react66.useState)(
+    const [tab, setTab] = (0, import_react67.useState)(
       initialTab && ADMIN_TABS.includes(initialTab) ? initialTab : "generate"
     );
-    (0, import_react66.useEffect)(() => {
+    (0, import_react67.useEffect)(() => {
       if (initialTab && ADMIN_TABS.includes(initialTab)) {
         setTab(initialTab);
       }
     }, [initialTab]);
-    const changeTab = (0, import_react66.useCallback)((t) => {
+    const changeTab = (0, import_react67.useCallback)((t) => {
       setTab(t);
       onTabChange?.(t);
     }, [onTabChange]);
-    return /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "flex flex-col h-full", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("div", { className: "flex gap-1 px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]", children: ADMIN_TABS.map((t) => /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime64.jsxs)("div", { className: "flex flex-col h-full", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("div", { className: "flex gap-1 px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]", children: ADMIN_TABS.map((t) => /* @__PURE__ */ (0, import_jsx_runtime64.jsx)(
         "button",
         {
           className: cn(
@@ -40313,24 +40625,25 @@
         },
         t
       )) }),
-      /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "flex-1 overflow-y-auto p-3", children: [
-        tab === "generate" && /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(GenerateTab, { wikiId }),
-        tab === "seeds" && /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(EditorTab, { wikiId, kind: "seeds" }),
-        tab === "config" && /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(EditorTab, { wikiId, kind: "config" }),
-        tab === "delete" && /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(DangerZone, { wikiId })
+      /* @__PURE__ */ (0, import_jsx_runtime64.jsxs)("div", { className: "flex-1 overflow-y-auto p-3", children: [
+        tab === "generate" && /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("div", { id: "admin-content-generate", children: /* @__PURE__ */ (0, import_jsx_runtime64.jsx)(GenerateTab, { wikiId }) }),
+        tab === "seeds" && /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("div", { id: "admin-content-seeds", children: /* @__PURE__ */ (0, import_jsx_runtime64.jsx)(EditorTab, { wikiId, kind: "seeds" }) }),
+        tab === "config" && /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("div", { id: "admin-content-config", children: /* @__PURE__ */ (0, import_jsx_runtime64.jsx)(EditorTab, { wikiId, kind: "config" }) }),
+        tab === "delete" && /* @__PURE__ */ (0, import_jsx_runtime64.jsx)(DangerZone, { wikiId })
       ] })
     ] });
   }
   function GenerateTab({ wikiId }) {
-    const [cache, setCache2] = (0, import_react66.useState)({});
-    const [metadata, setMetadata] = (0, import_react66.useState)(null);
-    const [runningPhase, setRunningPhase] = (0, import_react66.useState)(null);
-    const [logs, setLogs] = (0, import_react66.useState)({});
-    const [fromPhase, setFromPhase] = (0, import_react66.useState)(1);
-    const [phase4Components, setPhase4Components] = (0, import_react66.useState)([]);
-    const [phase4Expanded, setPhase4Expanded] = (0, import_react66.useState)(false);
-    const abortRef = (0, import_react66.useRef)(null);
-    const loadCacheStatus = (0, import_react66.useCallback)(() => {
+    const [cache, setCache2] = (0, import_react67.useState)({});
+    const [metadata, setMetadata] = (0, import_react67.useState)(null);
+    const [runningPhase, setRunningPhase] = (0, import_react67.useState)(null);
+    const [lastError, setLastError] = (0, import_react67.useState)(null);
+    const [logs, setLogs] = (0, import_react67.useState)({});
+    const [fromPhase, setFromPhase] = (0, import_react67.useState)(1);
+    const [phase4Components, setPhase4Components] = (0, import_react67.useState)([]);
+    const [phase4Expanded, setPhase4Expanded] = (0, import_react67.useState)(false);
+    const abortRef = (0, import_react67.useRef)(null);
+    const loadCacheStatus = (0, import_react67.useCallback)(() => {
       fetchApi("/wikis/" + encodeURIComponent(wikiId) + "/admin/generate/status").then((data) => {
         if (data?.phases && typeof data.phases === "object") {
           const m = {};
@@ -40345,11 +40658,12 @@
       }).catch(() => {
       });
     }, [wikiId]);
-    (0, import_react66.useEffect)(() => {
+    (0, import_react67.useEffect)(() => {
       loadCacheStatus();
     }, [loadCacheStatus]);
-    const runPhase = (0, import_react66.useCallback)((startPhase, endPhase, force = false) => {
+    const runPhase = (0, import_react67.useCallback)((startPhase, endPhase, force = false) => {
       if (runningPhase !== null) return;
+      setLastError(null);
       setRunningPhase(startPhase);
       setLogs((prev) => {
         const n = { ...prev };
@@ -40368,6 +40682,13 @@
       }).then(async (res) => {
         if (!res.ok) {
           const text = await res.text();
+          let errMsg = text;
+          try {
+            const json2 = JSON.parse(text);
+            if (json2?.error) errMsg = json2.error;
+          } catch {
+          }
+          setLastError(errMsg);
           setLogs((prev) => ({ ...prev, [startPhase]: [...prev[startPhase] || [], "\u274C " + text] }));
           setRunningPhase(null);
           return;
@@ -40425,10 +40746,10 @@
         setRunningPhase(null);
       });
     }, [wikiId, runningPhase, loadCacheStatus]);
-    const runAll = (0, import_react66.useCallback)((force = false) => {
+    const runAll = (0, import_react67.useCallback)((force = false) => {
       runPhase(fromPhase, 5, force);
     }, [runPhase, fromPhase]);
-    const handleAbort = (0, import_react66.useCallback)(() => {
+    const handleAbort = (0, import_react67.useCallback)(() => {
       if (abortRef.current) abortRef.current.abort();
       fetch(getApiBase() + "/wikis/" + encodeURIComponent(wikiId) + "/admin/generate/cancel", { method: "POST" }).catch(() => {
       });
@@ -40439,17 +40760,24 @@
       if (v === "stale") return { label: "Stale", status: "cancelled" };
       return { label: "None", status: "queued" };
     };
-    return /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "space-y-3", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "flex items-center gap-2", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("label", { className: "text-xs text-[#848484]", children: "Start from:" }),
-        /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime64.jsxs)("div", { className: "space-y-3", children: [
+      runningPhase !== null && /* @__PURE__ */ (0, import_jsx_runtime64.jsxs)("div", { id: "generate-status-bar", className: "text-xs text-[#848484] py-2", children: [
+        "Running phase ",
+        runningPhase,
+        "\u2026"
+      ] }),
+      lastError && /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("div", { id: "generate-status-bar", className: cn("text-xs py-2", "text-[#f14c4c] error"), children: lastError }),
+      /* @__PURE__ */ (0, import_jsx_runtime64.jsxs)("div", { className: "flex items-center gap-2", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("label", { className: "text-xs text-[#848484]", children: "Start from:" }),
+        /* @__PURE__ */ (0, import_jsx_runtime64.jsx)(
           "select",
           {
+            id: "generate-start-phase",
             className: "text-xs px-2 py-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc]",
             value: fromPhase,
             onChange: (e) => setFromPhase(parseInt(e.target.value)),
             disabled: runningPhase !== null,
-            children: [1, 2, 3, 4, 5].map((p) => /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("option", { value: p, children: [
+            children: [1, 2, 3, 4, 5].map((p) => /* @__PURE__ */ (0, import_jsx_runtime64.jsxs)("option", { value: p, children: [
               "Phase ",
               p,
               ": ",
@@ -40457,26 +40785,26 @@
             ] }, p))
           }
         ),
-        runningPhase !== null ? /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(Button, { variant: "danger", size: "sm", onClick: handleAbort, children: "Abort" }) : /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)(import_jsx_runtime63.Fragment, { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(Button, { size: "sm", onClick: () => runAll(false), children: "Run All" }),
-          /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(Button, { size: "sm", variant: "secondary", onClick: () => runAll(true), id: "force-run-all", children: "Force All" })
+        runningPhase !== null ? /* @__PURE__ */ (0, import_jsx_runtime64.jsx)(Button, { variant: "danger", size: "sm", onClick: handleAbort, children: "Abort" }) : /* @__PURE__ */ (0, import_jsx_runtime64.jsxs)(import_jsx_runtime64.Fragment, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime64.jsx)(Button, { size: "sm", onClick: () => runAll(false), children: "Run All" }),
+          /* @__PURE__ */ (0, import_jsx_runtime64.jsx)(Button, { size: "sm", variant: "secondary", onClick: () => runAll(true), id: "force-run-all", children: "Force All" })
         ] })
       ] }),
-      metadata && hasCachedPhases(cache) && /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(MetadataSummary, { metadata }),
+      metadata && hasCachedPhases(cache) && /* @__PURE__ */ (0, import_jsx_runtime64.jsx)(MetadataSummary, { metadata }),
       [1, 2, 3, 4, 5].map((phase) => {
         const p = PHASE_NAMES[phase];
         const cacheBadge = getCacheBadge(phase);
         const isRunning = runningPhase === phase;
         const phaseLog = logs[phase] || [];
-        return /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)(Card, { className: "p-3", id: `phase-card-${phase}`, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "flex items-center gap-2", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("span", { className: "w-6 h-6 rounded-full bg-[#0078d4]/10 text-[#0078d4] text-xs font-bold flex items-center justify-center flex-shrink-0", children: phase }),
-            /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "flex-1 min-w-0", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("div", { className: "text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]", children: p.name }),
-              /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("div", { className: "text-[10px] text-[#848484]", children: p.desc })
+        return /* @__PURE__ */ (0, import_jsx_runtime64.jsxs)(Card, { className: "p-3", id: `phase-card-${phase}`, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime64.jsxs)("div", { className: "flex items-center gap-2", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("span", { className: "w-6 h-6 rounded-full bg-[#0078d4]/10 text-[#0078d4] text-xs font-bold flex items-center justify-center flex-shrink-0", children: phase }),
+            /* @__PURE__ */ (0, import_jsx_runtime64.jsxs)("div", { className: "flex-1 min-w-0", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("div", { className: "text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]", children: p.name }),
+              /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("div", { className: "text-[10px] text-[#848484]", children: p.desc })
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(Badge, { status: cacheBadge.status, id: `phase-cache-${phase}`, children: cacheBadge.label }),
-            cacheBadge.label === "Cached" && /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(
+            /* @__PURE__ */ (0, import_jsx_runtime64.jsx)(Badge, { status: cacheBadge.status, id: `phase-cache-${phase}`, children: cacheBadge.label }),
+            cacheBadge.label === "Cached" && /* @__PURE__ */ (0, import_jsx_runtime64.jsx)(
               Button,
               {
                 size: "sm",
@@ -40488,7 +40816,7 @@
                 children: "Force"
               }
             ),
-            /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(
+            /* @__PURE__ */ (0, import_jsx_runtime64.jsx)(
               Button,
               {
                 size: "sm",
@@ -40501,24 +40829,24 @@
               }
             )
           ] }),
-          phase === 4 && phase4Components.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "mt-2", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)(
+          phase === 4 && phase4Components.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime64.jsxs)("div", { className: "mt-2", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime64.jsxs)(
               "button",
               {
                 className: "text-xs text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] flex items-center gap-1",
                 id: "phase4-component-toggle",
                 onClick: () => setPhase4Expanded((p2) => !p2),
                 children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("span", { className: cn("transition-transform text-[10px]", phase4Expanded && "rotate-90"), children: "\u25B6" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("span", { className: cn("transition-transform text-[10px]", phase4Expanded && "rotate-90"), children: "\u25B6" }),
                   "Components (",
-                  /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("span", { id: "phase4-component-count", children: phase4Components.length }),
+                  /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("span", { id: "phase4-component-count", children: phase4Components.length }),
                   ")"
                 ]
               }
             ),
-            phase4Expanded && /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("div", { className: "mt-1 pl-4 text-[10px] text-[#848484] space-y-0.5", id: "phase4-component-list", children: phase4Components.map((c, i) => /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("div", { children: c }, i)) })
+            phase4Expanded && /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("div", { className: "mt-1 pl-4 text-[10px] text-[#848484] space-y-0.5", id: "phase4-component-list", children: phase4Components.map((c, i) => /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("div", { children: c }, i)) })
           ] }),
-          phaseLog.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(
+          phaseLog.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime64.jsx)(
             "pre",
             {
               className: "mt-2 text-[10px] leading-4 text-[#848484] bg-[#1e1e1e] dark:bg-black rounded p-2 max-h-48 overflow-y-auto font-mono",
@@ -40547,23 +40875,23 @@
       return typeof val === "number" && val > 0;
     });
     if (items.length === 0) return null;
-    return /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)(Card, { className: "p-3", id: "cache-metadata-summary", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "flex items-center gap-2 mb-2", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("span", { className: "text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc]", children: "Cache Summary" }),
-        metadata.projectName && /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("span", { className: "text-[10px] text-[#848484]", id: "metadata-project-name", children: [
+    return /* @__PURE__ */ (0, import_jsx_runtime64.jsxs)(Card, { className: "p-3", id: "cache-metadata-summary", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime64.jsxs)("div", { className: "flex items-center gap-2 mb-2", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("span", { className: "text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc]", children: "Cache Summary" }),
+        metadata.projectName && /* @__PURE__ */ (0, import_jsx_runtime64.jsxs)("span", { className: "text-[10px] text-[#848484]", id: "metadata-project-name", children: [
           metadata.projectName,
           metadata.projectLanguage ? ` \xB7 ${metadata.projectLanguage}` : ""
         ] })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("div", { className: "grid grid-cols-3 gap-2", id: "metadata-grid", children: items.map((item) => /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)(
+      /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("div", { className: "grid grid-cols-3 gap-2", id: "metadata-grid", children: items.map((item) => /* @__PURE__ */ (0, import_jsx_runtime64.jsxs)(
         "div",
         {
           className: "flex items-center gap-1.5 px-2 py-1 rounded bg-[#f5f5f5] dark:bg-[#2d2d2d]",
           "data-metadata-item": item.key,
           children: [
-            /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("span", { className: "text-[10px]", children: item.icon }),
-            /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("span", { className: "text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc]", "data-metadata-value": item.key, children: metadata[item.key] }),
-            /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("span", { className: "text-[10px] text-[#848484]", children: item.label })
+            /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("span", { className: "text-[10px]", children: item.icon }),
+            /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("span", { className: "text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc]", "data-metadata-value": item.key, children: metadata[item.key] }),
+            /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("span", { className: "text-[10px] text-[#848484]", children: item.label })
           ]
         },
         item.key
@@ -40571,15 +40899,15 @@
     ] });
   }
   function EditorTab({ wikiId, kind }) {
-    const [content, setContent] = (0, import_react66.useState)("");
-    const [original, setOriginal] = (0, import_react66.useState)("");
-    const [resourcePath, setResourcePath] = (0, import_react66.useState)(null);
-    const [isNewFile, setIsNewFile] = (0, import_react66.useState)(false);
-    const [saving, setSaving] = (0, import_react66.useState)(false);
-    const [status, setStatus] = (0, import_react66.useState)(null);
-    const [generating, setGenerating] = (0, import_react66.useState)(false);
-    const [genLogs, setGenLogs] = (0, import_react66.useState)([]);
-    (0, import_react66.useEffect)(() => {
+    const [content, setContent] = (0, import_react67.useState)("");
+    const [original, setOriginal] = (0, import_react67.useState)("");
+    const [resourcePath, setResourcePath] = (0, import_react67.useState)(null);
+    const [isNewFile, setIsNewFile] = (0, import_react67.useState)(false);
+    const [saving, setSaving] = (0, import_react67.useState)(false);
+    const [status, setStatus] = (0, import_react67.useState)(null);
+    const [generating, setGenerating] = (0, import_react67.useState)(false);
+    const [genLogs, setGenLogs] = (0, import_react67.useState)([]);
+    (0, import_react67.useEffect)(() => {
       fetchApi("/wikis/" + encodeURIComponent(wikiId) + "/admin/" + kind).then((data) => {
         let text = "";
         let resolvedPath = null;
@@ -40605,10 +40933,19 @@
         setStatus(null);
       }).catch(() => setStatus("Failed to load"));
     }, [wikiId, kind]);
-    const handleSave = (0, import_react66.useCallback)(async () => {
+    const handleSave = (0, import_react67.useCallback)(async () => {
       setSaving(true);
       setStatus(null);
       try {
+        if (kind === "seeds") {
+          try {
+            load(content);
+          } catch {
+            setStatus("Invalid YAML");
+            setSaving(false);
+            return;
+          }
+        }
         const res = await fetch(getApiBase() + "/wikis/" + encodeURIComponent(wikiId) + "/admin/" + kind, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -40626,12 +40963,12 @@
       }
       setSaving(false);
     }, [wikiId, kind, content]);
-    const handleReset = (0, import_react66.useCallback)(() => {
+    const handleReset = (0, import_react67.useCallback)(() => {
       setContent(original);
       setStatus(null);
     }, [original]);
     const isModified = content !== original;
-    const handleGenerateSeeds = (0, import_react66.useCallback)(async () => {
+    const handleGenerateSeeds = (0, import_react67.useCallback)(async () => {
       setGenerating(true);
       setGenLogs([]);
       try {
@@ -40681,24 +41018,24 @@
       }
       setGenerating(false);
     }, [wikiId]);
-    return /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "space-y-2", children: [
-      kind === "seeds" && /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "flex items-center justify-between pb-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("span", { className: "text-xs text-[#848484]", children: "Generate theme seeds via AI" }),
-        /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(Button, { size: "sm", loading: generating, onClick: handleGenerateSeeds, id: "seeds-generate", children: "Generate Seeds" })
+    return /* @__PURE__ */ (0, import_jsx_runtime64.jsxs)("div", { className: "space-y-2", children: [
+      kind === "seeds" && /* @__PURE__ */ (0, import_jsx_runtime64.jsxs)("div", { className: "flex items-center justify-between pb-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("span", { className: "text-xs text-[#848484]", children: "Generate theme seeds via AI" }),
+        /* @__PURE__ */ (0, import_jsx_runtime64.jsx)(Button, { size: "sm", loading: generating, onClick: handleGenerateSeeds, id: "seeds-generate", children: "Generate Seeds" })
       ] }),
-      kind === "seeds" && genLogs.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("pre", { className: "text-[10px] leading-4 text-[#848484] bg-[#1e1e1e] dark:bg-black rounded p-2 max-h-24 overflow-y-auto font-mono", id: "seeds-gen-log", children: genLogs.join("\n") }),
-      /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "flex items-center justify-between", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "flex items-center gap-2", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("span", { className: "text-xs text-[#848484]", id: `${kind}-path`, children: resourcePath || (kind === "config" ? "deep-wiki.config.yaml" : "seeds.yaml") }),
-          isNewFile && /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("span", { className: "text-xs px-1.5 py-0.5 rounded bg-[#0078d4]/10 text-[#0078d4]", id: `${kind}-new-badge`, children: "New file \u2014 save to create" }),
-          status && /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("span", { className: cn("text-xs", status === "Saved" ? "text-green-600" : "text-[#f14c4c]"), id: `${kind}-status`, children: status })
+      kind === "seeds" && genLogs.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("pre", { className: "text-[10px] leading-4 text-[#848484] bg-[#1e1e1e] dark:bg-black rounded p-2 max-h-24 overflow-y-auto font-mono", id: "seeds-gen-log", children: genLogs.join("\n") }),
+      /* @__PURE__ */ (0, import_jsx_runtime64.jsxs)("div", { className: "flex items-center justify-between", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime64.jsxs)("div", { className: "flex items-center gap-2", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("span", { className: "text-xs text-[#848484]", id: `${kind}-path`, children: resourcePath || (kind === "config" ? "deep-wiki.config.yaml" : "seeds.yaml") }),
+          isNewFile && /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("span", { className: "text-xs px-1.5 py-0.5 rounded bg-[#0078d4]/10 text-[#0078d4]", id: `${kind}-new-badge`, children: "New file \u2014 save to create" }),
+          status && /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("span", { className: cn("text-xs", status === "Saved" ? "text-green-600" : "text-[#f14c4c]"), id: `${kind}-status`, children: status })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "flex gap-1", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(Button, { variant: "secondary", size: "sm", disabled: !isModified, onClick: handleReset, id: `${kind}-reset`, children: "Reset" }),
-          /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(Button, { size: "sm", disabled: !isModified, loading: saving, onClick: handleSave, id: `${kind}-save`, children: "Save" })
+        /* @__PURE__ */ (0, import_jsx_runtime64.jsxs)("div", { className: "flex gap-1", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime64.jsx)(Button, { variant: "secondary", size: "sm", disabled: !isModified, onClick: handleReset, id: `${kind}-reset`, children: "Reset" }),
+          /* @__PURE__ */ (0, import_jsx_runtime64.jsx)(Button, { size: "sm", disabled: !isModified, loading: saving, onClick: handleSave, id: `${kind}-save`, children: "Save" })
         ] })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime64.jsx)(
         "textarea",
         {
           className: "w-full h-64 px-3 py-2 text-xs font-mono rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4] resize-y",
@@ -40714,8 +41051,8 @@
     ] });
   }
   function DangerZone({ wikiId }) {
-    const [deleting, setDeleting] = (0, import_react66.useState)(false);
-    const handleDelete = (0, import_react66.useCallback)(async () => {
+    const [deleting, setDeleting] = (0, import_react67.useState)(false);
+    const handleDelete = (0, import_react67.useCallback)(async () => {
       if (!confirm("Are you sure you want to delete this wiki? This cannot be undone.")) return;
       setDeleting(true);
       try {
@@ -40727,15 +41064,15 @@
       }
       setDeleting(false);
     }, [wikiId]);
-    return /* @__PURE__ */ (0, import_jsx_runtime63.jsxs)("div", { className: "mt-8 p-3 border border-[#f14c4c]/30 rounded", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("h4", { className: "text-xs font-semibold text-[#f14c4c] mb-2", children: "Danger Zone" }),
-      /* @__PURE__ */ (0, import_jsx_runtime63.jsx)("p", { className: "text-[10px] text-[#848484] mb-2", children: "Permanently delete this wiki and all its data." }),
-      /* @__PURE__ */ (0, import_jsx_runtime63.jsx)(Button, { variant: "danger", size: "sm", loading: deleting, onClick: handleDelete, children: "Delete Wiki" })
+    return /* @__PURE__ */ (0, import_jsx_runtime64.jsxs)("div", { className: "mt-8 p-3 border border-[#f14c4c]/30 rounded", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("h4", { className: "text-xs font-semibold text-[#f14c4c] mb-2", children: "Danger Zone" }),
+      /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("p", { className: "text-[10px] text-[#848484] mb-2", children: "Permanently delete this wiki and all its data." }),
+      /* @__PURE__ */ (0, import_jsx_runtime64.jsx)(Button, { variant: "danger", size: "sm", loading: deleting, onClick: handleDelete, children: "Delete Wiki" })
     ] });
   }
 
   // src/server/spa/client/react/wiki/WikiDetail.tsx
-  var import_jsx_runtime64 = __toESM(require_jsx_runtime());
+  var import_jsx_runtime65 = __toESM(require_jsx_runtime());
   var statusConfig2 = {
     loaded: { label: "Ready", badge: "completed" },
     generating: { label: "Generating", badge: "running" },
@@ -40756,11 +41093,11 @@
   }
   function WikiDetail({ wikiId }) {
     const { state, dispatch } = useApp();
-    const [graph, setGraph] = (0, import_react67.useState)(null);
-    const [loadingGraph, setLoadingGraph] = (0, import_react67.useState)(true);
-    const [activeTab, setActiveTab] = (0, import_react67.useState)("browse");
-    const [adminSubTab, setAdminSubTab] = (0, import_react67.useState)(null);
-    (0, import_react67.useEffect)(() => {
+    const [graph, setGraph] = (0, import_react68.useState)(null);
+    const [loadingGraph, setLoadingGraph] = (0, import_react68.useState)(true);
+    const [activeTab, setActiveTab] = (0, import_react68.useState)("browse");
+    const [adminSubTab, setAdminSubTab] = (0, import_react68.useState)(null);
+    (0, import_react68.useEffect)(() => {
       if (state.wikiDetailInitialTab) {
         const tab = state.wikiDetailInitialTab;
         if (WIKI_TABS.includes(tab)) {
@@ -40772,31 +41109,31 @@
         dispatch({ type: "CLEAR_WIKI_INITIAL_TAB" });
       }
     }, [state.wikiDetailInitialTab]);
-    const wiki = (0, import_react67.useMemo)(
+    const wiki = (0, import_react68.useMemo)(
       () => state.wikis.find((w) => w.id === wikiId),
       [state.wikis, wikiId]
     );
     const wikiName = wiki?.name || wiki?.title || wikiId;
     const wikiStatus = wiki?.status || (wiki?.loaded ? "loaded" : "pending");
     const cfg = statusConfig2[wikiStatus];
-    (0, import_react67.useEffect)(() => {
+    (0, import_react68.useEffect)(() => {
       setLoadingGraph(true);
       fetchApi("/wikis/" + encodeURIComponent(wikiId) + "/graph").then((data) => setGraph(data)).catch(() => setGraph(null)).finally(() => setLoadingGraph(false));
     }, [wikiId]);
-    const handleBack = (0, import_react67.useCallback)(() => {
+    const handleBack = (0, import_react68.useCallback)(() => {
       dispatch({ type: "SELECT_WIKI", wikiId: null });
       location.hash = "#wiki";
     }, [dispatch]);
-    const changeTab = (0, import_react67.useCallback)((tab) => {
+    const changeTab = (0, import_react68.useCallback)((tab) => {
       setActiveTab(tab);
       if (tab !== "admin") setAdminSubTab(null);
       location.hash = buildWikiHash(wikiId, tab, tab === "browse" ? state.selectedWikiComponentId : null);
     }, [wikiId, state.selectedWikiComponentId]);
-    const handleAdminTabChange = (0, import_react67.useCallback)((subTab) => {
+    const handleAdminTabChange = (0, import_react68.useCallback)((subTab) => {
       setAdminSubTab(subTab);
       location.hash = buildWikiHash(wikiId, "admin", null, subTab);
     }, [wikiId]);
-    const handleSelectComponent = (0, import_react67.useCallback)((componentId) => {
+    const handleSelectComponent = (0, import_react68.useCallback)((componentId) => {
       dispatch({ type: "SELECT_WIKI_COMPONENT", componentId });
       location.hash = buildWikiHash(wikiId, "browse", componentId);
       setActiveTab("browse");
@@ -40804,26 +41141,26 @@
     const selectedComponentId = state.selectedWikiComponentId;
     const renderContent = () => {
       if (loadingGraph) {
-        return /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("div", { className: "flex items-center justify-center h-full", children: /* @__PURE__ */ (0, import_jsx_runtime64.jsx)(Spinner, { size: "lg" }) });
+        return /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("div", { className: "flex items-center justify-center h-full", children: /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(Spinner, { size: "lg" }) });
       }
       if (!graph) {
         if (wikiStatus === "pending") {
           if (activeTab === "admin") {
-            return /* @__PURE__ */ (0, import_jsx_runtime64.jsx)(WikiAdmin, { wikiId, initialTab: adminSubTab, onTabChange: handleAdminTabChange });
+            return /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(WikiAdmin, { wikiId, initialTab: adminSubTab, onTabChange: handleAdminTabChange });
           }
-          return /* @__PURE__ */ (0, import_jsx_runtime64.jsxs)("div", { className: "flex flex-col items-center justify-center h-full text-center", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("div", { className: "text-4xl mb-3", children: "\u26A0" }),
-            /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("div", { className: "text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-1", children: "Setup Required" }),
-            /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("div", { className: "text-xs text-[#848484] mb-4 max-w-xs", children: "This wiki has been registered but has not been generated yet." }),
-            /* @__PURE__ */ (0, import_jsx_runtime64.jsx)(Button, { size: "sm", onClick: () => changeTab("admin"), children: "\u2192 Run Setup Wizard" })
+          return /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("div", { className: "flex flex-col items-center justify-center h-full text-center", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("div", { className: "text-4xl mb-3", children: "\u26A0" }),
+            /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("div", { className: "text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-1", children: "Setup Required" }),
+            /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("div", { className: "text-xs text-[#848484] mb-4 max-w-xs", children: "This wiki has been registered but has not been generated yet." }),
+            /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(Button, { size: "sm", onClick: () => changeTab("admin"), children: "\u2192 Run Setup Wizard" })
           ] });
         }
-        return /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("div", { className: "flex items-center justify-center h-full text-sm text-[#848484]", children: "No graph data available. Try generating the wiki first." });
+        return /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("div", { className: "flex items-center justify-center h-full text-sm text-[#848484]", children: "No graph data available. Try generating the wiki first." });
       }
       switch (activeTab) {
         case "browse":
           if (selectedComponentId) {
-            return /* @__PURE__ */ (0, import_jsx_runtime64.jsx)(
+            return /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(
               WikiComponent,
               {
                 wikiId,
@@ -40833,9 +41170,9 @@
               }
             );
           }
-          return /* @__PURE__ */ (0, import_jsx_runtime64.jsx)(ProjectOverview, { graph, onSelectComponent: handleSelectComponent });
+          return /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(ProjectOverview, { graph, onSelectComponent: handleSelectComponent });
         case "ask":
-          return /* @__PURE__ */ (0, import_jsx_runtime64.jsx)(
+          return /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(
             WikiAsk,
             {
               wikiId,
@@ -40844,7 +41181,7 @@
             }
           );
         case "graph":
-          return /* @__PURE__ */ (0, import_jsx_runtime64.jsx)(
+          return /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(
             WikiGraph,
             {
               wikiId,
@@ -40855,12 +41192,12 @@
             }
           );
         case "admin":
-          return /* @__PURE__ */ (0, import_jsx_runtime64.jsx)(WikiAdmin, { wikiId, initialTab: adminSubTab, onTabChange: handleAdminTabChange });
+          return /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(WikiAdmin, { wikiId, initialTab: adminSubTab, onTabChange: handleAdminTabChange });
       }
     };
-    return /* @__PURE__ */ (0, import_jsx_runtime64.jsxs)("div", { className: "flex flex-col h-[calc(100vh-48px)] overflow-hidden", id: "view-wiki", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime64.jsxs)("div", { className: "flex items-center gap-2 px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime64.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("div", { className: "flex flex-col h-[calc(100vh-48px)] overflow-hidden", id: "view-wiki", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("div", { className: "flex items-center gap-2 px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(
           "button",
           {
             className: "text-sm text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]",
@@ -40869,20 +41206,20 @@
             children: "\u2190"
           }
         ),
-        /* @__PURE__ */ (0, import_jsx_runtime64.jsx)(
+        /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(
           "span",
           {
             className: "w-2.5 h-2.5 rounded-full flex-shrink-0",
             style: { background: wiki?.color || "#848484" }
           }
         ),
-        /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("h2", { className: "text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] truncate", id: "wiki-project-title", children: wikiName }),
-        /* @__PURE__ */ (0, import_jsx_runtime64.jsxs)(Badge, { status: cfg.badge, children: [
-          wikiStatus === "generating" && /* @__PURE__ */ (0, import_jsx_runtime64.jsx)(Spinner, { size: "sm" }),
+        /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("h2", { className: "text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] truncate", id: "wiki-project-title", children: wikiName }),
+        /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)(Badge, { status: cfg.badge, children: [
+          wikiStatus === "generating" && /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(Spinner, { size: "sm" }),
           cfg.label
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("div", { className: "flex-1" }),
-        /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("div", { className: "flex gap-0.5", id: "wiki-project-tabs", children: WIKI_TABS.map((t) => /* @__PURE__ */ (0, import_jsx_runtime64.jsx)(
+        /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("div", { className: "flex-1" }),
+        /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("div", { className: "flex gap-0.5", id: "wiki-project-tabs", children: WIKI_TABS.map((t) => /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(
           "button",
           {
             className: cn(
@@ -40896,8 +41233,8 @@
           t
         )) })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime64.jsxs)("div", { className: "flex flex-1 min-h-0", children: [
-        graph && activeTab === "browse" && /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("div", { className: "w-56 flex-shrink-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c] overflow-hidden", children: /* @__PURE__ */ (0, import_jsx_runtime64.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("div", { className: "flex flex-1 min-h-0", children: [
+        graph && activeTab === "browse" && /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("div", { className: "w-56 flex-shrink-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c] overflow-hidden", children: /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(
           WikiComponentTree,
           {
             graph,
@@ -40905,7 +41242,7 @@
             onSelect: handleSelectComponent
           }
         ) }),
-        /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("div", { className: "flex-1 min-w-0 min-h-0 overflow-hidden", children: renderContent() })
+        /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("div", { id: "wiki-component-detail", className: "flex-1 min-w-0 min-h-0 overflow-hidden", children: renderContent() })
       ] })
     ] });
   }
@@ -40916,63 +41253,63 @@
       language: graph.project.mainLanguage || "N/A"
     };
     const hasDomains = graph.domains && graph.domains.length > 0;
-    return /* @__PURE__ */ (0, import_jsx_runtime64.jsxs)("div", { className: "p-4 overflow-y-auto h-full", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("h1", { className: "text-lg font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-1", children: graph.project.name }),
-      /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("p", { className: "text-sm text-[#848484] mb-4", children: graph.project.description }),
-      /* @__PURE__ */ (0, import_jsx_runtime64.jsxs)("div", { className: "grid grid-cols-3 gap-3 mb-6", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime64.jsxs)("div", { className: "rounded border border-[#e0e0e0] dark:border-[#3c3c3c] p-3 text-center", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("div", { className: "text-xs text-[#848484]", children: "Components" }),
-          /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("div", { className: "text-xl font-semibold text-[#1e1e1e] dark:text-[#cccccc]", children: stats.components })
+    return /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("div", { className: "p-4 overflow-y-auto h-full", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("h1", { className: "text-lg font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-1", children: graph.project.name }),
+      /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("p", { className: "text-sm text-[#848484] mb-4", children: graph.project.description }),
+      /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("div", { className: "grid grid-cols-3 gap-3 mb-6", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("div", { className: "stat-card rounded border border-[#e0e0e0] dark:border-[#3c3c3c] p-3 text-center", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("div", { className: "text-xs text-[#848484]", children: "Components" }),
+          /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("div", { className: "text-xl font-semibold text-[#1e1e1e] dark:text-[#cccccc]", children: stats.components })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime64.jsxs)("div", { className: "rounded border border-[#e0e0e0] dark:border-[#3c3c3c] p-3 text-center", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("div", { className: "text-xs text-[#848484]", children: "Categories" }),
-          /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("div", { className: "text-xl font-semibold text-[#1e1e1e] dark:text-[#cccccc]", children: stats.categories })
+        /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("div", { className: "stat-card rounded border border-[#e0e0e0] dark:border-[#3c3c3c] p-3 text-center", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("div", { className: "text-xs text-[#848484]", children: "Categories" }),
+          /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("div", { className: "text-xl font-semibold text-[#1e1e1e] dark:text-[#cccccc]", children: stats.categories })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime64.jsxs)("div", { className: "rounded border border-[#e0e0e0] dark:border-[#3c3c3c] p-3 text-center", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("div", { className: "text-xs text-[#848484]", children: "Language" }),
-          /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("div", { className: "text-lg font-semibold text-[#1e1e1e] dark:text-[#cccccc]", children: stats.language })
+        /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("div", { className: "stat-card rounded border border-[#e0e0e0] dark:border-[#3c3c3c] p-3 text-center", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("div", { className: "text-xs text-[#848484]", children: "Language" }),
+          /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("div", { className: "text-lg font-semibold text-[#1e1e1e] dark:text-[#cccccc]", children: stats.language })
         ] })
       ] }),
-      hasDomains ? /* @__PURE__ */ (0, import_jsx_runtime64.jsxs)(import_jsx_runtime64.Fragment, { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("h3", { className: "text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2", children: "Domains" }),
-        /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-2", children: graph.domains.filter((d) => (d.components || []).length > 0).map((domain) => /* @__PURE__ */ (0, import_jsx_runtime64.jsxs)(
+      hasDomains ? /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)(import_jsx_runtime65.Fragment, { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("h3", { className: "text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2", children: "Domains" }),
+        /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-2", children: graph.domains.filter((d) => (d.components || []).length > 0).map((domain) => /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)(
           "div",
           {
             className: "component-card wiki-component-card rounded border border-[#e0e0e0] dark:border-[#3c3c3c] p-3 cursor-pointer hover:border-[#0078d4]",
             children: [
-              /* @__PURE__ */ (0, import_jsx_runtime64.jsxs)("h4", { className: "text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("h4", { className: "text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]", children: [
                 domain.name,
                 " ",
-                /* @__PURE__ */ (0, import_jsx_runtime64.jsxs)("span", { className: "text-[#848484] font-normal", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("span", { className: "text-[#848484] font-normal", children: [
                   "(",
                   (domain.components || []).length,
                   ")"
                 ] })
               ] }),
-              domain.description && /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("p", { className: "text-xs text-[#848484] mt-1", children: domain.description })
+              domain.description && /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("p", { className: "text-xs text-[#848484] mt-1", children: domain.description })
             ]
           },
           domain.id
         )) })
-      ] }) : /* @__PURE__ */ (0, import_jsx_runtime64.jsxs)(import_jsx_runtime64.Fragment, { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("h3", { className: "text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2", children: "Components" }),
-        /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-2", children: graph.components.map((comp) => /* @__PURE__ */ (0, import_jsx_runtime64.jsxs)(
+      ] }) : /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)(import_jsx_runtime65.Fragment, { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("h3", { className: "text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2", children: "Components" }),
+        /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-2", children: graph.components.map((comp) => /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)(
           "div",
           {
             className: "component-card wiki-component-card rounded border border-[#e0e0e0] dark:border-[#3c3c3c] p-3 cursor-pointer hover:border-[#0078d4]",
             "data-component-id": comp.id,
             onClick: () => onSelectComponent(comp.id),
             children: [
-              /* @__PURE__ */ (0, import_jsx_runtime64.jsxs)("h4", { className: "text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime65.jsxs)("h4", { className: "text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]", children: [
                 comp.name,
-                comp.complexity && /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("span", { className: cn(
+                comp.complexity && /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("span", { className: cn(
                   "ml-1 text-[10px] px-1 py-0.5 rounded",
                   comp.complexity === "low" && "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
                   comp.complexity === "medium" && "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400",
                   comp.complexity === "high" && "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
                 ), children: comp.complexity })
               ] }),
-              /* @__PURE__ */ (0, import_jsx_runtime64.jsx)("p", { className: "text-xs text-[#848484] mt-1 line-clamp-2", children: comp.purpose })
+              /* @__PURE__ */ (0, import_jsx_runtime65.jsx)("p", { className: "text-xs text-[#848484] mt-1 line-clamp-2", children: comp.purpose })
             ]
           },
           comp.id
@@ -40982,18 +41319,18 @@
   }
 
   // src/server/spa/client/react/wiki/WikiView.tsx
-  var import_jsx_runtime65 = __toESM(require_jsx_runtime());
+  var import_jsx_runtime66 = __toESM(require_jsx_runtime());
   function WikiView() {
     const { state } = useApp();
     if (state.selectedWikiId) {
-      return /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(WikiDetail, { wikiId: state.selectedWikiId });
+      return /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(WikiDetail, { wikiId: state.selectedWikiId });
     }
-    return /* @__PURE__ */ (0, import_jsx_runtime65.jsx)(WikiList, {});
+    return /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(WikiList, {});
   }
 
   // src/server/spa/client/react/admin/AdminPanel.tsx
-  var import_react68 = __toESM(require_react());
-  var import_jsx_runtime66 = __toESM(require_jsx_runtime());
+  var import_react69 = __toESM(require_react());
+  var import_jsx_runtime67 = __toESM(require_jsx_runtime());
   function formatBytes(bytes) {
     if (bytes === 0) return "0 B";
     const units = ["B", "KB", "MB", "GB"];
@@ -41004,25 +41341,25 @@
   var VALID_OUTPUT_OPTIONS = ["table", "json", "csv", "markdown"];
   function AdminPanel() {
     const { toasts, addToast, removeToast } = useToast();
-    const [stats, setStats] = (0, import_react68.useState)(null);
-    const [statsLoading, setStatsLoading] = (0, import_react68.useState)(true);
-    const [config, setConfig] = (0, import_react68.useState)(null);
-    const [configLoading, setConfigLoading] = (0, import_react68.useState)(true);
-    const [configError, setConfigError] = (0, import_react68.useState)(null);
-    const [configForm, setConfigForm] = (0, import_react68.useState)({});
-    const [configSaving, setConfigSaving] = (0, import_react68.useState)(false);
-    const [showReportIntent, setShowReportIntent] = (0, import_react68.useState)(false);
-    const [displaySaving, setDisplaySaving] = (0, import_react68.useState)(false);
-    const [exportStatus, setExportStatus] = (0, import_react68.useState)("");
-    const [importFile, setImportFile] = (0, import_react68.useState)(null);
-    const [importMode, setImportMode] = (0, import_react68.useState)("replace");
-    const [importPreview, setImportPreview] = (0, import_react68.useState)(null);
-    const [importStatus, setImportStatus] = (0, import_react68.useState)("");
-    const [wipeToken, setWipeToken] = (0, import_react68.useState)(null);
-    const [includeWikis, setIncludeWikis] = (0, import_react68.useState)(false);
-    const [wipeStatus, setWipeStatus] = (0, import_react68.useState)("");
-    const [wipePreview, setWipePreview] = (0, import_react68.useState)(null);
-    const loadStats = (0, import_react68.useCallback)(async () => {
+    const [stats, setStats] = (0, import_react69.useState)(null);
+    const [statsLoading, setStatsLoading] = (0, import_react69.useState)(true);
+    const [config, setConfig] = (0, import_react69.useState)(null);
+    const [configLoading, setConfigLoading] = (0, import_react69.useState)(true);
+    const [configError, setConfigError] = (0, import_react69.useState)(null);
+    const [configForm, setConfigForm] = (0, import_react69.useState)({});
+    const [configSaving, setConfigSaving] = (0, import_react69.useState)(false);
+    const [showReportIntent, setShowReportIntent] = (0, import_react69.useState)(false);
+    const [displaySaving, setDisplaySaving] = (0, import_react69.useState)(false);
+    const [exportStatus, setExportStatus] = (0, import_react69.useState)("");
+    const [importFile, setImportFile] = (0, import_react69.useState)(null);
+    const [importMode, setImportMode] = (0, import_react69.useState)("replace");
+    const [importPreview, setImportPreview] = (0, import_react69.useState)(null);
+    const [importStatus, setImportStatus] = (0, import_react69.useState)("");
+    const [wipeToken, setWipeToken] = (0, import_react69.useState)(null);
+    const [includeWikis, setIncludeWikis] = (0, import_react69.useState)(false);
+    const [wipeStatus, setWipeStatus] = (0, import_react69.useState)("");
+    const [wipePreview, setWipePreview] = (0, import_react69.useState)(null);
+    const loadStats = (0, import_react69.useCallback)(async () => {
       setStatsLoading(true);
       try {
         const res = await fetch(getApiBase() + "/admin/data/stats?includeWikis=true");
@@ -41039,7 +41376,7 @@
         setStatsLoading(false);
       }
     }, []);
-    const loadConfig = (0, import_react68.useCallback)(async () => {
+    const loadConfig = (0, import_react69.useCallback)(async () => {
       setConfigLoading(true);
       setConfigError(null);
       try {
@@ -41061,11 +41398,11 @@
         setConfigLoading(false);
       }
     }, []);
-    (0, import_react68.useEffect)(() => {
+    (0, import_react69.useEffect)(() => {
       loadStats();
       loadConfig();
     }, [loadStats, loadConfig]);
-    const handleSaveConfig = (0, import_react68.useCallback)(async () => {
+    const handleSaveConfig = (0, import_react69.useCallback)(async () => {
       const errors = [];
       if (!configForm.model?.trim()) errors.push("Model must be non-empty");
       const parallel = Number(configForm.parallel);
@@ -41108,7 +41445,7 @@
         setConfigSaving(false);
       }
     }, [configForm, addToast, loadConfig]);
-    const handleToggleShowReportIntent = (0, import_react68.useCallback)(async (newValue) => {
+    const handleToggleShowReportIntent = (0, import_react69.useCallback)(async (newValue) => {
       const prevValue = showReportIntent;
       setShowReportIntent(newValue);
       setDisplaySaving(true);
@@ -41131,7 +41468,7 @@
         setDisplaySaving(false);
       }
     }, [showReportIntent, addToast]);
-    const handleExport = (0, import_react68.useCallback)(async () => {
+    const handleExport = (0, import_react69.useCallback)(async () => {
       setExportStatus("Exporting\u2026");
       try {
         const res = await fetch(getApiBase() + "/admin/export");
@@ -41156,7 +41493,7 @@
         setExportStatus("Export failed: " + (err.message || "Network error"));
       }
     }, []);
-    const handlePreviewImport = (0, import_react68.useCallback)(async () => {
+    const handlePreviewImport = (0, import_react69.useCallback)(async () => {
       if (!importFile) {
         setImportStatus("Please select a JSON file first.");
         return;
@@ -41188,7 +41525,7 @@
         setImportStatus("Invalid JSON file.");
       }
     }, [importFile]);
-    const handleImport = (0, import_react68.useCallback)(async () => {
+    const handleImport = (0, import_react69.useCallback)(async () => {
       if (!importFile) {
         setImportStatus("Please select a JSON file first.");
         return;
@@ -41219,7 +41556,7 @@
         setImportStatus("Import failed: " + (err.message || "Network error"));
       }
     }, [importFile, importMode, addToast, loadStats]);
-    const handlePreviewWipe = (0, import_react68.useCallback)(async () => {
+    const handlePreviewWipe = (0, import_react69.useCallback)(async () => {
       try {
         const res = await fetch(getApiBase() + "/admin/data/stats?includeWikis=" + includeWikis);
         if (!res.ok) {
@@ -41236,7 +41573,7 @@
         setWipePreview("Failed to load preview.");
       }
     }, [includeWikis]);
-    const handleWipeStep1 = (0, import_react68.useCallback)(async () => {
+    const handleWipeStep1 = (0, import_react69.useCallback)(async () => {
       setWipeStatus("Requesting confirmation token\u2026");
       try {
         const res = await fetch(getApiBase() + "/admin/data/wipe-token");
@@ -41249,7 +41586,7 @@
         setWipeStatus(err.message);
       }
     }, []);
-    const handleWipeConfirm = (0, import_react68.useCallback)(async () => {
+    const handleWipeConfirm = (0, import_react69.useCallback)(async () => {
       if (!wipeToken) return;
       setWipeStatus("Wiping data\u2026");
       try {
@@ -41270,52 +41607,52 @@
         setWipeStatus("Wipe failed: " + (err.message || "Network error"));
       }
     }, [wipeToken, includeWikis, addToast, loadStats]);
-    const handleWipeCancel = (0, import_react68.useCallback)(() => {
+    const handleWipeCancel = (0, import_react69.useCallback)(() => {
       setWipeToken(null);
       setWipeStatus("Cancelled.");
     }, []);
     const sources = config?.sources ?? {};
     const resolved = config?.resolved ?? {};
-    return /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)("div", { className: "p-6 space-y-6", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)("header", { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("h1", { className: "text-xl font-semibold text-[#1e1e1e] dark:text-[#cccccc]", children: "Admin" }),
-        /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("p", { className: "text-sm text-[#616161] dark:text-[#999]", children: "Server management and data administration" })
+    return /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("div", { id: "view-admin", children: /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)("div", { id: "admin-page-content", className: "p-6 space-y-6", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)("header", { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("h1", { className: "text-xl font-semibold text-[#1e1e1e] dark:text-[#cccccc]", children: "Admin" }),
+        /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("p", { className: "text-sm text-[#616161] dark:text-[#999]", children: "Server management and data administration" })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)(Card, { className: "p-4", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("h3", { className: "text-sm font-semibold mb-3 text-[#1e1e1e] dark:text-[#cccccc]", children: "Storage Stats" }),
-        statsLoading ? /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)("div", { className: "flex items-center gap-2 text-sm text-[#848484]", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(Spinner, { size: "sm" }),
+      /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)(Card, { className: "p-4", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("h3", { className: "text-sm font-semibold mb-3 text-[#1e1e1e] dark:text-[#cccccc]", children: "Storage Stats" }),
+        statsLoading ? /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)("div", { className: "flex items-center gap-2 text-sm text-[#848484]", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(Spinner, { size: "sm" }),
           " Loading\u2026"
-        ] }) : /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)("div", { className: "grid grid-cols-1 md:grid-cols-3 gap-4 mb-3", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)("div", { className: "text-center p-3 rounded bg-white dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#3c3c3c]", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("div", { className: "text-2xl font-bold text-[#0078d4]", "data-testid": "stat-processes", children: stats?.processCount ?? "\u2014" }),
-            /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("div", { className: "text-xs text-[#616161] dark:text-[#999]", children: "Processes" })
+        ] }) : /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)("div", { className: "grid grid-cols-1 md:grid-cols-3 gap-4 mb-3", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)("div", { id: "admin-stat-processes", className: "text-center p-3 rounded bg-white dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#3c3c3c]", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("div", { className: "text-2xl font-bold text-[#0078d4]", "data-testid": "stat-processes", children: stats?.processCount ?? "\u2014" }),
+            /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("div", { className: "text-xs text-[#616161] dark:text-[#999]", children: "Processes" })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)("div", { className: "text-center p-3 rounded bg-white dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#3c3c3c]", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("div", { className: "text-2xl font-bold text-[#0078d4]", "data-testid": "stat-wikis", children: stats?.wikiCount ?? "\u2014" }),
-            /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("div", { className: "text-xs text-[#616161] dark:text-[#999]", children: "Wikis" })
+          /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)("div", { id: "admin-stat-wikis", className: "text-center p-3 rounded bg-white dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#3c3c3c]", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("div", { className: "text-2xl font-bold text-[#0078d4]", "data-testid": "stat-wikis", children: stats?.wikiCount ?? "\u2014" }),
+            /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("div", { className: "text-xs text-[#616161] dark:text-[#999]", children: "Wikis" })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)("div", { className: "text-center p-3 rounded bg-white dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#3c3c3c]", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("div", { className: "text-2xl font-bold text-[#0078d4]", "data-testid": "stat-disk", children: stats?.totalBytes != null ? formatBytes(stats.totalBytes) : "\u2014" }),
-            /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("div", { className: "text-xs text-[#616161] dark:text-[#999]", children: "Disk Usage" })
+          /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)("div", { id: "admin-stat-disk", className: "text-center p-3 rounded bg-white dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#3c3c3c]", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("div", { className: "text-2xl font-bold text-[#0078d4]", "data-testid": "stat-disk", children: stats?.totalBytes != null ? formatBytes(stats.totalBytes) : "\u2014" }),
+            /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("div", { className: "text-xs text-[#616161] dark:text-[#999]", children: "Disk Usage" })
           ] })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(Button, { variant: "secondary", size: "sm", onClick: loadStats, children: "Refresh" })
+        /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(Button, { id: "admin-refresh-stats", variant: "secondary", size: "sm", onClick: loadStats, children: "Refresh" })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)(Card, { className: "p-4", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("h3", { className: "text-sm font-semibold mb-3 text-[#1e1e1e] dark:text-[#cccccc]", children: "Configuration" }),
-        configLoading ? /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)("div", { className: "flex items-center gap-2 text-sm text-[#848484]", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(Spinner, { size: "sm" }),
+      /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)(Card, { className: "p-4", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("h3", { className: "text-sm font-semibold mb-3 text-[#1e1e1e] dark:text-[#cccccc]", children: "Configuration" }),
+        configLoading ? /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)("div", { className: "flex items-center gap-2 text-sm text-[#848484]", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(Spinner, { size: "sm" }),
           " Loading\u2026"
-        ] }) : configError ? /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("div", { className: "text-sm text-red-500", children: configError }) : /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)(import_jsx_runtime66.Fragment, { children: [
-          config?.configFilePath && /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)("div", { className: "text-xs text-[#848484] mb-3", children: [
+        ] }) : configError ? /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("div", { className: "text-sm text-red-500", children: configError }) : /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)(import_jsx_runtime67.Fragment, { children: [
+          config?.configFilePath && /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)("div", { className: "text-xs text-[#848484] mb-3", children: [
             "Config file: ",
-            /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("code", { className: "bg-black/5 dark:bg-white/5 px-1 rounded", children: config.configFilePath })
+            /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("code", { className: "bg-black/5 dark:bg-white/5 px-1 rounded", children: config.configFilePath })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)("div", { className: "space-y-2 mb-3", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)("div", { className: "flex items-center gap-2", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("label", { className: "text-xs w-24 text-[#616161] dark:text-[#999]", children: "Model" }),
-              /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)("div", { className: "space-y-2 mb-3", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)("div", { className: "flex items-center gap-2", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("label", { className: "text-xs w-24 text-[#616161] dark:text-[#999]", children: "Model" }),
+              /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(
                 "input",
                 {
                   className: "flex-1 px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]",
@@ -41323,11 +41660,11 @@
                   onChange: (e) => setConfigForm((f) => ({ ...f, model: e.target.value }))
                 }
               ),
-              /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(SourceBadge, { source: sources["model"] })
+              /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(SourceBadge, { source: sources["model"] })
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)("div", { className: "flex items-center gap-2", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("label", { className: "text-xs w-24 text-[#616161] dark:text-[#999]", children: "Parallelism" }),
-              /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(
+            /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)("div", { className: "flex items-center gap-2", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("label", { className: "text-xs w-24 text-[#616161] dark:text-[#999]", children: "Parallelism" }),
+              /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(
                 "input",
                 {
                   type: "number",
@@ -41337,11 +41674,11 @@
                   onChange: (e) => setConfigForm((f) => ({ ...f, parallel: e.target.value }))
                 }
               ),
-              /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(SourceBadge, { source: sources["parallel"] })
+              /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(SourceBadge, { source: sources["parallel"] })
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)("div", { className: "flex items-center gap-2", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("label", { className: "text-xs w-24 text-[#616161] dark:text-[#999]", children: "Timeout" }),
-              /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(
+            /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)("div", { className: "flex items-center gap-2", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("label", { className: "text-xs w-24 text-[#616161] dark:text-[#999]", children: "Timeout" }),
+              /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(
                 "input",
                 {
                   type: "number",
@@ -41352,78 +41689,78 @@
                   onChange: (e) => setConfigForm((f) => ({ ...f, timeout: e.target.value }))
                 }
               ),
-              /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("span", { className: "inline-block px-1.5 py-0.5 text-[10px] rounded bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300", children: "s" }),
-              /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(SourceBadge, { source: sources["timeout"] })
+              /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("span", { className: "inline-block px-1.5 py-0.5 text-[10px] rounded bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300", children: "s" }),
+              /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(SourceBadge, { source: sources["timeout"] })
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("div", { className: "text-[10px] text-[#848484] ml-[6.5rem]", children: "AI task execution timeout. Leave empty to use the system default (1 hour)." }),
-            /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)("div", { className: "flex items-center gap-2", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("label", { className: "text-xs w-24 text-[#616161] dark:text-[#999]", children: "Output" }),
-              /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(
+            /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("div", { className: "text-[10px] text-[#848484] ml-[6.5rem]", children: "AI task execution timeout. Leave empty to use the system default (1 hour)." }),
+            /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)("div", { className: "flex items-center gap-2", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("label", { className: "text-xs w-24 text-[#616161] dark:text-[#999]", children: "Output" }),
+              /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(
                 "select",
                 {
                   className: "flex-1 px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]",
                   value: configForm.output,
                   onChange: (e) => setConfigForm((f) => ({ ...f, output: e.target.value })),
-                  children: VALID_OUTPUT_OPTIONS.map((o) => /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("option", { value: o, children: o }, o))
+                  children: VALID_OUTPUT_OPTIONS.map((o) => /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("option", { value: o, children: o }, o))
                 }
               ),
-              /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(SourceBadge, { source: sources["output"] })
+              /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(SourceBadge, { source: sources["output"] })
             ] })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)("div", { className: "text-xs space-y-1 mb-3 text-[#616161] dark:text-[#999]", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)("div", { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)("div", { className: "text-xs space-y-1 mb-3 text-[#616161] dark:text-[#999]", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)("div", { children: [
               "Approve Permissions: ",
               String(resolved.approvePermissions ?? "\u2014"),
               " ",
-              /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(SourceBadge, { source: sources["approvePermissions"] })
+              /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(SourceBadge, { source: sources["approvePermissions"] })
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)("div", { children: [
               "MCP Config: ",
               String(resolved.mcpConfig ?? "\u2014"),
               " ",
-              /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(SourceBadge, { source: sources["mcpConfig"] })
+              /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(SourceBadge, { source: sources["mcpConfig"] })
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)("div", { children: [
               "Persist: ",
               String(resolved.persist ?? "\u2014"),
               " ",
-              /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(SourceBadge, { source: sources["persist"] })
+              /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(SourceBadge, { source: sources["persist"] })
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)("div", { children: [
               "Serve Port: ",
               String(resolved.serve?.port ?? "\u2014"),
               " ",
-              /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(SourceBadge, { source: sources["serve.port"] })
+              /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(SourceBadge, { source: sources["serve.port"] })
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)("div", { children: [
               "Serve Host: ",
               String(resolved.serve?.host ?? "\u2014"),
               " ",
-              /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(SourceBadge, { source: sources["serve.host"] })
+              /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(SourceBadge, { source: sources["serve.host"] })
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)("div", { children: [
               "Serve Data Dir: ",
               String(resolved.serve?.dataDir ?? "\u2014"),
               " ",
-              /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(SourceBadge, { source: sources["serve.dataDir"] })
+              /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(SourceBadge, { source: sources["serve.dataDir"] })
             ] })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(Button, { size: "sm", onClick: handleSaveConfig, loading: configSaving, children: "Save" })
+          /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(Button, { size: "sm", onClick: handleSaveConfig, loading: configSaving, children: "Save" })
         ] })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)(Card, { className: "p-4", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("h3", { className: "text-sm font-semibold mb-3 text-[#1e1e1e] dark:text-[#cccccc]", children: "Display" }),
-        /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)("div", { className: "flex items-center justify-between", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)("div", { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("div", { className: "text-sm text-[#1e1e1e] dark:text-[#cccccc]", children: "Show intent announcements" }),
-            /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)("div", { className: "text-xs text-[#616161] dark:text-[#999]", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)(Card, { className: "p-4", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("h3", { className: "text-sm font-semibold mb-3 text-[#1e1e1e] dark:text-[#cccccc]", children: "Display" }),
+        /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)("div", { className: "flex items-center justify-between", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("div", { className: "text-sm text-[#1e1e1e] dark:text-[#cccccc]", children: "Show intent announcements" }),
+            /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)("div", { className: "text-xs text-[#616161] dark:text-[#999]", children: [
               "Show or hide ",
-              /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("code", { className: "bg-black/5 dark:bg-white/5 px-1 rounded", children: "report_intent" }),
+              /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("code", { className: "bg-black/5 dark:bg-white/5 px-1 rounded", children: "report_intent" }),
               " tool calls in the conversation view."
             ] })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)("label", { className: "relative inline-flex items-center cursor-pointer ml-4", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)("label", { className: "relative inline-flex items-center cursor-pointer ml-4", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(
               "input",
               {
                 type: "checkbox",
@@ -41434,67 +41771,68 @@
                 "data-testid": "toggle-show-report-intent"
               }
             ),
-            /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("div", { className: "w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" })
+            /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("div", { className: "w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" })
           ] })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("div", { className: "mt-1", children: /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(SourceBadge, { source: sources["showReportIntent"] }) })
+        /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("div", { className: "mt-1", children: /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(SourceBadge, { source: sources["showReportIntent"] }) })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)(Card, { className: "p-4", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("h3", { className: "text-sm font-semibold mb-2 text-[#1e1e1e] dark:text-[#cccccc]", children: "Export Data" }),
-        /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("p", { className: "text-xs text-[#616161] dark:text-[#999] mb-3", children: "Download all server data as a JSON file." }),
-        /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(Button, { variant: "secondary", size: "sm", onClick: handleExport, children: "Export" }),
-        exportStatus && /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("div", { className: "text-xs text-[#848484] mt-2", children: exportStatus })
+      /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)(Card, { className: "p-4", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("h3", { className: "text-sm font-semibold mb-2 text-[#1e1e1e] dark:text-[#cccccc]", children: "Export Data" }),
+        /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("p", { className: "text-xs text-[#616161] dark:text-[#999] mb-3", children: "Download all server data as a JSON file." }),
+        /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(Button, { id: "admin-export-btn", variant: "secondary", size: "sm", onClick: handleExport, children: "Export" }),
+        exportStatus && /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("div", { id: "admin-export-status", className: "text-xs text-[#848484] mt-2", children: exportStatus })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)(Card, { className: "p-4", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("h3", { className: "text-sm font-semibold mb-2 text-[#1e1e1e] dark:text-[#cccccc]", children: "Import Data" }),
-        /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("p", { className: "text-xs text-[#616161] dark:text-[#999] mb-3", children: "Restore data from a previously exported JSON file." }),
-        /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)("div", { className: "flex flex-col gap-2 mb-3", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)(Card, { className: "p-4", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("h3", { className: "text-sm font-semibold mb-2 text-[#1e1e1e] dark:text-[#cccccc]", children: "Import Data" }),
+        /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("p", { className: "text-xs text-[#616161] dark:text-[#999] mb-3", children: "Restore data from a previously exported JSON file." }),
+        /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)("div", { className: "flex flex-col gap-2 mb-3", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(
             "input",
             {
+              id: "admin-import-file",
               type: "file",
               accept: ".json,application/json",
               className: "text-xs",
               onChange: (e) => setImportFile(e.target.files?.[0] ?? null)
             }
           ),
-          /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)("div", { className: "flex items-center gap-3 text-xs", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)("label", { className: "flex items-center gap-1", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("input", { type: "radio", name: "import-mode", checked: importMode === "replace", onChange: () => setImportMode("replace") }),
+          /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)("div", { className: "flex items-center gap-3 text-xs", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)("label", { className: "flex items-center gap-1", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("input", { type: "radio", name: "import-mode", value: "replace", checked: importMode === "replace", onChange: () => setImportMode("replace") }),
               " Replace"
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)("label", { className: "flex items-center gap-1", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("input", { type: "radio", name: "import-mode", checked: importMode === "merge", onChange: () => setImportMode("merge") }),
+            /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)("label", { className: "flex items-center gap-1", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("input", { type: "radio", name: "import-mode", value: "merge", checked: importMode === "merge", onChange: () => setImportMode("merge") }),
               " Merge"
             ] })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)("div", { className: "flex gap-2", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(Button, { variant: "secondary", size: "sm", onClick: handlePreviewImport, children: "Preview" }),
-            /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(Button, { size: "sm", onClick: handleImport, children: "Import" })
+          /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)("div", { className: "flex gap-2", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(Button, { id: "admin-import-preview-btn", variant: "secondary", size: "sm", onClick: handlePreviewImport, children: "Preview" }),
+            /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(Button, { id: "admin-import-btn", size: "sm", onClick: handleImport, children: "Import" })
           ] })
         ] }),
-        importPreview && /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("pre", { className: "text-xs bg-black/5 dark:bg-white/5 p-2 rounded mb-2 whitespace-pre-wrap", children: importPreview }),
-        importStatus && /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("div", { className: "text-xs text-[#848484]", children: importStatus })
+        importPreview && /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("pre", { id: "admin-import-preview", className: "text-xs bg-black/5 dark:bg-white/5 p-2 rounded mb-2 whitespace-pre-wrap", children: importPreview }),
+        importStatus && /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("div", { id: "admin-import-status", className: "text-xs text-[#848484]", children: importStatus })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)(Card, { className: "p-4 border-red-300 dark:border-red-800", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("h3", { className: "text-sm font-semibold mb-2 text-red-600 dark:text-red-400", children: "Danger Zone" }),
-        /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("p", { className: "text-xs text-[#616161] dark:text-[#999] mb-3", children: "Permanently delete all stored data. This cannot be undone." }),
-        /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("div", { className: "flex items-center gap-2 mb-3", children: /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)("label", { className: "flex items-center gap-1 text-xs", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("input", { type: "checkbox", checked: includeWikis, onChange: (e) => setIncludeWikis(e.target.checked), className: "accent-red-500" }),
+      /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)(Card, { className: "p-4 border-red-300 dark:border-red-800", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("h3", { className: "text-sm font-semibold mb-2 text-red-600 dark:text-red-400", children: "Danger Zone" }),
+        /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("p", { className: "text-xs text-[#616161] dark:text-[#999] mb-3", children: "Permanently delete all stored data. This cannot be undone." }),
+        /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("div", { className: "flex items-center gap-2 mb-3", children: /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)("label", { className: "flex items-center gap-1 text-xs", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("input", { id: "admin-include-wikis", type: "checkbox", checked: includeWikis, onChange: (e) => setIncludeWikis(e.target.checked), className: "accent-red-500" }),
           "Include wikis"
         ] }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)("div", { className: "flex gap-2 mb-2", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(Button, { variant: "secondary", size: "sm", onClick: handlePreviewWipe, children: "Preview" }),
-          wipeToken === null ? /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(Button, { variant: "danger", size: "sm", onClick: handleWipeStep1, children: "Wipe Data" }) : /* @__PURE__ */ (0, import_jsx_runtime66.jsxs)(import_jsx_runtime66.Fragment, { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(Button, { variant: "danger", size: "sm", onClick: handleWipeConfirm, children: "Confirm Wipe" }),
-            /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(Button, { variant: "secondary", size: "sm", onClick: handleWipeCancel, children: "Cancel" })
+        /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)("div", { className: "flex gap-2 mb-2", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(Button, { id: "admin-preview-wipe", variant: "secondary", size: "sm", onClick: handlePreviewWipe, children: "Preview" }),
+          wipeToken === null ? /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(Button, { id: "admin-wipe-btn", variant: "danger", size: "sm", onClick: handleWipeStep1, children: "Wipe Data" }) : /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)(import_jsx_runtime67.Fragment, { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(Button, { id: "admin-wipe-confirm", variant: "danger", size: "sm", onClick: handleWipeConfirm, children: "Confirm Wipe" }),
+            /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(Button, { id: "admin-wipe-cancel", variant: "secondary", size: "sm", onClick: handleWipeCancel, children: "Cancel" })
           ] })
         ] }),
-        wipePreview && /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("pre", { className: "text-xs bg-black/5 dark:bg-white/5 p-2 rounded mb-2 whitespace-pre-wrap", children: wipePreview }),
-        wipeStatus && /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("div", { className: "text-xs text-[#848484]", children: wipeStatus })
+        wipePreview && /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("pre", { id: "admin-wipe-preview", className: "text-xs bg-black/5 dark:bg-white/5 p-2 rounded mb-2 whitespace-pre-wrap", children: wipePreview }),
+        wipeStatus && /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("div", { id: "admin-wipe-status", className: "text-xs text-[#848484]", children: wipeStatus })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime66.jsx)(ToastContainer, { toasts, removeToast })
-    ] });
+      /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(ToastContainer, { toasts, removeToast })
+    ] }) });
   }
   function SourceBadge({ source }) {
     const s = source || "default";
@@ -41504,13 +41842,13 @@
       cli: "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300",
       env: "bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300"
     };
-    return /* @__PURE__ */ (0, import_jsx_runtime66.jsx)("span", { className: `inline-block px-1.5 py-0.5 text-[10px] rounded ${colors[s] || colors.default}`, children: s });
+    return /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("span", { className: `inline-block px-1.5 py-0.5 text-[10px] rounded ${colors[s] || colors.default}`, children: s });
   }
 
   // src/server/spa/client/react/layout/Router.tsx
-  var import_jsx_runtime67 = __toESM(require_jsx_runtime());
+  var import_jsx_runtime68 = __toESM(require_jsx_runtime());
   function StubView({ id, label }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime67.jsx)("div", { id, children: label });
+    return /* @__PURE__ */ (0, import_jsx_runtime68.jsx)("div", { id, children: label });
   }
   function tabFromHash(hash) {
     const h = hash.replace(/^#/, "").split("/")[0];
@@ -41557,16 +41895,16 @@
   function Router() {
     const { state, dispatch } = useApp();
     const { dispatch: queueDispatch } = useQueue();
-    const switchTab = (0, import_react69.useCallback)((tab) => {
+    const switchTab = (0, import_react70.useCallback)((tab) => {
       dispatch({ type: "SET_ACTIVE_TAB", tab });
     }, [dispatch]);
-    (0, import_react69.useEffect)(() => {
+    (0, import_react70.useEffect)(() => {
       window.switchTab = switchTab;
       return () => {
         delete window.switchTab;
       };
     }, [switchTab]);
-    (0, import_react69.useEffect)(() => {
+    (0, import_react70.useEffect)(() => {
       const handleHash = () => {
         const hash = location.hash.replace(/^#/, "");
         const tab = tabFromHash("#" + hash);
@@ -41616,6 +41954,8 @@
             } else {
               dispatch({ type: "SELECT_WIKI", wikiId: wikiLink.wikiId });
             }
+          } else {
+            dispatch({ type: "SELECT_WIKI", wikiId: null });
           }
         }
       };
@@ -41623,7 +41963,7 @@
       window.addEventListener("hashchange", handleHash);
       return () => window.removeEventListener("hashchange", handleHash);
     }, [dispatch, queueDispatch]);
-    (0, import_react69.useEffect)(() => {
+    (0, import_react70.useEffect)(() => {
       const handler = (e) => {
         const target = e.target;
         if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) return;
@@ -41639,25 +41979,25 @@
     }, [dispatch, state.activeTab, state.selectedRepoId]);
     switch (state.activeTab) {
       case "processes":
-        return /* @__PURE__ */ (0, import_jsx_runtime67.jsxs)(import_jsx_runtime67.Fragment, { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(ProcessesView, {}),
-          /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(QueueView, {})
+        return /* @__PURE__ */ (0, import_jsx_runtime68.jsxs)(import_jsx_runtime68.Fragment, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime68.jsx)(ProcessesView, {}),
+          /* @__PURE__ */ (0, import_jsx_runtime68.jsx)(QueueView, {})
         ] });
       case "repos":
-        return /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(ReposView, {});
+        return /* @__PURE__ */ (0, import_jsx_runtime68.jsx)(ReposView, {});
       case "wiki":
-        return /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(WikiView, {});
+        return /* @__PURE__ */ (0, import_jsx_runtime68.jsx)(WikiView, {});
       case "admin":
-        return /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(AdminPanel, {});
+        return /* @__PURE__ */ (0, import_jsx_runtime68.jsx)(AdminPanel, {});
       case "reports":
-        return /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(StubView, { id: "view-reports", label: "Reports" });
+        return /* @__PURE__ */ (0, import_jsx_runtime68.jsx)(StubView, { id: "view-reports", label: "Reports" });
       default:
-        return /* @__PURE__ */ (0, import_jsx_runtime67.jsx)(ReposView, {});
+        return /* @__PURE__ */ (0, import_jsx_runtime68.jsx)(ReposView, {});
     }
   }
 
   // src/server/spa/client/react/processes/MarkdownReviewDialog.tsx
-  var import_jsx_runtime68 = __toESM(require_jsx_runtime());
+  var import_jsx_runtime69 = __toESM(require_jsx_runtime());
   function getTitle(displayPath, filePath) {
     const source = displayPath || filePath || "";
     if (!source) return "Markdown Review";
@@ -41673,16 +42013,16 @@
     fetchMode
   }) {
     if (!open || !wsId || !filePath) return null;
-    return /* @__PURE__ */ (0, import_jsx_runtime68.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime69.jsx)(
       Dialog,
       {
         open,
         onClose,
         className: "max-w-[95vw] w-[95vw] h-[92vh] p-0 gap-0",
-        children: /* @__PURE__ */ (0, import_jsx_runtime68.jsxs)("div", { className: "flex h-[92vh] flex-col", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime68.jsxs)("div", { className: "px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#252526]", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime68.jsx)("div", { className: "text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc]", children: getTitle(displayPath, filePath) }),
-            /* @__PURE__ */ (0, import_jsx_runtime68.jsx)(
+        children: /* @__PURE__ */ (0, import_jsx_runtime69.jsxs)("div", { className: "flex h-[92vh] flex-col", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime69.jsxs)("div", { className: "px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#252526]", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime69.jsx)("div", { className: "text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc]", children: getTitle(displayPath, filePath) }),
+            /* @__PURE__ */ (0, import_jsx_runtime69.jsx)(
               "div",
               {
                 className: "text-xs text-[#848484] truncate mt-0.5",
@@ -41691,7 +42031,7 @@
               }
             )
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime68.jsx)("div", { className: "flex-1 min-h-0 overflow-hidden", children: /* @__PURE__ */ (0, import_jsx_runtime68.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime69.jsx)("div", { className: "flex-1 min-h-0 overflow-hidden", children: /* @__PURE__ */ (0, import_jsx_runtime69.jsx)(
             MarkdownReviewEditor,
             {
               wsId,
@@ -41705,8 +42045,8 @@
   }
 
   // src/server/spa/client/react/queue/EnqueueDialog.tsx
-  var import_react70 = __toESM(require_react());
-  var import_jsx_runtime69 = __toESM(require_jsx_runtime());
+  var import_react71 = __toESM(require_react());
+  var import_jsx_runtime70 = __toESM(require_jsx_runtime());
   function flattenFolders2(node, depth = 0) {
     const indent = "\xA0\xA0".repeat(depth);
     const options = [];
@@ -41723,17 +42063,17 @@
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { state: appState } = useApp();
     const { model: savedModel, setModel: persistModel } = usePreferences();
-    const [prompt, setPrompt] = (0, import_react70.useState)("");
-    const [model, setModel] = (0, import_react70.useState)("");
-    const [workspaceId, setWorkspaceId] = (0, import_react70.useState)("");
-    const [models, setModels] = (0, import_react70.useState)([]);
-    const [folders, setFolders] = (0, import_react70.useState)([]);
-    const [folderPath, setFolderPath] = (0, import_react70.useState)("");
-    const [submitting, setSubmitting] = (0, import_react70.useState)(false);
-    (0, import_react70.useEffect)(() => {
+    const [prompt, setPrompt] = (0, import_react71.useState)("");
+    const [model, setModel] = (0, import_react71.useState)("");
+    const [workspaceId, setWorkspaceId] = (0, import_react71.useState)("");
+    const [models, setModels] = (0, import_react71.useState)([]);
+    const [folders, setFolders] = (0, import_react71.useState)([]);
+    const [folderPath, setFolderPath] = (0, import_react71.useState)("");
+    const [submitting, setSubmitting] = (0, import_react71.useState)(false);
+    (0, import_react71.useEffect)(() => {
       if (savedModel && !model) setModel(savedModel);
     }, [savedModel]);
-    (0, import_react70.useEffect)(() => {
+    (0, import_react71.useEffect)(() => {
       if (!queueState.showDialog) return;
       setFolderPath(queueState.dialogInitialFolderPath ?? "");
       fetchApi("/queue/models").then((data) => {
@@ -41742,7 +42082,7 @@
       }).catch(() => {
       });
     }, [queueState.showDialog]);
-    (0, import_react70.useEffect)(() => {
+    (0, import_react71.useEffect)(() => {
       setFolders([]);
       if (!workspaceId) return;
       fetchApi("/workspaces/" + encodeURIComponent(workspaceId) + "/tasks").then((data) => {
@@ -41752,11 +42092,11 @@
       }).catch(() => {
       });
     }, [workspaceId]);
-    const handleModelChange = (0, import_react70.useCallback)((value) => {
+    const handleModelChange = (0, import_react71.useCallback)((value) => {
       setModel(value);
       persistModel(value);
     }, [persistModel]);
-    const handleSubmit = (0, import_react70.useCallback)(async () => {
+    const handleSubmit = (0, import_react71.useCallback)(async () => {
       if (!prompt.trim()) return;
       setSubmitting(true);
       try {
@@ -41777,15 +42117,15 @@
         setSubmitting(false);
       }
     }, [prompt, model, workspaceId, folderPath, queueDispatch]);
-    return /* @__PURE__ */ (0, import_jsx_runtime69.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime70.jsx)(
       Dialog,
       {
         open: queueState.showDialog,
         onClose: () => queueDispatch({ type: "CLOSE_DIALOG" }),
         title: "Enqueue AI Task",
-        footer: /* @__PURE__ */ (0, import_jsx_runtime69.jsxs)(import_jsx_runtime69.Fragment, { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime69.jsx)(Button, { variant: "secondary", onClick: () => queueDispatch({ type: "CLOSE_DIALOG" }), children: "Cancel" }),
-          /* @__PURE__ */ (0, import_jsx_runtime69.jsx)(
+        footer: /* @__PURE__ */ (0, import_jsx_runtime70.jsxs)(import_jsx_runtime70.Fragment, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime70.jsx)(Button, { variant: "secondary", onClick: () => queueDispatch({ type: "CLOSE_DIALOG" }), children: "Cancel" }),
+          /* @__PURE__ */ (0, import_jsx_runtime70.jsx)(
             Button,
             {
               variant: "primary",
@@ -41796,10 +42136,10 @@
             }
           )
         ] }),
-        children: /* @__PURE__ */ (0, import_jsx_runtime69.jsxs)("div", { className: "flex flex-col gap-3", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime69.jsxs)("div", { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime69.jsx)("label", { className: "block text-xs font-medium text-[#848484] mb-1", children: "Prompt" }),
-            /* @__PURE__ */ (0, import_jsx_runtime69.jsx)(
+        children: /* @__PURE__ */ (0, import_jsx_runtime70.jsxs)("div", { className: "flex flex-col gap-3", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime70.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime70.jsx)("label", { className: "block text-xs font-medium text-[#848484] mb-1", children: "Prompt" }),
+            /* @__PURE__ */ (0, import_jsx_runtime70.jsx)(
               "textarea",
               {
                 value: prompt,
@@ -41810,46 +42150,46 @@
               }
             )
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime69.jsxs)("div", { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime69.jsx)("label", { className: "block text-xs font-medium text-[#848484] mb-1", children: "Model" }),
-            /* @__PURE__ */ (0, import_jsx_runtime69.jsxs)(
+          /* @__PURE__ */ (0, import_jsx_runtime70.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime70.jsx)("label", { className: "block text-xs font-medium text-[#848484] mb-1", children: "Model" }),
+            /* @__PURE__ */ (0, import_jsx_runtime70.jsxs)(
               "select",
               {
                 value: model,
                 onChange: (e) => handleModelChange(e.target.value),
                 className: "w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]",
                 children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime69.jsx)("option", { value: "", children: "Default" }),
-                  models.map((m) => /* @__PURE__ */ (0, import_jsx_runtime69.jsx)("option", { value: m, children: m }, m))
+                  /* @__PURE__ */ (0, import_jsx_runtime70.jsx)("option", { value: "", children: "Default" }),
+                  models.map((m) => /* @__PURE__ */ (0, import_jsx_runtime70.jsx)("option", { value: m, children: m }, m))
                 ]
               }
             )
           ] }),
-          appState.workspaces.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime69.jsxs)("div", { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime69.jsx)("label", { className: "block text-xs font-medium text-[#848484] mb-1", children: "Workspace" }),
-            /* @__PURE__ */ (0, import_jsx_runtime69.jsxs)(
+          appState.workspaces.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime70.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime70.jsx)("label", { className: "block text-xs font-medium text-[#848484] mb-1", children: "Workspace" }),
+            /* @__PURE__ */ (0, import_jsx_runtime70.jsxs)(
               "select",
               {
                 value: workspaceId,
                 onChange: (e) => setWorkspaceId(e.target.value),
                 className: "w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]",
                 children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime69.jsx)("option", { value: "", children: "None" }),
-                  appState.workspaces.map((ws) => /* @__PURE__ */ (0, import_jsx_runtime69.jsx)("option", { value: ws.id, children: ws.name || ws.path || ws.id }, ws.id))
+                  /* @__PURE__ */ (0, import_jsx_runtime70.jsx)("option", { value: "", children: "None" }),
+                  appState.workspaces.map((ws) => /* @__PURE__ */ (0, import_jsx_runtime70.jsx)("option", { value: ws.id, children: ws.name || ws.path || ws.id }, ws.id))
                 ]
               }
             )
           ] }),
-          workspaceId && folders.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime69.jsxs)("div", { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime69.jsx)("label", { className: "block text-xs font-medium text-[#848484] mb-1", children: "Folder" }),
-            /* @__PURE__ */ (0, import_jsx_runtime69.jsx)(
+          workspaceId && folders.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime70.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime70.jsx)("label", { className: "block text-xs font-medium text-[#848484] mb-1", children: "Folder" }),
+            /* @__PURE__ */ (0, import_jsx_runtime70.jsx)(
               "select",
               {
                 value: folderPath,
                 onChange: (e) => setFolderPath(e.target.value),
                 className: "w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]",
                 "data-testid": "folder-select",
-                children: folders.map((f) => /* @__PURE__ */ (0, import_jsx_runtime69.jsx)("option", { value: f.value, children: f.label }, f.value))
+                children: folders.map((f) => /* @__PURE__ */ (0, import_jsx_runtime70.jsx)("option", { value: f.value, children: f.label }, f.value))
               }
             )
           ] })
@@ -41859,7 +42199,7 @@
   }
 
   // src/server/spa/client/react/App.tsx
-  var import_jsx_runtime70 = __toESM(require_jsx_runtime());
+  var import_jsx_runtime71 = __toESM(require_jsx_runtime());
   function normalizePath2(pathValue) {
     return pathValue.replace(/\\/g, "/");
   }
@@ -41891,20 +42231,20 @@
     const { state: appState, dispatch: appDispatch } = useApp();
     const { dispatch: queueDispatch } = useQueue();
     const { toasts, addToast, removeToast } = useToast();
-    const [reviewDialog, setReviewDialog] = (0, import_react71.useState)({
+    const [reviewDialog, setReviewDialog] = (0, import_react72.useState)({
       open: false,
       wsId: null,
       filePath: null,
       displayPath: null,
       fetchMode: "auto"
     });
-    const handleConnect = (0, import_react71.useCallback)(async () => {
+    const handleConnect = (0, import_react72.useCallback)(async () => {
       const data = await fetchApi("/queue").catch(() => null);
       if (data && Array.isArray(data.queued) && Array.isArray(data.running)) {
         queueDispatch({ type: "QUEUE_UPDATED", queue: data });
       }
     }, [queueDispatch]);
-    const onMessage = (0, import_react71.useCallback)((msg) => {
+    const onMessage = (0, import_react72.useCallback)((msg) => {
       if (!msg || !msg.type) return;
       switch (msg.type) {
         case "process-added":
@@ -41974,7 +42314,7 @@
       }
     }, [appDispatch, queueDispatch]);
     const { connect } = useWebSocket({ onMessage, onConnect: handleConnect });
-    (0, import_react71.useEffect)(() => {
+    (0, import_react72.useEffect)(() => {
       async function bootstrap() {
         try {
           const [wsRes, pRes, qRes] = await Promise.all([
@@ -41995,7 +42335,7 @@
       }
       bootstrap();
     }, [connect, appDispatch, queueDispatch]);
-    (0, import_react71.useEffect)(() => {
+    (0, import_react72.useEffect)(() => {
       const handleOpenMarkdownReview = (event) => {
         const detail = event.detail;
         const fullPath = typeof detail?.filePath === "string" ? detail.filePath : "";
@@ -42018,12 +42358,12 @@
         window.removeEventListener("coc-open-markdown-review", handleOpenMarkdownReview);
       };
     }, [appState.workspaces]);
-    return /* @__PURE__ */ (0, import_jsx_runtime70.jsxs)(ToastProvider, { value: { addToast, removeToast, toasts }, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime70.jsx)(TopBar, {}),
-      /* @__PURE__ */ (0, import_jsx_runtime70.jsx)(Router, {}),
-      /* @__PURE__ */ (0, import_jsx_runtime70.jsx)(ToastContainer, { toasts, removeToast }),
-      /* @__PURE__ */ (0, import_jsx_runtime70.jsx)(EnqueueDialog, {}),
-      /* @__PURE__ */ (0, import_jsx_runtime70.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime71.jsxs)(ToastProvider, { value: { addToast, removeToast, toasts }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime71.jsx)(TopBar, {}),
+      /* @__PURE__ */ (0, import_jsx_runtime71.jsx)(Router, {}),
+      /* @__PURE__ */ (0, import_jsx_runtime71.jsx)(ToastContainer, { toasts, removeToast }),
+      /* @__PURE__ */ (0, import_jsx_runtime71.jsx)(EnqueueDialog, {}),
+      /* @__PURE__ */ (0, import_jsx_runtime71.jsx)(
         MarkdownReviewDialog,
         {
           open: reviewDialog.open,
@@ -42037,7 +42377,7 @@
     ] });
   }
   function App() {
-    return /* @__PURE__ */ (0, import_jsx_runtime70.jsx)(AppProvider, { children: /* @__PURE__ */ (0, import_jsx_runtime70.jsx)(QueueProvider, { children: /* @__PURE__ */ (0, import_jsx_runtime70.jsx)(ThemeProvider, { children: /* @__PURE__ */ (0, import_jsx_runtime70.jsx)(AppInner, {}) }) }) });
+    return /* @__PURE__ */ (0, import_jsx_runtime71.jsx)(AppProvider, { children: /* @__PURE__ */ (0, import_jsx_runtime71.jsx)(QueueProvider, { children: /* @__PURE__ */ (0, import_jsx_runtime71.jsx)(ThemeProvider, { children: /* @__PURE__ */ (0, import_jsx_runtime71.jsx)(AppInner, {}) }) }) });
   }
 
   // src/server/spa/client/react/file-path-preview.ts
@@ -42282,11 +42622,11 @@
   }
 
   // src/server/spa/client/index.tsx
-  var import_jsx_runtime71 = __toESM(require_jsx_runtime());
+  var import_jsx_runtime72 = __toESM(require_jsx_runtime());
   var container = document.getElementById("app-root");
   if (!container) throw new Error("No #app-root element found");
   var root = (0, import_client.createRoot)(container);
-  root.render(/* @__PURE__ */ (0, import_jsx_runtime71.jsx)(App, {}));
+  root.render(/* @__PURE__ */ (0, import_jsx_runtime72.jsx)(App, {}));
 })();
 /*! Bundled license information:
 

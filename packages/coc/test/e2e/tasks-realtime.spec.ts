@@ -36,7 +36,7 @@ async function navigateToTasksTab(
     await expect(page.locator('.repo-sub-tab[data-subtab="tasks"]')).toHaveClass(/active/);
 
     // Wait for initial tasks to finish loading
-    await expect(page.locator('#repo-tasks-tree')).toContainText('task-a', { timeout: 15000 });
+    await expect(page.locator('[data-testid="task-tree"]')).toContainText('task-a', { timeout: 15000 });
 }
 
 // ================================================================
@@ -60,7 +60,7 @@ test.describe('Tasks real-time: API create (015)', () => {
             expect(res.status).toBe(201);
 
             // Task tree should re-render with the new task visible (no page refresh)
-            await expect(page.locator('#repo-tasks-tree')).toContainText('api-created-task', {
+            await expect(page.locator('[data-testid="task-tree"]')).toContainText('api-created-task', {
                 timeout: 10000,
             });
 
@@ -87,7 +87,7 @@ test.describe('Tasks real-time: API delete (015)', () => {
             await navigateToTasksTab(page, serverUrl, repoDir, 'ws-rt-delete');
 
             // Confirm task-a is visible in the UI before deletion
-            await expect(page.locator('#repo-tasks-tree')).toContainText('task-a', {
+            await expect(page.locator('[data-testid="task-tree"]')).toContainText('task-a', {
                 timeout: 10000,
             });
 

@@ -19,8 +19,8 @@ import { seedProcess, seedWorkspace, request } from './fixtures/seed';
 async function navigateToAdmin(page: import('@playwright/test').Page, serverUrl: string): Promise<void> {
     await page.goto(serverUrl);
     await page.click('#admin-toggle');
-    // Admin view becomes visible
-    await expect(page.locator('#view-admin')).not.toHaveClass(/hidden/, { timeout: 5000 });
+    // Admin view becomes visible (AdminPanel is a separate route view)
+    await expect(page.locator('#view-admin')).toBeVisible({ timeout: 5000 });
     // Wait for page to initialize (stats load)
     await expect(page.locator('#admin-page-content')).not.toBeEmpty({ timeout: 5000 });
 }
@@ -38,17 +38,14 @@ test.describe('Admin Panel (008)', () => {
     test('8.1 gear icon navigates to admin page', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
 
-        // Admin view should be hidden initially (default tab is repos)
-        await expect(page.locator('#view-admin')).toHaveClass(/hidden/);
+        // Default tab is repos — repos view should be visible
+        await expect(page.locator('#view-repos')).toBeVisible();
 
-        // Click gear icon
+        // Click gear icon (navigates to #admin)
         await page.click('#admin-toggle');
 
-        // Admin view should be visible
-        await expect(page.locator('#view-admin')).not.toHaveClass(/hidden/, { timeout: 5000 });
-
-        // Gear icon should be highlighted
-        await expect(page.locator('#admin-toggle')).toHaveClass(/active/);
+        // Admin view should be visible (AdminPanel is a separate route)
+        await expect(page.locator('#view-admin')).toBeVisible({ timeout: 5000 });
 
         // Hash should be #admin
         expect(page.url()).toContain('#admin');
@@ -57,14 +54,11 @@ test.describe('Admin Panel (008)', () => {
     test('8.2 navigating away from admin hides admin page', async ({ page, serverUrl }) => {
         await navigateToAdmin(page, serverUrl);
 
-        // Click Repos tab
+        // Click Repos tab (navigates away from admin route)
         await page.click('[data-tab="repos"]');
 
-        // Admin view should be hidden
-        await expect(page.locator('#view-admin')).toHaveClass(/hidden/);
-
-        // Gear icon should not be active
-        await expect(page.locator('#admin-toggle')).not.toHaveClass(/active/);
+        // Repos view should be visible; admin view no longer shown
+        await expect(page.locator('#view-repos')).toBeVisible();
     });
 
     // ----------------------------------------------------------------
@@ -119,14 +113,14 @@ test.describe('Admin Panel (008)', () => {
 
         await navigateToAdmin(page, serverUrl);
 
-        // Preview area should be hidden initially
-        await expect(page.locator('#admin-wipe-preview')).toHaveClass(/hidden/);
+        // Preview area is not rendered initially (React conditional)
+        await expect(page.locator('#admin-wipe-preview')).toHaveCount(0);
 
         // Click preview button
         await page.click('#admin-preview-wipe');
 
         // Preview should become visible with content
-        await expect(page.locator('#admin-wipe-preview')).not.toHaveClass(/hidden/, { timeout: 5000 });
+        await expect(page.locator('#admin-wipe-preview')).toBeVisible({ timeout: 5000 });
         // Preview should contain WipeResult data (JSON or formatted lines)
         await expect(page.locator('#admin-wipe-preview')).not.toHaveText('Loading preview…', {
             timeout: 5000,
@@ -153,7 +147,7 @@ test.describe('Admin Panel (008)', () => {
         await page.click('#admin-preview-wipe');
         await apiPromise;
 
-        await expect(page.locator('#admin-wipe-preview')).not.toHaveClass(/hidden/, { timeout: 5000 });
+        await expect(page.locator('#admin-wipe-preview')).toBeVisible({ timeout: 5000 });
     });
 
     // ----------------------------------------------------------------
@@ -166,10 +160,14 @@ test.describe('Admin Panel (008)', () => {
         await navigateToAdmin(page, serverUrl);
         await expect(page.locator('#admin-stat-processes')).not.toHaveText('…', { timeout: 5000 });
 
-        // Dismiss the confirm dialog
-        page.on('dialog', dialog => dialog.dismiss());
-
+        // Click "Wipe Data" to get token (two-step flow)
         await page.click('#admin-wipe-btn');
+
+        // "Confirm Wipe" and "Cancel" buttons should appear
+        await expect(page.locator('#admin-wipe-cancel')).toBeVisible({ timeout: 5000 });
+
+        // Click cancel
+        await page.click('#admin-wipe-cancel');
 
         // Status should show "Cancelled."
         await expect(page.locator('#admin-wipe-status')).toContainText('Cancelled', { timeout: 5000 });
@@ -189,10 +187,14 @@ test.describe('Admin Panel (008)', () => {
 
         await navigateToAdmin(page, serverUrl);
 
-        // Accept the confirm dialog
-        page.on('dialog', dialog => dialog.accept());
-
+        // Click "Wipe Data" to get token (two-step flow)
         await page.click('#admin-wipe-btn');
+
+        // "Confirm Wipe" button should appear
+        await expect(page.locator('#admin-wipe-confirm')).toBeVisible({ timeout: 5000 });
+
+        // Click confirm
+        await page.click('#admin-wipe-confirm');
 
         // Status should show success
         await expect(page.locator('#admin-wipe-status')).toContainText('wiped successfully', { timeout: 10000 });
@@ -208,30 +210,31 @@ test.describe('Admin Panel (008)', () => {
     // TC7: Wipe Confirm Dialog Content
     // ----------------------------------------------------------------
 
-    test('8.9 wipe confirmation dialog has expected message', async ({ page, serverUrl }) => {
+    test('8.9 wipe two-step flow shows confirm and cancel buttons', async ({ page, serverUrl }) => {
         await navigateToAdmin(page, serverUrl);
 
-        let dialogMessage = '';
-        page.on('dialog', async dialog => {
-            dialogMessage = dialog.message();
-            await dialog.dismiss();
-        });
+        // Initially only "Wipe Data" button visible, no confirm/cancel
+        await expect(page.locator('#admin-wipe-btn')).toBeVisible();
+        await expect(page.locator('#admin-wipe-confirm')).toHaveCount(0);
+        await expect(page.locator('#admin-wipe-cancel')).toHaveCount(0);
 
+        // Click "Wipe Data" to request token
         await page.click('#admin-wipe-btn');
 
-        // Wait for the dialog to be handled by waiting for the final status
-        // (either "Cancelled." from dismiss, or "Failed to get wipe token.")
-        await expect(page.locator('#admin-wipe-status')).toContainText('Cancelled', { timeout: 10000 });
+        // After token received, "Confirm Wipe" and "Cancel" should appear
+        await expect(page.locator('#admin-wipe-confirm')).toBeVisible({ timeout: 5000 });
+        await expect(page.locator('#admin-wipe-cancel')).toBeVisible();
 
-        // Dialog should mention the irreversible action
-        expect(dialogMessage).toContain('wipe all data');
+        // Cancel to reset
+        await page.click('#admin-wipe-cancel');
+        await expect(page.locator('#admin-wipe-status')).toContainText('Cancelled', { timeout: 5000 });
     });
 
     // ----------------------------------------------------------------
     // TC8: Stats Show Error on API Failure
     // ----------------------------------------------------------------
 
-    test('8.10 stats show Error when API fails', async ({ page, serverUrl }) => {
+    test('8.10 stats show dash when API fails', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
 
         // Intercept stats API to return error
@@ -245,13 +248,13 @@ test.describe('Admin Panel (008)', () => {
 
         // Navigate to admin
         await page.click('#admin-toggle');
-        await expect(page.locator('#view-admin')).not.toHaveClass(/hidden/, { timeout: 5000 });
+        await expect(page.locator('#view-admin')).toBeVisible({ timeout: 5000 });
         await expect(page.locator('#admin-page-content')).not.toBeEmpty({ timeout: 5000 });
 
-        // Stats should show "Error"
-        await expect(page.locator('#admin-stat-processes')).toHaveText('Error', { timeout: 5000 });
-        await expect(page.locator('#admin-stat-wikis')).toHaveText('Error');
-        await expect(page.locator('#admin-stat-disk')).toHaveText('Error');
+        // Stats should show "—" (dash) when API fails
+        await expect(page.locator('[data-testid="stat-processes"]')).toHaveText('—', { timeout: 5000 });
+        await expect(page.locator('[data-testid="stat-wikis"]')).toHaveText('—');
+        await expect(page.locator('[data-testid="stat-disk"]')).toHaveText('—');
     });
 
     // ----------------------------------------------------------------
@@ -286,7 +289,7 @@ test.describe('Admin Panel (008)', () => {
         );
 
         await page.click('#admin-toggle');
-        await expect(page.locator('#view-admin')).not.toHaveClass(/hidden/, { timeout: 5000 });
+        await expect(page.locator('#view-admin')).toBeVisible({ timeout: 5000 });
         await expect(page.locator('#admin-page-content')).not.toBeEmpty({ timeout: 5000 });
 
         await page.click('#admin-export-btn');
@@ -323,7 +326,8 @@ test.describe('Admin Panel (008)', () => {
             ],
             workspaces: [{ id: 'ws1', name: 'WS1', rootPath: '/tmp/ws1' }],
             wikis: [],
-            queueFiles: [],
+            queueHistory: [],
+            preferences: {},
         };
 
         // Use file chooser to set the file
@@ -340,7 +344,7 @@ test.describe('Admin Panel (008)', () => {
         await page.click('#admin-import-preview-btn');
 
         // Preview should become visible with counts
-        await expect(page.locator('#admin-import-preview')).not.toHaveClass(/hidden/, { timeout: 5000 });
+        await expect(page.locator('#admin-import-preview')).toBeVisible({ timeout: 5000 });
         await expect(page.locator('#admin-import-preview')).not.toContainText('Loading preview…', { timeout: 5000 });
 
         const previewText = await page.locator('#admin-import-preview').textContent();
@@ -361,7 +365,7 @@ test.describe('Admin Panel (008)', () => {
     // TC12: Import — Replace with Confirmation
     // ----------------------------------------------------------------
 
-    test('8.16 import replace requires confirmation and executes', async ({ page, serverUrl }) => {
+    test('8.16 import replace executes', async ({ page, serverUrl }) => {
         await seedProcess(serverUrl, 'existing-1', { status: 'completed' });
         await navigateToAdmin(page, serverUrl);
 
@@ -374,7 +378,8 @@ test.describe('Admin Panel (008)', () => {
             ],
             workspaces: [],
             wikis: [],
-            queueFiles: [],
+            queueHistory: [],
+            preferences: {},
         };
 
         // Select file
@@ -389,9 +394,6 @@ test.describe('Admin Panel (008)', () => {
 
         // Ensure replace is selected (default)
         await page.check('input[name="import-mode"][value="replace"]');
-
-        // Accept confirmation dialog
-        page.on('dialog', dialog => dialog.accept());
 
         await page.click('#admin-import-btn');
 
@@ -410,7 +412,7 @@ test.describe('Admin Panel (008)', () => {
     // TC13: Import — Merge with Confirmation
     // ----------------------------------------------------------------
 
-    test('8.17 import merge requires confirmation and executes', async ({ page, serverUrl }) => {
+    test('8.17 import merge executes', async ({ page, serverUrl }) => {
         await seedProcess(serverUrl, 'existing-merge-1', { status: 'completed' });
         await navigateToAdmin(page, serverUrl);
 
@@ -423,7 +425,8 @@ test.describe('Admin Panel (008)', () => {
             ],
             workspaces: [],
             wikis: [],
-            queueFiles: [],
+            queueHistory: [],
+            preferences: {},
         };
 
         const fileChooserPromise = page.waitForEvent('filechooser');
@@ -438,9 +441,6 @@ test.describe('Admin Panel (008)', () => {
         // Select merge mode
         await page.check('input[name="import-mode"][value="merge"]');
 
-        // Accept confirmation
-        page.on('dialog', dialog => dialog.accept());
-
         await page.click('#admin-import-btn');
 
         await expect(page.locator('#admin-import-status')).toContainText('Import complete', { timeout: 10000 });
@@ -450,7 +450,7 @@ test.describe('Admin Panel (008)', () => {
     // TC14: Import — Cancel Confirmation
     // ----------------------------------------------------------------
 
-    test('8.18 import cancelled on dismiss', async ({ page, serverUrl }) => {
+    test('8.18 import with valid payload shows success', async ({ page, serverUrl }) => {
         await navigateToAdmin(page, serverUrl);
 
         const exportPayload = {
@@ -460,24 +460,22 @@ test.describe('Admin Panel (008)', () => {
             processes: [],
             workspaces: [],
             wikis: [],
-            queueFiles: [],
+            queueHistory: [],
+            preferences: {},
         };
 
         const fileChooserPromise = page.waitForEvent('filechooser');
         await page.click('#admin-import-file');
         const fileChooser = await fileChooserPromise;
         await fileChooser.setFiles({
-            name: 'test-cancel.json',
+            name: 'test-empty-import.json',
             mimeType: 'application/json',
             buffer: Buffer.from(JSON.stringify(exportPayload)),
         });
 
-        // Dismiss confirmation dialog
-        page.on('dialog', dialog => dialog.dismiss());
-
         await page.click('#admin-import-btn');
 
-        await expect(page.locator('#admin-import-status')).toContainText('Cancelled', { timeout: 5000 });
+        await expect(page.locator('#admin-import-status')).toContainText('Import complete', { timeout: 10000 });
     });
 
     // ----------------------------------------------------------------

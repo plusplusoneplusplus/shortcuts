@@ -11,7 +11,7 @@ import { seedProcess, request } from './fixtures/seed';
 
 test.describe('Data consistency via REST + reload', () => {
     test('new process appears after page reload', async ({ page, serverUrl }) => {
-        await page.goto(serverUrl);
+        await page.goto(serverUrl + '/#processes');
 
         // Initially empty
         await expect(page.locator('#empty-state')).toBeVisible();
@@ -21,16 +21,17 @@ test.describe('Data consistency via REST + reload', () => {
 
         // Reload to pick up the new process
         await page.reload();
+        await page.click('[data-tab="processes"]');
         await expect(page.locator('.process-item')).toHaveCount(1, { timeout: 5000 });
         await expect(page.locator('.process-item')).toContainText('Real-time Process');
     });
 
     test('process status update is visible after reload', async ({ page, serverUrl }) => {
         await seedProcess(serverUrl, 'rt-update', { status: 'running', promptPreview: 'Update Me' });
-        await page.goto(serverUrl);
+        await page.goto(serverUrl + '/#processes');
 
         await expect(page.locator('.process-item')).toHaveCount(1, { timeout: 5000 });
-        await expect(page.locator('.status-dot.running')).toHaveCount(1);
+        await expect(page.locator('.process-item').filter({ hasText: /running|Running/i })).toHaveCount(1);
 
         // Update process status via REST API
         await request(`${serverUrl}/api/processes/rt-update`, {
@@ -40,12 +41,15 @@ test.describe('Data consistency via REST + reload', () => {
 
         // Reload to see updated status
         await page.reload();
-        await expect(page.locator('.status-dot.completed')).toHaveCount(1, { timeout: 5000 });
+        await page.click('[data-tab="processes"]');
+        await expect(page.locator('.process-item').filter({ hasText: /completed|Completed/i })).toHaveCount(1, {
+            timeout: 5000,
+        });
     });
 
     test('removed process disappears after reload', async ({ page, serverUrl }) => {
         await seedProcess(serverUrl, 'rt-remove', { promptPreview: 'Remove Me' });
-        await page.goto(serverUrl);
+        await page.goto(serverUrl + '/#processes');
 
         await expect(page.locator('.process-item')).toHaveCount(1, { timeout: 5000 });
 
@@ -54,6 +58,7 @@ test.describe('Data consistency via REST + reload', () => {
 
         // Reload to see removal
         await page.reload();
+        await page.click('[data-tab="processes"]');
         await expect(page.locator('.process-item')).toHaveCount(0, { timeout: 5000 });
         await expect(page.locator('#empty-state')).toBeVisible();
     });
@@ -66,7 +71,7 @@ test.describe('Data consistency via REST + reload', () => {
             seedProcess(serverUrl, 'rt-rapid-3', { promptPreview: 'Rapid 3' }),
         ]);
 
-        await page.goto(serverUrl);
+        await page.goto(serverUrl + '/#processes');
         await expect(page.locator('.process-item')).toHaveCount(3, { timeout: 5000 });
     });
 });

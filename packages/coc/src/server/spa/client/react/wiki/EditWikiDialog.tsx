@@ -47,13 +47,14 @@ export function EditWikiDialog({ open, wiki, onClose, onUpdated }: EditWikiDialo
 
     return (
         <Dialog
+            id="edit-wiki-overlay"
             open={open}
             onClose={onClose}
             title="Edit Wiki"
             footer={
                 <>
-                    <Button variant="secondary" onClick={onClose}>Cancel</Button>
-                    <Button loading={submitting} onClick={handleSubmit}>Save</Button>
+                    <Button variant="secondary" id="edit-wiki-cancel-btn" onClick={onClose}>Cancel</Button>
+                    <Button loading={submitting} id="edit-wiki-submit" onClick={handleSubmit}>Save</Button>
                 </>
             }
         >
@@ -61,6 +62,7 @@ export function EditWikiDialog({ open, wiki, onClose, onUpdated }: EditWikiDialo
                 <div>
                     <label className="block text-xs font-medium mb-1">Name</label>
                     <input
+                        id="edit-wiki-name"
                         className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4]"
                         value={name}
                         onChange={e => { setName(e.target.value); setError(''); }}

@@ -7,12 +7,14 @@ export interface CardProps {
     onClick?: MouseEventHandler<HTMLDivElement>;
     'aria-label'?: string;
     id?: string;
+    'data-wiki-id'?: string;
 }
 
-export function Card({ className, children, onClick, 'aria-label': ariaLabel, id }: CardProps) {
+export function Card({ className, children, onClick, 'aria-label': ariaLabel, id, 'data-wiki-id': dataWikiId }: CardProps) {
     return (
         <div
             id={id}
+            data-wiki-id={dataWikiId}
             role={onClick ? 'button' : undefined}
             tabIndex={onClick ? 0 : undefined}
             aria-label={ariaLabel}

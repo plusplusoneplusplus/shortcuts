@@ -154,13 +154,14 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
 
     return (
         <Dialog
+            id="add-repo-overlay"
             open={open}
             onClose={onClose}
             title={isEdit ? 'Edit Repository' : 'Add Repository'}
             footer={
                 <>
-                    <Button variant="secondary" onClick={onClose}>Cancel</Button>
-                    <Button variant="primary" loading={submitting} onClick={handleSubmit}>
+                    <Button variant="secondary" id="add-repo-cancel-btn" onClick={onClose}>Cancel</Button>
+                    <Button variant="primary" id="add-repo-submit" loading={submitting} onClick={handleSubmit}>
                         {isEdit ? 'Save Changes' : 'Add Repo'}
                     </Button>
                 </>
@@ -171,6 +172,8 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
                 <label className="text-xs font-medium text-[#616161] dark:text-[#999]">Path</label>
                 <div className="flex gap-2">
                     <input
+                        id="repo-path"
+                        data-testid="repo-path"
                         className="flex-1 px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4]"
                         value={path}
                         onChange={e => setPath(e.target.value)}
@@ -178,7 +181,7 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
                         placeholder="/path/to/repo"
                     />
                     {!isEdit && (
-                        <Button variant="secondary" size="sm" onClick={openBrowser}>
+                        <Button variant="secondary" size="sm" id="browse-btn" data-testid="browse-btn" onClick={openBrowser}>
                             Browse
                         </Button>
                     )}
@@ -186,8 +189,8 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
 
                 {/* Inline browser */}
                 {showBrowser && (
-                    <div className="border border-[#e0e0e0] dark:border-[#3c3c3c] rounded p-2 max-h-48 overflow-y-auto text-xs">
-                        <div className="flex items-center gap-1 mb-1 text-[10px] text-[#848484] truncate">
+                    <div id="path-browser" data-testid="path-browser" className="border border-[#e0e0e0] dark:border-[#3c3c3c] rounded p-2 max-h-48 overflow-y-auto text-xs">
+                        <div id="path-breadcrumb" className="flex items-center gap-1 mb-1 text-[10px] text-[#848484] truncate">
                             {browserPath}
                         </div>
                         {browserLoading ? (
@@ -208,10 +211,11 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
                                 {browserEntries.map(entry => (
                                     <div
                                         key={entry.name}
-                                        className="flex items-center gap-1 px-1 py-0.5 cursor-pointer hover:bg-[#e8e8e8] dark:hover:bg-[#333] rounded"
+                                        className="path-browser-entry flex items-center gap-1 px-1 py-0.5 cursor-pointer hover:bg-[#e8e8e8] dark:hover:bg-[#333] rounded"
+                                        data-testid="path-browser-entry"
                                         onClick={() => navigateTo(browserPath + (browserPath.endsWith('/') ? '' : '/') + entry.name)}
                                     >
-                                        📁 {entry.name}
+                                        📁 <span className="entry-name">{entry.name}</span>
                                         {entry.isGitRepo && <span className="text-[10px] px-1 bg-[#e0e0e0] dark:bg-[#3c3c3c] rounded">git</span>}
                                     </div>
                                 ))}
@@ -219,7 +223,7 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
                         )}
                         <div className="flex justify-end gap-1 mt-1 pt-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]">
                             <Button variant="secondary" size="sm" onClick={() => setShowBrowser(false)}>Cancel</Button>
-                            <Button variant="primary" size="sm" onClick={selectBrowserDir}>Select</Button>
+                            <Button variant="primary" size="sm" id="path-browser-select" data-testid="path-browser-select" onClick={selectBrowserDir}>Select</Button>
                         </div>
                     </div>
                 )}
@@ -227,6 +231,8 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
                 {/* Name */}
                 <label className="text-xs font-medium text-[#616161] dark:text-[#999]">Name</label>
                 <input
+                    id="repo-alias"
+                    data-testid="repo-alias"
                     className="px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4]"
                     value={name}
                     onChange={e => setName(e.target.value)}
@@ -235,7 +241,7 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
 
                 {/* Color */}
                 <label className="text-xs font-medium text-[#616161] dark:text-[#999]">Color</label>
-                <div className="flex gap-1.5">
+                <div className="flex gap-1.5" id="repo-color-picker" data-testid="repo-color-picker">
                     {COLOR_PALETTE.map(c => (
                         <button
                             key={c.value}
@@ -244,13 +250,14 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
                             onClick={() => setColor(c.value)}
                             title={c.label}
                             type="button"
+                            data-value={c.value}
                         />
                     ))}
                 </div>
 
                 {/* Validation */}
                 {validation && (
-                    <div className={`text-xs px-2 py-1 rounded ${validation.ok ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400' : 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400'}`}>
+                    <div id="repo-validation" data-testid="repo-validation" className={`text-xs px-2 py-1 rounded ${validation.ok ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400' : 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400'}`}>
                         {validation.msg}
                     </div>
                 )}

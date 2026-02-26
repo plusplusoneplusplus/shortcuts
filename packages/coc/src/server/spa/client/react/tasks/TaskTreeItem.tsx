@@ -102,8 +102,13 @@ export function TaskTreeItem({
     const path = getItemPath(item);
     const isNestedContextDoc = isContext && fileName.toLowerCase() === 'context.md' && !!path && path.includes('/');
     const canOpenFileContextMenu = !isFolder && (!isContext || isNestedContextDoc);
-    const status = isTaskDocument(item) ? item.status : undefined;
+    const status = isTaskDocument(item)
+        ? item.status
+        : isTaskDocumentGroup(item)
+            ? item.documents[0]?.status
+            : undefined;
     const isArchived = isTaskDocument(item) ? item.isArchived : isTaskDocumentGroup(item) ? item.isArchived : false;
+    const isArchiveFolder = isFolder && ((item as TaskFolder).relativePath === 'archive' || (item as TaskFolder).name === 'archive');
     const tooltip = !isFolder ? buildFileTooltip(path, commentCount, status) : undefined;
 
     const handleClick = () => {
@@ -131,6 +136,7 @@ export function TaskTreeItem({
                 isSelected && 'bg-[#0078d4]/5',
                 isContext && 'opacity-50',
                 isArchived && 'opacity-60 italic',
+                isArchiveFolder && 'opacity-60 italic',
                 !isFolder && 'miller-file-row',
             )}
             onClick={handleClick}
@@ -172,13 +178,17 @@ export function TaskTreeItem({
 
             {/* Status */}
             {status && (
-                <span className="flex-shrink-0 text-[10px]" title={status}>
+                <span
+                    className={`miller-status task-status-${status} flex-shrink-0 text-[10px]`}
+                    title={status}
+                    data-status={status}
+                >
                     {getStatusIcon(status)}
                 </span>
             )}
 
             {/* Name */}
-            <span className="flex-1 truncate text-[#1e1e1e] dark:text-[#cccccc]">
+            <span className="miller-row-name flex-1 truncate text-[#1e1e1e] dark:text-[#cccccc]">
                 {displayName}
             </span>
 

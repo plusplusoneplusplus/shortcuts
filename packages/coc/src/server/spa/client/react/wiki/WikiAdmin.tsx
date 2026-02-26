@@ -120,9 +120,9 @@ export function WikiAdmin({ wikiId, initialTab, onTabChange }: WikiAdminProps) {
 
             {/* Tab content */}
             <div className="flex-1 overflow-y-auto p-3">
-                {tab === 'generate' && <GenerateTab wikiId={wikiId} />}
-                {tab === 'seeds' && <EditorTab wikiId={wikiId} kind="seeds" />}
-                {tab === 'config' && <EditorTab wikiId={wikiId} kind="config" />}
+                {tab === 'generate' && <div id="admin-content-generate"><GenerateTab wikiId={wikiId} /></div>}
+                {tab === 'seeds' && <div id="admin-content-seeds"><EditorTab wikiId={wikiId} kind="seeds" /></div>}
+                {tab === 'config' && <div id="admin-content-config"><EditorTab wikiId={wikiId} kind="config" /></div>}
                 {tab === 'delete' && <DangerZone wikiId={wikiId} />}
             </div>
         </div>
@@ -146,6 +146,7 @@ function GenerateTab({ wikiId }: { wikiId: string }) {
     const [cache, setCache] = useState<Record<number, string>>({});
     const [metadata, setMetadata] = useState<CacheMetadata | null>(null);
     const [runningPhase, setRunningPhase] = useState<number | null>(null);
+    const [lastError, setLastError] = useState<string | null>(null);
     const [logs, setLogs] = useState<Record<number, string[]>>({});
     const [fromPhase, setFromPhase] = useState(1);
     const [phase4Components, setPhase4Components] = useState<string[]>([]);
@@ -173,6 +174,7 @@ function GenerateTab({ wikiId }: { wikiId: string }) {
 
     const runPhase = useCallback((startPhase: number, endPhase: number, force = false) => {
         if (runningPhase !== null) return;
+        setLastError(null);
         setRunningPhase(startPhase);
         setLogs(prev => {
             const n = { ...prev };
@@ -193,6 +195,12 @@ function GenerateTab({ wikiId }: { wikiId: string }) {
         }).then(async res => {
             if (!res.ok) {
                 const text = await res.text();
+                let errMsg = text;
+                try {
+                    const json = JSON.parse(text);
+                    if (json?.error) errMsg = json.error;
+                } catch { /* ignore */ }
+                setLastError(errMsg);
                 setLogs(prev => ({ ...prev, [startPhase]: [...(prev[startPhase] || []), '❌ ' + text] }));
                 setRunningPhase(null);
                 return;
@@ -273,10 +281,22 @@ function GenerateTab({ wikiId }: { wikiId: string }) {
 
     return (
         <div className="space-y-3">
+            {/* Status bar when running or error */}
+            {runningPhase !== null && (
+                <div id="generate-status-bar" className="text-xs text-[#848484] py-2">
+                    Running phase {runningPhase}…
+                </div>
+            )}
+            {lastError && (
+                <div id="generate-status-bar" className={cn('text-xs py-2', 'text-[#f14c4c] error')}>
+                    {lastError}
+                </div>
+            )}
             {/* Run All */}
             <div className="flex items-center gap-2">
                 <label className="text-xs text-[#848484]">Start from:</label>
                 <select
+                    id="generate-start-phase"
                     className="text-xs px-2 py-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc]"
                     value={fromPhase}
                     onChange={e => setFromPhase(parseInt(e.target.value))}
@@ -480,6 +500,15 @@ function EditorTab({ wikiId, kind }: { wikiId: string; kind: 'seeds' | 'config' 
         setSaving(true);
         setStatus(null);
         try {
+            if (kind === 'seeds') {
+                try {
+                    yaml.load(content);
+                } catch {
+                    setStatus('Invalid YAML');
+                    setSaving(false);
+                    return;
+                }
+            }
             const res = await fetch(getApiBase() + '/wikis/' + encodeURIComponent(wikiId) + '/admin/' + kind, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },

@@ -45,17 +45,40 @@ export interface ServerFixture {
  * Requests WITH query params (e.g. workspace filter) pass through unchanged
  * because the repos code expects `{ processes: [...] }`.
  *
- * Also blocks CDN resources (highlight.js, mermaid, marked) so that the
- * `load` event fires promptly in headless Chromium even without internet access.
+ * CDN scripts: Wiki tests need marked, highlight.js, and mermaid. We serve
+ * marked from node_modules when available; for highlight.js and mermaid we
+ * let requests pass through to the network (required for wiki E2E tests).
  */
 async function patchApiResponses(page: Page): Promise<void> {
-    // Stub out CDN scripts so page.goto doesn't hang waiting for external resources
-    await page.route('**://cdnjs.cloudflare.com/**', route =>
-        route.fulfill({ status: 200, body: '// cdn stub', contentType: 'text/javascript' }),
-    );
-    await page.route('**://cdn.jsdelivr.net/**', route =>
-        route.fulfill({ status: 200, body: '// cdn stub', contentType: 'text/javascript' }),
-    );
+    const cocRoot = path.join(__dirname, '..', '..', '..');
+    const rootNodeModules = path.join(cocRoot, '..', 'node_modules');
+    const markedPath = path.join(rootNodeModules, 'marked', 'marked.min.js');
+
+    await page.route('**://cdnjs.cloudflare.com/**', async route => {
+        const url = route.request().url();
+        if (/highlight\.min\.js/.test(url)) {
+            return route.continue();
+        }
+        return route.fulfill({ status: 200, body: '// cdn stub', contentType: 'text/javascript' });
+    });
+
+    await page.route('**://cdn.jsdelivr.net/**', async route => {
+        const url = route.request().url();
+        if (/marked\.min\.js|\/marked\//.test(url)) {
+            if (fs.existsSync(markedPath)) {
+                const content = fs.readFileSync(markedPath, 'utf-8');
+                return route.fulfill({ status: 200, body: content, contentType: 'text/javascript' });
+            }
+            return route.continue();
+        }
+        if (/mermaid.*\.min\.js|\/mermaid@/.test(url)) {
+            return route.continue();
+        }
+        if (/d3.*\.min\.js|\/d3@/.test(url)) {
+            return route.continue();
+        }
+        return route.fulfill({ status: 200, body: '// cdn stub', contentType: 'text/javascript' });
+    });
 
     await page.route('**/api/processes', async (route, request) => {
         if (request.method() !== 'GET') {
