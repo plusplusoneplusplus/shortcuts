@@ -130,6 +130,14 @@ describe('RepoQueueTab split-panel layout', () => {
         });
     });
 
+    describe('history default expanded', () => {
+        it('showHistory defaults to true so completed tasks are visible on load', () => {
+            expect(source).toContain('useState(true)');
+            // Verify it's the showHistory state specifically
+            expect(source).toMatch(/\[showHistory,\s*setShowHistory\]\s*=\s*useState\(true\)/);
+        });
+    });
+
     describe('preserves existing functionality', () => {
         it('still has pause/resume toolbar', () => {
             expect(source).toContain('data-testid="repo-pause-resume-btn"');

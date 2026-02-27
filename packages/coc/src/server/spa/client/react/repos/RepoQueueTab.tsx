@@ -19,7 +19,7 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
     const [running, setRunning] = useState<any[]>([]);
     const [queued, setQueued] = useState<any[]>([]);
     const [history, setHistory] = useState<any[]>([]);
-    const [showHistory, setShowHistory] = useState(false);
+    const [showHistory, setShowHistory] = useState(true);
     const [loading, setLoading] = useState(true);
     const [now, setNow] = useState(Date.now());
     const [isPaused, setIsPaused] = useState(false);
