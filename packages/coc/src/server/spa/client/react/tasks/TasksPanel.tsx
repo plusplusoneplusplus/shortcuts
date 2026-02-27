@@ -575,7 +575,7 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
                 className="miller-columns flex-1 overflow-x-auto overflow-y-hidden min-h-0 min-w-0"
                 data-testid="tasks-miller-scroll-container"
             >
-                <div className="flex h-full min-h-0 w-max min-w-full">
+                <div className="flex h-full min-h-0 min-w-full">
                     <div className="flex-shrink-0 h-full min-h-0">
                         <TaskTree
                             tree={tree}
@@ -591,7 +591,7 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
                     </div>
 
                     {openFilePath && (
-                        <div className="h-full min-h-0 min-w-[72rem] w-[72rem] max-w-[72rem] border-r border-[#e0e0e0] dark:border-[#3c3c3c]">
+                        <div className="h-full min-h-0 flex-1 min-w-[48rem] border-r border-[#e0e0e0] dark:border-[#3c3c3c]">
                             <TaskPreview wsId={wsId} filePath={openFilePath} initialViewMode={initialParams.initialViewMode} />
                         </div>
                     )}

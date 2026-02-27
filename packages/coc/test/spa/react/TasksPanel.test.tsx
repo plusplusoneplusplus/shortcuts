@@ -299,6 +299,47 @@ describe('TasksPanel', () => {
         expect(screen.getByTestId('tasks-miller-scroll-container')).toBeTruthy();
     });
 
+    it('task preview container uses flex-1 for responsive width on wide screens', async () => {
+        fetchSpy.mockImplementation((url: string) => {
+            if (url.includes('tasks/content')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ content: '# Preview heading\nBody line' }) });
+            }
+            if (url.includes('/comments/')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ comments: [] }) });
+            }
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
+        });
+
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree-item-feature1')).toBeTruthy();
+        });
+
+        fireEvent.click(screen.getByTestId('task-tree-item-feature1'));
+        await waitFor(() => {
+            expect(screen.getByTestId('miller-column-1')).toBeTruthy();
+        });
+
+        fireEvent.click(screen.getByTestId('task-tree-item-design'));
+        await waitFor(() => {
+            expect(document.querySelector('#task-preview-body')).toBeTruthy();
+        });
+
+        // The preview container should use flex-1 (responsive) instead of a fixed width
+        const previewBody = document.querySelector('#task-preview-body')!;
+        const previewContainer = previewBody.closest('.flex-1');
+        expect(previewContainer).toBeTruthy();
+
+        // The scroll container inner div should NOT use w-max (which prevents flex-1 from expanding)
+        const scrollContainer = screen.getByTestId('tasks-miller-scroll-container');
+        const innerDiv = scrollContainer.firstElementChild as HTMLElement;
+        expect(innerDiv.className).not.toContain('w-max');
+        expect(innerDiv.className).toContain('min-w-full');
+    });
+
     it('shows comment count badge', async () => {
         fetchSpy.mockImplementation((url: string) => {
             if (url.includes('comment-counts')) {
