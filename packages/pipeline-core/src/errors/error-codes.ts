@@ -107,6 +107,52 @@ export const ErrorCode = {
 export type ErrorCodeType = typeof ErrorCode[keyof typeof ErrorCode];
 
 /**
+ * Error codes for the DAG Workflow Engine.
+ *
+ * Kept in a separate const from `ErrorCode` to partition the error namespace
+ * and avoid churn to existing code that imports `ErrorCode`.
+ *
+ * Categories:
+ * - Validation: WORKFLOW_EMPTY, UNKNOWN_NODE_REF, CYCLE_DETECTED, MISSING_PROMPT,
+ *   MISSING_RULE, MISSING_STRATEGY, MISSING_COMMAND, MERGE_NEEDS_MULTIPLE_PARENTS
+ * - Execution: SCRIPT_INVALID_OUTPUT, SCRIPT_NONZERO_EXIT
+ */
+export const WorkflowErrorCode = {
+    // =========================================================================
+    // Validation
+    // =========================================================================
+    /** Workflow has no nodes defined. */
+    WORKFLOW_EMPTY: 'WORKFLOW_EMPTY',
+    /** A `from` reference points to a non-existent node ID. */
+    UNKNOWN_NODE_REF: 'UNKNOWN_NODE_REF',
+    /** The DAG contains a cycle (detected via DFS). */
+    CYCLE_DETECTED: 'CYCLE_DETECTED',
+    /** An AI-capable node is missing a required prompt or promptFile. */
+    MISSING_PROMPT: 'MISSING_PROMPT',
+    /** A filter node is missing a required rule. */
+    MISSING_RULE: 'MISSING_RULE',
+    /** A reduce node is missing a required strategy. */
+    MISSING_STRATEGY: 'MISSING_STRATEGY',
+    /** A script node is missing a required `run` command. */
+    MISSING_COMMAND: 'MISSING_COMMAND',
+    /** A merge node has fewer than two entries in `from`. */
+    MERGE_NEEDS_MULTIPLE_PARENTS: 'MERGE_NEEDS_MULTIPLE_PARENTS',
+
+    // =========================================================================
+    // Execution
+    // =========================================================================
+    /** A script node produced output that could not be parsed. */
+    SCRIPT_INVALID_OUTPUT: 'SCRIPT_INVALID_OUTPUT',
+    /** A script node exited with a non-zero exit code. */
+    SCRIPT_NONZERO_EXIT: 'SCRIPT_NONZERO_EXIT',
+} as const;
+
+/**
+ * Type representing valid workflow error codes
+ */
+export type WorkflowErrorCodeType = typeof WorkflowErrorCode[keyof typeof WorkflowErrorCode];
+
+/**
  * Map Node.js system error codes to our error codes
  */
 export function mapSystemErrorCode(nodeCode: string): ErrorCodeType {
