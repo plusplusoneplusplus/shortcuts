@@ -24,6 +24,7 @@ import { ensureFolderTrusted } from './trusted-folder';
 import { DEFAULT_AI_TIMEOUT_MS } from '../ai/timeouts';
 import { DEFAULT_AI_IDLE_TIMEOUT_MS } from '../config/defaults';
 import {
+    Attachment,
     MCPServerConfig,
     MCPControlOptions,
     SendMessageOptions,
@@ -104,6 +105,8 @@ export interface SendFollowUpOptions {
     workingDirectory?: string;
     /** Permission handler for resumed sessions */
     onPermissionRequest?: PermissionHandler;
+    /** File or directory attachments to include with the follow-up message */
+    attachments?: Attachment[];
 }
 
 /**
@@ -163,12 +166,12 @@ interface ICopilotSession {
      * @param options - Message options including prompt
      * @param timeout - Timeout in milliseconds (SDK default: 60000)
      */
-    sendAndWait(options: { prompt: string }, timeout?: number): Promise<{ data?: { content?: string } }>;
+    sendAndWait(options: { prompt: string; attachments?: Attachment[] }, timeout?: number): Promise<{ data?: { content?: string } }>;
     destroy(): Promise<void>;
     /** Event handler for streaming responses. Returns an unsubscribe function. */
     on?(handler: (event: ISessionEvent) => void): (() => void);
     /** Send a message without waiting (for streaming) */
-    send?(options: { prompt: string }): Promise<void>;
+    send?(options: { prompt: string; attachments?: Attachment[] }): Promise<void>;
 }
 
 /**
@@ -601,13 +604,13 @@ export class CopilotSDKService {
             let capturedToolCalls: ToolCall[] | undefined;
             if ((options.streaming || options.onStreamingChunk || timeoutMs > 120000) && session.on && session.send) {
                 const idleTimeoutMs = options.idleTimeoutMs ?? CopilotSDKService.DEFAULT_IDLE_TIMEOUT_MS;
-                const streamingResult = await this.sendWithStreaming(session, options.prompt, timeoutMs, options.onStreamingChunk, toolCallsMap, options.onToolEvent, idleTimeoutMs);
+                const streamingResult = await this.sendWithStreaming(session, options.prompt, timeoutMs, options.onStreamingChunk, toolCallsMap, options.onToolEvent, idleTimeoutMs, options.attachments);
                 response = streamingResult.response;
                 tokenUsage = streamingResult.tokenUsage;
                 turnCount = streamingResult.turnCount;
                 capturedToolCalls = streamingResult.toolCalls;
             } else {
-                const result = await this.sendWithTimeout(session, options.prompt, timeoutMs);
+                const result = await this.sendWithTimeout(session, options.prompt, timeoutMs, options.attachments);
                 response = result?.data?.content || '';
             }
 
@@ -797,14 +800,14 @@ export class CopilotSDKService {
             if ((options?.onStreamingChunk || timeoutMs > 120000) && session.on && session.send) {
                 const idleTimeoutMs = options?.idleTimeoutMs ?? CopilotSDKService.DEFAULT_IDLE_TIMEOUT_MS;
                 const streamingResult = await this.sendWithStreaming(
-                    session, prompt, timeoutMs, options?.onStreamingChunk, undefined, options?.onToolEvent, idleTimeoutMs,
+                    session, prompt, timeoutMs, options?.onStreamingChunk, undefined, options?.onToolEvent, idleTimeoutMs, options?.attachments,
                 );
                 response = streamingResult.response;
                 tokenUsage = streamingResult.tokenUsage;
                 turnCount = streamingResult.turnCount;
                 capturedToolCalls = streamingResult.toolCalls;
             } else {
-                const sendResult = await this.sendWithTimeout(session, prompt, timeoutMs);
+                const sendResult = await this.sendWithTimeout(session, prompt, timeoutMs, options?.attachments);
                 response = sendResult?.data?.content || '';
             }
 
@@ -1216,11 +1219,12 @@ export class CopilotSDKService {
     private async sendWithTimeout(
         session: ICopilotSession,
         prompt: string,
-        timeoutMs: number
+        timeoutMs: number,
+        attachments?: Attachment[]
     ): Promise<{ data?: { content?: string } }> {
         // Pass timeout directly to SDK's sendAndWait method
         // Note: SDK internally limits this to 120 seconds for the session.idle event
-        return session.sendAndWait({ prompt }, timeoutMs);
+        return session.sendAndWait({ prompt, attachments }, timeoutMs);
     }
 
     /**
@@ -1252,7 +1256,8 @@ export class CopilotSDKService {
         onStreamingChunk?: (chunk: string) => void,
         toolCallsMap?: Map<string, ToolCall>,
         onToolEvent?: (event: ToolEvent) => void,
-        idleTimeoutMs?: number
+        idleTimeoutMs?: number,
+        attachments?: Attachment[]
     ): Promise<StreamingResult> {
         return new Promise((resolve, reject) => {
             const logger = getLogger();
@@ -1609,7 +1614,7 @@ export class CopilotSDKService {
             });
 
             // Send the message (without waiting)
-            session.send!({ prompt }).catch(error => {
+            session.send!({ prompt, attachments }).catch(error => {
                 settleError(error instanceof Error ? error : new Error(String(error)));
             });
         });
