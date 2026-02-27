@@ -390,6 +390,7 @@ function isValidWorkspaceId(wsId: string): boolean {
  *   DELETE /api/comments/:wsId/:taskPath(*)/:id       — delete comment
  *   POST   /api/comments/:wsId/:taskPath(*)/:id/replies   — add reply
  *   POST   /api/comments/:wsId/:taskPath(*)/:id/ask-ai    — AI clarification
+ *   POST   /api/comments/:wsId/:taskPath(*)/batch-resolve — batch AI resolve
  *
  * @param routes - Shared route table
  * @param dataDir - Directory for comment storage (e.g. ~/.coc)
@@ -413,6 +414,9 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string): vo
 
     // Pattern for AI ask endpoint: /api/comments/{wsId}/{taskPath...}/{uuid}/ask-ai
     const askAiPattern = /^\/api\/comments\/([a-zA-Z0-9_-]+)\/(.+)\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/ask-ai$/;
+
+    // Pattern for batch resolve endpoint: /api/comments/{wsId}/{taskPath...}/batch-resolve
+    const batchResolvePattern = /^\/api\/comments\/([a-zA-Z0-9_-]+)\/(.+)\/batch-resolve$/;
 
     // ------------------------------------------------------------------
     // GET /api/comment-counts/:wsId — comment counts per file
@@ -544,6 +548,28 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string): vo
                 const customQuestion: string | undefined = body.customQuestion;
                 const documentContext: DocumentContext | undefined = body.documentContext;
 
+                // Resolve branch — returns revised document content, not a Q&A reply
+                if (commandId === 'resolve') {
+                    const documentContent: string | undefined = body.documentContent;
+                    if (!documentContent || typeof documentContent !== 'string') {
+                        return sendError(res, 400, 'Missing required field: documentContent');
+                    }
+                    const resolvePrompt = buildBatchResolvePrompt([comment], documentContent, taskPath);
+                    let revisedContent: string;
+                    try {
+                        const { createCLIAIInvoker } = await import('../ai-invoker');
+                        const invoker = createCLIAIInvoker({ approvePermissions: false });
+                        const result = await invoker(resolvePrompt, { timeoutMs: 120000 });
+                        if (!result.success) {
+                            return sendError(res, 502, result.error || 'AI request failed');
+                        }
+                        revisedContent = result.response || '';
+                    } catch {
+                        return sendError(res, 503, 'AI service unavailable');
+                    }
+                    return sendJSON(res, 200, { revisedContent, commentId: comment.id });
+                }
+
                 let prompt: string;
                 if (commandId) {
                     const command = DEFAULT_AI_COMMANDS.find(c => c.id === commandId);
@@ -588,6 +614,59 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string): vo
             } catch {
                 sendError(res, 500, 'Failed to process AI request');
             }
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // POST /api/comments/:wsId/:taskPath(*)/batch-resolve — batch AI resolve
+    // (Must be before the collection POST to avoid greedy match)
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'POST',
+        pattern: batchResolvePattern,
+        handler: async (req, res, match) => {
+            const [, wsId, taskPath] = match!;
+            if (!isValidWorkspaceId(wsId)) {
+                return sendError(res, 400, 'Invalid workspace ID');
+            }
+            let body: any;
+            try {
+                body = await parseBody(req);
+            } catch {
+                return sendError(res, 400, 'Invalid JSON');
+            }
+
+            const documentContent: string | undefined = body.documentContent;
+            if (!documentContent || typeof documentContent !== 'string') {
+                return sendError(res, 400, 'Missing required field: documentContent');
+            }
+
+            // Load and filter open comments
+            const allComments = await manager.getComments(wsId, taskPath);
+            const openComments = allComments.filter(c => c.status === 'open');
+            if (openComments.length === 0) {
+                return sendError(res, 400, 'No open comments to resolve');
+            }
+
+            // Build prompt and invoke AI
+            const prompt = buildBatchResolvePrompt(openComments, documentContent, taskPath);
+            let revisedContent: string;
+            try {
+                const { createCLIAIInvoker } = await import('../ai-invoker');
+                const invoker = createCLIAIInvoker({ approvePermissions: false });
+                const result = await invoker(prompt, { timeoutMs: 120000 });
+                if (!result.success) {
+                    return sendError(res, 502, result.error || 'AI request failed');
+                }
+                revisedContent = result.response || '';
+            } catch {
+                return sendError(res, 503, 'AI service unavailable');
+            }
+
+            sendJSON(res, 200, {
+                revisedContent,
+                commentIds: openComments.map(c => c.id),
+            });
         },
     });
 
@@ -699,6 +778,54 @@ function buildEnrichedPrompt(
     };
 
     return buildPromptFromContext(promptTemplate, context);
+}
+
+/**
+ * Build a document revision prompt for one or more open comments.
+ * Ported from VS Code's PromptGenerator.generateMarkdownPrompt().
+ *
+ * @param comments       - Array of TaskComment objects; only status==='open' are included.
+ * @param documentContent - Full raw markdown content of the document.
+ * @param filePath       - Relative task path (used for display only).
+ * @returns Structured prompt string. The AI must output ONLY the revised document.
+ */
+export function buildBatchResolvePrompt(
+    comments: TaskComment[],
+    documentContent: string,
+    filePath: string
+): string {
+    const openComments = comments
+        .filter(c => c.status === 'open')
+        .sort((a, b) => a.selection.startLine - b.selection.startLine);
+
+    let prompt = '# Document Revision Request\n\n';
+    prompt += 'Please review and address the following comments in the markdown document.\n';
+    prompt += 'For each comment, make the necessary changes to the document.\n\n';
+    prompt += '---\n\n';
+    prompt += `## File: ${filePath}\n\n`;
+    prompt += '### Full Document Content\n\n';
+    prompt += '```markdown\n';
+    prompt += documentContent;
+    prompt += '\n```\n\n';
+
+    openComments.forEach((c, i) => {
+        prompt += `### Comment ${i + 1} (Line ${c.selection.startLine})\n\n`;
+        prompt += `**ID:** \`${c.id}\`\n\n`;
+        prompt += '**Selected Text:**\n```\n';
+        prompt += c.selectedText;
+        prompt += '\n```\n\n';
+        prompt += `**Comment:** ${c.comment}\n\n`;
+        prompt += '**Requested Action:** Revise this section to address the comment.\n\n';
+    });
+
+    prompt += '---\n\n';
+    prompt += '# Instructions\n\n';
+    prompt += '1. For each comment above, modify the corresponding section in the document\n';
+    prompt += '2. Preserve the overall document structure and formatting\n';
+    prompt += '3. Output the COMPLETE revised document content\n';
+    prompt += '4. Do NOT include any markdown fencing or explanation — output ONLY the revised document\n';
+
+    return prompt;
 }
 
 /**
