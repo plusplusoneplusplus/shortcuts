@@ -66,7 +66,12 @@ export function useQueueActivity(wsId: string, tasksFolder = '.vscode/tasks'): {
         const wsRootPath: string = ws?.rootPath || '';
         const map: QueueActivityMap = {};
 
-        const activeItems = [...(queueState.queued || []), ...(queueState.running || [])];
+        // Prefer per-repo data from repoQueueMap (updated in real-time via WebSocket)
+        // over top-level arrays (only populated on full page refresh).
+        const repoEntry = queueState.repoQueueMap?.[wsId];
+        const queued = repoEntry?.queued ?? queueState.queued ?? [];
+        const running = repoEntry?.running ?? queueState.running ?? [];
+        const activeItems = [...queued, ...running];
 
         for (const item of activeItems) {
             const rel = extractTaskPath(item, wsRootPath, tasksFolder);
@@ -86,5 +91,5 @@ export function useQueueActivity(wsId: string, tasksFolder = '.vscode/tasks'): {
         }
 
         return { fileMap: map, folderMap };
-    }, [queueState.queued, queueState.running, appState.workspaces, wsId, tasksFolder]);
+    }, [queueState.queued, queueState.running, queueState.repoQueueMap, appState.workspaces, wsId, tasksFolder]);
 }
