@@ -32,6 +32,10 @@ export interface MarkdownReviewEditorProps {
     fetchMode?: 'tasks' | 'auto';
     /** Extra content rendered at the right end of the toolbar (e.g. a close button). */
     toolbarRight?: React.ReactNode;
+    /** Initial view mode. Defaults to 'review'. */
+    initialViewMode?: 'review' | 'source';
+    /** Called when the user switches view mode. */
+    onViewModeChange?: (mode: 'review' | 'source') => void;
 }
 
 /** Minimum selection length to trigger toolbar. */
@@ -57,14 +61,21 @@ export function MarkdownReviewEditor({
     filePath,
     fetchMode = 'tasks',
     toolbarRight,
+    initialViewMode = 'review',
+    onViewModeChange,
 }: MarkdownReviewEditorProps) {
     const [rawContent, setRawContent] = useState('');
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const previewRef = useRef<HTMLDivElement>(null);
-    const [viewMode, setViewMode] = useState<'review' | 'source'>('review');
+    const [viewMode, setViewModeRaw] = useState<'review' | 'source'>(initialViewMode);
     const [editedContent, setEditedContent] = useState('');
     const [saving, setSaving] = useState(false);
+
+    const setViewMode = useCallback((mode: 'review' | 'source') => {
+        setViewModeRaw(mode);
+        onViewModeChange?.(mode);
+    }, [onViewModeChange]);
 
     const isDirty = viewMode === 'source' && editedContent !== rawContent;
 
@@ -452,7 +463,7 @@ export function MarkdownReviewEditor({
             setEditedContent(rawContent);
         }
         setViewMode('review');
-    }, [isDirty, rawContent]);
+    }, [isDirty, rawContent, setViewMode]);
 
     if (loading) {
         return (

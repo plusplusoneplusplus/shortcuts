@@ -32,19 +32,26 @@ interface TasksPanelProps {
 }
 
 export function parseTaskHashParams(hash: string, wsId: string) {
-    const parts = hash.replace(/^#/, '').split('/');
+    const [hashPath, queryStr] = hash.replace(/^#/, '').split('?');
+    const parts = hashPath.split('/');
     if (parts[0] !== 'repos' || decodeURIComponent(parts[1] || '') !== wsId || parts[2] !== 'tasks')
-        return { initialFolderPath: null, initialFilePath: null };
+        return { initialFolderPath: null, initialFilePath: null, initialViewMode: null as 'review' | 'source' | null };
     const taskParts = parts.slice(3).map(p => decodeURIComponent(p)).filter(Boolean);
-    if (!taskParts.length) return { initialFolderPath: null, initialFilePath: null };
+
+    const params = new URLSearchParams(queryStr || '');
+    const modeParam = params.get('mode');
+    const initialViewMode: 'review' | 'source' | null = modeParam === 'source' ? 'source' : modeParam === 'review' ? 'review' : null;
+
+    if (!taskParts.length) return { initialFolderPath: null, initialFilePath: null, initialViewMode };
     const last = taskParts[taskParts.length - 1];
     if (last.endsWith('.md')) {
         return {
             initialFolderPath: taskParts.slice(0, -1).join('/') || null,
             initialFilePath: taskParts.join('/'),
+            initialViewMode,
         };
     }
-    return { initialFolderPath: taskParts.join('/'), initialFilePath: null };
+    return { initialFolderPath: taskParts.join('/'), initialFilePath: null, initialViewMode };
 }
 
 function scrollToEnd(el: HTMLElement | null) {
@@ -585,7 +592,7 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
 
                     {openFilePath && (
                         <div className="h-full min-h-0 min-w-[72rem] w-[72rem] max-w-[72rem] border-r border-[#e0e0e0] dark:border-[#3c3c3c]">
-                            <TaskPreview wsId={wsId} filePath={openFilePath} />
+                            <TaskPreview wsId={wsId} filePath={openFilePath} initialViewMode={initialParams.initialViewMode} />
                         </div>
                     )}
                 </div>

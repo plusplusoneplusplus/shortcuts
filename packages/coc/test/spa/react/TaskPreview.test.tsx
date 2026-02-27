@@ -5,7 +5,7 @@
 /* @vitest-environment jsdom */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import React from 'react';
 import type { ReactNode } from 'react';
 import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
@@ -91,12 +91,36 @@ describe('TaskPreview', () => {
         const { container } = render(<Wrap><TaskPreview wsId="ws1" filePath="test.md" /></Wrap>);
         await waitFor(() => { expect(document.querySelector('#task-preview-body')).toBeTruthy(); });
 
-        // The old layout had a separate header div with border-b before the editor.
-        // Now there should be no extra border-b div between the outer flex-col and .mode-toggle.
         const outerCol = container.querySelector('.flex.flex-col');
         expect(outerCol).toBeTruthy();
-        // First child should NOT be a border-b header row; should be the editor itself
         const firstChild = outerCol!.children[0];
         expect(firstChild.className).not.toContain('border-b');
+    });
+
+    it('opens in source mode when initialViewMode is "source"', async () => {
+        render(<Wrap><TaskPreview wsId="ws1" filePath="test.md" initialViewMode="source" /></Wrap>);
+        await waitFor(() => { expect(screen.getByText('Source')).toBeTruthy(); });
+        expect(screen.getByText('Source').className).toContain('active');
+        expect(screen.getByText('Preview').className).not.toContain('active');
+    });
+
+    it('updates URL hash with ?mode=source when switching to source', async () => {
+        const replaceSpy = vi.spyOn(history, 'replaceState');
+        location.hash = '#repos/ws1/tasks/test.md';
+        render(<Wrap><TaskPreview wsId="ws1" filePath="test.md" /></Wrap>);
+        await waitFor(() => { expect(document.querySelector('#task-preview-body')).toBeTruthy(); });
+
+        await act(async () => { fireEvent.click(screen.getByText('Source')); });
+        expect(replaceSpy).toHaveBeenCalledWith(null, '', '#repos/ws1/tasks/test.md?mode=source');
+    });
+
+    it('removes ?mode param when switching back to preview', async () => {
+        const replaceSpy = vi.spyOn(history, 'replaceState');
+        location.hash = '#repos/ws1/tasks/test.md?mode=source';
+        render(<Wrap><TaskPreview wsId="ws1" filePath="test.md" initialViewMode="source" /></Wrap>);
+        await waitFor(() => { expect(screen.getByText('Source')).toBeTruthy(); });
+
+        await act(async () => { fireEvent.click(screen.getByText('Preview')); });
+        expect(replaceSpy).toHaveBeenCalledWith(null, '', '#repos/ws1/tasks/test.md');
     });
 });

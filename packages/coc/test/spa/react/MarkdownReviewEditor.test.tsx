@@ -514,6 +514,31 @@ describe('MarkdownReviewEditor', () => {
             // No ml-auto wrapper when toolbarRight is not provided
             expect(toggle.querySelector('.ml-auto')).toBeNull();
         });
+
+        it('respects initialViewMode="source"', async () => {
+            render(
+                <MarkdownReviewEditor wsId="ws1" filePath="test.md" fetchMode="tasks" initialViewMode="source" />
+            );
+            await waitFor(() => {
+                expect(screen.getByText('Source')).toBeTruthy();
+            });
+            expect(screen.getByText('Source').className).toContain('active');
+            expect(screen.getByText('Preview').className).not.toContain('active');
+        });
+
+        it('calls onViewModeChange when switching modes', async () => {
+            const onViewModeChange = vi.fn();
+            render(
+                <MarkdownReviewEditor wsId="ws1" filePath="test.md" fetchMode="tasks" onViewModeChange={onViewModeChange} />
+            );
+            await waitFor(() => {
+                expect(document.querySelector('#task-preview-body')).toBeTruthy();
+            });
+            await act(async () => {
+                fireEvent.click(screen.getByText('Source'));
+            });
+            expect(onViewModeChange).toHaveBeenCalledWith('source');
+        });
     });
 
     // ── Resolve / Fix with AI handler tests ──

@@ -788,6 +788,7 @@ describe('parseTaskHashParams', () => {
         expect(parseTaskHashParams('#other/path', 'ws1')).toEqual({
             initialFolderPath: null,
             initialFilePath: null,
+            initialViewMode: null,
         });
     });
 
@@ -795,6 +796,7 @@ describe('parseTaskHashParams', () => {
         expect(parseTaskHashParams('#repos/ws1/tasks', 'ws1')).toEqual({
             initialFolderPath: null,
             initialFilePath: null,
+            initialViewMode: null,
         });
     });
 
@@ -802,6 +804,7 @@ describe('parseTaskHashParams', () => {
         expect(parseTaskHashParams('#repos/ws1/tasks/misc', 'ws1')).toEqual({
             initialFolderPath: 'misc',
             initialFilePath: null,
+            initialViewMode: null,
         });
     });
 
@@ -809,6 +812,7 @@ describe('parseTaskHashParams', () => {
         expect(parseTaskHashParams('#repos/ws1/tasks/coc/backlog', 'ws1')).toEqual({
             initialFolderPath: 'coc/backlog',
             initialFilePath: null,
+            initialViewMode: null,
         });
     });
 
@@ -816,6 +820,7 @@ describe('parseTaskHashParams', () => {
         expect(parseTaskHashParams('#repos/ws1/tasks/misc/file.plan.md', 'ws1')).toEqual({
             initialFolderPath: 'misc',
             initialFilePath: 'misc/file.plan.md',
+            initialViewMode: null,
         });
     });
 
@@ -823,6 +828,7 @@ describe('parseTaskHashParams', () => {
         expect(parseTaskHashParams('#repos/ws1/tasks/coc/backlog/task.plan.md', 'ws1')).toEqual({
             initialFolderPath: 'coc/backlog',
             initialFilePath: 'coc/backlog/task.plan.md',
+            initialViewMode: null,
         });
     });
 
@@ -830,6 +836,7 @@ describe('parseTaskHashParams', () => {
         expect(parseTaskHashParams('#repos/ws1/tasks/README.md', 'ws1')).toEqual({
             initialFolderPath: null,
             initialFilePath: 'README.md',
+            initialViewMode: null,
         });
     });
 
@@ -837,6 +844,7 @@ describe('parseTaskHashParams', () => {
         expect(parseTaskHashParams('#repos/ws%201/tasks/misc', 'ws 1')).toEqual({
             initialFolderPath: 'misc',
             initialFilePath: null,
+            initialViewMode: null,
         });
     });
 
@@ -844,6 +852,31 @@ describe('parseTaskHashParams', () => {
         expect(parseTaskHashParams('#repos/ws2/tasks/misc', 'ws1')).toEqual({
             initialFolderPath: null,
             initialFilePath: null,
+            initialViewMode: null,
+        });
+    });
+
+    it('parses ?mode=source query parameter', () => {
+        expect(parseTaskHashParams('#repos/ws1/tasks/misc/file.md?mode=source', 'ws1')).toEqual({
+            initialFolderPath: 'misc',
+            initialFilePath: 'misc/file.md',
+            initialViewMode: 'source',
+        });
+    });
+
+    it('parses ?mode=review query parameter', () => {
+        expect(parseTaskHashParams('#repos/ws1/tasks/misc/file.md?mode=review', 'ws1')).toEqual({
+            initialFolderPath: 'misc',
+            initialFilePath: 'misc/file.md',
+            initialViewMode: 'review',
+        });
+    });
+
+    it('ignores unknown mode values', () => {
+        expect(parseTaskHashParams('#repos/ws1/tasks/misc/file.md?mode=unknown', 'ws1')).toEqual({
+            initialFolderPath: 'misc',
+            initialFilePath: 'misc/file.md',
+            initialViewMode: null,
         });
     });
 });
