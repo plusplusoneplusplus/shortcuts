@@ -701,15 +701,19 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
         method: 'GET',
         pattern: '/api/queue/repos',
         handler: async (_req, res) => {
-            const repos: Array<{ repoId: string; rootPath: string; isPaused: boolean; taskCount: number }> = [];
+            const repos: Array<{ repoId: string; rootPath: string; isPaused: boolean; taskCount: number; queuedCount: number; runningCount: number }> = [];
 
             for (const [rootPath, m] of bridge.registry.getAllQueues()) {
                 const repoId = computeRepoId(rootPath);
+                const queuedCount = m.getQueued().length;
+                const runningCount = m.getRunning().length;
                 repos.push({
                     repoId,
                     rootPath,
                     isPaused: m.isPaused(),
-                    taskCount: m.getQueued().length + m.getRunning().length,
+                    taskCount: queuedCount + runningCount,
+                    queuedCount,
+                    runningCount,
                 });
             }
 

@@ -251,6 +251,92 @@ describe('RepoCard', () => {
         render(<Wrap><RepoCard repo={repo} isSelected={false} inGroup onClick={() => {}} /></Wrap>);
         expect(screen.getByText('main')).toBeDefined();
     });
+
+    it('does not show queue status when queue is empty', () => {
+        render(<Wrap><RepoCard repo={repo} isSelected={false} onClick={() => {}} /></Wrap>);
+        expect(document.querySelector('[data-testid="repo-card-queue-status"]')).toBeNull();
+    });
+
+    it('shows queue running badge when running > 0', () => {
+        function SeedQueue({ children }: { children: ReactNode }) {
+            const { dispatch } = useQueue();
+            useEffect(() => {
+                dispatch({
+                    type: 'REPO_QUEUE_UPDATED',
+                    repoId: 'ws-1',
+                    queue: {
+                        queued: [],
+                        running: [{ id: 'r1' }],
+                        stats: { queued: 0, running: 1, completed: 0, failed: 0, cancelled: 0, total: 1, isPaused: false, isDraining: false },
+                    },
+                });
+            }, [dispatch]);
+            return <>{children}</>;
+        }
+        render(
+            <Wrap>
+                <SeedQueue>
+                    <RepoCard repo={repo} isSelected={false} onClick={() => {}} />
+                </SeedQueue>
+            </Wrap>
+        );
+        expect(document.querySelector('[data-testid="repo-card-queue-running"]')?.textContent).toBe('⏳1');
+        expect(document.querySelector('[data-testid="repo-card-queue-queued"]')).toBeNull();
+    });
+
+    it('shows queue queued badge when queued > 0', () => {
+        function SeedQueue({ children }: { children: ReactNode }) {
+            const { dispatch } = useQueue();
+            useEffect(() => {
+                dispatch({
+                    type: 'REPO_QUEUE_UPDATED',
+                    repoId: 'ws-1',
+                    queue: {
+                        queued: [{ id: 'q1' }, { id: 'q2' }],
+                        running: [],
+                        stats: { queued: 2, running: 0, completed: 0, failed: 0, cancelled: 0, total: 2, isPaused: false, isDraining: false },
+                    },
+                });
+            }, [dispatch]);
+            return <>{children}</>;
+        }
+        render(
+            <Wrap>
+                <SeedQueue>
+                    <RepoCard repo={repo} isSelected={false} onClick={() => {}} />
+                </SeedQueue>
+            </Wrap>
+        );
+        expect(document.querySelector('[data-testid="repo-card-queue-queued"]')?.textContent).toBe('⏸2');
+        expect(document.querySelector('[data-testid="repo-card-queue-running"]')).toBeNull();
+    });
+
+    it('shows both running and queued badges when both > 0', () => {
+        function SeedQueue({ children }: { children: ReactNode }) {
+            const { dispatch } = useQueue();
+            useEffect(() => {
+                dispatch({
+                    type: 'REPO_QUEUE_UPDATED',
+                    repoId: 'ws-1',
+                    queue: {
+                        queued: [{ id: 'q1' }, { id: 'q2' }, { id: 'q3' }],
+                        running: [{ id: 'r1' }, { id: 'r2' }],
+                        stats: { queued: 3, running: 2, completed: 0, failed: 0, cancelled: 0, total: 5, isPaused: false, isDraining: false },
+                    },
+                });
+            }, [dispatch]);
+            return <>{children}</>;
+        }
+        render(
+            <Wrap>
+                <SeedQueue>
+                    <RepoCard repo={repo} isSelected={false} onClick={() => {}} />
+                </SeedQueue>
+            </Wrap>
+        );
+        expect(document.querySelector('[data-testid="repo-card-queue-running"]')?.textContent).toBe('⏳2');
+        expect(document.querySelector('[data-testid="repo-card-queue-queued"]')?.textContent).toBe('⏸3');
+    });
 });
 
 describe('ReposGrid', () => {

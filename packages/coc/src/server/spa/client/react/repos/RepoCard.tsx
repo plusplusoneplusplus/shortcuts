@@ -6,6 +6,7 @@
 import type { RepoData } from './repoGrouping';
 import { truncatePath } from './repoGrouping';
 import { Card, cn } from '../shared';
+import { useRepoQueueStats } from '../hooks/useRepoQueueStats';
 
 interface RepoCardProps {
     repo: RepoData;
@@ -22,6 +23,7 @@ export function RepoCard({ repo, isSelected, inGroup, onClick }: RepoCardProps) 
     const stats = repo.stats || { success: 0, failed: 0, running: 0 };
     const truncPath = truncatePath(ws.rootPath || '', 30);
     const taskCount = repo.taskCount || 0;
+    const queueStats = useRepoQueueStats(ws.id);
 
     return (
         <Card
@@ -60,6 +62,13 @@ export function RepoCard({ repo, isSelected, inGroup, onClick }: RepoCardProps) 
             <div className="flex items-center gap-2 mt-1 text-[10px] text-[#848484]">
                 <span>{branch}{taskCount > 0 ? ` · ${taskCount} task${taskCount !== 1 ? 's' : ''}` : ''}</span>
                 <span>Pipelines: {pipelineCount}</span>
+                {(queueStats.running > 0 || queueStats.queued > 0) && (
+                    <span className="queue-status" data-testid="repo-card-queue-status">
+                        {queueStats.running > 0 && <span data-testid="repo-card-queue-running">⏳{queueStats.running}</span>}
+                        {queueStats.running > 0 && queueStats.queued > 0 && ' '}
+                        {queueStats.queued > 0 && <span data-testid="repo-card-queue-queued">⏸{queueStats.queued}</span>}
+                    </span>
+                )}
                 <span className="repo-stat-counts ml-auto">
                     ✓{stats.success} ✗{stats.failed} ⏗{stats.running}
                 </span>

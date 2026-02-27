@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
+import { useQueue } from '../context/QueueContext';
 import { fetchApi } from '../hooks/useApi';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { ReposGrid } from './ReposGrid';
@@ -17,6 +18,7 @@ import type { RepoData } from './repoGrouping';
 
 export function ReposView() {
     const { state, dispatch } = useApp();
+    const { dispatch: queueDispatch } = useQueue();
     const [repos, setRepos] = useState<RepoData[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -63,6 +65,9 @@ export function ReposView() {
 
             setRepos(enriched);
 
+            // Seed per-repo queue stats for card badges
+            seedRepoQueueStats(enriched);
+
             // Clear selection if repo was removed
             if (state.selectedRepoId && !enriched.find(r => r.workspace.id === state.selectedRepoId)) {
                 dispatch({ type: 'SET_SELECTED_REPO', id: null });
@@ -72,6 +77,37 @@ export function ReposView() {
         }
         setLoading(false);
     }, [dispatch, state.selectedRepoId]);
+
+    // Seed repoQueueMap from /api/queue/repos (single call for all repos)
+    const seedRepoQueueStats = useCallback(async (enriched: RepoData[]) => {
+        try {
+            const queueReposRes = await fetchApi('/queue/repos');
+            const queueRepos = queueReposRes?.repos || [];
+            for (const qr of queueRepos) {
+                // Match queue repo to workspace by rootPath
+                const match = enriched.find(r => r.workspace.rootPath === qr.rootPath);
+                const repoId = match?.workspace.id ?? qr.repoId;
+                queueDispatch({
+                    type: 'REPO_QUEUE_UPDATED',
+                    repoId,
+                    queue: {
+                        queued: [],
+                        running: [],
+                        stats: {
+                            queued: qr.queuedCount ?? 0,
+                            running: qr.runningCount ?? 0,
+                            completed: 0,
+                            failed: 0,
+                            cancelled: 0,
+                            total: 0,
+                            isPaused: qr.isPaused ?? false,
+                            isDraining: false,
+                        },
+                    },
+                });
+            }
+        } catch { /* fire-and-forget */ }
+    }, [queueDispatch]);
 
     // Targeted pipeline refresh for a single workspace
     const refreshPipelinesForWorkspace = useCallback(async (wsId: string) => {
