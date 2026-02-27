@@ -245,6 +245,36 @@ function getManagerByRepoId(bridge: MultiRepoQueueExecutorBridge, repoId: string
  * @param bridge - Multi-repo queue executor bridge for per-repo task routing
  * @param store - Optional process store (used by force-fail routes to update linked process status)
  */
+/**
+ * Enrich chat-type tasks with conversation metadata from the process store.
+ * Only looks up processes for tasks with type === 'chat' and a processId.
+ */
+async function enrichChatTasks(
+    tasks: Record<string, unknown>[],
+    store: ProcessStore | undefined
+): Promise<void> {
+    if (!store) return;
+    for (const task of tasks) {
+        if (task.type !== 'chat' || !task.processId) continue;
+        try {
+            const process = await store.getProcess(task.processId as string);
+            if (!process) continue;
+            const turns = process.conversationTurns ?? [];
+            const firstUserTurn = turns.find(t => t.role === 'user');
+            task.chatMeta = {
+                turnCount: turns.length,
+                firstMessage: firstUserTurn
+                    ? (firstUserTurn.content.length > 120
+                        ? firstUserTurn.content.substring(0, 117) + '...'
+                        : firstUserTurn.content)
+                    : undefined,
+            };
+        } catch {
+            // Non-fatal: process may not exist
+        }
+    }
+}
+
 export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecutorBridge, store?: ProcessStore): void {
 
     // Track global pause state so newly-created bridges inherit it
@@ -415,6 +445,13 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
             const repoId = typeof parsed.query.repoId === 'string' && parsed.query.repoId
                 ? parsed.query.repoId
                 : undefined;
+            const typeFilter = typeof parsed.query.type === 'string' && parsed.query.type
+                ? parsed.query.type
+                : undefined;
+
+            if (typeFilter && !VALID_TASK_TYPES.has(typeFilter)) {
+                return sendError(res, 400, `Invalid type filter: ${typeFilter}. Valid types: ${Array.from(VALID_TASK_TYPES).join(', ')}`);
+            }
 
             let queued: Record<string, unknown>[];
             let running: Record<string, unknown>[];
@@ -439,6 +476,11 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
                     running.push(...m.getRunning().map(serializeTask));
                 }
                 stats = getAggregateStats();
+            }
+
+            if (typeFilter) {
+                queued = queued.filter(t => t.type === typeFilter);
+                running = running.filter(t => t.type === typeFilter);
             }
 
             sendJSON(res, 200, { queued, running, stats });
@@ -623,6 +665,13 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
             const repoId = typeof parsed.query.repoId === 'string' && parsed.query.repoId
                 ? parsed.query.repoId
                 : undefined;
+            const typeFilter = typeof parsed.query.type === 'string' && parsed.query.type
+                ? parsed.query.type
+                : undefined;
+
+            if (typeFilter && !VALID_TASK_TYPES.has(typeFilter)) {
+                return sendError(res, 400, `Invalid type filter: ${typeFilter}. Valid types: ${Array.from(VALID_TASK_TYPES).join(', ')}`);
+            }
 
             let history: Record<string, unknown>[];
             if (repoId) {
@@ -635,6 +684,15 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
                 for (const m of bridge.registry.getAllQueues().values()) {
                     history.push(...m.getHistory().map(serializeTask));
                 }
+            }
+
+            if (typeFilter) {
+                history = history.filter(t => t.type === typeFilter);
+            }
+
+            // Enrich chat tasks with conversation metadata when filtering by chat type
+            if (typeFilter === 'chat') {
+                await enrichChatTasks(history, store);
             }
 
             sendJSON(res, 200, { history });
