@@ -50,7 +50,7 @@ export function PipelinesTab({ repo }: PipelinesTabProps) {
                         <div className="text-2xl mb-2">📋</div>
                         <div className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]">No pipelines found</div>
                         <div className="text-xs text-[#848484] mt-1">
-                            Add pipeline YAML files to .vscode/pipelines/ in this repository.
+                            Create your first pipeline by describing what it should do, or add YAML files to .vscode/pipelines/.
                         </div>
                     </div>
                 ) : (
@@ -100,7 +100,13 @@ export function PipelinesTab({ repo }: PipelinesTabProps) {
             {showAddDialog && (
                 <AddPipelineDialog
                     workspaceId={repo.workspace.id}
-                    onCreated={() => setShowAddDialog(false)}
+                    onCreated={(createdName?: string) => {
+                        setShowAddDialog(false);
+                        if (createdName) {
+                            dispatch({ type: 'SET_SELECTED_PIPELINE', name: createdName });
+                            location.hash = '#repos/' + encodeURIComponent(repo.workspace.id) + '/pipelines/' + encodeURIComponent(createdName);
+                        }
+                    }}
                     onClose={() => setShowAddDialog(false)}
                 />
             )}

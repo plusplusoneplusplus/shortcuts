@@ -337,7 +337,7 @@ describe('AddPipelineDialog', () => {
         });
         expect(createSpy).toHaveBeenCalledWith('ws-1', 'test-pipeline', 'custom');
         expect(mockAddToast).toHaveBeenCalledWith('Pipeline created', 'success');
-        expect(onCreated).toHaveBeenCalled();
+        expect(onCreated).toHaveBeenCalledWith('test-pipeline');
         expect(onClose).toHaveBeenCalled();
     });
 
@@ -384,7 +384,7 @@ describe('AddPipelineDialog', () => {
         expect(options).toContain('Custom (blank)');
         expect(options).toContain('Data Fan-out');
         expect(options).toContain('Model Fan-out');
-        expect(options).toContain('AI Generated');
+        expect(options).toContain('AI Generated (describe in natural language)');
     });
 
     it('Cancel button calls onClose', () => {
@@ -396,6 +396,331 @@ describe('AddPipelineDialog', () => {
         );
         fireEvent.click(screen.getByText('Cancel'));
         expect(onClose).toHaveBeenCalled();
+    });
+
+    // --- AI Generation Flow ---
+
+    it('selecting "AI Generated" template shows textarea and tip block', () => {
+        render(
+            <Wrap>
+                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+            </Wrap>
+        );
+        const select = document.querySelector('select')!;
+        fireEvent.change(select, { target: { value: 'ai-generated' } });
+        expect(document.querySelector('textarea')).not.toBeNull();
+        expect(screen.getByText(/Tip: Mention your data source/)).toBeDefined();
+    });
+
+    it('non-AI templates do NOT show textarea', () => {
+        render(
+            <Wrap>
+                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+            </Wrap>
+        );
+        const select = document.querySelector('select')!;
+        fireEvent.change(select, { target: { value: 'custom' } });
+        expect(document.querySelector('textarea')).toBeNull();
+    });
+
+    it('"Generate Pipeline ✨" button disabled when description < 10 chars', () => {
+        render(
+            <Wrap>
+                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+            </Wrap>
+        );
+        const select = document.querySelector('select')!;
+        fireEvent.change(select, { target: { value: 'ai-generated' } });
+        const textarea = document.querySelector('textarea')!;
+        fireEvent.change(textarea, { target: { value: 'short' } });
+        const btn = screen.getByText('Generate Pipeline ✨');
+        expect(btn.closest('button')!.disabled).toBe(true);
+    });
+
+    it('"Generate Pipeline ✨" button enabled when description ≥ 10 chars', () => {
+        render(
+            <Wrap>
+                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+            </Wrap>
+        );
+        const select = document.querySelector('select')!;
+        fireEvent.change(select, { target: { value: 'ai-generated' } });
+        const textarea = document.querySelector('textarea')!;
+        fireEvent.change(textarea, { target: { value: 'classify tickets by urgency' } });
+        const btn = screen.getByText('Generate Pipeline ✨');
+        expect(btn.closest('button')!.disabled).toBe(false);
+    });
+
+    it('character counter displays current length and turns red near limit', () => {
+        render(
+            <Wrap>
+                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+            </Wrap>
+        );
+        const select = document.querySelector('select')!;
+        fireEvent.change(select, { target: { value: 'ai-generated' } });
+        const textarea = document.querySelector('textarea')!;
+        fireEvent.change(textarea, { target: { value: 'hello world' } });
+        expect(screen.getByText('11 / 2000 characters')).toBeDefined();
+
+        // Near limit — text turns red
+        fireEvent.change(textarea, { target: { value: 'x'.repeat(1950) } });
+        const counter = screen.getByText('1950 / 2000 characters');
+        expect(counter.className).toContain('text-red-500');
+    });
+
+    it('clicking "Generate Pipeline ✨" calls generatePipeline API', async () => {
+        const genSpy = vi.spyOn(pipelineApi, 'generatePipeline').mockResolvedValue({
+            yaml: 'name: test', valid: true,
+        });
+        render(
+            <Wrap>
+                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+            </Wrap>
+        );
+        const input = document.querySelector('input[type="text"]')!;
+        fireEvent.change(input, { target: { value: 'my-pipe' } });
+        const select = document.querySelector('select')!;
+        fireEvent.change(select, { target: { value: 'ai-generated' } });
+        const textarea = document.querySelector('textarea')!;
+        fireEvent.change(textarea, { target: { value: 'classify tickets by urgency' } });
+        await act(async () => {
+            fireEvent.click(screen.getByText('Generate Pipeline ✨'));
+        });
+        expect(genSpy).toHaveBeenCalledWith('ws-1', 'my-pipe', 'classify tickets by urgency', expect.any(Object));
+    });
+
+    it('generating phase shows spinner and cancel button', async () => {
+        let resolveGen: (v: any) => void;
+        vi.spyOn(pipelineApi, 'generatePipeline').mockImplementation(() =>
+            new Promise(resolve => { resolveGen = resolve; })
+        );
+        render(
+            <Wrap>
+                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+            </Wrap>
+        );
+        const input = document.querySelector('input[type="text"]')!;
+        fireEvent.change(input, { target: { value: 'my-pipe' } });
+        const select = document.querySelector('select')!;
+        fireEvent.change(select, { target: { value: 'ai-generated' } });
+        const textarea = document.querySelector('textarea')!;
+        fireEvent.change(textarea, { target: { value: 'classify tickets by urgency' } });
+        await act(async () => {
+            fireEvent.click(screen.getByText('Generate Pipeline ✨'));
+        });
+        expect(screen.getByText('Generating pipeline YAML...')).toBeDefined();
+        expect(screen.getByText('Cancel')).toBeDefined();
+        expect(document.querySelector('[aria-label="Loading"]')).not.toBeNull();
+        // Clean up
+        await act(async () => { resolveGen!({ yaml: 'x', valid: true }); });
+    });
+
+    it('cancel during generation returns to input with description preserved', async () => {
+        let resolveGen: (v: any) => void;
+        vi.spyOn(pipelineApi, 'generatePipeline').mockImplementation((_ws, _n, _d, signal) =>
+            new Promise((resolve, reject) => {
+                resolveGen = resolve;
+                signal?.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })));
+            })
+        );
+        render(
+            <Wrap>
+                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+            </Wrap>
+        );
+        const input = document.querySelector('input[type="text"]')!;
+        fireEvent.change(input, { target: { value: 'my-pipe' } });
+        const select = document.querySelector('select')!;
+        fireEvent.change(select, { target: { value: 'ai-generated' } });
+        const textarea = document.querySelector('textarea')!;
+        fireEvent.change(textarea, { target: { value: 'classify tickets by urgency' } });
+        await act(async () => {
+            fireEvent.click(screen.getByText('Generate Pipeline ✨'));
+        });
+        // Now in generating phase — click Cancel
+        await act(async () => {
+            fireEvent.click(screen.getByText('Cancel'));
+        });
+        // Back to input phase with description preserved
+        const ta = document.querySelector('textarea') as HTMLTextAreaElement;
+        expect(ta).not.toBeNull();
+        expect(ta.value).toBe('classify tickets by urgency');
+    });
+
+    it('successful generation transitions to preview with YAML and valid badge', async () => {
+        vi.spyOn(pipelineApi, 'generatePipeline').mockResolvedValue({
+            yaml: 'name: generated\ninput:\n  type: csv',
+            valid: true,
+        });
+        render(
+            <Wrap>
+                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+            </Wrap>
+        );
+        const input = document.querySelector('input[type="text"]')!;
+        fireEvent.change(input, { target: { value: 'my-pipe' } });
+        const select = document.querySelector('select')!;
+        fireEvent.change(select, { target: { value: 'ai-generated' } });
+        const textarea = document.querySelector('textarea')!;
+        fireEvent.change(textarea, { target: { value: 'classify tickets by urgency' } });
+        await act(async () => {
+            fireEvent.click(screen.getByText('Generate Pipeline ✨'));
+        });
+        expect(screen.getByText('Review Generated Pipeline')).toBeDefined();
+        expect(document.querySelector('pre')!.textContent).toContain('name: generated');
+        expect(screen.getByText('✅ Valid pipeline')).toBeDefined();
+    });
+
+    it('invalid generation shows warning badge and collapsible errors', async () => {
+        vi.spyOn(pipelineApi, 'generatePipeline').mockResolvedValue({
+            yaml: 'name: bad',
+            valid: false,
+            errors: ['Missing input', 'Invalid type'],
+        });
+        render(
+            <Wrap>
+                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+            </Wrap>
+        );
+        const input = document.querySelector('input[type="text"]')!;
+        fireEvent.change(input, { target: { value: 'my-pipe' } });
+        const select = document.querySelector('select')!;
+        fireEvent.change(select, { target: { value: 'ai-generated' } });
+        const textarea = document.querySelector('textarea')!;
+        fireEvent.change(textarea, { target: { value: 'classify tickets by urgency' } });
+        await act(async () => {
+            fireEvent.click(screen.getByText('Generate Pipeline ✨'));
+        });
+        expect(screen.getByText('⚠️ Invalid pipeline')).toBeDefined();
+        expect(screen.getByText('Validation errors (2)')).toBeDefined();
+    });
+
+    it('"← Back" returns to input with description preserved', async () => {
+        vi.spyOn(pipelineApi, 'generatePipeline').mockResolvedValue({
+            yaml: 'name: test', valid: true,
+        });
+        render(
+            <Wrap>
+                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+            </Wrap>
+        );
+        const input = document.querySelector('input[type="text"]')!;
+        fireEvent.change(input, { target: { value: 'my-pipe' } });
+        const select = document.querySelector('select')!;
+        fireEvent.change(select, { target: { value: 'ai-generated' } });
+        const textarea = document.querySelector('textarea')!;
+        fireEvent.change(textarea, { target: { value: 'classify tickets by urgency' } });
+        await act(async () => {
+            fireEvent.click(screen.getByText('Generate Pipeline ✨'));
+        });
+        // Now in preview — click Back
+        fireEvent.click(screen.getByText('← Back'));
+        const ta = document.querySelector('textarea') as HTMLTextAreaElement;
+        expect(ta).not.toBeNull();
+        expect(ta.value).toBe('classify tickets by urgency');
+    });
+
+    it('"Regenerate 🔄" re-calls generatePipeline', async () => {
+        const genSpy = vi.spyOn(pipelineApi, 'generatePipeline').mockResolvedValue({
+            yaml: 'name: test', valid: true,
+        });
+        render(
+            <Wrap>
+                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+            </Wrap>
+        );
+        const input = document.querySelector('input[type="text"]')!;
+        fireEvent.change(input, { target: { value: 'my-pipe' } });
+        const select = document.querySelector('select')!;
+        fireEvent.change(select, { target: { value: 'ai-generated' } });
+        const textarea = document.querySelector('textarea')!;
+        fireEvent.change(textarea, { target: { value: 'classify tickets by urgency' } });
+        await act(async () => {
+            fireEvent.click(screen.getByText('Generate Pipeline ✨'));
+        });
+        genSpy.mockClear();
+        await act(async () => {
+            fireEvent.click(screen.getByText('Regenerate 🔄'));
+        });
+        expect(genSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('"Save Pipeline ✓" calls createPipeline with content and triggers onCreated with name', async () => {
+        vi.spyOn(pipelineApi, 'generatePipeline').mockResolvedValue({
+            yaml: 'name: generated-yaml', valid: true,
+        });
+        const createSpy = vi.spyOn(pipelineApi, 'createPipeline').mockResolvedValue();
+        const onCreated = vi.fn();
+        const onClose = vi.fn();
+        render(
+            <Wrap>
+                <AddPipelineDialog workspaceId="ws-1" onCreated={onCreated} onClose={onClose} />
+            </Wrap>
+        );
+        const input = document.querySelector('input[type="text"]')!;
+        fireEvent.change(input, { target: { value: 'my-pipe' } });
+        const select = document.querySelector('select')!;
+        fireEvent.change(select, { target: { value: 'ai-generated' } });
+        const textarea = document.querySelector('textarea')!;
+        fireEvent.change(textarea, { target: { value: 'classify tickets by urgency' } });
+        await act(async () => {
+            fireEvent.click(screen.getByText('Generate Pipeline ✨'));
+        });
+        await act(async () => {
+            fireEvent.click(screen.getByText('Save Pipeline ✓'));
+        });
+        expect(createSpy).toHaveBeenCalledWith('ws-1', 'my-pipe', undefined, 'name: generated-yaml');
+        expect(onCreated).toHaveBeenCalledWith('my-pipe');
+        expect(onClose).toHaveBeenCalled();
+    });
+
+    it('API error during generation returns to input with error message', async () => {
+        vi.spyOn(pipelineApi, 'generatePipeline').mockRejectedValue(new Error('AI service down'));
+        render(
+            <Wrap>
+                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+            </Wrap>
+        );
+        const input = document.querySelector('input[type="text"]')!;
+        fireEvent.change(input, { target: { value: 'my-pipe' } });
+        const select = document.querySelector('select')!;
+        fireEvent.change(select, { target: { value: 'ai-generated' } });
+        const textarea = document.querySelector('textarea')!;
+        fireEvent.change(textarea, { target: { value: 'classify tickets by urgency' } });
+        await act(async () => {
+            fireEvent.click(screen.getByText('Generate Pipeline ✨'));
+        });
+        // Back to input with error
+        expect(screen.getByText('AI service down')).toBeDefined();
+        expect(document.querySelector('textarea')).not.toBeNull();
+    });
+
+    it('API error during save shows inline error in preview phase', async () => {
+        vi.spyOn(pipelineApi, 'generatePipeline').mockResolvedValue({
+            yaml: 'name: test', valid: true,
+        });
+        vi.spyOn(pipelineApi, 'createPipeline').mockRejectedValue(new Error('Disk full'));
+        render(
+            <Wrap>
+                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+            </Wrap>
+        );
+        const input = document.querySelector('input[type="text"]')!;
+        fireEvent.change(input, { target: { value: 'my-pipe' } });
+        const select = document.querySelector('select')!;
+        fireEvent.change(select, { target: { value: 'ai-generated' } });
+        const textarea = document.querySelector('textarea')!;
+        fireEvent.change(textarea, { target: { value: 'classify tickets by urgency' } });
+        await act(async () => {
+            fireEvent.click(screen.getByText('Generate Pipeline ✨'));
+        });
+        await act(async () => {
+            fireEvent.click(screen.getByText('Save Pipeline ✓'));
+        });
+        expect(screen.getByText('Disk full')).toBeDefined();
+        // Still in preview phase
+        expect(document.querySelector('pre')).not.toBeNull();
     });
 });
 
@@ -593,5 +918,30 @@ describe('PipelinesTab (split-panel layout)', () => {
         render(<Wrap><PipelinesTab repo={repo} /></Wrap>);
         fireEvent.click(screen.getByRole('option'));
         expect(location.hash).toBe('#repos/ws-1/pipelines/my%20pipeline');
+    });
+
+    it('onCreated with name auto-selects the pipeline and updates hash', async () => {
+        vi.spyOn(pipelineApi, 'createPipeline').mockResolvedValue();
+        const repo = makeRepo({
+            workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
+            pipelines: [samplePipeline],
+        });
+        render(<Wrap><PipelinesTab repo={repo} /></Wrap>);
+        fireEvent.click(screen.getByText('+ New Pipeline'));
+        const input = document.querySelector('input[type="text"]')!;
+        fireEvent.change(input, { target: { value: 'new-created' } });
+        await act(async () => {
+            fireEvent.click(screen.getByText('Create'));
+        });
+        expect(location.hash).toBe('#repos/ws-1/pipelines/new-created');
+    });
+
+    it('empty state includes natural language discoverability text', () => {
+        const repo = makeRepo({
+            workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
+            pipelines: [],
+        });
+        render(<Wrap><PipelinesTab repo={repo} /></Wrap>);
+        expect(screen.getByText(/Create your first pipeline by describing what it should do/)).toBeDefined();
     });
 });

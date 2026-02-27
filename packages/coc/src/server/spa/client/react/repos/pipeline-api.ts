@@ -53,14 +53,43 @@ export async function savePipelineContent(
     }
 }
 
+export interface GenerateResult {
+    yaml: string;
+    valid: boolean;
+    errors?: string[];
+}
+
+export async function generatePipeline(
+    workspaceId: string,
+    name: string,
+    description: string,
+    signal?: AbortSignal
+): Promise<GenerateResult> {
+    const res = await fetch(`${pipelinesUrl(workspaceId)}/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, description }),
+        signal,
+    });
+    if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `API error: ${res.status} ${res.statusText}`);
+    }
+    return res.json();
+}
+
 export async function createPipeline(
     workspaceId: string,
     name: string,
-    template?: string
+    template?: string,
+    content?: string
 ): Promise<void> {
     const body: Record<string, string> = { name };
     if (template !== undefined) {
         body.template = template;
+    }
+    if (content !== undefined) {
+        body.content = content;
     }
     const res = await fetch(pipelinesUrl(workspaceId), {
         method: 'POST',

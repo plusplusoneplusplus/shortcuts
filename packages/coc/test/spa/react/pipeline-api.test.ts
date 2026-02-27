@@ -20,6 +20,7 @@ let fetchPipelineContent: typeof import('../../../src/server/spa/client/react/re
 let savePipelineContent: typeof import('../../../src/server/spa/client/react/repos/pipeline-api').savePipelineContent;
 let createPipeline: typeof import('../../../src/server/spa/client/react/repos/pipeline-api').createPipeline;
 let deletePipeline: typeof import('../../../src/server/spa/client/react/repos/pipeline-api').deletePipeline;
+let generatePipeline: typeof import('../../../src/server/spa/client/react/repos/pipeline-api').generatePipeline;
 
 beforeEach(async () => {
     const mod = await import('../../../src/server/spa/client/react/repos/pipeline-api');
@@ -28,6 +29,7 @@ beforeEach(async () => {
     savePipelineContent = mod.savePipelineContent;
     createPipeline = mod.createPipeline;
     deletePipeline = mod.deletePipeline;
+    generatePipeline = mod.generatePipeline;
 });
 
 // ---------------------------------------------------------------------------
@@ -176,6 +178,91 @@ describe('createPipeline', () => {
     it('throws on non-ok response', async () => {
         mockFetch.mockReturnValue(errorResponse(409, 'Conflict'));
         await expect(createPipeline('ws1', 'dup')).rejects.toThrow('API error: 409');
+    });
+
+    it('includes content in body when provided', async () => {
+        mockFetch.mockReturnValue(okJson({}));
+        await createPipeline('ws1', 'gen-pipe', undefined, 'yaml: content');
+
+        const call = mockFetch.mock.calls[0];
+        const body = JSON.parse(call[1].body);
+        expect(body).toEqual({ name: 'gen-pipe', content: 'yaml: content' });
+        expect('template' in body).toBe(false);
+    });
+
+    it('includes both template and content when both provided', async () => {
+        mockFetch.mockReturnValue(okJson({}));
+        await createPipeline('ws1', 'gen-pipe', 'custom', 'yaml: content');
+
+        const call = mockFetch.mock.calls[0];
+        const body = JSON.parse(call[1].body);
+        expect(body).toEqual({ name: 'gen-pipe', template: 'custom', content: 'yaml: content' });
+    });
+});
+
+// ===========================================================================
+// generatePipeline
+// ===========================================================================
+describe('generatePipeline', () => {
+    it('sends POST to correct URL with name and description', async () => {
+        mockFetch.mockReturnValue(okJson({ yaml: 'name: test', valid: true }));
+        await generatePipeline('ws1', 'my-pipe', 'classify tickets');
+
+        expect(mockFetch).toHaveBeenCalledWith(
+            'http://localhost:4000/api/workspaces/ws1/pipelines/generate',
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: 'my-pipe', description: 'classify tickets' }),
+                signal: undefined,
+            }
+        );
+    });
+
+    it('returns parsed { yaml, valid, errors } response', async () => {
+        const response = { yaml: 'name: test\ninput:\n  type: csv', valid: true, errors: [] };
+        mockFetch.mockReturnValue(okJson(response));
+        const result = await generatePipeline('ws1', 'pipe', 'do stuff');
+        expect(result).toEqual(response);
+    });
+
+    it('passes AbortSignal to fetch when provided', async () => {
+        mockFetch.mockReturnValue(okJson({ yaml: 'x', valid: true }));
+        const controller = new AbortController();
+        await generatePipeline('ws1', 'pipe', 'desc', controller.signal);
+
+        const call = mockFetch.mock.calls[0];
+        expect(call[1].signal).toBe(controller.signal);
+    });
+
+    it('throws on non-ok response with error body', async () => {
+        mockFetch.mockReturnValue(Promise.resolve({
+            ok: false,
+            status: 500,
+            statusText: 'Internal Server Error',
+            json: () => Promise.resolve({ error: 'AI unavailable' }),
+        }));
+        await expect(generatePipeline('ws1', 'pipe', 'desc')).rejects.toThrow('AI unavailable');
+    });
+
+    it('throws generic message when error body is unparseable', async () => {
+        mockFetch.mockReturnValue(Promise.resolve({
+            ok: false,
+            status: 500,
+            statusText: 'Internal Server Error',
+            json: () => Promise.reject(new Error('not json')),
+        }));
+        await expect(generatePipeline('ws1', 'pipe', 'desc')).rejects.toThrow('API error: 500 Internal Server Error');
+    });
+
+    it('encodes workspace ID in URL', async () => {
+        mockFetch.mockReturnValue(okJson({ yaml: 'x', valid: true }));
+        await generatePipeline('ws/special', 'pipe', 'desc');
+
+        expect(mockFetch).toHaveBeenCalledWith(
+            'http://localhost:4000/api/workspaces/ws%2Fspecial/pipelines/generate',
+            expect.any(Object)
+        );
     });
 });
 
