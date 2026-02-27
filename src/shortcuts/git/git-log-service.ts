@@ -1,8 +1,7 @@
-import { execSync } from 'child_process';
-import * as path from 'path';
 import * as vscode from 'vscode';
+import { GitLogService as CoreGitLogService } from '@plusplusoneplusplus/pipeline-core';
 import { getExtensionLogger, LogCategory } from '../shared';
-import { GitCommit, GitCommitFile, GitChangeStatus, CommitLoadOptions, CommitLoadResult } from './types';
+import { GitCommit, GitCommitFile, CommitLoadOptions, CommitLoadResult } from './types';
 
 /**
  * Git Extension API types (from vscode.git extension)
@@ -21,23 +20,15 @@ interface Repository {
 }
 
 /**
- * Branch cache entry with timestamp
- */
-interface BranchCacheEntry {
-    branches: string[];
-    timestamp: number;
-}
-
-/**
- * Service for retrieving git commit history
+ * Service for retrieving git commit history.
+ *
+ * Delegates pure-git operations to the pipeline-core GitLogService.
+ * Keeps VS Code–specific methods (initialize, getRepositories, getAllCommits) in-place.
  */
 export class GitLogService implements vscode.Disposable {
     private gitAPI?: GitAPI;
     private disposables: vscode.Disposable[] = [];
-
-    // Branch cache with TTL
-    private branchCache: Map<string, BranchCacheEntry> = new Map();
-    private static readonly BRANCH_CACHE_TTL = 180000; // 3 minutes
+    private coreService = new CoreGitLogService();
 
     /**
      * Initialize the git log service by getting the git extension API
@@ -78,109 +69,20 @@ export class GitLogService implements vscode.Disposable {
 
     /**
      * Get commits from a repository
-     * @param repoRoot Repository root path
-     * @param options Load options (maxCount, skip)
-     * @returns Commit load result with commits and hasMore flag
      */
     getCommits(repoRoot: string, options: CommitLoadOptions): CommitLoadResult {
-        try {
-            const { maxCount, skip } = options;
-            
-            // Request one extra commit to determine if there are more
-            const requestCount = maxCount + 1;
-            
-            // Format: hash|shortHash|subject|authorName|authorEmail|date|relativeDate|parentHashes|refs
-            const format = '%H|%h|%s|%an|%ae|%aI|%ar|%P|%D';
-            
-            const command = `git log --pretty=format:"${format}" -n ${requestCount} --skip ${skip}`;
-            
-            const output = execSync(command, {
-                cwd: repoRoot,
-                encoding: 'utf-8',
-                maxBuffer: 10 * 1024 * 1024, // 10MB buffer for large histories
-                timeout: 30000 // 30 second timeout
-            });
-
-            if (!output.trim()) {
-                return { commits: [], hasMore: false };
-            }
-
-            const lines = output.trim().split('\n');
-            const repoName = path.basename(repoRoot);
-            
-            // Check if we got more than maxCount (indicating there are more)
-            const hasMore = lines.length > maxCount;
-            
-            // Only take maxCount commits
-            const commitLines = hasMore ? lines.slice(0, maxCount) : lines;
-            
-            // Get the set of commits that are ahead of remote
-            const aheadCommits = this.getAheadOfRemoteCommits(repoRoot);
-            
-            const commits = commitLines.map(line => {
-                const commit = this.parseCommitLine(line, repoRoot, repoName);
-                commit.isAheadOfRemote = aheadCommits.has(commit.hash);
-                return commit;
-            });
-
-            return { commits, hasMore };
-        } catch (error) {
-            getExtensionLogger().error(LogCategory.GIT, `Failed to get commits for ${repoRoot}`, error instanceof Error ? error : undefined);
-            return { commits: [], hasMore: false };
-        }
-    }
-
-    /**
-     * Get the set of commit hashes that are ahead of the remote tracking branch
-     * @param repoRoot Repository root path
-     * @returns Set of commit hashes that haven't been pushed
-     */
-    private getAheadOfRemoteCommits(repoRoot: string): Set<string> {
-        try {
-            // Get the upstream branch for the current branch
-            const upstreamCommand = 'git rev-parse --abbrev-ref @{upstream}';
-            let upstream: string;
-            try {
-                upstream = execSync(upstreamCommand, {
-                    cwd: repoRoot,
-                    encoding: 'utf-8',
-                    timeout: 5000
-                }).trim();
-            } catch {
-                // No upstream configured, return empty set
-                return new Set();
-            }
-
-            // Get commits that are in HEAD but not in upstream
-            const aheadCommand = `git log ${upstream}..HEAD --pretty=format:"%H"`;
-            const output = execSync(aheadCommand, {
-                cwd: repoRoot,
-                encoding: 'utf-8',
-                timeout: 5000
-            });
-
-            if (!output.trim()) {
-                return new Set();
-            }
-
-            return new Set(output.trim().split('\n').filter(h => h));
-        } catch (error) {
-            // If anything fails, return empty set (don't break the main functionality)
-            return new Set();
-        }
+        return this.coreService.getCommits(repoRoot, options);
     }
 
     /**
      * Get commits from all repositories
-     * @param options Load options (maxCount, skip)
-     * @returns Combined commit load result
      */
     getAllCommits(options: CommitLoadOptions): CommitLoadResult {
         const allCommits: GitCommit[] = [];
         let anyHasMore = false;
 
         for (const repo of this.getRepositories()) {
-            const result = this.getCommits(repo.rootUri.fsPath, options);
+            const result = this.coreService.getCommits(repo.rootUri.fsPath, options);
             allCommits.push(...result.commits);
             if (result.hasMore) {
                 anyHasMore = true;
@@ -201,532 +103,111 @@ export class GitLogService implements vscode.Disposable {
 
     /**
      * Check if there are more commits available
-     * @param repoRoot Repository root path
-     * @param currentCount Number of commits already loaded
-     * @returns true if more commits exist
      */
     hasMoreCommits(repoRoot: string, currentCount: number): boolean {
-        try {
-            // Check if there's at least one more commit beyond what we've loaded
-            const command = `git rev-list --count HEAD`;
-            const output = execSync(command, {
-                cwd: repoRoot,
-                encoding: 'utf-8',
-                timeout: 5000
-            });
-
-            const totalCount = parseInt(output.trim(), 10);
-            return totalCount > currentCount;
-        } catch (error) {
-            getExtensionLogger().error(LogCategory.GIT, `Failed to check for more commits in ${repoRoot}`, error instanceof Error ? error : undefined);
-            return false;
-        }
-    }
-
-    /**
-     * Parse a single commit line from git log output
-     */
-    private parseCommitLine(line: string, repoRoot: string, repoName: string): GitCommit {
-        const parts = line.split('|');
-        
-        // Parse refs (branch names, tags)
-        const refsString = parts[8] || '';
-        const refs = refsString
-            .split(',')
-            .map(ref => ref.trim())
-            .filter(ref => ref.length > 0);
-
-        return {
-            hash: parts[0] || '',
-            shortHash: parts[1] || '',
-            subject: parts[2] || '',
-            authorName: parts[3] || '',
-            authorEmail: parts[4] || '',
-            date: parts[5] || '',
-            relativeDate: parts[6] || '',
-            parentHashes: parts[7] || '',
-            refs,
-            repositoryRoot: repoRoot,
-            repositoryName: repoName
-        };
+        return this.coreService.hasMoreCommits(repoRoot, currentCount);
     }
 
     /**
      * Get a single commit by hash
-     * @param repoRoot Repository root path
-     * @param hash Commit hash (full or abbreviated)
-     * @returns The commit or undefined if not found
      */
     getCommit(repoRoot: string, hash: string): GitCommit | undefined {
-        try {
-            const format = '%H|%h|%s|%an|%ae|%aI|%ar|%P|%D';
-            const command = `git log --pretty=format:"${format}" -n 1 ${hash}`;
-
-            const output = execSync(command, {
-                cwd: repoRoot,
-                encoding: 'utf-8',
-                timeout: 5000
-            });
-
-            if (!output.trim()) {
-                return undefined;
-            }
-
-            const repoName = path.basename(repoRoot);
-            return this.parseCommitLine(output.trim(), repoRoot, repoName);
-        } catch (error) {
-            getExtensionLogger().error(LogCategory.GIT, `Failed to get commit ${hash} from ${repoRoot}`, error instanceof Error ? error : undefined);
-            return undefined;
-        }
+        return this.coreService.getCommit(repoRoot, hash);
     }
 
     /**
      * Validate a git ref and return the resolved commit hash
-     * Supports: full/short hash, branch names, tags, HEAD~N, etc.
-     * @param repoRoot Repository root path
-     * @param ref Git reference to validate
-     * @returns Resolved full hash or undefined if invalid
      */
     validateRef(repoRoot: string, ref: string): string | undefined {
-        try {
-            // Use git rev-parse --verify to ensure it's a valid ref
-            // Note: We avoid using ^{commit} suffix because the caret (^) is an 
-            // escape character in Windows cmd.exe. Instead, we verify the ref
-            // directly and check if it resolves to a valid commit.
-            const command = `git rev-parse --verify "${ref}"`;
-            const output = execSync(command, {
-                cwd: repoRoot,
-                encoding: 'utf-8',
-                timeout: 5000,
-                stdio: ['pipe', 'pipe', 'pipe']  // Suppress stderr
-            });
-            const hash = output.trim();
-            
-            // Verify it's actually a commit object (not a tree or blob)
-            // by checking if git cat-file returns "commit"
-            const typeCommand = `git cat-file -t "${hash}"`;
-            const typeOutput = execSync(typeCommand, {
-                cwd: repoRoot,
-                encoding: 'utf-8',
-                timeout: 5000,
-                stdio: ['pipe', 'pipe', 'pipe']
-            });
-            
-            if (typeOutput.trim() === 'commit') {
-                return hash;
-            }
-            return undefined;
-        } catch {
-            return undefined;
-        }
+        return this.coreService.validateRef(repoRoot, ref);
     }
 
     /**
      * Get branch names for suggestions (cached, local branches only for speed)
-     * @param repoRoot Repository root path
-     * @param forceRefresh Force cache refresh
-     * @returns Array of branch names (limited to 10)
      */
     getBranches(repoRoot: string, forceRefresh = false): string[] {
-        // Check cache first
-        if (!forceRefresh) {
-            const cached = this.branchCache.get(repoRoot);
-            if (cached && Date.now() - cached.timestamp < GitLogService.BRANCH_CACHE_TTL) {
-                return cached.branches;
-            }
-        }
-
-        try {
-            // Use local branches only (no -a flag) for faster response
-            const output = execSync('git branch --format="%(refname:short)"', {
-                cwd: repoRoot,
-                encoding: 'utf-8',
-                timeout: 5000
-            });
-            const branches = output.trim().split('\n')
-                .filter(b => b && !b.includes('HEAD'))
-                .slice(0, 10);
-
-            // Cache the result
-            this.branchCache.set(repoRoot, {
-                branches,
-                timestamp: Date.now()
-            });
-
-            return branches;
-        } catch {
-            return [];
-        }
+        return this.coreService.getBranches(repoRoot, forceRefresh);
     }
 
     /**
      * Get branch names asynchronously (for non-blocking UI)
-     * @param repoRoot Repository root path
-     * @returns Promise resolving to array of branch names
      */
-    async getBranchesAsync(repoRoot: string): Promise<string[]> {
-        // Return cached value immediately if available
-        const cached = this.branchCache.get(repoRoot);
-        if (cached && Date.now() - cached.timestamp < GitLogService.BRANCH_CACHE_TTL) {
-            return cached.branches;
-        }
-
-        // Run in next tick to avoid blocking
-        return new Promise((resolve) => {
-            setImmediate(() => {
-                resolve(this.getBranches(repoRoot, true));
-            });
-        });
+    getBranchesAsync(repoRoot: string): Promise<string[]> {
+        return this.coreService.getBranchesAsync(repoRoot);
     }
 
     /**
      * Invalidate branch cache for a repository
-     * @param repoRoot Repository root path (optional, clears all if not provided)
      */
     invalidateBranchCache(repoRoot?: string): void {
-        if (repoRoot) {
-            this.branchCache.delete(repoRoot);
-        } else {
-            this.branchCache.clear();
-        }
+        this.coreService.invalidateBranchCache(repoRoot);
     }
-
-    /**
-     * Empty tree hash for initial commits with no parent
-     */
-    private static readonly EMPTY_TREE_HASH = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
 
     /**
      * Get files changed in a specific commit
-     * @param repoRoot Repository root path
-     * @param commitHash Commit hash
-     * @returns Array of files changed in the commit
      */
     getCommitFiles(repoRoot: string, commitHash: string): GitCommitFile[] {
-        try {
-            // Get the parent hash for diff comparison
-            const parentHash = this.getParentHash(repoRoot, commitHash);
-
-            // Use git diff-tree to get files changed
-            // --no-commit-id: don't show the commit id
-            // --name-status: show status (M/A/D/R/C) and file names
-            // -r: recurse into subdirectories
-            // -M: detect renames
-            // -C: detect copies
-            const command = `git diff-tree --no-commit-id --name-status -r -M -C ${commitHash}`;
-            
-            const output = execSync(command, {
-                cwd: repoRoot,
-                encoding: 'utf-8',
-                timeout: 10000
-            });
-
-            if (!output.trim()) {
-                return [];
-            }
-
-            const files: GitCommitFile[] = [];
-            const lines = output.trim().split('\n');
-
-            for (const line of lines) {
-                const file = this.parseFileLine(line, commitHash, parentHash, repoRoot);
-                if (file) {
-                    files.push(file);
-                }
-            }
-
-            return files;
-        } catch (error) {
-            getExtensionLogger().error(LogCategory.GIT, `Failed to get commit files for ${commitHash} from ${repoRoot}`, error instanceof Error ? error : undefined);
-            return [];
-        }
-    }
-
-    /**
-     * Get the parent hash for a commit
-     * For merge commits, uses the first parent
-     * For initial commits, uses the empty tree hash
-     */
-    private getParentHash(repoRoot: string, commitHash: string): string {
-        try {
-            // Use git rev-parse with ~1 instead of ^ to avoid Windows cmd.exe issues
-            // The caret (^) is an escape character in Windows cmd.exe and can cause
-            // the command to fail or return incorrect results
-            const command = `git rev-parse ${commitHash}~1`;
-            const output = execSync(command, {
-                cwd: repoRoot,
-                encoding: 'utf-8',
-                timeout: 5000
-            });
-            return output.trim();
-        } catch {
-            // Initial commit has no parent, use empty tree hash
-            return GitLogService.EMPTY_TREE_HASH;
-        }
-    }
-
-    /**
-     * Parse a file line from git diff-tree output
-     * Format: STATUS\tPATH or STATUS\tOLD_PATH\tNEW_PATH (for renames/copies)
-     */
-    private parseFileLine(
-        line: string,
-        commitHash: string,
-        parentHash: string,
-        repoRoot: string
-    ): GitCommitFile | null {
-        if (!line.trim()) {
-            return null;
-        }
-
-        const parts = line.split('\t');
-        if (parts.length < 2) {
-            return null;
-        }
-
-        const statusCode = parts[0];
-        const status = this.parseStatusCode(statusCode);
-
-        // Handle renames and copies (have two paths)
-        if (statusCode.startsWith('R') || statusCode.startsWith('C')) {
-            if (parts.length >= 3) {
-                return {
-                    path: parts[2],
-                    originalPath: parts[1],
-                    status,
-                    commitHash,
-                    parentHash,
-                    repositoryRoot: repoRoot
-                };
-            }
-        }
-
-        return {
-            path: parts[1],
-            status,
-            commitHash,
-            parentHash,
-            repositoryRoot: repoRoot
-        };
-    }
-
-    /**
-     * Parse git status code to GitChangeStatus
-     */
-    private parseStatusCode(code: string): GitChangeStatus {
-        const firstChar = code.charAt(0).toUpperCase();
-        switch (firstChar) {
-            case 'M': return 'modified';
-            case 'A': return 'added';
-            case 'D': return 'deleted';
-            case 'R': return 'renamed';
-            case 'C': return 'copied';
-            case 'U': return 'conflict';
-            default: return 'modified';
-        }
+        return this.coreService.getCommitFiles(repoRoot, commitHash);
     }
 
     /**
      * Get the diff for a specific commit
-     * @param repoRoot Repository root path
-     * @param commitHash Commit hash
-     * @returns The diff output as a string
      */
     getCommitDiff(repoRoot: string, commitHash: string): string {
-        try {
-            // Get the parent hash for the diff
-            const parentHash = this.getParentHash(repoRoot, commitHash);
-
-            // Get the diff between parent and commit
-            const command = `git diff ${parentHash} ${commitHash}`;
-            const output = execSync(command, {
-                cwd: repoRoot,
-                encoding: 'utf-8',
-                maxBuffer: 10 * 1024 * 1024, // 10MB buffer
-                timeout: 30000
-            });
-
-            return output;
-        } catch (error) {
-            getExtensionLogger().error(LogCategory.GIT, `Failed to get diff for commit ${commitHash}`, error instanceof Error ? error : undefined);
-            return '';
-        }
+        return this.coreService.getCommitDiff(repoRoot, commitHash);
     }
 
     /**
      * Get the diff for pending changes (staged + unstaged)
-     * @param repoRoot Repository root path
-     * @returns The diff output as a string
      */
     getPendingChangesDiff(repoRoot: string): string {
-        try {
-            // Get both staged and unstaged changes
-            // First get unstaged changes (working tree vs index)
-            const unstagedCommand = 'git diff';
-            const unstaged = execSync(unstagedCommand, {
-                cwd: repoRoot,
-                encoding: 'utf-8',
-                maxBuffer: 10 * 1024 * 1024,
-                timeout: 30000
-            });
-
-            // Then get staged changes (index vs HEAD)
-            const stagedCommand = 'git diff --cached';
-            const staged = execSync(stagedCommand, {
-                cwd: repoRoot,
-                encoding: 'utf-8',
-                maxBuffer: 10 * 1024 * 1024,
-                timeout: 30000
-            });
-
-            // Combine both diffs
-            let combined = '';
-            if (staged.trim()) {
-                combined += '# Staged Changes\n\n' + staged;
-            }
-            if (unstaged.trim()) {
-                if (combined) {
-                    combined += '\n\n';
-                }
-                combined += '# Unstaged Changes\n\n' + unstaged;
-            }
-
-            return combined;
-        } catch (error) {
-            getExtensionLogger().error(LogCategory.GIT, 'Failed to get pending changes diff', error instanceof Error ? error : undefined);
-            return '';
-        }
+        return this.coreService.getPendingChangesDiff(repoRoot);
     }
 
     /**
      * Get the diff for staged changes only
-     * @param repoRoot Repository root path
-     * @returns The diff output as a string
      */
     getStagedChangesDiff(repoRoot: string): string {
-        try {
-            const command = 'git diff --cached';
-            const output = execSync(command, {
-                cwd: repoRoot,
-                encoding: 'utf-8',
-                maxBuffer: 10 * 1024 * 1024,
-                timeout: 30000
-            });
-
-            return output;
-        } catch (error) {
-            getExtensionLogger().error(LogCategory.GIT, 'Failed to get staged changes diff', error instanceof Error ? error : undefined);
-            return '';
-        }
+        return this.coreService.getStagedChangesDiff(repoRoot);
     }
 
     /**
      * Check if there are any pending changes
-     * @param repoRoot Repository root path
-     * @returns True if there are staged or unstaged changes
      */
     hasPendingChanges(repoRoot: string): boolean {
-        try {
-            // Check for any changes (staged or unstaged)
-            const command = 'git status --porcelain';
-            const output = execSync(command, {
-                cwd: repoRoot,
-                encoding: 'utf-8',
-                timeout: 5000
-            });
-
-            return output.trim().length > 0;
-        } catch (error) {
-            getExtensionLogger().error(LogCategory.GIT, 'Failed to check for pending changes', error instanceof Error ? error : undefined);
-            return false;
-        }
+        return this.coreService.hasPendingChanges(repoRoot);
     }
 
     /**
      * Check if there are any staged changes
-     * @param repoRoot Repository root path
-     * @returns True if there are staged changes
      */
     hasStagedChanges(repoRoot: string): boolean {
-        try {
-            const command = 'git diff --cached --quiet';
-            execSync(command, {
-                cwd: repoRoot,
-                encoding: 'utf-8',
-                timeout: 5000
-            });
-            // If command succeeds (exit 0), there are no staged changes
-            return false;
-        } catch {
-            // If command fails (exit 1), there are staged changes
-            return true;
-        }
+        return this.coreService.hasStagedChanges(repoRoot);
     }
 
     /**
      * Get file content at a specific commit
-     * @param repoRoot Repository root path
-     * @param commitHash Commit hash
-     * @param filePath File path relative to repo root
-     * @returns File content as string, or undefined if file doesn't exist at that commit
      */
     getFileContentAtCommit(repoRoot: string, commitHash: string, filePath: string): string | undefined {
-        try {
-            // Normalize the file path (use forward slashes for git)
-            const normalizedPath = filePath.replace(/\\/g, '/');
-            
-            // Use git show to get file content at specific commit
-            const command = `git show "${commitHash}:${normalizedPath}"`;
-            const output = execSync(command, {
-                cwd: repoRoot,
-                encoding: 'utf-8',
-                maxBuffer: 10 * 1024 * 1024, // 10MB buffer
-                timeout: 30000
-            });
-            
-            return output;
-        } catch (error) {
-            getExtensionLogger().error(
-                LogCategory.GIT,
-                `Failed to get file content for ${filePath} at commit ${commitHash}`,
-                error instanceof Error ? error : undefined
-            );
-            return undefined;
-        }
+        return this.coreService.getFileContentAtCommit(repoRoot, commitHash, filePath);
     }
 
     /**
      * Check if a file exists at a specific commit
-     * @param repoRoot Repository root path
-     * @param commitHash Commit hash
-     * @param filePath File path relative to repo root
-     * @returns true if the file exists at that commit
      */
     fileExistsAtCommit(repoRoot: string, commitHash: string, filePath: string): boolean {
-        try {
-            const normalizedPath = filePath.replace(/\\/g, '/');
-            // Use git cat-file to check if file exists
-            execSync(`git cat-file -e "${commitHash}:${normalizedPath}"`, {
-                cwd: repoRoot,
-                encoding: 'utf-8',
-                timeout: 5000,
-                stdio: ['pipe', 'pipe', 'pipe']
-            });
-            return true;
-        } catch {
-            return false;
-        }
+        return this.coreService.fileExistsAtCommit(repoRoot, commitHash, filePath);
     }
 
     /**
      * Dispose of all resources
      */
     dispose(): void {
+        this.coreService.dispose();
         for (const disposable of this.disposables) {
             disposable.dispose();
         }
         this.disposables = [];
-        this.branchCache.clear();
     }
 }
 

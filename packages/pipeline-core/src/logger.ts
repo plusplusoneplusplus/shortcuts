@@ -30,7 +30,9 @@ export enum LogCategory {
     /** General operations */
     GENERAL = 'General',
     /** Task management operations */
-    TASKS = 'Tasks'
+    TASKS = 'Tasks',
+    /** Git operations */
+    GIT = 'Git'
 }
 
 /**

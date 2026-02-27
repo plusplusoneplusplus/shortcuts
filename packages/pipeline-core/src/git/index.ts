@@ -26,3 +26,5 @@ export {
     ExecGitOptions,
     execGit,
 } from './exec';
+
+export { GitLogService } from './git-log-service';

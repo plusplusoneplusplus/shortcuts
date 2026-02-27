@@ -794,6 +794,7 @@ export {
     STAGE_LABEL,
     ExecGitOptions,
     execGit,
+    GitLogService,
 } from './git';
 
 // ============================================================================
