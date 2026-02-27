@@ -248,7 +248,7 @@ export function useTaskComments(wsId: string, taskPath: string): UseTaskComments
             if (mountedRef.current) setResolving(true);
             try {
                 // Step 1 — call batch resolve endpoint
-                const aiRes = await fetch(commentsUrl(wsId, taskPath) + '/resolve-with-ai', {
+                const aiRes = await fetch(commentsUrl(wsId, taskPath) + '/batch-resolve', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ documentContent }),

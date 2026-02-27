@@ -499,7 +499,7 @@ describe('useTaskComments', () => {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({ counts: {} }) });
             }
             // Batch resolve endpoint
-            if (opts?.method === 'POST' && url.includes('resolve-with-ai')) {
+            if (opts?.method === 'POST' && url.includes('batch-resolve')) {
                 return Promise.resolve({
                     ok: true,
                     json: () => Promise.resolve({ revisedContent: 'revised doc', commentIds: ['c1', 'c2'] }),
@@ -542,7 +542,7 @@ describe('useTaskComments', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({ counts: {} }) });
             }
-            if (opts?.method === 'POST' && url.includes('resolve-with-ai')) {
+            if (opts?.method === 'POST' && url.includes('batch-resolve')) {
                 return new Promise(r => { resolveAiEndpoint = r; });
             }
             if (opts?.method === 'PATCH' && url.includes('/tasks/content')) {
@@ -584,7 +584,7 @@ describe('useTaskComments', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({ counts: {} }) });
             }
-            if (opts?.method === 'POST' && url.includes('resolve-with-ai')) {
+            if (opts?.method === 'POST' && url.includes('batch-resolve')) {
                 return Promise.resolve({ ok: false, status: 500 });
             }
             if (opts?.method === 'PATCH' && url.includes('/tasks/content')) {
@@ -613,7 +613,7 @@ describe('useTaskComments', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({ counts: {} }) });
             }
-            if (opts?.method === 'POST' && url.includes('resolve-with-ai')) {
+            if (opts?.method === 'POST' && url.includes('batch-resolve')) {
                 return Promise.resolve({
                     ok: true,
                     json: () => Promise.resolve({ revisedContent: 'new', commentIds: ['c1'] }),
@@ -836,7 +836,7 @@ describe('useTaskComments', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({ counts: {} }) });
             }
-            if (opts?.method === 'POST' && url.includes('resolve-with-ai')) {
+            if (opts?.method === 'POST' && url.includes('batch-resolve')) {
                 return Promise.resolve({
                     ok: true,
                     json: () => Promise.resolve({ revisedContent: 'new', commentIds: ['c1'] }),
