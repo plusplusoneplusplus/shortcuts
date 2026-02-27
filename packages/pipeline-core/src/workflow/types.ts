@@ -410,14 +410,21 @@ export interface WorkflowResult {
 /**
  * Adjacency-list representation of the workflow DAG.
  *
- * - `adjacency` maps each node ID to its list of direct children (dependents).
- * - `inDegree` maps each node ID to the count of incoming edges (parents).
+ * Built by `buildGraph()` from a `Record<string, NodeConfig>`.
+ * Contains both forward and reverse adjacency lists, degree counts,
+ * and pre-computed root/leaf sets for use by the scheduler and validator.
  */
 export interface DAGGraph {
-    /** Map of node ID → list of child node IDs. */
-    adjacency: Map<string, string[]>;
-    /** Map of node ID → number of incoming edges. */
+    /** Forward adjacency: node ID → list of child (dependent) node IDs. */
+    edges: Map<string, string[]>;
+    /** Reverse adjacency: node ID → list of parent (dependency) node IDs. */
+    reverseEdges: Map<string, string[]>;
+    /** Map of node ID → number of incoming edges (parents). */
     inDegree: Map<string, number>;
+    /** Node IDs with no incoming edges (inDegree === 0). */
+    roots: string[];
+    /** Node IDs with no outgoing edges (no downstream dependents). */
+    leaves: string[];
 }
 
 /**

@@ -1,7 +1,8 @@
 /**
  * Workflow sub-package — barrel export.
  *
- * Re-exports all public types and type guards from the workflow module.
+ * Re-exports all public types, type guards, graph utilities, and validator
+ * from the workflow module.
  */
 export {
     // Item types
@@ -64,3 +65,9 @@ export {
     isAINode,
     isNodeConfig,
 } from './types';
+
+// Graph utilities
+export { buildGraph, detectCycle } from './graph';
+
+// Validator
+export { validate, WorkflowValidationError } from './validator';
