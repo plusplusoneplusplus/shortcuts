@@ -163,6 +163,23 @@ export interface TokenUsage {
 }
 
 // ============================================================================
+// Attachment Types
+// ============================================================================
+
+/**
+ * File or directory attachment for SDK messages.
+ * Mirrors the SDK's `MessageOptions.attachments` element type.
+ */
+export interface Attachment {
+    /** Attachment type: file or directory */
+    type: 'file' | 'directory';
+    /** Absolute path to the file or directory */
+    path: string;
+    /** Optional display name shown to the AI */
+    displayName?: string;
+}
+
+// ============================================================================
 // Send Message Options
 // ============================================================================
 
@@ -186,6 +203,11 @@ export interface SendMessageOptions {
      * @default DEFAULT_AI_IDLE_TIMEOUT_MS (1 hour)
      */
     idleTimeoutMs?: number;
+    /**
+     * File or directory attachments to include with the message.
+     * Maps to the SDK's MessageOptions.attachments.
+     */
+    attachments?: Attachment[];
     /** Enable streaming for real-time response chunks (default: false) */
     streaming?: boolean;
 

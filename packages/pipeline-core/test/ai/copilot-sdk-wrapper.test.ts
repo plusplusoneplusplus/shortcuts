@@ -13,6 +13,8 @@ import {
     // Types
     approveAllPermissions,
     denyAllPermissions,
+    // Attachment type
+    Attachment,
     // Model Registry
     AIModel,
     VALID_MODELS,
@@ -53,6 +55,7 @@ import {
     // These should all be re-exported from copilot-sdk-wrapper
     MCPServerConfig as AiMCPServerConfig,
     SendMessageOptions as AiSendMessageOptions,
+    Attachment as AiAttachment,
     TokenUsage as AiTokenUsage,
     SDKInvocationResult as AiSDKInvocationResult,
     PermissionHandler as AiPermissionHandler,
@@ -198,6 +201,58 @@ describe('Copilot SDK Wrapper Module', () => {
             expect(event.parameters).toBeUndefined();
             expect(event.result).toBeUndefined();
             expect(event.error).toBeUndefined();
+        });
+    });
+
+    describe('Attachment type', () => {
+        it('should support file attachment', () => {
+            const attachment: Attachment = {
+                type: 'file',
+                path: '/tmp/screenshot.png',
+                displayName: 'screenshot.png',
+            };
+            expect(attachment.type).toBe('file');
+            expect(attachment.path).toBe('/tmp/screenshot.png');
+            expect(attachment.displayName).toBe('screenshot.png');
+        });
+
+        it('should support directory attachment', () => {
+            const attachment: Attachment = {
+                type: 'directory',
+                path: '/home/user/project',
+            };
+            expect(attachment.type).toBe('directory');
+            expect(attachment.path).toBe('/home/user/project');
+            expect(attachment.displayName).toBeUndefined();
+        });
+
+        it('should work in SendMessageOptions.attachments', () => {
+            const opts: AiSendMessageOptions = {
+                prompt: 'Describe this image',
+                attachments: [
+                    { type: 'file', path: '/tmp/img.png', displayName: 'image' },
+                    { type: 'directory', path: '/src' },
+                ],
+            };
+            expect(opts.attachments).toHaveLength(2);
+            expect(opts.attachments![0].type).toBe('file');
+            expect(opts.attachments![1].type).toBe('directory');
+        });
+
+        it('should be optional in SendMessageOptions', () => {
+            const opts: AiSendMessageOptions = {
+                prompt: 'Hello',
+            };
+            expect(opts.attachments).toBeUndefined();
+        });
+
+        it('should be re-exported through ai/ barrel', () => {
+            // AiAttachment imported from ai/ barrel should be the same type
+            const attachment: AiAttachment = {
+                type: 'file',
+                path: '/tmp/test.txt',
+            };
+            expect(attachment.type).toBe('file');
         });
     });
 

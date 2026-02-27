@@ -13,6 +13,8 @@ export {
     MCPRemoteServerConfig,
     MCPServerConfig,
     MCPControlOptions,
+    // Attachment types
+    Attachment,
     // Message types
     SendMessageOptions,
     TokenUsage,

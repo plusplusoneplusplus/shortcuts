@@ -314,6 +314,7 @@ export {
     MCPRemoteServerConfig,
     MCPServerConfig,
     MCPControlOptions,
+    Attachment,
     SendMessageOptions,
     SDKInvocationResult,
     SDKAvailabilityResult,
