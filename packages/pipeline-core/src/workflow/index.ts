@@ -71,3 +71,6 @@ export { buildGraph, detectCycle } from './graph';
 
 // Validator
 export { validate, WorkflowValidationError } from './validator';
+
+// Scheduler
+export { schedule, getExecutionOrder, getTierIndex } from './scheduler';
