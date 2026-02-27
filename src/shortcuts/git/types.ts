@@ -10,6 +10,8 @@ export {
     GitCommentCounts,
     GitCommitRange,
     GitCommitRangeFile,
+    GitRangeConfig,
+    BranchStatus,
 } from '@plusplusoneplusplus/pipeline-core';
 
 // VS Code-specific types (not in pipeline-core)

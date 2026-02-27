@@ -114,6 +114,7 @@ This is the "Markdown Review & Workspace Shortcuts" VSCode extension that provid
 shortcuts/
 ├── packages/                          # Standalone Node.js packages (no VS Code deps)
 │   ├── pipeline-core/                 # Core AI/pipeline engine (used by coc & deep-wiki)
+│   │   └── src/git/                   # Pure Node.js git CLI operations
 │   ├── coc/                           # CoC CLI for running pipelines
 │   ├── coc-server/                    # HTTP/WebSocket server for AI execution dashboard
 │   └── deep-wiki/                     # Wiki generator CLI
@@ -122,6 +123,7 @@ shortcuts/
 │   ├── extension.ts                   # Extension entry point
 │   └── shortcuts/                     # Feature modules (VS Code-specific)
 │       ├── ai-service/                # AI queue, process tracking, tree UI (VS Code)
+│       ├── git/                       # Git integration (wraps pipeline-core + VS Code UI)
 │       ├── markdown-comments/         # Markdown review editor
 │       ├── git-diff-comments/         # Git diff review
 │       ├── code-review/               # Code review against rules
@@ -139,6 +141,16 @@ shortcuts/
   - Imports and wraps `pipeline-core` for VS Code integration
   - Provides VS Code-specific UI (tree views, status bar, commands)
   - Uses VS Code APIs (vscode.Event, vscode.TreeDataProvider, etc.)
+- **`packages/pipeline-core/src/git/`** - Pure Node.js git CLI operations (no VS Code)
+  - Files: `types.ts`, `constants.ts`, `exec.ts`, `git-log-service.ts`, `git-range-service.ts`, `branch-service.ts`, `index.ts`
+  - Provides: commit history, branch management, commit range analysis, diff retrieval via `child_process.execSync`
+  - Exported as `@plusplusoneplusplus/pipeline-core/git` subpath
+  - Testing: Vitest tests in `packages/pipeline-core/test/git/`
+- **`src/shortcuts/git/`** - VS Code-specific git layer wrapping pipeline-core
+  - Thin wrapper services delegating pure-git operations to pipeline-core
+  - VS Code UI components: tree items, tree data provider, drag-drop controller, text document provider
+  - VS Code Git Extension API integration (`git-service.ts` — not extracted, inherently VS Code-specific)
+  - Re-exports pipeline-core types/constants for barrel import convenience
 
 ## Development Commands
 
@@ -838,6 +850,7 @@ interface ShortcutsConfig {
 
 **Pipeline Core Tests** (Vitest) - Located in `packages/pipeline-core/test/`:
 - Concurrency limiter, temp file utilities, CSV reader tests
+- Git module tests: types, constants, exec helper, git-log-core, git-range-core, branch-core (`packages/pipeline-core/test/git/`)
 - Run with `npm run test:run` in `packages/pipeline-core/` directory
 
 **CoC Tests** (Vitest) - Located in `packages/coc/test/`:

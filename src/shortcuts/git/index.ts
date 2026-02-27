@@ -1,10 +1,16 @@
 // Types
 export * from './types';
 
+// Constants (re-exported from pipeline-core)
+export * from './git-constants';
+
 // Services
 export * from './git-service';
 export * from './git-log-service';
 export * from './branch-service';
+
+// Pipeline-core services (re-export for barrel completeness)
+export { GitRangeService, ExecGitOptions, execGit } from '@plusplusoneplusplus/pipeline-core';
 
 // Tree Items
 export * from './git-change-item';
