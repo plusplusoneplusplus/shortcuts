@@ -182,3 +182,73 @@ export interface GitRangeConfig {
     /** Whether to return a range when current branch has 0 commits ahead (default: false) */
     showOnDefaultBranch?: boolean;
 }
+
+/**
+ * Represents the status of a branch relative to its tracking branch.
+ */
+export interface BranchStatus {
+    /** Current branch name */
+    name: string;
+    /** Whether HEAD is detached */
+    isDetached: boolean;
+    /** Detached HEAD commit hash (only if isDetached) */
+    detachedHash?: string;
+    /** Number of commits ahead of tracking branch */
+    ahead: number;
+    /** Number of commits behind tracking branch */
+    behind: number;
+    /** Remote tracking branch (e.g., 'origin/main') */
+    trackingBranch?: string;
+    /** Whether there are uncommitted changes */
+    hasUncommittedChanges: boolean;
+}
+
+/**
+ * Represents a git branch.
+ */
+export interface GitBranch {
+    /** Branch name */
+    name: string;
+    /** Whether this is the current branch */
+    isCurrent: boolean;
+    /** Whether this is a remote branch */
+    isRemote: boolean;
+    /** Remote name for remote branches (e.g., 'origin') */
+    remoteName?: string;
+    /** Last commit subject */
+    lastCommitSubject?: string;
+    /** Last commit relative date */
+    lastCommitDate?: string;
+}
+
+/**
+ * Options for paginated branch listing.
+ */
+export interface BranchListOptions {
+    /** Maximum number of branches to return */
+    limit?: number;
+    /** Number of branches to skip */
+    offset?: number;
+    /** Search pattern to filter branches (case-insensitive substring match) */
+    searchPattern?: string;
+}
+
+/**
+ * Result of paginated branch listing.
+ */
+export interface PaginatedBranchResult {
+    /** Branches in this page */
+    branches: GitBranch[];
+    /** Total count of matching branches */
+    totalCount: number;
+    /** Whether there are more branches available */
+    hasMore: boolean;
+}
+
+/**
+ * Result of a git operation that may fail.
+ */
+export interface GitOperationResult {
+    success: boolean;
+    error?: string;
+}

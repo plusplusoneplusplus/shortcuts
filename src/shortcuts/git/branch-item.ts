@@ -1,24 +1,7 @@
 import * as vscode from 'vscode';
+import { BranchStatus } from '@plusplusoneplusplus/pipeline-core';
 
-/**
- * Represents the status of a branch relative to its tracking branch
- */
-export interface BranchStatus {
-    /** Current branch name */
-    name: string;
-    /** Whether HEAD is detached */
-    isDetached: boolean;
-    /** Detached HEAD commit hash (only if isDetached) */
-    detachedHash?: string;
-    /** Number of commits ahead of tracking branch */
-    ahead: number;
-    /** Number of commits behind tracking branch */
-    behind: number;
-    /** Remote tracking branch (e.g., 'origin/main') */
-    trackingBranch?: string;
-    /** Whether there are uncommitted changes */
-    hasUncommittedChanges: boolean;
-}
+export type { BranchStatus } from '@plusplusoneplusplus/pipeline-core';
 
 /**
  * Tree item representing the current branch at the top of the Git view

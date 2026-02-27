@@ -15,6 +15,11 @@ export {
     GitCommitRange,
     GitCommitRangeFile,
     GitRangeConfig,
+    BranchStatus,
+    GitBranch,
+    BranchListOptions,
+    PaginatedBranchResult,
+    GitOperationResult,
 } from './types';
 
 export {
@@ -30,3 +35,4 @@ export {
 
 export { GitLogService } from './git-log-service';
 export { GitRangeService } from './git-range-service';
+export { BranchService } from './branch-service';
