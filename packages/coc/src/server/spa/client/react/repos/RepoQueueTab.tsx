@@ -26,6 +26,9 @@ const TASK_TYPE_LABELS: Record<string, string> = {
 /** Types grouped under the "Other" filter bucket. */
 const OTHER_TYPES = new Set(['resolve-comments', 'ai-clarification', 'task-generation']);
 
+/** Exclude chat-type tasks from the Queue tab (shown in dedicated Chat tab). */
+const isNonChat = (t: { type?: string }) => t.type !== 'chat';
+
 function taskMatchesFilter(task: any, filter: string): boolean {
     if (filter === 'all') return true;
     if (filter === 'other') return OTHER_TYPES.has(task.type) || (!TASK_TYPE_LABELS[task.type] && !OTHER_TYPES.has(task.type));
@@ -52,14 +55,14 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
     const fetchQueue = async () => {
         try {
             const data = await fetchApi('/queue?repoId=' + encodeURIComponent(workspaceId));
-            const nextRunning = data?.running || [];
-            const nextQueued = data?.queued || [];
+            const nextRunning = (data?.running || []).filter(isNonChat);
+            const nextQueued = (data?.queued || []).filter(isNonChat);
             const nextStats = data?.stats || undefined;
             setRunning(nextRunning);
             setQueued(nextQueued);
             setIsPaused(!!nextStats?.isPaused);
             const historyData = await fetchApi('/queue/history?repoId=' + encodeURIComponent(workspaceId)).catch(() => null);
-            const nextHistory = historyData?.history || [];
+            const nextHistory = (historyData?.history || []).filter(isNonChat);
             setHistory(nextHistory);
 
             // Keep repoQueueMap aligned with authoritative HTTP data so later WS/stats updates
@@ -109,9 +112,9 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
     // Apply per-repo WS updates directly without HTTP round-trip
     useEffect(() => {
         if (!repoQueue) return;
-        setRunning(repoQueue.running);
-        setQueued(repoQueue.queued);
-        setHistory(repoQueue.history);
+        setRunning(repoQueue.running.filter(isNonChat));
+        setQueued(repoQueue.queued.filter(isNonChat));
+        setHistory(repoQueue.history.filter(isNonChat));
         if (repoQueue?.stats?.isPaused !== undefined) {
             setIsPaused(repoQueue.stats.isPaused);
         }
