@@ -790,6 +790,11 @@ export {
     GitCommitRange,
     GitCommitRangeFile,
     GitRangeConfig,
+    BranchStatus,
+    GitBranch,
+    BranchListOptions,
+    PaginatedBranchResult,
+    GitOperationResult,
     STATUS_SHORT,
     STAGE_PREFIX,
     STAGE_LABEL,
@@ -797,6 +802,7 @@ export {
     execGit,
     GitLogService,
     GitRangeService,
+    BranchService,
 } from './git';
 
 // ============================================================================

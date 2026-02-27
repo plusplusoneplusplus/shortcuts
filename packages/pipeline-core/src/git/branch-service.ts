@@ -664,4 +664,11 @@ export class BranchService {
             return false;
         }
     }
+
+    /**
+     * Dispose of resources (no-op, provided for Disposable interface compatibility).
+     */
+    dispose(): void {
+        // No resources to clean up
+    }
 }
