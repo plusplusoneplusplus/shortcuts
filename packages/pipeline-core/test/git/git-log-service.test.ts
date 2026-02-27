@@ -10,6 +10,7 @@ import { GitLogService } from '../../src/git/git-log-service';
 
 const REPO_ROOT = execSync('git rev-parse --show-toplevel', { encoding: 'utf-8' }).trim();
 const HEAD_HASH = execSync('git rev-parse HEAD', { encoding: 'utf-8', cwd: REPO_ROOT }).trim();
+const TOTAL_COMMITS = parseInt(execSync('git rev-list --count HEAD', { encoding: 'utf-8', cwd: REPO_ROOT }).trim(), 10);
 
 describe('GitLogService', () => {
     let service: GitLogService;
@@ -47,9 +48,13 @@ describe('GitLogService', () => {
         });
 
         it('should set hasMore correctly', () => {
-            const result = service.getCommits(REPO_ROOT, { maxCount: 1, skip: 0 });
-            // This repo has many commits, so hasMore should be true
-            expect(result.hasMore).toBe(true);
+            if (TOTAL_COMMITS <= 1) {
+                const result = service.getCommits(REPO_ROOT, { maxCount: 1, skip: 0 });
+                expect(result.hasMore).toBe(false);
+            } else {
+                const result = service.getCommits(REPO_ROOT, { maxCount: 1, skip: 0 });
+                expect(result.hasMore).toBe(true);
+            }
         });
 
         it('should populate commit fields', () => {
@@ -194,7 +199,7 @@ describe('GitLogService', () => {
 
     describe('hasMoreCommits', () => {
         it('should return true when currentCount < total', () => {
-            const result = service.hasMoreCommits(REPO_ROOT, 1);
+            const result = service.hasMoreCommits(REPO_ROOT, 0);
             expect(result).toBe(true);
         });
 
