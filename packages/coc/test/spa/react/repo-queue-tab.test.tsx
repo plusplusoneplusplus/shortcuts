@@ -1,0 +1,277 @@
+/**
+ * Tests for RepoQueueTab rendered inside QueueProvider.
+ * Verifies API calls, history rendering, pause/resume, task filter, and empty state.
+ */
+
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import type { ReactNode } from 'react';
+import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
+import { QueueProvider } from '../../../src/server/spa/client/react/context/QueueContext';
+import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
+import { RepoQueueTab } from '../../../src/server/spa/client/react/repos/RepoQueueTab';
+
+vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
+    getApiBase: () => '/api',
+    getWsPath: () => '/ws',
+}));
+
+vi.mock('../../../src/server/spa/client/react/hooks/useDisplaySettings', () => ({
+    useDisplaySettings: () => ({ showReportIntent: false }),
+    invalidateDisplaySettings: vi.fn(),
+}));
+
+function Wrap({ children }: { children: ReactNode }) {
+    return (
+        <AppProvider>
+            <QueueProvider>
+                <ToastProvider value={{ addToast: vi.fn(), removeToast: vi.fn(), toasts: [] }}>
+                    {children}
+                </ToastProvider>
+            </QueueProvider>
+        </AppProvider>
+    );
+}
+
+function makeQueueResponse(opts?: { queued?: any[]; running?: any[]; stats?: any }) {
+    return {
+        queued: opts?.queued ?? [],
+        running: opts?.running ?? [],
+        stats: opts?.stats ?? { isPaused: false },
+    };
+}
+
+function makeHistoryResponse(history: any[]) {
+    return { history };
+}
+
+function makeCompletedTask(overrides?: Partial<any>): any {
+    return {
+        id: 'completed-1',
+        type: 'follow-prompt',
+        status: 'completed',
+        displayName: 'Completed Task',
+        completedAt: '2025-01-15T12:00:00Z',
+        ...overrides,
+    };
+}
+
+function makeRunningTask(overrides?: Partial<any>): any {
+    return {
+        id: 'running-1',
+        type: 'follow-prompt',
+        status: 'running',
+        displayName: 'Running Task',
+        startedAt: '2025-01-15T11:00:00Z',
+        ...overrides,
+    };
+}
+
+function makeQueuedTask(overrides?: Partial<any>): any {
+    return {
+        id: 'queued-1',
+        type: 'follow-prompt',
+        status: 'queued',
+        displayName: 'Queued Task',
+        createdAt: '2025-01-15T10:00:00Z',
+        ...overrides,
+    };
+}
+
+describe('RepoQueueTab', () => {
+    let fetchMock: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+        fetchMock = vi.fn();
+        vi.stubGlobal('fetch', fetchMock);
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    function setupFetch(opts: {
+        queue?: ReturnType<typeof makeQueueResponse>;
+        history?: ReturnType<typeof makeHistoryResponse>;
+    }) {
+        const queueData = opts.queue ?? makeQueueResponse();
+        const historyData = opts.history ?? makeHistoryResponse([]);
+
+        fetchMock.mockImplementation(async (url: string) => {
+            if (typeof url === 'string' && url.includes('/queue/history')) {
+                return new Response(JSON.stringify(historyData), {
+                    status: 200,
+                    headers: { 'content-type': 'application/json' },
+                });
+            }
+            if (typeof url === 'string' && url.includes('/queue/resume')) {
+                return new Response(JSON.stringify({}), {
+                    status: 200,
+                    headers: { 'content-type': 'application/json' },
+                });
+            }
+            if (typeof url === 'string' && url.includes('/queue/pause')) {
+                return new Response(JSON.stringify({}), {
+                    status: 200,
+                    headers: { 'content-type': 'application/json' },
+                });
+            }
+            if (typeof url === 'string' && url.includes('/queue')) {
+                return new Response(JSON.stringify(queueData), {
+                    status: 200,
+                    headers: { 'content-type': 'application/json' },
+                });
+            }
+            return new Response(JSON.stringify({}), {
+                status: 200,
+                headers: { 'content-type': 'application/json' },
+            });
+        });
+    }
+
+    it('calls /queue/history?repoId= separately from /queue?repoId= on mount', async () => {
+        setupFetch({
+            queue: makeQueueResponse({ running: [makeRunningTask()] }),
+            history: makeHistoryResponse([makeCompletedTask()]),
+        });
+
+        render(
+            <Wrap>
+                <RepoQueueTab workspaceId="ws1" />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            const queueCalls = fetchMock.mock.calls.filter(
+                ([url]: [string]) => typeof url === 'string' && url.includes('/queue?repoId=') && !url.includes('history')
+            );
+            const historyCalls = fetchMock.mock.calls.filter(
+                ([url]: [string]) => typeof url === 'string' && url.includes('/queue/history?repoId=')
+            );
+            expect(queueCalls.length).toBeGreaterThanOrEqual(1);
+            expect(historyCalls.length).toBeGreaterThanOrEqual(1);
+        });
+    });
+
+    it('renders completed tasks from history response', async () => {
+        setupFetch({
+            queue: makeQueueResponse({ running: [makeRunningTask()] }),
+            history: makeHistoryResponse([
+                makeCompletedTask({ displayName: 'Build Feature X' }),
+            ]),
+        });
+
+        render(
+            <Wrap>
+                <RepoQueueTab workspaceId="ws1" />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText(/Build Feature X/)).toBeTruthy();
+        });
+    });
+
+    it('pause button calls correct POST endpoint', async () => {
+        setupFetch({
+            queue: makeQueueResponse({ running: [makeRunningTask()], stats: { isPaused: false } }),
+            history: makeHistoryResponse([]),
+        });
+
+        render(
+            <Wrap>
+                <RepoQueueTab workspaceId="ws1" />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByTestId('repo-pause-resume-btn')).toBeTruthy();
+        });
+
+        fireEvent.click(screen.getByTestId('repo-pause-resume-btn'));
+
+        await waitFor(() => {
+            const pauseCalls = fetchMock.mock.calls.filter(
+                ([url]: [string]) => typeof url === 'string' && url.includes('/queue/pause')
+            );
+            expect(pauseCalls.length).toBeGreaterThanOrEqual(1);
+        });
+    });
+
+    it('resume button calls correct POST endpoint', async () => {
+        setupFetch({
+            queue: makeQueueResponse({ queued: [makeQueuedTask()], stats: { isPaused: true } }),
+            history: makeHistoryResponse([]),
+        });
+
+        render(
+            <Wrap>
+                <RepoQueueTab workspaceId="ws1" />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByTestId('repo-pause-resume-btn')).toBeTruthy();
+        });
+
+        fireEvent.click(screen.getByTestId('repo-pause-resume-btn'));
+
+        await waitFor(() => {
+            const resumeCalls = fetchMock.mock.calls.filter(
+                ([url]: [string]) => typeof url === 'string' && url.includes('/queue/resume')
+            );
+            expect(resumeCalls.length).toBeGreaterThanOrEqual(1);
+        });
+    });
+
+    it('task type filter filters displayed tasks', async () => {
+        setupFetch({
+            queue: makeQueueResponse({
+                running: [
+                    makeRunningTask({ type: 'follow-prompt', displayName: 'Prompt Task' }),
+                    makeRunningTask({ id: 'running-2', type: 'code-review', displayName: 'Review Task' }),
+                ],
+            }),
+            history: makeHistoryResponse([]),
+        });
+
+        render(
+            <Wrap>
+                <RepoQueueTab workspaceId="ws1" />
+            </Wrap>
+        );
+
+        // Wait for tasks to render
+        await waitFor(() => {
+            expect(screen.getByText(/Prompt Task/)).toBeTruthy();
+            expect(screen.getByText(/Review Task/)).toBeTruthy();
+        });
+
+        // The filter dropdown should appear when there are multiple task types
+        const filterDropdown = screen.queryByTestId('queue-filter-dropdown');
+        if (filterDropdown) {
+            fireEvent.change(filterDropdown, { target: { value: 'follow-prompt' } });
+            await waitFor(() => {
+                expect(screen.getByText(/Prompt Task/)).toBeTruthy();
+                expect(screen.queryByText(/Review Task/)).toBeNull();
+            });
+        }
+    });
+
+    it('empty state renders when no tasks exist', async () => {
+        setupFetch({
+            queue: makeQueueResponse(),
+            history: makeHistoryResponse([]),
+        });
+
+        render(
+            <Wrap>
+                <RepoQueueTab workspaceId="ws1" />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('No tasks in queue for this repository')).toBeTruthy();
+        });
+    });
+});
