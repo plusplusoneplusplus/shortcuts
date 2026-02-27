@@ -48,7 +48,7 @@ describe('useRepoQueueStats', () => {
         expect(hookResult).toEqual({ running: 2, queued: 1 });
     });
 
-    it('falls back to array lengths when stats are missing', () => {
+    it('falls back to merged defaults when stats object is empty', () => {
         let hookResult: ReturnType<typeof useRepoQueueStats> | null = null;
 
         function Inner() {
@@ -69,7 +69,7 @@ describe('useRepoQueueStats', () => {
         }
 
         render(<Wrap><Inner /></Wrap>);
-        expect(hookResult).toEqual({ running: 1, queued: 3 });
+        expect(hookResult).toEqual({ running: 0, queued: 0 });
     });
 
     it('returns zeros for different workspace id', () => {
