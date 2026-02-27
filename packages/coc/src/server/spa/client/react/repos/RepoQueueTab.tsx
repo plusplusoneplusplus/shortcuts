@@ -15,6 +15,23 @@ interface RepoQueueTabProps {
     workspaceId: string;
 }
 
+/** Primary task types surfaced as individual filter options. */
+const TASK_TYPE_LABELS: Record<string, string> = {
+    'follow-prompt': 'Follow Prompt',
+    'run-pipeline': 'Run Pipeline',
+    'code-review': 'Code Review',
+    'custom': 'Custom',
+};
+
+/** Types grouped under the "Other" filter bucket. */
+const OTHER_TYPES = new Set(['resolve-comments', 'ai-clarification', 'task-generation']);
+
+function taskMatchesFilter(task: any, filter: string): boolean {
+    if (filter === 'all') return true;
+    if (filter === 'other') return OTHER_TYPES.has(task.type) || (!TASK_TYPE_LABELS[task.type] && !OTHER_TYPES.has(task.type));
+    return task.type === filter;
+}
+
 export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
     const [running, setRunning] = useState<any[]>([]);
     const [queued, setQueued] = useState<any[]>([]);
@@ -24,6 +41,7 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
     const [now, setNow] = useState(Date.now());
     const [isPaused, setIsPaused] = useState(false);
     const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
+    const [filterType, setFilterType] = useState<string>('all');
 
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const selectedTaskId = queueState.selectedTaskId;
@@ -67,8 +85,26 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
     // Initial HTTP fetch on mount (authoritative load)
     useEffect(() => {
         setLoading(true);
+        setFilterType('all');
         fetchQueue();
     }, [workspaceId]);
+
+    // Derive available filter options and filtered task lists
+    const allTasks = useMemo(() => [...running, ...queued, ...history], [running, queued, history]);
+    const availableFilters = useMemo(() => {
+        const opts: { value: string; label: string }[] = [{ value: 'all', label: 'All' }];
+        const types = new Set(allTasks.map((t: any) => t.type as string));
+        for (const [type, label] of Object.entries(TASK_TYPE_LABELS)) {
+            if (types.has(type)) opts.push({ value: type, label });
+        }
+        const hasOther = allTasks.some((t: any) => !TASK_TYPE_LABELS[t.type]);
+        if (hasOther) opts.push({ value: 'other', label: 'Other' });
+        return opts;
+    }, [allTasks]);
+
+    const filteredRunning = useMemo(() => running.filter(t => taskMatchesFilter(t, filterType)), [running, filterType]);
+    const filteredQueued = useMemo(() => queued.filter(t => taskMatchesFilter(t, filterType)), [queued, filterType]);
+    const filteredHistory = useMemo(() => history.filter(t => taskMatchesFilter(t, filterType)), [history, filterType]);
 
     // Apply per-repo WS updates directly without HTTP round-trip
     useEffect(() => {
@@ -161,12 +197,24 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
             {/* Left panel — task list */}
             <div className="w-80 flex-shrink-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c] flex flex-col overflow-hidden">
                 <div className="p-4 flex flex-col gap-3 overflow-y-auto flex-1">
-                    {/* Pause/Resume toolbar */}
-                    {(isPaused || running.length > 0 || queued.length > 0) && (
-                        <div className={cn('flex items-center gap-2 mb-3')}>
-                            <span className="text-sm font-medium">Queue</span>
-                            {isPaused && <Badge status="warning">Paused</Badge>}
-                            <div className="flex-1" />
+                    {/* Toolbar: Queue label, filter dropdown, pause/resume */}
+                    <div className={cn('flex items-center gap-2 mb-3')}>
+                        <span className="text-sm font-medium">Queue</span>
+                        {isPaused && <Badge status="warning">Paused</Badge>}
+                        {availableFilters.length > 2 && (
+                            <select
+                                className="text-xs bg-transparent border border-[#e0e0e0] dark:border-[#3c3c3c] rounded px-1.5 py-0.5 text-[#848484] outline-none"
+                                value={filterType}
+                                onChange={e => setFilterType(e.target.value)}
+                                data-testid="queue-filter-dropdown"
+                            >
+                                {availableFilters.map(opt => (
+                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                ))}
+                            </select>
+                        )}
+                        <div className="flex-1" />
+                        {(isPaused || running.length > 0 || queued.length > 0) && (
                             <Button
                                 variant="ghost"
                                 size="sm"
@@ -177,17 +225,17 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
                             >
                                 {isPaused ? '▶' : '⏸'}
                             </Button>
-                        </div>
-                    )}
+                        )}
+                    </div>
 
                     {/* Running */}
-                    {running.length > 0 && (
+                    {filteredRunning.length > 0 && (
                         <div>
                             <div className="text-[11px] uppercase text-[#848484] mb-1 font-medium">
-                                Running Tasks <span className="text-[10px]">({running.length})</span>
+                                Running Tasks <span className="text-[10px]">({filteredRunning.length})</span>
                             </div>
                             <div className="flex flex-col gap-1">
-                                {running.map(task => (
+                                {filteredRunning.map(task => (
                                     <QueueTaskItem
                                         key={task.id}
                                         task={task}
@@ -203,13 +251,13 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
                     )}
 
                     {/* Queued */}
-                    {queued.length > 0 && (
+                    {filteredQueued.length > 0 && (
                         <div>
                             <div className="text-[11px] uppercase text-[#848484] mb-1 font-medium">
-                                Queued Tasks <span className="text-[10px]">({queued.length})</span>
+                                Queued Tasks <span className="text-[10px]">({filteredQueued.length})</span>
                             </div>
                             <div className="flex flex-col gap-1">
-                                {queued.map((task, index) => (
+                                {filteredQueued.map((task, index) => (
                                     <QueueTaskItem
                                         key={task.id}
                                         task={task}
@@ -227,17 +275,17 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
                     )}
 
                     {/* History */}
-                    {history.length > 0 && (
+                    {filteredHistory.length > 0 && (
                         <div>
                             <button
                                 className="flex items-center gap-1 text-[11px] uppercase text-[#848484] font-medium hover:text-[#0078d4] dark:hover:text-[#3794ff] transition-colors"
                                 onClick={() => setShowHistory(!showHistory)}
                             >
-                                {showHistory ? '▼' : '▶'} Completed Tasks ({history.length})
+                                {showHistory ? '▼' : '▶'} Completed Tasks ({filteredHistory.length})
                             </button>
                             {showHistory && (
                                 <div className="flex flex-col gap-1 mt-1">
-                                    {history.map(task => (
+                                    {filteredHistory.map(task => (
                                         <Card
                                             key={task.id}
                                             className={cn(
