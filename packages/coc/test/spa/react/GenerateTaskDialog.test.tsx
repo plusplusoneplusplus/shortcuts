@@ -16,8 +16,24 @@ vi.mock('../../../src/server/spa/client/react/hooks/usePreferences', () => ({
     usePreferences: vi.fn(),
 }));
 
+const mockClearImages = vi.fn();
+const mockAddFromPaste = vi.fn();
+const mockRemoveImage = vi.fn();
+
+vi.mock('../../../src/server/spa/client/react/hooks/useImagePaste', () => ({
+    useImagePaste: vi.fn(() => ({
+        images: [],
+        addFromPaste: mockAddFromPaste,
+        removeImage: mockRemoveImage,
+        clearImages: mockClearImages,
+    })),
+}));
+
+import { useImagePaste } from '../../../src/server/spa/client/react/hooks/useImagePaste';
+
 const mockUseQueueTaskGeneration = useQueueTaskGeneration as Mock;
 const mockUsePreferences = usePreferences as Mock;
+const mockUseImagePaste = useImagePaste as Mock;
 
 function makeHookReturn(overrides: Record<string, unknown> = {}) {
     return {
@@ -40,12 +56,21 @@ beforeEach(() => {
     vi.restoreAllMocks();
     mockFetch.mockReset();
     mockPersistModel.mockReset();
+    mockClearImages.mockReset();
+    mockAddFromPaste.mockReset();
+    mockRemoveImage.mockReset();
     global.fetch = mockFetch;
     mockUseQueueTaskGeneration.mockReturnValue(makeHookReturn());
     mockUsePreferences.mockReturnValue({
         model: '',
         setModel: mockPersistModel,
         loaded: true,
+    });
+    mockUseImagePaste.mockReturnValue({
+        images: [],
+        addFromPaste: mockAddFromPaste,
+        removeImage: mockRemoveImage,
+        clearImages: mockClearImages,
     });
 
     // Default fetch: models + tasks
@@ -617,5 +642,107 @@ describe('GenerateTaskDialog', () => {
         // User's manual selection should not be overridden
         const selectAfter = document.getElementById('gen-task-model') as HTMLSelectElement;
         expect(selectAfter.value).toBe('gpt-4');
+    });
+
+    // ── image paste tests ────────────────────────────────────────────────────
+
+    it('renders image previews when images are present', async () => {
+        mockUseImagePaste.mockReturnValue({
+            images: ['data:image/png;base64,abc', 'data:image/jpeg;base64,def'],
+            addFromPaste: mockAddFromPaste,
+            removeImage: mockRemoveImage,
+            clearImages: mockClearImages,
+        });
+
+        await act(async () => { renderDialog(); });
+
+        const imagesContainer = document.getElementById('gen-task-images');
+        expect(imagesContainer).toBeDefined();
+        expect(imagesContainer).not.toBeNull();
+        const imgs = imagesContainer!.querySelectorAll('img');
+        expect(imgs).toHaveLength(2);
+    });
+
+    it('does not render image previews when no images', async () => {
+        await act(async () => { renderDialog(); });
+
+        const imagesContainer = document.getElementById('gen-task-images');
+        expect(imagesContainer).toBeNull();
+    });
+
+    it('submit sends images in enqueue payload', async () => {
+        const enqueueSpy = vi.fn();
+        mockUseQueueTaskGeneration.mockReturnValue(makeHookReturn({ enqueue: enqueueSpy }));
+        mockUseImagePaste.mockReturnValue({
+            images: ['data:image/png;base64,abc'],
+            addFromPaste: mockAddFromPaste,
+            removeImage: mockRemoveImage,
+            clearImages: mockClearImages,
+        });
+
+        await act(async () => { renderDialog(); });
+
+        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
+        fireEvent.change(textarea, { target: { value: 'hello' } });
+
+        await act(async () => {
+            fireEvent.click(screen.getByText('Generate'));
+        });
+
+        expect(enqueueSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                images: ['data:image/png;base64,abc'],
+            }),
+        );
+    });
+
+    it('submit sends images as undefined when no images pasted', async () => {
+        const enqueueSpy = vi.fn();
+        mockUseQueueTaskGeneration.mockReturnValue(makeHookReturn({ enqueue: enqueueSpy }));
+
+        await act(async () => { renderDialog(); });
+
+        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
+        fireEvent.change(textarea, { target: { value: 'hello' } });
+
+        await act(async () => {
+            fireEvent.click(screen.getByText('Generate'));
+        });
+
+        expect(enqueueSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                images: undefined,
+            }),
+        );
+    });
+
+    it('clears images after successful queue', async () => {
+        mockUseQueueTaskGeneration.mockReturnValue(
+            makeHookReturn({
+                status: 'queued',
+                taskId: 'task-img',
+            }),
+        );
+
+        await act(async () => { renderDialog(); });
+
+        expect(mockClearImages).toHaveBeenCalled();
+    });
+
+    it('remove button calls removeImage with correct index', async () => {
+        mockUseImagePaste.mockReturnValue({
+            images: ['data:image/png;base64,abc', 'data:image/jpeg;base64,def'],
+            addFromPaste: mockAddFromPaste,
+            removeImage: mockRemoveImage,
+            clearImages: mockClearImages,
+        });
+
+        await act(async () => { renderDialog(); });
+
+        const removeButtons = document.querySelectorAll('[aria-label^="Remove image"]');
+        expect(removeButtons).toHaveLength(2);
+
+        fireEvent.click(removeButtons[1]);
+        expect(mockRemoveImage).toHaveBeenCalledWith(1);
     });
 });

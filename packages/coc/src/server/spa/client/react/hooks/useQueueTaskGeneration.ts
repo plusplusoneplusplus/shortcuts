@@ -19,6 +19,7 @@ export interface QueueTaskGenerationParams {
     mode?: 'from-feature' | string;
     depth?: 'deep' | string;
     priority?: 'high' | 'normal' | 'low';
+    images?: string[];
 }
 
 // ── Hook state ───────────────────────────────────────────────────────────
@@ -70,6 +71,7 @@ export function useQueueTaskGeneration(wsId: string): UseQueueTaskGenerationRetu
         if (params.mode !== undefined) body.mode = params.mode;
         if (params.depth !== undefined) body.depth = params.depth;
         if (params.priority !== undefined) body.priority = params.priority;
+        if (params.images !== undefined && params.images.length > 0) body.images = params.images;
 
         let res: Response;
         try {

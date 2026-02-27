@@ -418,13 +418,14 @@ describe('POST /api/workspaces/:id/queue/generate', () => {
         expect(task.displayName).toBe('short-name');
     });
 
-    it('should truncate prompt to 60 chars for displayName when no name provided', async () => {
+    it('should enqueue task with images in payload', async () => {
         const srv = await startServer();
         const wsId = await registerWorkspace(srv, workspaceDir);
 
-        const longPrompt = 'A'.repeat(100);
+        const images = ['data:image/png;base64,iVBOR', 'data:image/jpeg;base64,/9j/4'];
         const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/queue/generate`, {
-            prompt: longPrompt,
+            prompt: 'Create a caching layer',
+            images,
         });
 
         expect(res.status).toBe(201);
@@ -435,6 +436,64 @@ describe('POST /api/workspaces/:id/queue/generate', () => {
         const allTasks = [...(queueBody.queued || []), ...(queueBody.running || [])];
         const task = allTasks.find((t: any) => t.id === body.taskId);
         expect(task).toBeDefined();
-        expect(task.displayName!.length).toBeLessThanOrEqual(60);
+        expect(task.payload.images).toEqual(images);
+    });
+
+    it('should filter non-string images and cap at 10', async () => {
+        const srv = await startServer();
+        const wsId = await registerWorkspace(srv, workspaceDir);
+
+        const images = Array.from({ length: 12 }, (_, i) => `data:image/png;base64,img${i}`);
+        (images as any[]).push(123, null);
+        const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/queue/generate`, {
+            prompt: 'Create a task',
+            images,
+        });
+
+        expect(res.status).toBe(201);
+        const body = JSON.parse(res.body);
+
+        const queueRes = await request(`${srv.url}/api/queue`);
+        const queueBody = JSON.parse(queueRes.body);
+        const allTasks = [...(queueBody.queued || []), ...(queueBody.running || [])];
+        const task = allTasks.find((t: any) => t.id === body.taskId);
+        expect(task.payload.images).toHaveLength(10);
+    });
+
+    it('should not include images field when images array is empty', async () => {
+        const srv = await startServer();
+        const wsId = await registerWorkspace(srv, workspaceDir);
+
+        const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/queue/generate`, {
+            prompt: 'Create a task',
+            images: [],
+        });
+
+        expect(res.status).toBe(201);
+        const body = JSON.parse(res.body);
+
+        const queueRes = await request(`${srv.url}/api/queue`);
+        const queueBody = JSON.parse(queueRes.body);
+        const allTasks = [...(queueBody.queued || []), ...(queueBody.running || [])];
+        const task = allTasks.find((t: any) => t.id === body.taskId);
+        expect(task.payload.images).toBeUndefined();
+    });
+
+    it('should not include images field when images is not provided', async () => {
+        const srv = await startServer();
+        const wsId = await registerWorkspace(srv, workspaceDir);
+
+        const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/queue/generate`, {
+            prompt: 'Create a task',
+        });
+
+        expect(res.status).toBe(201);
+        const body = JSON.parse(res.body);
+
+        const queueRes = await request(`${srv.url}/api/queue`);
+        const queueBody = JSON.parse(queueRes.body);
+        const allTasks = [...(queueBody.queued || []), ...(queueBody.running || [])];
+        const task = allTasks.find((t: any) => t.id === body.taskId);
+        expect(task.payload.images).toBeUndefined();
     });
 });

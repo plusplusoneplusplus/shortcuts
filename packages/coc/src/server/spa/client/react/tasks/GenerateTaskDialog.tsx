@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Dialog, Button } from '../shared';
 import { useQueueTaskGeneration } from '../hooks/useQueueTaskGeneration';
 import { usePreferences } from '../hooks/usePreferences';
+import { useImagePaste } from '../hooks/useImagePaste';
 import { useGlobalToast } from '../context/ToastContext';
 import { useApp } from '../context/AppContext';
 import { type TaskFolder, filterGitMetadataFolders } from '../hooks/useTaskTree';
@@ -67,6 +68,9 @@ export function GenerateTaskDialog({
     const { status, taskId, error, enqueue, reset } =
         useQueueTaskGeneration(wsId);
 
+    // --- image paste ---
+    const { images, addFromPaste, removeImage, clearImages } = useImagePaste();
+
     // --- fetch models on mount ---
     useEffect(() => {
         let cancelled = false;
@@ -100,9 +104,10 @@ export function GenerateTaskDialog({
         if (status === 'queued') {
             addToast(`Task queued${taskId ? ` (${taskId.slice(0, 8)})` : ''}`, 'success');
             appDispatch({ type: 'SET_REPO_SUB_TAB', tab: 'queue' });
+            clearImages();
             onSuccess(taskId || '');
         }
-    }, [status, taskId, addToast, appDispatch, onSuccess]);
+    }, [status, taskId, addToast, appDispatch, clearImages, onSuccess]);
 
     const handleGenerate = useCallback(() => {
         enqueue({
@@ -113,8 +118,9 @@ export function GenerateTaskDialog({
             mode: 'from-feature',
             depth: 'deep',
             priority,
+            images: images.length > 0 ? images : undefined,
         });
-    }, [prompt, name, targetFolder, model, priority, enqueue]);
+    }, [prompt, name, targetFolder, model, priority, images, enqueue]);
 
     const isSubmitting = status === 'submitting';
     const isQueued = status === 'queued';
@@ -169,9 +175,32 @@ export function GenerateTaskDialog({
                         rows={4}
                         value={prompt}
                         onChange={e => setPrompt(e.target.value)}
+                        onPaste={isSubmitting || isQueued ? undefined : addFromPaste}
                         disabled={isSubmitting || isQueued}
                         placeholder="Describe the task to generate…"
                     />
+                    {/* Image preview strip */}
+                    {images.length > 0 && (
+                        <div id="gen-task-images" className="flex flex-wrap gap-2 mt-1">
+                            {images.map((img, i) => (
+                                <div key={i} className="relative group">
+                                    <img
+                                        src={img}
+                                        alt={`Attachment ${i + 1}`}
+                                        className="w-[80px] h-[80px] object-cover rounded border border-[#e0e0e0] dark:border-[#3c3c3c]"
+                                    />
+                                    <button
+                                        className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center opacity-80 hover:opacity-100"
+                                        onClick={() => removeImage(i)}
+                                        aria-label={`Remove image ${i + 1}`}
+                                        disabled={isSubmitting || isQueued}
+                                    >
+                                        ×
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
 
                 {/* Task name (optional) */}

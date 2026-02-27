@@ -305,4 +305,62 @@ describe('useQueueTaskGeneration', () => {
         expect(result.current.status).toBe('error');
         expect(result.current.error).toBe('HTTP 503');
     });
+
+    // 15. Images included in request body when provided
+    it('includes images in request body when provided', async () => {
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            status: 201,
+            json: () => Promise.resolve({ taskId: 't1', queuedAt: Date.now() }),
+        });
+
+        const { result } = renderHook(() => useQueueTaskGeneration('ws-1'));
+        const images = ['data:image/png;base64,abc', 'data:image/jpeg;base64,def'];
+
+        await act(async () => {
+            await result.current.enqueue({ prompt: 'test', images });
+        });
+
+        const [, opts] = fetchMock.mock.calls[0];
+        const body = JSON.parse(opts.body);
+        expect(body.images).toEqual(images);
+    });
+
+    // 16. Images omitted from request body when empty
+    it('omits images from request body when array is empty', async () => {
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            status: 201,
+            json: () => Promise.resolve({ taskId: 't1', queuedAt: Date.now() }),
+        });
+
+        const { result } = renderHook(() => useQueueTaskGeneration('ws-1'));
+
+        await act(async () => {
+            await result.current.enqueue({ prompt: 'test', images: [] });
+        });
+
+        const [, opts] = fetchMock.mock.calls[0];
+        const body = JSON.parse(opts.body);
+        expect(body).not.toHaveProperty('images');
+    });
+
+    // 17. Images omitted from request body when undefined
+    it('omits images from request body when undefined', async () => {
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            status: 201,
+            json: () => Promise.resolve({ taskId: 't1', queuedAt: Date.now() }),
+        });
+
+        const { result } = renderHook(() => useQueueTaskGeneration('ws-1'));
+
+        await act(async () => {
+            await result.current.enqueue({ prompt: 'test' });
+        });
+
+        const [, opts] = fetchMock.mock.calls[0];
+        const body = JSON.parse(opts.body);
+        expect(body).not.toHaveProperty('images');
+    });
 });

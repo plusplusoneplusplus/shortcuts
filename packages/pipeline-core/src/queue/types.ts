@@ -149,6 +149,8 @@ export interface TaskGenerationPayload {
     depth?: 'simple' | 'deep';
     /** When present, activates feature-context mode */
     mode?: 'from-feature';
+    /** Optional base64 data URL images to attach as visual context */
+    images?: string[];
     /** Workspace ID for display / process metadata */
     workspaceId?: string;
 }

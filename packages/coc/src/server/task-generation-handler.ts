@@ -294,11 +294,16 @@ export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStor
                 return sendError(res, 400, 'Invalid JSON body');
             }
 
-            const { prompt, targetFolder, name, model, mode, depth, priority } = body || {};
+            const { prompt, targetFolder, name, model, mode, depth, priority, images } = body || {};
 
             if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
                 return sendError(res, 400, 'Missing required field: prompt');
             }
+
+            // Validate images: filter to strings, cap at 10
+            const validImages = Array.isArray(images)
+                ? images.filter((img: unknown) => typeof img === 'string').slice(0, 10)
+                : undefined;
 
             const payload: TaskGenerationPayload = {
                 kind: 'task-generation',
@@ -309,6 +314,7 @@ export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStor
                 model,
                 mode,
                 depth,
+                ...(validImages && validImages.length > 0 ? { images: validImages } : {}),
                 workspaceId: id,
             };
 
