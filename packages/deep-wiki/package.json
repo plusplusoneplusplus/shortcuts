@@ -17,7 +17,7 @@
   "license": "MIT",
   "scripts": {
     "prebuild": "cd ../pipeline-core && npm run build",
-    "build": "tsc && chmod +x dist/index.js",
+    "build": "tsc && node -e \"const fs=require('fs');try{fs.chmodSync('dist/index.js',0o755);}catch(e){if(process.platform!=='win32')throw e;}\"",
     "build:bundle": "node esbuild.config.mjs",
     "prepublishOnly": "npm run build:bundle && npm run test:run",
     "test": "vitest",

@@ -1026,17 +1026,31 @@ describe('POST /api/wikis/:wikiId/admin/seeds/generate', () => {
             },
         });
 
-        // This will attempt to run the SSE endpoint; since deep-wiki is not available
-        // as a runtime dependency in tests, we expect SSE to start (200) and then
-        // produce an error event. The important thing is it's NOT a 404.
-        const res = await httpRequest(`${server.url}/api/wikis/repo-wiki/admin/seeds/generate`, {
-            method: 'POST',
-            body: '{}',
-            headers: { 'Content-Type': 'application/json' },
+        // Only check that the route exists (status + headers) without waiting for
+        // the full SSE stream, which may invoke real AI calls and never finish in CI.
+        const { status, headers } = await new Promise<{ status: number; headers: http.IncomingHttpHeaders }>((resolve, reject) => {
+            const parsed = new URL(`${server!.url}/api/wikis/repo-wiki/admin/seeds/generate`);
+            const req = http.request(
+                {
+                    hostname: parsed.hostname,
+                    port: parsed.port,
+                    path: parsed.pathname + parsed.search,
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                },
+                (res) => {
+                    // Resolve as soon as we get the response head — don't wait for body
+                    resolve({ status: res.statusCode || 0, headers: res.headers });
+                    res.destroy(); // abort the SSE stream
+                },
+            );
+            req.on('error', reject);
+            req.write('{}');
+            req.end();
         });
         // Should be 200 (SSE started) — deep-wiki import may fail but SSE headers are sent first
-        expect(res.status).toBe(200);
-        expect(res.headers['content-type']).toBe('text/event-stream');
+        expect(status).toBe(200);
+        expect(headers['content-type']).toBe('text/event-stream');
     });
 });
 

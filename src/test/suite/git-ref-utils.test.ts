@@ -139,8 +139,11 @@ suite('Git Ref Utils Tests', () => {
             const fakeHash = '0000000000000000000000000000000000000000';
             const result = await shortenGitRef(fakeHash, repoRoot);
 
-            // Should fallback to first 7 chars
-            assert.strictEqual(result, '0000000');
+            // Git may successfully abbreviate the null hash (modern git) or fallback to 7 chars.
+            // Either way, result should be a short prefix of the original.
+            assert.ok(result.length < 40, `Expected shortened hash, got: ${result}`);
+            assert.ok(result.length >= 7, `Expected at least 7 chars, got: ${result}`);
+            assert.ok(fakeHash.startsWith(result), `Expected ${result} to be a prefix of ${fakeHash}`);
         });
 
         test('should fallback to 7 chars when repo path is invalid', async () => {
