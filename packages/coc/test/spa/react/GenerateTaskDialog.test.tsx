@@ -367,6 +367,64 @@ describe('GenerateTaskDialog', () => {
         });
     });
 
+    it('filters out .git folders from folder select', async () => {
+        mockFetch.mockImplementation((url: string) => {
+            if (url.includes('/queue/models')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ models: [] }),
+                });
+            }
+            if (url.includes('/workspaces/ws-1/tasks')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () =>
+                        Promise.resolve({
+                            name: 'root',
+                            relativePath: '',
+                            children: [
+                                {
+                                    name: 'feature1',
+                                    relativePath: 'feature1',
+                                    children: [],
+                                    documentGroups: [],
+                                    singleDocuments: [],
+                                },
+                                {
+                                    name: '.git',
+                                    relativePath: '.git',
+                                    children: [
+                                        {
+                                            name: 'refs',
+                                            relativePath: '.git/refs',
+                                            children: [],
+                                            documentGroups: [],
+                                            singleDocuments: [],
+                                        },
+                                    ],
+                                    documentGroups: [],
+                                    singleDocuments: [],
+                                },
+                            ],
+                            documentGroups: [],
+                            singleDocuments: [],
+                        }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        await act(async () => { renderDialog(); });
+
+        await waitFor(() => {
+            const select = document.getElementById('gen-task-folder') as HTMLSelectElement;
+            const options = Array.from(select.options).map(o => o.value);
+            expect(options).toContain('feature1');
+            expect(options).not.toContain('.git');
+            expect(options).not.toContain('.git/refs');
+        });
+    });
+
     // ── model persistence tests ──────────────────────────────────────────────
 
     it('restores saved model from preferences on mount', async () => {

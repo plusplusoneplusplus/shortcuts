@@ -9,6 +9,7 @@ import { useApp } from '../context/AppContext';
 import { Dialog, Button } from '../shared';
 import { fetchApi } from '../hooks/useApi';
 import { usePreferences } from '../hooks/usePreferences';
+import { filterGitMetadataFolders } from '../hooks/useTaskTree';
 
 interface FolderOption { label: string; value: string; }
 
@@ -61,7 +62,7 @@ export function EnqueueDialog() {
         fetchApi('/workspaces/' + encodeURIComponent(workspaceId) + '/tasks')
             .then((data: any) => {
                 if (data && typeof data === 'object') {
-                    setFolders(flattenFolders(data));
+                    setFolders(flattenFolders(filterGitMetadataFolders(data)));
                 }
             })
             .catch(() => { /* ignore */ });

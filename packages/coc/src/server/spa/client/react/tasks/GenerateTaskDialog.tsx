@@ -9,7 +9,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Dialog, Button, Spinner } from '../shared';
 import { useTaskGeneration } from '../hooks/useTaskGeneration';
 import { usePreferences } from '../hooks/usePreferences';
-import { type TaskFolder } from '../hooks/useTaskTree';
+import { type TaskFolder, filterGitMetadataFolders } from '../hooks/useTaskTree';
 import { getApiBase } from '../utils/config';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -81,7 +81,8 @@ export function GenerateTaskDialog({
             .then(r => (r.ok ? r.json() : null))
             .then(data => {
                 if (!cancelled && data) {
-                    const paths = flattenFolders(data as TaskFolder);
+                    const filtered = filterGitMetadataFolders(data as TaskFolder);
+                    const paths = flattenFolders(filtered);
                     setFolders(paths);
                 }
             })

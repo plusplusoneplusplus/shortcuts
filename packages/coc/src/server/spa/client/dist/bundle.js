@@ -34699,7 +34699,8 @@
       let cancelled = false;
       fetch(getApiBase() + `/workspaces/${encodeURIComponent(wsId)}/tasks`).then((r) => r.ok ? r.json() : null).then((data) => {
         if (!cancelled && data) {
-          const paths = flattenFolders(data);
+          const filtered = filterGitMetadataFolders(data);
+          const paths = flattenFolders(filtered);
           setFolders(paths);
         }
       }).catch(() => {
@@ -42099,7 +42100,7 @@
       if (!workspaceId) return;
       fetchApi("/workspaces/" + encodeURIComponent(workspaceId) + "/tasks").then((data) => {
         if (data && typeof data === "object") {
-          setFolders(flattenFolders2(data));
+          setFolders(flattenFolders2(filterGitMetadataFolders(data)));
         }
       }).catch(() => {
       });

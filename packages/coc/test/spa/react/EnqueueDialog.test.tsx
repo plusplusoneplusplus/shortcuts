@@ -176,6 +176,56 @@ describe('EnqueueDialog', () => {
         // but dialogInitialFolderPath should be set in the state
     });
 
+    it('filters out .git folders from folder select options', async () => {
+        fetchSpy.mockImplementation((url: string) => {
+            if (typeof url === 'string' && url.includes('/queue/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            }
+            if (typeof url === 'string' && url.includes('/tasks')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        name: 'tasks',
+                        relativePath: '',
+                        children: [
+                            { name: 'feature1', relativePath: 'feature1', children: [], documentGroups: [], singleDocuments: [] },
+                            { name: '.git', relativePath: '.git', children: [
+                                { name: 'refs', relativePath: '.git/refs', children: [], documentGroups: [], singleDocuments: [] },
+                            ], documentGroups: [], singleDocuments: [] },
+                        ],
+                        documentGroups: [],
+                        singleDocuments: [],
+                    }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        render(
+            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS' }]}>
+                <DialogOpener folderPath="" />
+                <EnqueueDialog />
+            </Wrap>
+        );
+        await waitFor(() => {
+            expect(screen.getByText('Enqueue AI Task')).toBeTruthy();
+        });
+
+        // Select workspace to trigger folder fetch
+        const wsSelect = screen.getAllByRole('combobox')[1];
+        fireEvent.change(wsSelect, { target: { value: 'ws1' } });
+
+        await waitFor(() => {
+            expect(screen.getByTestId('folder-select')).toBeTruthy();
+        });
+
+        const folderSelect = screen.getByTestId('folder-select') as HTMLSelectElement;
+        const options = Array.from(folderSelect.options).map(o => o.value);
+        expect(options).toContain('feature1');
+        expect(options).not.toContain('.git');
+        expect(options).not.toContain('.git/refs');
+    });
+
     it('includes folderPath in POST body when folder is selected', async () => {
         let postBody: any = null;
         fetchSpy.mockImplementation((url: string, opts?: any) => {
