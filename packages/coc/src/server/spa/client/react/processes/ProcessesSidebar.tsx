@@ -12,12 +12,20 @@ import { formatDuration, statusIcon, statusLabel, typeLabel, repoName } from '..
 import { resolveWorkspaceName, getProcessWorkspaceId, getProcessWorkspaceName } from '../utils/workspace';
 import { getApiBase } from '../utils/config';
 
+export interface TypeFilterOptions {
+    includeTypes?: string[];
+    excludeTypes?: string[];
+}
+
 export function filterQueueTask(
     task: any,
     searchQuery: string,
     statusFilter: string,
-    workspace: string
+    workspace: string,
+    typeFilter?: TypeFilterOptions,
 ): boolean {
+    if (typeFilter?.includeTypes && !typeFilter.includeTypes.includes(task.type)) return false;
+    if (typeFilter?.excludeTypes && typeFilter.excludeTypes.includes(task.type)) return false;
     if (statusFilter !== '__all' && task.status !== statusFilter) return false;
     if (workspace !== '__all') {
         const repoId = task.repoId || task.workingDirectory || task.payload?.workingDirectory || '';

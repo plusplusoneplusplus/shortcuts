@@ -16,6 +16,7 @@ import { useImagePaste } from '../hooks/useImagePaste';
 import { ImagePreviews } from '../shared/ImagePreviews';
 import { ChatSessionSidebar } from '../chat/ChatSessionSidebar';
 import { useChatSessions } from '../chat/useChatSessions';
+import { useQueue } from '../context/QueueContext';
 import type { ClientConversationTurn } from '../types/dashboard';
 
 interface RepoChatTabProps {
@@ -50,6 +51,7 @@ function getConversationTurns(data: any): ClientConversationTurn[] {
 
 export function RepoChatTab({ workspaceId, workspacePath }: RepoChatTabProps) {
     const sessionsHook = useChatSessions(workspaceId);
+    const { state: queueState } = useQueue();
 
     const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
     const [chatTaskId, setChatTaskId] = useState<string | null>(null);
@@ -168,6 +170,15 @@ export function RepoChatTab({ workspaceId, workspacePath }: RepoChatTabProps) {
         setError(null);
         setSessionExpired(false);
     }, [workspaceId]);
+
+    // Refresh session list when per-repo queue state changes via WebSocket
+    const repoQueue = queueState.repoQueueMap[workspaceId];
+    useEffect(() => {
+        if (!repoQueue) return;
+        const hasChatTask = [...(repoQueue.running ?? []), ...(repoQueue.queued ?? []), ...(repoQueue.history ?? [])]
+            .some(t => t.type === 'chat');
+        if (hasChatTask) sessionsHook.refresh();
+    }, [repoQueue]);
 
     // --- SSE for initial running task ---
 

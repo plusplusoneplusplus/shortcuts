@@ -141,3 +141,60 @@ describe('filterQueueTask — edge cases', () => {
         expect(filterQueueTask(task, '', '__all', 'ws-specific')).toBe(false);
     });
 });
+
+describe('filterQueueTask — typeFilter option', () => {
+    it('excludeTypes filters out tasks with matching type', () => {
+        const chatTask = makeTask({ type: 'chat' });
+        expect(filterQueueTask(chatTask, '', '__all', '__all', { excludeTypes: ['chat'] })).toBe(false);
+    });
+
+    it('excludeTypes passes tasks that do not match excluded types', () => {
+        const pipelineTask = makeTask({ type: 'pipeline' });
+        expect(filterQueueTask(pipelineTask, '', '__all', '__all', { excludeTypes: ['chat'] })).toBe(true);
+    });
+
+    it('includeTypes returns only tasks with matching type', () => {
+        const chatTask = makeTask({ type: 'chat' });
+        expect(filterQueueTask(chatTask, '', '__all', '__all', { includeTypes: ['chat'] })).toBe(true);
+    });
+
+    it('includeTypes filters out tasks that do not match included types', () => {
+        const pipelineTask = makeTask({ type: 'pipeline' });
+        expect(filterQueueTask(pipelineTask, '', '__all', '__all', { includeTypes: ['chat'] })).toBe(false);
+    });
+
+    it('typeFilter is applied before other filters', () => {
+        const chatTask = makeTask({ type: 'chat', status: 'running', repoId: 'ws-1' });
+        expect(filterQueueTask(chatTask, '', 'running', 'ws-1', { excludeTypes: ['chat'] })).toBe(false);
+    });
+
+    it('no typeFilter option passes all tasks through (backward compatible)', () => {
+        const chatTask = makeTask({ type: 'chat' });
+        expect(filterQueueTask(chatTask, '', '__all', '__all')).toBe(true);
+    });
+
+    it('undefined typeFilter passes all tasks through', () => {
+        const chatTask = makeTask({ type: 'chat' });
+        expect(filterQueueTask(chatTask, '', '__all', '__all', undefined)).toBe(true);
+    });
+
+    it('excludeTypes with multiple types filters all of them', () => {
+        const chatTask = makeTask({ type: 'chat' });
+        const customTask = makeTask({ type: 'custom' });
+        const pipelineTask = makeTask({ type: 'pipeline' });
+        const opts = { excludeTypes: ['chat', 'custom'] };
+        expect(filterQueueTask(chatTask, '', '__all', '__all', opts)).toBe(false);
+        expect(filterQueueTask(customTask, '', '__all', '__all', opts)).toBe(false);
+        expect(filterQueueTask(pipelineTask, '', '__all', '__all', opts)).toBe(true);
+    });
+
+    it('includeTypes with multiple types includes all of them', () => {
+        const chatTask = makeTask({ type: 'chat' });
+        const customTask = makeTask({ type: 'custom' });
+        const pipelineTask = makeTask({ type: 'pipeline' });
+        const opts = { includeTypes: ['chat', 'custom'] };
+        expect(filterQueueTask(chatTask, '', '__all', '__all', opts)).toBe(true);
+        expect(filterQueueTask(customTask, '', '__all', '__all', opts)).toBe(true);
+        expect(filterQueueTask(pipelineTask, '', '__all', '__all', opts)).toBe(false);
+    });
+});

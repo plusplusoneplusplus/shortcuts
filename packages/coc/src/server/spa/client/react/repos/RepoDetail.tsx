@@ -15,6 +15,7 @@ import { RepoChatTab } from './RepoChatTab';
 import { AddRepoDialog } from './AddRepoDialog';
 import { getApiBase } from '../utils/config';
 import { fetchApi } from '../hooks/useApi';
+import { useRepoQueueStats } from '../hooks/useRepoQueueStats';
 import type { RepoData } from './repoGrouping';
 import type { RepoSubTab } from '../types/dashboard';
 
@@ -41,9 +42,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const color = ws.color || '#848484';
     const activeSubTab = state.activeRepoSubTab;
     const taskCount = repo.taskCount || 0;
-    const repoQueue = queueState.repoQueueMap[ws.id];
-    const queueRunningCount = repoQueue ? repoQueue.running.length : 0;
-    const queueQueuedCount = repoQueue ? repoQueue.queued.length : 0;
+    const { running: queueRunningCount, queued: queueQueuedCount, chatRunning: chatRunningCount } = useRepoQueueStats(ws.id);
 
     // Seed repo queue map on first render if not yet populated
     useEffect(() => {
@@ -106,6 +105,9 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                         )}
                         {t.key === 'queue' && queueQueuedCount > 0 && (
                             <span className="ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full" data-testid="queue-queued-badge" title="Queued">{queueQueuedCount}</span>
+                        )}
+                        {t.key === 'chat' && chatRunningCount > 0 && (
+                            <span className="ml-1 text-[10px] bg-[#16825d] text-white px-1 py-px rounded-full" data-testid="chat-running-badge" title="Active chats">{chatRunningCount}</span>
                         )}
                         {activeSubTab === t.key && (
                             <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#0078d4] dark:bg-[#3794ff]" />

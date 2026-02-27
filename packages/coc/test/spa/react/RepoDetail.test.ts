@@ -42,19 +42,14 @@ describe('RepoDetail RepoChatTab wiring', () => {
 });
 
 describe('RepoDetail Queue badge wiring', () => {
-    it('imports useQueue from QueueContext', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("import { useQueue } from '../context/QueueContext'");
+    it('imports useRepoQueueStats from hooks', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("import { useRepoQueueStats } from '../hooks/useRepoQueueStats'");
     });
 
-    it('imports fetchApi from useApi hook', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("import { fetchApi } from '../hooks/useApi'");
-    });
-
-    it('derives separate running and queued counts from repoQueueMap', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('repoQueue.running.length');
-        expect(REPO_DETAIL_SOURCE).toContain('repoQueue.queued.length');
-        expect(REPO_DETAIL_SOURCE).toContain('queueRunningCount');
-        expect(REPO_DETAIL_SOURCE).toContain('queueQueuedCount');
+    it('destructures running, queued, and chatRunning from useRepoQueueStats', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('running: queueRunningCount');
+        expect(REPO_DETAIL_SOURCE).toContain('queued: queueQueuedCount');
+        expect(REPO_DETAIL_SOURCE).toContain('chatRunning: chatRunningCount');
     });
 
     it('renders running badge only when queueRunningCount > 0', () => {
@@ -108,5 +103,41 @@ describe('RepoDetail Queue badge wiring', () => {
 
     it('does not use combined queueCount variable', () => {
         expect(REPO_DETAIL_SOURCE).not.toMatch(/\bqueueCount\b/);
+    });
+
+    it('does not compute counts from raw repoQueue arrays directly', () => {
+        // Counts now come from useRepoQueueStats, not from repoQueue.running.length
+        expect(REPO_DETAIL_SOURCE).not.toContain('repoQueue.running.length');
+        expect(REPO_DETAIL_SOURCE).not.toContain('repoQueue.queued.length');
+    });
+});
+
+describe('RepoDetail Chat badge wiring', () => {
+    it('renders chat badge only when chatRunningCount > 0', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("t.key === 'chat' && chatRunningCount > 0");
+    });
+
+    it('chat badge has data-testid for testing', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="chat-running-badge"');
+    });
+
+    it('chat badge uses green background for active sessions', () => {
+        const chatBadgeLine = REPO_DETAIL_SOURCE.split('\n').find(l => l.includes('chat-running-badge'));
+        expect(chatBadgeLine).toContain('bg-[#16825d]');
+    });
+
+    it('chat badge has title attribute', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('title="Active chats"');
+    });
+
+    it('chat badge renders after queue badges', () => {
+        const queueBadgeIdx = REPO_DETAIL_SOURCE.indexOf('queue-queued-badge');
+        const chatBadgeIdx = REPO_DETAIL_SOURCE.indexOf('chat-running-badge');
+        expect(chatBadgeIdx).toBeGreaterThan(queueBadgeIdx);
+    });
+
+    it('chat badge displays chatRunningCount', () => {
+        const chatBadgeLine = REPO_DETAIL_SOURCE.split('\n').find(l => l.includes('chat-running-badge'));
+        expect(chatBadgeLine).toContain('{chatRunningCount}');
     });
 });

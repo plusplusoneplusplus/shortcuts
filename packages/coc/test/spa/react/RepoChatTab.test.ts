@@ -381,9 +381,8 @@ describe('RepoChatTab', () => {
             expect(source).toContain("import { useChatSessions } from '../chat/useChatSessions'");
         });
 
-        it('does NOT import QueueContext or AppContext', () => {
-            expect(source).not.toContain('QueueContext');
-            expect(source).not.toContain('AppContext');
+        it('imports useQueue from QueueContext for real-time updates', () => {
+            expect(source).toContain("import { useQueue } from '../context/QueueContext'");
         });
     });
 
@@ -464,6 +463,27 @@ describe('RepoChatTab', () => {
                 source.indexOf("body: JSON.stringify({") + 500,
             );
             expect(bodySection).toContain(': undefined');
+        });
+    });
+
+    describe('real-time queue updates', () => {
+        it('subscribes to queueState via useQueue', () => {
+            expect(source).toContain('const { state: queueState } = useQueue()');
+        });
+
+        it('reads repoQueueMap for the workspace', () => {
+            expect(source).toContain('queueState.repoQueueMap[workspaceId]');
+        });
+
+        it('refreshes sessions when queue contains chat tasks', () => {
+            expect(source).toContain("t.type === 'chat'");
+            expect(source).toContain('sessionsHook.refresh()');
+        });
+
+        it('checks for chat tasks in running, queued, and history arrays', () => {
+            expect(source).toContain('repoQueue.running');
+            expect(source).toContain('repoQueue.queued');
+            expect(source).toContain('repoQueue.history');
         });
     });
 });

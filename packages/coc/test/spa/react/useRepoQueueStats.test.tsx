@@ -21,10 +21,10 @@ function Wrap({ children }: { children: ReactNode }) {
 describe('useRepoQueueStats', () => {
     it('returns zeros when no queue data exists for workspace', () => {
         const { result } = renderHook(() => useRepoQueueStats('nonexistent'), { wrapper: Wrap });
-        expect(result.current).toEqual({ running: 0, queued: 0 });
+        expect(result.current).toEqual({ running: 0, queued: 0, chatRunning: 0, chatQueued: 0 });
     });
 
-    it('returns stats from repoQueueMap when data exists', () => {
+    it('returns non-chat counts for running/queued and chat counts separately', () => {
         let hookResult: ReturnType<typeof useRepoQueueStats> | null = null;
 
         function Inner() {
@@ -35,8 +35,8 @@ describe('useRepoQueueStats', () => {
                     type: 'REPO_QUEUE_UPDATED',
                     repoId: 'ws-test',
                     queue: {
-                        queued: [{ id: 'q1' }],
-                        running: [{ id: 'r1' }, { id: 'r2' }],
+                        queued: [{ id: 'q1', type: 'run-pipeline' }],
+                        running: [{ id: 'r1', type: 'follow-prompt' }, { id: 'r2', type: 'chat' }],
                         stats: { queued: 1, running: 2, completed: 0, failed: 0, cancelled: 0, total: 3, isPaused: false, isDraining: false },
                     },
                 });
@@ -45,23 +45,29 @@ describe('useRepoQueueStats', () => {
         }
 
         render(<Wrap><Inner /></Wrap>);
-        expect(hookResult).toEqual({ running: 2, queued: 1 });
+        expect(hookResult).toEqual({ running: 1, queued: 1, chatRunning: 1, chatQueued: 0 });
     });
 
-    it('falls back to merged defaults when stats object is empty', () => {
+    it('excludes chat tasks from running/queued counts', () => {
         let hookResult: ReturnType<typeof useRepoQueueStats> | null = null;
 
         function Inner() {
             const { dispatch } = useQueue();
-            hookResult = useRepoQueueStats('ws-fallback');
+            hookResult = useRepoQueueStats('ws-mixed');
             useEffect(() => {
                 dispatch({
                     type: 'REPO_QUEUE_UPDATED',
-                    repoId: 'ws-fallback',
+                    repoId: 'ws-mixed',
                     queue: {
-                        queued: [{ id: 'q1' }, { id: 'q2' }, { id: 'q3' }],
-                        running: [{ id: 'r1' }],
-                        stats: {} as any,
+                        queued: [
+                            { id: 'q1', type: 'run-pipeline' },
+                            { id: 'q2', type: 'chat' },
+                            { id: 'q3', type: 'chat' },
+                        ],
+                        running: [
+                            { id: 'r1', type: 'chat' },
+                            { id: 'r2', type: 'code-review' },
+                        ],
                     },
                 });
             }, [dispatch]);
@@ -69,7 +75,30 @@ describe('useRepoQueueStats', () => {
         }
 
         render(<Wrap><Inner /></Wrap>);
-        expect(hookResult).toEqual({ running: 0, queued: 0 });
+        expect(hookResult).toEqual({ running: 1, queued: 1, chatRunning: 1, chatQueued: 2 });
+    });
+
+    it('returns all zeros when only empty arrays are provided', () => {
+        let hookResult: ReturnType<typeof useRepoQueueStats> | null = null;
+
+        function Inner() {
+            const { dispatch } = useQueue();
+            hookResult = useRepoQueueStats('ws-empty');
+            useEffect(() => {
+                dispatch({
+                    type: 'REPO_QUEUE_UPDATED',
+                    repoId: 'ws-empty',
+                    queue: {
+                        queued: [],
+                        running: [],
+                    },
+                });
+            }, [dispatch]);
+            return null;
+        }
+
+        render(<Wrap><Inner /></Wrap>);
+        expect(hookResult).toEqual({ running: 0, queued: 0, chatRunning: 0, chatQueued: 0 });
     });
 
     it('returns zeros for different workspace id', () => {
@@ -83,8 +112,8 @@ describe('useRepoQueueStats', () => {
                     type: 'REPO_QUEUE_UPDATED',
                     repoId: 'ws-different',
                     queue: {
-                        queued: [{ id: 'q1' }],
-                        running: [{ id: 'r1' }],
+                        queued: [{ id: 'q1', type: 'run-pipeline' }],
+                        running: [{ id: 'r1', type: 'chat' }],
                         stats: { queued: 1, running: 1, completed: 0, failed: 0, cancelled: 0, total: 2, isPaused: false, isDraining: false },
                     },
                 });
@@ -93,6 +122,29 @@ describe('useRepoQueueStats', () => {
         }
 
         render(<Wrap><Inner /></Wrap>);
-        expect(hookResult).toEqual({ running: 0, queued: 0 });
+        expect(hookResult).toEqual({ running: 0, queued: 0, chatRunning: 0, chatQueued: 0 });
+    });
+
+    it('counts tasks without type as non-chat', () => {
+        let hookResult: ReturnType<typeof useRepoQueueStats> | null = null;
+
+        function Inner() {
+            const { dispatch } = useQueue();
+            hookResult = useRepoQueueStats('ws-notype');
+            useEffect(() => {
+                dispatch({
+                    type: 'REPO_QUEUE_UPDATED',
+                    repoId: 'ws-notype',
+                    queue: {
+                        queued: [{ id: 'q1' }],
+                        running: [{ id: 'r1' }],
+                    },
+                });
+            }, [dispatch]);
+            return null;
+        }
+
+        render(<Wrap><Inner /></Wrap>);
+        expect(hookResult).toEqual({ running: 1, queued: 1, chatRunning: 0, chatQueued: 0 });
     });
 });
