@@ -153,4 +153,54 @@ describe('File path detection in inline markdown', () => {
             expect(html).toContain('file-path-link');
         });
     });
+
+    // ----------------------------------------------------------------
+    // Windows path detection
+    // ----------------------------------------------------------------
+    describe('detects Windows paths', () => {
+        it('detects backslash-separated Windows paths', () => {
+            const html = renderMarkdownToHtml('See D:\\projects\\file.ts');
+            expect(html).toContain('class="file-path-link"');
+            expect(html).toContain('data-full-path="D:/projects/file.ts"');
+        });
+
+        it('detects forward-slash Windows paths with drive letter', () => {
+            const html = renderMarkdownToHtml('See D:/projects/file.ts');
+            expect(html).toContain('class="file-path-link"');
+            expect(html).toContain('data-full-path="D:/projects/file.ts"');
+        });
+
+        it('detects mixed-separator Windows paths', () => {
+            const html = renderMarkdownToHtml('See D:\\projects\\shortcuts/.vscode/tasks/plan.md');
+            expect(html).toContain('class="file-path-link"');
+            expect(html).toContain('data-full-path="D:/projects/shortcuts/.vscode/tasks/plan.md"');
+        });
+
+        it('shortens C:\\Users\\<user>\\ to ~/', () => {
+            const html = renderMarkdownToHtml('C:\\Users\\John\\Documents\\file.md');
+            expect(html).toContain('>~/Documents/file.md</span>');
+        });
+
+        it('does not match bare drive letter without path', () => {
+            const html = renderMarkdownToHtml('Drive C: is full');
+            expect(html).not.toContain('file-path-link');
+        });
+
+        it('does not linkify Windows paths inside backtick code spans', () => {
+            const html = renderMarkdownToHtml('Run `D:\\projects\\file.ts`');
+            expect(html).not.toContain('file-path-link');
+        });
+
+        it('does not linkify Windows paths inside fenced code blocks', () => {
+            const md = '```\nD:\\projects\\file.ts\n```';
+            const html = renderMarkdownToHtml(md);
+            expect(html).not.toContain('file-path-link');
+        });
+
+        it('detects multiple Windows paths in one line', () => {
+            const html = renderMarkdownToHtml('Compare D:\\a\\f1.ts and C:\\b\\f2.ts');
+            const matches = html.match(/class="file-path-link"/g);
+            expect(matches).toHaveLength(2);
+        });
+    });
 });

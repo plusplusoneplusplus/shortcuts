@@ -231,6 +231,63 @@ describe('applyInlineMarkdown', () => {
             expect(matches).toHaveLength(2);
         });
     });
+
+    // Windows file path detection
+    describe('Windows file path detection', () => {
+        it('detects backslash-separated Windows paths', () => {
+            const html = applyInlineMarkdown('See D:\\projects\\file.ts');
+            expect(html).toContain('file-path-link');
+            expect(html).toContain('data-full-path="D:/projects/file.ts"');
+        });
+
+        it('detects forward-slash Windows paths with drive letter', () => {
+            const html = applyInlineMarkdown('See D:/projects/file.ts');
+            expect(html).toContain('file-path-link');
+            expect(html).toContain('data-full-path="D:/projects/file.ts"');
+        });
+
+        it('detects mixed-separator Windows paths', () => {
+            const html = applyInlineMarkdown('See D:\\projects\\shortcuts/.vscode/tasks/plan.md');
+            expect(html).toContain('file-path-link');
+            expect(html).toContain('data-full-path="D:/projects/shortcuts/.vscode/tasks/plan.md"');
+        });
+
+        it('shortens C:\\Users\\<user>\\ to ~/', () => {
+            const html = applyInlineMarkdown('C:\\Users\\John\\Documents\\file.md');
+            expect(html).toContain('file-path-link');
+            expect(html).toContain('>~/Documents/file.md</span>');
+        });
+
+        it('shortens C:/Users/<user>/Documents/Projects/ prefix', () => {
+            const html = applyInlineMarkdown('C:/Users/John/Documents/Projects/myapp/src/index.ts');
+            expect(html).toContain('>myapp/src/index.ts</span>');
+        });
+
+        it('detects multiple Windows paths in one line', () => {
+            const html = applyInlineMarkdown('Compare D:\\a\\f1.ts and C:\\b\\f2.ts');
+            const matches = html.match(/file-path-link/g);
+            expect(matches).toHaveLength(2);
+        });
+
+        it('does not match Windows paths inside inline code', () => {
+            const html = applyInlineMarkdown('Run `cat D:\\projects\\file.ts`');
+            expect(html).toContain('md-inline-code');
+            // Path inside code should not get a separate file-path-link
+            const pathLinks = html.match(/file-path-link/g);
+            expect(pathLinks).toBeNull();
+        });
+
+        it('does not match bare drive letter without path', () => {
+            const html = applyInlineMarkdown('Drive C: is full');
+            expect(html).not.toContain('file-path-link');
+        });
+
+        it('handles lowercase drive letters', () => {
+            const html = applyInlineMarkdown('See d:\\projects\\file.ts');
+            expect(html).toContain('file-path-link');
+            expect(html).toContain('data-full-path="d:/projects/file.ts"');
+        });
+    });
 });
 
 describe('applySourceModeHighlighting', () => {

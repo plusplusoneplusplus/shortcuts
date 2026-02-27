@@ -125,14 +125,19 @@ async function fetchWorkspaces(): Promise<WorkspaceInfo[]> {
     return workspaces;
 }
 
+function normalizePath(p: string): string {
+    return p.replace(/\\/g, '/').toLowerCase();
+}
+
 async function resolveWorkspaceId(filePath: string): Promise<string | null> {
     const workspaces = await fetchWorkspaces();
     if (workspaces.length === 0) return null;
 
+    const normalizedFile = normalizePath(filePath);
     let best: WorkspaceInfo | null = null;
     for (const ws of workspaces) {
         const root = ws.rootPath;
-        if (root && filePath.startsWith(root)) {
+        if (root && normalizedFile.startsWith(normalizePath(root))) {
             if (!best || root.length > (best.rootPath?.length || 0)) {
                 best = ws;
             }

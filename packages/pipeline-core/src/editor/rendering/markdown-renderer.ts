@@ -246,7 +246,8 @@ export function applyInlineMarkdown(text: string): string {
     // File paths — detect absolute paths and wrap in interactive spans.
     // Must come after inline code (so paths inside backticks are skipped)
     // and before images/links (to avoid double-processing).
-    const FILE_PATH_RE = /(?:\/(?:Users|home|tmp|var|etc|opt|usr|mnt|Volumes)[^\s&"'<>()]*)/g;
+    // Match Unix absolute paths and Windows drive-letter paths (backslash, forward-slash, or mixed).
+    const FILE_PATH_RE = /(?:\/(?:Users|home|tmp|var|etc|opt|usr|mnt|Volumes)[^\s&"'<>()]*|(?<![/\w])[A-Za-z]:[/\\][\w./@\\-]+)/g;
     html = html.replace(FILE_PATH_RE, function(match: string, offset: number) {
         // Skip if inside a <span class="md-inline-code"> tag
         const before = html.substring(0, offset);
@@ -254,8 +255,10 @@ export function applyInlineMarkdown(text: string): string {
         const closes = (before.match(/<\/span>/g) || []).length;
         if (opens > closes) return match;
 
-        const short = shortenFilePath(match);
-        return '<span class="file-path-link" data-full-path="' + match + '" title="' + match + '">' + short + '</span>';
+        // Normalize backslashes to forward slashes for consistent downstream handling
+        const normalized = match.replace(/\\/g, '/');
+        const short = shortenFilePath(normalized);
+        return '<span class="file-path-link" data-full-path="' + normalized + '" title="' + normalized + '">' + short + '</span>';
     });
 
     // Images ![alt](url) - render as actual images with preview
@@ -310,7 +313,10 @@ function shortenFilePath(p: string): string {
     return p
         .replace(/^\/Users\/[^/]+\/Documents\/Projects\//, '')
         .replace(/^\/Users\/[^/]+\//, '~/')
-        .replace(/^\/home\/[^/]+\//, '~/');
+        .replace(/^\/home\/[^/]+\//, '~/')
+        // Windows: C:/Users/<user>/Documents/Projects/ or C:/Users/<user>/
+        .replace(/^[A-Za-z]:\/Users\/[^/]+\/Documents\/Projects\//, '')
+        .replace(/^[A-Za-z]:\/Users\/[^/]+\//, '~/');
 }
 
 /**
