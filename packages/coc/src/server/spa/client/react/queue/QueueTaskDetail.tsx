@@ -13,6 +13,8 @@ import { Badge, Spinner, Button, cn } from '../shared';
 import { ConversationTurnBubble } from '../processes/ConversationTurnBubble';
 import { ConversationMetadataPopover, getSessionIdFromProcess } from '../processes/ConversationMetadataPopover';
 import { formatDuration, statusIcon, statusLabel } from '../utils/format';
+import { useImagePaste } from '../hooks/useImagePaste';
+import { ImagePreviews } from '../shared/ImagePreviews';
 import type { ClientConversationTurn } from '../types/dashboard';
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
@@ -87,7 +89,9 @@ export function QueueTaskDetail() {
     const [resumeLaunching, setResumeLaunching] = useState(false);
     const [resumeFeedback, setResumeFeedback] = useState<{ type: 'success' | 'error'; message: string; command?: string } | null>(null);
 
-    const isPending = task?.status === 'queued';
+    const { images, addFromPaste, removeImage, clearImages } = useImagePaste();
+
+    const isPending= task?.status === 'queued';
     const selectedProcessId = task?.processId || (selectedTaskId ? `queue_${selectedTaskId}` : null);
     const followUpInputDisabled = isPending || task?.status === 'cancelled' || followUpSending || followUpSessionExpired;
     const followUpPlaceholder = getInputPlaceholder(task?.status, followUpSending, followUpSessionExpired);
@@ -210,7 +214,12 @@ export function QueueTaskDetail() {
             const response = await fetch(`${getApiBase()}/processes/${encodeURIComponent(selectedProcessId)}/message`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content }),
+                body: JSON.stringify({
+                    content,
+                    images: images.length > 0
+                        ? images
+                        : undefined,
+                }),
             });
 
             if (response.status === 410) {
@@ -228,6 +237,7 @@ export function QueueTaskDetail() {
             }
 
             await waitForFollowUpCompletion(selectedProcessId);
+            clearImages();
         } catch (error: any) {
             setFollowUpError(error?.message || 'Failed to send follow-up message.');
             removeStreamingAssistantPlaceholder();
@@ -327,6 +337,7 @@ export function QueueTaskDetail() {
         setResumeLaunching(false);
         setResumeFeedback(null);
         setProcessDetails(null);
+        clearImages();
         closeFollowUpStream();
         queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -613,6 +624,7 @@ export function QueueTaskDetail() {
                             Retry
                         </button>
                     )}
+                    <ImagePreviews images={images} onRemove={removeImage} />
                     <div className="flex items-end gap-2">
                         <textarea
                             id="chat-input"
@@ -628,6 +640,7 @@ export function QueueTaskDetail() {
                                     void sendFollowUp();
                                 }
                             }}
+                            onPaste={addFromPaste}
                         />
                         <button
                             id="chat-send-btn"

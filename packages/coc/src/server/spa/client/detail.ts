@@ -1056,6 +1056,8 @@ function initChatInputHandlers(processId: string): void {
     });
 }
 
+// TODO(chat-image-attach): Add image paste support here if this legacy path is
+// still actively used. React QueueTaskDetail already supports images.
 function sendFollowUpMessage(processId: string, content: string): void {
     if (!content.trim()) return;
 

@@ -153,7 +153,11 @@ describe('RepoChatTab', () => {
         });
 
         it('sends content in the body', () => {
-            expect(source).toContain('JSON.stringify({ content })');
+            expect(source).toContain('content,');
+        });
+
+        it('includes images in follow-up body when present', () => {
+            expect(source).toContain('followUpImagePaste.images.length > 0');
         });
 
         it('handles Enter key without Shift for send', () => {
@@ -321,6 +325,65 @@ describe('RepoChatTab', () => {
 
         it('re-runs on chatTaskId or task status change', () => {
             expect(source).toContain('[chatTaskId, task?.status]');
+        });
+    });
+
+    describe('image paste integration', () => {
+        it('imports useImagePaste hook', () => {
+            expect(source).toContain("import { useImagePaste } from '../hooks/useImagePaste'");
+        });
+
+        it('imports ImagePreviews component', () => {
+            expect(source).toContain("import { ImagePreviews } from '../shared/ImagePreviews'");
+        });
+
+        it('creates two useImagePaste instances', () => {
+            expect(source).toContain('const initialImagePaste = useImagePaste()');
+            expect(source).toContain('const followUpImagePaste = useImagePaste()');
+        });
+
+        it('attaches onPaste to initial chat textarea', () => {
+            expect(source).toContain('onPaste={initialImagePaste.addFromPaste}');
+        });
+
+        it('renders ImagePreviews for initial chat', () => {
+            expect(source).toContain('images={initialImagePaste.images} onRemove={initialImagePaste.removeImage}');
+        });
+
+        it('includes images in handleStartChat POST body', () => {
+            expect(source).toContain('initialImagePaste.images.length > 0');
+            expect(source).toContain('initialImagePaste.images');
+        });
+
+        it('clears initial images after successful start', () => {
+            expect(source).toContain('initialImagePaste.clearImages()');
+        });
+
+        it('attaches onPaste to follow-up textarea', () => {
+            expect(source).toContain('onPaste={followUpImagePaste.addFromPaste}');
+        });
+
+        it('renders ImagePreviews for follow-up', () => {
+            expect(source).toContain('images={followUpImagePaste.images} onRemove={followUpImagePaste.removeImage}');
+        });
+
+        it('clears follow-up images after successful send', () => {
+            expect(source).toContain('followUpImagePaste.clearImages()');
+        });
+
+        it('clears both image states on New Chat', () => {
+            const newChatFn = source.substring(source.indexOf('const handleNewChat'));
+            expect(newChatFn).toContain('initialImagePaste.clearImages()');
+            expect(newChatFn).toContain('followUpImagePaste.clearImages()');
+        });
+
+        it('sends images as undefined when none are pasted', () => {
+            // The body uses a ternary: images.length > 0 ? images : undefined
+            const bodySection = source.substring(
+                source.indexOf("body: JSON.stringify({"),
+                source.indexOf("body: JSON.stringify({") + 500,
+            );
+            expect(bodySection).toContain(': undefined');
         });
     });
 });

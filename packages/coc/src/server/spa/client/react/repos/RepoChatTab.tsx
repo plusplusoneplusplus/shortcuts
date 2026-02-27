@@ -11,6 +11,8 @@ import { fetchApi } from '../hooks/useApi';
 import { getApiBase } from '../utils/config';
 import { Button, Spinner } from '../shared';
 import { ConversationTurnBubble } from '../processes/ConversationTurnBubble';
+import { useImagePaste } from '../hooks/useImagePaste';
+import { ImagePreviews } from '../shared/ImagePreviews';
 import type { ClientConversationTurn } from '../types/dashboard';
 
 interface RepoChatTabProps {
@@ -55,6 +57,9 @@ export function RepoChatTab({ workspaceId, workspacePath }: RepoChatTabProps) {
     const [error, setError] = useState<string | null>(null);
     const [sessionExpired, setSessionExpired] = useState(false);
     const [isStreaming, setIsStreaming] = useState(false);
+
+    const initialImagePaste = useImagePaste();
+    const followUpImagePaste = useImagePaste();
 
     const turnsRef = useRef<ClientConversationTurn[]>([]);
     const eventSourceRef = useRef<EventSource | null>(null);
@@ -193,6 +198,9 @@ export function RepoChatTab({ workspaceId, workspacePath }: RepoChatTabProps) {
                     workingDirectory: workspacePath,
                     prompt,
                     displayName: 'Chat',
+                    images: initialImagePaste.images.length > 0
+                        ? initialImagePaste.images
+                        : undefined,
                 }),
             });
             if (!response.ok) {
@@ -213,6 +221,7 @@ export function RepoChatTab({ workspaceId, workspacePath }: RepoChatTabProps) {
                 timestamp: new Date().toISOString(), streaming: true, timeline: [],
             };
             setTurnsAndCache([userTurn, assistantPlaceholder]);
+            initialImagePaste.clearImages();
         } catch (err: any) {
             setError(err?.message ?? 'Failed to start chat.');
         } finally {
@@ -238,7 +247,12 @@ export function RepoChatTab({ workspaceId, workspacePath }: RepoChatTabProps) {
             const response = await fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/message`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content }),
+                body: JSON.stringify({
+                    content,
+                    images: followUpImagePaste.images.length > 0
+                        ? followUpImagePaste.images
+                        : undefined,
+                }),
             });
             if (response.status === 410) {
                 setSessionExpired(true);
@@ -253,6 +267,7 @@ export function RepoChatTab({ workspaceId, workspacePath }: RepoChatTabProps) {
                 return;
             }
             await waitForFollowUpCompletion(processId);
+            followUpImagePaste.clearImages();
         } catch (err: any) {
             setError(err?.message ?? 'Failed to send follow-up message.');
             removeStreamingPlaceholder();
@@ -270,6 +285,8 @@ export function RepoChatTab({ workspaceId, workspacePath }: RepoChatTabProps) {
         setError(null);
         setSessionExpired(false);
         setInputValue('');
+        initialImagePaste.clearImages();
+        followUpImagePaste.clearImages();
     };
 
     // --- render ---
@@ -285,7 +302,9 @@ export function RepoChatTab({ workspaceId, workspacePath }: RepoChatTabProps) {
                     value={inputValue}
                     onChange={e => setInputValue(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleStartChat(); } }}
+                    onPaste={initialImagePaste.addFromPaste}
                 />
+                <ImagePreviews images={initialImagePaste.images} onRemove={initialImagePaste.removeImage} />
                 {error && <div className="text-xs text-red-500">{error}</div>}
                 <Button disabled={!inputValue.trim() || sending} onClick={() => void handleStartChat()}>
                     {sending ? '...' : 'Start Chat'}
@@ -313,6 +332,7 @@ export function RepoChatTab({ workspaceId, workspacePath }: RepoChatTabProps) {
             {/* Input area */}
             <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3 space-y-2">
                 {error && <div className="text-xs text-red-500">{error}</div>}
+                <ImagePreviews images={followUpImagePaste.images} onRemove={followUpImagePaste.removeImage} />
                 <div className="flex items-end gap-2">
                     <textarea
                         rows={1}
@@ -321,6 +341,7 @@ export function RepoChatTab({ workspaceId, workspacePath }: RepoChatTabProps) {
                         placeholder={sessionExpired ? 'Session expired. Start a new chat.' : 'Follow up…'}
                         onChange={e => setInputValue(e.target.value)}
                         onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendFollowUp(); } }}
+                        onPaste={followUpImagePaste.addFromPaste}
                         className="flex-1 border rounded p-2 text-sm resize-none bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] border-[#e0e0e0] dark:border-[#3c3c3c]"
                     />
                     <Button disabled={sending || !inputValue.trim() || sessionExpired} onClick={() => void sendFollowUp()}>
