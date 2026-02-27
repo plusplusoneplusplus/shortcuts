@@ -16,21 +16,11 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-// Mock pipeline-core AI service before importing the handler module
-vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('@plusplusoneplusplus/pipeline-core')>();
-    return {
-        ...actual,
-        getCopilotSDKService: vi.fn(),
-    };
-});
-
 import { createExecutionServer } from '../../src/server/index';
-import { FileProcessStore, getCopilotSDKService } from '@plusplusoneplusplus/pipeline-core';
+import { FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 import { extractYamlFromResponse } from '../../src/server/pipelines-handler';
-
-const mockedGetCopilotSDKService = vi.mocked(getCopilotSDKService);
+import { createMockSDKService } from '../helpers/mock-sdk-service';
 
 // ============================================================================
 // Helpers
@@ -128,9 +118,12 @@ describe('Pipelines Generate Handler', () => {
     let dataDir: string;
     let workspaceDir: string;
 
+    let mockService: ReturnType<typeof createMockSDKService>;
+
     beforeEach(() => {
         dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pipelines-gen-test-'));
         workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pipelines-gen-ws-'));
+        mockService = createMockSDKService();
         vi.clearAllMocks();
     });
 
@@ -145,7 +138,7 @@ describe('Pipelines Generate Handler', () => {
 
     async function startServer(): Promise<ExecutionServer> {
         const store = new FileProcessStore({ dataDir });
-        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir, aiService: mockService.service as any });
         return server;
     }
 
@@ -160,7 +153,7 @@ describe('Pipelines Generate Handler', () => {
         return id;
     }
 
-    function mockAIService(options: {
+    function configureMockAI(options: {
         available?: boolean;
         success?: boolean;
         response?: string;
@@ -175,15 +168,12 @@ describe('Pipelines Generate Handler', () => {
             throwError,
         } = options;
 
-        const mockService = {
-            isAvailable: vi.fn().mockResolvedValue({ available }),
-            sendMessage: vi.fn().mockImplementation(async () => {
-                if (throwError) { throw throwError; }
-                return { success, response, error };
-            }),
-        };
-        mockedGetCopilotSDKService.mockReturnValue(mockService as any);
-        return mockService;
+        mockService.mockIsAvailable.mockResolvedValue({ available });
+        mockService.mockSendMessage.mockImplementation(async () => {
+            if (throwError) { throw throwError; }
+            return { success, response, error };
+        });
+        return mockService.service;
     }
 
     // ========================================================================
@@ -195,7 +185,7 @@ describe('Pipelines Generate Handler', () => {
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
             const yamlResponse = 'name: "Bug Classifier"\ninput:\n  type: csv\n  path: "bugs.csv"\nmap:\n  prompt: "Classify: {{title}}"\n  output:\n    - category\nreduce:\n  type: json';
-            mockAIService({ response: yamlResponse });
+            configureMockAI({ response: yamlResponse });
 
             const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines/generate`, {
                 description: 'classify bugs by category',
@@ -214,7 +204,7 @@ describe('Pipelines Generate Handler', () => {
             const wsId = await registerWorkspace(srv, workspaceDir);
             const innerYaml = 'name: "Test"\ninput:\n  type: csv\n  path: "in.csv"';
             const fencedResponse = 'Here is the pipeline:\n```yaml\n' + innerYaml + '\n```\nDone!';
-            mockAIService({ response: fencedResponse });
+            configureMockAI({ response: fencedResponse });
 
             const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines/generate`, {
                 description: 'test pipeline',
@@ -250,7 +240,7 @@ describe('Pipelines Generate Handler', () => {
         it('should return 503 when AI service is unavailable', async () => {
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
-            mockAIService({ available: false });
+            configureMockAI({ available: false });
 
             const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines/generate`, {
                 description: 'classify bugs',
@@ -261,7 +251,7 @@ describe('Pipelines Generate Handler', () => {
         it('should return 500 when AI generation fails', async () => {
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
-            mockAIService({ success: false, error: 'Model overloaded' });
+            configureMockAI({ success: false, error: 'Model overloaded' });
 
             const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines/generate`, {
                 description: 'classify bugs',
@@ -274,7 +264,7 @@ describe('Pipelines Generate Handler', () => {
         it('should return valid=false when AI returns invalid YAML', async () => {
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
-            mockAIService({ response: 'This is not YAML: {{[invalid' });
+            configureMockAI({ response: 'This is not YAML: {{[invalid' });
 
             const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines/generate`, {
                 description: 'classify bugs',
@@ -299,7 +289,7 @@ describe('Pipelines Generate Handler', () => {
         it('should return 504 on timeout', async () => {
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
-            mockAIService({ throwError: new Error('Request timeout exceeded') });
+            configureMockAI({ throwError: new Error('Request timeout exceeded') });
 
             const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines/generate`, {
                 description: 'classify bugs',
@@ -310,7 +300,7 @@ describe('Pipelines Generate Handler', () => {
         it('should pass model to AI service when provided', async () => {
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
-            const mockService = mockAIService({});
+            const mockService = configureMockAI({});
 
             await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines/generate`, {
                 description: 'classify bugs',
@@ -325,7 +315,7 @@ describe('Pipelines Generate Handler', () => {
         it('should call sendMessage with denyAllPermissions', async () => {
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
-            const mockService = mockAIService({});
+            const mockService = configureMockAI({});
 
             await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines/generate`, {
                 description: 'classify bugs',

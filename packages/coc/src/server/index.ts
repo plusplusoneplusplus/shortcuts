@@ -31,7 +31,7 @@ import { generateDashboardHtml } from './spa';
 import type { ExecutionServerOptions, ExecutionServer } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
 import type { ProcessStore, AIProcess, ProcessChangeCallback, ProcessOutputEvent } from '@plusplusoneplusplus/pipeline-core';
-import { RepoQueueRegistry, FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
+import { RepoQueueRegistry, FileProcessStore, getCopilotSDKService } from '@plusplusoneplusplus/pipeline-core';
 import { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 import { MultiRepoQueuePersistence } from './multi-repo-queue-persistence';
 import { computeRepoId } from './queue-persistence';
@@ -203,6 +203,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     const spaHtmlFactory = () => generateDashboardHtml({ enableWiki: true });
 
+    const resolvedAiService = options.aiService ?? getCopilotSDKService();
+
     // Build API routes
     const routes: Route[] = [];
     registerApiRoutes(routes, store, bridge);
@@ -218,8 +220,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             workspaceId,
             timestamp: Date.now(),
         });
-    }, bridge);
-    registerTaskGenerationRoutes(routes, store, bridge);
+    }, bridge, resolvedAiService);
+    registerTaskGenerationRoutes(routes, store, bridge, resolvedAiService);
     registerPromptRoutes(routes, store);
     registerPreferencesRoutes(routes, dataDir);
     registerTaskCommentsRoutes(routes, dataDir);

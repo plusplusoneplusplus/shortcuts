@@ -13,9 +13,9 @@ import * as url from 'url';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as yaml from 'js-yaml';
-import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore, CopilotSDKService } from '@plusplusoneplusplus/pipeline-core';
 import type { CreateTaskInput, RunPipelinePayload } from '@plusplusoneplusplus/pipeline-core';
-import { getCopilotSDKService, denyAllPermissions } from '@plusplusoneplusplus/pipeline-core';
+import { denyAllPermissions } from '@plusplusoneplusplus/pipeline-core';
 import { sendJSON, sendError, parseBody } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
 import { discoverPipelines } from '@plusplusoneplusplus/coc-server';
@@ -373,6 +373,7 @@ export function registerPipelineWriteRoutes(
     store: ProcessStore,
     onPipelinesChanged?: (workspaceId: string) => void,
     bridge?: MultiRepoQueueExecutorBridge,
+    aiService?: CopilotSDKService,
 ): void {
 
     // ------------------------------------------------------------------
@@ -408,7 +409,10 @@ ${PIPELINE_SCHEMA_REFERENCE}`;
             const userPrompt = `Generate a pipeline YAML configuration for the following requirement:\n\n${description.trim()}`;
 
             try {
-                const service = getCopilotSDKService();
+                if (!aiService) {
+                    return sendError(res, 503, 'AI service not configured');
+                }
+                const service = aiService;
                 const available = await service.isAvailable();
                 if (!available.available) {
                     return sendError(res, 503, 'AI service unavailable');

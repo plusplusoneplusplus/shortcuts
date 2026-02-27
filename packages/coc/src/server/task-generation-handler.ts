@@ -25,13 +25,12 @@ import {
     parseCreatedFilePath,
     buildDiscoveryPrompt,
     parseDiscoveryResponse,
-    getCopilotSDKService,
     approveAllPermissions,
     denyAllPermissions,
     DEFAULT_AI_TIMEOUT_MS,
     generateTaskId,
 } from '@plusplusoneplusplus/pipeline-core';
-import type { SelectedContext } from '@plusplusoneplusplus/pipeline-core';
+import type { SelectedContext, CopilotSDKService } from '@plusplusoneplusplus/pipeline-core';
 import { sendJSON, sendError, parseBody } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
 import type { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
@@ -73,7 +72,7 @@ function sendEvent(res: ServerResponse, event: string, data: unknown): void {
  * Register task generation API routes on the given route table.
  * Mutates the `routes` array in-place.
  */
-export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStore, bridge: MultiRepoQueueExecutorBridge): void {
+export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStore, bridge: MultiRepoQueueExecutorBridge, aiService: CopilotSDKService): void {
 
     // ------------------------------------------------------------------
     // POST /api/workspaces/:id/tasks/generate — AI task generation
@@ -150,7 +149,7 @@ export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStor
             req.on('close', () => { clientDisconnected = true; });
 
             try {
-                const service = getCopilotSDKService();
+                const service = aiService;
                 const available = await service.isAvailable();
                 if (!available.available) {
                     sendEvent(res, 'error', { message: 'AI service unavailable' });
@@ -239,7 +238,7 @@ export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStor
             }
 
             try {
-                const service = getCopilotSDKService();
+                const service = aiService;
                 const available = await service.isAvailable();
                 if (!available.available) {
                     return sendError(res, 503, 'AI service unavailable');

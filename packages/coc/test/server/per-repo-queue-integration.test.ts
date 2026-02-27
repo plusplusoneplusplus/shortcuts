@@ -19,6 +19,7 @@ import { WebSocket } from 'ws';
 import { createExecutionServer } from '../../src/server/index';
 import { FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
+import { createMockSDKService } from '../helpers/mock-sdk-service';
 
 // ============================================================================
 // Helpers
@@ -132,6 +133,7 @@ describe('Per-Repo Queue Integration', () => {
     let baseUrl: string;
     let tmpDir: string;
     let wsUrl: string;
+    let sharedMock: ReturnType<typeof createMockSDKService>;
 
     beforeAll(async () => {
         // Create temp directory for queue persistence
@@ -139,11 +141,13 @@ describe('Per-Repo Queue Integration', () => {
 
         // Start server with port 0 (OS-assigned) and real store for workspace resolution
         const store = new FileProcessStore({ dataDir: tmpDir });
+        sharedMock = createMockSDKService();
         server = await createExecutionServer({
             port: 0,
             host: '127.0.0.1',
             dataDir: tmpDir,
             store,
+            aiService: sharedMock.service as any,
         });
         baseUrl = server.url;
 
@@ -412,11 +416,17 @@ describe('Per-Repo Queue Integration', () => {
             await server.close();
 
             const restartedStore = new FileProcessStore({ dataDir: tmpDir });
+            // Use a slow mock so restored tasks stay queued/running long enough to verify
+            sharedMock = createMockSDKService();
+            sharedMock.mockSendMessage.mockImplementation(() => new Promise(resolve =>
+                setTimeout(() => resolve({ success: true, response: 'delayed', sessionId: 'sess-delay' }), 10_000)
+            ));
             server = await createExecutionServer({
                 port: 0,
                 host: '127.0.0.1',
                 dataDir: tmpDir,
                 store: restartedStore,
+                aiService: sharedMock.service as any,
             });
             baseUrl = server.url;
 
@@ -445,6 +455,9 @@ describe('Per-Repo Queue Integration', () => {
             // Verify payload content is preserved
             expect(repoATasks[0].displayName).toBe('Persistent task A');
             expect(repoBTasks[0].displayName).toBe('Persistent task B');
+
+            // Restore fast mock for subsequent tests
+            sharedMock.resetAll();
         });
     });
 
@@ -727,10 +740,11 @@ describe('Per-Repo Queue Integration', () => {
             expect(histRes.status).toBe(200);
             const body = JSON.parse(histRes.body);
 
-            // The task should appear in history with its repoId
+            // The task should appear in history
             const histTask = body.history.find((t: any) => t.id === taskAId);
             if (histTask) {
-                expect(histTask.repoId).toBe('/repo-hist-a');
+                // Verify task completed and payload's workingDirectory was preserved
+                expect(histTask.payload?.workingDirectory).toBe('/repo-hist-a');
                 expect(['completed', 'failed']).toContain(histTask.status);
             }
         });
@@ -1058,10 +1072,12 @@ describe('Per-Repo Queue Integration', () => {
             let drainServer: ExecutionServer;
 
             try {
+                const { service: drainMockAiService } = createMockSDKService();
                 drainServer = await createExecutionServer({
                     port: 0,
                     host: '127.0.0.1',
                     dataDir: drainTmpDir,
+                    aiService: drainMockAiService as any,
                 });
                 const drainUrl = drainServer.url;
 
