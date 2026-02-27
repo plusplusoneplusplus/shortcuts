@@ -5,7 +5,7 @@
 import { useState, useEffect } from 'react';
 import { Button, Badge, Dialog, Spinner } from '../shared';
 import { useGlobalToast } from '../context/ToastContext';
-import { fetchPipelineContent, savePipelineContent, deletePipeline } from './pipeline-api';
+import { fetchPipelineContent, savePipelineContent, deletePipeline, runPipeline } from './pipeline-api';
 import type { PipelineInfo } from './repoGrouping';
 
 export interface PipelineDetailProps {
@@ -13,9 +13,10 @@ export interface PipelineDetailProps {
     pipeline: PipelineInfo;
     onClose: () => void;
     onDeleted: () => void;
+    onRunSuccess?: () => void;
 }
 
-export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted }: PipelineDetailProps) {
+export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRunSuccess }: PipelineDetailProps) {
     const { addToast } = useGlobalToast();
     const [mode, setMode] = useState<'view' | 'edit'>('view');
     const [content, setContent] = useState('');
@@ -23,6 +24,7 @@ export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted }: Pi
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [running, setRunning] = useState(false);
     const [confirmDelete, setConfirmDelete] = useState(false);
 
     useEffect(() => {
@@ -42,6 +44,20 @@ export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted }: Pi
             });
         return () => { cancelled = true; };
     }, [workspaceId, pipeline.name]);
+
+    async function handleRun() {
+        setRunning(true);
+        try {
+            const data = await runPipeline(workspaceId, pipeline.name);
+            const taskIdShort = data.task?.id ? data.task.id.slice(0, 8) : '';
+            addToast(`Pipeline queued${taskIdShort ? ` (${taskIdShort})` : ''}`, 'success');
+            onRunSuccess?.();
+        } catch (err: any) {
+            addToast(`Failed to run pipeline: ${err.message}`, 'error');
+        } finally {
+            setRunning(false);
+        }
+    }
 
     async function handleSave() {
         if (editContent.trim() === '') {
@@ -128,6 +144,16 @@ export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted }: Pi
             <div className="flex justify-end gap-2 px-4 py-3 border-t border-[#e0e0e0] dark:border-[#3c3c3c]">
                 {mode === 'view' ? (
                     <>
+                        <Button
+                            size="sm"
+                            loading={running}
+                            disabled={pipeline.isValid === false}
+                            title={pipeline.isValid === false ? 'Fix validation errors before running' : 'Run pipeline'}
+                            data-testid="pipeline-run-btn"
+                            onClick={handleRun}
+                        >
+                            ▶ Run
+                        </Button>
                         <Button variant="secondary" size="sm" onClick={onClose}>Close</Button>
                         <Button variant="secondary" size="sm" onClick={() => setMode('edit')}>Edit</Button>
                         <Button variant="danger" size="sm" onClick={() => setConfirmDelete(true)}>Delete</Button>

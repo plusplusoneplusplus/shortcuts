@@ -35,6 +35,11 @@ export function PipelinesTab({ repo }: PipelinesTabProps) {
         handleClose();
     };
 
+    const handleRunSuccess = () => {
+        dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'queue' });
+        location.hash = '#repos/' + encodeURIComponent(repo.workspace.id) + '/queue';
+    };
+
     return (
         <div className="flex h-full overflow-hidden">
             {/* Left panel — pipeline list */}
@@ -89,6 +94,7 @@ export function PipelinesTab({ repo }: PipelinesTabProps) {
                         pipeline={selectedPipeline}
                         onClose={handleClose}
                         onDeleted={handleDeleted}
+                        onRunSuccess={handleRunSuccess}
                     />
                 ) : (
                     <div className="flex items-center justify-center h-full text-sm text-[#848484]">

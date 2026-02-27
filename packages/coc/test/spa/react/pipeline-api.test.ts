@@ -21,6 +21,7 @@ let savePipelineContent: typeof import('../../../src/server/spa/client/react/rep
 let createPipeline: typeof import('../../../src/server/spa/client/react/repos/pipeline-api').createPipeline;
 let deletePipeline: typeof import('../../../src/server/spa/client/react/repos/pipeline-api').deletePipeline;
 let generatePipeline: typeof import('../../../src/server/spa/client/react/repos/pipeline-api').generatePipeline;
+let runPipeline: typeof import('../../../src/server/spa/client/react/repos/pipeline-api').runPipeline;
 
 beforeEach(async () => {
     const mod = await import('../../../src/server/spa/client/react/repos/pipeline-api');
@@ -30,6 +31,7 @@ beforeEach(async () => {
     createPipeline = mod.createPipeline;
     deletePipeline = mod.deletePipeline;
     generatePipeline = mod.generatePipeline;
+    runPipeline = mod.runPipeline;
 });
 
 // ---------------------------------------------------------------------------
@@ -283,6 +285,58 @@ describe('deletePipeline', () => {
     it('throws on non-ok response', async () => {
         mockFetch.mockReturnValue(errorResponse(404, 'Not Found'));
         await expect(deletePipeline('ws1', 'missing')).rejects.toThrow('API error: 404');
+    });
+});
+
+// ===========================================================================
+// runPipeline
+// ===========================================================================
+describe('runPipeline', () => {
+    it('sends POST to correct URL with empty JSON body', async () => {
+        mockFetch.mockReturnValue(Promise.resolve({
+            ok: true, status: 201, statusText: 'Created',
+            json: () => Promise.resolve({ task: { id: 'abc-12345678' } }),
+        }));
+        const result = await runPipeline('ws1', 'my-pipeline');
+
+        expect(mockFetch).toHaveBeenCalledWith(
+            'http://localhost:4000/api/workspaces/ws1/pipelines/my-pipeline/run',
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({}),
+            }
+        );
+        expect(result).toEqual({ task: { id: 'abc-12345678' } });
+    });
+
+    it('encodes workspace ID and pipeline name in URL', async () => {
+        mockFetch.mockReturnValue(Promise.resolve({
+            ok: true, status: 201, statusText: 'Created',
+            json: () => Promise.resolve({ task: { id: 'x' } }),
+        }));
+        await runPipeline('ws/special', 'my pipeline');
+
+        expect(mockFetch).toHaveBeenCalledWith(
+            'http://localhost:4000/api/workspaces/ws%2Fspecial/pipelines/my%20pipeline/run',
+            expect.any(Object)
+        );
+    });
+
+    it('throws on non-ok response with error body', async () => {
+        mockFetch.mockReturnValue(Promise.resolve({
+            ok: false, status: 500, statusText: 'Internal Server Error',
+            json: () => Promise.resolve({ error: 'Pipeline not found' }),
+        }));
+        await expect(runPipeline('ws1', 'missing')).rejects.toThrow('Pipeline not found');
+    });
+
+    it('throws generic message when error body is unparseable', async () => {
+        mockFetch.mockReturnValue(Promise.resolve({
+            ok: false, status: 500, statusText: 'Internal Server Error',
+            json: () => Promise.reject(new Error('not json')),
+        }));
+        await expect(runPipeline('ws1', 'p1')).rejects.toThrow('API error: 500 Internal Server Error');
     });
 });
 

@@ -112,3 +112,19 @@ export async function deletePipeline(
         throw new Error(`API error: ${res.status} ${res.statusText}`);
     }
 }
+
+export async function runPipeline(
+    workspaceId: string,
+    pipelineName: string
+): Promise<{ task: any }> {
+    const res = await fetch(`${pipelineUrl(workspaceId, pipelineName)}/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+    });
+    if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `API error: ${res.status} ${res.statusText}`);
+    }
+    return res.json();
+}

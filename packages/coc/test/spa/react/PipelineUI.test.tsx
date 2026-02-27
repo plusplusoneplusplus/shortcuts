@@ -270,6 +270,111 @@ describe('PipelineDetail', () => {
         fireEvent.click(screen.getByText('Close'));
         expect(onClose).toHaveBeenCalled();
     });
+
+    // ---- ▶ Run button tests ----
+
+    it('renders ▶ Run button in view mode', async () => {
+        render(
+            <Wrap>
+                <PipelineDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
+            </Wrap>
+        );
+        await waitFor(() => screen.getByText('my-pipeline'));
+        expect(screen.getByTestId('pipeline-run-btn')).toBeDefined();
+        expect(screen.getByTestId('pipeline-run-btn').textContent).toContain('Run');
+    });
+
+    it('▶ Run button is not disabled when pipeline.isValid is true', async () => {
+        render(
+            <Wrap>
+                <PipelineDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
+            </Wrap>
+        );
+        await waitFor(() => screen.getByText('my-pipeline'));
+        const btn = screen.getByTestId('pipeline-run-btn');
+        expect(btn.hasAttribute('disabled')).toBe(false);
+    });
+
+    it('▶ Run button is not disabled when pipeline.isValid is undefined', async () => {
+        const undefinedValidPipeline = { ...samplePipeline, isValid: undefined };
+        render(
+            <Wrap>
+                <PipelineDetail workspaceId="ws-1" pipeline={undefinedValidPipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
+            </Wrap>
+        );
+        await waitFor(() => screen.getByText('my-pipeline'));
+        const btn = screen.getByTestId('pipeline-run-btn');
+        expect(btn.hasAttribute('disabled')).toBe(false);
+    });
+
+    it('▶ Run button is disabled when pipeline.isValid is false', async () => {
+        const invalidPipeline = { ...samplePipeline, isValid: false, validationErrors: ['missing input'] };
+        render(
+            <Wrap>
+                <PipelineDetail workspaceId="ws-1" pipeline={invalidPipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
+            </Wrap>
+        );
+        await waitFor(() => screen.getByText('my-pipeline'));
+        const btn = screen.getByTestId('pipeline-run-btn');
+        expect(btn.getAttribute('disabled')).not.toBeNull();
+        expect(btn.getAttribute('title')).toBe('Fix validation errors before running');
+    });
+
+    it('▶ Run button is not shown in edit mode', async () => {
+        render(
+            <Wrap>
+                <PipelineDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
+            </Wrap>
+        );
+        await waitFor(() => screen.getByText('my-pipeline'));
+        fireEvent.click(screen.getByText('Edit'));
+        expect(screen.queryByTestId('pipeline-run-btn')).toBeNull();
+    });
+
+    it('clicking ▶ Run calls runPipeline and shows success toast', async () => {
+        const onRunSuccess = vi.fn();
+        vi.spyOn(pipelineApi, 'runPipeline').mockResolvedValue({ task: { id: 'abcdef1234567890' } });
+        render(
+            <Wrap>
+                <PipelineDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} onRunSuccess={onRunSuccess} />
+            </Wrap>
+        );
+        await waitFor(() => screen.getByText('my-pipeline'));
+        fireEvent.click(screen.getByTestId('pipeline-run-btn'));
+        await waitFor(() => {
+            expect(pipelineApi.runPipeline).toHaveBeenCalledWith('ws-1', 'my-pipeline');
+            expect(mockAddToast).toHaveBeenCalledWith('Pipeline queued (abcdef12)', 'success');
+            expect(onRunSuccess).toHaveBeenCalled();
+        });
+    });
+
+    it('clicking ▶ Run shows error toast on failure', async () => {
+        vi.spyOn(pipelineApi, 'runPipeline').mockRejectedValue(new Error('AI unavailable'));
+        render(
+            <Wrap>
+                <PipelineDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
+            </Wrap>
+        );
+        await waitFor(() => screen.getByText('my-pipeline'));
+        fireEvent.click(screen.getByTestId('pipeline-run-btn'));
+        await waitFor(() => {
+            expect(mockAddToast).toHaveBeenCalledWith('Failed to run pipeline: AI unavailable', 'error');
+        });
+    });
+
+    it('▶ Run shows toast without task ID when response has no id', async () => {
+        vi.spyOn(pipelineApi, 'runPipeline').mockResolvedValue({ task: {} });
+        render(
+            <Wrap>
+                <PipelineDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
+            </Wrap>
+        );
+        await waitFor(() => screen.getByText('my-pipeline'));
+        fireEvent.click(screen.getByTestId('pipeline-run-btn'));
+        await waitFor(() => {
+            expect(mockAddToast).toHaveBeenCalledWith('Pipeline queued', 'success');
+        });
+    });
 });
 
 // ============================================================================
@@ -943,5 +1048,26 @@ describe('PipelinesTab (split-panel layout)', () => {
         });
         render(<Wrap><PipelinesTab repo={repo} /></Wrap>);
         expect(screen.getByText(/Create your first pipeline by describing what it should do/)).toBeDefined();
+    });
+
+    it('successful ▶ Run switches to queue tab and updates hash', async () => {
+        vi.spyOn(pipelineApi, 'fetchPipelineContent').mockResolvedValue({
+            content: sampleYaml,
+            path: samplePipeline.path,
+        });
+        vi.spyOn(pipelineApi, 'runPipeline').mockResolvedValue({ task: { id: 'task-abc123' } });
+        const repo = makeRepo({
+            workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
+            pipelines: [samplePipeline],
+        });
+        render(<Wrap><PipelinesTab repo={repo} /></Wrap>);
+        // Select the pipeline
+        fireEvent.click(screen.getAllByText(/my-pipeline/)[0]);
+        await waitFor(() => screen.getByTestId('pipeline-run-btn'));
+        fireEvent.click(screen.getByTestId('pipeline-run-btn'));
+        await waitFor(() => {
+            expect(pipelineApi.runPipeline).toHaveBeenCalledWith('ws-1', 'my-pipeline');
+            expect(location.hash).toBe('#repos/ws-1/queue');
+        });
     });
 });
