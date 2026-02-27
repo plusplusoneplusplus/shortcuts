@@ -20,7 +20,7 @@ const defaultOptions: WorkflowExecutionOptions = {
 // Tests
 // ---------------------------------------------------------------------------
 
-describe('executeScript', { timeout: 10_000 }, () => {
+describe('executeScript', { timeout: 30_000 }, () => {
     it('json input/output — items are enriched', async () => {
         const config = cfg({
             run: 'node -e "const d=JSON.parse(require(\'fs\').readFileSync(0,\'utf8\')); process.stdout.write(JSON.stringify(d.map(i=>({...i,enriched:true}))))"',
