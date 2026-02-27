@@ -11,7 +11,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { test, expect } from './fixtures/server-fixture';
+import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace } from './fixtures/seed';
 import { createRepoFixture, createTasksFixture } from './fixtures/repo-fixtures';
 
@@ -131,7 +131,7 @@ test.describe('Preferences (007)', () => {
             const fpModel = page.locator('#fp-model');
             await expect(fpModel).toHaveValue('');
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -157,7 +157,7 @@ test.describe('Preferences (007)', () => {
             const prefs = await res.json();
             expect(prefs.lastModel).toBe(modelValue);
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -182,7 +182,7 @@ test.describe('Preferences (007)', () => {
             const prefs = await res.json();
             expect(prefs.lastModel).toBe(modelValue);
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -213,7 +213,7 @@ test.describe('Preferences (007)', () => {
             // Model select should have the persisted value
             await expect(page.locator('#fp-model')).toHaveValue(modelValue);
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -243,7 +243,7 @@ test.describe('Preferences (007)', () => {
 
             await expect(page.locator('#update-doc-model')).toHaveValue(modelValue);
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -266,7 +266,7 @@ test.describe('Preferences (007)', () => {
             await openUpdateDocumentDialog(page);
             await expect(page.locator('#update-doc-model')).toHaveValue(modelValue);
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -297,7 +297,7 @@ test.describe('Preferences (007)', () => {
             await openFollowPromptDialog(page);
             await expect(page.locator('#fp-model')).toHaveValue(modelValue);
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -329,7 +329,7 @@ test.describe('Preferences (007)', () => {
             const prefs = await res.json();
             expect(prefs.lastModel).toBe(model1);
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 });

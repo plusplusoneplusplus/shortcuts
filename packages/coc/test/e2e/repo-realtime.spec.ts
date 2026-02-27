@@ -9,7 +9,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { test, expect } from './fixtures/server-fixture';
+import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace, seedProcess, request } from './fixtures/seed';
 import { createRepoFixture, createTasksFixture } from './fixtures/repo-fixtures';
 
@@ -88,7 +88,7 @@ test.describe('Repo real-time: task list', () => {
                 timeout: 10000,
             });
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 });

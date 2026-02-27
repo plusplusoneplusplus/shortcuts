@@ -9,7 +9,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { test, expect } from './fixtures/server-fixture';
+import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedProcess, seedWorkspace, request } from './fixtures/seed';
 import { createRepoFixture, createTasksFixture } from './fixtures/repo-fixtures';
 
@@ -133,7 +133,7 @@ test.describe('Error Handling (008)', () => {
             // Error toast should appear
             await expect(page.locator('.toast-error')).toBeVisible({ timeout: 5000 });
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 

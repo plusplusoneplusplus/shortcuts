@@ -14,7 +14,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { seedWiki } from './fixtures/seed';
-import { expect, test } from './fixtures/server-fixture';
+import { expect, test, safeRmSync } from './fixtures/server-fixture';
 import type { CategoryInfo, ComponentGraph, ComponentInfo } from './fixtures/wiki-fixtures';
 import { createWikiComponent } from './fixtures/wiki-fixtures';
 
@@ -123,7 +123,7 @@ test.describe('Wiki Admin Panel', () => {
                 await expect(page.locator('#wiki-component-tree')).toBeVisible();
                 await expect(page.locator('#wiki-component-detail')).toBeVisible();
             } finally {
-                fs.rmSync(tmpDir, { recursive: true, force: true });
+                safeRmSync(tmpDir);
             }
         });
     });
@@ -164,7 +164,7 @@ test.describe('Wiki Admin Panel', () => {
                 await expect(page.locator('[data-wiki-admin-tab="seeds"]')).toHaveClass(/bg-\[#0078d4\]/);
                 await expect(page.locator('#admin-content-seeds')).toBeVisible();
             } finally {
-                fs.rmSync(tmpDir, { recursive: true, force: true });
+                safeRmSync(tmpDir);
             }
         });
 
@@ -182,7 +182,7 @@ test.describe('Wiki Admin Panel', () => {
                     await expect(page.locator(`#admin-content-${tabName}`)).toBeVisible();
                 }
             } finally {
-                fs.rmSync(tmpDir, { recursive: true, force: true });
+                safeRmSync(tmpDir);
             }
         });
     });
@@ -213,7 +213,7 @@ test.describe('Wiki Admin Panel', () => {
                 expect(value).toContain('auth-service');
                 expect(value).toContain('security');
             } finally {
-                fs.rmSync(tmpDir, { recursive: true, force: true });
+                safeRmSync(tmpDir);
             }
         });
 
@@ -234,7 +234,7 @@ test.describe('Wiki Admin Panel', () => {
                 const status = page.locator('#seeds-status');
                 await expect(status).toContainText('Invalid', { timeout: 5_000 });
             } finally {
-                fs.rmSync(tmpDir, { recursive: true, force: true });
+                safeRmSync(tmpDir);
             }
         });
 
@@ -261,7 +261,7 @@ test.describe('Wiki Admin Panel', () => {
                 await page.click('#seeds-reset');
                 await expect(seedsEditor).toHaveValue(originalValue);
             } finally {
-                fs.rmSync(tmpDir, { recursive: true, force: true });
+                safeRmSync(tmpDir);
             }
         });
     });
@@ -303,7 +303,7 @@ test.describe('Wiki Admin Panel', () => {
                 // Just verify the editor is accessible
                 expect(typeof value).toBe('string');
             } finally {
-                fs.rmSync(tmpDir, { recursive: true, force: true });
+                safeRmSync(tmpDir);
             }
         });
     });
@@ -336,7 +336,7 @@ test.describe('Wiki Admin Panel', () => {
                 await expect(page.locator('#phase-card-4')).toContainText('Writing');
                 await expect(page.locator('#phase-card-5')).toContainText('Website');
             } finally {
-                fs.rmSync(tmpDir, { recursive: true, force: true });
+                safeRmSync(tmpDir);
             }
         });
 
@@ -354,7 +354,7 @@ test.describe('Wiki Admin Panel', () => {
                 await expect(page.locator('#generate-start-phase')).toBeVisible();
                 await expect(page.locator('#phase-run-1')).toBeVisible();
             } finally {
-                fs.rmSync(tmpDir, { recursive: true, force: true });
+                safeRmSync(tmpDir);
             }
         });
 
@@ -415,7 +415,7 @@ test.describe('Wiki Admin Panel', () => {
                 // Wait for generation to complete (status bar disappears when done)
                 await expect(page.locator('#phase-log-1')).toContainText(/Complete|✓/, { timeout: 10_000 });
             } finally {
-                fs.rmSync(tmpDir, { recursive: true, force: true });
+                safeRmSync(tmpDir);
             }
         });
     });
@@ -455,7 +455,7 @@ test.describe('Wiki Admin Panel', () => {
                 // Run buttons should be re-enabled
                 await expect(page.locator('#phase-run-1')).not.toBeDisabled({ timeout: 5_000 });
             } finally {
-                fs.rmSync(tmpDir, { recursive: true, force: true });
+                safeRmSync(tmpDir);
             }
         });
 
@@ -484,7 +484,7 @@ test.describe('Wiki Admin Panel', () => {
                 const statusBar = page.locator('#generate-status-bar');
                 await expect(statusBar).toContainText('already in progress', { timeout: 10_000 });
             } finally {
-                fs.rmSync(tmpDir, { recursive: true, force: true });
+                safeRmSync(tmpDir);
             }
         });
     });
@@ -523,7 +523,7 @@ test.describe('Wiki Admin Panel', () => {
                 await expect(seedsEditor).toContainText('custom');
                 await expect(seedsEditor).toContainText('seeds data');
             } finally {
-                fs.rmSync(tmpDir, { recursive: true, force: true });
+                safeRmSync(tmpDir);
             }
         });
     });

@@ -10,7 +10,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { test, expect } from './fixtures/server-fixture';
+import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace } from './fixtures/seed';
 import { createRepoFixture, createTasksFixture } from './fixtures/repo-fixtures';
 
@@ -75,7 +75,7 @@ test.describe('Archive Workflow (012)', () => {
             const archivedFile = path.join(repoDir, '.vscode', 'tasks', 'archive', 'task-a.md');
             expect(fs.existsSync(archivedFile)).toBe(true);
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -91,7 +91,7 @@ test.describe('Archive Workflow (012)', () => {
             // Archive folder has italic styling (isArchived affects child docs)
             await expect(archiveRow).toHaveClass(/italic/);
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -132,7 +132,7 @@ test.describe('Archive Workflow (012)', () => {
             const restoredFile = path.join(repoDir, '.vscode', 'tasks', 'old.md');
             expect(fs.existsSync(restoredFile)).toBe(true);
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 });

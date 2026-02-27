@@ -13,7 +13,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { seedWiki } from './fixtures/seed';
-import { expect, test } from './fixtures/server-fixture';
+import { expect, test, safeRmSync } from './fixtures/server-fixture';
 import type { CategoryInfo, ComponentGraph, ComponentInfo } from './fixtures/wiki-fixtures';
 import { createWikiComponent, createWikiFixture } from './fixtures/wiki-fixtures';
 
@@ -156,7 +156,7 @@ test.describe('Component tree rendering', () => {
             await expect(tree.locator('.wiki-tree-empty')).toContainText('No components');
             await expect(tree.locator('.wiki-tree-component')).toHaveCount(0);
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -185,7 +185,7 @@ test.describe('Component tree rendering', () => {
             await expect(page.locator('.wiki-tree-component[data-id="api-gateway"]')).toBeVisible();
             await expect(page.locator('.wiki-tree-component[data-id="logger"]')).toBeVisible();
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -212,7 +212,7 @@ test.describe('Component tree rendering', () => {
             const infraGroup = page.locator('.wiki-tree-group').filter({ hasText: 'infra' }).first();
             await expect(infraGroup.locator('.wiki-tree-count')).toContainText('(1)');
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 });
@@ -245,7 +245,7 @@ test.describe('Component navigation', () => {
             await expect(content).toContainText('Auth Service', { timeout: 5_000 });
             await expect(content).toContainText('authentication and token management');
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -272,7 +272,7 @@ test.describe('Component navigation', () => {
             const gatewayItem = page.locator('.wiki-tree-component[data-id="api-gateway"]');
             await expect(gatewayItem).not.toHaveClass(/active/);
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -300,7 +300,7 @@ test.describe('Component navigation', () => {
             await expect(page.locator('.wiki-tree-component[data-id="api-gateway"]')).toHaveClass(/active/);
             await expect(page.locator('.wiki-tree-component[data-id="auth-service"]')).not.toHaveClass(/active/);
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -326,7 +326,7 @@ test.describe('Component navigation', () => {
             await expect(page.locator('#wiki-article-content')).toContainText('Auth Service', { timeout: 5_000 });
             await expect(page.locator('.wiki-tree-component[data-id="auth-service"]')).toHaveClass(/active/);
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 });
@@ -360,7 +360,7 @@ test.describe('Tree group collapse & expand', () => {
             await expect(page.locator('.wiki-tree-component[data-id="auth-service"]')).toBeVisible();
             await expect(page.locator('.wiki-tree-component[data-id="logger"]')).toBeVisible();
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -394,7 +394,7 @@ test.describe('Tree group collapse & expand', () => {
             await expect(apiGroup).toHaveClass(/expanded/);
             await expect(apiChild).toBeVisible();
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 });
@@ -429,7 +429,7 @@ test.describe('Component detail content', () => {
             await expect(content).toContainText('Features');
             await expect(content).toContainText('JWT tokens');
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -464,7 +464,7 @@ test.describe('Component detail content', () => {
             await page.click('#wiki-source-toggle');
             await expect(sourceSection).not.toHaveClass(/expanded/);
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -487,7 +487,7 @@ test.describe('Component detail content', () => {
             await expect(content).toContainText('Logger', { timeout: 5_000 });
             await expect(content).toContainText('logger');
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 });
@@ -528,7 +528,7 @@ test.describe('Home view & edge cases', () => {
             await expect(content).toContainText('Api Gateway');
             await expect(content).toContainText('Logger');
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -572,7 +572,7 @@ test.describe('Home view & edge cases', () => {
                 { timeout: 5_000 },
             );
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 });

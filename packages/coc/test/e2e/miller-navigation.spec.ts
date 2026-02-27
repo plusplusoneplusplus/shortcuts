@@ -10,7 +10,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { test, expect } from './fixtures/server-fixture';
+import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace } from './fixtures/seed';
 import { createRepoFixture, createTasksFixture } from './fixtures/repo-fixtures';
 
@@ -62,7 +62,7 @@ test.describe('Miller Column Navigation (009)', () => {
             await expect(page.locator('.miller-file-row', { hasText: 'task-b' })).toBeVisible();
             await expect(page.locator('[data-testid="task-tree-item-feature"]')).toBeVisible();
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -84,7 +84,7 @@ test.describe('Miller Column Navigation (009)', () => {
             const secondColumn = page.locator('[data-testid="miller-column-1"]');
             await expect(secondColumn.locator('[data-testid="task-tree-item-item"]')).toBeVisible();
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -100,7 +100,7 @@ test.describe('Miller Column Navigation (009)', () => {
             const previewBody = page.locator('#task-preview-body');
             await expect(previewBody).toContainText('Task A', { timeout: 10000 });
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -119,7 +119,7 @@ test.describe('Miller Column Navigation (009)', () => {
             // Preview should be removed
             await expect(page.locator('#task-preview-body')).toHaveCount(0, { timeout: 5000 });
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -134,7 +134,7 @@ test.describe('Miller Column Navigation (009)', () => {
             await expect(backlogBadge).toBeVisible();
             await expect(backlogBadge).toHaveText('1');
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 });

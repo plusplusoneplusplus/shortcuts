@@ -9,7 +9,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { test, expect } from './fixtures/server-fixture';
+import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedWiki, request } from './fixtures/seed';
 import { createWikiFixture } from './fixtures/wiki-fixtures';
 
@@ -46,7 +46,7 @@ test.describe('Wiki tab empty state & list', () => {
             await expect(page.locator('.wiki-card[data-wiki-id="wiki-1"]')).toBeVisible();
             await expect(page.locator('.wiki-card[data-wiki-id="wiki-2"]')).toBeVisible();
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -160,7 +160,7 @@ test.describe('Add Wiki success workflow', () => {
             await expect(page.locator('#wiki-card-list .wiki-card')).toHaveCount(1, { timeout: 10000 });
             await expect(page.locator('#wiki-card-list .wiki-card')).toContainText('My Test Wiki');
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -188,7 +188,7 @@ test.describe('Wiki selection & display', () => {
             await expect(page.locator('#wiki-component-tree')).not.toBeEmpty({ timeout: 5000 });
             await expect(page.locator('#wiki-component-tree .wiki-tree-empty')).toHaveCount(0);
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -208,7 +208,7 @@ test.describe('Wiki selection & display', () => {
             await expect(page.locator('#wiki-component-detail')).toBeVisible({ timeout: 5000 });
             await expect(page.locator('#wiki-empty')).toBeHidden();
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -236,7 +236,7 @@ test.describe('Wiki selection & display', () => {
             // Back to list view — card list visible (wiki remains in list)
             await expect(page.locator('#wiki-card-list')).toBeVisible();
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 });
@@ -270,7 +270,7 @@ test.describe('Delete wiki via REST API', () => {
             await expect(page.locator('#wiki-card-list .wiki-card')).toHaveCount(0, { timeout: 10000 });
             await expect(page.locator('#wiki-empty')).toBeVisible();
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 });
@@ -297,7 +297,7 @@ test.describe('Edit wiki dialog', () => {
             await card.hover();
             await expect(card.locator('.wiki-card-edit')).toBeVisible();
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -320,7 +320,7 @@ test.describe('Edit wiki dialog', () => {
             await expect(page.locator('#edit-wiki-overlay')).toBeVisible();
             await expect(page.locator('#edit-wiki-name')).toHaveValue('Edit Wiki 2');
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -344,7 +344,7 @@ test.describe('Edit wiki dialog', () => {
             await page.click('#edit-wiki-cancel-btn');
             await expect(page.locator('#edit-wiki-overlay')).toBeHidden();
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -371,7 +371,7 @@ test.describe('Edit wiki dialog', () => {
             await expect(page.locator('#edit-wiki-overlay')).toBeHidden({ timeout: 5000 });
             await expect(card).toContainText('Renamed Wiki');
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 });
@@ -397,7 +397,7 @@ test.describe('Delete wiki via UI', () => {
             await card.hover();
             await expect(card.locator('.wiki-card-delete')).toBeVisible();
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -420,7 +420,7 @@ test.describe('Delete wiki via UI', () => {
             await expect(page.locator('#delete-wiki-overlay')).toBeVisible();
             await expect(page.locator('#delete-wiki-name')).toContainText('Confirm Delete');
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -447,7 +447,7 @@ test.describe('Delete wiki via UI', () => {
             // Wiki should still be in the list
             await expect(card).toBeVisible();
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -474,7 +474,7 @@ test.describe('Delete wiki via UI', () => {
             // Wiki should be removed
             await expect(page.locator('.wiki-card[data-wiki-id="wiki-del-exec-1"]')).toHaveCount(0, { timeout: 10000 });
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 });
@@ -503,7 +503,7 @@ test.describe('Admin action tabs', () => {
             await expect(page.locator('.wiki-project-tab[data-wiki-project-tab="graph"]')).toBeVisible();
             await expect(page.locator('.wiki-project-tab[data-wiki-project-tab="admin"]')).toBeVisible();
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -531,7 +531,7 @@ test.describe('Admin action tabs', () => {
             await page.click('.wiki-project-tab[data-wiki-project-tab="browse"]');
             await expect(page.locator('#wiki-component-detail')).toBeVisible();
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 });
@@ -563,7 +563,7 @@ test.describe('Color & form options', () => {
             expect(colorWiki).toBeDefined();
             expect(colorWiki!.color).toBe('#16825d');
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 

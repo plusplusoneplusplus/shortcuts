@@ -10,7 +10,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { test, expect } from './fixtures/server-fixture';
+import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace } from './fixtures/seed';
 import { createRepoFixture, createTasksFixture } from './fixtures/repo-fixtures';
 
@@ -71,7 +71,7 @@ test.describe('Task CRUD (010)', () => {
             const taskFile = path.join(repoDir, '.vscode', 'tasks', 'my-new-task.md');
             expect(fs.existsSync(taskFile)).toBe(true);
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -98,7 +98,7 @@ test.describe('Task CRUD (010)', () => {
             const taskFile = path.join(repoDir, '.vscode', 'tasks', 'release-notes.plan.md');
             expect(fs.existsSync(taskFile)).toBe(true);
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -126,7 +126,7 @@ test.describe('Task CRUD (010)', () => {
             expect(fs.existsSync(folderPath)).toBe(true);
             expect(fs.statSync(folderPath).isDirectory()).toBe(true);
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -163,7 +163,7 @@ test.describe('Task CRUD (010)', () => {
             expect(fs.existsSync(path.join(repoDir, '.vscode', 'tasks', 'task-a.md'))).toBe(false);
             expect(fs.existsSync(path.join(repoDir, '.vscode', 'tasks', 'task-alpha.md'))).toBe(true);
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -197,7 +197,7 @@ test.describe('Task CRUD (010)', () => {
             // File should be deleted on disk
             expect(fs.existsSync(taskFile)).toBe(false);
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -231,7 +231,7 @@ test.describe('Task CRUD (010)', () => {
             // Folder and contents should be deleted on disk
             expect(fs.existsSync(folderPath)).toBe(false);
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 });

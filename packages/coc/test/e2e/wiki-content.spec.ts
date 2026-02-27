@@ -14,7 +14,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { seedWiki } from './fixtures/seed';
-import { expect, test } from './fixtures/server-fixture';
+import { expect, test, safeRmSync } from './fixtures/server-fixture';
 import type { CategoryInfo, ComponentGraph, ComponentInfo } from './fixtures/wiki-fixtures';
 import { createWikiComponent } from './fixtures/wiki-fixtures';
 
@@ -351,7 +351,7 @@ test.describe('Markdown rendering', () => {
             await expect(listItems).toHaveCount(3);
             await expect(listItems.nth(0)).toContainText('Markdown rendering');
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -377,7 +377,7 @@ test.describe('Markdown rendering', () => {
             // Verify active state transferred to code-examples in tree
             await expect(page.locator('.wiki-tree-component[data-id="code-examples"]')).toHaveClass(/active/);
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -403,7 +403,7 @@ test.describe('Markdown rendering', () => {
             const h3s = body.locator('h3');
             await expect(h3s.first()).toContainText('Subsection');
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -428,7 +428,7 @@ test.describe('Markdown rendering', () => {
             const firstP = paragraphs.first();
             await expect(firstP).toContainText('Lorem ipsum');
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 });
@@ -456,7 +456,7 @@ test.describe('Syntax highlighting', () => {
             const keywords = codeBlock.locator('.hljs-keyword');
             expect(await keywords.count()).toBeGreaterThan(0);
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -476,7 +476,7 @@ test.describe('Syntax highlighting', () => {
             const keywords = codeBlock.locator('.hljs-keyword');
             expect(await keywords.count()).toBeGreaterThan(0);
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -498,7 +498,7 @@ test.describe('Syntax highlighting', () => {
             const strings = codeBlock.locator('.hljs-string');
             expect(await strings.count()).toBeGreaterThan(0);
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -520,7 +520,7 @@ test.describe('Syntax highlighting', () => {
             const strings = codeBlock.locator('.hljs-string');
             expect(await strings.count()).toBeGreaterThan(0);
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -542,7 +542,7 @@ test.describe('Syntax highlighting', () => {
             const attrs = codeBlock.locator('.hljs-attribute');
             expect(await attrs.count()).toBeGreaterThan(0);
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -562,7 +562,7 @@ test.describe('Syntax highlighting', () => {
             const keywords = codeBlock.locator('.hljs-keyword');
             expect(await keywords.count()).toBeGreaterThan(0);
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 });
@@ -591,7 +591,7 @@ test.describe('Mermaid diagrams', () => {
             await expect(firstContainer.locator('.task-mermaid-toolbar')).toBeVisible();
             await expect(firstContainer.locator('.mermaid-header')).toContainText('Diagram');
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -616,7 +616,7 @@ test.describe('Mermaid diagrams', () => {
                 await expect(svg).toBeVisible({ timeout: 10_000 });
             }
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -639,7 +639,7 @@ test.describe('Mermaid diagrams', () => {
             // Verify initial zoom level
             await expect(firstContainer.locator('.task-mermaid-zoom-level')).toContainText('100%');
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 });
@@ -670,7 +670,7 @@ test.describe('Table of contents', () => {
             await expect(tocLinks.first()).toContainText('Long Article');
             await expect(tocNav.locator('a', { hasText: 'Section 1' })).toBeVisible();
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -696,7 +696,7 @@ test.describe('Table of contents', () => {
             const section4Heading = page.locator('#wiki-article-content .markdown-body h2', { hasText: 'Section 4' });
             await expect(section4Heading).toBeInViewport({ timeout: 3_000 });
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -741,7 +741,7 @@ test.describe('Table of contents', () => {
             const section5Link = page.locator('#wiki-toc-nav a', { hasText: 'Section 5' });
             await expect(section5Link).toHaveClass(/active/, { timeout: 3_000 });
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -767,7 +767,7 @@ test.describe('Table of contents', () => {
             const subsectionHeading = page.locator('#wiki-article-content .markdown-body h3', { hasText: 'Subsection 2.1' });
             await expect(subsectionHeading).toBeInViewport({ timeout: 3_000 });
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 });
@@ -811,7 +811,7 @@ test.describe('Dependency graph', () => {
             // Graph tab should be active
             await expect(page.locator('.wiki-project-tab[data-wiki-project-tab="graph"]')).toHaveClass(/active|bg-\[#0078d4\]/);
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -842,7 +842,7 @@ test.describe('Dependency graph', () => {
             await expect(legend).toContainText('docs');
             await expect(legend).toContainText('examples');
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -872,7 +872,7 @@ test.describe('Dependency graph', () => {
             // Clicking node should switch to browse tab and show component
             await expect(page.locator('#wiki-article-content, .wiki-component-card')).toBeVisible({ timeout: 10_000 });
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 });

@@ -9,7 +9,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { test, expect } from './fixtures/server-fixture';
+import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace, seedProcess, request } from './fixtures/seed';
 import { createRepoFixture, createTasksFixture } from './fixtures/repo-fixtures';
 
@@ -107,7 +107,7 @@ test.describe('Add Repo workflow', () => {
             await page.locator('.repo-item').first().click();
             await expect(page.locator('#repo-detail-content')).toBeVisible();
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -138,7 +138,7 @@ test.describe('Add Repo workflow', () => {
             // Breadcrumb should update to include test-repo
             await expect(page.locator('#path-breadcrumb')).toContainText('test-repo');
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -167,7 +167,7 @@ test.describe('Add Repo workflow', () => {
             await expect(page.locator('#path-browser')).toBeHidden();
             await expect(page.locator('#repo-path')).toHaveValue(repoDir);
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -189,7 +189,7 @@ test.describe('Add Repo workflow', () => {
             // Alias should be auto-populated from last path segment
             await expect(page.locator('#repo-alias')).toHaveValue('test-repo');
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -235,7 +235,7 @@ test.describe('Add Repo workflow', () => {
             const detailDot = page.locator('#repo-detail-content .repo-color-dot');
             await expect(detailDot.first()).toHaveAttribute('style', /#107c10|rgb\s*\(\s*16\s*,\s*124\s*,\s*16\s*\)/);
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 });
@@ -523,7 +523,7 @@ test.describe('Info Tab Content', () => {
             await expect(branchItem).toBeVisible();
             await expect(branchItem.locator('span').last()).toContainText(/main|master/);
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -630,7 +630,7 @@ test.describe('Pipelines Tab Content', () => {
             await expect(pipelineItems.first().locator('.repo-pipeline-actions .action-btn')).toBeVisible();
             await expect(pipelineItems.first().locator('.repo-pipeline-actions .action-btn')).toContainText('View');
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 

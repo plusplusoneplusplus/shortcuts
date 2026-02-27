@@ -9,7 +9,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { test, expect } from './fixtures/server-fixture';
+import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace } from './fixtures/seed';
 import { createRepoFixture, createTasksFixture } from './fixtures/repo-fixtures';
 
@@ -64,7 +64,7 @@ test.describe('Context Menu (014)', () => {
             await expect(menu.getByRole('menuitem', { name: /Delete/ })).toBeVisible();
             await expect(menu.getByRole('menuitem', { name: /Archive/ })).toBeVisible();
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -86,7 +86,7 @@ test.describe('Context Menu (014)', () => {
             await expect(menu.getByRole('menuitem', { name: /Rename Folder/ })).toBeVisible();
             await expect(menu.getByRole('menuitem', { name: /Delete Folder/ })).toBeVisible();
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -110,7 +110,7 @@ test.describe('Context Menu (014)', () => {
             // Menu should disappear
             await expect(menu).toHaveCount(0, { timeout: 5000 });
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 });

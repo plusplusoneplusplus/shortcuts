@@ -10,7 +10,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { test, expect } from './fixtures/server-fixture';
+import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace } from './fixtures/seed';
 import { createRepoFixture, createTasksFixture } from './fixtures/repo-fixtures';
 
@@ -59,7 +59,7 @@ test.describe('Document Groups (013)', () => {
             // Group row represents both docs — data-file-path uses first doc (feature.plan.md)
             await expect(featureRow).toHaveAttribute('data-file-path', 'feature.plan.md');
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -78,7 +78,7 @@ test.describe('Document Groups (013)', () => {
             // Group row's data-file-path points to first doc
             await expect(featureRow).toHaveAttribute('data-file-path', 'feature.plan.md');
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -126,7 +126,7 @@ test.describe('Document Groups (013)', () => {
             expect(fs.existsSync(path.join(tasksDir, 'redesign.plan.md'))).toBe(true);
             expect(fs.existsSync(path.join(tasksDir, 'redesign.spec.md'))).toBe(true);
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 });

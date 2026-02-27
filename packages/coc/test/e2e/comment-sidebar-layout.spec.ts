@@ -9,7 +9,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { test, expect } from './fixtures/server-fixture';
+import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace, request } from './fixtures/seed';
 import { createRepoFixture, createTasksFixture } from './fixtures/repo-fixtures';
 
@@ -89,7 +89,7 @@ test.describe('Comment Sidebar Layout', () => {
             await expect(page.locator('[data-testid="editor-status-filter-all"]')).toHaveCount(0);
             await expect(page.locator('[data-testid="editor-category-filter-all"]')).toHaveCount(0);
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -124,7 +124,7 @@ test.describe('Comment Sidebar Layout', () => {
             await sidebar.locator('[data-testid="category-filter-bug"]').click();
             await expect(commentList.locator('[data-testid^="comment-card-"]')).toHaveCount(1, { timeout: 5000 });
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -142,7 +142,7 @@ test.describe('Comment Sidebar Layout', () => {
             await expect(page.locator('[data-testid="comment-sidebar"]')).toHaveCount(0);
             await expect(page.locator('[data-testid="markdown-review-status-bar"]')).toHaveCount(0);
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 });

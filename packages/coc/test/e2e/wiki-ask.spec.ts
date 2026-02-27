@@ -16,7 +16,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { seedWiki } from './fixtures/seed';
-import { expect, test } from './fixtures/server-fixture';
+import { expect, test, safeRmSync } from './fixtures/server-fixture';
 import type { CategoryInfo, ComponentGraph, ComponentInfo } from './fixtures/wiki-fixtures';
 import { createWikiComponent } from './fixtures/wiki-fixtures';
 
@@ -209,7 +209,7 @@ test.describe('Wiki Ask AI Widget', () => {
                 await expect(header).toHaveClass(/hidden/);
                 await expect(messages).toHaveClass(/hidden/);
             } finally {
-                fs.rmSync(tmpDir, { recursive: true, force: true });
+                safeRmSync(tmpDir);
             }
         });
 
@@ -229,7 +229,7 @@ test.describe('Wiki Ask AI Widget', () => {
                 await page.keyboard.press('Escape');
                 await expect(page.locator('#wiki-ask-widget')).not.toHaveClass(/expanded/);
             } finally {
-                fs.rmSync(tmpDir, { recursive: true, force: true });
+                safeRmSync(tmpDir);
             }
         });
     });
@@ -265,7 +265,7 @@ test.describe('Wiki Ask AI Widget', () => {
                 // Textarea should be cleared
                 await expect(textarea).toHaveValue('');
             } finally {
-                fs.rmSync(tmpDir, { recursive: true, force: true });
+                safeRmSync(tmpDir);
             }
         });
 
@@ -301,7 +301,7 @@ test.describe('Wiki Ask AI Widget', () => {
                 await page.locator('#wiki-ask-textarea').fill('follow-up');
                 await expect(sendBtn).not.toBeDisabled();
             } finally {
-                fs.rmSync(tmpDir, { recursive: true, force: true });
+                safeRmSync(tmpDir);
             }
         });
     });
@@ -359,7 +359,7 @@ test.describe('Wiki Ask AI Widget', () => {
                 const allMessages = messages.locator('.ask-message > div');
                 await expect(allMessages).toHaveCount(4);
             } finally {
-                fs.rmSync(tmpDir, { recursive: true, force: true });
+                safeRmSync(tmpDir);
             }
         });
     });
@@ -391,7 +391,7 @@ test.describe('Wiki Ask AI Widget', () => {
                 // Streaming indicator (Thinking…) should be removed after streaming completes
                 await expect(messages.locator('.ask-message-assistant')).toContainText('Streamed response content');
             } finally {
-                fs.rmSync(tmpDir, { recursive: true, force: true });
+                safeRmSync(tmpDir);
             }
         });
     });
@@ -441,7 +441,7 @@ test.describe('Wiki Ask AI Widget', () => {
                 // Ask panel should still be visible
                 await expect(page.locator('#wiki-ask-messages')).toBeVisible();
             } finally {
-                fs.rmSync(tmpDir, { recursive: true, force: true });
+                safeRmSync(tmpDir);
             }
         });
     });
@@ -474,7 +474,7 @@ test.describe('Wiki Ask AI Widget', () => {
                 await expect(messages.locator('.ask-message-user')).toHaveCount(0);
                 expect(apiCalled).toBe(false);
             } finally {
-                fs.rmSync(tmpDir, { recursive: true, force: true });
+                safeRmSync(tmpDir);
             }
         });
 
@@ -507,7 +507,7 @@ test.describe('Wiki Ask AI Widget', () => {
                 await expect(page.locator('#wiki-ask-messages .ask-message-user')).toBeVisible({ timeout: 5_000 });
                 await expect(textarea).toHaveValue('');
             } finally {
-                fs.rmSync(tmpDir, { recursive: true, force: true });
+                safeRmSync(tmpDir);
             }
         });
     });
@@ -543,7 +543,7 @@ test.describe('Wiki Ask AI Widget', () => {
                 await page.locator('#wiki-ask-textarea').fill('retry');
                 await expect(page.locator('#wiki-ask-widget-send')).not.toBeDisabled();
             } finally {
-                fs.rmSync(tmpDir, { recursive: true, force: true });
+                safeRmSync(tmpDir);
             }
         });
 
@@ -564,7 +564,7 @@ test.describe('Wiki Ask AI Widget', () => {
                 await expect(messages.locator('.ask-message-error')).toBeVisible({ timeout: 10_000 });
                 await expect(messages.locator('.ask-message-error')).toContainText('Context retrieval failed');
             } finally {
-                fs.rmSync(tmpDir, { recursive: true, force: true });
+                safeRmSync(tmpDir);
             }
         });
     });
@@ -622,7 +622,7 @@ test.describe('Wiki Ask AI Widget', () => {
                 await expect(messages.locator('.ask-message-context')).toBeVisible();
                 await expect(messages.locator('.ask-message-context')).toContainText('auth-service');
             } finally {
-                fs.rmSync(tmpDir, { recursive: true, force: true });
+                safeRmSync(tmpDir);
             }
         });
     });

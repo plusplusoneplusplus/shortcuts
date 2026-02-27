@@ -10,7 +10,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { test, expect } from './fixtures/server-fixture';
+import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace } from './fixtures/seed';
 import { createRepoFixture, createTasksFixture } from './fixtures/repo-fixtures';
 
@@ -61,7 +61,7 @@ test.describe('Status Cycling (011)', () => {
             await expect(taskBRow).toBeVisible();
             await expect(taskBRow).toContainText('✅');
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -89,7 +89,7 @@ test.describe('Status Cycling (011)', () => {
             const updatedRow = page.locator('.miller-file-row', { hasText: 'task-a' });
             await expect(updatedRow).toContainText('🔄', { timeout: 10000 });
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -131,7 +131,7 @@ test.describe('Status Cycling (011)', () => {
             const refreshedRow = page.locator('.miller-file-row', { hasText: 'task-a' });
             await expect(refreshedRow).toContainText('🔄', { timeout: 10000 });
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 });

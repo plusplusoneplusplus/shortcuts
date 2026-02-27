@@ -11,7 +11,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { test, expect } from './fixtures/server-fixture';
+import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace, request } from './fixtures/seed';
 import { createRepoFixture, createTasksFixture } from './fixtures/repo-fixtures';
 
@@ -100,7 +100,7 @@ test.describe('AI Actions (007)', () => {
             await expect(aiButton).toBeVisible();
             await expect(aiButton).toHaveAttribute('title', 'AI Actions');
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -118,7 +118,7 @@ test.describe('AI Actions (007)', () => {
             await expect(dropdown.locator('[data-ai-action="follow-prompt"]')).toBeVisible();
             await expect(dropdown.locator('[data-ai-action="update-document"]')).toBeVisible();
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -143,7 +143,7 @@ test.describe('AI Actions (007)', () => {
             const viewportSize = page.viewportSize()!;
             expect(dropdownBox!.y + dropdownBox!.height).toBeLessThanOrEqual(viewportSize.height + 1);
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -163,7 +163,7 @@ test.describe('AI Actions (007)', () => {
 
             await expect(dropdown).toHaveCount(0, { timeout: 5000 });
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -192,7 +192,7 @@ test.describe('AI Actions (007)', () => {
             // Should have the "impl" skill
             await expect(page.locator('.fp-item[data-name="impl"]')).toBeVisible();
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -248,7 +248,7 @@ test.describe('AI Actions (007)', () => {
             expect(typeof sendMessageOpts.prompt).toBe('string');
             expect(sendMessageOpts.prompt.length).toBeGreaterThan(0);
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -275,7 +275,7 @@ test.describe('AI Actions (007)', () => {
             await expect(page.locator('#update-doc-submit')).toBeVisible();
             await expect(page.locator('#update-doc-cancel')).toBeVisible();
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -331,7 +331,7 @@ test.describe('AI Actions (007)', () => {
             const [sendMessageOpts] = mockAI.mockSendMessage.calls[0] as [{ prompt: string }];
             expect(sendMessageOpts.prompt).toContain('Add error handling');
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -353,7 +353,7 @@ test.describe('AI Actions (007)', () => {
             // Modal should close
             await expect(overlay).toHaveCount(0, { timeout: 5000 });
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -374,7 +374,7 @@ test.describe('AI Actions (007)', () => {
 
             await expect(overlay).toHaveCount(0, { timeout: 5000 });
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -395,7 +395,7 @@ test.describe('AI Actions (007)', () => {
 
             await expect(overlay).toHaveCount(0, { timeout: 5000 });
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -428,7 +428,7 @@ test.describe('AI Actions (007)', () => {
             const secondFilePath = await fileRows.nth(1).getAttribute('data-file-path');
             await expect(dropdown).toHaveAttribute('data-task-path', secondFilePath!);
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 });

@@ -12,7 +12,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { test, expect } from './fixtures/server-fixture';
+import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace, request } from './fixtures/seed';
 import { createRepoFixture, createTasksFixture } from './fixtures/repo-fixtures';
 
@@ -68,7 +68,7 @@ test.describe('Tasks real-time: API create (015)', () => {
             const taskFile = path.join(repoDir, '.vscode', 'tasks', 'api-created-task.md');
             expect(fs.existsSync(taskFile)).toBe(true);
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 });
@@ -112,7 +112,7 @@ test.describe('Tasks real-time: API delete (015)', () => {
             // Verify file was deleted on disk
             expect(fs.existsSync(taskFile)).toBe(false);
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 });

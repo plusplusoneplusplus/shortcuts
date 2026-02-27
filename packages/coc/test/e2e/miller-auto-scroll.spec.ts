@@ -11,7 +11,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { test, expect } from './fixtures/server-fixture';
+import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace } from './fixtures/seed';
 import { createRepoFixture, createDeepTasksFixture } from './fixtures/repo-fixtures';
 
@@ -87,7 +87,7 @@ test.describe('Miller Column Auto-Scroll', () => {
                 expect(metrics.scrollLeft).toBeGreaterThan(initialScroll);
             }
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -123,7 +123,7 @@ test.describe('Miller Column Auto-Scroll', () => {
             expect(metricsAfter.scrollWidth).toBeGreaterThan(metricsAfter.clientWidth);
             expect(metricsAfter.scrollLeft).toBeGreaterThan(scrollBeforeFile);
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -148,7 +148,7 @@ test.describe('Miller Column Auto-Scroll', () => {
                 expect(metricsAfter.scrollLeft).toBeGreaterThanOrEqual(scrollBefore);
             }
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 
@@ -182,7 +182,7 @@ test.describe('Miller Column Auto-Scroll', () => {
                 expect(metrics.scrollLeft).toBeGreaterThanOrEqual(maxScroll - tolerance);
             }
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            safeRmSync(tmpDir);
         }
     });
 });

@@ -20,6 +20,27 @@ import * as os from 'os';
 import * as path from 'path';
 import { createE2EMockSDKService, type E2EMockAIControls } from './mock-ai';
 
+/**
+ * Windows-safe recursive directory removal.
+ * On Windows, file handles may linger after server.close(), causing ENOTEMPTY.
+ * Retries with exponential back-off (50ms, 100ms, 200ms) before giving up.
+ */
+export function safeRmSync(dir: string, maxRetries = 3): void {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+            fs.rmSync(dir, { recursive: true, force: true });
+            return;
+        } catch (err: any) {
+            if (attempt === maxRetries || (err.code !== 'ENOTEMPTY' && err.code !== 'EBUSY' && err.code !== 'EPERM')) {
+                throw err;
+            }
+            const delayMs = 50 * Math.pow(2, attempt);
+            const start = Date.now();
+            while (Date.now() - start < delayMs) { /* busy-wait for sync context */ }
+        }
+    }
+}
+
 // Import from compiled dist — Playwright doesn't transpile source TS
 const { createExecutionServer } = require('../../../dist/server/index');
 const { FileProcessStore } = require('@plusplusoneplusplus/pipeline-core');
@@ -123,7 +144,7 @@ export const test = base.extend<ServerFixture & { _context: ServerContext }>({
         await use({ server, mockAI, tmpDir });
 
         await server.close();
-        fs.rmSync(tmpDir, { recursive: true, force: true });
+        safeRmSync(tmpDir);
     },
 
     server: async ({ _context }, use) => {
