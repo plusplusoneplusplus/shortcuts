@@ -433,4 +433,75 @@ reduce:
             expect(res.status === 403 || res.status === 404).toBe(true);
         });
     });
+
+    // ====================================================================
+    // POST /api/workspaces/:id/pipelines/:name/run
+    // ====================================================================
+
+    describe('POST /api/workspaces/:id/pipelines/:name/run', () => {
+        it('should return 201 with taskId when pipeline exists', async () => {
+            createPipelines({ 'my-pipeline': VALID_YAML });
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+
+            const res = await postJSON(
+                `${srv.url}/api/workspaces/${wsId}/pipelines/my-pipeline/run`,
+                {}
+            );
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.taskId).toBeDefined();
+            expect(typeof body.taskId).toBe('string');
+            expect(body.pipelineName).toBe('my-pipeline');
+            expect(body.queuedAt).toBeDefined();
+            expect(typeof body.queuedAt).toBe('number');
+        });
+
+        it('should return 404 when workspace not found', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(
+                `${srv.url}/api/workspaces/nonexistent-ws/pipelines/my-pipeline/run`,
+                {}
+            );
+            expect(res.status).toBe(404);
+        });
+
+        it('should return 404 when pipeline not found', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+
+            const res = await postJSON(
+                `${srv.url}/api/workspaces/${wsId}/pipelines/nonexistent-pipeline/run`,
+                {}
+            );
+            expect(res.status).toBe(404);
+        });
+
+        it('should return 403 for path traversal', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+
+            const res = await postJSON(
+                `${srv.url}/api/workspaces/${wsId}/pipelines/..%2F..%2Fetc/run`,
+                {}
+            );
+            expect(res.status === 403 || res.status === 404).toBe(true);
+        });
+
+        it('should accept optional body with model and params', async () => {
+            createPipelines({ 'param-pipeline': VALID_YAML });
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+
+            const res = await postJSON(
+                `${srv.url}/api/workspaces/${wsId}/pipelines/param-pipeline/run`,
+                { model: 'gpt-4', params: { key: 'value' } }
+            );
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.taskId).toBeDefined();
+            expect(body.pipelineName).toBe('param-pipeline');
+        });
+    });
 });

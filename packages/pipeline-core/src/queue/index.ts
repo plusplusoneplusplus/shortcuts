@@ -66,6 +66,7 @@ export {
     CodeReviewPayload,
     AIClarificationPayload,
     TaskGenerationPayload,
+    RunPipelinePayload,
     CustomTaskPayload,
     TaskPayload,
 
@@ -111,6 +112,7 @@ export {
     isCodeReviewPayload,
     isAIClarificationPayload,
     isTaskGenerationPayload,
+    isRunPipelinePayload,
     isCustomTaskPayload,
 
     // Utilities

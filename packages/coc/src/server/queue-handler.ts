@@ -24,7 +24,7 @@ import * as fs from 'fs';
 // ============================================================================
 
 const VALID_PRIORITIES: Set<string> = new Set(['high', 'normal', 'low']);
-const VALID_TASK_TYPES: Set<string> = new Set(['follow-prompt', 'resolve-comments', 'code-review', 'ai-clarification', 'custom', 'chat']);
+const VALID_TASK_TYPES: Set<string> = new Set(['follow-prompt', 'resolve-comments', 'code-review', 'ai-clarification', 'custom', 'chat', 'run-pipeline']);
 
 /** Human-readable labels for task types, used when auto-generating display names. */
 const TYPE_LABELS: Record<string, string> = {
@@ -34,6 +34,7 @@ const TYPE_LABELS: Record<string, string> = {
     'ai-clarification': 'AI Clarification',
     'custom': 'Task',
     'chat': 'Chat',
+    'run-pipeline': 'Run Pipeline',
 };
 
 /**
@@ -65,6 +66,11 @@ function generateDisplayName(type: string, payload: any): string {
         if (payload.data && typeof payload.data.prompt === 'string' && payload.data.prompt.trim()) {
             const snippet = payload.data.prompt.trim();
             return snippet.length > 60 ? snippet.substring(0, 57) + '...' : snippet;
+        }
+        // Run pipeline: use pipeline path basename
+        if (typeof payload.pipelinePath === 'string' && payload.pipelinePath.trim()) {
+            const basename = path.basename(payload.pipelinePath);
+            return `${typeLabel}: ${basename}`;
         }
     }
 

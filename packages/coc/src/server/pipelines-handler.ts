@@ -14,11 +14,13 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
+import type { CreateTaskInput, RunPipelinePayload } from '@plusplusoneplusplus/pipeline-core';
 import { getCopilotSDKService, denyAllPermissions } from '@plusplusoneplusplus/pipeline-core';
 import { sendJSON, sendError, parseBody } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
 import { discoverPipelines } from '@plusplusoneplusplus/coc-server';
 import { validatePipeline } from '../commands/validate';
+import type { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 
 // ============================================================================
 // Constants
@@ -370,6 +372,7 @@ export function registerPipelineWriteRoutes(
     routes: Route[],
     store: ProcessStore,
     onPipelinesChanged?: (workspaceId: string) => void,
+    bridge?: MultiRepoQueueExecutorBridge,
 ): void {
 
     // ------------------------------------------------------------------
@@ -636,6 +639,75 @@ ${PIPELINE_SCHEMA_REFERENCE}`;
             } catch (err: any) {
                 return sendError(res, 500, 'Failed to create pipeline: ' + (err.message || 'Unknown error'));
             }
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // POST /api/workspaces/:id/pipelines/:name/run — Run a pipeline
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/pipelines\/([^/]+)\/run$/,
+        handler: async (req, res, match) => {
+            if (!bridge) {
+                return sendError(res, 503, 'Queue system not available');
+            }
+
+            const id = decodeURIComponent(match![1]);
+            const pipelineName = decodeURIComponent(match![2]);
+            const ws = await resolveWorkspace(store, id);
+            if (!ws) {
+                return sendError(res, 404, 'Workspace not found');
+            }
+
+            const parsed = url.parse(req.url || '/', true);
+            const folder = (typeof parsed.query.folder === 'string' && parsed.query.folder)
+                ? parsed.query.folder
+                : DEFAULT_PIPELINES_FOLDER;
+            const pipelinesDir = path.resolve(ws.rootPath, folder);
+
+            const resolvedDir = resolveAndValidatePath(pipelinesDir, pipelineName);
+            if (!resolvedDir) {
+                return sendError(res, 403, 'Access denied: invalid pipeline name');
+            }
+
+            const yamlPath = path.join(resolvedDir, 'pipeline.yaml');
+            try {
+                await fs.promises.stat(yamlPath);
+            } catch {
+                return sendError(res, 404, 'Pipeline not found');
+            }
+
+            // Parse optional body for overrides
+            let body: any = {};
+            try {
+                body = await parseBody(req);
+            } catch {
+                // Empty body is fine — all fields are optional
+            }
+
+            const payload: RunPipelinePayload = {
+                kind: 'run-pipeline',
+                pipelinePath: resolvedDir,
+                workingDirectory: ws.rootPath,
+                model: body?.model,
+                params: body?.params,
+                workspaceId: id,
+            };
+
+            const taskInput: CreateTaskInput<RunPipelinePayload> = {
+                type: 'run-pipeline',
+                priority: body?.priority || 'normal',
+                payload,
+                config: { model: body?.model },
+                displayName: `Run Pipeline: ${pipelineName}`,
+            };
+
+            bridge.getOrCreateBridge(ws.rootPath);
+            const queueManager = bridge.registry.getQueueForRepo(ws.rootPath);
+            const taskId = queueManager.enqueue(taskInput);
+
+            sendJSON(res, 201, { taskId, pipelineName, queuedAt: Date.now() });
         },
     });
 }

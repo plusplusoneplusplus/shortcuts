@@ -20,6 +20,7 @@ export type TaskType =
     | 'code-review'
     | 'ai-clarification'
     | 'task-generation'
+    | 'run-pipeline'
     | 'custom';
 
 /**
@@ -153,6 +154,24 @@ export interface TaskGenerationPayload {
 }
 
 /**
+ * Payload for run-pipeline tasks (execute a pipeline via the queue)
+ */
+export interface RunPipelinePayload {
+    /** Discriminant field for clean type narrowing */
+    readonly kind: 'run-pipeline';
+    /** Absolute path to the pipeline package directory (contains pipeline.yaml) */
+    pipelinePath: string;
+    /** Working directory for AI session execution */
+    workingDirectory: string;
+    /** Optional AI model override */
+    model?: string;
+    /** Optional pipeline parameter overrides (key=value) */
+    params?: Record<string, string>;
+    /** Workspace ID for display / process metadata */
+    workspaceId?: string;
+}
+
+/**
  * Payload for custom tasks
  */
 export interface CustomTaskPayload {
@@ -171,6 +190,7 @@ export type TaskPayload =
     | CodeReviewPayload
     | AIClarificationPayload
     | TaskGenerationPayload
+    | RunPipelinePayload
     | CustomTaskPayload;
 
 // ============================================================================
@@ -565,6 +585,13 @@ export function isCustomTaskPayload(payload: TaskPayload): payload is CustomTask
  */
 export function isTaskGenerationPayload(payload: TaskPayload): payload is TaskGenerationPayload {
     return (payload as any).kind === 'task-generation';
+}
+
+/**
+ * Check if a payload is a RunPipelinePayload
+ */
+export function isRunPipelinePayload(payload: TaskPayload): payload is RunPipelinePayload {
+    return (payload as any).kind === 'run-pipeline';
 }
 
 /**

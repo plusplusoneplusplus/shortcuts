@@ -218,7 +218,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             workspaceId,
             timestamp: Date.now(),
         });
-    });
+    }, bridge);
     registerTaskGenerationRoutes(routes, store, bridge);
     registerPromptRoutes(routes, store);
     registerPreferencesRoutes(routes, dataDir);

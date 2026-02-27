@@ -30,6 +30,7 @@ import {
     isAIClarificationPayload,
     isCustomTaskPayload,
     isTaskGenerationPayload,
+    isRunPipelinePayload,
     getCopilotSDKService,
     approveAllPermissions,
     DEFAULT_AI_TIMEOUT_MS,
@@ -40,8 +41,11 @@ import {
     buildCreateFromFeaturePrompt,
     buildDeepModePrompt,
     gatherFeatureContext,
+    parsePipelineYAMLSync,
+    executePipeline,
 } from '@plusplusoneplusplus/pipeline-core';
-import type { ProcessStore, AIProcess, ConversationTurn, ToolEvent, TimelineItem, CopilotSDKService, TaskGenerationPayload, SelectedContext } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore, AIProcess, ConversationTurn, ToolEvent, TimelineItem, CopilotSDKService, TaskGenerationPayload, RunPipelinePayload, SelectedContext } from '@plusplusoneplusplus/pipeline-core';
+import { createCLIAIInvoker } from '../ai-invoker';
 
 // ============================================================================
 // Types
@@ -449,6 +453,10 @@ export class CLITaskExecutor implements TaskExecutor {
             return task.payload.prompt;
         }
 
+        if (isRunPipelinePayload(task.payload)) {
+            return `Run pipeline: ${path.basename(task.payload.pipelinePath)}`;
+        }
+
         if (isAIClarificationPayload(task.payload)) {
             return task.payload.prompt || task.displayName || 'AI clarification task';
         }
@@ -529,6 +537,11 @@ export class CLITaskExecutor implements TaskExecutor {
         // Task generation: build the appropriate prompt and delegate to AI
         if (isTaskGenerationPayload(task.payload)) {
             return this.executeTaskGeneration(task);
+        }
+
+        // Run pipeline: parse YAML and execute via pipeline-core
+        if (isRunPipelinePayload(task.payload)) {
+            return this.executeRunPipeline(task);
         }
 
         // For types that need AI execution
@@ -660,8 +673,66 @@ export class CLITaskExecutor implements TaskExecutor {
         return this.executeWithAI(task, aiPrompt);
     }
 
+    private async executeRunPipeline(task: QueuedTask): Promise<unknown> {
+        const payload = task.payload as RunPipelinePayload;
+        const yamlPath = path.join(payload.pipelinePath, 'pipeline.yaml');
+
+        // Read and parse pipeline YAML
+        const yamlContent = fs.readFileSync(yamlPath, 'utf-8');
+        const config = parsePipelineYAMLSync(yamlContent);
+
+        // Apply model override from payload
+        if (payload.model) {
+            if (config.map) { config.map.model = payload.model; }
+            if (config.job) { config.job.model = payload.model; }
+        }
+
+        // Apply parameter overrides
+        if (payload.params && Object.keys(payload.params).length > 0) {
+            const isJob = !!config.job;
+            if (isJob) {
+                if (!config.parameters) { config.parameters = []; }
+                for (const [key, value] of Object.entries(payload.params)) {
+                    const existing = config.parameters.find(p => p.name === key);
+                    if (existing) { existing.value = value; }
+                    else { config.parameters.push({ name: key, value }); }
+                }
+            } else if (config.input) {
+                if (!config.input.parameters) { config.input.parameters = []; }
+                for (const [key, value] of Object.entries(payload.params)) {
+                    const existing = config.input.parameters!.find(p => p.name === key);
+                    if (existing) { existing.value = value; }
+                    else { config.input.parameters!.push({ name: key, value }); }
+                }
+            }
+        }
+
+        // Create AIInvoker using the same factory as `coc run`
+        const aiInvoker = createCLIAIInvoker({
+            model: payload.model || config.job?.model || config.map?.model,
+            approvePermissions: this.approvePermissions,
+            workingDirectory: payload.workingDirectory,
+        });
+
+        // Execute
+        const result = await executePipeline(config, {
+            aiInvoker,
+            pipelineDirectory: payload.pipelinePath,
+            workspaceRoot: payload.workingDirectory,
+        });
+
+        return {
+            response: result.output?.formattedOutput ?? JSON.stringify(result.executionStats),
+            pipelineName: config.name,
+            stats: result.executionStats,
+        };
+    }
+
     private getWorkingDirectory(task: QueuedTask): string | undefined {
         if (isTaskGenerationPayload(task.payload)) {
+            return task.payload.workingDirectory || this.defaultWorkingDirectory;
+        }
+        if (isRunPipelinePayload(task.payload)) {
             return task.payload.workingDirectory || this.defaultWorkingDirectory;
         }
         if (isFollowPromptPayload(task.payload)) {

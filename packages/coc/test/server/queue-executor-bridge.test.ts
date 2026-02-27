@@ -45,13 +45,21 @@ import { createMockProcessStore, createCompletedProcessWithSession } from '../he
 const sdkMocks = createMockSDKService();
 const { mockSendMessage, mockIsAvailable, mockSendFollowUp, mockCanResumeSession } = sdkMocks;
 
+const mockExecutePipeline = vi.fn();
+
 vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@plusplusoneplusplus/pipeline-core')>();
     return {
         ...actual,
         getCopilotSDKService: () => sdkMocks.service,
+        executePipeline: (...args: any[]) => mockExecutePipeline(...args),
     };
 });
+
+const mockCreateCLIAIInvoker = vi.fn().mockReturnValue(vi.fn());
+vi.mock('../../src/ai-invoker', () => ({
+    createCLIAIInvoker: (...args: any[]) => mockCreateCLIAIInvoker(...args),
+}));
 
 // ============================================================================
 // Helpers
@@ -3886,6 +3894,177 @@ describe('createQueueExecutorBridge', () => {
             expect(history[0].status).toBe('completed');
 
             executor.dispose();
+        });
+    });
+
+    // ========================================================================
+    // Run Pipeline Tasks
+    // ========================================================================
+
+    describe('run-pipeline tasks', () => {
+        let store: ReturnType<typeof createMockProcessStore>;
+        const existsSyncMock = vi.mocked(fs.existsSync);
+        const readFileSyncMock = vi.mocked(fs.readFileSync);
+
+        const SIMPLE_JOB_YAML = `name: "Test Job"
+job:
+  prompt: "Say hello"
+`;
+
+        beforeEach(() => {
+            store = createMockProcessStore();
+            mockSendMessage.mockReset();
+            mockIsAvailable.mockReset();
+            mockIsAvailable.mockResolvedValue({ available: true });
+            mockExecutePipeline.mockReset();
+            mockCreateCLIAIInvoker.mockReset();
+            mockCreateCLIAIInvoker.mockReturnValue(vi.fn());
+        });
+
+        it('should execute a run-pipeline task successfully', async () => {
+            // Mock fs to return pipeline YAML
+            readFileSyncMock.mockImplementation((p: fs.PathOrFileDescriptor, _opts?: any) => {
+                if (String(p).includes('pipeline.yaml')) {
+                    return SIMPLE_JOB_YAML;
+                }
+                return '';
+            });
+
+            mockExecutePipeline.mockResolvedValue({
+                executionStats: { totalItems: 1, successfulItems: 1, failedItems: 0, durationMs: 100 },
+                output: { formattedOutput: 'Pipeline result output' },
+            });
+
+            const executor = new CLITaskExecutor(store);
+            const task: QueuedTask = {
+                id: 'task-run-pipeline',
+                type: 'run-pipeline',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: {
+                    kind: 'run-pipeline' as const,
+                    pipelinePath: '/workspace/.vscode/pipelines/my-pipeline',
+                    workingDirectory: '/workspace',
+                },
+                config: {},
+                displayName: 'Run Pipeline: my-pipeline',
+            };
+
+            const result = await executor.execute(task);
+
+            expect(result.success).toBe(true);
+            expect(mockExecutePipeline).toHaveBeenCalledOnce();
+            expect(mockCreateCLIAIInvoker).toHaveBeenCalledOnce();
+            // Verify the pipeline result is returned
+            expect(result.result).toEqual(expect.objectContaining({
+                pipelineName: 'Test Job',
+                response: 'Pipeline result output',
+            }));
+        });
+
+        it('should apply model override from payload', async () => {
+            readFileSyncMock.mockImplementation((p: fs.PathOrFileDescriptor, _opts?: any) => {
+                if (String(p).includes('pipeline.yaml')) {
+                    return SIMPLE_JOB_YAML;
+                }
+                return '';
+            });
+
+            mockExecutePipeline.mockResolvedValue({
+                executionStats: { totalItems: 1, successfulItems: 1, failedItems: 0, durationMs: 50 },
+                output: { formattedOutput: 'result' },
+            });
+
+            const executor = new CLITaskExecutor(store);
+            const task: QueuedTask = {
+                id: 'task-model-override',
+                type: 'run-pipeline',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: {
+                    kind: 'run-pipeline' as const,
+                    pipelinePath: '/workspace/.vscode/pipelines/test',
+                    workingDirectory: '/workspace',
+                    model: 'gpt-4',
+                },
+                config: {},
+            };
+
+            await executor.execute(task);
+
+            expect(mockCreateCLIAIInvoker).toHaveBeenCalledWith(expect.objectContaining({
+                model: 'gpt-4',
+            }));
+        });
+
+        it('should handle pipeline execution failure', async () => {
+            readFileSyncMock.mockImplementation((p: fs.PathOrFileDescriptor, _opts?: any) => {
+                if (String(p).includes('pipeline.yaml')) {
+                    return SIMPLE_JOB_YAML;
+                }
+                return '';
+            });
+
+            mockExecutePipeline.mockRejectedValue(new Error('Pipeline execution failed'));
+
+            const executor = new CLITaskExecutor(store);
+            const task: QueuedTask = {
+                id: 'task-pipeline-fail',
+                type: 'run-pipeline',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: {
+                    kind: 'run-pipeline' as const,
+                    pipelinePath: '/workspace/.vscode/pipelines/failing',
+                    workingDirectory: '/workspace',
+                },
+                config: {},
+            };
+
+            const result = await executor.execute(task);
+
+            expect(result.success).toBe(false);
+            expect(result.error?.message).toContain('Pipeline execution failed');
+        });
+
+        it('should extract prompt as pipeline basename', async () => {
+            readFileSyncMock.mockImplementation((p: fs.PathOrFileDescriptor, _opts?: any) => {
+                if (String(p).includes('pipeline.yaml')) {
+                    return SIMPLE_JOB_YAML;
+                }
+                return '';
+            });
+
+            mockExecutePipeline.mockResolvedValue({
+                executionStats: { totalItems: 1, successfulItems: 1, failedItems: 0, durationMs: 50 },
+                output: { formattedOutput: 'done' },
+            });
+
+            const executor = new CLITaskExecutor(store);
+            const task: QueuedTask = {
+                id: 'task-prompt-extract',
+                type: 'run-pipeline',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: {
+                    kind: 'run-pipeline' as const,
+                    pipelinePath: '/workspace/.vscode/pipelines/my-named-pipeline',
+                    workingDirectory: '/workspace',
+                },
+                config: {},
+            };
+
+            await executor.execute(task);
+
+            // Verify the process was added with the correct prompt
+            expect(store.addProcess).toHaveBeenCalledWith(expect.objectContaining({
+                fullPrompt: 'Run pipeline: my-named-pipeline',
+                promptPreview: 'Run pipeline: my-named-pipeline',
+            }));
         });
     });
 });

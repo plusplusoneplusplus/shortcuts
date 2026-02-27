@@ -5,7 +5,12 @@
 import { describe, it, expect } from 'vitest';
 import {
     isFollowPromptPayload,
+    isRunPipelinePayload,
     type FollowPromptPayload,
+    type RunPipelinePayload,
+    type AIClarificationPayload,
+    type CustomTaskPayload,
+    type TaskGenerationPayload,
     type QueuedTask,
 } from '../../src/queue/types';
 
@@ -57,5 +62,72 @@ describe('QueuedTask — folderPath field', () => {
             repoId: 'repo-1',
         };
         expect(task.folderPath).toBeUndefined();
+    });
+});
+
+describe('RunPipelinePayload — type and guard', () => {
+    it('isRunPipelinePayload returns true for valid payload', () => {
+        const payload: RunPipelinePayload = {
+            kind: 'run-pipeline',
+            pipelinePath: '/workspace/.vscode/pipelines/my-pipeline',
+            workingDirectory: '/workspace',
+        };
+        expect(isRunPipelinePayload(payload)).toBe(true);
+    });
+
+    it('isRunPipelinePayload returns false for FollowPromptPayload', () => {
+        const payload: FollowPromptPayload = {
+            promptContent: 'test',
+        };
+        expect(isRunPipelinePayload(payload)).toBe(false);
+    });
+
+    it('isRunPipelinePayload returns false for AIClarificationPayload', () => {
+        const payload: AIClarificationPayload = {
+            prompt: 'explain this',
+        };
+        expect(isRunPipelinePayload(payload)).toBe(false);
+    });
+
+    it('isRunPipelinePayload returns false for CustomTaskPayload', () => {
+        const payload: CustomTaskPayload = {
+            data: { foo: 'bar' },
+        };
+        expect(isRunPipelinePayload(payload)).toBe(false);
+    });
+
+    it('isRunPipelinePayload returns false for TaskGenerationPayload', () => {
+        const payload: TaskGenerationPayload = {
+            kind: 'task-generation',
+            workingDirectory: '/workspace',
+            prompt: 'create a task',
+        };
+        expect(isRunPipelinePayload(payload)).toBe(false);
+    });
+
+    it('accepts all optional fields', () => {
+        const payload: RunPipelinePayload = {
+            kind: 'run-pipeline',
+            pipelinePath: '/workspace/.vscode/pipelines/my-pipeline',
+            workingDirectory: '/workspace',
+            model: 'gpt-4',
+            params: { key: 'value', other: 'param' },
+            workspaceId: 'ws-123',
+        };
+        expect(payload.model).toBe('gpt-4');
+        expect(payload.params).toEqual({ key: 'value', other: 'param' });
+        expect(payload.workspaceId).toBe('ws-123');
+        expect(isRunPipelinePayload(payload)).toBe(true);
+    });
+
+    it('requires kind, pipelinePath, and workingDirectory', () => {
+        const payload: RunPipelinePayload = {
+            kind: 'run-pipeline',
+            pipelinePath: '/path/to/pipeline',
+            workingDirectory: '/workspace',
+        };
+        expect(payload.kind).toBe('run-pipeline');
+        expect(payload.pipelinePath).toBe('/path/to/pipeline');
+        expect(payload.workingDirectory).toBe('/workspace');
     });
 });
