@@ -7,6 +7,8 @@ import { Card, Button, cn } from '../shared';
 import { fetchApi } from '../hooks/useApi';
 import { getApiBase } from '../utils/config';
 import { formatRelativeTime } from '../utils/format';
+import { fetchPipelines } from './pipeline-api';
+import type { PipelineInfo } from './repoGrouping';
 
 interface RepoSchedulesTabProps {
     workspaceId: string;
@@ -247,6 +249,7 @@ function StatusDot({ status, isRunning }: { status: string; isRunning: boolean }
 interface ScheduleTemplateParam {
     key: string;
     placeholder: string;
+    type?: 'text' | 'pipeline-select';
 }
 
 interface ScheduleTemplate {
@@ -291,7 +294,7 @@ export const SCHEDULE_TEMPLATES: ScheduleTemplate[] = [
         intervalUnit: 'days',
         mode: 'cron',
         params: [
-            { key: 'pipeline', placeholder: 'pipelines/my-pipeline/pipeline.yaml' },
+            { key: 'pipeline', placeholder: 'pipelines/my-pipeline/pipeline.yaml', type: 'pipeline-select' },
         ],
         hint: 'Ensure the pipeline YAML file exists at the specified target path',
     },
@@ -344,6 +347,26 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel }: {
     const [submitting, setSubmitting] = useState(false);
     const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
     const [params, setParams] = useState<Record<string, string>>({});
+    const [pipelines, setPipelines] = useState<PipelineInfo[]>([]);
+    const [pipelinesLoading, setPipelinesLoading] = useState(false);
+    const [manualPipeline, setManualPipeline] = useState(false);
+
+    // Fetch pipelines when run-pipeline template is selected
+    useEffect(() => {
+        if (selectedTemplate !== 'run-pipeline') {
+            setPipelines([]);
+            setPipelinesLoading(false);
+            setManualPipeline(false);
+            return;
+        }
+        let cancelled = false;
+        setPipelinesLoading(true);
+        fetchPipelines(workspaceId)
+            .then(list => { if (!cancelled) setPipelines(list); })
+            .catch(() => { if (!cancelled) setPipelines([]); })
+            .finally(() => { if (!cancelled) setPipelinesLoading(false); });
+        return () => { cancelled = true; };
+    }, [selectedTemplate, workspaceId]);
 
     const applyTemplate = (templateId: string) => {
         if (selectedTemplate === templateId) {
@@ -355,11 +378,13 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel }: {
             setIntervalValue('1');
             setIntervalUnit('hours');
             setParams({});
+            setManualPipeline(false);
             return;
         }
         const tpl = SCHEDULE_TEMPLATES.find(t => t.id === templateId);
         if (!tpl) return;
         setSelectedTemplate(templateId);
+        setManualPipeline(false);
         setName(tpl.name);
         setTarget(tpl.target);
         setMode(tpl.mode);
@@ -523,13 +548,55 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel }: {
                             {tpl.params.map(p => (
                                 <div key={p.key} className="flex items-center gap-1.5 text-xs">
                                     <span className="text-[#616161] dark:text-[#999] w-20 text-right flex-shrink-0">{p.key}:</span>
-                                    <input
-                                        className="flex-1 px-2 py-1 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc]"
-                                        placeholder={p.placeholder}
-                                        value={params[p.key] ?? ''}
-                                        onChange={e => setParams(prev => ({ ...prev, [p.key]: e.target.value }))}
-                                        data-testid={`param-${p.key}`}
-                                    />
+                                    {p.type === 'pipeline-select' && !manualPipeline ? (
+                                        pipelinesLoading ? (
+                                            <span className="flex-1 text-[#848484] italic" data-testid="pipeline-loading">Loading pipelines…</span>
+                                        ) : pipelines.length === 0 ? (
+                                            <input
+                                                className="flex-1 px-2 py-1 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc]"
+                                                placeholder={p.placeholder}
+                                                value={params[p.key] ?? ''}
+                                                onChange={e => {
+                                                    setParams(prev => ({ ...prev, [p.key]: e.target.value }));
+                                                    setTarget(e.target.value);
+                                                }}
+                                                data-testid={`param-${p.key}`}
+                                            />
+                                        ) : (
+                                            <select
+                                                className="flex-1 px-2 py-1 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc]"
+                                                value={params[p.key] ?? ''}
+                                                onChange={e => {
+                                                    if (e.target.value === '__manual__') {
+                                                        setManualPipeline(true);
+                                                        setParams(prev => ({ ...prev, [p.key]: '' }));
+                                                        setTarget('');
+                                                        return;
+                                                    }
+                                                    setParams(prev => ({ ...prev, [p.key]: e.target.value }));
+                                                    setTarget(e.target.value);
+                                                }}
+                                                data-testid={`param-${p.key}`}
+                                            >
+                                                <option value="" disabled>Select a pipeline…</option>
+                                                {pipelines.map(pl => (
+                                                    <option key={pl.path} value={pl.path}>{pl.name}</option>
+                                                ))}
+                                                <option value="__manual__">Other (manual path)…</option>
+                                            </select>
+                                        )
+                                    ) : (
+                                        <input
+                                            className="flex-1 px-2 py-1 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc]"
+                                            placeholder={p.placeholder}
+                                            value={params[p.key] ?? ''}
+                                            onChange={e => {
+                                                setParams(prev => ({ ...prev, [p.key]: e.target.value }));
+                                                if (p.type === 'pipeline-select') setTarget(e.target.value);
+                                            }}
+                                            data-testid={`param-${p.key}`}
+                                        />
+                                    )}
                                 </div>
                             ))}
                         </div>
