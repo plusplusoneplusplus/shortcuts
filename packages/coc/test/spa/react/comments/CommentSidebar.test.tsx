@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { CommentSidebar } from '../../../../src/server/spa/client/react/tasks/comments/CommentSidebar';
 import type { TaskComment } from '../../../../src/server/spa/client/task-comments-types';
 
@@ -149,5 +149,161 @@ describe('CommentSidebar', () => {
         expect(screen.getByTestId('category-filter-all')).toBeTruthy();
         expect(screen.getByTestId('category-filter-bug')).toBeTruthy();
         expect(screen.getByTestId('category-filter-question')).toBeTruthy();
+    });
+
+    describe('Resolve All button', () => {
+        it('renders when onResolveAllWithAI provided and open comments > 0', () => {
+            const comments = [makeComment({ id: 'c1', status: 'open' })];
+            render(
+                <CommentSidebar
+                    taskId="task1" filePath="task1.md" comments={comments} loading={false}
+                    onResolve={noop} onUnresolve={noop} onDelete={noop} onEdit={noop}
+                    onAskAI={noop} onCommentClick={noop}
+                    onResolveAllWithAI={vi.fn()}
+                />
+            );
+            expect(screen.getByTestId('resolve-all-ai-btn')).toBeTruthy();
+        });
+
+        it('is NOT rendered when all comments are resolved', () => {
+            const comments = [makeComment({ id: 'c1', status: 'resolved' })];
+            render(
+                <CommentSidebar
+                    taskId="task1" filePath="task1.md" comments={comments} loading={false}
+                    onResolve={noop} onUnresolve={noop} onDelete={noop} onEdit={noop}
+                    onAskAI={noop} onCommentClick={noop}
+                    onResolveAllWithAI={vi.fn()}
+                />
+            );
+            expect(screen.queryByTestId('resolve-all-ai-btn')).toBeNull();
+        });
+
+        it('is NOT rendered when onResolveAllWithAI is undefined', () => {
+            const comments = [makeComment({ id: 'c1', status: 'open' })];
+            render(
+                <CommentSidebar
+                    taskId="task1" filePath="task1.md" comments={comments} loading={false}
+                    onResolve={noop} onUnresolve={noop} onDelete={noop} onEdit={noop}
+                    onAskAI={noop} onCommentClick={noop}
+                />
+            );
+            expect(screen.queryByTestId('resolve-all-ai-btn')).toBeNull();
+        });
+
+        it('calls onResolveAllWithAI when clicked', () => {
+            const onResolveAllWithAI = vi.fn();
+            const comments = [makeComment({ id: 'c1', status: 'open' })];
+            render(
+                <CommentSidebar
+                    taskId="task1" filePath="task1.md" comments={comments} loading={false}
+                    onResolve={noop} onUnresolve={noop} onDelete={noop} onEdit={noop}
+                    onAskAI={noop} onCommentClick={noop}
+                    onResolveAllWithAI={onResolveAllWithAI}
+                />
+            );
+            fireEvent.click(screen.getByTestId('resolve-all-ai-btn'));
+            expect(onResolveAllWithAI).toHaveBeenCalledOnce();
+        });
+
+        it('shows spinner and is disabled when resolving=true', () => {
+            const comments = [makeComment({ id: 'c1', status: 'open' })];
+            render(
+                <CommentSidebar
+                    taskId="task1" filePath="task1.md" comments={comments} loading={false}
+                    onResolve={noop} onUnresolve={noop} onDelete={noop} onEdit={noop}
+                    onAskAI={noop} onCommentClick={noop}
+                    onResolveAllWithAI={vi.fn()}
+                    resolving={true}
+                />
+            );
+            const btn = screen.getByTestId('resolve-all-ai-btn');
+            expect(btn).toHaveProperty('disabled', true);
+            // Spinner renders with role="status"
+            expect(btn.querySelector('[role="status"]') ?? btn.querySelector('.animate-spin')).toBeTruthy();
+        });
+    });
+
+    describe('Copy Prompt button', () => {
+        it('renders when onCopyPrompt provided and open comments > 0', () => {
+            const comments = [makeComment({ id: 'c1', status: 'open' })];
+            render(
+                <CommentSidebar
+                    taskId="task1" filePath="task1.md" comments={comments} loading={false}
+                    onResolve={noop} onUnresolve={noop} onDelete={noop} onEdit={noop}
+                    onAskAI={noop} onCommentClick={noop}
+                    onCopyPrompt={vi.fn()}
+                />
+            );
+            expect(screen.getByTestId('copy-prompt-btn')).toBeTruthy();
+        });
+
+        it('is NOT rendered when all comments are resolved', () => {
+            const comments = [makeComment({ id: 'c1', status: 'resolved' })];
+            render(
+                <CommentSidebar
+                    taskId="task1" filePath="task1.md" comments={comments} loading={false}
+                    onResolve={noop} onUnresolve={noop} onDelete={noop} onEdit={noop}
+                    onAskAI={noop} onCommentClick={noop}
+                    onCopyPrompt={vi.fn()}
+                />
+            );
+            expect(screen.queryByTestId('copy-prompt-btn')).toBeNull();
+        });
+
+        it('calls onCopyPrompt when clicked', () => {
+            const onCopyPrompt = vi.fn();
+            const comments = [makeComment({ id: 'c1', status: 'open' })];
+            render(
+                <CommentSidebar
+                    taskId="task1" filePath="task1.md" comments={comments} loading={false}
+                    onResolve={noop} onUnresolve={noop} onDelete={noop} onEdit={noop}
+                    onAskAI={noop} onCommentClick={noop}
+                    onCopyPrompt={onCopyPrompt}
+                />
+            );
+            fireEvent.click(screen.getByTestId('copy-prompt-btn'));
+            expect(onCopyPrompt).toHaveBeenCalledOnce();
+        });
+
+        it('icon changes to ✓ after click, then reverts after 2s', () => {
+            vi.useFakeTimers();
+            const onCopyPrompt = vi.fn();
+            const comments = [makeComment({ id: 'c1', status: 'open' })];
+            render(
+                <CommentSidebar
+                    taskId="task1" filePath="task1.md" comments={comments} loading={false}
+                    onResolve={noop} onUnresolve={noop} onDelete={noop} onEdit={noop}
+                    onAskAI={noop} onCommentClick={noop}
+                    onCopyPrompt={onCopyPrompt}
+                />
+            );
+            fireEvent.click(screen.getByTestId('copy-prompt-btn'));
+            expect(screen.getByTestId('copy-prompt-btn').textContent).toBe('✓');
+            act(() => { vi.advanceTimersByTime(2000); });
+            expect(screen.getByTestId('copy-prompt-btn').textContent).toBe('📋');
+            vi.useRealTimers();
+        });
+    });
+
+    describe('disabled prop propagation', () => {
+        it('disables individual comment actions when resolving=true', () => {
+            const comments = [makeComment({ id: 'c1', status: 'open' })];
+            render(
+                <CommentSidebar
+                    taskId="task1" filePath="task1.md" comments={comments} loading={false}
+                    onResolve={noop} onUnresolve={noop} onDelete={noop} onEdit={noop}
+                    onAskAI={noop} onCommentClick={noop}
+                    onResolveAllWithAI={vi.fn()}
+                    resolving={true}
+                />
+            );
+            const card = screen.getByTestId('comment-card-c1');
+            const resolveBtn = card.querySelector('button[aria-label="Resolve"]') as HTMLButtonElement;
+            const editBtn = card.querySelector('button[aria-label="Edit"]') as HTMLButtonElement;
+            const deleteBtn = card.querySelector('button[aria-label="Delete"]') as HTMLButtonElement;
+            expect(resolveBtn?.disabled).toBe(true);
+            expect(editBtn?.disabled).toBe(true);
+            expect(deleteBtn?.disabled).toBe(true);
+        });
     });
 });

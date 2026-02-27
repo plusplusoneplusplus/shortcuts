@@ -2,8 +2,8 @@
  * CommentSidebar — right-panel listing all comments with status/category filters.
  */
 
-import { useState } from 'react';
-import { cn } from '../../shared';
+import { useState, useMemo, useEffect } from 'react';
+import { cn, Spinner } from '../../shared';
 import { CommentCard } from './CommentCard';
 import type { TaskComment, TaskCommentCategory } from '../../../task-comments-types';
 import { CATEGORY_INFO, ALL_CATEGORIES, getCommentCategory } from '../../../task-comments-types';
@@ -32,6 +32,9 @@ export interface CommentSidebarProps {
     onClearAiError?: (id: string) => void;
     onFixWithAI?: (id: string) => void;
     resolvingCommentId?: string | null;
+    onResolveAllWithAI?: () => void;
+    onCopyPrompt?: () => void;
+    resolving?: boolean;
 }
 
 export function CommentSidebar({
@@ -53,9 +56,24 @@ export function CommentSidebar({
     onClearAiError,
     onFixWithAI,
     resolvingCommentId,
+    onResolveAllWithAI,
+    onCopyPrompt,
+    resolving = false,
 }: CommentSidebarProps) {
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
     const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
+    const [copied, setCopied] = useState(false);
+
+    const openCount = useMemo(
+        () => comments.filter(c => c.status === 'open').length,
+        [comments],
+    );
+
+    useEffect(() => {
+        if (!copied) return;
+        const timer = setTimeout(() => setCopied(false), 2000);
+        return () => clearTimeout(timer);
+    }, [copied]);
 
     const filtered = (filteredComments ?? comments.filter(c => {
         if (statusFilter !== 'all' && c.status !== statusFilter) return false;
@@ -85,6 +103,41 @@ export function CommentSidebar({
                     <span className="text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc]">
                         Comments ({comments.length})
                     </span>
+                    {openCount > 0 && (
+                        <div className="flex items-center gap-1">
+                            {onCopyPrompt && (
+                                <button
+                                    onClick={() => {
+                                        onCopyPrompt();
+                                        setCopied(true);
+                                    }}
+                                    title="Copy resolve prompt"
+                                    aria-label="Copy resolve prompt"
+                                    data-testid="copy-prompt-btn"
+                                    className="inline-flex items-center justify-center w-6 h-6 rounded transition-colors text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
+                                >
+                                    {copied ? '✓' : '📋'}
+                                </button>
+                            )}
+                            {onResolveAllWithAI && (
+                                <button
+                                    onClick={onResolveAllWithAI}
+                                    disabled={resolving}
+                                    title="Resolve all open comments with AI"
+                                    aria-label="Resolve all with AI"
+                                    data-testid="resolve-all-ai-btn"
+                                    className={cn(
+                                        'inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] rounded transition-colors',
+                                        resolving
+                                            ? 'opacity-50 cursor-not-allowed text-[#848484]'
+                                            : 'text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/[0.06] dark:hover:bg-white/[0.08]',
+                                    )}
+                                >
+                                    {resolving ? <Spinner size="sm" /> : '🤖'} Resolve All
+                                </button>
+                            )}
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -176,6 +229,7 @@ export function CommentSidebar({
                         onClearAiError={onClearAiError ? () => onClearAiError(comment.id) : undefined}
                         onFixWithAI={onFixWithAI ? () => onFixWithAI(comment.id) : undefined}
                         fixLoading={resolvingCommentId === comment.id}
+                        disabled={resolving}
                     />
                 ))}
             </div>

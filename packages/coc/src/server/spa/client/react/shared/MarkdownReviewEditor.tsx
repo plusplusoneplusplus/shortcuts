@@ -104,6 +104,9 @@ export function MarkdownReviewEditor({
         aiLoadingIds,
         aiErrors,
         clearAiError,
+        resolveWithAI,
+        copyResolvePrompt,
+        resolving,
     } = useTaskComments(wsId, filePath);
 
     // Shared markdown rendering (render + hljs + mermaid)
@@ -498,6 +501,9 @@ export function MarkdownReviewEditor({
                         aiLoadingIds={aiLoadingIds}
                         aiErrors={aiErrors}
                         onClearAiError={clearAiError}
+                        onResolveAllWithAI={() => resolveWithAI(rawContent, filePath)}
+                        onCopyPrompt={() => copyResolvePrompt(rawContent, filePath)}
+                        resolving={resolving}
                     />
                 )}
             </div>
