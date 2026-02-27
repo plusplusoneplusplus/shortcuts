@@ -50,20 +50,51 @@ describe('RepoDetail Queue badge wiring', () => {
         expect(REPO_DETAIL_SOURCE).toContain("import { fetchApi } from '../hooks/useApi'");
     });
 
-    it('derives queueCount from repoQueueMap running + queued lengths', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('repoQueue.running.length + repoQueue.queued.length');
+    it('derives separate running and queued counts from repoQueueMap', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('repoQueue.running.length');
+        expect(REPO_DETAIL_SOURCE).toContain('repoQueue.queued.length');
+        expect(REPO_DETAIL_SOURCE).toContain('queueRunningCount');
+        expect(REPO_DETAIL_SOURCE).toContain('queueQueuedCount');
     });
 
-    it('renders queue badge only when queueCount > 0', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("t.key === 'queue' && queueCount > 0");
+    it('renders running badge only when queueRunningCount > 0', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("t.key === 'queue' && queueRunningCount > 0");
     });
 
-    it('queue badge uses the same styling as the tasks badge', () => {
-        // Both badges should use the same className
-        const badgeClass = 'ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full';
+    it('renders queued badge only when queueQueuedCount > 0', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("t.key === 'queue' && queueQueuedCount > 0");
+    });
+
+    it('running badge uses green background color', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('bg-[#16825d]');
+    });
+
+    it('queued badge uses blue background color matching tasks badge', () => {
+        const badgeClass = 'bg-[#0078d4] text-white px-1 py-px rounded-full';
         const matches = REPO_DETAIL_SOURCE.split(badgeClass);
-        // Should appear at least twice: once for tasks, once for queue
-        expect(matches.length).toBeGreaterThanOrEqual(3); // 2 occurrences = 3 splits
+        expect(matches.length).toBeGreaterThanOrEqual(3);
+    });
+
+    it('running badge has data-testid for testing', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="queue-running-badge"');
+    });
+
+    it('queued badge has data-testid for testing', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="queue-queued-badge"');
+    });
+
+    it('running badge has title attribute', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('title="Running"');
+    });
+
+    it('queued badge has title attribute', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('title="Queued"');
+    });
+
+    it('running badge renders before queued badge', () => {
+        const runningIdx = REPO_DETAIL_SOURCE.indexOf('queueRunningCount > 0');
+        const queuedIdx = REPO_DETAIL_SOURCE.indexOf('queueQueuedCount > 0');
+        expect(runningIdx).toBeLessThan(queuedIdx);
     });
 
     it('seeds repo queue map via useEffect on ws.id change', () => {
@@ -73,5 +104,9 @@ describe('RepoDetail Queue badge wiring', () => {
 
     it('skips fetch if repoQueueMap already has data for the repo', () => {
         expect(REPO_DETAIL_SOURCE).toContain('if (queueState.repoQueueMap[ws.id]) return');
+    });
+
+    it('does not use combined queueCount variable', () => {
+        expect(REPO_DETAIL_SOURCE).not.toMatch(/\bqueueCount\b/);
     });
 });

@@ -2435,7 +2435,7 @@
           var HostPortal = 4;
           var HostComponent = 5;
           var HostText = 6;
-          var Fragment25 = 7;
+          var Fragment26 = 7;
           var Mode = 8;
           var ContextConsumer = 9;
           var ContextProvider = 10;
@@ -3591,7 +3591,7 @@
                 return "DehydratedFragment";
               case ForwardRef:
                 return getWrappedName$1(type2, type2.render, "ForwardRef");
-              case Fragment25:
+              case Fragment26:
                 return "Fragment";
               case HostComponent:
                 return type2;
@@ -11974,7 +11974,7 @@
               }
             }
             function updateFragment2(returnFiber, current2, fragment, lanes, key) {
-              if (current2 === null || current2.tag !== Fragment25) {
+              if (current2 === null || current2.tag !== Fragment26) {
                 var created = createFiberFromFragment(fragment, returnFiber.mode, lanes, key);
                 created.return = returnFiber;
                 return created;
@@ -12377,7 +12377,7 @@
                 if (child.key === key) {
                   var elementType = element.type;
                   if (elementType === REACT_FRAGMENT_TYPE) {
-                    if (child.tag === Fragment25) {
+                    if (child.tag === Fragment26) {
                       deleteRemainingChildren(returnFiber, child.sibling);
                       var existing = useFiber(child, element.props.children);
                       existing.return = returnFiber;
@@ -17852,7 +17852,7 @@
                 var _resolvedProps2 = workInProgress2.elementType === type2 ? _unresolvedProps2 : resolveDefaultProps(type2, _unresolvedProps2);
                 return updateForwardRef(current2, workInProgress2, type2, _resolvedProps2, renderLanes2);
               }
-              case Fragment25:
+              case Fragment26:
                 return updateFragment(current2, workInProgress2, renderLanes2);
               case Mode:
                 return updateMode(current2, workInProgress2, renderLanes2);
@@ -18124,7 +18124,7 @@
               case SimpleMemoComponent:
               case FunctionComponent:
               case ForwardRef:
-              case Fragment25:
+              case Fragment26:
               case Mode:
               case Profiler:
               case ContextConsumer:
@@ -22375,7 +22375,7 @@
             return fiber;
           }
           function createFiberFromFragment(elements, mode, lanes, key) {
-            var fiber = createFiber(Fragment25, elements, key, mode);
+            var fiber = createFiber(Fragment26, elements, key, mode);
             fiber.lanes = lanes;
             return fiber;
           }
@@ -35614,6 +35614,8 @@
     const [showHistory, setShowHistory] = (0, import_react53.useState)(false);
     const [loading, setLoading] = (0, import_react53.useState)(true);
     const [now, setNow] = (0, import_react53.useState)(Date.now());
+    const [isPaused, setIsPaused] = (0, import_react53.useState)(false);
+    const [isPauseResumeLoading, setIsPauseResumeLoading] = (0, import_react53.useState)(false);
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const repoQueue = queueState.repoQueueMap[workspaceId];
     const fetchQueue = async () => {
@@ -35621,6 +35623,7 @@
         const data = await fetchApi("/queue?repoId=" + encodeURIComponent(workspaceId));
         setRunning(data?.running || []);
         setQueued(data?.queued || []);
+        setIsPaused(!!data.stats?.isPaused);
         const historyData = await fetchApi("/queue/history?repoId=" + encodeURIComponent(workspaceId)).catch(() => null);
         setHistory(historyData?.history || []);
       } catch {
@@ -35639,6 +35642,9 @@
       setRunning(repoQueue.running);
       setQueued(repoQueue.queued);
       setHistory(repoQueue.history);
+      if (repoQueue?.stats?.isPaused !== void 0) {
+        setIsPaused(repoQueue.stats.isPaused);
+      }
       setLoading(false);
     }, [repoQueue]);
     const hasActive = (0, import_react53.useMemo)(() => running.length > 0, [running]);
@@ -35659,13 +35665,53 @@
       await fetch(getApiBase() + "/queue/" + encodeURIComponent(taskId) + "/move-to-top", { method: "POST" });
       fetchQueue();
     };
+    async function handlePauseResume() {
+      setIsPauseResumeLoading(true);
+      try {
+        const endpoint = isPaused ? "/queue/resume" : "/queue/pause";
+        await fetchApi(endpoint + "?repoId=" + encodeURIComponent(workspaceId), { method: "POST" });
+        await fetchQueue();
+      } finally {
+        setIsPauseResumeLoading(false);
+      }
+    }
     if (loading) {
       return /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("div", { className: "p-4 text-sm text-[#848484]", children: "Loading queue..." });
     }
     if (running.length === 0 && queued.length === 0 && history2.length === 0) {
-      return /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("div", { className: "p-4 text-center text-sm text-[#848484]", children: "No tasks in queue for this repository" });
+      return /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("div", { className: "p-4 text-center text-sm text-[#848484]", children: isPaused ? /* @__PURE__ */ (0, import_jsx_runtime51.jsxs)(import_jsx_runtime51.Fragment, { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("div", { className: "mb-2", children: "Queue is paused" }),
+        /* @__PURE__ */ (0, import_jsx_runtime51.jsx)(
+          Button,
+          {
+            variant: "ghost",
+            size: "sm",
+            disabled: isPauseResumeLoading,
+            onClick: handlePauseResume,
+            "data-testid": "repo-pause-resume-btn-empty",
+            children: "\u25B6 Resume"
+          }
+        )
+      ] }) : /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("div", { children: "No tasks in queue for this repository" }) });
     }
     return /* @__PURE__ */ (0, import_jsx_runtime51.jsxs)("div", { className: "p-4 flex flex-col gap-3", children: [
+      (isPaused || running.length > 0 || queued.length > 0) && /* @__PURE__ */ (0, import_jsx_runtime51.jsxs)("div", { className: cn("flex items-center gap-2 mb-3"), children: [
+        /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("span", { className: "text-sm font-medium", children: "Queue" }),
+        isPaused && /* @__PURE__ */ (0, import_jsx_runtime51.jsx)(Badge, { status: "warning", children: "Paused" }),
+        /* @__PURE__ */ (0, import_jsx_runtime51.jsx)("div", { className: "flex-1" }),
+        /* @__PURE__ */ (0, import_jsx_runtime51.jsx)(
+          Button,
+          {
+            variant: "ghost",
+            size: "sm",
+            disabled: isPauseResumeLoading,
+            onClick: handlePauseResume,
+            title: isPaused ? "Resume queue" : "Pause queue",
+            "data-testid": "repo-pause-resume-btn",
+            children: isPaused ? "\u25B6" : "\u23F8"
+          }
+        )
+      ] }),
       running.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime51.jsxs)("div", { children: [
         /* @__PURE__ */ (0, import_jsx_runtime51.jsxs)("div", { className: "text-[11px] uppercase text-[#848484] mb-1 font-medium", children: [
           "Running Tasks ",
@@ -36556,7 +36602,8 @@
     const activeSubTab = state.activeRepoSubTab;
     const taskCount = repo.taskCount || 0;
     const repoQueue = queueState.repoQueueMap[ws.id];
-    const queueCount = repoQueue ? repoQueue.running.length + repoQueue.queued.length : 0;
+    const queueRunningCount = repoQueue ? repoQueue.running.length : 0;
+    const queueQueuedCount = repoQueue ? repoQueue.queued.length : 0;
     (0, import_react56.useEffect)(() => {
       if (queueState.repoQueueMap[ws.id]) return;
       fetchApi("/queue?repoId=" + encodeURIComponent(ws.id)).then((data) => {
@@ -36601,7 +36648,8 @@
           children: [
             t.label,
             t.key === "tasks" && taskCount > 0 && /* @__PURE__ */ (0, import_jsx_runtime54.jsx)("span", { className: "ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full", children: taskCount }),
-            t.key === "queue" && queueCount > 0 && /* @__PURE__ */ (0, import_jsx_runtime54.jsx)("span", { className: "ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full", children: queueCount }),
+            t.key === "queue" && queueRunningCount > 0 && /* @__PURE__ */ (0, import_jsx_runtime54.jsx)("span", { className: "ml-1 text-[10px] bg-[#16825d] text-white px-1 py-px rounded-full", "data-testid": "queue-running-badge", title: "Running", children: queueRunningCount }),
+            t.key === "queue" && queueQueuedCount > 0 && /* @__PURE__ */ (0, import_jsx_runtime54.jsx)("span", { className: "ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full", "data-testid": "queue-queued-badge", title: "Queued", children: queueQueuedCount }),
             activeSubTab === t.key && /* @__PURE__ */ (0, import_jsx_runtime54.jsx)("span", { className: "absolute bottom-0 left-0 right-0 h-0.5 bg-[#0078d4] dark:bg-[#3794ff]" })
           ]
         },

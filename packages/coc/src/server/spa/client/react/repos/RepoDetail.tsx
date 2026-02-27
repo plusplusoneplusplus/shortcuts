@@ -42,9 +42,8 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const activeSubTab = state.activeRepoSubTab;
     const taskCount = repo.taskCount || 0;
     const repoQueue = queueState.repoQueueMap[ws.id];
-    const queueCount = repoQueue
-        ? repoQueue.running.length + repoQueue.queued.length
-        : 0;
+    const queueRunningCount = repoQueue ? repoQueue.running.length : 0;
+    const queueQueuedCount = repoQueue ? repoQueue.queued.length : 0;
 
     // Seed repo queue map on first render if not yet populated
     useEffect(() => {
@@ -102,8 +101,11 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                         {t.key === 'tasks' && taskCount > 0 && (
                             <span className="ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full">{taskCount}</span>
                         )}
-                        {t.key === 'queue' && queueCount > 0 && (
-                            <span className="ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full">{queueCount}</span>
+                        {t.key === 'queue' && queueRunningCount > 0 && (
+                            <span className="ml-1 text-[10px] bg-[#16825d] text-white px-1 py-px rounded-full" data-testid="queue-running-badge" title="Running">{queueRunningCount}</span>
+                        )}
+                        {t.key === 'queue' && queueQueuedCount > 0 && (
+                            <span className="ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full" data-testid="queue-queued-badge" title="Queued">{queueQueuedCount}</span>
                         )}
                         {activeSubTab === t.key && (
                             <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#0078d4] dark:bg-[#3794ff]" />

@@ -475,8 +475,7 @@ describe('RepoDetail', () => {
         expect(badges.length).toBe(0);
     });
 
-    it('shows queue badge with combined running + queued count', async () => {
-        // Mock fetch to return queue data with running and queued items
+    it('shows separate running and queued badges', async () => {
         global.fetch = vi.fn().mockResolvedValue({
             ok: true,
             json: () => Promise.resolve({
@@ -489,16 +488,18 @@ describe('RepoDetail', () => {
             workspace: { id: 'ws-q', name: 'QueueTest', rootPath: '/qtest' },
         });
         render(<Wrap><RepoDetail repo={repo} repos={[repo]} onRefresh={() => {}} /></Wrap>);
-        // Wait for the seeding useEffect to fetch and dispatch
         await vi.waitFor(() => {
             const queueBtn = document.querySelector('button[data-subtab="queue"]');
             const badges = queueBtn?.querySelectorAll('span.rounded-full') || [];
-            const badge = Array.from(badges).find(b => b.textContent === '3');
-            expect(badge).not.toBeUndefined();
+            expect(badges.length).toBe(2);
+            const runningBadge = queueBtn?.querySelector('[data-testid="queue-running-badge"]');
+            const queuedBadge = queueBtn?.querySelector('[data-testid="queue-queued-badge"]');
+            expect(runningBadge?.textContent).toBe('1');
+            expect(queuedBadge?.textContent).toBe('2');
         });
     });
 
-    it('shows queue badge with only running count when no queued items', async () => {
+    it('shows only running badge when no queued items', async () => {
         global.fetch = vi.fn().mockResolvedValue({
             ok: true,
             json: () => Promise.resolve({
@@ -513,13 +514,14 @@ describe('RepoDetail', () => {
         render(<Wrap><RepoDetail repo={repo} repos={[repo]} onRefresh={() => {}} /></Wrap>);
         await vi.waitFor(() => {
             const queueBtn = document.querySelector('button[data-subtab="queue"]');
-            const badges = queueBtn?.querySelectorAll('span.rounded-full') || [];
-            const badge = Array.from(badges).find(b => b.textContent === '1');
-            expect(badge).not.toBeUndefined();
+            const runningBadge = queueBtn?.querySelector('[data-testid="queue-running-badge"]');
+            const queuedBadge = queueBtn?.querySelector('[data-testid="queue-queued-badge"]');
+            expect(runningBadge?.textContent).toBe('1');
+            expect(queuedBadge).toBeNull();
         });
     });
 
-    it('shows queue badge with only queued count when nothing running', async () => {
+    it('shows only queued badge when nothing running', async () => {
         global.fetch = vi.fn().mockResolvedValue({
             ok: true,
             json: () => Promise.resolve({
@@ -534,9 +536,10 @@ describe('RepoDetail', () => {
         render(<Wrap><RepoDetail repo={repo} repos={[repo]} onRefresh={() => {}} /></Wrap>);
         await vi.waitFor(() => {
             const queueBtn = document.querySelector('button[data-subtab="queue"]');
-            const badges = queueBtn?.querySelectorAll('span.rounded-full') || [];
-            const badge = Array.from(badges).find(b => b.textContent === '4');
-            expect(badge).not.toBeUndefined();
+            const runningBadge = queueBtn?.querySelector('[data-testid="queue-running-badge"]');
+            const queuedBadge = queueBtn?.querySelector('[data-testid="queue-queued-badge"]');
+            expect(runningBadge).toBeNull();
+            expect(queuedBadge?.textContent).toBe('4');
         });
     });
 });
