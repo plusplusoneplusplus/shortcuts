@@ -17,11 +17,13 @@
       "editor/anchor": ["dist/editor/anchor.d.ts"],
       "editor/anchor-types": ["dist/editor/anchor-types.d.ts"],
       "editor/types": ["dist/editor/types.d.ts"],
-      "workflow": ["dist/workflow/index.d.ts"]
+      "workflow": ["dist/workflow/index.d.ts"],
+      "git": ["dist/git/index.d.ts"]
     }
   },
   "exports": {
     ".": "./dist/index.js",
+    "./git": "./dist/git/index.js",
     "./ai": "./dist/ai/index.js",
     "./map-reduce": "./dist/map-reduce/index.js",
     "./pipeline": "./dist/pipeline/index.js",

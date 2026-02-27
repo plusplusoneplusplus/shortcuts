@@ -774,6 +774,29 @@ export {
 } from './discovery';
 
 // ============================================================================
+// Git
+// ============================================================================
+
+export {
+    GitChangeStatus,
+    GitChangeStage,
+    GitChange,
+    GitChangeCounts,
+    GitCommit,
+    CommitLoadOptions,
+    CommitLoadResult,
+    GitCommitFile,
+    GitCommentCounts,
+    GitCommitRange,
+    GitCommitRangeFile,
+    STATUS_SHORT,
+    STAGE_PREFIX,
+    STAGE_LABEL,
+    ExecGitOptions,
+    execGit,
+} from './git';
+
+// ============================================================================
 // Editor Abstractions
 // ============================================================================
 
