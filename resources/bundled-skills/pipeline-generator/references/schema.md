@@ -458,6 +458,23 @@ map:
 
 ---
 
+## DAG Workflow Configuration
+
+For the DAG workflow YAML format (arbitrary node graphs with fan-out, fan-in, scripting, and merge), see the dedicated [workflow schema reference](workflow-schema.md).
+
+**When to use which format:**
+
+| Scenario | Format |
+|----------|--------|
+| Simple input → process → output | Linear pipeline (`input`/`map`/`reduce`) |
+| One-shot AI call, no batch | Single job (`job:`) |
+| Fan-out/fan-in, branching, merging | DAG workflow (`nodes:`) |
+| External script integration | DAG workflow (`nodes:` with `type: script`) |
+| Multiple data sources | DAG workflow (`nodes:` with multiple `type: load`) |
+| Field transformations without AI | DAG workflow (`nodes:` with `type: transform`) |
+
+---
+
 ## Quick Reference Table
 
 | Task | Mode | Input | Map Parallel | Map Timeout | Reduce Type |

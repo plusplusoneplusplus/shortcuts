@@ -1,6 +1,6 @@
 ---
 name: pipeline-generator
-description: Generate optimized YAML pipeline configurations from natural language requirements. Ask clarifying questions about task type, data source, and output format before creating pipelines. Use when users want to create, design, or build a pipeline for data processing, classification, research, or analysis tasks.
+description: Generate optimized YAML pipeline configurations from natural language requirements, or DAG workflow configurations for complex multi-stage processing with fan-out, fan-in, and scripting. Ask clarifying questions about task type, data source, and output format before creating pipelines. Use when users want to create, design, or build a pipeline or workflow for data processing, classification, research, or analysis tasks.
 ---
 
 # Pipeline Generator
@@ -16,6 +16,7 @@ Use this skill when the user wants to:
 - Build a multi-agent research system
 - Generate pipeline configuration from requirements
 - Run a **single one-shot AI prompt** (no CSV/batch required)
+- Design a **DAG workflow** with branching, merging, or scripted data transformations
 
 ## Generation Process
 
@@ -26,6 +27,36 @@ Follow these steps in order:
 **IMPORTANT:** Always start by asking these questions. Do NOT skip to generation.
 
 Use the `ask_user` tool to gather requirements:
+
+0. **Pipeline Mode**
+   - "What kind of processing pipeline do you need?"
+   - Options:
+     - **Linear pipeline** — straightforward input → process → output (existing map-reduce or single-job)
+     - **DAG workflow** — arbitrary graph with parallel branches, fan-out/fan-in, merge, transform, or script nodes
+
+   If the user selects **Linear pipeline**, proceed with the existing Steps 1–8 unchanged.
+   If the user selects **DAG workflow**, proceed to the DAG-specific questions below, then skip to Step 2w.
+
+   **DAG-specific questions (when DAG workflow is selected):**
+
+   **1w. Data Sources**
+   - "How many data sources does this workflow have?"
+   - Options: Single CSV/JSON, Multiple files, Inline data, AI-generated, Mixed (some of the above)
+
+   **2w. Processing Stages**
+   - "Describe the processing stages and how data flows between them."
+   - Free-form: user describes the desired graph topology (e.g., "load data, split into bugs and features, analyze each separately, merge results, generate report")
+
+   **3w. Script Nodes**
+   - "Do any stages need to run external scripts or CLI tools?"
+   - Options: Yes (ask for language/command), No
+
+   **4w. Error Handling**
+   - "If a node fails, should the workflow abort or continue with empty data?"
+   - Options: Abort (default — fail fast), Warn (continue with empty output), Mixed (per-node decision)
+
+   **5w. Output Format**
+   - Same as existing question 5 (reuse)
 
 1. **Task Type**
    - "What is the main goal of this pipeline?"
@@ -75,6 +106,11 @@ Based on answers, choose the appropriate pattern:
 - Characteristics: `job:` key only, top-level `parameters:`, no `input`/`map`/`reduce`
 - Example: Summarize a PR diff, answer a Q&A question, generate a report from a pasted snippet
 - Key constraint: `job:` and `map:` are mutually exclusive
+
+**Pattern E: DAG Workflow**
+- Use when: Complex multi-stage processing with branching, merging, or scripting
+- Characteristics: Named nodes with explicit `from:` edges, arbitrary graph topology, supports all eight node types
+- Example: ETL pipeline, multi-source comparison, fan-out classification with merge
 
 ### Step 3: Design Input Phase
 
@@ -158,6 +194,82 @@ parameters:
 **Use `coc run` to execute:** `coc run path/to/pipeline.yaml --param param1="value"`
 
 After designing the job, skip to **Step 7: Validate**.
+
+---
+
+### Step 3w: Design DAG Workflow (Pattern E only)
+
+If Pattern E was selected, skip Steps 3–6 and design the workflow graph:
+
+**3w-a. Identify nodes:** Based on the user's processing stages description, identify each node with:
+- A descriptive kebab-case ID (e.g., `load-bugs`, `filter-critical`, `map-analyze`)
+- The appropriate node type (`load`, `script`, `filter`, `map`, `reduce`, `merge`, `transform`, `ai`)
+- Parent edges (`from:` array) connecting it to upstream nodes
+
+**3w-b. Configure each node** using the type-specific fields from the [workflow schema reference](references/workflow-schema.md).
+
+**Note on `ai` vs `map` vs `reduce`:**
+- Use `map` when each item needs **independent** analysis (one AI call per item)
+- Use `ai` when the AI needs to see **all items holistically** (comparison, deduplication, synthesis)
+- Use `reduce` with `strategy: ai` when aggregating map outputs into a summary
+
+**3w-c. Apply settings defaults** in the top-level `settings:` block for shared `concurrency`, `timeoutMs`, and `model` values.
+
+**3w-d. Validate the graph:**
+- Every `from:` reference resolves to a defined node
+- No cycles
+- `merge` nodes have ≥2 parents
+- `load` nodes have no parents
+- Every AI node has a `prompt` or `promptFile`
+- Every `script` node has a `run` command
+
+After designing the workflow, skip to **Step 7: Validate**.
+
+**Example DAG Workflow:**
+```yaml
+name: "Bug Triage with Script Enrichment"
+description: "Load bugs, enrich via script, classify, generate report"
+
+settings:
+  concurrency: 5
+  model: "gpt-4"
+
+nodes:
+  load-bugs:
+    type: load
+    source:
+      type: csv
+      path: "bugs.csv"
+
+  enrich:
+    type: script
+    from: [load-bugs]
+    run: "python3 enrich.py"
+    input: json
+    output: json
+
+  classify:
+    type: map
+    from: [enrich]
+    prompt: |
+      Classify bug: {{title}}
+      Description: {{description}}
+      Enriched: {{enrichment_data}}
+
+      Return JSON with severity and category.
+    output: [severity, category]
+
+  report:
+    type: reduce
+    from: [classify]
+    strategy: ai
+    prompt: |
+      Summarize {{COUNT}} classified bugs:
+      {{RESULTS}}
+
+      Generate an executive summary with priorities.
+    output: [summary, priorities]
+```
 
 ---
 
@@ -274,6 +386,24 @@ Check for anti-patterns and issues:
 - ✓ No `input:`, `map:`, or `reduce:` sections present
 - ✓ All `{{variable}}` in job prompt are listed in top-level `parameters:`
 
+**Schema Validation (DAG Workflow):**
+- ✓ `name` must be non-empty string
+- ✓ `nodes` must be a non-empty object
+- ✓ Every `from` reference points to an existing node ID
+- ✓ No cycles in the node graph
+- ✓ `merge` nodes have ≥2 parents
+- ✓ `load` nodes have no `from`
+- ✓ AI nodes have `prompt` or `promptFile`
+- ✓ `script` nodes have `run`
+- ✓ `filter` nodes have a `rule`
+- ✓ `reduce` nodes have a `strategy`
+
+**Anti-Pattern Detection (DAG):**
+- ⚠️ Single linear chain of 2 nodes (load → reduce) → Suggest: use a linear pipeline instead
+- ⚠️ `merge` with only 1 parent → Error: merge requires ≥2 parents
+- ⚠️ Disconnected nodes (no `from` and not a `load`) → Warn: node unreachable
+- ⚠️ `script` with `output: passthrough` feeding a `map` → Warn: map will receive original (un-transformed) data
+
 **Anti-Pattern Detection:**
 - ⚠️ Timeout < 60000ms → Warn: too aggressive
 - ⚠️ Parallel > 10 → Warn: may hit rate limits
@@ -291,6 +421,40 @@ Produce the final pipeline YAML with:
 5. Usage instructions
 
 ## Output Format
+
+**For DAG Workflows:**
+
+````markdown
+```yaml
+name: "[Descriptive Name]"
+description: "[What this workflow does]"
+
+settings:
+  # [Explanation of defaults]
+  concurrency: [value]
+  model: "[model]"
+
+nodes:
+  [node-id]:
+    type: [type]
+    # [Explanation]
+    [type-specific config]
+
+  [node-id]:
+    type: [type]
+    from: [[parent-ids]]
+    # [Explanation]
+    [type-specific config]
+```
+
+**How to use:**
+1. Save this as `.vscode/pipelines/[name]/pipeline.yaml`
+2. Place any referenced CSV/JSON files in the same directory
+3. Place any referenced scripts in the same directory (or adjust `cwd`)
+4. Execute from the VSCode Pipelines view or via `coc run`
+````
+
+**For Linear Pipelines:**
 
 Present the pipeline YAML with explanations:
 
@@ -350,6 +514,7 @@ See [patterns reference](references/patterns.md) for detailed examples of:
 - Multi-Model Fanout (consensus analysis)
 - Hybrid Filtering (rule + AI filtering)
 - **Single AI Job** (one-shot prompts, Q&A, summaries — no input/map/reduce)
+- **DAG Workflow** (fan-out classification, ETL with scripting, multi-source merge)
 
 ## Schema Reference
 
@@ -358,3 +523,8 @@ See [schema reference](references/schema.md) for:
 - Validation rules
 - Error messages
 - Anti-patterns to avoid
+
+See [workflow schema reference](references/workflow-schema.md) for:
+- DAG workflow YAML format
+- Node type specifications
+- Graph validation rules

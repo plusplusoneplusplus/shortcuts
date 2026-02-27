@@ -475,6 +475,241 @@ parameters:
 | "Batch analysis with custom rules" | Map-Reduce + Rule Filter |
 | "One-shot prompt, no input data" | Single AI Job |
 | "Summarize a document/diff/snippet" | Single AI Job |
+| "Process data through parallel branches" | DAG Fan-Out Classification |
+| "Mix scripts with AI processing" | ETL with Script Nodes |
+| "Combine data from multiple sources" | Multi-Source Merge and Compare |
+
+---
+
+## Pattern 7: DAG Fan-Out Classification
+
+**Use Case:** Split a single data source into parallel branches for different analysis, then merge results.
+
+```yaml
+name: "Multi-Category Bug Analysis"
+
+settings:
+  concurrency: 5
+  model: "gpt-4"
+
+nodes:
+  load-bugs:
+    type: load
+    source:
+      type: csv
+      path: "bugs.csv"
+
+  filter-critical:
+    type: filter
+    from: [load-bugs]
+    rule:
+      type: field
+      field: severity
+      op: in
+      values: [critical, high]
+
+  filter-standard:
+    type: filter
+    from: [load-bugs]
+    rule:
+      type: not
+      rule:
+        type: field
+        field: severity
+        op: in
+        values: [critical, high]
+
+  analyze-critical:
+    type: map
+    from: [filter-critical]
+    prompt: |
+      Deep-analyze this critical bug:
+      Title: {{title}}
+      Description: {{description}}
+
+      Return JSON with root_cause, impact, and fix_urgency.
+    output: [root_cause, impact, fix_urgency]
+    timeoutMs: 600000
+
+  analyze-standard:
+    type: map
+    from: [filter-standard]
+    prompt: |
+      Briefly classify this bug:
+      Title: {{title}}
+
+      Return JSON with category and effort_hours.
+    output: [category, effort_hours]
+    timeoutMs: 300000
+
+  merge-results:
+    type: merge
+    from: [analyze-critical, analyze-standard]
+    strategy: concat
+
+  report:
+    type: reduce
+    from: [merge-results]
+    strategy: ai
+    prompt: |
+      Combine results from critical ({{SUCCESS_COUNT}} items) and standard analysis:
+      {{RESULTS}}
+
+      Generate a unified sprint planning report with priorities.
+    output: [sprint_plan, risk_items, effort_estimate]
+```
+
+**Key Characteristics:**
+- Single load fans out to two filter branches
+- Different analysis depth per branch (more time for critical bugs)
+- Merge reunites branches before final reduce
+- `filter` uses composable boolean algebra (`not` wrapping `field`)
+
+**When to Use:**
+- Different processing logic for different data subsets
+- Cost optimization (cheap analysis for low-priority items)
+- Need to reunite results for a single summary
+
+---
+
+## Pattern 8: ETL with Script Nodes
+
+**Use Case:** Data transformation pipeline that mixes external scripts with AI processing.
+
+```yaml
+name: "Data ETL Pipeline"
+
+settings:
+  concurrency: 3
+
+nodes:
+  load-raw:
+    type: load
+    source:
+      type: csv
+      path: "raw-data.csv"
+
+  normalize:
+    type: script
+    from: [load-raw]
+    run: "python3 normalize.py"
+    input: json
+    output: json
+    timeoutMs: 120000
+
+  clean:
+    type: transform
+    from: [normalize]
+    ops:
+      - op: drop
+        fields: [internal_id, raw_timestamp]
+      - op: rename
+        from: normalized_name
+        to: name
+      - op: add
+        field: pipeline_run
+        value: "etl-2024"
+
+  enrich:
+    type: map
+    from: [clean]
+    prompt: |
+      Enrich this record with additional context:
+      Name: {{name}}
+      Category: {{category}}
+
+      Return JSON with enriched_description and quality_score.
+    output: [enriched_description, quality_score]
+
+  export:
+    type: script
+    from: [enrich]
+    run: "python3 export_to_db.py"
+    input: json
+    output: passthrough
+    onError: warn
+```
+
+**Key Characteristics:**
+- Script nodes for data normalization and export
+- Transform node for field manipulation (no AI cost)
+- `onError: warn` on export — workflow completes even if DB write fails
+- Linear chain but uses node types not available in linear pipelines
+
+**When to Use:**
+- Need external script integration (Python, shell, etc.)
+- Data cleaning/transformation before AI processing
+- Export to external systems as final step
+
+---
+
+## Pattern 9: Multi-Source Merge and Compare
+
+**Use Case:** Load data from multiple sources, merge, and perform comparative analysis.
+
+```yaml
+name: "Cross-Source Data Comparison"
+
+settings:
+  model: "gpt-4"
+  concurrency: 5
+
+nodes:
+  load-source-a:
+    type: load
+    source:
+      type: csv
+      path: "source-a.csv"
+
+  load-source-b:
+    type: load
+    source:
+      type: json
+      path: "source-b.json"
+
+  load-source-c:
+    type: load
+    source:
+      type: ai
+      prompt: "Generate 5 benchmark items for comparison with fields: name, score, category"
+      schema: [name, score, category]
+
+  merge-all:
+    type: merge
+    from: [load-source-a, load-source-b, load-source-c]
+    strategy: concat
+
+  tag-source:
+    type: transform
+    from: [merge-all]
+    ops:
+      - op: add
+        field: source_id
+        value: "merged"
+
+  compare:
+    type: ai
+    from: [tag-source]
+    prompt: |
+      Compare these items from multiple data sources:
+      {{ITEMS}}
+
+      Identify overlaps, conflicts, and gaps across sources.
+      Return JSON with comparison_matrix, conflicts, and recommendations.
+    output: [comparison_matrix, conflicts, recommendations]
+    timeoutMs: 600000
+```
+
+**Key Characteristics:**
+- Three load nodes with different source types (CSV, JSON, AI-generated)
+- Merge node combines all sources
+- Single `ai` node for holistic comparison (not per-item map)
+- Transform adds metadata before analysis
+
+**When to Use:**
+- Comparing data from heterogeneous sources
+- Need a unified view across datasets
+- Benchmarking against AI-generated baseline data
 
 ---
 

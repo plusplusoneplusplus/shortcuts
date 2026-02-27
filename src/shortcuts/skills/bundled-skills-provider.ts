@@ -14,7 +14,7 @@ import { ensureDirectoryExists, safeExists, safeReadDir, safeReadFile, safeStats
 const BUNDLED_SKILLS_REGISTRY: BundledSkill[] = [
     {
         name: 'pipeline-generator',
-        description: 'Generate optimized YAML pipeline configurations from natural language requirements',
+        description: 'Generate optimized YAML pipeline or DAG workflow configurations from natural language requirements',
         relativePath: 'pipeline-generator'
     },
     {
