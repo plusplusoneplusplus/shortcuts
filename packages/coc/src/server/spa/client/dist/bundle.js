@@ -1093,7 +1093,7 @@
             var dispatcher = resolveDispatcher();
             return dispatcher.useReducer(reducer, initialArg, init);
           }
-          function useRef26(initialValue) {
+          function useRef27(initialValue) {
             var dispatcher = resolveDispatcher();
             return dispatcher.useRef(initialValue);
           }
@@ -1887,7 +1887,7 @@
           exports.useLayoutEffect = useLayoutEffect;
           exports.useMemo = useMemo11;
           exports.useReducer = useReducer4;
-          exports.useRef = useRef26;
+          exports.useRef = useRef27;
           exports.useState = useState57;
           exports.useSyncExternalStore = useSyncExternalStore;
           exports.useTransition = useTransition;
@@ -34012,7 +34012,7 @@
       }
     };
     return /* @__PURE__ */ (0, import_jsx_runtime44.jsxs)("div", { className: `flex items-center gap-2 px-3 py-2 text-xs ${noBorder ? "" : "border-b border-[#e0e0e0] dark:border-[#3c3c3c]"}`, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime44.jsx)(Button, { variant: "secondary", size: "sm", "data-testid": "generate-with-ai-btn", onClick: onGenerateWithAI, children: "\u2728 Generate with AI" }),
+      /* @__PURE__ */ (0, import_jsx_runtime44.jsx)(Button, { variant: "secondary", size: "sm", "data-testid": "generate-with-ai-btn", onClick: onGenerateWithAI, children: "\u2728 Generate task with AI" }),
       openFilePath && /* @__PURE__ */ (0, import_jsx_runtime44.jsxs)(import_jsx_runtime44.Fragment, { children: [
         /* @__PURE__ */ (0, import_jsx_runtime44.jsx)(Button, { variant: "ghost", size: "sm", onClick: handleCopyPath, children: "Copy path" }),
         /* @__PURE__ */ (0, import_jsx_runtime44.jsx)(Button, { variant: "ghost", size: "sm", onClick: handleOpenInEditor, children: "Open in editor" })
@@ -42303,6 +42303,9 @@
   function normalizePath2(pathValue) {
     return pathValue.replace(/\\/g, "/");
   }
+  function normalizeComparablePath(pathValue) {
+    return normalizePath2(pathValue).replace(/\/+$/, "").toLowerCase();
+  }
   function resolveWorkspaceForPath(filePath, workspaces) {
     const normalizedPath = normalizePath2(filePath);
     let best = null;
@@ -42327,10 +42330,33 @@
     if (!normalizedPath.startsWith(tasksRoot + "/")) return null;
     return normalizedPath.slice(tasksRoot.length + 1);
   }
+  function getQueueWorkingDirectory(queue) {
+    const buckets = [queue.running, queue.queued, queue.history];
+    for (const bucket of buckets) {
+      if (!Array.isArray(bucket)) continue;
+      for (const task of bucket) {
+        const candidate = task?.workingDirectory || task?.payload?.workingDirectory;
+        if (typeof candidate === "string" && candidate.trim()) {
+          return candidate;
+        }
+      }
+    }
+    return null;
+  }
+  function resolveWorkspaceIdForQueueMessage(queue, workspaces) {
+    const workingDirectory = getQueueWorkingDirectory(queue);
+    if (!workingDirectory) return null;
+    const normalizedWorkingDirectory = normalizeComparablePath(workingDirectory);
+    const matchedWorkspace = workspaces.find(
+      (ws) => typeof ws.rootPath === "string" && normalizeComparablePath(ws.rootPath) === normalizedWorkingDirectory
+    );
+    return matchedWorkspace?.id ?? null;
+  }
   function AppInner() {
     const { state: appState, dispatch: appDispatch } = useApp();
     const { dispatch: queueDispatch } = useQueue();
     const { toasts, addToast, removeToast } = useToast();
+    const repoIdAliasRef = (0, import_react72.useRef)({});
     const [reviewDialog, setReviewDialog] = (0, import_react72.useState)({
       open: false,
       wsId: null,
@@ -42362,7 +42388,20 @@
         case "queue-updated":
           if (msg.queue) {
             if (msg.queue.repoId) {
-              queueDispatch({ type: "REPO_QUEUE_UPDATED", repoId: msg.queue.repoId, queue: msg.queue });
+              const queueRepoId = String(msg.queue.repoId);
+              queueDispatch({ type: "REPO_QUEUE_UPDATED", repoId: queueRepoId, queue: msg.queue });
+              const resolvedWorkspaceId = resolveWorkspaceIdForQueueMessage(msg.queue, appState.workspaces);
+              if (resolvedWorkspaceId) {
+                repoIdAliasRef.current[queueRepoId] = resolvedWorkspaceId;
+                if (resolvedWorkspaceId !== queueRepoId) {
+                  queueDispatch({ type: "REPO_QUEUE_UPDATED", repoId: resolvedWorkspaceId, queue: msg.queue });
+                }
+              } else {
+                const aliasedWorkspaceId = repoIdAliasRef.current[queueRepoId];
+                if (aliasedWorkspaceId && aliasedWorkspaceId !== queueRepoId) {
+                  queueDispatch({ type: "REPO_QUEUE_UPDATED", repoId: aliasedWorkspaceId, queue: msg.queue });
+                }
+              }
             } else {
               queueDispatch({ type: "QUEUE_UPDATED", queue: msg.queue });
               if (!msg.queue.history) {
@@ -42412,7 +42451,7 @@
           else if (msg.data?.wikiId) appDispatch({ type: "WIKI_ERROR", wikiId: msg.data.wikiId, error: msg.data.error || "" });
           break;
       }
-    }, [appDispatch, queueDispatch]);
+    }, [appDispatch, queueDispatch, appState.workspaces]);
     const { connect } = useWebSocket({ onMessage, onConnect: handleConnect });
     (0, import_react72.useEffect)(() => {
       async function bootstrap() {

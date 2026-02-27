@@ -3,7 +3,7 @@
  * Wraps providers around the layout shell.
  */
 
-import { useEffect, useCallback, useState } from 'react';
+import { useEffect, useCallback, useState, useRef } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { QueueProvider, useQueue } from './context/QueueContext';
 import { ToastProvider } from './context/ToastContext';
@@ -29,8 +29,23 @@ interface WorkspaceLike {
     rootPath?: string;
 }
 
+interface QueueMessageTaskLike {
+    workingDirectory?: string;
+    payload?: { workingDirectory?: string };
+}
+
+interface QueueMessageLike {
+    queued?: QueueMessageTaskLike[];
+    running?: QueueMessageTaskLike[];
+    history?: QueueMessageTaskLike[];
+}
+
 function normalizePath(pathValue: string): string {
     return pathValue.replace(/\\/g, '/');
+}
+
+function normalizeComparablePath(pathValue: string): string {
+    return normalizePath(pathValue).replace(/\/+$/, '').toLowerCase();
 }
 
 function resolveWorkspaceForPath(filePath: string, workspaces: WorkspaceLike[]): WorkspaceLike | null {
@@ -64,10 +79,38 @@ function toTaskRelativePath(fullPath: string, workspaceRoot: string): string | n
     return normalizedPath.slice(tasksRoot.length + 1);
 }
 
+function getQueueWorkingDirectory(queue: QueueMessageLike): string | null {
+    const buckets = [queue.running, queue.queued, queue.history];
+    for (const bucket of buckets) {
+        if (!Array.isArray(bucket)) continue;
+        for (const task of bucket) {
+            const candidate = task?.workingDirectory || task?.payload?.workingDirectory;
+            if (typeof candidate === 'string' && candidate.trim()) {
+                return candidate;
+            }
+        }
+    }
+    return null;
+}
+
+function resolveWorkspaceIdForQueueMessage(
+    queue: QueueMessageLike,
+    workspaces: WorkspaceLike[],
+): string | null {
+    const workingDirectory = getQueueWorkingDirectory(queue);
+    if (!workingDirectory) return null;
+    const normalizedWorkingDirectory = normalizeComparablePath(workingDirectory);
+    const matchedWorkspace = workspaces.find(ws =>
+        typeof ws.rootPath === 'string' && normalizeComparablePath(ws.rootPath) === normalizedWorkingDirectory
+    );
+    return matchedWorkspace?.id ?? null;
+}
+
 function AppInner() {
     const { state: appState, dispatch: appDispatch } = useApp();
     const { dispatch: queueDispatch } = useQueue();
     const { toasts, addToast, removeToast } = useToast();
+    const repoIdAliasRef = useRef<Record<string, string>>({});
     const [reviewDialog, setReviewDialog] = useState<MarkdownReviewDialogState>({
         open: false,
         wsId: null,
@@ -102,7 +145,23 @@ function AppInner() {
             case 'queue-updated':
                 if (msg.queue) {
                     if (msg.queue.repoId) {
-                        queueDispatch({ type: 'REPO_QUEUE_UPDATED', repoId: msg.queue.repoId, queue: msg.queue });
+                        const queueRepoId = String(msg.queue.repoId);
+                        queueDispatch({ type: 'REPO_QUEUE_UPDATED', repoId: queueRepoId, queue: msg.queue });
+
+                        // Per-repo WS events use internal queue repo IDs (sha256 hash).
+                        // Mirror updates onto workspace IDs so repo tabs/badges stay in sync.
+                        const resolvedWorkspaceId = resolveWorkspaceIdForQueueMessage(msg.queue, appState.workspaces as WorkspaceLike[]);
+                        if (resolvedWorkspaceId) {
+                            repoIdAliasRef.current[queueRepoId] = resolvedWorkspaceId;
+                            if (resolvedWorkspaceId !== queueRepoId) {
+                                queueDispatch({ type: 'REPO_QUEUE_UPDATED', repoId: resolvedWorkspaceId, queue: msg.queue });
+                            }
+                        } else {
+                            const aliasedWorkspaceId = repoIdAliasRef.current[queueRepoId];
+                            if (aliasedWorkspaceId && aliasedWorkspaceId !== queueRepoId) {
+                                queueDispatch({ type: 'REPO_QUEUE_UPDATED', repoId: aliasedWorkspaceId, queue: msg.queue });
+                            }
+                        }
                     } else {
                         queueDispatch({ type: 'QUEUE_UPDATED', queue: msg.queue });
                         // Fetch history if not included
@@ -152,7 +211,7 @@ function AppInner() {
                 else if (msg.data?.wikiId) appDispatch({ type: 'WIKI_ERROR', wikiId: msg.data.wikiId, error: msg.data.error || '' });
                 break;
         }
-    }, [appDispatch, queueDispatch]);
+    }, [appDispatch, queueDispatch, appState.workspaces]);
 
     const { connect } = useWebSocket({ onMessage, onConnect: handleConnect });
 

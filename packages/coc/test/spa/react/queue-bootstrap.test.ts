@@ -129,6 +129,44 @@ describe('App.tsx — onConnect reconnect handler', () => {
 });
 
 // ============================================================================
+// App.tsx — per-repo queue WS aliasing (repoId hash -> workspace ID)
+// ============================================================================
+
+describe('App.tsx — per-repo queue update aliasing', () => {
+    let source: string;
+
+    beforeAll(() => {
+        source = fs.readFileSync(path.join(CLIENT_DIR, 'App.tsx'), 'utf-8');
+    });
+
+    it('defines helpers to resolve workspace ID from queue message workingDirectory', () => {
+        expect(source).toContain('getQueueWorkingDirectory');
+        expect(source).toContain('resolveWorkspaceIdForQueueMessage');
+    });
+
+    it('maintains a repoId alias ref for empty-queue follow-up updates', () => {
+        expect(source).toContain('repoIdAliasRef');
+        expect(source).toMatch(/useRef<Record<string,\s*string>>\(\{\}\)/);
+    });
+
+    it('dispatches REPO_QUEUE_UPDATED for the raw queue repoId from WS', () => {
+        expect(source).toContain("const queueRepoId = String(msg.queue.repoId)");
+        expect(source).toContain("queueDispatch({ type: 'REPO_QUEUE_UPDATED', repoId: queueRepoId, queue: msg.queue })");
+    });
+
+    it('mirrors per-repo WS updates onto resolved workspace ID when available', () => {
+        expect(source).toContain('resolvedWorkspaceId');
+        expect(source).toContain("repoIdAliasRef.current[queueRepoId] = resolvedWorkspaceId");
+        expect(source).toContain("queueDispatch({ type: 'REPO_QUEUE_UPDATED', repoId: resolvedWorkspaceId, queue: msg.queue })");
+    });
+
+    it('falls back to stored alias mapping when workingDirectory is absent', () => {
+        expect(source).toContain('aliasedWorkspaceId');
+        expect(source).toContain("queueDispatch({ type: 'REPO_QUEUE_UPDATED', repoId: aliasedWorkspaceId, queue: msg.queue })");
+    });
+});
+
+// ============================================================================
 // QueueContext — queueInitialized flag and SEED_QUEUE action
 // ============================================================================
 
