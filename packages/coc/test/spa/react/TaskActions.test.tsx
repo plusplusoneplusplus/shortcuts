@@ -1,5 +1,5 @@
 /**
- * Tests for TaskActions toolbar — Generate with AI button.
+ * Tests for TaskActions toolbar — Generate task with AI button.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -25,7 +25,7 @@ function Wrap({ children }: { children: ReactNode }) {
     );
 }
 
-describe('TaskActions — Generate with AI button', () => {
+describe('TaskActions — Generate task with AI button', () => {
     beforeEach(() => {
         vi.restoreAllMocks();
     });
@@ -44,7 +44,7 @@ describe('TaskActions — Generate with AI button', () => {
         );
         const btn = screen.getByTestId('generate-with-ai-btn');
         expect(btn).toBeTruthy();
-        expect(btn.textContent).toContain('Generate with AI');
+        expect(btn.textContent).toContain('Generate task with AI');
     });
 
     it('fires the callback on click', () => {
