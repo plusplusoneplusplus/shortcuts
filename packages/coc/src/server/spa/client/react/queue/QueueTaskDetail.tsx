@@ -265,13 +265,19 @@ export function QueueTaskDetail() {
         return () => el.removeEventListener('scroll', onScroll);
     }, [selectedTaskId]);
 
-    // Determine task object from queue state
+    // Determine task object from queue state (global + per-repo maps)
     useEffect(() => {
         if (!selectedTaskId) { setTask(null); return; }
-        const found = [...queueState.running, ...queueState.queued, ...queueState.history]
-            .find(t => t.id === selectedTaskId);
+        const globalTasks = [...queueState.running, ...queueState.queued, ...queueState.history];
+        let found = globalTasks.find(t => t.id === selectedTaskId);
+        if (!found) {
+            for (const repo of Object.values(queueState.repoQueueMap)) {
+                found = [...repo.running, ...repo.queued, ...repo.history].find(t => t.id === selectedTaskId);
+                if (found) break;
+            }
+        }
         setTask(found || null);
-    }, [selectedTaskId, queueState.running, queueState.queued, queueState.history]);
+    }, [selectedTaskId, queueState.running, queueState.queued, queueState.history, queueState.repoQueueMap]);
 
     // Fetch full task data for pending tasks (metadata + payload)
     useEffect(() => {
