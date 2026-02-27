@@ -7,6 +7,7 @@
 
 import type { ClientToolCall } from './state';
 import { escapeHtmlClient } from './utils';
+import { computeLineDiff } from './diff-utils';
 
 /* ── Icon mappings ────────────────────────────────────────── */
 
@@ -116,8 +117,77 @@ function buildBashArgsHTML(args: any): string {
     return html;
 }
 
+function buildEditArgsHTML(args: any): string {
+    if (!args || typeof args !== 'object') return '';
+    const filePath = args.path || args.filePath || '';
+    const oldStr = typeof args.old_str === 'string' ? args.old_str : (typeof args.old_string === 'string' ? args.old_string : '');
+    const newStr = typeof args.new_str === 'string' ? args.new_str : (typeof args.new_string === 'string' ? args.new_string : '');
+
+    let html = '';
+    if (filePath) {
+        html += '<div class="tool-call-section">' +
+            '<div class="tool-call-section-label">\u{1F4C1} ' + escapeHtmlClient(shortenPath(filePath)) + '</div>' +
+            '</div>';
+    }
+
+    const diffLines = computeLineDiff(oldStr, newStr);
+    if (diffLines) {
+        html += '<div class="tool-call-section">' +
+            '<div class="diff-container">';
+        for (const line of diffLines) {
+            const cls = line.type === 'added' ? 'diff-line-added'
+                : line.type === 'removed' ? 'diff-line-removed'
+                    : 'diff-line-context';
+            const prefix = line.type === 'added' ? '+'
+                : line.type === 'removed' ? '\u2212'
+                    : ' ';
+            html += '<div class="diff-line ' + cls + '">' +
+                '<span class="diff-line-prefix">' + prefix + '</span>' +
+                escapeHtmlClient(line.content) +
+                '</div>';
+        }
+        html += '</div></div>';
+    } else {
+        // Fallback for large diffs
+        if (oldStr) {
+            html += '<div class="tool-call-section">' +
+                '<div class="tool-call-section-label">Old</div>' +
+                '<pre><code>' + escapeHtmlClient(oldStr) + '</code></pre>' +
+                '</div>';
+        }
+        if (newStr) {
+            html += '<div class="tool-call-section">' +
+                '<div class="tool-call-section-label">New</div>' +
+                '<pre><code>' + escapeHtmlClient(newStr) + '</code></pre>' +
+                '</div>';
+        }
+    }
+    return html;
+}
+
+function buildCreateArgsHTML(args: any): string {
+    if (!args || typeof args !== 'object') return '';
+    const filePath = args.path || args.filePath || '';
+    const fileText = typeof args.file_text === 'string' ? args.file_text : '';
+
+    let html = '';
+    if (filePath) {
+        html += '<div class="tool-call-section">' +
+            '<div class="tool-call-section-label">\u{1F4C1} ' + escapeHtmlClient(shortenPath(filePath)) + '</div>' +
+            '</div>';
+    }
+    if (fileText) {
+        html += '<div class="tool-call-section">' +
+            '<pre><code>' + escapeHtmlClient(fileText) + '</code></pre>' +
+            '</div>';
+    }
+    return html;
+}
+
 function buildArgsHTML(args: any, toolName?: string): string {
     if (toolName === 'bash') return buildBashArgsHTML(args);
+    if (toolName === 'edit') return buildEditArgsHTML(args);
+    if (toolName === 'create') return buildCreateArgsHTML(args);
     const argsStr = formatArgsString(args);
     if (!argsStr) return '';
     return '<div class="tool-call-section">' +

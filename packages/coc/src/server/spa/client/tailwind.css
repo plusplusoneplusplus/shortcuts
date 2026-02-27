@@ -1005,6 +1005,60 @@
     background: #3c3c3c;
 }
 
+/* ── Diff rendering for edit/create tool calls ── */
+
+.diff-container {
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    overflow: hidden;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: 11px;
+    line-height: 1.55;
+}
+
+.dark .diff-container {
+    border-color: #3c3c3c;
+}
+
+.diff-line {
+    padding: 0 8px;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.diff-line-added {
+    background: rgba(35, 134, 54, 0.15);
+    color: #1a7f37;
+}
+
+.diff-line-removed {
+    background: rgba(218, 54, 51, 0.15);
+    color: #cf222e;
+}
+
+.diff-line-context {
+    background: transparent;
+}
+
+.dark .diff-line-added {
+    background: rgba(46, 160, 67, 0.15);
+    color: #3fb950;
+}
+
+.dark .diff-line-removed {
+    background: rgba(248, 81, 73, 0.15);
+    color: #f85149;
+}
+
+.diff-line-prefix {
+    display: inline-block;
+    width: 12px;
+    text-align: right;
+    margin-right: 4px;
+    user-select: none;
+    opacity: 0.7;
+}
+
 /* Queue task repo/workspace badge */
 .queue-repo-badge {
     display: inline-block;

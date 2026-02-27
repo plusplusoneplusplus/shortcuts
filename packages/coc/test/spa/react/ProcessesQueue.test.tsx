@@ -897,8 +897,8 @@ describe('ToolCallView', () => {
     });
 
     it('expands to show args on click', () => {
-        render(<Wrap><ToolCallView toolCall={{ toolName: 'edit', args: { path: '/test.ts' }, status: 'completed' }} /></Wrap>);
-        fireEvent.click(screen.getByText('edit'));
+        render(<Wrap><ToolCallView toolCall={{ toolName: 'grep', args: { pattern: 'test' }, status: 'completed' }} /></Wrap>);
+        fireEvent.click(screen.getByText('grep'));
         expect(screen.getByText('Arguments')).toBeDefined();
     });
 
@@ -927,12 +927,12 @@ describe('ToolCallView', () => {
     });
 
     it('toggles collapsed state', () => {
-        render(<Wrap><ToolCallView toolCall={{ toolName: 'edit', args: { a: 1 }, status: 'completed' }} /></Wrap>);
+        render(<Wrap><ToolCallView toolCall={{ toolName: 'grep', args: { pattern: 'test' }, status: 'completed' }} /></Wrap>);
         const body = screen.getByText('Arguments').closest('.tool-call-body');
         expect(body?.classList.contains('collapsed')).toBe(true);
-        fireEvent.click(screen.getByText('edit'));
+        fireEvent.click(screen.getByText('grep'));
         expect(body?.classList.contains('collapsed')).toBe(false);
-        fireEvent.click(screen.getByText('edit'));
+        fireEvent.click(screen.getByText('grep'));
         expect(body?.classList.contains('collapsed')).toBe(true);
     });
 

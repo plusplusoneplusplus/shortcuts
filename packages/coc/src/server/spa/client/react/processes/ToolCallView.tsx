@@ -3,8 +3,9 @@
  * Replaces renderToolCall / normalizeToolCall from tool-renderer.ts.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { cn } from '../shared';
+import { computeLineDiff, type DiffLine } from '../../diff-utils';
 
 interface ToolCallData {
     id?: string;
@@ -154,6 +155,89 @@ function statusIndicator(status?: string) {
     }
 }
 
+function DiffView({ diffLines }: { diffLines: DiffLine[] }) {
+    return (
+        <div className="diff-container rounded border border-[#e0e0e0] dark:border-[#3c3c3c] overflow-hidden font-mono text-[11px] leading-[1.55]">
+            {diffLines.map((line, i) => (
+                <div
+                    key={i}
+                    className={cn(
+                        'diff-line px-2 whitespace-pre-wrap break-words',
+                        line.type === 'added' && 'diff-line-added',
+                        line.type === 'removed' && 'diff-line-removed',
+                        line.type === 'context' && 'diff-line-context'
+                    )}
+                >
+                    <span className="diff-line-prefix inline-block w-3 select-none text-right mr-1 opacity-70">
+                        {line.type === 'added' ? '+' : line.type === 'removed' ? '−' : ' '}
+                    </span>
+                    {line.content}
+                </div>
+            ))}
+        </div>
+    );
+}
+
+function EditToolView({ args }: { args: Record<string, any> }) {
+    const filePath = args.path || args.filePath || '';
+    const oldStr = typeof args.old_str === 'string' ? args.old_str : (typeof args.old_string === 'string' ? args.old_string : '');
+    const newStr = typeof args.new_str === 'string' ? args.new_str : (typeof args.new_string === 'string' ? args.new_string : '');
+
+    const diffLines = useMemo(() => computeLineDiff(oldStr, newStr), [oldStr, newStr]);
+
+    return (
+        <div className="space-y-1.5">
+            {filePath && (
+                <div className="text-[10px] uppercase text-[#848484] mb-0.5">
+                    📁 {shortenPath(filePath)}
+                </div>
+            )}
+            {diffLines ? (
+                <DiffView diffLines={diffLines} />
+            ) : (
+                <>
+                    {oldStr && (
+                        <div>
+                            <div className="text-[10px] uppercase text-[#848484] mb-0.5">Old</div>
+                            <pre className="overflow-x-auto text-[11px] whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc]">
+                                <code>{oldStr}</code>
+                            </pre>
+                        </div>
+                    )}
+                    {newStr && (
+                        <div>
+                            <div className="text-[10px] uppercase text-[#848484] mb-0.5">New</div>
+                            <pre className="overflow-x-auto text-[11px] whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc]">
+                                <code>{newStr}</code>
+                            </pre>
+                        </div>
+                    )}
+                </>
+            )}
+        </div>
+    );
+}
+
+function CreateToolView({ args }: { args: Record<string, any> }) {
+    const filePath = args.path || args.filePath || '';
+    const fileText = typeof args.file_text === 'string' ? args.file_text : '';
+
+    return (
+        <div className="space-y-1.5">
+            {filePath && (
+                <div className="text-[10px] uppercase text-[#848484] mb-0.5">
+                    📁 {shortenPath(filePath)}
+                </div>
+            )}
+            {fileText && (
+                <pre className="overflow-x-auto text-[11px] whitespace-pre-wrap break-words rounded border border-[#e0e0e0] dark:border-[#3c3c3c] p-2 font-mono text-[#1e1e1e] dark:text-[#cccccc]">
+                    <code>{fileText}</code>
+                </pre>
+            )}
+        </div>
+    );
+}
+
 export function ToolCallView({
     toolCall,
     depth = 0,
@@ -263,7 +347,13 @@ export function ToolCallView({
                             </pre>
                         </div>
                     )}
-                    {name !== 'bash' && args && (
+                    {name === 'edit' && argsObj && (
+                        <EditToolView args={argsObj} />
+                    )}
+                    {name === 'create' && argsObj && (
+                        <CreateToolView args={argsObj} />
+                    )}
+                    {name !== 'bash' && name !== 'edit' && name !== 'create' && args && (
                         <div>
                             <div className="text-[10px] uppercase text-[#848484] mb-0.5">Arguments</div>
                             <pre className="overflow-x-auto text-[11px] whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc]">
