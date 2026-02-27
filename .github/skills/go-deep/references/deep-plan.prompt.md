@@ -123,14 +123,17 @@ Write a `CONTEXT.md` file to `.vscode/tasks/<feature>/<work>/CONTEXT.md` that ca
 
 **Requirements:**
 - Keep it **compact** — no implementation details, no file lists, no code snippets
-- Include: feature name, goal (1-2 sentences), commit sequence (number + title only), key architectural decisions, and any important constraints or conventions
+- Include: user story (the original request in the user's own words), feature name, goal (1-2 sentences), commit sequence (number + title only), key architectural decisions, and any important constraints or conventions
 - Should be understandable in isolation by someone (or an AI) with no prior context
-- Target length: **15-30 lines**
+- Target length: **20-35 lines**
 
 **Format:**
 
 ```markdown
 # Context: <Feature Name>
+
+## User Story
+<Capture the original user request or story that motivated this work. Include the "why" — what problem the user is solving or what experience they want.>
 
 ## Goal
 <1-2 sentence description of what this commit group achieves>
