@@ -27553,9 +27553,9 @@
   }
   function repoName(repoId) {
     if (!repoId) return "";
-    const trimmed = repoId.replace(/\/+$/, "");
-    const lastSlash = trimmed.lastIndexOf("/");
-    return lastSlash >= 0 ? trimmed.substring(lastSlash + 1) : trimmed;
+    const trimmed = repoId.replace(/[/\\]+$/, "");
+    const lastSep = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+    return lastSep >= 0 ? trimmed.substring(lastSep + 1) : trimmed;
   }
   function typeLabel(type2) {
     const map2 = {
