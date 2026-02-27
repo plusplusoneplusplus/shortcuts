@@ -14,6 +14,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
+import { getCopilotSDKService, denyAllPermissions } from '@plusplusoneplusplus/pipeline-core';
 import { sendJSON, sendError, parseBody } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
 import { discoverPipelines } from '@plusplusoneplusplus/coc-server';
@@ -110,6 +111,108 @@ reduce:
   type: json
 `,
 };
+
+// ============================================================================
+// Pipeline Schema Reference (embedded for AI prompt construction)
+// ============================================================================
+
+const PIPELINE_SCHEMA_REFERENCE = `# Pipeline YAML Schema Reference
+
+## Two Pipeline Modes (mutually exclusive)
+
+### Map-Reduce Mode (batch processing)
+\`\`\`yaml
+name: string                    # Required: Pipeline identifier
+input: InputConfig              # Required: Data source
+map: MapConfig                  # Required: Processing phase
+reduce: ReduceConfig            # Required: Aggregation phase
+parameters?: PipelineParameter[] # Optional: Top-level parameters
+\`\`\`
+
+### Single-Job Mode (one-shot AI call)
+\`\`\`yaml
+name: string                    # Required: Pipeline identifier
+job: JobConfig                  # Required: Single AI job definition
+parameters?: PipelineParameter[] # Optional: Template variable values
+\`\`\`
+
+Constraint: job and map are mutually exclusive.
+
+## Input Configuration (exactly ONE of)
+- items: inline array of objects
+- from: { type: csv, path: "file.csv" } OR array of { model: "model-name" }
+- generate: { prompt: string, schema: string[] }
+
+Common options: parameters (shared values), limit (max items)
+
+## Map Configuration
+- prompt: string (or promptFile: string) — exactly one required
+- output?: string[] — field names for JSON parsing (omit for text mode)
+- model?: string — AI model override
+- parallel?: number — concurrency (default: 5)
+- timeoutMs?: number — timeout per item (default: 600000ms)
+- batchSize?: number — items per AI call (default: 1; requires {{ITEMS}} if > 1)
+
+Template variables: {{fieldName}} from input items, {{ITEMS}} for batch, {{paramName}} from parameters
+
+## Reduce Configuration
+- type: 'list' | 'table' | 'json' | 'csv' | 'text' | 'ai'
+- For type='ai': prompt or promptFile required, optional output, model
+- Template variables: {{RESULTS}}, {{COUNT}}, {{SUCCESS_COUNT}}, {{FAILURE_COUNT}}
+
+## Job Configuration
+- prompt: string (or promptFile: string) — exactly one required
+- output?: string[] — field names for JSON parsing (omit for text mode)
+- model?: string — AI model override
+- Template variables: {{paramName}} from top-level parameters
+
+## Filter Configuration (optional, pre-processing)
+- type: 'rule' — rule-based with mode ('all'|'any') and rules array
+- type: 'ai' — AI-based with prompt, output must include 'include' field
+- type: 'hybrid' — combines rule + ai with combineMode ('and'|'or')
+
+## Parameters
+\`\`\`yaml
+parameters:
+  - name: string
+    value: string
+\`\`\`
+Available as {{name}} in prompts. CLI override: --param name=value
+
+## Key Rules
+- name is always required
+- job and map cannot coexist
+- input must have exactly ONE source type
+- map/job must have exactly ONE of prompt or promptFile
+- AI reduce requires a prompt
+- batchSize > 1 requires {{ITEMS}} in prompt
+- Use parallel: 3-5 for most tasks
+- Use reasonable timeouts (300s-900s depending on complexity)
+`;
+
+// ============================================================================
+// AI Response Helpers
+// ============================================================================
+
+/**
+ * Extract YAML content from an AI response that may contain markdown fences.
+ */
+export function extractYamlFromResponse(response: string): string {
+    // 1. Try to extract from ```yaml ... ``` code blocks
+    const yamlBlockMatch = response.match(/```(?:yaml|yml)\s*\n([\s\S]*?)```/);
+    if (yamlBlockMatch) {
+        return yamlBlockMatch[1].trim();
+    }
+    // 2. Try to extract from generic ``` ... ``` code blocks
+    const genericBlockMatch = response.match(/```\s*\n([\s\S]*?)```/);
+    if (genericBlockMatch) {
+        return genericBlockMatch[1].trim();
+    }
+    // 3. Assume the entire response is YAML (strip leading/trailing whitespace)
+    return response.trim();
+}
+
+const GENERATION_TIMEOUT_MS = 120_000; // 2 min — pure text generation, no tool use
 
 // ============================================================================
 // Helpers
@@ -270,6 +373,80 @@ export function registerPipelineWriteRoutes(
 ): void {
 
     // ------------------------------------------------------------------
+    // POST /api/workspaces/:id/pipelines/generate — AI pipeline generation
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/pipelines\/generate$/,
+        handler: async (req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const ws = await resolveWorkspace(store, id);
+            if (!ws) {
+                return sendError(res, 404, 'Workspace not found');
+            }
+
+            let body: any;
+            try {
+                body = await parseBody(req);
+            } catch {
+                return sendError(res, 400, 'Invalid JSON body');
+            }
+
+            const { description, model } = body || {};
+            if (!description || typeof description !== 'string' || !description.trim()) {
+                return sendError(res, 400, 'Missing required field: description');
+            }
+
+            const systemPrompt = `You are a pipeline YAML generator. You produce valid pipeline YAML configurations and nothing else.
+Output ONLY the raw YAML content. Do NOT wrap it in markdown code fences. Do NOT include any explanation before or after the YAML.
+
+${PIPELINE_SCHEMA_REFERENCE}`;
+
+            const userPrompt = `Generate a pipeline YAML configuration for the following requirement:\n\n${description.trim()}`;
+
+            try {
+                const service = getCopilotSDKService();
+                const available = await service.isAvailable();
+                if (!available.available) {
+                    return sendError(res, 503, 'AI service unavailable');
+                }
+
+                const result = await service.sendMessage({
+                    prompt: systemPrompt + '\n\n' + userPrompt,
+                    model: model || undefined,
+                    workingDirectory: ws.rootPath,
+                    timeoutMs: GENERATION_TIMEOUT_MS,
+                    onPermissionRequest: denyAllPermissions,
+                });
+
+                if (!result.success) {
+                    return sendError(res, 500, 'Pipeline generation failed: ' + (result.error || 'Unknown error'));
+                }
+
+                const raw = result.response || '';
+                const extractedYaml = extractYamlFromResponse(raw);
+
+                let valid = true;
+                let validationError: string | undefined;
+                try {
+                    yaml.load(extractedYaml);
+                } catch (err: any) {
+                    valid = false;
+                    validationError = err.message || 'YAML parse error';
+                }
+
+                sendJSON(res, 200, { yaml: extractedYaml, raw, valid, validationError });
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                if (message.toLowerCase().includes('timeout')) {
+                    return sendError(res, 504, 'Pipeline generation timed out');
+                }
+                return sendError(res, 500, 'Pipeline generation failed: ' + message);
+            }
+        },
+    });
+
+    // ------------------------------------------------------------------
     // PATCH /api/workspaces/:id/pipelines/:pipelineName/content
     // Update YAML content of a pipeline.
     // ------------------------------------------------------------------
@@ -399,7 +576,7 @@ export function registerPipelineWriteRoutes(
                 return sendError(res, 400, 'Invalid JSON body');
             }
 
-            const { name, template } = body || {};
+            const { name, template, content: bodyContent } = body || {};
             if (!name || typeof name !== 'string' || !name.trim()) {
                 return sendError(res, 400, 'Missing required field: name');
             }
@@ -430,17 +607,32 @@ export function registerPipelineWriteRoutes(
                 // Expected — directory does not exist
             }
 
-            const templateKey = (typeof template === 'string' && template) ? template : 'custom';
-            const templateContent = TEMPLATES[templateKey];
-            if (!templateContent) {
-                return sendError(res, 400, `Unknown template: ${templateKey}. Valid templates: ${Object.keys(TEMPLATES).join(', ')}`);
+            let yamlContent: string;
+            let usedTemplate: string;
+            if (bodyContent && typeof bodyContent === 'string' && bodyContent.trim()) {
+                // Validate YAML syntax
+                try {
+                    yaml.load(bodyContent);
+                } catch (err: any) {
+                    return sendError(res, 400, 'Invalid YAML: ' + (err.message || 'Parse error'));
+                }
+                yamlContent = bodyContent;
+                usedTemplate = 'custom';
+            } else {
+                const templateKey = (typeof template === 'string' && template) ? template : 'custom';
+                const templateContent = TEMPLATES[templateKey];
+                if (!templateContent) {
+                    return sendError(res, 400, `Unknown template: ${templateKey}. Valid templates: ${Object.keys(TEMPLATES).join(', ')}`);
+                }
+                yamlContent = templateContent;
+                usedTemplate = templateKey;
             }
 
             try {
                 fs.mkdirSync(resolvedDir, { recursive: true });
-                fs.writeFileSync(path.join(resolvedDir, 'pipeline.yaml'), templateContent, 'utf-8');
+                fs.writeFileSync(path.join(resolvedDir, 'pipeline.yaml'), yamlContent, 'utf-8');
                 onPipelinesChanged?.(id);
-                sendJSON(res, 201, { name: trimmedName, path: resolvedDir, template: templateKey });
+                sendJSON(res, 201, { name: trimmedName, path: resolvedDir, template: usedTemplate });
             } catch (err: any) {
                 return sendError(res, 500, 'Failed to create pipeline: ' + (err.message || 'Unknown error'));
             }
