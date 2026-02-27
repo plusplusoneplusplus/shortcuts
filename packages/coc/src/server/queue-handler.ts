@@ -17,6 +17,7 @@ import { computeRepoId } from './queue-persistence';
 import type { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 import * as url from 'url';
 import * as path from 'path';
+import * as fs from 'fs';
 
 // ============================================================================
 // Validation Helpers
@@ -842,6 +843,67 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
             }
 
             sendJSON(res, 200, { forceFailed: true, stats: getAggregateStats() });
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // GET /api/queue/:id/resolved-prompt — Resolve full prompt with plan file content
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/queue\/([^/]+)\/resolved-prompt$/,
+        handler: async (_req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const task = findTaskManager(bridge, id)?.getTask(id);
+            if (!task) {
+                return sendError(res, 404, 'Task not found');
+            }
+
+            const payload = task.payload as any;
+            const result: Record<string, unknown> = { taskId: id, type: task.type };
+
+            // Resolve plan file content if available
+            if (payload?.planFilePath) {
+                result.planFilePath = payload.planFilePath;
+                try {
+                    if (fs.existsSync(payload.planFilePath)) {
+                        result.planFileContent = fs.readFileSync(payload.planFilePath, 'utf-8');
+                    }
+                } catch {
+                    // Non-fatal: plan file may be inaccessible
+                }
+            }
+
+            // Resolve prompt file content if available
+            if (payload?.promptFilePath) {
+                result.promptFilePath = payload.promptFilePath;
+                try {
+                    if (fs.existsSync(payload.promptFilePath)) {
+                        result.promptFileContent = fs.readFileSync(payload.promptFilePath, 'utf-8');
+                    }
+                } catch {
+                    // Non-fatal
+                }
+            }
+
+            // Build assembled prompt text (mimicking extractPrompt logic)
+            const parts: string[] = [];
+            if (result.planFileContent) {
+                parts.push('=== Plan File ===\n' + result.planFileContent);
+            }
+            if (payload?.additionalContext) {
+                parts.push('=== Additional Context ===\n' + payload.additionalContext);
+            }
+            if (payload?.promptContent) {
+                parts.push('=== Prompt Content ===\n' + payload.promptContent);
+            } else if (payload?.prompt) {
+                parts.push('=== Prompt ===\n' + payload.prompt);
+            }
+            if (parts.length > 0) {
+                result.resolvedPrompt = parts.join('\n\n');
+            }
+
+            sendJSON(res, 200, result);
         },
     });
 

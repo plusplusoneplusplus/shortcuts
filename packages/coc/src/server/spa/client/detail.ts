@@ -393,6 +393,9 @@ function renderPendingTaskInfoPanel(taskId: string, task: any): void {
     // Prompt / Payload section
     html += renderPendingTaskPayload(task);
 
+    // Resolved Prompt placeholder (populated asynchronously)
+    html += '<div id="resolved-prompt-container"></div>';
+
     // Action buttons
     html += '<div style="display:flex;gap:8px;margin-top:24px">' +
         '<button class="queue-action-btn queue-action-danger" onclick="queueCancelTask(\'' + escapeHtmlClient(taskId) + '\'); clearDetail();" style="padding:6px 16px;border-radius:4px;cursor:pointer">Cancel Task</button>' +
@@ -402,6 +405,31 @@ function renderPendingTaskInfoPanel(taskId: string, task: any): void {
     html += '</div>';
 
     contentEl.innerHTML = html;
+
+    // Async-fetch resolved prompt content
+    fetchApi('/queue/' + encodeURIComponent(taskId) + '/resolved-prompt').then(function(data: any) {
+        const container = document.getElementById('resolved-prompt-container');
+        if (!container || !data) return;
+        const hasContent = data.resolvedPrompt || data.planFileContent || data.promptFileContent;
+        if (!hasContent) return;
+
+        let rpHtml = '<details style="margin-top:16px"><summary style="cursor:pointer;font-size:14px;font-weight:600">Full Prompt (Resolved)</summary>';
+        if (data.planFileContent) {
+            rpHtml += '<div style="margin-top:8px"><span style="font-size:12px;color:#848484;font-weight:600">Plan File Content</span>';
+            rpHtml += '<pre class="pending-task-prompt-content" style="max-height:400px;overflow:auto;padding:12px;border-radius:6px;font-size:12px;white-space:pre-wrap;word-break:break-word;background:var(--vscode-textBlockQuote-background, #f3f3f3);border:1px solid var(--vscode-panel-border, #e0e0e0);margin-top:4px">' + escapeHtmlClient(data.planFileContent) + '</pre></div>';
+        }
+        if (data.promptFileContent) {
+            rpHtml += '<div style="margin-top:8px"><span style="font-size:12px;color:#848484;font-weight:600">Prompt File Content</span>';
+            rpHtml += '<pre class="pending-task-prompt-content" style="max-height:400px;overflow:auto;padding:12px;border-radius:6px;font-size:12px;white-space:pre-wrap;word-break:break-word;background:var(--vscode-textBlockQuote-background, #f3f3f3);border:1px solid var(--vscode-panel-border, #e0e0e0);margin-top:4px">' + escapeHtmlClient(data.promptFileContent) + '</pre></div>';
+        }
+        if (data.resolvedPrompt && !data.planFileContent && !data.promptFileContent) {
+            rpHtml += '<pre class="pending-task-prompt-content" style="max-height:400px;overflow:auto;padding:12px;border-radius:6px;font-size:12px;white-space:pre-wrap;word-break:break-word;background:var(--vscode-textBlockQuote-background, #f3f3f3);border:1px solid var(--vscode-panel-border, #e0e0e0);margin-top:8px">' + escapeHtmlClient(data.resolvedPrompt) + '</pre>';
+        }
+        rpHtml += '</details>';
+        container.innerHTML = rpHtml;
+    }).catch(function() {
+        // Non-fatal: resolved prompt is optional
+    });
 }
 
 function renderPendingTaskPayload(task: any): string {
@@ -412,17 +440,36 @@ function renderPendingTaskPayload(task: any): string {
     if (type === 'follow-prompt') {
         const promptContent = payload.promptContent || '';
         const promptFile = payload.promptFilePath || '';
-        if (promptFile) {
-            html += '<div style="margin-bottom:8px;font-size:12px;color:#848484">Prompt file: ' + escapeHtmlClient(promptFile) + '</div>';
+        // Metadata grid for follow-prompt fields
+        const hasFollowMeta = payload.skillName || payload.planFilePath || promptFile;
+        if (hasFollowMeta) {
+            html += '<div style="display:grid;grid-template-columns:140px 1fr;gap:8px 16px;font-size:13px;margin-bottom:12px">';
+            if (payload.skillName) html += '<span style="color:#848484">Skill Name</span><span>' + escapeHtmlClient(payload.skillName) + '</span>';
+            if (promptFile) html += '<span style="color:#848484">Prompt File</span><span style="word-break:break-all">' + escapeHtmlClient(promptFile) + '</span>';
+            if (payload.planFilePath) html += '<span style="color:#848484">Plan File</span><span style="word-break:break-all">' + escapeHtmlClient(payload.planFilePath) + '</span>';
+            html += '</div>';
         }
         if (promptContent) {
             html += '<h3 style="margin:0 0 8px;font-size:14px;font-weight:600">Prompt</h3>';
             html += '<pre class="pending-task-prompt-content" style="max-height:400px;overflow:auto;padding:12px;border-radius:6px;font-size:12px;white-space:pre-wrap;word-break:break-word;background:var(--vscode-textBlockQuote-background, #f3f3f3);border:1px solid var(--vscode-panel-border, #e0e0e0)">' + escapeHtmlClient(promptContent) + '</pre>';
         }
+        if (payload.additionalContext) {
+            html += '<details style="margin-top:12px"><summary style="cursor:pointer;font-size:13px;font-weight:600">Additional Context</summary>';
+            html += '<pre class="pending-task-prompt-content" style="max-height:300px;overflow:auto;padding:12px;border-radius:6px;font-size:12px;white-space:pre-wrap;word-break:break-word;background:var(--vscode-textBlockQuote-background, #f3f3f3);border:1px solid var(--vscode-panel-border, #e0e0e0);margin-top:8px">' + escapeHtmlClient(payload.additionalContext) + '</pre>';
+            html += '</details>';
+        }
     } else if (type === 'ai-clarification') {
         const prompt = payload.prompt || '';
-        if (payload.filePath) {
-            html += '<div style="margin-bottom:8px;font-size:12px;color:#848484">File: ' + escapeHtmlClient(payload.filePath) + '</div>';
+        // Metadata grid for ai-clarification fields
+        const hasClariMeta = payload.skillName || payload.instructionType || payload.model || payload.nearestHeading || payload.filePath;
+        if (hasClariMeta) {
+            html += '<div style="display:grid;grid-template-columns:140px 1fr;gap:8px 16px;font-size:13px;margin-bottom:12px">';
+            if (payload.filePath) html += '<span style="color:#848484">File</span><span style="word-break:break-all">' + escapeHtmlClient(payload.filePath) + '</span>';
+            if (payload.skillName) html += '<span style="color:#848484">Skill Name</span><span>' + escapeHtmlClient(payload.skillName) + '</span>';
+            if (payload.instructionType) html += '<span style="color:#848484">Instruction Type</span><span>' + escapeHtmlClient(payload.instructionType) + '</span>';
+            if (payload.model) html += '<span style="color:#848484">Model</span><span>' + escapeHtmlClient(payload.model) + '</span>';
+            if (payload.nearestHeading) html += '<span style="color:#848484">Nearest Heading</span><span>' + escapeHtmlClient(payload.nearestHeading) + '</span>';
+            html += '</div>';
         }
         if (payload.selectedText) {
             html += '<div style="margin-bottom:8px;font-size:12px;color:#848484">Selected text: <code>' + escapeHtmlClient(payload.selectedText.length > 200 ? payload.selectedText.substring(0, 200) + '...' : payload.selectedText) + '</code></div>';
@@ -430,6 +477,24 @@ function renderPendingTaskPayload(task: any): string {
         if (prompt) {
             html += '<h3 style="margin:0 0 8px;font-size:14px;font-weight:600">Prompt</h3>';
             html += '<pre class="pending-task-prompt-content" style="max-height:400px;overflow:auto;padding:12px;border-radius:6px;font-size:12px;white-space:pre-wrap;word-break:break-word;background:var(--vscode-textBlockQuote-background, #f3f3f3);border:1px solid var(--vscode-panel-border, #e0e0e0)">' + escapeHtmlClient(prompt) + '</pre>';
+        }
+        if (payload.customInstruction) {
+            html += '<details style="margin-top:12px"><summary style="cursor:pointer;font-size:13px;font-weight:600">Custom Instruction</summary>';
+            html += '<pre class="pending-task-prompt-content" style="max-height:300px;overflow:auto;padding:12px;border-radius:6px;font-size:12px;white-space:pre-wrap;word-break:break-word;background:var(--vscode-textBlockQuote-background, #f3f3f3);border:1px solid var(--vscode-panel-border, #e0e0e0);margin-top:8px">' + escapeHtmlClient(payload.customInstruction) + '</pre>';
+            html += '</details>';
+        }
+    } else if (type === 'task-generation' || (payload && payload.kind === 'task-generation')) {
+        html += '<h3 style="margin:0 0 8px;font-size:14px;font-weight:600">Task Generation Details</h3>';
+        html += '<div style="display:grid;grid-template-columns:140px 1fr;gap:8px 16px;font-size:13px;margin-bottom:12px">';
+        if (payload.name) html += '<span style="color:#848484">Task Name</span><span>' + escapeHtmlClient(payload.name) + '</span>';
+        if (payload.targetFolder) html += '<span style="color:#848484">Target Folder</span><span style="word-break:break-all">' + escapeHtmlClient(payload.targetFolder) + '</span>';
+        if (payload.depth) html += '<span style="color:#848484">Depth</span><span>' + escapeHtmlClient(payload.depth) + '</span>';
+        if (payload.mode) html += '<span style="color:#848484">Mode</span><span>' + escapeHtmlClient(payload.mode) + '</span>';
+        if (payload.model) html += '<span style="color:#848484">Model</span><span>' + escapeHtmlClient(payload.model) + '</span>';
+        html += '</div>';
+        if (payload.prompt) {
+            html += '<h3 style="margin:0 0 8px;font-size:14px;font-weight:600">Prompt</h3>';
+            html += '<pre class="pending-task-prompt-content" style="max-height:400px;overflow:auto;padding:12px;border-radius:6px;font-size:12px;white-space:pre-wrap;word-break:break-word;background:var(--vscode-textBlockQuote-background, #f3f3f3);border:1px solid var(--vscode-panel-border, #e0e0e0)">' + escapeHtmlClient(payload.prompt) + '</pre>';
         }
     } else if (type === 'code-review') {
         html += '<h3 style="margin:0 0 8px;font-size:14px;font-weight:600">Code Review Details</h3>';

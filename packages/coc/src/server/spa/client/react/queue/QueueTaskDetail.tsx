@@ -643,6 +643,15 @@ function PendingTaskInfoPanel({ task, onCancel, onMoveToTop }: {
     onCancel: () => void;
     onMoveToTop: () => void;
 }) {
+    const [resolvedPrompt, setResolvedPrompt] = useState<any>(null);
+
+    useEffect(() => {
+        if (!task?.id) return;
+        fetchApi('/queue/' + encodeURIComponent(task.id) + '/resolved-prompt')
+            .then((data: any) => { if (data) setResolvedPrompt(data); })
+            .catch(() => { /* non-fatal */ });
+    }, [task?.id]);
+
     if (!task) {
         return (
             <div className="flex items-center gap-2 text-[#848484] text-sm">
@@ -681,6 +690,34 @@ function PendingTaskInfoPanel({ task, onCancel, onMoveToTop }: {
             {/* Prompt / Payload */}
             <PendingTaskPayload task={task} />
 
+            {/* Resolved Prompt (async-loaded) */}
+            {resolvedPrompt && (resolvedPrompt.resolvedPrompt || resolvedPrompt.planFileContent || resolvedPrompt.promptFileContent) && (
+                <details className="mt-4">
+                    <summary className="cursor-pointer text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc]">Full Prompt (Resolved)</summary>
+                    {resolvedPrompt.planFileContent && (
+                        <div className="mt-2">
+                            <span className="text-xs text-[#848484] font-semibold">Plan File Content</span>
+                            <pre className="max-h-96 overflow-auto p-3 rounded-md text-xs whitespace-pre-wrap break-words bg-[#f3f3f3] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] mt-1">
+                                {resolvedPrompt.planFileContent}
+                            </pre>
+                        </div>
+                    )}
+                    {resolvedPrompt.promptFileContent && (
+                        <div className="mt-2">
+                            <span className="text-xs text-[#848484] font-semibold">Prompt File Content</span>
+                            <pre className="max-h-96 overflow-auto p-3 rounded-md text-xs whitespace-pre-wrap break-words bg-[#f3f3f3] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] mt-1">
+                                {resolvedPrompt.promptFileContent}
+                            </pre>
+                        </div>
+                    )}
+                    {resolvedPrompt.resolvedPrompt && !resolvedPrompt.planFileContent && !resolvedPrompt.promptFileContent && (
+                        <pre className="max-h-96 overflow-auto p-3 rounded-md text-xs whitespace-pre-wrap break-words bg-[#f3f3f3] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] mt-2">
+                            {resolvedPrompt.resolvedPrompt}
+                        </pre>
+                    )}
+                </details>
+            )}
+
             {/* Action buttons */}
             <div className="flex gap-2 pt-2">
                 <Button variant="danger" size="sm" onClick={onCancel}>Cancel Task</Button>
@@ -704,11 +741,14 @@ function PendingTaskPayload({ task }: { task: any }) {
     const type = task.type || '';
 
     if (type === 'follow-prompt') {
+        const hasFollowMeta = payload.skillName || payload.planFilePath || payload.promptFilePath;
         return (
             <div>
-                {payload.promptFilePath && (
-                    <div className="text-xs text-[#848484] mb-2">
-                        Prompt file: {payload.promptFilePath}
+                {hasFollowMeta && (
+                    <div className="grid grid-cols-[140px_1fr] gap-x-4 gap-y-2 text-sm mb-3">
+                        {payload.skillName && <MetaRow label="Skill Name" value={payload.skillName} />}
+                        {payload.promptFilePath && <MetaRow label="Prompt File" value={payload.promptFilePath} breakAll />}
+                        {payload.planFilePath && <MetaRow label="Plan File" value={payload.planFilePath} breakAll />}
                     </div>
                 )}
                 {payload.promptContent && (
@@ -719,15 +759,30 @@ function PendingTaskPayload({ task }: { task: any }) {
                         </pre>
                     </>
                 )}
+                {payload.additionalContext && (
+                    <details className="mt-3">
+                        <summary className="cursor-pointer text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc]">Additional Context</summary>
+                        <pre className="max-h-72 overflow-auto p-3 rounded-md text-xs whitespace-pre-wrap break-words bg-[#f3f3f3] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] mt-2">
+                            {payload.additionalContext}
+                        </pre>
+                    </details>
+                )}
             </div>
         );
     }
 
     if (type === 'ai-clarification') {
+        const hasClariMeta = payload.skillName || payload.instructionType || payload.model || payload.nearestHeading || payload.filePath;
         return (
             <div>
-                {payload.filePath && (
-                    <div className="text-xs text-[#848484] mb-1">File: {payload.filePath}</div>
+                {hasClariMeta && (
+                    <div className="grid grid-cols-[140px_1fr] gap-x-4 gap-y-2 text-sm mb-3">
+                        {payload.filePath && <MetaRow label="File" value={payload.filePath} breakAll />}
+                        {payload.skillName && <MetaRow label="Skill Name" value={payload.skillName} />}
+                        {payload.instructionType && <MetaRow label="Instruction Type" value={payload.instructionType} />}
+                        {payload.model && <MetaRow label="Model" value={payload.model} />}
+                        {payload.nearestHeading && <MetaRow label="Nearest Heading" value={payload.nearestHeading} />}
+                    </div>
                 )}
                 {payload.selectedText && (
                     <div className="text-xs text-[#848484] mb-2">
@@ -736,6 +791,37 @@ function PendingTaskPayload({ task }: { task: any }) {
                         </code>
                     </div>
                 )}
+                {payload.prompt && (
+                    <>
+                        <h3 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2">Prompt</h3>
+                        <pre className="max-h-96 overflow-auto p-3 rounded-md text-xs whitespace-pre-wrap break-words bg-[#f3f3f3] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c]">
+                            {payload.prompt}
+                        </pre>
+                    </>
+                )}
+                {payload.customInstruction && (
+                    <details className="mt-3">
+                        <summary className="cursor-pointer text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc]">Custom Instruction</summary>
+                        <pre className="max-h-72 overflow-auto p-3 rounded-md text-xs whitespace-pre-wrap break-words bg-[#f3f3f3] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] mt-2">
+                            {payload.customInstruction}
+                        </pre>
+                    </details>
+                )}
+            </div>
+        );
+    }
+
+    if (type === 'task-generation' || (payload && payload.kind === 'task-generation')) {
+        return (
+            <div>
+                <h3 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2">Task Generation Details</h3>
+                <div className="grid grid-cols-[140px_1fr] gap-x-4 gap-y-2 text-sm mb-3">
+                    {payload.name && <MetaRow label="Task Name" value={payload.name} />}
+                    {payload.targetFolder && <MetaRow label="Target Folder" value={payload.targetFolder} breakAll />}
+                    {payload.depth && <MetaRow label="Depth" value={payload.depth} />}
+                    {payload.mode && <MetaRow label="Mode" value={payload.mode} />}
+                    {payload.model && <MetaRow label="Model" value={payload.model} />}
+                </div>
                 {payload.prompt && (
                     <>
                         <h3 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2">Prompt</h3>
