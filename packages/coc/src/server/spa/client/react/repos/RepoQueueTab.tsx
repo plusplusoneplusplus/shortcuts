@@ -20,6 +20,8 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
     const [showHistory, setShowHistory] = useState(false);
     const [loading, setLoading] = useState(true);
     const [now, setNow] = useState(Date.now());
+    const [isPaused, setIsPaused] = useState(false);
+    const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
 
     const { state: queueState, dispatch: queueDispatch } = useQueue();
 
@@ -31,6 +33,7 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
             const data = await fetchApi('/queue?repoId=' + encodeURIComponent(workspaceId));
             setRunning(data?.running || []);
             setQueued(data?.queued || []);
+            setIsPaused(!!data.stats?.isPaused);
             const historyData = await fetchApi('/queue/history?repoId=' + encodeURIComponent(workspaceId)).catch(() => null);
             setHistory(historyData?.history || []);
         } catch {
@@ -53,6 +56,9 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
         setRunning(repoQueue.running);
         setQueued(repoQueue.queued);
         setHistory(repoQueue.history);
+        if (repoQueue?.stats?.isPaused !== undefined) {
+            setIsPaused(repoQueue.stats.isPaused);
+        }
         setLoading(false);
     }, [repoQueue]);
 
@@ -79,6 +85,17 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
         fetchQueue();
     };
 
+    async function handlePauseResume() {
+        setIsPauseResumeLoading(true);
+        try {
+            const endpoint = isPaused ? '/queue/resume' : '/queue/pause';
+            await fetchApi(endpoint + '?repoId=' + encodeURIComponent(workspaceId), { method: 'POST' });
+            await fetchQueue();
+        } finally {
+            setIsPauseResumeLoading(false);
+        }
+    }
+
     if (loading) {
         return <div className="p-4 text-sm text-[#848484]">Loading queue...</div>;
     }
@@ -86,13 +103,47 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
     if (running.length === 0 && queued.length === 0 && history.length === 0) {
         return (
             <div className="p-4 text-center text-sm text-[#848484]">
-                No tasks in queue for this repository
+                {isPaused ? (
+                    <>
+                        <div className="mb-2">Queue is paused</div>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={isPauseResumeLoading}
+                            onClick={handlePauseResume}
+                            data-testid="repo-pause-resume-btn-empty"
+                        >
+                            ▶ Resume
+                        </Button>
+                    </>
+                ) : (
+                    <div>No tasks in queue for this repository</div>
+                )}
             </div>
         );
     }
 
     return (
         <div className="p-4 flex flex-col gap-3">
+            {/* Pause/Resume toolbar */}
+            {(isPaused || running.length > 0 || queued.length > 0) && (
+                <div className={cn('flex items-center gap-2 mb-3')}>
+                    <span className="text-sm font-medium">Queue</span>
+                    {isPaused && <Badge status="warning">Paused</Badge>}
+                    <div className="flex-1" />
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={isPauseResumeLoading}
+                        onClick={handlePauseResume}
+                        title={isPaused ? 'Resume queue' : 'Pause queue'}
+                        data-testid="repo-pause-resume-btn"
+                    >
+                        {isPaused ? '▶' : '⏸'}
+                    </Button>
+                </div>
+            )}
+
             {/* Running */}
             {running.length > 0 && (
                 <div>
