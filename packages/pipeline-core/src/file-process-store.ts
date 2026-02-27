@@ -72,6 +72,7 @@ export class FileProcessStore implements ProcessStore {
     private readonly wikisPath: string;
     private writeQueue: Promise<void>;
     private readonly emitters: Map<string, EventEmitter> = new Map();
+    private readonly flushHandlers: Map<string, () => Promise<void>> = new Map();
     private initPromise: Promise<void> | null = null;
 
     onProcessChange?: ProcessChangeCallback;
@@ -463,6 +464,19 @@ export class FileProcessStore implements ProcessStore {
             this.emitters.set(id, emitter);
         }
         emitter.emit('output', event);
+    }
+
+    registerFlushHandler(id: string, handler: () => Promise<void>): void {
+        this.flushHandlers.set(id, handler);
+    }
+
+    unregisterFlushHandler(id: string): void {
+        this.flushHandlers.delete(id);
+    }
+
+    async requestFlush(id: string): Promise<void> {
+        const handler = this.flushHandlers.get(id);
+        if (handler) { await handler(); }
     }
 
     // --- Internal helpers: index + per-process files ---

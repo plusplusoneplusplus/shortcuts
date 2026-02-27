@@ -257,6 +257,7 @@ export class CLITaskExecutor implements TaskExecutor {
             // Persist accumulated conversation output to disk (both success and failure)
             const buffer = this.outputBuffers.get(processId) ?? '';
             this.outputBuffers.delete(processId);
+            this.store.unregisterFlushHandler?.(processId);
             await this.persistOutput(processId, buffer);
         }
     }
@@ -314,6 +315,7 @@ export class CLITaskExecutor implements TaskExecutor {
 
         // Initialize output buffer for this follow-up
         this.outputBuffers.set(processId, '');
+        this.store.registerFlushHandler?.(processId, () => this.flushConversationTurn(processId, true));
 
         try {
             const result = await this.aiService.sendFollowUp(process.sdkSessionId, message, {
@@ -439,6 +441,7 @@ export class CLITaskExecutor implements TaskExecutor {
             // Persist accumulated output to disk
             const buffer = this.outputBuffers.get(processId) ?? '';
             this.outputBuffers.delete(processId);
+            this.store.unregisterFlushHandler?.(processId);
             // Append to existing output file rather than overwriting
             await this.persistOutput(processId, buffer);
         }
@@ -562,6 +565,7 @@ export class CLITaskExecutor implements TaskExecutor {
 
         // Initialize output accumulator for this process
         this.outputBuffers.set(processId, '');
+        this.store.registerFlushHandler?.(processId, () => this.flushConversationTurn(processId, true));
 
         const availability = await this.aiService.isAvailable();
         if (!availability.available) {

@@ -172,4 +172,21 @@ export interface ProcessStore {
 
     /** Emit an arbitrary process output event (tool events, etc.). */
     emitProcessEvent(id: string, event: ProcessOutputEvent): void;
+
+    /**
+     * Request that any buffered output for the given process be flushed to disk.
+     * Used by SSE handler to ensure snapshots include the latest content.
+     * Optional — implementations that don't buffer may leave this undefined.
+     */
+    requestFlush?(id: string): Promise<void>;
+
+    /**
+     * Register a flush handler for a process. Called by the execution engine
+     * when streaming starts so that external code (SSE handler) can trigger
+     * an immediate flush of buffered content.
+     */
+    registerFlushHandler?(id: string, handler: () => Promise<void>): void;
+
+    /** Unregister a previously registered flush handler. */
+    unregisterFlushHandler?(id: string): void;
 }

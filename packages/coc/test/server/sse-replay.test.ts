@@ -1,8 +1,9 @@
 /**
  * SSE Replay Tests
  *
- * Tests that the SSE handler replays persisted conversationTurns as chunk
- * events when a client connects, before streaming any live output.
+ * Tests that the SSE handler replays persisted conversationTurns as a
+ * conversation-snapshot event when a client connects, before streaming
+ * any live output.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -94,18 +95,19 @@ describe('SSE replay', () => {
         store = createMockProcessStore();
     });
 
-    // Test 1: Replay full conversation on connect to completed process
-    it('replays assistant turns as chunks for a completed process', async () => {
+    // Test 1: Replay full conversation as snapshot for completed process
+    it('replays conversation as a snapshot for a completed process', async () => {
+        const turns = [
+            makeTurn('user', 'Hello', 0),
+            makeTurn('assistant', 'Hi there!', 1),
+            makeTurn('user', 'Explain X', 2),
+            makeTurn('assistant', 'X is ...', 3),
+        ];
         const proc = createProcessFixture({
             id: 'p1',
             status: 'completed',
             result: 'done result',
-            conversationTurns: [
-                makeTurn('user', 'Hello', 0),
-                makeTurn('assistant', 'Hi there!', 1),
-                makeTurn('user', 'Explain X', 2),
-                makeTurn('assistant', 'X is ...', 3),
-            ],
+            conversationTurns: turns,
         });
         store.processes.set(proc.id, proc);
 
@@ -115,14 +117,18 @@ describe('SSE replay', () => {
         await handleProcessStream(req, res, 'p1', store);
 
         const frames = parseSSEFrames(res._chunks);
-        // Expect: 2 chunk (assistant turns), 1 status, 1 done
-        const chunkFrames = frames.filter(f => f.event === 'chunk');
+        const snapshotFrames = frames.filter(f => f.event === 'conversation-snapshot');
         const statusFrames = frames.filter(f => f.event === 'status');
         const doneFrames = frames.filter(f => f.event === 'done');
 
-        expect(chunkFrames).toHaveLength(2);
-        expect((chunkFrames[0].data as any).content).toBe('Hi there!');
-        expect((chunkFrames[1].data as any).content).toBe('X is ...');
+        expect(snapshotFrames).toHaveLength(1);
+        const snapshot = snapshotFrames[0].data as any;
+        expect(snapshot.turns).toHaveLength(4);
+        expect(snapshot.turns[0].role).toBe('user');
+        expect(snapshot.turns[1].role).toBe('assistant');
+        expect(snapshot.turns[1].content).toBe('Hi there!');
+        expect(snapshot.turns[3].content).toBe('X is ...');
+
         expect(statusFrames).toHaveLength(1);
         expect((statusFrames[0].data as any).status).toBe('completed');
         expect((statusFrames[0].data as any).result).toBe('done result');
@@ -130,9 +136,8 @@ describe('SSE replay', () => {
         expect(res._ended).toBe(true);
     });
 
-    // Test 2: Replay partial history + live chunks for running process
-    it('replays history then streams live chunks for a running process', async () => {
-        // Set up onProcessOutput to capture the callback
+    // Test 2: Replay snapshot + live chunks for running process
+    it('replays snapshot then streams live chunks for a running process', async () => {
         let outputCallback: ((event: ProcessOutputEvent) => void) | undefined;
         store.onProcessOutput = vi.fn((id: string, cb: (event: ProcessOutputEvent) => void) => {
             outputCallback = cb;
@@ -154,12 +159,11 @@ describe('SSE replay', () => {
 
         await handleProcessStream(req, res, 'p2', store);
 
-        // Replay chunks should be written immediately
+        // Snapshot should be written immediately
         const replayFrames = parseSSEFrames(res._chunks);
-        const replayChunks = replayFrames.filter(f => f.event === 'chunk');
-        expect(replayChunks).toHaveLength(2);
-        expect((replayChunks[0].data as any).content).toBe('First complete reply');
-        expect((replayChunks[1].data as any).content).toBe('Partial...');
+        const snapshots = replayFrames.filter(f => f.event === 'conversation-snapshot');
+        expect(snapshots).toHaveLength(1);
+        expect((snapshots[0].data as any).turns).toHaveLength(2);
 
         // Simulate live chunks arriving
         expect(outputCallback).toBeDefined();
@@ -167,10 +171,9 @@ describe('SSE replay', () => {
 
         const allFrames = parseSSEFrames(res._chunks);
         const allChunks = allFrames.filter(f => f.event === 'chunk');
-        expect(allChunks).toHaveLength(3);
-        expect((allChunks[2].data as any).content).toBe(' more content');
+        expect(allChunks).toHaveLength(1);
+        expect((allChunks[0].data as any).content).toBe(' more content');
 
-        // Not ended yet (still running)
         expect(res._ended).toBe(false);
     });
 
@@ -185,7 +188,6 @@ describe('SSE replay', () => {
         const proc = createProcessFixture({
             id: 'p3',
             status: 'running',
-            // no conversationTurns
         });
         store.processes.set(proc.id, proc);
 
@@ -194,11 +196,9 @@ describe('SSE replay', () => {
 
         await handleProcessStream(req, res, 'p3', store);
 
-        // No replay chunks
         const beforeFrames = parseSSEFrames(res._chunks);
-        expect(beforeFrames.filter(f => f.event === 'chunk')).toHaveLength(0);
+        expect(beforeFrames.filter(f => f.event === 'conversation-snapshot')).toHaveLength(0);
 
-        // Live chunk arrives
         outputCallback!({ type: 'chunk', content: 'live data' });
 
         const afterFrames = parseSSEFrames(res._chunks);
@@ -207,15 +207,14 @@ describe('SSE replay', () => {
         expect((chunks[0].data as any).content).toBe('live data');
     });
 
-    // Test 4: Reconnect during streaming — both connections see full history
-    it('replays full history on each new SSE connection', async () => {
+    // Test 4: Reconnect during streaming — both connections see full snapshot
+    it('replays full snapshot on each new SSE connection', async () => {
         const turns: ConversationTurn[] = [
             makeTurn('user', 'Question', 0),
             makeTurn('assistant', 'Answer part 1', 1),
             makeTurn('assistant', 'Answer part 2', 2),
         ];
 
-        // Connection 1
         store.onProcessOutput = vi.fn(() => () => {});
         const proc = createProcessFixture({ id: 'p4', status: 'running', conversationTurns: turns });
         store.processes.set(proc.id, proc);
@@ -224,20 +223,17 @@ describe('SSE replay', () => {
         const res1 = createMockRes();
         await handleProcessStream(req1, res1, 'p4', store);
 
-        const frames1 = parseSSEFrames(res1._chunks).filter(f => f.event === 'chunk');
-        expect(frames1).toHaveLength(2);
-        expect((frames1[0].data as any).content).toBe('Answer part 1');
-        expect((frames1[1].data as any).content).toBe('Answer part 2');
+        const snapshots1 = parseSSEFrames(res1._chunks).filter(f => f.event === 'conversation-snapshot');
+        expect(snapshots1).toHaveLength(1);
+        expect((snapshots1[0].data as any).turns).toHaveLength(3);
 
-        // Connection 2 (reconnect)
         const req2 = createMockReq();
         const res2 = createMockRes();
         await handleProcessStream(req2, res2, 'p4', store);
 
-        const frames2 = parseSSEFrames(res2._chunks).filter(f => f.event === 'chunk');
-        expect(frames2).toHaveLength(2);
-        expect((frames2[0].data as any).content).toBe('Answer part 1');
-        expect((frames2[1].data as any).content).toBe('Answer part 2');
+        const snapshots2 = parseSSEFrames(res2._chunks).filter(f => f.event === 'conversation-snapshot');
+        expect(snapshots2).toHaveLength(1);
+        expect((snapshots2[0].data as any).turns).toHaveLength(3);
     });
 
     // Test 5: Empty conversationTurns array
@@ -256,14 +252,15 @@ describe('SSE replay', () => {
         await handleProcessStream(req, res, 'p5', store);
 
         const frames = parseSSEFrames(res._chunks);
+        expect(frames.filter(f => f.event === 'conversation-snapshot')).toHaveLength(0);
         expect(frames.filter(f => f.event === 'chunk')).toHaveLength(0);
         expect(frames.filter(f => f.event === 'status')).toHaveLength(1);
         expect(frames.filter(f => f.event === 'done')).toHaveLength(1);
         expect(res._ended).toBe(true);
     });
 
-    // Test 6: Only user turns (no assistant turns)
-    it('emits no chunk events when all turns are user turns', async () => {
+    // Test 6: Only user turns — snapshot includes them
+    it('includes user turns in snapshot', async () => {
         const proc = createProcessFixture({
             id: 'p6',
             status: 'completed',
@@ -280,9 +277,9 @@ describe('SSE replay', () => {
         await handleProcessStream(req, res, 'p6', store);
 
         const frames = parseSSEFrames(res._chunks);
-        expect(frames.filter(f => f.event === 'chunk')).toHaveLength(0);
-        expect(frames.filter(f => f.event === 'status')).toHaveLength(1);
-        expect(frames.filter(f => f.event === 'done')).toHaveLength(1);
+        const snapshots = frames.filter(f => f.event === 'conversation-snapshot');
+        expect(snapshots).toHaveLength(1);
+        expect((snapshots[0].data as any).turns).toHaveLength(2);
         expect(res._ended).toBe(true);
     });
 });

@@ -17,6 +17,7 @@ import type { AIProcess } from '@plusplusoneplusplus/pipeline-core';
  * Handle SSE streaming for a single process.
  *
  * Protocol:
+ *   event: conversation-snapshot → { turns: ConversationTurn[] }
  *   event: chunk              → { content: string }
  *   event: tool-start         → { turnIndex, toolCallId, parentToolCallId?, toolName, parameters }
  *   event: tool-complete      → { turnIndex, toolCallId, parentToolCallId?, result }
@@ -33,7 +34,7 @@ export async function handleProcessStream(
     store: ProcessStore
 ): Promise<void> {
     // 1. Look up the process — 404 if not found
-    const process = await store.getProcess(processId);
+    let process = await store.getProcess(processId);
     if (!process) {
         res.writeHead(404, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Process not found' }));
@@ -49,10 +50,17 @@ export async function handleProcessStream(
     });
     res.flushHeaders();
 
-    // 3. Replay persisted conversation history as chunk events
+    // 3. For running processes, flush buffered content before replay
+    if ((process.status === 'running') && store.requestFlush) {
+        await store.requestFlush(processId);
+        const refreshed = await store.getProcess(processId);
+        if (refreshed) { process = refreshed; }
+    }
+
+    // 4. Replay persisted conversation history as a structured snapshot
     replayConversationTurns(res, process);
 
-    // 4. If already completed/failed/cancelled, send final status + close
+    // 5. If already completed/failed/cancelled, send final status + close
     if (process.status !== 'running' && process.status !== 'queued') {
         sendEvent(res, 'status', {
             status: process.status,
@@ -64,7 +72,7 @@ export async function handleProcessStream(
         return;
     }
 
-    // 5. Subscribe to output chunks via store.onProcessOutput
+    // 6. Subscribe to output chunks via store.onProcessOutput
     let cleaned = false;
     const cleanup = () => {
         if (cleaned) { return; }
@@ -116,12 +124,12 @@ export async function handleProcessStream(
         }
     });
 
-    // 6. Heartbeat to detect stale connections (every 15s)
+    // 7. Heartbeat to detect stale connections (every 15s)
     const heartbeat = setInterval(() => {
         sendEvent(res, 'heartbeat', {});
     }, 15_000);
 
-    // 7. Cleanup on client disconnect
+    // 8. Cleanup on client disconnect
     req.on('close', cleanup);
 }
 
@@ -131,16 +139,12 @@ function sendEvent(res: ServerResponse, event: string, data: unknown): void {
 }
 
 /**
- * Replay persisted conversation turns as chunk events.
- * Only assistant turns are emitted (user turns are prompts, not streamed output).
+ * Replay persisted conversation turns as a single structured snapshot event.
+ * Sends the full turns array so the client can reconstruct conversation state.
  */
 function replayConversationTurns(res: ServerResponse, process: AIProcess): void {
     const turns = process.conversationTurns;
     if (!turns || turns.length === 0) { return; }
 
-    for (const turn of turns) {
-        if (turn.role === 'assistant' && turn.content) {
-            sendEvent(res, 'chunk', { content: turn.content });
-        }
-    }
+    sendEvent(res, 'conversation-snapshot', { turns });
 }

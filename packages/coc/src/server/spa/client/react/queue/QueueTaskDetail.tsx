@@ -117,8 +117,7 @@ export function QueueTaskDetail() {
             const data = await fetchApi(`/processes/${encodeURIComponent(selectedProcessId)}`);
             setProcessDetails(data?.process || null);
             const refreshedTurns = getConversationTurns(data);
-            appDispatch({ type: 'CACHE_CONVERSATION', processId: selectedTaskId, turns: refreshedTurns });
-            setTurns(refreshedTurns);
+            setTurnsAndCache(refreshedTurns);
         } catch {
             // Keep currently rendered turns if refresh fails.
         }
@@ -290,6 +289,7 @@ export function QueueTaskDetail() {
     // Fetch conversation on task selection (only for non-pending tasks)
     useEffect(() => {
         if (!selectedTaskId || isPending) {
+            turnsRef.current = [];
             setTurns([]);
             setProcessDetails(null);
             return;
@@ -298,7 +298,7 @@ export function QueueTaskDetail() {
         // Check shared conversation cache
         const cached = appState.conversationCache[selectedTaskId];
         if (cached && (Date.now() - cached.cachedAt < CACHE_TTL_MS)) {
-            setTurns(cached.turns);
+            setTurnsAndCache(cached.turns);
             setLoading(false);
             fetchApi(`/processes/${encodeURIComponent(selectedProcessId || `queue_${selectedTaskId}`)}`)
                 .then((data: any) => {
@@ -311,10 +311,9 @@ export function QueueTaskDetail() {
                 .then((data: any) => {
                     setProcessDetails(data?.process || null);
                     const t = getConversationTurns(data);
-                    appDispatch({ type: 'CACHE_CONVERSATION', processId: selectedTaskId, turns: t });
-                    setTurns(t);
+                    setTurnsAndCache(t);
                 })
-                .catch(() => setTurns([]))
+                .catch(() => setTurnsAndCache([]))
                 .finally(() => setLoading(false));
         }
     }, [selectedTaskId, selectedProcessId, isPending, appDispatch]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -351,6 +350,15 @@ export function QueueTaskDetail() {
             if (last && last.role === 'assistant') return prev;
             return [...prev, { role: 'assistant', content: '', streaming: true, timeline: [] }];
         };
+
+        es.addEventListener('conversation-snapshot', (event: Event) => {
+            try {
+                const data = JSON.parse((event as MessageEvent).data);
+                if (data.turns) {
+                    setTurnsAndCache(data.turns);
+                }
+            } catch { /* ignore */ }
+        });
 
         es.addEventListener('chunk', (event: Event) => {
             try {
