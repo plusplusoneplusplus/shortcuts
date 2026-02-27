@@ -382,4 +382,95 @@ describe('CommentCard', () => {
         );
         expect(screen.getByTestId('ai-response-copy')).toBeTruthy();
     });
+
+    describe('Fix with AI button', () => {
+        it('renders 🔧 button for open comment with onFixWithAI provided', () => {
+            render(
+                <CommentCard
+                    comment={makeComment({ status: 'open' })}
+                    onResolve={noop} onUnresolve={noop} onEdit={noop}
+                    onDelete={noop} onAskAI={noop} onClick={noop}
+                    onFixWithAI={vi.fn()}
+                />
+            );
+            expect(screen.getByTestId('fix-with-ai')).toBeTruthy();
+        });
+
+        it('does NOT render 🔧 button for resolved comment', () => {
+            render(
+                <CommentCard
+                    comment={makeComment({ status: 'resolved' })}
+                    onResolve={noop} onUnresolve={noop} onEdit={noop}
+                    onDelete={noop} onAskAI={noop} onClick={noop}
+                    onFixWithAI={vi.fn()}
+                />
+            );
+            expect(screen.queryByTestId('fix-with-ai')).toBeNull();
+        });
+
+        it('does NOT render 🔧 button when onFixWithAI is undefined', () => {
+            render(
+                <CommentCard
+                    comment={makeComment({ status: 'open' })}
+                    onResolve={noop} onUnresolve={noop} onEdit={noop}
+                    onDelete={noop} onAskAI={noop} onClick={noop}
+                />
+            );
+            expect(screen.queryByTestId('fix-with-ai')).toBeNull();
+        });
+
+        it('clicking 🔧 button calls onFixWithAI', () => {
+            const onFixWithAI = vi.fn();
+            render(
+                <CommentCard
+                    comment={makeComment({ status: 'open' })}
+                    onResolve={noop} onUnresolve={noop} onEdit={noop}
+                    onDelete={noop} onAskAI={noop} onClick={noop}
+                    onFixWithAI={onFixWithAI}
+                />
+            );
+            fireEvent.click(screen.getByLabelText('Fix with AI'));
+            expect(onFixWithAI).toHaveBeenCalledOnce();
+        });
+
+        it('shows spinner when fixLoading=true', () => {
+            render(
+                <CommentCard
+                    comment={makeComment({ status: 'open' })}
+                    onResolve={noop} onUnresolve={noop} onEdit={noop}
+                    onDelete={noop} onAskAI={noop} onClick={noop}
+                    onFixWithAI={noop}
+                    fixLoading={true}
+                />
+            );
+            const btn = screen.getByTestId('fix-with-ai');
+            expect(btn.querySelector('[aria-label="Loading"]')).toBeTruthy();
+        });
+
+        it('🔧 button is disabled when fixLoading=true', () => {
+            render(
+                <CommentCard
+                    comment={makeComment({ status: 'open' })}
+                    onResolve={noop} onUnresolve={noop} onEdit={noop}
+                    onDelete={noop} onAskAI={noop} onClick={noop}
+                    onFixWithAI={noop}
+                    fixLoading={true}
+                />
+            );
+            expect(screen.getByTestId('fix-with-ai')).toHaveProperty('disabled', true);
+        });
+
+        it('Resolve button is disabled when fixLoading=true', () => {
+            render(
+                <CommentCard
+                    comment={makeComment({ status: 'open' })}
+                    onResolve={noop} onUnresolve={noop} onEdit={noop}
+                    onDelete={noop} onAskAI={noop} onClick={noop}
+                    onFixWithAI={noop}
+                    fixLoading={true}
+                />
+            );
+            expect(screen.getByLabelText('Resolve')).toHaveProperty('disabled', true);
+        });
+    });
 });

@@ -6,7 +6,7 @@
  */
 
 import { useState } from 'react';
-import { cn, Button } from '../../shared';
+import { cn, Button, Spinner } from '../../shared';
 import { CommentReply } from './CommentReply';
 import { MarkdownView } from '../../processes/MarkdownView';
 import { renderMarkdownToHtml } from '../../../markdown-renderer';
@@ -42,6 +42,8 @@ export interface CommentCardProps {
     aiLoading?: boolean;
     aiError?: string | null;
     onClearAiError?: () => void;
+    onFixWithAI?: () => void;
+    fixLoading?: boolean;
 }
 
 export function CommentCard({
@@ -55,6 +57,8 @@ export function CommentCard({
     aiLoading,
     aiError,
     onClearAiError,
+    onFixWithAI,
+    fixLoading,
 }: CommentCardProps) {
     const [editing, setEditing] = useState(false);
     const [editText, setEditText] = useState(comment.comment);
@@ -177,10 +181,27 @@ export function CommentCard({
 
             {/* Compact icon-only action row */}
             <div className="flex items-center gap-0.5 pt-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]" onClick={e => e.stopPropagation()}>
+                {!isResolved && onFixWithAI && (
+                    <button
+                        className={ACTION_BTN}
+                        onClick={onFixWithAI}
+                        disabled={fixLoading}
+                        title="Fix with AI"
+                        aria-label="Fix with AI"
+                        data-testid="fix-with-ai"
+                    >
+                        {fixLoading ? <Spinner size="xs" /> : '🔧'}
+                    </button>
+                )}
+                <AICommandMenu
+                    onCommand={(cmdId, q) => q !== undefined ? onAskAI(cmdId, q) : onAskAI(cmdId)}
+                    loading={aiLoading}
+                    triggerClassName={ACTION_BTN}
+                />
                 {isResolved ? (
                     <button className={ACTION_BTN} onClick={onUnresolve} title="Reopen" aria-label="Reopen">🔓</button>
                 ) : (
-                    <button className={ACTION_BTN} onClick={onResolve} title="Resolve" aria-label="Resolve">✅</button>
+                    <button className={ACTION_BTN} onClick={onResolve} disabled={fixLoading} title="Resolve" aria-label="Resolve">✅</button>
                 )}
                 <button className={ACTION_BTN} onClick={() => { setEditing(true); setEditText(comment.comment); }} title="Edit" aria-label="Edit">✏️</button>
                 {confirmDelete ? (
@@ -191,11 +212,6 @@ export function CommentCard({
                 ) : (
                     <button className={ACTION_BTN} onClick={() => setConfirmDelete(true)} title="Delete" aria-label="Delete">🗑️</button>
                 )}
-                <AICommandMenu
-                    onCommand={(cmdId, q) => q !== undefined ? onAskAI(cmdId, q) : onAskAI(cmdId)}
-                    loading={aiLoading}
-                    triggerClassName={ACTION_BTN}
-                />
             </div>
 
             {/* AI error banner */}

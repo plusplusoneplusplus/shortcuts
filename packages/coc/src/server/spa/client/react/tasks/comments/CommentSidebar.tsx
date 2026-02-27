@@ -30,6 +30,8 @@ export interface CommentSidebarProps {
     aiLoadingIds?: Set<string>;
     aiErrors?: Map<string, string>;
     onClearAiError?: (id: string) => void;
+    onFixWithAI?: (id: string) => void;
+    resolvingCommentId?: string | null;
 }
 
 export function CommentSidebar({
@@ -49,6 +51,8 @@ export function CommentSidebar({
     aiLoadingIds,
     aiErrors,
     onClearAiError,
+    onFixWithAI,
+    resolvingCommentId,
 }: CommentSidebarProps) {
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
     const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
@@ -170,6 +174,8 @@ export function CommentSidebar({
                         aiLoading={aiLoadingIds?.has(comment.id)}
                         aiError={aiErrors?.get(comment.id) ?? null}
                         onClearAiError={onClearAiError ? () => onClearAiError(comment.id) : undefined}
+                        onFixWithAI={onFixWithAI ? () => onFixWithAI(comment.id) : undefined}
+                        fixLoading={resolvingCommentId === comment.id}
                     />
                 ))}
             </div>
