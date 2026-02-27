@@ -41,6 +41,15 @@ export interface DocumentContext {
     filePath?: string;
 }
 
+export interface ResolveWithAIResult {
+    revisedContent: string;
+    resolvedCount: number;
+}
+
+export interface FixWithAIResult {
+    revisedContent: string;
+}
+
 export interface AskAIOptions {
     commandId?: string;
     customQuestion?: string;
@@ -90,6 +99,11 @@ export interface UseTaskCommentsReturn {
     aiLoadingIds: Set<string>;
     aiErrors: Map<string, string>;
     clearAiError: (id: string) => void;
+    resolveWithAI: (documentContent: string, filePath: string) => Promise<ResolveWithAIResult>;
+    fixWithAI: (id: string, documentContent: string, filePath: string) => Promise<FixWithAIResult>;
+    copyResolvePrompt: (documentContent: string, filePath: string) => void;
+    resolving: boolean;
+    resolvingCommentId: string | null;
     refresh: () => Promise<void>;
 }
 
@@ -100,6 +114,8 @@ export function useTaskComments(wsId: string, taskPath: string): UseTaskComments
     const [error, setError] = useState<string | null>(null);
     const [aiLoadingIds, setAiLoadingIds] = useState<Set<string>>(new Set());
     const [aiErrors, setAiErrors] = useState<Map<string, string>>(new Map());
+    const [resolving, setResolving] = useState(false);
+    const [resolvingCommentId, setResolvingCommentId] = useState<string | null>(null);
     const mountedRef = useRef(true);
 
     useEffect(() => {
@@ -227,6 +243,108 @@ export function useTaskComments(wsId: string, taskPath: string): UseTaskComments
         await Promise.all([fetchComments(), fetchCounts()]);
     }, [fetchComments, fetchCounts]);
 
+    const resolveWithAI = useCallback(
+        async (documentContent: string, filePath: string): Promise<ResolveWithAIResult> => {
+            if (mountedRef.current) setResolving(true);
+            try {
+                // Step 1 — call batch resolve endpoint
+                const aiRes = await fetch(commentsUrl(wsId, taskPath) + '/resolve-with-ai', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ documentContent }),
+                });
+                if (!aiRes.ok) throw new Error('Batch resolve failed');
+                const { revisedContent, commentIds }: { revisedContent: string; commentIds: string[] }
+                    = await aiRes.json();
+
+                // Step 2 — write revised file (abort if this fails)
+                const patchRes = await fetch(
+                    getApiBase() + '/workspaces/' + encodeURIComponent(wsId) + '/tasks/content',
+                    {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ path: filePath, content: revisedContent }),
+                    }
+                );
+                if (!patchRes.ok) throw new Error('Failed to write revised content');
+
+                // Step 3 — batch-resolve comments (best effort; file already saved)
+                await Promise.all(commentIds.map(id => resolveComment(id)));
+
+                await refresh();
+
+                return { revisedContent, resolvedCount: commentIds.length };
+            } finally {
+                if (mountedRef.current) setResolving(false);
+            }
+        },
+        [wsId, taskPath, resolveComment, refresh]
+    );
+
+    const fixWithAI = useCallback(
+        async (id: string, documentContent: string, filePath: string): Promise<FixWithAIResult> => {
+            if (mountedRef.current) setResolvingCommentId(id);
+            try {
+                // Step 1 — per-comment ask-ai with commandId: 'resolve'
+                const aiRes = await fetch(commentUrl(wsId, taskPath, id) + '/ask-ai', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ commandId: 'resolve', documentContent }),
+                });
+                if (!aiRes.ok) throw new Error('AI resolve failed');
+                const { revisedContent }: { revisedContent: string; commentId: string }
+                    = await aiRes.json();
+
+                // Step 2 — write revised file
+                const patchRes = await fetch(
+                    getApiBase() + '/workspaces/' + encodeURIComponent(wsId) + '/tasks/content',
+                    {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ path: filePath, content: revisedContent }),
+                    }
+                );
+                if (!patchRes.ok) throw new Error('Failed to write revised content');
+
+                // Step 3 — resolve the single comment
+                await resolveComment(id);
+                await refresh();
+
+                return { revisedContent };
+            } finally {
+                if (mountedRef.current) setResolvingCommentId(null);
+            }
+        },
+        [wsId, taskPath, resolveComment, refresh]
+    );
+
+    const copyResolvePrompt = useCallback(
+        (documentContent: string, filePath: string): void => {
+            const openComments = comments.filter(c => c.status === 'open');
+            if (openComments.length === 0) return;
+
+            const commentsBlock = openComments
+                .map((c, i) =>
+                    `### Comment ${i + 1} (id: ${c.id})\n` +
+                    `Selection: lines ${c.selection.startLine}\u2013${c.selection.endLine}\n` +
+                    `Selected text:\n\`\`\`\n${c.selectedText}\n\`\`\`\n` +
+                    `Comment: ${c.comment}`
+                )
+                .join('\n\n');
+
+            const prompt =
+                `You are reviewing the file: ${filePath}\n\n` +
+                `The following ${openComments.length} comment(s) need to be addressed:\n\n` +
+                `${commentsBlock}\n\n` +
+                `Current document content:\n\`\`\`markdown\n${documentContent}\n\`\`\`\n\n` +
+                `Please produce a revised version of the document that addresses all comments. ` +
+                `Return only the revised markdown, no explanation.`;
+
+            void navigator.clipboard.writeText(prompt);
+        },
+        [comments]
+    );
+
     return {
         comments,
         commentCounts,
@@ -241,6 +359,11 @@ export function useTaskComments(wsId: string, taskPath: string): UseTaskComments
         aiLoadingIds,
         aiErrors,
         clearAiError,
+        resolveWithAI,
+        fixWithAI,
+        copyResolvePrompt,
+        resolving,
+        resolvingCommentId,
         refresh,
     };
 }
