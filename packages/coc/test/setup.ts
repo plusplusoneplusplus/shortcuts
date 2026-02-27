@@ -6,7 +6,10 @@
  * should inject a mock `aiService` via `createExecutionServer({ aiService })`.
  */
 
-import { vi } from 'vitest';
+import { vi, expect } from 'vitest';
+import * as matchers from '@testing-library/jest-dom/matchers';
+
+expect.extend(matchers);
 
 vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
     const original = await importOriginal<typeof import('@plusplusoneplusplus/pipeline-core')>();

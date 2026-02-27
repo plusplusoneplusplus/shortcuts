@@ -20,6 +20,7 @@ export default defineConfig({
         hookTimeout: 30000,
         environmentMatchGlobs: [
             ['test/spa/**/*.test.tsx', 'jsdom'],
+            ['test/spa/**/*.test.ts', 'jsdom'],
         ],
     }
 });
