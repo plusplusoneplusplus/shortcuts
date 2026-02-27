@@ -30026,9 +30026,29 @@
     { label: "Dark Green", value: "#004b1c" },
     { label: "Grey", value: "#848484" }
   ];
+  function getPathLeaf(pathValue) {
+    return pathValue.replace(/[/\\]+$/, "").split(/[/\\]+/).filter(Boolean).pop() || "";
+  }
+  function joinBrowserPath(basePath, childName) {
+    if (!basePath) {
+      return childName;
+    }
+    if (/[/\\]$/.test(basePath)) {
+      return `${basePath}${childName}`;
+    }
+    const separator = basePath.includes("\\") ? "\\" : "/";
+    return `${basePath}${separator}${childName}`;
+  }
+  function getPathPlaceholder() {
+    if (typeof navigator !== "undefined" && /win/i.test(navigator.platform)) {
+      return "C:\\path\\to\\repo";
+    }
+    return "/path/to/repo";
+  }
   function AddRepoDialog({ open, onClose, editId, repos, onSuccess }) {
     const isEdit = !!editId;
     const editRepo = isEdit ? repos.find((r) => r.workspace.id === editId) : null;
+    const pathPlaceholder = getPathPlaceholder();
     const [path, setPath] = (0, import_react20.useState)("");
     const [name, setName] = (0, import_react20.useState)("");
     const [color, setColor] = (0, import_react20.useState)("#0078d4");
@@ -30039,6 +30059,8 @@
     const [browserEntries, setBrowserEntries] = (0, import_react20.useState)([]);
     const [browserParent, setBrowserParent] = (0, import_react20.useState)(null);
     const [browserLoading, setBrowserLoading] = (0, import_react20.useState)(false);
+    const [browserDrives, setBrowserDrives] = (0, import_react20.useState)([]);
+    const [browserError, setBrowserError] = (0, import_react20.useState)(null);
     (0, import_react20.useEffect)(() => {
       if (open && isEdit && editRepo) {
         setPath(editRepo.workspace.rootPath || "");
@@ -30051,16 +30073,22 @@
       }
       setValidation(null);
       setShowBrowser(false);
+      setBrowserDrives([]);
+      setBrowserError(null);
     }, [open, isEdit, editRepo]);
     const navigateTo = (0, import_react20.useCallback)(async (dir) => {
       setBrowserLoading(true);
+      setBrowserError(null);
       try {
         const data = await fetchApi(`/fs/browse?path=${encodeURIComponent(dir)}`);
         setBrowserPath(data.path);
         setBrowserParent(data.parent || null);
         setBrowserEntries(data.entries || []);
+        setBrowserDrives(Array.isArray(data.drives) ? data.drives : []);
       } catch {
         setBrowserEntries([]);
+        setBrowserParent(null);
+        setBrowserError("Unable to browse this path");
       }
       setBrowserLoading(false);
     }, []);
@@ -30072,7 +30100,7 @@
       if (browserPath) {
         setPath(browserPath);
         if (!name.trim()) {
-          setName(browserPath.split(/[/\\]/).filter(Boolean).pop() || "");
+          setName(getPathLeaf(browserPath));
         }
       }
       setShowBrowser(false);
@@ -30093,7 +30121,7 @@
             body: JSON.stringify({ name: name.trim(), color })
           });
         } else {
-          const wsName = name.trim() || trimmedPath.split("/").filter(Boolean).pop() || "repo";
+          const wsName = name.trim() || getPathLeaf(trimmedPath) || "repo";
           const id = "ws-" + hashString(trimmedPath);
           const res = await fetch(getApiBase() + "/workspaces", {
             method: "POST",
@@ -30152,14 +30180,25 @@
                 value: path,
                 onChange: (e) => setPath(e.target.value),
                 readOnly: isEdit,
-                placeholder: "/path/to/repo"
+                placeholder: pathPlaceholder
               }
             ),
             !isEdit && /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(Button, { variant: "secondary", size: "sm", id: "browse-btn", "data-testid": "browse-btn", onClick: openBrowser, children: "Browse" })
           ] }),
           showBrowser && /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)("div", { id: "path-browser", "data-testid": "path-browser", className: "border border-[#e0e0e0] dark:border-[#3c3c3c] rounded p-2 max-h-48 overflow-y-auto text-xs", children: [
             /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { id: "path-breadcrumb", className: "flex items-center gap-1 mb-1 text-[10px] text-[#848484] truncate", children: browserPath }),
+            browserDrives.length > 1 && /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "mb-1 flex flex-wrap gap-1", children: browserDrives.map((drive) => /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
+              "button",
+              {
+                type: "button",
+                className: `px-1 py-0.5 rounded border text-[10px] ${browserPath.toLowerCase().startsWith(drive.toLowerCase()) ? "border-[#0078d4] text-[#0078d4]" : "border-[#d0d0d0] text-[#666] dark:border-[#444] dark:text-[#aaa]"}`,
+                onClick: () => navigateTo(drive),
+                children: drive
+              },
+              drive
+            )) }),
             browserLoading ? /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "text-[#848484]", children: "Loading..." }) : /* @__PURE__ */ (0, import_jsx_runtime23.jsxs)(import_jsx_runtime23.Fragment, { children: [
+              browserError && /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("div", { className: "text-red-600 dark:text-red-400 mb-1", children: browserError }),
               browserParent && /* @__PURE__ */ (0, import_jsx_runtime23.jsx)(
                 "div",
                 {
@@ -30174,7 +30213,7 @@
                 {
                   className: "path-browser-entry flex items-center gap-1 px-1 py-0.5 cursor-pointer hover:bg-[#e8e8e8] dark:hover:bg-[#333] rounded",
                   "data-testid": "path-browser-entry",
-                  onClick: () => navigateTo(browserPath + (browserPath.endsWith("/") ? "" : "/") + entry.name),
+                  onClick: () => navigateTo(joinBrowserPath(browserPath, entry.name)),
                   children: [
                     "\u{1F4C1} ",
                     /* @__PURE__ */ (0, import_jsx_runtime23.jsx)("span", { className: "entry-name", children: entry.name }),

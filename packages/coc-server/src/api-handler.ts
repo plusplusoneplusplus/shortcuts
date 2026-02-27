@@ -18,7 +18,7 @@ import type { ProcessStore, ProcessFilter, AIProcess, AIProcessStatus, AIProcess
 import { deserializeProcess } from '@plusplusoneplusplus/pipeline-core';
 import type { Route } from './types';
 import { handleProcessStream } from './sse-handler';
-import { handleAPIError, invalidJSON, missingFields, notFound, badRequest, forbidden, internalError, APIError } from './errors';
+import { handleAPIError, invalidJSON, missingFields, notFound, badRequest, internalError, APIError } from './errors';
 
 /**
  * Bridge interface for executing follow-up messages on existing AI sessions.
@@ -331,18 +331,25 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
 
             const resolved = path.resolve(rawPath.replace(/^~/, os.homedir()));
 
-            // Security: block traversal above home directory
-            const home = os.homedir();
-            const tmpDir = os.tmpdir();
-            if (!resolved.startsWith(home) && !resolved.startsWith(tmpDir) && !resolved.startsWith('/tmp') && resolved !== '/') {
-                return handleAPIError(res, forbidden('Access denied: path is outside allowed directories'));
-            }
-
             const result = browseDirectory(resolved, showHidden);
             if (!result) {
                 return handleAPIError(res, notFound('Directory'));
             }
-            sendJSON(res, 200, result);
+
+            const payload: {
+                path: string;
+                parent: string | null;
+                entries: Array<{ name: string; type: 'directory'; isGitRepo: boolean }>;
+                drives?: string[];
+            } = { ...result };
+
+            // Surface available Windows drives so the UI can switch volumes
+            // (e.g., C:\ -> D:\) without manually typing a path.
+            if (process.platform === 'win32') {
+                payload.drives = listWindowsDrives();
+            }
+
+            sendJSON(res, 200, payload);
         },
     });
 
@@ -791,6 +798,22 @@ export function discoverPipelines(pipelinesDir: string): Array<{ name: string; p
     } catch {
         return [];
     }
+}
+
+/** Enumerate available Windows drive roots (e.g., C:\, D:\). */
+function listWindowsDrives(): string[] {
+    if (process.platform !== 'win32') {
+        return [];
+    }
+
+    const drives: string[] = [];
+    for (let code = 65; code <= 90; code++) {
+        const drive = `${String.fromCharCode(code)}:\\`;
+        if (fs.existsSync(drive)) {
+            drives.push(drive);
+        }
+    }
+    return drives;
 }
 
 /** Browse a directory and return its entries (directories only) for repo path selection. */

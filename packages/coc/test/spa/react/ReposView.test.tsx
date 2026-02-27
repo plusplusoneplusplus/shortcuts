@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { useEffect, type ReactNode } from 'react';
 import { AppProvider, useApp } from '../../../src/server/spa/client/react/context/AppContext';
 import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/context/QueueContext';
@@ -329,6 +329,58 @@ describe('AddRepoDialog', () => {
         const repos = [makeRepo({ workspace: { id: 'ws-1', name: 'R', rootPath: '/r', color: '#0078d4' } })];
         render(<Wrap><AddRepoDialog open onClose={() => {}} editId="ws-1" repos={repos} onSuccess={() => {}} /></Wrap>);
         expect(screen.queryByText('Browse')).toBeNull();
+    });
+
+    it('auto-detects name from Windows-style path when alias is empty', async () => {
+        const fetchMock = vi.fn().mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({}),
+        });
+        global.fetch = fetchMock as any;
+
+        render(<Wrap><AddRepoDialog open onClose={() => {}} repos={[]} onSuccess={() => {}} /></Wrap>);
+        fireEvent.change(screen.getByTestId('repo-path'), { target: { value: 'D:\\projects\\my-repo' } });
+        fireEvent.click(screen.getByText('Add Repo'));
+
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+        const [, init] = fetchMock.mock.calls[0];
+        const requestBody = JSON.parse(String(init?.body ?? '{}'));
+        expect(requestBody.name).toBe('my-repo');
+    });
+
+    it('joins Windows paths correctly when navigating browser entries', async () => {
+        const fetchMock = vi.fn()
+            .mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({
+                    path: 'D:\\projects',
+                    parent: 'D:\\',
+                    entries: [{ name: 'my-repo', isGitRepo: true }],
+                    drives: ['C:\\', 'D:\\'],
+                }),
+            })
+            .mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({
+                    path: 'D:\\projects\\my-repo',
+                    parent: 'D:\\projects',
+                    entries: [],
+                    drives: ['C:\\', 'D:\\'],
+                }),
+            });
+        global.fetch = fetchMock as any;
+
+        render(<Wrap><AddRepoDialog open onClose={() => {}} repos={[]} onSuccess={() => {}} /></Wrap>);
+        fireEvent.change(screen.getByTestId('repo-path'), { target: { value: 'D:\\projects' } });
+        fireEvent.click(screen.getByTestId('browse-btn'));
+
+        await screen.findByRole('button', { name: 'D:\\' });
+        const entry = await screen.findByTestId('path-browser-entry');
+        fireEvent.click(entry);
+
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+        const [secondUrl] = fetchMock.mock.calls[1];
+        expect(String(secondUrl)).toContain(encodeURIComponent('D:\\projects\\my-repo'));
     });
 });
 

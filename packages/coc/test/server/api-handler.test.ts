@@ -1110,6 +1110,32 @@ describe('API Handler', () => {
             expect(Array.isArray(body.entries)).toBe(true);
         });
 
+        it('should allow browsing the parent of home directory', async () => {
+            const srv = await startServer();
+            const parentDir = path.dirname(os.homedir());
+
+            const res = await request(`${srv.url}/api/fs/browse?path=${encodeURIComponent(parentDir)}`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.path).toBe(parentDir);
+            expect(Array.isArray(body.entries)).toBe(true);
+        });
+
+        it('should include drive list metadata on Windows', async () => {
+            if (process.platform !== 'win32') {
+                return;
+            }
+            const srv = await startServer();
+            const homeDir = os.homedir();
+            const currentDriveRoot = path.parse(homeDir).root;
+
+            const res = await request(`${srv.url}/api/fs/browse?path=${encodeURIComponent(homeDir)}`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(Array.isArray(body.drives)).toBe(true);
+            expect(body.drives).toContain(currentDriveRoot);
+        });
+
         it('should hide hidden directories by default', async () => {
             const srv = await startServer();
             const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browse-hidden-'));

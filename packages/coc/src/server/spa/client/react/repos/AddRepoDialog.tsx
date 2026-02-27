@@ -33,9 +33,43 @@ interface BrowserEntry {
     isGitRepo?: boolean;
 }
 
+interface BrowserResponse {
+    path: string;
+    parent?: string | null;
+    entries?: BrowserEntry[];
+    drives?: string[];
+}
+
+function getPathLeaf(pathValue: string): string {
+    return pathValue
+        .replace(/[/\\]+$/, '')
+        .split(/[/\\]+/)
+        .filter(Boolean)
+        .pop() || '';
+}
+
+function joinBrowserPath(basePath: string, childName: string): string {
+    if (!basePath) {
+        return childName;
+    }
+    if (/[/\\]$/.test(basePath)) {
+        return `${basePath}${childName}`;
+    }
+    const separator = basePath.includes('\\') ? '\\' : '/';
+    return `${basePath}${separator}${childName}`;
+}
+
+function getPathPlaceholder(): string {
+    if (typeof navigator !== 'undefined' && /win/i.test(navigator.platform)) {
+        return 'C:\\path\\to\\repo';
+    }
+    return '/path/to/repo';
+}
+
 export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRepoDialogProps) {
     const isEdit = !!editId;
     const editRepo = isEdit ? repos.find(r => r.workspace.id === editId) : null;
+    const pathPlaceholder = getPathPlaceholder();
 
     const [path, setPath] = useState('');
     const [name, setName] = useState('');
@@ -49,6 +83,8 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
     const [browserEntries, setBrowserEntries] = useState<BrowserEntry[]>([]);
     const [browserParent, setBrowserParent] = useState<string | null>(null);
     const [browserLoading, setBrowserLoading] = useState(false);
+    const [browserDrives, setBrowserDrives] = useState<string[]>([]);
+    const [browserError, setBrowserError] = useState<string | null>(null);
 
     // Pre-fill for edit mode
     useEffect(() => {
@@ -63,17 +99,23 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
         }
         setValidation(null);
         setShowBrowser(false);
+        setBrowserDrives([]);
+        setBrowserError(null);
     }, [open, isEdit, editRepo]);
 
     const navigateTo = useCallback(async (dir: string) => {
         setBrowserLoading(true);
+        setBrowserError(null);
         try {
-            const data = await fetchApi(`/fs/browse?path=${encodeURIComponent(dir)}`);
+            const data = await fetchApi(`/fs/browse?path=${encodeURIComponent(dir)}`) as BrowserResponse;
             setBrowserPath(data.path);
             setBrowserParent(data.parent || null);
             setBrowserEntries(data.entries || []);
+            setBrowserDrives(Array.isArray(data.drives) ? data.drives : []);
         } catch {
             setBrowserEntries([]);
+            setBrowserParent(null);
+            setBrowserError('Unable to browse this path');
         }
         setBrowserLoading(false);
     }, []);
@@ -87,7 +129,7 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
         if (browserPath) {
             setPath(browserPath);
             if (!name.trim()) {
-                setName(browserPath.split(/[/\\]/).filter(Boolean).pop() || '');
+                setName(getPathLeaf(browserPath));
             }
         }
         setShowBrowser(false);
@@ -111,7 +153,7 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
                     body: JSON.stringify({ name: name.trim(), color }),
                 });
             } else {
-                const wsName = name.trim() || trimmedPath.split('/').filter(Boolean).pop() || 'repo';
+                const wsName = name.trim() || getPathLeaf(trimmedPath) || 'repo';
                 const id = 'ws-' + hashString(trimmedPath);
                 const res = await fetch(getApiBase() + '/workspaces', {
                     method: 'POST',
@@ -178,7 +220,7 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
                         value={path}
                         onChange={e => setPath(e.target.value)}
                         readOnly={isEdit}
-                        placeholder="/path/to/repo"
+                        placeholder={pathPlaceholder}
                     />
                     {!isEdit && (
                         <Button variant="secondary" size="sm" id="browse-btn" data-testid="browse-btn" onClick={openBrowser}>
@@ -193,10 +235,29 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
                         <div id="path-breadcrumb" className="flex items-center gap-1 mb-1 text-[10px] text-[#848484] truncate">
                             {browserPath}
                         </div>
+                        {browserDrives.length > 1 && (
+                            <div className="mb-1 flex flex-wrap gap-1">
+                                {browserDrives.map(drive => (
+                                    <button
+                                        key={drive}
+                                        type="button"
+                                        className={`px-1 py-0.5 rounded border text-[10px] ${browserPath.toLowerCase().startsWith(drive.toLowerCase())
+                                            ? 'border-[#0078d4] text-[#0078d4]'
+                                            : 'border-[#d0d0d0] text-[#666] dark:border-[#444] dark:text-[#aaa]'}`}
+                                        onClick={() => navigateTo(drive)}
+                                    >
+                                        {drive}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                         {browserLoading ? (
                             <div className="text-[#848484]">Loading...</div>
                         ) : (
                             <>
+                                {browserError && (
+                                    <div className="text-red-600 dark:text-red-400 mb-1">{browserError}</div>
+                                )}
                                 {browserParent && (
                                     <div
                                         className="px-1 py-0.5 cursor-pointer hover:bg-[#e8e8e8] dark:hover:bg-[#333] rounded"
@@ -213,7 +274,7 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
                                         key={entry.name}
                                         className="path-browser-entry flex items-center gap-1 px-1 py-0.5 cursor-pointer hover:bg-[#e8e8e8] dark:hover:bg-[#333] rounded"
                                         data-testid="path-browser-entry"
-                                        onClick={() => navigateTo(browserPath + (browserPath.endsWith('/') ? '' : '/') + entry.name)}
+                                        onClick={() => navigateTo(joinBrowserPath(browserPath, entry.name))}
                                     >
                                         📁 <span className="entry-name">{entry.name}</span>
                                         {entry.isGitRepo && <span className="text-[10px] px-1 bg-[#e0e0e0] dark:bg-[#3c3c3c] rounded">git</span>}
