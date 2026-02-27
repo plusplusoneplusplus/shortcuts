@@ -148,6 +148,8 @@ export interface BaseNode {
 export interface LoadNodeConfig extends BaseNode {
     type: 'load';
     source: LoadSource;
+    /** Clamp output to first N items (undefined or ≤ 0 means no limit). */
+    limit?: number;
 }
 
 /**
