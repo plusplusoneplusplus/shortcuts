@@ -7,6 +7,7 @@
  */
 
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { TaskManager } from './task-manager';
@@ -15,12 +16,52 @@ import { TaskFolderItem } from './task-folder-item';
 import { loadRelatedItems } from './related-items-loader';
 import { AITaskCreationOptions } from './types';
 import { AITaskDialogService } from './ai-task-dialog';
-import { createAIInvoker, IAIProcessManager } from '../ai-service';
+import { createAIInvoker, IAIProcessManager, Attachment } from '../ai-service';
 import { getAIBackendSetting } from '../ai-service/ai-config-helpers';
 import { getExtensionLogger, LogCategory } from '../shared/extension-logger';
 import { skillExists } from '@plusplusoneplusplus/pipeline-core';
 
 const logger = getExtensionLogger();
+
+/**
+ * Parse a base64 data URL into its components.
+ * Returns null for invalid or non-image data URLs.
+ */
+function parseDataUrl(dataUrl: string): { mimeType: string; extension: string; buffer: Buffer } | null {
+    const match = dataUrl.match(/^data:(image\/(\w+));base64,(.+)$/s);
+    if (!match) { return null; }
+    const mimeType = match[1];
+    let extension = match[2];
+    if (extension === 'jpeg') { extension = 'jpg'; }
+    const buffer = Buffer.from(match[3], 'base64');
+    return { mimeType, extension, buffer };
+}
+
+/**
+ * Decode base64 data URL images into temp files for SDK attachment.
+ * Creates a single temp directory containing all image files.
+ */
+function saveImagesToTempFiles(images: string[]): { tempDir: string; filePaths: string[] } {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-task-images-'));
+    const filePaths: string[] = [];
+
+    for (let i = 0; i < images.length; i++) {
+        const parsed = parseDataUrl(images[i]);
+        if (!parsed) { continue; }
+        const filePath = path.join(tempDir, `image-${i}.${parsed.extension}`);
+        fs.writeFileSync(filePath, parsed.buffer);
+        filePaths.push(filePath);
+    }
+
+    return { tempDir, filePaths };
+}
+
+/** Best-effort cleanup of a temp directory and its contents. */
+function cleanupTempDir(tempDir: string): void {
+    try {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+    } catch { /* best-effort */ }
+}
 
 /** Task template with frontmatter */
 const TASK_TEMPLATE = `---
@@ -181,6 +222,9 @@ async function executeAITaskCreation(
     const modeLabel = isFromFeature
         ? (options.fromFeatureOptions?.depth === 'deep' ? 'Deep' : 'Simple')
         : 'Create';
+    const images: string[] = isFromFeature
+        ? options.fromFeatureOptions?.images ?? []
+        : options.createOptions?.images ?? [];
 
     await vscode.window.withProgress(
         {
@@ -234,53 +278,71 @@ async function executeAITaskCreation(
                     throw new Error('Invalid options: missing createOptions or fromFeatureOptions');
                 }
                 
-                const aiInvoker = createAIInvoker({
-                    workingDirectory: workspaceRoot,
-                    model,
-                    featureName,
-                    clipboardFallback: false,
-                    approvePermissions: true,
-                    processManager,
-                    cancellationToken: token
-                });
+                // Materialise pasted images as temp files for SDK attachments
+                let tempDir: string | undefined;
+                let attachments: Attachment[] | undefined;
 
-                const result = await aiInvoker(prompt);
-
-                if (token.isCancellationRequested || result.error === 'Cancelled') {
-                    vscode.window.showInformationMessage('Task creation cancelled');
-                    return;
+                if (images.length > 0) {
+                    const saved = saveImagesToTempFiles(images);
+                    tempDir = saved.tempDir;
+                    if (saved.filePaths.length > 0) {
+                        attachments = saved.filePaths.map(fp => ({ type: 'file' as const, path: fp }));
+                    }
                 }
 
-                if (!result.success) {
-                    throw new Error(result.error || 'Failed to create task');
-                }
-
-                treeDataProvider.refresh();
-                
-                // Parse file path from AI response and open it
-                const createdFile = parseCreatedFilePath(result.response, targetFolderPath);
-                if (createdFile && fs.existsSync(createdFile)) {
-                    await vscode.commands.executeCommand(
-                        'vscode.openWith',
-                        vscode.Uri.file(createdFile),
-                        'reviewEditorView'
-                    );
-                    
-                    const displayName = taskName || path.basename(createdFile, '.md');
-                    vscode.window.showInformationMessage(
-                        `Task created: ${displayName}`,
-                        'Open Task'
-                    ).then(action => {
-                        if (action === 'Open Task') {
-                            vscode.commands.executeCommand(
-                                'vscode.openWith',
-                                vscode.Uri.file(createdFile),
-                                'reviewEditorView'
-                            );
-                        }
+                try {
+                    const aiInvoker = createAIInvoker({
+                        workingDirectory: workspaceRoot,
+                        model,
+                        featureName,
+                        clipboardFallback: false,
+                        approvePermissions: true,
+                        processManager,
+                        cancellationToken: token
                     });
-                } else {
-                    vscode.window.showInformationMessage('Task created');
+
+                    const result = await aiInvoker(prompt, attachments ? { attachments } : undefined);
+
+                    if (token.isCancellationRequested || result.error === 'Cancelled') {
+                        vscode.window.showInformationMessage('Task creation cancelled');
+                        return;
+                    }
+
+                    if (!result.success) {
+                        throw new Error(result.error || 'Failed to create task');
+                    }
+
+                    treeDataProvider.refresh();
+                    
+                    // Parse file path from AI response and open it
+                    const createdFile = parseCreatedFilePath(result.response, targetFolderPath);
+                    if (createdFile && fs.existsSync(createdFile)) {
+                        await vscode.commands.executeCommand(
+                            'vscode.openWith',
+                            vscode.Uri.file(createdFile),
+                            'reviewEditorView'
+                        );
+                        
+                        const displayName = taskName || path.basename(createdFile, '.md');
+                        vscode.window.showInformationMessage(
+                            `Task created: ${displayName}`,
+                            'Open Task'
+                        ).then(action => {
+                            if (action === 'Open Task') {
+                                vscode.commands.executeCommand(
+                                    'vscode.openWith',
+                                    vscode.Uri.file(createdFile),
+                                    'reviewEditorView'
+                                );
+                            }
+                        });
+                    } else {
+                        vscode.window.showInformationMessage('Task created');
+                    }
+                } finally {
+                    if (tempDir) {
+                        cleanupTempDir(tempDir);
+                    }
                 }
 
             } catch (error) {
@@ -1390,3 +1452,12 @@ export {
 export const buildCreateTaskPromptWithNameForTesting = buildCreateTaskPromptWithName;
 export const buildCreateFromFeaturePromptForTesting = buildCreateFromFeaturePrompt;
 export const buildCreateTaskPromptForTesting = buildCreateTaskPrompt;
+
+/**
+ * Export image temp-file helpers for testing
+ */
+export {
+    parseDataUrl as parseDataUrlForTesting,
+    saveImagesToTempFiles as saveImagesToTempFilesForTesting,
+    cleanupTempDir as cleanupTempDirForTesting
+};
