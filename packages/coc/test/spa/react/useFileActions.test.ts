@@ -100,6 +100,71 @@ describe('useFileActions', () => {
         expect(JSON.parse(opts.body)).toEqual({ path: 'task.md', status: 'done' });
     });
 
+    // ─── archiveFile ─────────────────────────────────────────────
+
+    it('archiveFile — calls POST /workspaces/{wsId}/tasks/archive with action:archive', async () => {
+        fetchMock.mockResolvedValueOnce(okResponse());
+        await actions().archiveFile('task.md');
+
+        const [url, opts] = fetchMock.mock.calls[0];
+        expect(url).toBe('/api/workspaces/ws-1/tasks/archive');
+        expect(opts.method).toBe('POST');
+        expect(JSON.parse(opts.body)).toEqual({ path: 'task.md', action: 'archive' });
+    });
+
+    it('archiveFile — throws on server error (500)', async () => {
+        fetchMock.mockResolvedValueOnce(errorResponse(500, 'internal'));
+        await expect(actions().archiveFile('task.md')).rejects.toThrow('500');
+    });
+
+    // ─── unarchiveFile ───────────────────────────────────────────
+
+    it('unarchiveFile — calls POST /workspaces/{wsId}/tasks/archive with action:unarchive', async () => {
+        fetchMock.mockResolvedValueOnce(okResponse());
+        await actions().unarchiveFile('task.md');
+
+        const [url, opts] = fetchMock.mock.calls[0];
+        expect(url).toBe('/api/workspaces/ws-1/tasks/archive');
+        expect(opts.method).toBe('POST');
+        expect(JSON.parse(opts.body)).toEqual({ path: 'task.md', action: 'unarchive' });
+    });
+
+    it('unarchiveFile — throws on server error (500)', async () => {
+        fetchMock.mockResolvedValueOnce(errorResponse(500, 'internal'));
+        await expect(actions().unarchiveFile('task.md')).rejects.toThrow('500');
+    });
+
+    // ─── deleteFile ──────────────────────────────────────────────
+
+    it('deleteFile — calls DELETE /workspaces/{wsId}/tasks with { path }', async () => {
+        fetchMock.mockResolvedValueOnce(okResponse());
+        await actions().deleteFile('task.md');
+
+        const [url, opts] = fetchMock.mock.calls[0];
+        expect(url).toBe('/api/workspaces/ws-1/tasks');
+        expect(opts.method).toBe('DELETE');
+        expect(JSON.parse(opts.body)).toEqual({ path: 'task.md' });
+    });
+
+    it('deleteFile — throws on server error (404)', async () => {
+        fetchMock.mockResolvedValueOnce(errorResponse(404, 'not found'));
+        await expect(actions().deleteFile('missing.md')).rejects.toThrow('404');
+    });
+
+    // ─── Content-Type header ─────────────────────────────────────
+
+    it('all actions — include Content-Type: application/json header', async () => {
+        fetchMock.mockResolvedValue(okResponse());
+        const a = actions();
+        await a.renameFile('f.md', 'g.md');
+        await a.archiveFile('f.md');
+        await a.deleteFile('f.md');
+
+        for (const call of fetchMock.mock.calls) {
+            expect(call[1].headers).toEqual({ 'Content-Type': 'application/json' });
+        }
+    });
+
     // ─── URL encoding ────────────────────────────────────────────
 
     it('URL encodes wsId with special characters', async () => {
