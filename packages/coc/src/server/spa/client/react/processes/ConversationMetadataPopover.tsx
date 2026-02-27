@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import ReactDOM from 'react-dom';
 import { formatDuration } from '../utils/format';
 
 interface MetaRow {
@@ -89,44 +90,96 @@ function buildRows(process: any, turnsCount?: number): MetaRow[] {
 
 export function ConversationMetadataPopover({ process, turnsCount }: { process: any; turnsCount?: number }) {
     const [open, setOpen] = useState(false);
-    const rootRef = useRef<HTMLDivElement | null>(null);
+    const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
+    const triggerRef = useRef<HTMLButtonElement | null>(null);
+    const popoverRef = useRef<HTMLDivElement | null>(null);
     const rows = useMemo(() => buildRows(process, turnsCount), [process, turnsCount]);
 
+    const handleToggle = useCallback(() => {
+        if (open) {
+            setOpen(false);
+            return;
+        }
+        const el = triggerRef.current;
+        if (!el) return;
+        const rect = el.getBoundingClientRect();
+        setMenuPos({ top: rect.bottom + 4, left: rect.right });
+        setOpen(true);
+    }, [open]);
+
+    // Correct popover overflow after render
+    useEffect(() => {
+        if (!open || !popoverRef.current || !triggerRef.current) return;
+        const popover = popoverRef.current;
+        const trigger = triggerRef.current;
+        const popoverRect = popover.getBoundingClientRect();
+        const triggerRect = trigger.getBoundingClientRect();
+
+        let { top, left } = menuPos;
+        // Align right edge of popover with right edge of trigger
+        left = triggerRect.right - popoverRect.width;
+        if (left < 8) left = 8;
+        if (left + popoverRect.width > window.innerWidth - 8) {
+            left = window.innerWidth - popoverRect.width - 8;
+        }
+        if (top + popoverRect.height > window.innerHeight - 8) {
+            top = triggerRect.top - popoverRect.height - 4;
+        }
+        if (top < 8) top = 8;
+        if (top !== menuPos.top || left !== menuPos.left) {
+            setMenuPos({ top, left });
+        }
+    }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Close on outside click
     useEffect(() => {
         if (!open) return;
-
-        const handleOutsidePointer = (event: MouseEvent | TouchEvent) => {
-            const target = event.target as Node | null;
-            if (!target || !rootRef.current) return;
-            if (!rootRef.current.contains(target)) {
-                setOpen(false);
-            }
+        const handler = (e: MouseEvent | TouchEvent) => {
+            const target = e.target as Node | null;
+            if (!target) return;
+            if (popoverRef.current?.contains(target)) return;
+            if (triggerRef.current?.contains(target)) return;
+            setOpen(false);
         };
-
-        document.addEventListener('mousedown', handleOutsidePointer);
-        document.addEventListener('touchstart', handleOutsidePointer);
+        document.addEventListener('mousedown', handler);
+        document.addEventListener('touchstart', handler);
         return () => {
-            document.removeEventListener('mousedown', handleOutsidePointer);
-            document.removeEventListener('touchstart', handleOutsidePointer);
+            document.removeEventListener('mousedown', handler);
+            document.removeEventListener('touchstart', handler);
         };
+    }, [open]);
+
+    // Close on Escape
+    useEffect(() => {
+        if (!open) return;
+        const handler = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setOpen(false);
+        };
+        document.addEventListener('keydown', handler);
+        return () => document.removeEventListener('keydown', handler);
     }, [open]);
 
     if (rows.length === 0) return null;
 
     return (
-        <div ref={rootRef} className="relative">
+        <>
             <button
+                ref={triggerRef}
                 type="button"
                 aria-label={open ? 'Hide conversation metadata' : 'Show conversation metadata'}
                 title="Conversation metadata"
                 className="h-6 w-6 rounded-full border border-[#d0d0d0] dark:border-[#3c3c3c] text-[11px] font-semibold text-[#4f4f4f] dark:text-[#cccccc] bg-white dark:bg-[#1f1f1f] hover:border-[#0078d4] dark:hover:border-[#3794ff] transition-colors"
-                onClick={() => setOpen((prev) => !prev)}
+                onClick={handleToggle}
             >
                 i
             </button>
 
-            {open && (
-                <div className="absolute right-0 top-7 z-20 w-[360px] max-w-[calc(100vw-24px)] rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#252526] p-3 shadow-lg">
+            {open && ReactDOM.createPortal(
+                <div
+                    ref={popoverRef}
+                    className="fixed z-50 w-[360px] max-w-[calc(100vw-16px)] rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#252526] p-3 shadow-lg"
+                    style={{ top: menuPos.top, left: menuPos.left }}
+                >
                     <div className="text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2">
                         Conversation metadata
                     </div>
@@ -146,8 +199,9 @@ export function ConversationMetadataPopover({ process, turnsCount }: { process: 
                             </div>
                         ))}
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
-        </div>
+        </>
     );
 }
