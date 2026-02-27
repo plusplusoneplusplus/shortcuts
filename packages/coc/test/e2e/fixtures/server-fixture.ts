@@ -22,21 +22,25 @@ import { createE2EMockSDKService, type E2EMockAIControls } from './mock-ai';
 
 /**
  * Windows-safe recursive directory removal.
- * On Windows, file handles may linger after server.close(), causing ENOTEMPTY.
- * Retries with exponential back-off (50ms, 100ms, 200ms) before giving up.
+ * On Windows, file handles may linger after server.close(), causing
+ * ENOTEMPTY / EBUSY / EPERM.  Retries up to 5 times with 200-3200 ms
+ * exponential back-off so CI runners have time to release handles.
  */
-export function safeRmSync(dir: string, maxRetries = 3): void {
+const RETRIABLE_CODES = new Set(['ENOTEMPTY', 'EBUSY', 'EPERM', 'EACCES']);
+export function safeRmSync(dir: string, maxRetries = 5): void {
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
-            fs.rmSync(dir, { recursive: true, force: true });
+            fs.rmSync(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
             return;
         } catch (err: any) {
-            if (attempt === maxRetries || (err.code !== 'ENOTEMPTY' && err.code !== 'EBUSY' && err.code !== 'EPERM')) {
+            const retriable = RETRIABLE_CODES.has(err.code);
+            if (attempt === maxRetries || !retriable) {
+                if (err.code === 'ENOENT') return;
                 throw err;
             }
-            const delayMs = 50 * Math.pow(2, attempt);
+            const delayMs = 200 * Math.pow(2, attempt);
             const start = Date.now();
-            while (Date.now() - start < delayMs) { /* busy-wait for sync context */ }
+            while (Date.now() - start < delayMs) { /* busy-wait in sync context */ }
         }
     }
 }
@@ -144,6 +148,8 @@ export const test = base.extend<ServerFixture & { _context: ServerContext }>({
         await use({ server, mockAI, tmpDir });
 
         await server.close();
+        // Allow Windows to release file handles before cleanup
+        await new Promise(r => setTimeout(r, process.platform === 'win32' ? 500 : 0));
         safeRmSync(tmpDir);
     },
 
