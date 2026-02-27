@@ -125,6 +125,42 @@ describe('PipelineDetail', () => {
         });
     });
 
+    it('action buttons are in the header row, not a footer', async () => {
+        render(
+            <Wrap>
+                <PipelineDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
+            </Wrap>
+        );
+        await waitFor(() => screen.getByText('my-pipeline'));
+        // The Run button and pipeline name should share the same top-level header container
+        const runBtn = screen.getByTestId('pipeline-run-btn');
+        const nameEl = screen.getByText('my-pipeline');
+        // Both live inside the header div (direct child of the root flex-col)
+        const headerDiv = nameEl.parentElement!;
+        expect(headerDiv.contains(runBtn)).toBe(true);
+        // No border-t footer div should exist (footer was removed)
+        const root = document.querySelector('[class*="flex-col"]')!;
+        const allDivs = root.querySelectorAll('div');
+        const footerDivs = Array.from(allDivs).filter(d => d.className.includes('border-t'));
+        expect(footerDivs.length).toBe(0);
+    });
+
+    it('edit mode Cancel/Save buttons are in the header row', async () => {
+        render(
+            <Wrap>
+                <PipelineDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
+            </Wrap>
+        );
+        await waitFor(() => screen.getByText('Edit'));
+        fireEvent.click(screen.getByText('Edit'));
+        const saveBtn = screen.getByText('Save');
+        const cancelBtn = screen.getByText('Cancel');
+        // Both should be inside the header div that contains the pipeline name
+        const headerDiv = screen.getByText('my-pipeline').parentElement!;
+        expect(headerDiv.contains(saveBtn)).toBe(true);
+        expect(headerDiv.contains(cancelBtn)).toBe(true);
+    });
+
     it('switches to edit mode with textarea when Edit is clicked', async () => {
         render(
             <Wrap>

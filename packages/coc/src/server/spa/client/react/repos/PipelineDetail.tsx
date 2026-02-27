@@ -108,6 +108,30 @@ export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRu
                 {mode === 'view' && pipeline.isValid === false && (
                     <Badge status="warning">⚠️ Invalid</Badge>
                 )}
+                <div className="flex items-center gap-2 ml-auto">
+                    {mode === 'view' ? (
+                        <>
+                            <Button
+                                size="sm"
+                                loading={running}
+                                disabled={pipeline.isValid === false}
+                                title={pipeline.isValid === false ? 'Fix validation errors before running' : 'Run pipeline'}
+                                data-testid="pipeline-run-btn"
+                                onClick={handleRun}
+                            >
+                                ▶ Run
+                            </Button>
+                            <Button variant="secondary" size="sm" onClick={onClose}>Close</Button>
+                            <Button variant="secondary" size="sm" onClick={() => setMode('edit')}>Edit</Button>
+                            <Button variant="danger" size="sm" onClick={() => setConfirmDelete(true)}>Delete</Button>
+                        </>
+                    ) : (
+                        <>
+                            <Button variant="secondary" size="sm" onClick={() => { setMode('view'); setError(null); }}>Cancel</Button>
+                            <Button size="sm" loading={saving} onClick={handleSave}>Save</Button>
+                        </>
+                    )}
+                </div>
             </div>
 
             {/* Validation errors */}
@@ -137,32 +161,6 @@ export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRu
                         />
                         {error && <p className="text-xs text-red-500">{error}</p>}
                     </div>
-                )}
-            </div>
-
-            {/* Footer */}
-            <div className="flex justify-end gap-2 px-4 py-3 border-t border-[#e0e0e0] dark:border-[#3c3c3c]">
-                {mode === 'view' ? (
-                    <>
-                        <Button
-                            size="sm"
-                            loading={running}
-                            disabled={pipeline.isValid === false}
-                            title={pipeline.isValid === false ? 'Fix validation errors before running' : 'Run pipeline'}
-                            data-testid="pipeline-run-btn"
-                            onClick={handleRun}
-                        >
-                            ▶ Run
-                        </Button>
-                        <Button variant="secondary" size="sm" onClick={onClose}>Close</Button>
-                        <Button variant="secondary" size="sm" onClick={() => setMode('edit')}>Edit</Button>
-                        <Button variant="danger" size="sm" onClick={() => setConfirmDelete(true)}>Delete</Button>
-                    </>
-                ) : (
-                    <>
-                        <Button variant="secondary" size="sm" onClick={() => { setMode('view'); setError(null); }}>Cancel</Button>
-                        <Button size="sm" loading={saving} onClick={handleSave}>Save</Button>
-                    </>
                 )}
             </div>
 
