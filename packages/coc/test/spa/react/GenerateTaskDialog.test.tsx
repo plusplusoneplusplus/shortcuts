@@ -3,31 +3,28 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
 import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
 import { GenerateTaskDialog } from '../../../src/server/spa/client/react/tasks/GenerateTaskDialog';
-import { useTaskGeneration } from '../../../src/server/spa/client/react/hooks/useTaskGeneration';
+import { useQueueTaskGeneration } from '../../../src/server/spa/client/react/hooks/useQueueTaskGeneration';
 import { usePreferences } from '../../../src/server/spa/client/react/hooks/usePreferences';
 
-// ── mock useTaskGeneration ──────────────────────────────────────────────────
+// ── mock useQueueTaskGeneration ─────────────────────────────────────────────
 
-vi.mock('../../../src/server/spa/client/react/hooks/useTaskGeneration', () => ({
-    useTaskGeneration: vi.fn(),
+vi.mock('../../../src/server/spa/client/react/hooks/useQueueTaskGeneration', () => ({
+    useQueueTaskGeneration: vi.fn(),
 }));
 
 vi.mock('../../../src/server/spa/client/react/hooks/usePreferences', () => ({
     usePreferences: vi.fn(),
 }));
 
-const mockUseTaskGeneration = useTaskGeneration as Mock;
+const mockUseQueueTaskGeneration = useQueueTaskGeneration as Mock;
 const mockUsePreferences = usePreferences as Mock;
 
 function makeHookReturn(overrides: Record<string, unknown> = {}) {
     return {
         status: 'idle',
-        chunks: [],
-        progressMessage: null,
-        result: null,
+        taskId: null,
         error: null,
-        generate: vi.fn(),
-        cancel: vi.fn(),
+        enqueue: vi.fn(),
         reset: vi.fn(),
         ...overrides,
     };
@@ -44,7 +41,7 @@ beforeEach(() => {
     mockFetch.mockReset();
     mockPersistModel.mockReset();
     global.fetch = mockFetch;
-    mockUseTaskGeneration.mockReturnValue(makeHookReturn());
+    mockUseQueueTaskGeneration.mockReturnValue(makeHookReturn());
     mockUsePreferences.mockReturnValue({
         model: '',
         setModel: mockPersistModel,
@@ -105,7 +102,7 @@ describe('GenerateTaskDialog', () => {
         expect(prompt).toBeDefined();
         expect(prompt.value).toBe('');
         expect(screen.getByText('Generate')).toBeDefined();
-        // output panel should not be rendered when idle
+        // no streaming output panel in queue mode
         expect(document.getElementById('gen-task-output')).toBeNull();
     });
 
@@ -123,9 +120,9 @@ describe('GenerateTaskDialog', () => {
         expect(btn.disabled).toBe(false);
     });
 
-    it('submit triggers generate() from hook', async () => {
-        const generateSpy = vi.fn();
-        mockUseTaskGeneration.mockReturnValue(makeHookReturn({ generate: generateSpy }));
+    it('submit triggers enqueue() from hook', async () => {
+        const enqueueSpy = vi.fn();
+        mockUseQueueTaskGeneration.mockReturnValue(makeHookReturn({ enqueue: enqueueSpy }));
 
         await act(async () => { renderDialog(); });
 
@@ -136,93 +133,36 @@ describe('GenerateTaskDialog', () => {
             fireEvent.click(screen.getByText('Generate'));
         });
 
-        expect(generateSpy).toHaveBeenCalledWith({
+        expect(enqueueSpy).toHaveBeenCalledWith({
             prompt: 'hello',
             name: undefined,
             targetFolder: undefined,
             model: undefined,
             mode: 'from-feature',
             depth: 'deep',
+            priority: 'normal',
         });
     });
 
-    it('streaming output panel appears during generating', async () => {
-        mockUseTaskGeneration.mockReturnValue(
-            makeHookReturn({ status: 'generating', chunks: ['partial output'] }),
-        );
-
-        await act(async () => { renderDialog(); });
-
-        const output = document.getElementById('gen-task-output');
-        expect(output).toBeDefined();
-        expect(output!.textContent).toBe('partial output');
-    });
-
-    it('progress message shown while generating', async () => {
-        mockUseTaskGeneration.mockReturnValue(
-            makeHookReturn({
-                status: 'generating',
-                chunks: [],
-                progressMessage: 'Writing file…',
-            }),
-        );
-
-        await act(async () => { renderDialog(); });
-
-        expect(screen.getByText('Writing file…')).toBeDefined();
-    });
-
-    it('output panel auto-scrolls (ref attached)', async () => {
-        mockUseTaskGeneration.mockReturnValue(
-            makeHookReturn({ status: 'generating', chunks: ['line1\n'] }),
-        );
-
-        await act(async () => { renderDialog(); });
-
-        const output = document.getElementById('gen-task-output') as HTMLPreElement;
-        expect(output).toBeDefined();
-        // scrollTop should be set — verify the ref is wired by checking the element exists
-        // (jsdom doesn't compute layout, so scrollTop/scrollHeight are both 0, but the ref attachment is verified)
-        expect(output.tagName).toBe('PRE');
-    });
-
-    it('success state shows file path', async () => {
-        mockUseTaskGeneration.mockReturnValue(
-            makeHookReturn({
-                status: 'complete',
-                result: { filePath: 'foo/bar.md', content: '# Task' },
-                chunks: ['done'],
-            }),
-        );
-
-        await act(async () => { renderDialog(); });
-
-        const success = document.getElementById('gen-task-success');
-        expect(success).toBeDefined();
-        expect(success!.textContent).toContain('foo/bar.md');
-    });
-
-    it('onSuccess callback fires with filePath on done', async () => {
+    it('onSuccess callback fires with taskId on queued', async () => {
         const onSuccess = vi.fn();
-        mockUseTaskGeneration.mockReturnValue(
+        mockUseQueueTaskGeneration.mockReturnValue(
             makeHookReturn({
-                status: 'complete',
-                result: { filePath: 'foo/bar.md', content: '# Task' },
-                chunks: [],
+                status: 'queued',
+                taskId: 'task-abc',
             }),
         );
 
         await act(async () => { renderDialog({ onSuccess }); });
 
-        expect(onSuccess).toHaveBeenCalledWith('foo/bar.md');
+        expect(onSuccess).toHaveBeenCalledWith('task-abc');
     });
 
     it('error state shows error message and Retry button', async () => {
-        mockUseTaskGeneration.mockReturnValue(
+        mockUseQueueTaskGeneration.mockReturnValue(
             makeHookReturn({
                 status: 'error',
                 error: 'Network error',
-                chunks: ['partial'],
             }),
         );
 
@@ -236,11 +176,10 @@ describe('GenerateTaskDialog', () => {
 
     it('Retry button calls reset()', async () => {
         const resetSpy = vi.fn();
-        mockUseTaskGeneration.mockReturnValue(
+        mockUseQueueTaskGeneration.mockReturnValue(
             makeHookReturn({
                 status: 'error',
                 error: 'fail',
-                chunks: [],
                 reset: resetSpy,
             }),
         );
@@ -251,7 +190,7 @@ describe('GenerateTaskDialog', () => {
         expect(resetSpy).toHaveBeenCalled();
     });
 
-    it('Cancel button calls onClose when idle', async () => {
+    it('Close button calls onClose when idle', async () => {
         const onClose = vi.fn();
         await act(async () => { renderDialog({ onClose }); });
 
@@ -259,29 +198,46 @@ describe('GenerateTaskDialog', () => {
         expect(onClose).toHaveBeenCalled();
     });
 
-    it('Cancel button calls cancel() and onClose when generating', async () => {
-        const cancelSpy = vi.fn();
-        const onClose = vi.fn();
-        mockUseTaskGeneration.mockReturnValue(
-            makeHookReturn({ status: 'generating', chunks: [], cancel: cancelSpy }),
-        );
-
-        await act(async () => { renderDialog({ onClose }); });
-
-        fireEvent.click(screen.getByText('Cancel'));
-        expect(cancelSpy).toHaveBeenCalled();
-        expect(onClose).toHaveBeenCalled();
-    });
-
-    it('Generate button shows loading spinner when generating', async () => {
-        mockUseTaskGeneration.mockReturnValue(
-            makeHookReturn({ status: 'generating', chunks: [] }),
+    it('Generate button shows loading state when submitting', async () => {
+        mockUseQueueTaskGeneration.mockReturnValue(
+            makeHookReturn({ status: 'submitting' }),
         );
 
         await act(async () => { renderDialog(); });
 
         const btn = document.getElementById('gen-task-generate') as HTMLButtonElement;
         expect(btn.disabled).toBe(true);
+    });
+
+    it('renders priority selector with default Normal', async () => {
+        await act(async () => { renderDialog(); });
+
+        const select = document.getElementById('gen-task-priority') as HTMLSelectElement;
+        expect(select).toBeDefined();
+        expect(select.value).toBe('normal');
+        const options = Array.from(select.options).map(o => o.value);
+        expect(options).toEqual(['high', 'normal', 'low']);
+    });
+
+    it('submit sends selected priority', async () => {
+        const enqueueSpy = vi.fn();
+        mockUseQueueTaskGeneration.mockReturnValue(makeHookReturn({ enqueue: enqueueSpy }));
+
+        await act(async () => { renderDialog(); });
+
+        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
+        fireEvent.change(textarea, { target: { value: 'test' } });
+
+        const prioritySelect = document.getElementById('gen-task-priority') as HTMLSelectElement;
+        fireEvent.change(prioritySelect, { target: { value: 'high' } });
+
+        await act(async () => {
+            fireEvent.click(screen.getByText('Generate'));
+        });
+
+        expect(enqueueSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ priority: 'high' }),
+        );
     });
 
     it('populates model select from /api/queue/models', async () => {
@@ -547,9 +503,9 @@ describe('GenerateTaskDialog', () => {
         expect(select.value).toBe('');
     });
 
-    it('submit sends persisted model in generate call', async () => {
-        const generateSpy = vi.fn();
-        mockUseTaskGeneration.mockReturnValue(makeHookReturn({ generate: generateSpy }));
+    it('submit sends persisted model in enqueue call', async () => {
+        const enqueueSpy = vi.fn();
+        mockUseQueueTaskGeneration.mockReturnValue(makeHookReturn({ enqueue: enqueueSpy }));
         mockUsePreferences.mockReturnValue({
             model: 'claude-3',
             setModel: mockPersistModel,
@@ -593,7 +549,7 @@ describe('GenerateTaskDialog', () => {
             fireEvent.click(screen.getByText('Generate'));
         });
 
-        expect(generateSpy).toHaveBeenCalledWith(
+        expect(enqueueSpy).toHaveBeenCalledWith(
             expect.objectContaining({ model: 'claude-3' }),
         );
     });

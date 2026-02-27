@@ -1,14 +1,16 @@
 /**
  * GenerateTaskDialog — modal dialog for AI-powered task generation.
  *
- * Wires up the useTaskGeneration hook, renders a form for prompt/name/folder/model,
- * streams live output while the AI runs, and notifies the parent on success.
+ * Submits the task to the queue via useQueueTaskGeneration, then closes.
+ * The user can track progress in the Queue tab.
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { Dialog, Button, Spinner } from '../shared';
-import { useTaskGeneration } from '../hooks/useTaskGeneration';
+import { useState, useEffect, useCallback } from 'react';
+import { Dialog, Button } from '../shared';
+import { useQueueTaskGeneration } from '../hooks/useQueueTaskGeneration';
 import { usePreferences } from '../hooks/usePreferences';
+import { useGlobalToast } from '../context/ToastContext';
+import { useApp } from '../context/AppContext';
 import { type TaskFolder, filterGitMetadataFolders } from '../hooks/useTaskTree';
 import { getApiBase } from '../utils/config';
 
@@ -23,12 +25,12 @@ function flattenFolders(folder: TaskFolder, acc: string[] = []): string[] {
 // ── props ────────────────────────────────────────────────────────────────────
 
 export interface GenerateTaskDialogProps {
-    /** Workspace id passed to useTaskGeneration and used to fetch folders/models. */
+    /** Workspace id used to enqueue the task and fetch folders/models. */
     wsId: string;
     /** Pre-selected target folder path (relative). Empty string = root. */
     initialFolder?: string;
-    /** Called when generation finishes successfully; receives the created file path. */
-    onSuccess: (filePath: string) => void;
+    /** Called when the task is successfully queued; receives the taskId. */
+    onSuccess: (taskId: string) => void;
     /** Called when the user cancels or closes without completing. */
     onClose: () => void;
 }
@@ -43,12 +45,15 @@ export function GenerateTaskDialog({
 }: GenerateTaskDialogProps) {
     // --- preferences (persisted model) ---
     const { model: savedModel, setModel: persistModel } = usePreferences();
+    const { addToast } = useGlobalToast();
+    const { dispatch: appDispatch } = useApp();
 
     // --- form state ---
     const [prompt, setPrompt] = useState('');
     const [name, setName] = useState('');
     const [targetFolder, setTargetFolder] = useState(initialFolder);
     const [model, setModel] = useState('');
+    const [priority, setPriority] = useState<'high' | 'normal' | 'low'>('normal');
 
     useEffect(() => {
         if (savedModel && !model) setModel(savedModel);
@@ -59,8 +64,8 @@ export function GenerateTaskDialog({
     const [folders, setFolders] = useState<string[]>(['']);
 
     // --- hook ---
-    const { status, chunks, progressMessage, result, error, generate, cancel, reset } =
-        useTaskGeneration(wsId);
+    const { status, taskId, error, enqueue, reset } =
+        useQueueTaskGeneration(wsId);
 
     // --- fetch models on mount ---
     useEffect(() => {
@@ -90,54 +95,45 @@ export function GenerateTaskDialog({
         return () => { cancelled = true; };
     }, [wsId]);
 
-    // --- scroll output panel to bottom on new chunks ---
-    const outputRef = useRef<HTMLPreElement>(null);
+    // --- notify parent and navigate to Queue tab after successful enqueue ---
     useEffect(() => {
-        if (outputRef.current) outputRef.current.scrollTop = outputRef.current.scrollHeight;
-    }, [chunks]);
-
-    // --- notify parent after success ---
-    useEffect(() => {
-        if (status === 'complete' && result?.filePath) {
-            onSuccess(result.filePath);
+        if (status === 'queued') {
+            addToast(`Task queued${taskId ? ` (${taskId.slice(0, 8)})` : ''}`, 'success');
+            appDispatch({ type: 'SET_REPO_SUB_TAB', tab: 'queue' });
+            onSuccess(taskId || '');
         }
-    }, [status, result, onSuccess]);
+    }, [status, taskId, addToast, appDispatch, onSuccess]);
 
     const handleGenerate = useCallback(() => {
-        generate({
+        enqueue({
             prompt: prompt.trim(),
             name: name.trim() || undefined,
             targetFolder: targetFolder || undefined,
             model: model || undefined,
             mode: 'from-feature',
             depth: 'deep',
+            priority,
         });
-    }, [prompt, name, targetFolder, model, generate]);
+    }, [prompt, name, targetFolder, model, priority, enqueue]);
 
-    const isGenerating = status === 'generating';
-    const isComplete = status === 'complete';
+    const isSubmitting = status === 'submitting';
+    const isQueued = status === 'queued';
     const isError = status === 'error';
-
-    // no-op handler prevents accidental close while streaming
-    const noop = useCallback(() => {}, []);
 
     const footer = (
         <>
             <Button
                 id="gen-task-cancel"
                 variant="secondary"
-                onClick={() => {
-                    if (isGenerating) cancel();
-                    onClose();
-                }}
+                onClick={onClose}
             >
-                {isGenerating ? 'Cancel' : 'Close'}
+                Close
             </Button>
             <Button
                 id="gen-task-generate"
                 onClick={handleGenerate}
-                loading={isGenerating}
-                disabled={!prompt.trim() || isComplete}
+                loading={isSubmitting}
+                disabled={!prompt.trim() || isSubmitting || isQueued}
             >
                 Generate
             </Button>
@@ -148,7 +144,7 @@ export function GenerateTaskDialog({
         <Dialog
             open
             id="generate-task-overlay"
-            onClose={isGenerating ? noop : onClose}
+            onClose={isSubmitting ? undefined : onClose}
             title="Generate Task"
             className="max-w-[600px]"
             footer={footer}
@@ -158,7 +154,7 @@ export function GenerateTaskDialog({
                 <button
                     id="gen-task-close"
                     className="absolute top-3 right-3 text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] text-lg leading-none"
-                    onClick={isGenerating ? undefined : onClose}
+                    onClick={isSubmitting ? undefined : onClose}
                     aria-label="Close"
                 >
                     ×
@@ -173,7 +169,7 @@ export function GenerateTaskDialog({
                         rows={4}
                         value={prompt}
                         onChange={e => setPrompt(e.target.value)}
-                        disabled={isGenerating || isComplete}
+                        disabled={isSubmitting || isQueued}
                         placeholder="Describe the task to generate…"
                     />
                 </div>
@@ -189,7 +185,7 @@ export function GenerateTaskDialog({
                         className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
                         value={name}
                         onChange={e => setName(e.target.value)}
-                        disabled={isGenerating || isComplete}
+                        disabled={isSubmitting || isQueued}
                         placeholder="Leave blank — AI will decide"
                     />
                 </div>
@@ -204,7 +200,7 @@ export function GenerateTaskDialog({
                         className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
                         value={targetFolder}
                         onChange={e => setTargetFolder(e.target.value)}
-                        disabled={isGenerating || isComplete}
+                        disabled={isSubmitting || isQueued}
                     >
                         <option value="">Root</option>
                         {folders
@@ -230,7 +226,7 @@ export function GenerateTaskDialog({
                             setModel(e.target.value);
                             persistModel(e.target.value);
                         }}
-                        disabled={isGenerating || isComplete}
+                        disabled={isSubmitting || isQueued}
                     >
                         <option value="">Default</option>
                         {models.map(m => (
@@ -241,39 +237,23 @@ export function GenerateTaskDialog({
                     </select>
                 </div>
 
-                {/* Streaming output panel */}
-                {status !== 'idle' && (
-                    <div className="flex flex-col gap-1">
-                        <div className="text-xs text-[#616161] dark:text-[#999]">
-                            {isGenerating && (
-                                <>
-                                    <Spinner size="sm" /> {progressMessage || 'Generating…'}
-                                </>
-                            )}
-                            {isComplete && (
-                                <span className="text-green-600 dark:text-green-400">✓ Done</span>
-                            )}
-                            {isError && <span className="text-red-500">✗ Error</span>}
-                        </div>
-                        <pre
-                            ref={outputRef}
-                            id="gen-task-output"
-                            className="text-xs font-mono bg-[#1e1e1e] text-[#cccccc] rounded p-2 max-h-48 overflow-y-auto whitespace-pre-wrap"
-                        >
-                            {chunks.join('')}
-                        </pre>
-                    </div>
-                )}
-
-                {/* Success banner */}
-                {isComplete && result?.filePath && (
-                    <div
-                        id="gen-task-success"
-                        className="text-xs text-green-600 dark:text-green-400 break-all"
+                {/* Priority (optional) */}
+                <div className="flex flex-col gap-1">
+                    <label className="text-xs text-[#616161] dark:text-[#999]">
+                        Priority <span className="text-[#848484]">(optional)</span>
+                    </label>
+                    <select
+                        id="gen-task-priority"
+                        className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
+                        value={priority}
+                        onChange={e => setPriority(e.target.value as 'high' | 'normal' | 'low')}
+                        disabled={isSubmitting || isQueued}
                     >
-                        Created: {result.filePath}
-                    </div>
-                )}
+                        <option value="high">High</option>
+                        <option value="normal">Normal</option>
+                        <option value="low">Low</option>
+                    </select>
+                </div>
 
                 {/* Error banner with Retry */}
                 {isError && (
