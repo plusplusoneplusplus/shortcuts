@@ -786,6 +786,185 @@ describe('CopilotSDKService - Multi-turn MCP tool conversations', () => {
 });
 
 // ============================================================================
+// Idle Timeout Tests
+// ============================================================================
+
+describe('CopilotSDKService - Idle Timeout (sendWithStreaming)', () => {
+    let service: CopilotSDKService;
+
+    beforeEach(() => {
+        resetCopilotSDKService();
+        service = CopilotSDKService.getInstance();
+        vi.clearAllMocks();
+    });
+
+    afterEach(async () => {
+        service.dispose();
+        resetCopilotSDKService();
+    });
+
+    it('should idle-timeout when no activity arrives within idleTimeoutMs', async () => {
+        const { MockCopilotClient, sessions } = createStreamingMockSDKModule();
+        const serviceAny = service as any;
+        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+
+        // Wait for session setup via sendMessage
+        const resultPromise = service.sendMessage({
+            prompt: 'Test prompt',
+            workingDirectory: '/test',
+            timeoutMs: 200000,
+            idleTimeoutMs: 50, // very short idle timeout
+            loadDefaultMcpConfig: false,
+        });
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        // Don't dispatch any events — idle timeout should fire
+        const result = await resultPromise;
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('idle-timed out');
+        expect(result.error).toContain('50ms');
+        expect(sessions[0].session.destroy).toHaveBeenCalled();
+    });
+
+    it('should reset idle timer on message_delta events', async () => {
+        const { session, dispatchEvent } = createStreamingMockSession();
+        const serviceAny = service as any;
+
+        // Call sendWithStreaming directly with short idle timeout
+        const promise = serviceAny.sendWithStreaming(
+            session, 'test', 10000, undefined, undefined, undefined, 80,
+        );
+
+        // Send delta events at intervals shorter than idle timeout
+        for (let i = 0; i < 3; i++) {
+            await new Promise(r => setTimeout(r, 40));
+            dispatchEvent({ type: 'assistant.message_delta', data: { deltaContent: `chunk${i} ` } });
+        }
+
+        // Now settle normally
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        const result = await promise;
+        expect(result.response).toContain('chunk0');
+        expect(result.response).toContain('chunk2');
+        // Session should NOT have been destroyed by idle timeout
+        expect(session.destroy).not.toHaveBeenCalled();
+    });
+
+    it('should reset idle timer on tool execution events', async () => {
+        const { session, dispatchEvent } = createStreamingMockSession();
+        const serviceAny = service as any;
+
+        const promise = serviceAny.sendWithStreaming(
+            session, 'test', 10000, undefined, undefined, undefined, 80,
+        );
+
+        // Send tool events at intervals shorter than idle timeout
+        await new Promise(r => setTimeout(r, 40));
+        dispatchEvent({ type: 'tool.execution_start', data: { toolCallId: 'tc1', toolName: 'grep' } });
+
+        await new Promise(r => setTimeout(r, 40));
+        dispatchEvent({ type: 'tool.execution_complete', data: { toolCallId: 'tc1', success: true, result: { content: 'found' } } });
+
+        await new Promise(r => setTimeout(r, 40));
+        dispatchEvent({ type: 'assistant.message', data: { content: 'Done' } });
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        const result = await promise;
+        expect(result.response).toBe('Done');
+        expect(session.destroy).not.toHaveBeenCalled();
+    });
+
+    it('should fire idle timeout independently of total timeout', async () => {
+        const { session, dispatchEvent } = createStreamingMockSession();
+        const serviceAny = service as any;
+
+        // Total timeout is long, but idle timeout is very short
+        const promise = serviceAny.sendWithStreaming(
+            session, 'test', 60000, undefined, undefined, undefined, 50,
+        );
+
+        // Wait for idle timeout to fire (no activity)
+        await expect(promise).rejects.toThrow('idle-timed out after 50ms');
+        expect(session.destroy).toHaveBeenCalled();
+    });
+
+    it('should clear idle timer on successful completion', async () => {
+        const { session, dispatchEvent } = createStreamingMockSession();
+        const serviceAny = service as any;
+
+        const promise = serviceAny.sendWithStreaming(
+            session, 'test', 10000, undefined, undefined, undefined, 100,
+        );
+
+        // Settle quickly before idle fires
+        dispatchEvent({ type: 'assistant.message', data: { content: 'Quick response' } });
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        const result = await promise;
+        expect(result.response).toBe('Quick response');
+
+        // Wait past the idle timeout to ensure the timer was cleared and doesn't cause issues
+        await new Promise(r => setTimeout(r, 150));
+        // If the idle timer wasn't cleared, it would try to destroy/reject after settle — no crash means pass
+    });
+
+    it('should not activate idle timer when idleTimeoutMs is 0', async () => {
+        const { session, dispatchEvent } = createStreamingMockSession();
+        const serviceAny = service as any;
+
+        // idleTimeoutMs = 0 means no idle timer
+        const promise = serviceAny.sendWithStreaming(
+            session, 'test', 10000, undefined, undefined, undefined, 0,
+        );
+
+        // Wait a bit — no activity, but idle timer shouldn't fire because it's 0
+        await new Promise(r => setTimeout(r, 50));
+
+        // Settle normally
+        dispatchEvent({ type: 'assistant.message', data: { content: 'response' } });
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        const result = await promise;
+        expect(result.response).toBe('response');
+        expect(session.destroy).not.toHaveBeenCalled();
+    });
+
+    it('should reset idle timer on fallback onStreamingChunk (assistant.message without deltas)', async () => {
+        const { session, dispatchEvent } = createStreamingMockSession();
+        const serviceAny = service as any;
+        const chunks: string[] = [];
+
+        const promise = serviceAny.sendWithStreaming(
+            session, 'test', 10000,
+            (chunk: string) => chunks.push(chunk),
+            undefined, undefined, 80,
+        );
+
+        // Wait close to idle timeout
+        await new Promise(r => setTimeout(r, 60));
+
+        // Send assistant.message with no prior deltas — triggers fallback onStreamingChunk
+        dispatchEvent({ type: 'assistant.message', data: { content: 'Fallback message' } });
+
+        // Wait again — idle timer should have been reset by the fallback chunk
+        await new Promise(r => setTimeout(r, 60));
+
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        const result = await promise;
+        expect(result.response).toBe('Fallback message');
+        expect(chunks).toContain('Fallback message');
+        expect(session.destroy).not.toHaveBeenCalled();
+    });
+});
+
+// ============================================================================
 // Streaming Callback (onStreamingChunk) Tests
 // ============================================================================
 

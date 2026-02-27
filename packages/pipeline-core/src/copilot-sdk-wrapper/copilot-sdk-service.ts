@@ -22,6 +22,7 @@ import { getLogger, LogCategory } from '../logger';
 import { loadDefaultMcpConfig, mergeMcpConfigs } from './mcp-config-loader';
 import { ensureFolderTrusted } from './trusted-folder';
 import { DEFAULT_AI_TIMEOUT_MS } from '../ai/timeouts';
+import { DEFAULT_AI_IDLE_TIMEOUT_MS } from '../config/defaults';
 import {
     MCPServerConfig,
     MCPControlOptions,
@@ -89,6 +90,12 @@ interface KeptAliveSession {
 export interface SendFollowUpOptions {
     /** Optional timeout in milliseconds (default: DEFAULT_AI_TIMEOUT_MS) */
     timeoutMs?: number;
+    /**
+     * Idle timeout in milliseconds. Resets every time a streaming chunk or
+     * message event is received. See SendMessageOptions.idleTimeoutMs.
+     * @default DEFAULT_AI_IDLE_TIMEOUT_MS (1 hour)
+     */
+    idleTimeoutMs?: number;
     /** Callback for streaming chunks */
     onStreamingChunk?: (chunk: string) => void;
     /** Callback for tool execution lifecycle events */
@@ -277,6 +284,9 @@ export class CopilotSDKService {
 
     /** Default timeout for SDK requests */
     private static readonly DEFAULT_TIMEOUT_MS = DEFAULT_AI_TIMEOUT_MS;
+
+    /** Default idle timeout for streaming sessions */
+    private static readonly DEFAULT_IDLE_TIMEOUT_MS = DEFAULT_AI_IDLE_TIMEOUT_MS;
 
     /** Error patterns that indicate the underlying JSON-RPC stream is broken */
     private static readonly STREAM_DESTROYED_PATTERNS = [
@@ -590,7 +600,8 @@ export class CopilotSDKService {
             let turnCount = 0;
             let capturedToolCalls: ToolCall[] | undefined;
             if ((options.streaming || options.onStreamingChunk || timeoutMs > 120000) && session.on && session.send) {
-                const streamingResult = await this.sendWithStreaming(session, options.prompt, timeoutMs, options.onStreamingChunk, toolCallsMap, options.onToolEvent);
+                const idleTimeoutMs = options.idleTimeoutMs ?? CopilotSDKService.DEFAULT_IDLE_TIMEOUT_MS;
+                const streamingResult = await this.sendWithStreaming(session, options.prompt, timeoutMs, options.onStreamingChunk, toolCallsMap, options.onToolEvent, idleTimeoutMs);
                 response = streamingResult.response;
                 tokenUsage = streamingResult.tokenUsage;
                 turnCount = streamingResult.turnCount;
@@ -784,8 +795,9 @@ export class CopilotSDKService {
             let capturedToolCalls: ToolCall[] | undefined;
 
             if ((options?.onStreamingChunk || timeoutMs > 120000) && session.on && session.send) {
+                const idleTimeoutMs = options?.idleTimeoutMs ?? CopilotSDKService.DEFAULT_IDLE_TIMEOUT_MS;
                 const streamingResult = await this.sendWithStreaming(
-                    session, prompt, timeoutMs, options?.onStreamingChunk, undefined, options?.onToolEvent,
+                    session, prompt, timeoutMs, options?.onStreamingChunk, undefined, options?.onToolEvent, idleTimeoutMs,
                 );
                 response = streamingResult.response;
                 tokenUsage = streamingResult.tokenUsage;
@@ -1239,7 +1251,8 @@ export class CopilotSDKService {
         timeoutMs: number,
         onStreamingChunk?: (chunk: string) => void,
         toolCallsMap?: Map<string, ToolCall>,
-        onToolEvent?: (event: ToolEvent) => void
+        onToolEvent?: (event: ToolEvent) => void,
+        idleTimeoutMs?: number
     ): Promise<StreamingResult> {
         return new Promise((resolve, reject) => {
             const logger = getLogger();
@@ -1277,6 +1290,9 @@ export class CopilotSDKService {
                     unsubscribe();
                 }
                 clearTimeout(timeoutId);
+                if (idleTimerId !== undefined) {
+                    clearTimeout(idleTimerId);
+                }
                 if (turnEndGraceTimer) {
                     clearTimeout(turnEndGraceTimer);
                     turnEndGraceTimer = null;
@@ -1347,6 +1363,24 @@ export class CopilotSDKService {
                 settleError(new Error(`Request timed out after ${timeoutMs}ms`));
             }, timeoutMs);
 
+            // Idle timeout: resets on each streaming chunk/message event.
+            // If no activity arrives within the idle window, force-destroy.
+            const effectiveIdleMs = idleTimeoutMs ?? 0;
+            let idleTimerId: ReturnType<typeof setTimeout> | undefined;
+
+            const resetIdleTimer = () => {
+                if (effectiveIdleMs <= 0) { return; }
+                if (idleTimerId !== undefined) { clearTimeout(idleTimerId); }
+                idleTimerId = setTimeout(() => {
+                    logger.error(LogCategory.AI, `CopilotSDKService [${sid}]: Force-destroying session due to idle timeout after ${effectiveIdleMs}ms with no activity`);
+                    session.destroy().catch(() => {});
+                    settleError(new Error(`Request idle-timed out after ${effectiveIdleMs}ms with no activity`));
+                }, effectiveIdleMs);
+            };
+
+            // Start the idle timer
+            resetIdleTimer();
+
             // Set up event handler for streaming
             // SDK's session.on() returns an unsubscribe function
             const unsubscribe = session.on!((event: ISessionEvent) => {
@@ -1356,6 +1390,8 @@ export class CopilotSDKService {
                     // Accumulate streaming chunks
                     const delta = event.data?.deltaContent || '';
                     response += delta;
+                    // Reset idle timer — we received content activity
+                    if (delta) { resetIdleTimer(); }
                     // Invoke the streaming callback if provided
                     if (onStreamingChunk && delta) {
                         try {
@@ -1382,6 +1418,8 @@ export class CopilotSDKService {
                     // If no delta chunks were received but we have a streaming callback,
                     // emit the message as a single chunk so SSE consumers get content
                     if (onStreamingChunk && messageContent && !response) {
+                        // Reset idle timer — content activity via fallback path
+                        resetIdleTimer();
                         try {
                             onStreamingChunk(messageContent);
                         } catch (cbError) {
@@ -1461,6 +1499,8 @@ export class CopilotSDKService {
                     logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: Session usage info: limit=${usageTokenLimit} current=${usageCurrentTokens}`);
                 } else if (eventType === 'tool.execution_start') {
                     // Tool execution is starting — track it for debugging stuck sessions
+                    // Reset idle timer — tool execution is legitimate activity
+                    resetIdleTimer();
                     const toolCallId = event.data?.toolCallId || '(unknown)';
                     const toolName = event.data?.toolName || '(unknown)';
                     const parentToolCallId = event.data?.parentToolCallId;
@@ -1491,6 +1531,8 @@ export class CopilotSDKService {
                     }
                 } else if (eventType === 'tool.execution_complete') {
                     // Tool execution finished — remove from active tracking
+                    // Reset idle timer — tool completion is legitimate activity
+                    resetIdleTimer();
                     const toolCallId = event.data?.toolCallId || '(unknown)';
                     const tracked = activeToolCalls.get(toolCallId);
                     const durationStr = tracked ? ` (${Date.now() - tracked.startTime}ms)` : '';

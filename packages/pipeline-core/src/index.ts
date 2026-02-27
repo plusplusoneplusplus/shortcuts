@@ -191,6 +191,7 @@ export {
 export {
     // Timeouts
     DEFAULT_AI_TIMEOUT_MS,
+    DEFAULT_AI_IDLE_TIMEOUT_MS,
     // Concurrency
     DEFAULT_PARALLEL_LIMIT,
     DEFAULT_MAX_CONCURRENCY,

@@ -8,6 +8,7 @@
 export {
     // Timeouts
     DEFAULT_AI_TIMEOUT_MS,
+    DEFAULT_AI_IDLE_TIMEOUT_MS,
     DEFAULT_POLL_INTERVAL_MS,
     // Concurrency
     DEFAULT_PARALLEL_LIMIT,

@@ -176,8 +176,16 @@ export interface SendMessageOptions {
     model?: string;
     /** Optional working directory for context (set at client level) */
     workingDirectory?: string;
-    /** Optional timeout in milliseconds (default: 1800000 = 30 minutes) */
+    /** Optional timeout in milliseconds (default: DEFAULT_AI_TIMEOUT_MS = 4 hours) */
     timeoutMs?: number;
+    /**
+     * Idle timeout in milliseconds. Resets every time a streaming chunk or
+     * message event is received. If no activity arrives within this window,
+     * the session is force-destroyed. Independent of `timeoutMs` — whichever
+     * fires first kills the session. Only applies to the streaming path.
+     * @default DEFAULT_AI_IDLE_TIMEOUT_MS (1 hour)
+     */
+    idleTimeoutMs?: number;
     /** Enable streaming for real-time response chunks (default: false) */
     streaming?: boolean;
 

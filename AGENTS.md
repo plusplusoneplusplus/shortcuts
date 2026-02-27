@@ -203,7 +203,8 @@ interface SendMessageOptions {
     prompt: string;
     model?: string;
     workingDirectory?: string;
-    timeoutMs?: number;
+    timeoutMs?: number;           // Total timeout (default: 4 hours)
+    idleTimeoutMs?: number;       // Idle timeout, resets on each chunk/event (default: 1 hour, streaming only)
     usePool?: boolean;
     streaming?: boolean;
     
