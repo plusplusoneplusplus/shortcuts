@@ -29,4 +29,27 @@ describe('detail.ts legacy', () => {
     it('references React QueueTaskDetail as the supported path', () => {
         expect(source).toContain('React QueueTaskDetail already supports images');
     });
+
+    it('gates chat-input-bar on sdkSessionId for terminal processes', () => {
+        // Verify the showChatInput variable is derived from sdkSessionId
+        expect(source).toContain('hasSession');
+        expect(source).toContain('proc.sdkSessionId');
+        expect(source).toContain('showChatInput');
+        // The chat-input-bar rendering must be inside a showChatInput guard
+        const showChatIdx = source.indexOf('if (showChatInput)');
+        const chatBarIdx = source.indexOf('chat-input-bar');
+        expect(showChatIdx).toBeGreaterThan(-1);
+        expect(chatBarIdx).toBeGreaterThan(showChatIdx);
+    });
+
+    it('renders a static footer when chat input is hidden', () => {
+        expect(source).toContain('Pipeline completed');
+        expect(source).toContain('follow-up chat not available');
+    });
+
+    it('gates chat-hint rendering on showChatInput', () => {
+        const hintIdx = source.indexOf('chat-hint');
+        const showChatIdx = source.lastIndexOf('showChatInput', hintIdx);
+        expect(showChatIdx).toBeGreaterThan(-1);
+    });
 });

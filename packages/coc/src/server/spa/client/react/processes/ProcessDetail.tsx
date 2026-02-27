@@ -279,6 +279,15 @@ export function ProcessDetail() {
                     ))}
                 </div>
             )}
+
+            {/* Footer for terminal processes without a session */}
+            {process.status !== 'running' && process.status !== 'queued' && !resumeSessionId && (
+                <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3">
+                    <div className="text-[#848484] text-sm text-center">
+                        Follow-up chat is not available for this process type.
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

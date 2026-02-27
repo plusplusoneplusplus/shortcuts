@@ -926,24 +926,36 @@ function renderQueueTaskConversation(processId: string, taskId: string, proc: an
 
     html += '</div></div>';
 
+    // Determine whether the chat input should be shown.
+    // Terminal processes without an SDK session cannot accept follow-ups (server returns 409).
+    const isTerminal = status === 'completed' || status === 'failed' || status === 'cancelled';
+    const hasSession = !!(proc && proc.sdkSessionId);
+    const showChatInput = !isTerminal || hasSession;
+
     // First-time hint (above input bar)
-    if (!localStorage.getItem('coc-chat-hint-dismissed') && !isRunning) {
+    if (showChatInput && !localStorage.getItem('coc-chat-hint-dismissed') && !isRunning) {
         html += '<div id="chat-hint" class="chat-hint">' +
             '\u{1F4A1} You can send follow-up messages to continue the conversation. ' +
             '<button class="chat-hint-dismiss" onclick="dismissChatHint()">\u2715</button></div>';
     }
 
-    // Chat input bar
-    const inputDisabled = (status === 'running' && queueState.isFollowUpStreaming) ||
-        status === 'queued' || status === 'cancelled';
-    const placeholderText = getInputPlaceholder(status);
+    if (showChatInput) {
+        // Chat input bar
+        const inputDisabled = (status === 'running' && queueState.isFollowUpStreaming) ||
+            status === 'queued' || status === 'cancelled';
+        const placeholderText = getInputPlaceholder(status);
 
-    html += '<div class="chat-input-bar' + (inputDisabled ? ' disabled' : '') + '">' +
-        '<textarea id="chat-input" rows="1" placeholder="' + escapeHtmlClient(placeholderText) + '"' +
-        (inputDisabled ? ' disabled' : '') + '></textarea>' +
-        '<button id="chat-send-btn" class="send-btn" title="Send message"' +
-        (inputDisabled ? ' disabled' : '') + '>\u27A4</button>' +
-        '</div>';
+        html += '<div class="chat-input-bar' + (inputDisabled ? ' disabled' : '') + '">' +
+            '<textarea id="chat-input" rows="1" placeholder="' + escapeHtmlClient(placeholderText) + '"' +
+            (inputDisabled ? ' disabled' : '') + '></textarea>' +
+            '<button id="chat-send-btn" class="send-btn" title="Send message"' +
+            (inputDisabled ? ' disabled' : '') + '>\u27A4</button>' +
+            '</div>';
+    } else {
+        html += '<div class="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3">' +
+            '<div class="text-[#848484] text-sm text-center">' +
+            'Pipeline completed \u00B7 follow-up chat not available</div></div>';
+    }
 
     // Action buttons — only render if there's content
     if (originalTaskPath && originalWorkspaceId && proc && proc.result && !isRunning) {
