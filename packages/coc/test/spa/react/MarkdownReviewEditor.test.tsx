@@ -489,6 +489,31 @@ describe('MarkdownReviewEditor', () => {
             openContextMenu();
             expect(screen.getByTestId('context-menu')).toBeTruthy();
         });
+
+        it('renders toolbarRight content in the mode-toggle bar', async () => {
+            render(
+                <MarkdownReviewEditor
+                    wsId="ws1"
+                    filePath="test.md"
+                    fetchMode="tasks"
+                    toolbarRight={<button data-testid="custom-close">✕</button>}
+                />
+            );
+            await waitFor(() => {
+                expect(document.querySelector('#task-preview-body')).toBeTruthy();
+            });
+            const closeBtn = screen.getByTestId('custom-close');
+            expect(closeBtn).toBeTruthy();
+            // Should be inside the mode-toggle bar
+            expect(closeBtn.closest('.mode-toggle')).toBeTruthy();
+        });
+
+        it('does not render toolbarRight wrapper when prop is omitted', async () => {
+            await renderAndWaitForContent();
+            const toggle = document.querySelector('.mode-toggle')!;
+            // No ml-auto wrapper when toolbarRight is not provided
+            expect(toggle.querySelector('.ml-auto')).toBeNull();
+        });
     });
 
     // ── Resolve / Fix with AI handler tests ──

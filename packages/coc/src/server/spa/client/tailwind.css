@@ -906,7 +906,8 @@
     display: flex;
     gap: 4px;
     align-items: center;
-    padding: 2px;
+    padding: 4px 8px;
+    border-bottom: 1px solid #e0e0e0;
 }
 
 .mode-btn {
@@ -955,6 +956,7 @@
 }
 
 /* Dark-mode overrides — source-mode */
+.dark .mode-toggle { border-bottom-color: #3c3c3c; }
 .dark .source-line .line-number { color: #9a9a9a; }
 
 .dark .source-mode-body .src-h1,

@@ -30,6 +30,8 @@ export interface MarkdownReviewEditorProps {
     wsId: string;
     filePath: string;
     fetchMode?: 'tasks' | 'auto';
+    /** Extra content rendered at the right end of the toolbar (e.g. a close button). */
+    toolbarRight?: React.ReactNode;
 }
 
 /** Minimum selection length to trigger toolbar. */
@@ -54,6 +56,7 @@ export function MarkdownReviewEditor({
     wsId,
     filePath,
     fetchMode = 'tasks',
+    toolbarRight,
 }: MarkdownReviewEditorProps) {
     const [rawContent, setRawContent] = useState('');
     const [loading, setLoading] = useState(true);
@@ -466,8 +469,8 @@ export function MarkdownReviewEditor({
     }
 
     return (
-        <div className="flex h-full flex-1 overflow-hidden min-h-0 min-w-0 p-2">
-            <div className="flex h-full flex-1 overflow-hidden min-h-0 min-w-0 rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e]">
+        <div className="flex h-full flex-1 overflow-hidden min-h-0 min-w-0">
+            <div className="flex h-full flex-1 overflow-hidden min-h-0 min-w-0 bg-white dark:bg-[#1e1e1e]">
                 <div className="flex min-h-0 min-w-0 flex-1 flex-col">
                     {/* ── Mode toggle toolbar ── */}
                     <div className="mode-toggle">
@@ -485,6 +488,7 @@ export function MarkdownReviewEditor({
                                 {saving ? 'Saving…' : 'Save'}
                             </button>
                         )}
+                        {toolbarRight && <div className="ml-auto flex items-center">{toolbarRight}</div>}
                     </div>
 
                     {viewMode === 'source' ? (
