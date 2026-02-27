@@ -223,7 +223,14 @@ test.describe('Wiki Admin Panel', () => {
                 const wikiDir = path.join(tmpDir, 'wiki-data');
                 createCustomWiki(wikiDir, buildTestComponents(), CATEGORIES, { articles: TEST_ARTICLES });
                 await seedWiki(serverUrl, 'admin-seeds-inv-wiki', wikiDir, undefined, 'Admin Seeds Inv Wiki');
+
+                // Wait for the seeds API response so the editor's initial fetch completes
+                // before we fill — otherwise the fetch callback overwrites the filled value.
+                const seedsLoaded = page.waitForResponse(r =>
+                    r.url().includes('/admin/seeds') && !r.url().includes('/generate') && r.request().method() === 'GET',
+                );
                 await selectWikiAndOpenAdmin(page, serverUrl, 'admin-seeds-inv-wiki');
+                await seedsLoaded;
 
                 // Type invalid YAML (unclosed quote)
                 const seedsEditor = page.locator('#seeds-editor');

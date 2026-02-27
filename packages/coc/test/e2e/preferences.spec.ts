@@ -85,6 +85,12 @@ async function openUpdateDocumentDialog(page: import('@playwright/test').Page): 
 
 /** Helper: get a valid non-default model value from the fp-model select (Follow Prompt dialog must be open). */
 async function getFirstModelValue(page: import('@playwright/test').Page): Promise<string> {
+    // Wait for model options to be populated (async fetch may still be in-flight)
+    await page.waitForFunction(() => {
+        const sel = document.getElementById('fp-model') as HTMLSelectElement | null;
+        return sel && Array.from(sel.options).some(o => o.value !== '');
+    }, { timeout: 5000 });
+
     return page.evaluate(() => {
         const sel = document.getElementById('fp-model') as HTMLSelectElement | null;
         if (!sel) return '';
