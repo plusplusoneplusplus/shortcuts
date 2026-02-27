@@ -285,6 +285,47 @@ describe('ReposGrid', () => {
         render(<Wrap><ReposGrid repos={repos} onRefresh={() => {}} /></Wrap>);
         expect(screen.getByText(/1 repo/)).toBeDefined();
     });
+
+    it('collapses group on click and expands it back on second click', () => {
+        const repos = [
+            makeRepo({ workspace: { id: 'ws-1', name: 'Clone A', remoteUrl: 'https://github.com/org/repo.git' } }),
+            makeRepo({ workspace: { id: 'ws-2', name: 'Clone B', remoteUrl: 'https://github.com/org/repo.git' } }),
+        ];
+        render(<Wrap><ReposGrid repos={repos} onRefresh={() => {}} /></Wrap>);
+
+        // Initially expanded — both repo cards visible
+        expect(screen.getByText('Clone A')).toBeDefined();
+        expect(screen.getByText('Clone B')).toBeDefined();
+
+        // Click group header to collapse
+        fireEvent.click(screen.getByText('org/repo'));
+        expect(screen.queryByText('Clone A')).toBeNull();
+        expect(screen.queryByText('Clone B')).toBeNull();
+
+        // Click again to expand — this is the bug regression test
+        fireEvent.click(screen.getByText('org/repo'));
+        expect(screen.getByText('Clone A')).toBeDefined();
+        expect(screen.getByText('Clone B')).toBeDefined();
+    });
+
+    it('toggles group indicator between expanded and collapsed', () => {
+        const repos = [
+            makeRepo({ workspace: { id: 'ws-1', name: 'Clone A', remoteUrl: 'https://github.com/org/repo.git' } }),
+            makeRepo({ workspace: { id: 'ws-2', name: 'Clone B', remoteUrl: 'https://github.com/org/repo.git' } }),
+        ];
+        render(<Wrap><ReposGrid repos={repos} onRefresh={() => {}} /></Wrap>);
+
+        // Initially shows expanded indicator
+        expect(screen.getByText('▾')).toBeDefined();
+
+        // Collapse
+        fireEvent.click(screen.getByText('org/repo'));
+        expect(screen.getByText('▸')).toBeDefined();
+
+        // Expand again
+        fireEvent.click(screen.getByText('org/repo'));
+        expect(screen.getByText('▾')).toBeDefined();
+    });
 });
 
 describe('AddRepoDialog', () => {

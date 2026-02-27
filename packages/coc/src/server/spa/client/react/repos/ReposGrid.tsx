@@ -25,7 +25,7 @@ export function ReposGrid({ repos, onRefresh }: ReposGridProps) {
     const groups = groupReposByRemote(repos, expandedState);
 
     const toggleGroup = (url: string) => {
-        setExpandedState(prev => ({ ...prev, [url]: !prev[url] !== false ? false : true }));
+        setExpandedState(prev => ({ ...prev, [url]: prev[url] === false }));
     };
 
     const selectRepo = (id: string) => {
