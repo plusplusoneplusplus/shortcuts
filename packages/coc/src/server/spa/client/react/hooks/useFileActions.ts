@@ -12,6 +12,7 @@ export interface FileActionsResult {
     unarchiveFile: (filePath: string) => Promise<void>;
     deleteFile:    (filePath: string) => Promise<void>;
     moveFile:      (sourcePath: string, destinationFolder: string) => Promise<void>;
+    moveFileToWorkspace: (sourcePath: string, destinationWorkspaceId: string, destinationFolder: string) => Promise<void>;
     updateStatus:  (filePath: string, status: string) => Promise<void>;
 }
 
@@ -45,6 +46,9 @@ export function useFileActions(wsId: string): FileActionsResult {
 
         moveFile: (sourcePath, destinationFolder) =>
             apiFetch('POST', `${base}/move`, { sourcePath, destinationFolder }),
+
+        moveFileToWorkspace: (sourcePath, destinationWorkspaceId, destinationFolder) =>
+            apiFetch('POST', `${base}/move`, { sourcePath, destinationFolder, destinationWorkspaceId }),
 
         updateStatus: (filePath, status) =>
             apiFetch('PATCH', base, { path: filePath, status }),

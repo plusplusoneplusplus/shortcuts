@@ -321,6 +321,22 @@ function resolveAndValidatePath(tasksFolder: string, userPath: string): string |
     return null;
 }
 
+/**
+ * Recursively copy a file or directory from `src` to `dest`.
+ * Used as a fallback for cross-device moves (EXDEV).
+ */
+async function copyRecursive(src: string, dest: string): Promise<void> {
+    const stat = await fs.promises.stat(src);
+    if (stat.isDirectory()) {
+        await fs.promises.mkdir(dest, { recursive: true });
+        for (const entry of await fs.promises.readdir(src)) {
+            await copyRecursive(path.join(src, entry), path.join(dest, entry));
+        }
+    } else {
+        await fs.promises.copyFile(src, dest);
+    }
+}
+
 // ============================================================================
 // Write Route Registration
 // ============================================================================
@@ -711,7 +727,7 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore): v
                 return sendError(res, 400, 'Invalid JSON body');
             }
 
-            const { sourcePath, destinationFolder } = body || {};
+            const { sourcePath, destinationFolder, destinationWorkspaceId } = body || {};
             if (!sourcePath || typeof sourcePath !== 'string') {
                 return sendError(res, 400, 'Missing required field: sourcePath');
             }
@@ -719,15 +735,28 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore): v
                 return sendError(res, 400, 'Missing required field: destinationFolder');
             }
 
-            const tasksFolder = path.resolve(ws.rootPath, DEFAULT_SETTINGS.folderPath);
-            const resolvedSource = resolveAndValidatePath(tasksFolder, sourcePath);
+            // Resolve destination workspace (cross-workspace move)
+            const isCrossWorkspace = typeof destinationWorkspaceId === 'string' && destinationWorkspaceId !== id;
+            let destWs = ws;
+            if (isCrossWorkspace) {
+                const found = await resolveWorkspace(store, destinationWorkspaceId);
+                if (!found) {
+                    return sendError(res, 404, 'Destination workspace not found');
+                }
+                destWs = found;
+            }
+
+            const sourceTasksFolder = path.resolve(ws.rootPath, DEFAULT_SETTINGS.folderPath);
+            const destTasksFolder = path.resolve(destWs.rootPath, DEFAULT_SETTINGS.folderPath);
+
+            const resolvedSource = resolveAndValidatePath(sourceTasksFolder, sourcePath);
             if (!resolvedSource) {
                 return sendError(res, 403, 'Access denied: source path is outside tasks folder');
             }
 
             const resolvedDest = destinationFolder
-                ? resolveAndValidatePath(tasksFolder, destinationFolder)
-                : tasksFolder;
+                ? resolveAndValidatePath(destTasksFolder, destinationFolder)
+                : destTasksFolder;
             if (!resolvedDest) {
                 return sendError(res, 403, 'Access denied: destination path is outside tasks folder');
             }
@@ -742,7 +771,7 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore): v
                 return sendError(res, 500, 'Failed to access source');
             }
 
-            // Verify destination is a directory
+            // Verify destination is a directory (create tasks folder if cross-workspace and missing)
             try {
                 const destStat = await fs.promises.stat(resolvedDest);
                 if (!destStat.isDirectory()) {
@@ -750,24 +779,31 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore): v
                 }
             } catch (err: any) {
                 if (err.code === 'ENOENT') {
-                    return sendError(res, 404, 'Destination folder not found');
+                    if (isCrossWorkspace && resolvedDest === destTasksFolder) {
+                        await fs.promises.mkdir(resolvedDest, { recursive: true });
+                    } else {
+                        return sendError(res, 404, 'Destination folder not found');
+                    }
+                } else {
+                    return sendError(res, 500, 'Failed to access destination');
                 }
-                return sendError(res, 500, 'Failed to access destination');
             }
 
-            // Prevent moving into itself or a descendant
+            // Prevent moving into itself or a descendant (same-workspace only)
             const sourceName = path.basename(resolvedSource);
             const targetPath = path.join(resolvedDest, sourceName);
 
-            if (resolvedDest === path.dirname(resolvedSource)) {
-                return sendError(res, 400, 'Source is already in the destination folder');
+            if (!isCrossWorkspace) {
+                if (resolvedDest === path.dirname(resolvedSource)) {
+                    return sendError(res, 400, 'Source is already in the destination folder');
+                }
+
+                if (resolvedDest.startsWith(resolvedSource + path.sep) || resolvedDest === resolvedSource) {
+                    return sendError(res, 400, 'Cannot move a folder into itself or its descendant');
+                }
             }
 
-            if (resolvedDest.startsWith(resolvedSource + path.sep) || resolvedDest === resolvedSource) {
-                return sendError(res, 400, 'Cannot move a folder into itself or its descendant');
-            }
-
-            if (!resolveAndValidatePath(tasksFolder, path.relative(tasksFolder, targetPath))) {
+            if (!resolveAndValidatePath(destTasksFolder, path.relative(destTasksFolder, targetPath))) {
                 return sendError(res, 403, 'Access denied: target path is outside tasks folder');
             }
 
@@ -782,10 +818,22 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore): v
 
             try {
                 await fs.promises.rename(resolvedSource, finalTarget);
-                const newRelPath = path.relative(tasksFolder, finalTarget);
+                const newRelPath = path.relative(destTasksFolder, finalTarget);
                 sendJSON(res, 200, { path: newRelPath, name: path.basename(finalTarget) });
             } catch (err: any) {
-                return sendError(res, 500, 'Failed to move: ' + (err.message || 'Unknown error'));
+                // EXDEV: cross-device rename not supported — fallback to copy + delete
+                if (err.code === 'EXDEV') {
+                    try {
+                        await copyRecursive(resolvedSource, finalTarget);
+                        await fs.promises.rm(resolvedSource, { recursive: true, force: true });
+                        const newRelPath = path.relative(destTasksFolder, finalTarget);
+                        sendJSON(res, 200, { path: newRelPath, name: path.basename(finalTarget) });
+                    } catch (copyErr: any) {
+                        return sendError(res, 500, 'Failed to move (cross-device): ' + (copyErr.message || 'Unknown error'));
+                    }
+                } else {
+                    return sendError(res, 500, 'Failed to move: ' + (err.message || 'Unknown error'));
+                }
             }
         },
     });

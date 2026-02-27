@@ -26,9 +26,12 @@ import { FollowPromptDialog } from '../shared/FollowPromptDialog';
 import { BulkFollowPromptDialog } from '../shared/BulkFollowPromptDialog';
 import { GenerateTaskDialog } from './GenerateTaskDialog';
 import { Spinner } from '../shared';
+import { normalizeRemoteUrl } from '../repos/repoGrouping';
+import type { RepoData } from '../repos/repoGrouping';
 
 interface TasksPanelProps {
     wsId: string;
+    repos?: import('../repos/repoGrouping').RepoData[];
 }
 
 export function parseTaskHashParams(hash: string, wsId: string) {
@@ -66,7 +69,7 @@ function scrollToEnd(el: HTMLElement | null) {
     });
 }
 
-function TasksPanelInner({ wsId }: TasksPanelProps) {
+function TasksPanelInner({ wsId, repos }: TasksPanelProps) {
     const { tree, commentCounts, loading, error, refresh } = useTaskTree(wsId);
     const { openFilePath, selectedFilePaths, clearSelection, selectedFolderPath } = useTaskPanel();
     const [initialParams] = useState(() => parseTaskHashParams(location.hash, wsId));
@@ -81,6 +84,17 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
     const { addToast } = useGlobalToast();
     const folderActions = useFolderActions(wsId);
     const fileActions = useFileActions(wsId);
+
+    // ── Sibling repos (same remote URL, different workspace) ──────────
+    const siblingRepos = (repos ?? []).filter(r => {
+        if (r.workspace.id === wsId) return false;
+        const currentRepo = (repos ?? []).find(rr => rr.workspace.id === wsId);
+        if (!currentRepo) return false;
+        const currentUrl = currentRepo.workspace.remoteUrl || currentRepo.gitInfo?.remoteUrl;
+        const candidateUrl = r.workspace.remoteUrl || r.gitInfo?.remoteUrl;
+        if (!currentUrl || !candidateUrl) return false;
+        return normalizeRemoteUrl(currentUrl) === normalizeRemoteUrl(candidateUrl);
+    });
 
     // ── File context-menu state ────────────────────────────────────────
     interface FileCtxInfo {
@@ -391,6 +405,33 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
                     setFileMoveDialogOpen(true);
                 },
             },
+            ...(siblingRepos.length > 0
+                ? [
+                    {
+                        label: 'Move To Other Repo',
+                        icon: '🔀',
+                        onClick: noop,
+                        children: siblingRepos.map(r => ({
+                            label: r.workspace.name,
+                            icon: '📂',
+                            onClick: () => {
+                                setFileCtxMenu(null);
+                                (async () => {
+                                    try {
+                                        for (const p of ctxItem.paths) {
+                                            await fileActions.moveFileToWorkspace(p, r.workspace.id, '');
+                                        }
+                                        refresh();
+                                        addToast(`Moved to ${r.workspace.name}`, 'success');
+                                    } catch (err: any) {
+                                        addToast(err.message || 'Move failed', 'error');
+                                    }
+                                })();
+                            },
+                        })),
+                    },
+                ]
+                : []),
             { separator: true, label: '', onClick: noop },
             // ── Change Status (submenu) ──
             ...(isTaskDocument(ctxItem.item) || isTaskDocumentGroup(ctxItem.item)
@@ -514,6 +555,31 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
                 icon: '📦',
                 onClick: () => handleFolderContextMenuAction('move', folder),
             },
+            ...(siblingRepos.length > 0
+                ? [
+                    {
+                        label: 'Move To Other Repo',
+                        icon: '🔀',
+                        onClick: noop,
+                        children: siblingRepos.map(r => ({
+                            label: r.workspace.name,
+                            icon: '📂',
+                            onClick: () => {
+                                setFolderCtxMenu(null);
+                                (async () => {
+                                    try {
+                                        await folderActions.moveFolderToWorkspace(folderPath, r.workspace.id, '');
+                                        refresh();
+                                        addToast(`Moved to ${r.workspace.name}`, 'success');
+                                    } catch (err: any) {
+                                        addToast(err.message || 'Move failed', 'error');
+                                    }
+                                })();
+                            },
+                        })),
+                    },
+                ]
+                : []),
             { separator: true, label: '', onClick: noop },
             // ── AI Actions ──
             {
@@ -772,10 +838,10 @@ function TasksPanelInner({ wsId }: TasksPanelProps) {
     );
 }
 
-export function TasksPanel({ wsId }: TasksPanelProps) {
+export function TasksPanel({ wsId, repos }: TasksPanelProps) {
     return (
         <TaskProvider>
-            <TasksPanelInner wsId={wsId} />
+            <TasksPanelInner wsId={wsId} repos={repos} />
         </TaskProvider>
     );
 }

@@ -13,6 +13,7 @@ export interface FolderActionsResult {
     archiveFolder:   (folderPath: string) => Promise<void>;
     unarchiveFolder: (folderPath: string) => Promise<void>;
     moveFolder:      (sourcePath: string, destinationFolder: string) => Promise<void>;
+    moveFolderToWorkspace: (sourcePath: string, destinationWorkspaceId: string, destinationFolder: string) => Promise<void>;
     deleteFolder:    (folderPath: string) => Promise<void>;
 }
 
@@ -54,6 +55,9 @@ export function useFolderActions(wsId: string): FolderActionsResult {
 
         moveFolder: (sourcePath, destinationFolder) =>
             apiFetch('POST', `${base}/move`, { sourcePath, destinationFolder }),
+
+        moveFolderToWorkspace: (sourcePath, destinationWorkspaceId, destinationFolder) =>
+            apiFetch('POST', `${base}/move`, { sourcePath, destinationFolder, destinationWorkspaceId }),
 
         deleteFolder: (folderPath) =>
             apiFetch('DELETE', base, { path: folderPath }),

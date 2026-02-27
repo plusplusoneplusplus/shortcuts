@@ -119,6 +119,31 @@ describe('useFolderActions', () => {
         expect(JSON.parse(opts.body)).toEqual({ sourcePath: 'feature', destinationFolder: 'other' });
     });
 
+    // ─── moveFolderToWorkspace ────────────────────────────────────
+
+    it('moveFolderToWorkspace — sends destinationWorkspaceId', async () => {
+        fetchMock.mockResolvedValueOnce(okResponse());
+        await actions().moveFolderToWorkspace('feature', 'ws-2', 'target');
+
+        const [url, opts] = fetchMock.mock.calls[0];
+        expect(url).toBe('/api/workspaces/ws-1/tasks/move');
+        expect(opts.method).toBe('POST');
+        expect(JSON.parse(opts.body)).toEqual({
+            sourcePath: 'feature',
+            destinationFolder: 'target',
+            destinationWorkspaceId: 'ws-2',
+        });
+    });
+
+    it('moveFolderToWorkspace — empty destination folder', async () => {
+        fetchMock.mockResolvedValueOnce(okResponse());
+        await actions().moveFolderToWorkspace('feature', 'ws-2', '');
+
+        const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+        expect(body.destinationFolder).toBe('');
+        expect(body.destinationWorkspaceId).toBe('ws-2');
+    });
+
     // ─── deleteFolder ────────────────────────────────────────────
 
     it('deleteFolder — success', async () => {

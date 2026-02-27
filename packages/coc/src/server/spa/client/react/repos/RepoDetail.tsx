@@ -117,7 +117,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
             {/* Sub-tab content */}
             <div id="repo-sub-tab-content" className="flex-1 min-h-0 min-w-0 overflow-hidden">
                 {activeSubTab === 'tasks' ? (
-                    <TasksPanel wsId={ws.id} />
+                    <TasksPanel wsId={ws.id} repos={repos} />
                 ) : (
                     <div className="h-full overflow-y-auto min-w-0">
                         {activeSubTab === 'info' && <RepoInfoTab repo={repo} />}
