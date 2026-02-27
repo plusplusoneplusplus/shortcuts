@@ -302,6 +302,42 @@ suite('AI Task Dialog Service Tests', () => {
             
             assert.strictEqual(options.description, '');
         });
+
+        test('should allow optional images array', () => {
+            const options: AITaskCreateOptions = {
+                name: 'task-with-images',
+                location: '',
+                description: 'Task with screenshots',
+                model: DEFAULT_MODEL_ID,
+                images: ['data:image/png;base64,abc123', 'data:image/jpeg;base64,def456']
+            };
+            
+            assert.ok(options.images);
+            assert.strictEqual(options.images!.length, 2);
+            assert.strictEqual(options.images![0], 'data:image/png;base64,abc123');
+        });
+
+        test('should default images to undefined when not provided', () => {
+            const options: AITaskCreateOptions = {
+                name: 'task-no-images',
+                location: '',
+                description: 'Task without images',
+                model: DEFAULT_MODEL_ID
+            };
+            
+            assert.strictEqual(options.images, undefined);
+        });
+
+        test('should allow empty images array', () => {
+            const options: AITaskCreateOptions = {
+                location: '',
+                description: 'Task with empty images',
+                model: DEFAULT_MODEL_ID,
+                images: []
+            };
+            
+            assert.strictEqual(options.images!.length, 0);
+        });
     });
 
     suite('AITaskFromFeatureOptions type (from-feature mode)', () => {
@@ -375,6 +411,30 @@ suite('AI Task Dialog Service Tests', () => {
             
             assert.strictEqual(options.name, '');
         });
+
+        test('should allow optional images array', () => {
+            const options: AITaskFromFeatureOptions = {
+                location: 'feature1',
+                focus: 'Implement API with screenshots',
+                depth: 'simple',
+                model: DEFAULT_MODEL_ID,
+                images: ['data:image/png;base64,screenshot1']
+            };
+            
+            assert.ok(options.images);
+            assert.strictEqual(options.images!.length, 1);
+        });
+
+        test('should default images to undefined when not provided', () => {
+            const options: AITaskFromFeatureOptions = {
+                location: 'feature1',
+                focus: 'Implement API',
+                depth: 'simple',
+                model: DEFAULT_MODEL_ID
+            };
+            
+            assert.strictEqual(options.images, undefined);
+        });
     });
 
     suite('AITaskCreationOptions unified type', () => {
@@ -394,6 +454,23 @@ suite('AI Task Dialog Service Tests', () => {
             assert.strictEqual(options.createOptions!.name, 'test-task');
         });
 
+        test('should support create mode with images', () => {
+            const options: AITaskCreationOptions = {
+                mode: 'create',
+                createOptions: {
+                    name: 'task-with-images',
+                    location: 'feature1',
+                    description: 'Test with images',
+                    model: DEFAULT_MODEL_ID,
+                    images: ['data:image/png;base64,abc']
+                }
+            };
+            
+            assert.strictEqual(options.mode, 'create');
+            assert.ok(options.createOptions!.images);
+            assert.strictEqual(options.createOptions!.images!.length, 1);
+        });
+
         test('should support from-feature mode', () => {
             const options: AITaskCreationOptions = {
                 mode: 'from-feature',
@@ -408,6 +485,23 @@ suite('AI Task Dialog Service Tests', () => {
             assert.strictEqual(options.mode, 'from-feature');
             assert.ok(options.fromFeatureOptions);
             assert.strictEqual(options.fromFeatureOptions!.depth, 'deep');
+        });
+
+        test('should support from-feature mode with images', () => {
+            const options: AITaskCreationOptions = {
+                mode: 'from-feature',
+                fromFeatureOptions: {
+                    location: 'feature1',
+                    focus: 'API with mockups',
+                    depth: 'simple',
+                    model: DEFAULT_MODEL_ID,
+                    images: ['data:image/png;base64,img1', 'data:image/png;base64,img2']
+                }
+            };
+            
+            assert.strictEqual(options.mode, 'from-feature');
+            assert.ok(options.fromFeatureOptions!.images);
+            assert.strictEqual(options.fromFeatureOptions!.images!.length, 2);
         });
     });
 
@@ -440,6 +534,26 @@ suite('AI Task Dialog Service Tests', () => {
             assert.ok(result.options !== null);
             assert.strictEqual(result.options!.mode, 'create');
             assert.strictEqual(result.options!.createOptions!.name, 'test-task');
+        });
+
+        test('should represent create mode result with images', () => {
+            const result: AITaskDialogResult = {
+                cancelled: false,
+                options: {
+                    mode: 'create',
+                    createOptions: {
+                        name: 'task-with-images',
+                        location: 'feature1',
+                        description: 'Test with screenshots',
+                        model: DEFAULT_MODEL_ID,
+                        images: ['data:image/png;base64,abc123']
+                    }
+                }
+            };
+            
+            assert.strictEqual(result.cancelled, false);
+            assert.ok(result.options!.createOptions!.images);
+            assert.strictEqual(result.options!.createOptions!.images!.length, 1);
         });
 
         test('should represent successful from-feature mode result', () => {

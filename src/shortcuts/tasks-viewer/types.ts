@@ -187,6 +187,8 @@ export interface AITaskCreateOptions {
     description: string;
     /** AI model to use (follows AI Action prompt pattern) */
     model: string;
+    /** Optional base64 data URL images pasted by user */
+    images?: string[];
 }
 
 /**
@@ -203,6 +205,8 @@ export interface AITaskFromFeatureOptions {
     depth: TaskGenerationDepth;
     /** AI model to use */
     model: string;
+    /** Optional base64 data URL images pasted by user */
+    images?: string[];
 }
 
 /**

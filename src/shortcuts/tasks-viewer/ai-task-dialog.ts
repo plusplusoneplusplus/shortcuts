@@ -140,7 +140,8 @@ export class AITaskDialogService {
                             name: message.name,
                             location: message.location,
                             description: message.description,
-                            model: message.model
+                            model: message.model,
+                            images: message.images
                         };
                     } else {
                         result.fromFeatureOptions = {
@@ -148,7 +149,8 @@ export class AITaskDialogService {
                             location: message.location,
                             focus: message.focus,
                             depth: message.depth,
-                            model: message.model
+                            model: message.model,
+                            images: message.images
                         };
                     }
 
@@ -270,7 +272,7 @@ export class AITaskDialogService {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
     <link href="${stylesUri}" rel="stylesheet">
     <title>Create AI Task</title>
     <style nonce="${nonce}">
@@ -335,6 +337,64 @@ export class AITaskDialogService {
             margin-top: 4px;
         }
         
+        /* Image paste preview */
+        .image-preview-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .image-preview-container:empty {
+            display: none;
+        }
+
+        .image-preview-item {
+            position: relative;
+            width: 80px;
+            height: 80px;
+            border-radius: 4px;
+            border: 1px solid var(--vscode-input-border, #3c3c3c);
+            overflow: hidden;
+            background: var(--vscode-input-background, #3c3c3c);
+        }
+
+        .image-preview-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .image-preview-item .remove-image-btn {
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            border: none;
+            background: rgba(0, 0, 0, 0.6);
+            color: #fff;
+            font-size: 14px;
+            line-height: 1;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.15s;
+        }
+
+        .image-preview-item:hover .remove-image-btn {
+            opacity: 1;
+        }
+
+        .paste-hint {
+            font-size: 11px;
+            color: var(--vscode-descriptionForeground, #a0a0a0);
+            margin-top: 4px;
+        }
+
         /* No features message */
         .no-features-message {
             padding: 16px;
@@ -386,6 +446,8 @@ export class AITaskDialogService {
                     <label for="taskDescription">Brief Description</label>
                     <textarea id="taskDescription" placeholder="Add JWT-based authentication with refresh tokens for the REST API endpoints..." rows="4"></textarea>
                     <div class="hint">AI will expand this into a comprehensive task document</div>
+                    <div class="paste-hint">💡 Paste images from clipboard (Ctrl+V)</div>
+                    <div class="image-preview-container" id="createImagePreviews"></div>
                 </div>
                 
                 <hr class="form-divider" />
@@ -424,6 +486,8 @@ export class AITaskDialogService {
                     <label for="taskFocus">Task Focus</label>
                     <textarea id="taskFocus" placeholder="Implement the core authentication flow..." rows="3"></textarea>
                     <div class="hint">What specific aspect should this task focus on? (Leave empty for general task)</div>
+                    <div class="paste-hint">💡 Paste images from clipboard (Ctrl+V)</div>
+                    <div class="image-preview-container" id="featureImagePreviews"></div>
                 </div>
                 
                 <hr class="form-divider" />
@@ -513,6 +577,63 @@ export class AITaskDialogService {
             const createBtn = document.getElementById('createBtn');
             const cancelBtn = document.getElementById('cancelBtn');
             const closeBtn = document.getElementById('closeBtn');
+            
+            // Image storage per mode
+            const createImages = [];
+            const featureImages = [];
+            
+            // Preview containers
+            const createImagePreviews = document.getElementById('createImagePreviews');
+            const featureImagePreviews = document.getElementById('featureImagePreviews');
+            
+            // Handle image paste on textareas
+            function handleImagePaste(e, imageArray, previewContainer) {
+                const items = e.clipboardData && e.clipboardData.items;
+                if (!items) return;
+
+                for (let i = 0; i < items.length; i++) {
+                    const item = items[i];
+                    if (item.type.startsWith('image/')) {
+                        e.preventDefault();
+                        const file = item.getAsFile();
+                        if (!file) continue;
+
+                        const reader = new FileReader();
+                        reader.onload = function(event) {
+                            const dataUrl = event.target.result;
+                            imageArray.push(dataUrl);
+                            renderImagePreviews(imageArray, previewContainer);
+                        };
+                        reader.readAsDataURL(file);
+                    }
+                }
+            }
+            
+            function renderImagePreviews(imageArray, container) {
+                container.innerHTML = '';
+                imageArray.forEach((dataUrl, index) => {
+                    const item = document.createElement('div');
+                    item.className = 'image-preview-item';
+
+                    const img = document.createElement('img');
+                    img.src = dataUrl;
+                    img.alt = 'Pasted image ' + (index + 1);
+
+                    const removeBtn = document.createElement('button');
+                    removeBtn.className = 'remove-image-btn';
+                    removeBtn.textContent = '\u00d7';
+                    removeBtn.title = 'Remove image';
+                    removeBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        imageArray.splice(index, 1);
+                        renderImagePreviews(imageArray, container);
+                    });
+
+                    item.appendChild(img);
+                    item.appendChild(removeBtn);
+                    container.appendChild(item);
+                });
+            }
             
             // Populate location dropdown (all folders for create mode)
             folders.forEach(folder => {
@@ -654,6 +775,18 @@ export class AITaskDialogService {
                 featureTaskNameInput.addEventListener('input', updateValidation);
             }
             
+            // Paste image handling for create mode
+            taskDescriptionInput.addEventListener('paste', (e) => {
+                handleImagePaste(e, createImages, createImagePreviews);
+            });
+            
+            // Paste image handling for from-feature mode
+            if (taskFocusInput) {
+                taskFocusInput.addEventListener('paste', (e) => {
+                    handleImagePaste(e, featureImages, featureImagePreviews);
+                });
+            }
+            
             createBtn.addEventListener('click', () => {
                 if (currentMode === 'create') {
                     const error = validateName(taskNameInput.value);
@@ -669,7 +802,8 @@ export class AITaskDialogService {
                         name: taskNameInput.value.trim(),
                         location: taskLocationSelect.value,
                         description: taskDescriptionInput.value.trim(),
-                        model: aiModelCreateSelect.value
+                        model: aiModelCreateSelect.value,
+                        images: createImages.length > 0 ? createImages : undefined
                     });
                 } else {
                     // Validate feature task name
@@ -691,7 +825,8 @@ export class AITaskDialogService {
                         location: featureLocationSelect ? featureLocationSelect.value : '',
                         focus: taskFocusInput ? taskFocusInput.value.trim() : '',
                         depth: depthValue,
-                        model: aiModelFeatureSelect ? aiModelFeatureSelect.value : defaultModel
+                        model: aiModelFeatureSelect ? aiModelFeatureSelect.value : defaultModel,
+                        images: featureImages.length > 0 ? featureImages : undefined
                     });
                 }
             });
