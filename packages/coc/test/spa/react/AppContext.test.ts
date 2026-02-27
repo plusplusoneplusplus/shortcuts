@@ -26,6 +26,7 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         wikis: [],
         selectedPipelineName: null,
         conversationCache: {},
+        wsStatus: 'closed',
         ...overrides,
     };
 }
@@ -440,6 +441,40 @@ describe('AppContext reducer', () => {
             expect(result.selectedWikiId).toBeNull();
             expect(result.selectedWikiComponentId).toBeNull();
             expect(result.wikiView).toBe('list');
+        });
+    });
+
+    // ── SET_WS_STATUS ──────────────────────────────────────────────
+    describe('SET_WS_STATUS', () => {
+        it('sets wsStatus to open', () => {
+            const state = makeState({ wsStatus: 'closed' });
+            const result = appReducer(state, { type: 'SET_WS_STATUS', status: 'open' });
+            expect(result.wsStatus).toBe('open');
+        });
+
+        it('sets wsStatus to connecting', () => {
+            const state = makeState({ wsStatus: 'closed' });
+            const result = appReducer(state, { type: 'SET_WS_STATUS', status: 'connecting' });
+            expect(result.wsStatus).toBe('connecting');
+        });
+
+        it('sets wsStatus to closed', () => {
+            const state = makeState({ wsStatus: 'open' });
+            const result = appReducer(state, { type: 'SET_WS_STATUS', status: 'closed' });
+            expect(result.wsStatus).toBe('closed');
+        });
+
+        it('returns same reference if status unchanged', () => {
+            const state = makeState({ wsStatus: 'open' });
+            const result = appReducer(state, { type: 'SET_WS_STATUS', status: 'open' });
+            expect(result).toBe(state);
+        });
+
+        it('does not affect other state fields', () => {
+            const state = makeState({ wsStatus: 'closed', selectedId: 'p1' });
+            const result = appReducer(state, { type: 'SET_WS_STATUS', status: 'open' });
+            expect(result.selectedId).toBe('p1');
+            expect(result.wsStatus).toBe('open');
         });
     });
 });

@@ -111,6 +111,8 @@ function AppInner() {
     const { dispatch: queueDispatch } = useQueue();
     const { toasts, addToast, removeToast } = useToast();
     const repoIdAliasRef = useRef<Record<string, string>>({});
+    const prevWsStatusRef = useRef(appState.wsStatus);
+    const hasConnectedRef = useRef(false);
     const [reviewDialog, setReviewDialog] = useState<MarkdownReviewDialogState>({
         open: false,
         wsId: null,
@@ -213,7 +215,26 @@ function AppInner() {
         }
     }, [appDispatch, queueDispatch, appState.workspaces]);
 
-    const { connect } = useWebSocket({ onMessage, onConnect: handleConnect });
+    const { connect, status: wsStatus } = useWebSocket({ onMessage, onConnect: handleConnect });
+
+    // Sync WebSocket connection status into AppContext
+    useEffect(() => {
+        appDispatch({ type: 'SET_WS_STATUS', status: wsStatus });
+    }, [wsStatus, appDispatch]);
+
+    // Toast on disconnect/reconnect transitions
+    useEffect(() => {
+        const prev = prevWsStatusRef.current;
+        prevWsStatusRef.current = wsStatus;
+        if (prev === 'open' && wsStatus === 'closed') {
+            addToast('Connection lost — reconnecting…', 'error');
+        } else if (wsStatus === 'open' && hasConnectedRef.current && prev !== 'open') {
+            addToast('Reconnected', 'success');
+        }
+        if (wsStatus === 'open') {
+            hasConnectedRef.current = true;
+        }
+    }, [wsStatus, addToast]);
 
     // Bootstrap: fetch initial data and connect WebSocket
     useEffect(() => {

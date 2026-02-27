@@ -5,6 +5,7 @@
 
 import { createContext, useContext, useReducer, type ReactNode, type Dispatch } from 'react';
 import type { DashboardTab, RepoSubTab, WikiViewMode, ConversationCacheEntry } from '../types/dashboard';
+import type { WsStatus } from '../hooks/useWebSocket';
 
 // ── State ──────────────────────────────────────────────────────────────
 
@@ -28,6 +29,7 @@ export interface AppContextState {
     wikis: any[];
     selectedPipelineName: string | null;
     conversationCache: Record<string, ConversationCacheEntry>;
+    wsStatus: WsStatus;
 }
 
 const initialState: AppContextState = {
@@ -50,6 +52,7 @@ const initialState: AppContextState = {
     wikis: [],
     selectedPipelineName: null,
     conversationCache: {},
+    wsStatus: 'closed',
 };
 
 // ── Actions ────────────────────────────────────────────────────────────
@@ -89,7 +92,8 @@ export type AppAction =
     | { type: 'CACHE_CONVERSATION'; processId: string; turns: any[] }
     | { type: 'APPEND_TURN'; processId: string; turn: any }
     | { type: 'INVALIDATE_CONVERSATION'; processId: string }
-    | { type: 'SET_SELECTED_PIPELINE'; name: string | null };
+    | { type: 'SET_SELECTED_PIPELINE'; name: string | null }
+    | { type: 'SET_WS_STATUS'; status: WsStatus };
 
 // ── Reducer ────────────────────────────────────────────────────────────
 
@@ -233,6 +237,8 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
         }
         case 'SET_SELECTED_PIPELINE':
             return { ...state, selectedPipelineName: action.name };
+        case 'SET_WS_STATUS':
+            return state.wsStatus === action.status ? state : { ...state, wsStatus: action.status };
         default:
             return state;
     }

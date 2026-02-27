@@ -6,6 +6,7 @@ import { useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { useTheme } from './ThemeProvider';
 import type { DashboardTab } from '../types/dashboard';
+import type { WsStatus } from '../hooks/useWebSocket';
 
 export const TABS: { label: string; tab: DashboardTab }[] = [
     { label: 'Repos', tab: 'repos' },
@@ -17,6 +18,12 @@ const themeEmoji: Record<string, string> = {
     auto: '🌗',
     dark: '🌙',
     light: '☀️',
+};
+
+const wsStatusConfig: Record<WsStatus, { color: string; label: string; pulse: boolean }> = {
+    open: { color: 'bg-[#16825d] dark:bg-[#89d185]', label: 'Connected', pulse: false },
+    connecting: { color: 'bg-[#cca700] dark:bg-[#cca700]', label: 'Reconnecting…', pulse: true },
+    closed: { color: 'bg-[#f14c4c] dark:bg-[#f48771]', label: 'Disconnected', pulse: false },
 };
 
 export function TopBar() {
@@ -69,6 +76,16 @@ export function TopBar() {
                 </nav>
             </div>
             <div className="flex items-center gap-1">
+                <span
+                    className="inline-flex items-center justify-center h-8 w-8"
+                    title={wsStatusConfig[state.wsStatus ?? 'closed']?.label}
+                    aria-label={`Connection: ${wsStatusConfig[state.wsStatus ?? 'closed']?.label}`}
+                    data-testid="ws-status-indicator"
+                >
+                    <span
+                        className={`inline-block w-2 h-2 rounded-full ${wsStatusConfig[state.wsStatus ?? 'closed']?.color}${wsStatusConfig[state.wsStatus ?? 'closed']?.pulse ? ' animate-pulse' : ''}`}
+                    />
+                </span>
                 <a
                     id="admin-toggle"
                     className="h-8 w-8 inline-flex items-center justify-center rounded hover:bg-black/[0.05] dark:hover:bg-white/[0.08]"

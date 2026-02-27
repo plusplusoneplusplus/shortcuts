@@ -262,6 +262,62 @@ describe('appReducer — SET_ACTIVE_TAB for top tabs', () => {
     });
 });
 
+// ─── TopBar connection status indicator ─────────────────────────
+
+describe('TopBar — connection status indicator', () => {
+    it('renders the ws-status-indicator element', () => {
+        renderTopBar();
+        expect(screen.getByTestId('ws-status-indicator')).toBeDefined();
+    });
+
+    it('shows "Disconnected" label by default (initial wsStatus is closed)', () => {
+        renderTopBar();
+        const indicator = screen.getByTestId('ws-status-indicator');
+        expect(indicator.getAttribute('title')).toBe('Disconnected');
+        expect(indicator.getAttribute('aria-label')).toBe('Connection: Disconnected');
+    });
+
+    it('shows red dot class for closed status', () => {
+        renderTopBar();
+        const indicator = screen.getByTestId('ws-status-indicator');
+        const dot = indicator.querySelector('span');
+        expect(dot?.className).toContain('bg-[#f14c4c]');
+        expect(dot?.className).not.toContain('animate-pulse');
+    });
+});
+
+// ─── TopBar connection status via reducer ───────────────────────
+
+describe('TopBar — connection status via AppContext reducer', () => {
+    const reducerState = {
+        activeTab: 'repos' as DashboardTab,
+        selectedProcessId: null,
+        selectedRepoId: null,
+        repoSubTab: 'info' as const,
+        reposSidebarCollapsed: false,
+        selectedWikiId: null,
+        selectedWikiComponentId: null,
+        wikiView: 'list' as const,
+        wikiDetailInitialTab: null,
+        wikiDetailInitialAdminTab: null,
+        wikis: [],
+        repos: [],
+        processes: [],
+        repoFilter: '',
+        wsStatus: 'closed' as const,
+    };
+
+    it('SET_WS_STATUS open produces Connected label', () => {
+        const result = appReducer(reducerState, { type: 'SET_WS_STATUS', status: 'open' });
+        expect(result.wsStatus).toBe('open');
+    });
+
+    it('SET_WS_STATUS connecting produces Reconnecting label', () => {
+        const result = appReducer(reducerState, { type: 'SET_WS_STATUS', status: 'connecting' });
+        expect(result.wsStatus).toBe('connecting');
+    });
+});
+
 // ─── tabFromHash round-trip with TopBar tabs ─────────────────────
 
 describe('TopBar tab → hash → tabFromHash round-trip', () => {
