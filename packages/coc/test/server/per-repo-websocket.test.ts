@@ -243,4 +243,36 @@ describe('Per-Repo WebSocket Events', () => {
         ws.close();
         await postJSON(`${baseUrl}/api/queue/resume`, {});
     });
+
+    it('global queue-updated WS message reflects isPaused when queue is paused', async () => {
+        const repo = path.resolve('/tmp/test-repo-ws-pause-check');
+
+        const parsed = new URL(baseUrl);
+        const { ws, messages } = await connectWS(Number(parsed.port));
+        await waitForMessages(messages, 1); // welcome
+
+        // Pause globally, then enqueue a task (triggers WS broadcast)
+        await postJSON(`${baseUrl}/api/queue/pause`, {});
+        await postJSON(`${baseUrl}/api/queue`, makeTask(repo, 'Pause Check'));
+
+        // Wait for enqueue WS events (per-repo + global)
+        await waitForMessages(messages, 5, 5000);
+
+        // The last global (no repoId) queue-updated should reflect isPaused=true
+        const globalPaused = messages.filter((m: any) => m.type === 'queue-updated' && !m.queue?.repoId);
+        const lastPaused = globalPaused[globalPaused.length - 1];
+        expect(lastPaused).toBeDefined();
+        expect(lastPaused.queue.stats.isPaused).toBe(true);
+
+        // Resume globally — next WS broadcast should have isPaused=false
+        await postJSON(`${baseUrl}/api/queue/resume`, {});
+        await new Promise(r => setTimeout(r, 500));
+
+        const globalResumed = messages.filter((m: any) => m.type === 'queue-updated' && !m.queue?.repoId);
+        const lastResumed = globalResumed[globalResumed.length - 1];
+        expect(lastResumed).toBeDefined();
+        expect(lastResumed.queue.stats.isPaused).toBe(false);
+
+        ws.close();
+    });
 });

@@ -351,7 +351,10 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         const allQueued: any[] = [];
         const allRunning: any[] = [];
         const allHistory: any[] = [];
-        const combinedStats = { queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0, total: 0, isPaused: false };
+        const combinedStats = { queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0, total: 0, isPaused: false, isDraining: false };
+        let allPaused = true;
+        let anyManager = false;
+        let anyDraining = false;
 
         for (const [, manager] of registry.getAllQueues()) {
             allQueued.push(...manager.getQueued());
@@ -364,7 +367,12 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             combinedStats.failed += s.failed;
             combinedStats.cancelled += s.cancelled;
             combinedStats.total += s.total;
+            if (!s.isPaused) { allPaused = false; }
+            if (s.isDraining) { anyDraining = true; }
+            anyManager = true;
         }
+        combinedStats.isPaused = anyManager && allPaused;
+        combinedStats.isDraining = anyDraining;
 
         // Debug: log queue state changes
         const taskInfo = event.taskId ? ` task=${event.taskId}` : '';
