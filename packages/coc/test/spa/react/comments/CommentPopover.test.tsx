@@ -463,4 +463,110 @@ describe('CommentPopover', () => {
         expect(response).toBeTruthy();
         expect(response.querySelector('.markdown-body')).toBeTruthy();
     });
+
+    // --- Fix with AI tests ---
+
+    it('renders Fix with AI button when onFixWithAI is provided and comment is open', () => {
+        render(
+            <CommentPopover
+                comment={makeComment({ status: 'open' })}
+                position={{ top: 100, left: 200 }}
+                onClose={noop}
+                onResolve={noop}
+                onUnresolve={noop}
+                onDelete={noop}
+                onEdit={noop}
+                onFixWithAI={vi.fn()}
+            />,
+        );
+        expect(screen.getByTestId('popover-fix-with-ai')).toBeTruthy();
+        expect(screen.getByLabelText('Fix with AI')).toBeTruthy();
+    });
+
+    it('does not render Fix with AI button when onFixWithAI is not provided', () => {
+        render(
+            <CommentPopover
+                comment={makeComment({ status: 'open' })}
+                position={{ top: 100, left: 200 }}
+                onClose={noop}
+                onResolve={noop}
+                onUnresolve={noop}
+                onDelete={noop}
+                onEdit={noop}
+            />,
+        );
+        expect(screen.queryByTestId('popover-fix-with-ai')).toBeNull();
+    });
+
+    it('does not render Fix with AI button when comment is resolved', () => {
+        render(
+            <CommentPopover
+                comment={makeComment({ status: 'resolved' })}
+                position={{ top: 100, left: 200 }}
+                onClose={noop}
+                onResolve={noop}
+                onUnresolve={noop}
+                onDelete={noop}
+                onEdit={noop}
+                onFixWithAI={vi.fn()}
+            />,
+        );
+        expect(screen.queryByTestId('popover-fix-with-ai')).toBeNull();
+    });
+
+    it('calls onFixWithAI with comment id when Fix with AI button is clicked', () => {
+        const onFixWithAI = vi.fn().mockResolvedValue(undefined);
+        render(
+            <CommentPopover
+                comment={makeComment({ id: 'fix-me' })}
+                position={{ top: 100, left: 200 }}
+                onClose={noop}
+                onResolve={noop}
+                onUnresolve={noop}
+                onDelete={noop}
+                onEdit={noop}
+                onFixWithAI={onFixWithAI}
+            />,
+        );
+        fireEvent.click(screen.getByTestId('popover-fix-with-ai'));
+        expect(onFixWithAI).toHaveBeenCalledWith('fix-me');
+    });
+
+    it('Fix with AI button is disabled when fixLoading is true', () => {
+        render(
+            <CommentPopover
+                comment={makeComment()}
+                position={{ top: 100, left: 200 }}
+                onClose={noop}
+                onResolve={noop}
+                onUnresolve={noop}
+                onDelete={noop}
+                onEdit={noop}
+                onFixWithAI={vi.fn()}
+                fixLoading={true}
+            />,
+        );
+        const btn = screen.getByTestId('popover-fix-with-ai');
+        expect(btn).toBeTruthy();
+        expect((btn as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    it('fixLoading=true shows spinner instead of icon', () => {
+        render(
+            <CommentPopover
+                comment={makeComment()}
+                position={{ top: 100, left: 200 }}
+                onClose={noop}
+                onResolve={noop}
+                onUnresolve={noop}
+                onDelete={noop}
+                onEdit={noop}
+                onFixWithAI={vi.fn()}
+                fixLoading={true}
+            />,
+        );
+        const btn = screen.getByTestId('popover-fix-with-ai');
+        // Should contain a spinner, not the 🔧 emoji
+        expect(btn.textContent).not.toContain('🔧');
+    });
 });

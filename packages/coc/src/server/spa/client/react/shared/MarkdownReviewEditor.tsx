@@ -24,6 +24,7 @@ import {
 import { DASHBOARD_AI_COMMANDS } from './ai-commands';
 import { extractDocumentContext } from '../utils/document-context';
 import { getApiBase } from '../utils/config';
+import { useGlobalToast } from '../context/ToastContext';
 
 export interface MarkdownReviewEditorProps {
     wsId: string;
@@ -105,8 +106,11 @@ export function MarkdownReviewEditor({
         aiErrors,
         clearAiError,
         resolveWithAI,
+        fixWithAI,
         copyResolvePrompt,
         resolving,
+        resolvingCommentId,
+        refresh,
     } = useTaskComments(wsId, filePath);
 
     // Shared markdown rendering (render + hljs + mermaid)
@@ -117,6 +121,8 @@ export function MarkdownReviewEditor({
         stripFrontmatter: true,
         viewMode,
     });
+
+    const { addToast } = useGlobalToast();
 
     const showCommentListPanel = comments.length > 0;
 
@@ -412,6 +418,31 @@ export function MarkdownReviewEditor({
         await askAI(newComment.id, { customQuestion: question.trim(), documentContext: context });
     }, [savedSelection, rawContent, filePath, addComment, askAI]);
 
+    const handleResolveAllWithAI = useCallback(async () => {
+        try {
+            const result = await resolveWithAI(rawContent, filePath);
+            setRawContent(result.revisedContent);
+            addToast(`${result.resolvedCount} comments resolved. Document updated.`, 'success');
+        } catch (err) {
+            addToast(`Batch resolve failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
+        }
+    }, [resolveWithAI, rawContent, filePath, addToast]);
+
+    const handleFixWithAI = useCallback(async (id: string) => {
+        try {
+            const result = await fixWithAI(id, rawContent, filePath);
+            setRawContent(result.revisedContent);
+            addToast('Comment fixed. Document updated.', 'success');
+        } catch (err) {
+            addToast(`Fix failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
+        }
+    }, [fixWithAI, rawContent, filePath, addToast]);
+
+    const handleCopyPrompt = useCallback(() => {
+        copyResolvePrompt(rawContent, filePath);
+        addToast('Resolve prompt copied to clipboard.', 'success');
+    }, [copyResolvePrompt, rawContent, filePath, addToast]);
+
     const handleSwitchToReview = useCallback(() => {
         if (isDirty) {
             if (!window.confirm('You have unsaved changes. Discard and switch to Preview?')) return;
@@ -501,9 +532,11 @@ export function MarkdownReviewEditor({
                         aiLoadingIds={aiLoadingIds}
                         aiErrors={aiErrors}
                         onClearAiError={clearAiError}
-                        onResolveAllWithAI={() => resolveWithAI(rawContent, filePath)}
-                        onCopyPrompt={() => copyResolvePrompt(rawContent, filePath)}
+                        onResolveAllWithAI={handleResolveAllWithAI}
+                        onCopyPrompt={handleCopyPrompt}
                         resolving={resolving}
+                        onFixWithAI={handleFixWithAI}
+                        resolvingCommentId={resolvingCommentId}
                     />
                 )}
             </div>
@@ -560,6 +593,8 @@ export function MarkdownReviewEditor({
                     aiLoading={aiLoadingIds.has(activePopoverComment.id)}
                     aiError={aiErrors.get(activePopoverComment.id) ?? null}
                     onClearAiError={(id) => clearAiError(id)}
+                    onFixWithAI={handleFixWithAI}
+                    fixLoading={resolvingCommentId === activePopoverComment.id}
                 />
             )}
         </div>

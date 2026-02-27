@@ -22,6 +22,12 @@ vi.mock('../../../src/server/spa/client/react/hooks/useTaskComments', () => ({
         aiLoadingIds: new Set(),
         aiErrors: new Map(),
         clearAiError: vi.fn(),
+        resolveWithAI: vi.fn(),
+        fixWithAI: vi.fn(),
+        copyResolvePrompt: vi.fn(),
+        resolving: false,
+        resolvingCommentId: null,
+        refresh: vi.fn(),
     }),
 }));
 
@@ -41,6 +47,11 @@ vi.mock('@plusplusoneplusplus/pipeline-core/editor/anchor', () => ({
 /* ── Mock extractDocumentContext ── */
 vi.mock('../../../src/server/spa/client/react/utils/document-context', () => ({
     extractDocumentContext: vi.fn(() => ({ surroundingLines: 'ctx', nearestHeading: null, allHeadings: [] })),
+}));
+
+/* ── Mock useGlobalToast ── */
+vi.mock('../../../src/server/spa/client/react/context/ToastContext', () => ({
+    useGlobalToast: () => ({ addToast: vi.fn(), removeToast: vi.fn(), toasts: [] }),
 }));
 
 /* ── Mock SourceEditor as a simple textarea ── */
