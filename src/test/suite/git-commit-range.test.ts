@@ -8,7 +8,7 @@ import * as vscode from 'vscode';
 import { BranchChangesSectionItem } from '../../shortcuts/git/branch-changes-section-item';
 import { GitCommitRangeItem } from '../../shortcuts/git/git-commit-range-item';
 import { GitRangeFileItem } from '../../shortcuts/git/git-range-file-item';
-import { GitRangeService } from '../../shortcuts/git/git-range-service';
+import { GitRangeService } from '@plusplusoneplusplus/pipeline-core';
 import {
     GitChangeStatus,
     GitCommitRange,

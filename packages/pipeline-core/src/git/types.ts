@@ -172,3 +172,13 @@ export interface GitCommitRangeFile {
     /** Repository root path */
     repositoryRoot: string;
 }
+
+/**
+ * Configuration for GitRangeService (replaces vscode.workspace.getConfiguration).
+ */
+export interface GitRangeConfig {
+    /** Maximum number of changed files to return from detectCommitRange (default: 100) */
+    maxFiles?: number;
+    /** Whether to return a range when current branch has 0 commits ahead (default: false) */
+    showOnDefaultBranch?: boolean;
+}

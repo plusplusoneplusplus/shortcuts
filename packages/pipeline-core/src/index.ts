@@ -789,12 +789,14 @@ export {
     GitCommentCounts,
     GitCommitRange,
     GitCommitRangeFile,
+    GitRangeConfig,
     STATUS_SHORT,
     STAGE_PREFIX,
     STAGE_LABEL,
     ExecGitOptions,
     execGit,
     GitLogService,
+    GitRangeService,
 } from './git';
 
 // ============================================================================

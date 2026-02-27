@@ -14,6 +14,7 @@ export {
     GitCommentCounts,
     GitCommitRange,
     GitCommitRangeFile,
+    GitRangeConfig,
 } from './types';
 
 export {
@@ -28,3 +29,4 @@ export {
 } from './exec';
 
 export { GitLogService } from './git-log-service';
+export { GitRangeService } from './git-range-service';

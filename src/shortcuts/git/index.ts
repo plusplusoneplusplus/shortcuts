@@ -4,7 +4,6 @@ export * from './types';
 // Services
 export * from './git-service';
 export * from './git-log-service';
-export * from './git-range-service';
 export * from './branch-service';
 
 // Tree Items
