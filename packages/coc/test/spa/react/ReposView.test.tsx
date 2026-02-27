@@ -662,7 +662,7 @@ describe('ReposView', () => {
         expect(sidebar.className).not.toContain('w-0');
     });
 
-    it('collapses sidebar width when app state is collapsed', async () => {
+    it('shows mini sidebar (48px) when collapsed instead of w-0', async () => {
         render(
             <Wrap>
                 <CollapseReposSidebarOnMount />
@@ -673,9 +673,9 @@ describe('ReposView', () => {
             expect(screen.getByText(/Select a repository/)).toBeDefined();
         });
         const sidebar = screen.getByTestId('repos-sidebar');
-        expect(sidebar.className).toContain('w-0');
-        expect(sidebar.className).toContain('min-w-0');
-        expect(sidebar.className).toContain('border-r-0');
+        expect(sidebar.className).toContain('w-12');
+        expect(sidebar.className).toContain('min-w-[48px]');
+        expect(sidebar.className).not.toContain('w-0');
     });
 
     it('shows empty detail pane prompt', async () => {
