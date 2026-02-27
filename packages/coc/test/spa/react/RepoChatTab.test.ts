@@ -2,7 +2,10 @@
  * Tests for RepoChatTab component.
  *
  * Validates the component's source structure, exports, state management,
- * API interactions, localStorage persistence, and SSE streaming logic.
+ * API interactions, sidebar integration, and SSE streaming logic.
+ *
+ * localStorage persistence is replaced by server-side session history
+ * and the ChatSessionSidebar + useChatSessions hook.
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -50,21 +53,109 @@ describe('RepoChatTab', () => {
         });
     });
 
-    describe('localStorage persistence', () => {
-        it('uses workspace-scoped storage key', () => {
-            expect(source).toContain('`coc-chat-task-${workspaceId}`');
+    describe('split-panel layout', () => {
+        it('renders a split-panel root with data-testid', () => {
+            expect(source).toContain('data-testid="chat-split-panel"');
         });
 
-        it('reads from localStorage on mount', () => {
-            expect(source).toContain('localStorage.getItem(STORAGE_KEY)');
+        it('renders flex h-full overflow-hidden root', () => {
+            expect(source).toContain('"flex h-full overflow-hidden"');
         });
 
-        it('writes to localStorage when task is created', () => {
-            expect(source).toContain('localStorage.setItem(STORAGE_KEY, newTaskId)');
+        it('renders ChatSessionSidebar in left panel', () => {
+            expect(source).toContain('<ChatSessionSidebar');
         });
 
-        it('clears localStorage on New Chat', () => {
-            expect(source).toContain('localStorage.removeItem(STORAGE_KEY)');
+        it('sidebar has fixed width w-80', () => {
+            expect(source).toContain('w-80 flex-shrink-0 border-r');
+        });
+
+        it('right panel grows to fill with flex-1 min-w-0', () => {
+            expect(source).toContain('"flex-1 min-w-0 overflow-hidden flex flex-col"');
+        });
+    });
+
+    describe('session selection (no localStorage)', () => {
+        it('does NOT use localStorage', () => {
+            expect(source).not.toContain('localStorage.getItem');
+            expect(source).not.toContain('localStorage.setItem');
+            expect(source).not.toContain('localStorage.removeItem');
+            expect(source).not.toContain('STORAGE_KEY');
+        });
+
+        it('uses selectedTaskId state for session tracking', () => {
+            expect(source).toContain('selectedTaskId');
+            expect(source).toContain('setSelectedTaskId');
+        });
+
+        it('uses useChatSessions hook', () => {
+            expect(source).toContain('useChatSessions(workspaceId)');
+        });
+
+        it('passes sessions to ChatSessionSidebar', () => {
+            expect(source).toContain('sessions={sessionsHook.sessions}');
+        });
+
+        it('passes activeTaskId to ChatSessionSidebar', () => {
+            expect(source).toContain('activeTaskId={selectedTaskId}');
+        });
+
+        it('passes onSelectSession callback to ChatSessionSidebar', () => {
+            expect(source).toContain('onSelectSession={handleSelectSession}');
+        });
+
+        it('passes onNewChat callback to ChatSessionSidebar', () => {
+            expect(source).toContain('onNewChat={handleNewChat}');
+        });
+    });
+
+    describe('loadSession function', () => {
+        it('defines loadSession as a callback', () => {
+            expect(source).toContain('const loadSession = useCallback(async (taskId: string)');
+        });
+
+        it('fetches task from /queue/:id', () => {
+            expect(source).toContain('fetchApi(`/queue/${encodeURIComponent(taskId)}`)');
+        });
+
+        it('fetches process for conversation turns', () => {
+            expect(source).toContain('fetchApi(`/processes/${encodeURIComponent(pid)}`)');
+        });
+
+        it('handles 404 errors', () => {
+            expect(source).toContain("err?.message?.includes('404')");
+            expect(source).toContain("'Chat session not found'");
+        });
+    });
+
+    describe('auto-select on mount', () => {
+        it('auto-selects a running session if available', () => {
+            expect(source).toContain("sessionsHook.sessions.find(s => s.status === 'running')");
+        });
+
+        it('falls back to most recent session', () => {
+            expect(source).toContain('running ?? sessionsHook.sessions[0]');
+        });
+
+        it('uses autoSelectedRef to prevent re-selection', () => {
+            expect(source).toContain('autoSelectedRef');
+        });
+
+        it('resets auto-select when workspace changes', () => {
+            expect(source).toContain('autoSelectedRef.current = false');
+        });
+    });
+
+    describe('handleSelectSession', () => {
+        it('stops streaming before switching sessions', () => {
+            const handler = source.substring(source.indexOf('const handleSelectSession'));
+            expect(handler).toContain('if (isStreaming) stopStreaming()');
+        });
+
+        it('sets selectedTaskId and calls loadSession', () => {
+            const handler = source.substring(source.indexOf('const handleSelectSession'));
+            expect(handler).toContain('setSelectedTaskId(taskId)');
+            expect(handler).toContain('loadSession(taskId)');
         });
     });
 
@@ -97,7 +188,6 @@ describe('RepoChatTab', () => {
         });
 
         it('sends workspaceId in the request body', () => {
-            // Check that workspaceId is in the JSON.stringify body
             const bodyMatch = source.includes('workspaceId,') || source.includes('workspaceId:');
             expect(bodyMatch).toBe(true);
         });
@@ -118,11 +208,20 @@ describe('RepoChatTab', () => {
             expect(source).toContain("role: 'assistant', content: ''");
             expect(source).toContain('streaming: true');
         });
+
+        it('sets selectedTaskId to new task ID', () => {
+            const handler = source.substring(source.indexOf('const handleStartChat'));
+            expect(handler).toContain('setSelectedTaskId(newTaskId)');
+        });
+
+        it('refreshes sidebar sessions after start', () => {
+            const handler = source.substring(source.indexOf('const handleStartChat'));
+            expect(handler).toContain('sessionsHook.refresh()');
+        });
     });
 
     describe('active chat UI', () => {
         it('renders Chat header', () => {
-            // Header text in the active chat view
             const lines = source.split('\n');
             const headerLine = lines.find(l => l.includes('>Chat<'));
             expect(headerLine).toBeDefined();
@@ -131,10 +230,6 @@ describe('RepoChatTab', () => {
         it('renders Stop button when streaming', () => {
             expect(source).toContain('isStreaming && <Button');
             expect(source).toContain('>Stop<');
-        });
-
-        it('renders New Chat button', () => {
-            expect(source).toContain('>New Chat<');
         });
 
         it('renders ConversationTurnBubble for each turn', () => {
@@ -207,49 +302,26 @@ describe('RepoChatTab', () => {
     });
 
     describe('New Chat handler', () => {
-        it('calls stopStreaming', () => {
-            // handleNewChat calls stopStreaming as its first action
-            const newChatFn = source.substring(source.indexOf('const handleNewChat'));
-            expect(newChatFn).toContain('stopStreaming()');
-        });
-
-        it('clears localStorage', () => {
-            const newChatFn = source.substring(source.indexOf('const handleNewChat'));
-            expect(newChatFn).toContain("localStorage.removeItem(STORAGE_KEY)");
+        it('stops streaming when in progress', () => {
+            const handler = source.substring(source.indexOf('const handleNewChat'));
+            expect(handler).toContain('stopStreaming()');
         });
 
         it('resets all state', () => {
-            const newChatFn = source.substring(source.indexOf('const handleNewChat'));
-            expect(newChatFn).toContain('setChatTaskId(null)');
-            expect(newChatFn).toContain('setTask(null)');
-            expect(newChatFn).toContain('setTurns([])');
-            expect(newChatFn).toContain('setError(null)');
-            expect(newChatFn).toContain('setSessionExpired(false)');
-            expect(newChatFn).toContain("setInputValue('')");
+            const handler = source.substring(source.indexOf('const handleNewChat'));
+            expect(handler).toContain('setSelectedTaskId(null)');
+            expect(handler).toContain('setChatTaskId(null)');
+            expect(handler).toContain('setTask(null)');
+            expect(handler).toContain('setTurns([])');
+            expect(handler).toContain('setError(null)');
+            expect(handler).toContain('setSessionExpired(false)');
+            expect(handler).toContain("setInputValue('')");
         });
     });
 
     describe('cleanup on unmount', () => {
         it('registers cleanup effect', () => {
             expect(source).toContain('useEffect(() => () => stopStreaming(), [])');
-        });
-    });
-
-    describe('mount restore', () => {
-        it('fetches task from /queue/:id on mount', () => {
-            expect(source).toContain('fetchApi(`/queue/${encodeURIComponent(stored)}`)');
-        });
-
-        it('fetches process for conversation turns', () => {
-            expect(source).toContain('fetchApi(`/processes/${encodeURIComponent(pid)}`)');
-        });
-
-        it('clears localStorage on 404', () => {
-            expect(source).toContain("err?.message?.includes('404')");
-        });
-
-        it('derives processId from task or chatTaskId', () => {
-            expect(source).toContain("task?.processId ?? (chatTaskId ? `queue_${chatTaskId}` : null)");
         });
     });
 
@@ -278,6 +350,7 @@ describe('RepoChatTab', () => {
             expect(source).toContain('useEffect');
             expect(source).toContain('useRef');
             expect(source).toContain('useState');
+            expect(source).toContain('useCallback');
         });
 
         it('imports fetchApi from hooks/useApi', () => {
@@ -298,6 +371,14 @@ describe('RepoChatTab', () => {
 
         it('imports ClientConversationTurn type', () => {
             expect(source).toContain("import type { ClientConversationTurn } from '../types/dashboard'");
+        });
+
+        it('imports ChatSessionSidebar', () => {
+            expect(source).toContain("import { ChatSessionSidebar } from '../chat/ChatSessionSidebar'");
+        });
+
+        it('imports useChatSessions hook', () => {
+            expect(source).toContain("import { useChatSessions } from '../chat/useChatSessions'");
         });
 
         it('does NOT import QueueContext or AppContext', () => {
@@ -378,7 +459,6 @@ describe('RepoChatTab', () => {
         });
 
         it('sends images as undefined when none are pasted', () => {
-            // The body uses a ternary: images.length > 0 ? images : undefined
             const bodySection = source.substring(
                 source.indexOf("body: JSON.stringify({"),
                 source.indexOf("body: JSON.stringify({") + 500,

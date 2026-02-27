@@ -45,6 +45,17 @@ export interface ConversationCacheEntry {
     cachedAt: number;
 }
 
+/** Summary of a chat session for sidebar display */
+export interface ChatSessionItem {
+    id: string;            // queue task ID
+    processId?: string;    // linked process ID (for fetching conversation)
+    status: string;        // 'running' | 'completed' | 'failed' | 'cancelled'
+    createdAt: string;     // ISO timestamp
+    completedAt?: string;  // ISO timestamp
+    firstMessage: string;  // first user prompt (for preview, may be truncated by server)
+    turnCount?: number;    // number of conversation turns (from enriched history)
+}
+
 export type WikiViewMode = 'list' | 'detail';
 
 export interface AppState {

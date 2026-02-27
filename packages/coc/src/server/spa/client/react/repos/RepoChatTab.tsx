@@ -1,18 +1,21 @@
 /**
- * RepoChatTab — self-contained chat tab for a workspace/repo.
+ * RepoChatTab — split-panel chat tab for a workspace/repo.
  *
- * Persists the active chatTaskId per workspace in localStorage,
- * creates a type:'chat' queue task on first message, and streams
+ * Left sidebar lists past chat sessions (fetched from server history).
+ * Right panel shows the active conversation or start-chat screen.
+ * Creates a type:'chat' queue task on first message and streams
  * follow-up responses via SSE.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { fetchApi } from '../hooks/useApi';
 import { getApiBase } from '../utils/config';
 import { Button, Spinner } from '../shared';
 import { ConversationTurnBubble } from '../processes/ConversationTurnBubble';
 import { useImagePaste } from '../hooks/useImagePaste';
 import { ImagePreviews } from '../shared/ImagePreviews';
+import { ChatSessionSidebar } from '../chat/ChatSessionSidebar';
+import { useChatSessions } from '../chat/useChatSessions';
 import type { ClientConversationTurn } from '../types/dashboard';
 
 interface RepoChatTabProps {
@@ -46,8 +49,9 @@ function getConversationTurns(data: any): ClientConversationTurn[] {
 }
 
 export function RepoChatTab({ workspaceId, workspacePath }: RepoChatTabProps) {
-    const STORAGE_KEY = `coc-chat-task-${workspaceId}`;
+    const sessionsHook = useChatSessions(workspaceId);
 
+    const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
     const [chatTaskId, setChatTaskId] = useState<string | null>(null);
     const [task, setTask] = useState<any | null>(null);
     const [turns, setTurns] = useState<ClientConversationTurn[]>([]);
@@ -63,6 +67,7 @@ export function RepoChatTab({ workspaceId, workspacePath }: RepoChatTabProps) {
 
     const turnsRef = useRef<ClientConversationTurn[]>([]);
     const eventSourceRef = useRef<EventSource | null>(null);
+    const autoSelectedRef = useRef(false);
 
     const processId = task?.processId ?? (chatTaskId ? `queue_${chatTaskId}` : null);
 
@@ -115,27 +120,53 @@ export function RepoChatTab({ workspaceId, workspacePath }: RepoChatTabProps) {
             es.onerror = () => { clearTimeout(timeout); finish(); };
         });
 
-    // --- mount: restore persisted chat ---
+    // --- load a session by task ID ---
+
+    const loadSession = useCallback(async (taskId: string) => {
+        setLoading(true);
+        setError(null);
+        setSessionExpired(false);
+        try {
+            const queueData = await fetchApi(`/queue/${encodeURIComponent(taskId)}`);
+            const loadedTask = queueData?.task ?? null;
+            setTask(loadedTask);
+            setChatTaskId(taskId);
+            const pid = loadedTask?.processId ?? `queue_${taskId}`;
+            const procData = await fetchApi(`/processes/${encodeURIComponent(pid)}`);
+            setTurnsAndCache(getConversationTurns(procData));
+        } catch (err: any) {
+            if (err?.message?.includes('404') || err?.status === 404) {
+                setError('Chat session not found');
+            } else {
+                setError(err?.message ?? 'Failed to load chat');
+            }
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    // --- auto-select on mount when sessions load ---
 
     useEffect(() => {
-        const stored = localStorage.getItem(STORAGE_KEY);
-        if (!stored) return;
-        setChatTaskId(stored);
-        setLoading(true);
-        fetchApi(`/queue/${encodeURIComponent(stored)}`)
-            .then(data => {
-                setTask(data?.task ?? null);
-                const pid = data?.task?.processId ?? `queue_${stored}`;
-                return fetchApi(`/processes/${encodeURIComponent(pid)}`);
-            })
-            .then(data => setTurnsAndCache(getConversationTurns(data)))
-            .catch((err: any) => {
-                if (err?.message?.includes('404') || err?.status === 404) {
-                    localStorage.removeItem(STORAGE_KEY);
-                    setChatTaskId(null);
-                }
-            })
-            .finally(() => setLoading(false));
+        if (sessionsHook.loading || autoSelectedRef.current || sessionsHook.sessions.length === 0) return;
+        autoSelectedRef.current = true;
+        const running = sessionsHook.sessions.find(s => s.status === 'running');
+        const target = running ?? sessionsHook.sessions[0];
+        if (target) {
+            setSelectedTaskId(target.id);
+            loadSession(target.id);
+        }
+    }, [sessionsHook.loading, sessionsHook.sessions, loadSession]);
+
+    // Reset auto-select when workspace changes
+    useEffect(() => {
+        autoSelectedRef.current = false;
+        setSelectedTaskId(null);
+        setChatTaskId(null);
+        setTask(null);
+        setTurns([]);
+        setError(null);
+        setSessionExpired(false);
     }, [workspaceId]);
 
     // --- SSE for initial running task ---
@@ -182,6 +213,28 @@ export function RepoChatTab({ workspaceId, workspacePath }: RepoChatTabProps) {
 
     // --- handlers ---
 
+    const handleSelectSession = useCallback((taskId: string) => {
+        if (isStreaming) stopStreaming();
+        setSelectedTaskId(taskId);
+        setTurns([]);
+        setError(null);
+        setSessionExpired(false);
+        loadSession(taskId);
+    }, [isStreaming, loadSession]);
+
+    const handleNewChat = useCallback(() => {
+        if (isStreaming) stopStreaming();
+        setSelectedTaskId(null);
+        setChatTaskId(null);
+        setTask(null);
+        setTurns([]);
+        setError(null);
+        setSessionExpired(false);
+        setInputValue('');
+        initialImagePaste.clearImages();
+        followUpImagePaste.clearImages();
+    }, [isStreaming, initialImagePaste, followUpImagePaste]);
+
     const handleStartChat = async () => {
         const prompt = inputValue.trim();
         if (!prompt) return;
@@ -209,7 +262,7 @@ export function RepoChatTab({ workspaceId, workspacePath }: RepoChatTabProps) {
             }
             const body = await response.json();
             const newTaskId: string = body.task?.id ?? body.id;
-            localStorage.setItem(STORAGE_KEY, newTaskId);
+            setSelectedTaskId(newTaskId);
             setChatTaskId(newTaskId);
             setTask(body.task ?? null);
             const userTurn: ClientConversationTurn = {
@@ -222,6 +275,7 @@ export function RepoChatTab({ workspaceId, workspacePath }: RepoChatTabProps) {
             };
             setTurnsAndCache([userTurn, assistantPlaceholder]);
             initialImagePaste.clearImages();
+            sessionsHook.refresh();
         } catch (err: any) {
             setError(err?.message ?? 'Failed to start chat.');
         } finally {
@@ -276,51 +330,35 @@ export function RepoChatTab({ workspaceId, workspacePath }: RepoChatTabProps) {
         }
     };
 
-    const handleNewChat = () => {
-        stopStreaming();
-        localStorage.removeItem(STORAGE_KEY);
-        setChatTaskId(null);
-        setTask(null);
-        setTurns([]);
-        setError(null);
-        setSessionExpired(false);
-        setInputValue('');
-        initialImagePaste.clearImages();
-        followUpImagePaste.clearImages();
-    };
+    // --- render helpers ---
 
-    // --- render ---
+    const renderStartScreen = () => (
+        <div className="flex flex-col items-center justify-center h-full p-8 gap-4">
+            <div className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]">Chat with this repository</div>
+            <textarea
+                className="w-full max-w-md border rounded p-2 text-sm resize-none bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] border-[#e0e0e0] dark:border-[#3c3c3c]"
+                rows={3}
+                placeholder="Ask anything about this repository…"
+                value={inputValue}
+                onChange={e => setInputValue(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleStartChat(); } }}
+                onPaste={initialImagePaste.addFromPaste}
+            />
+            <ImagePreviews images={initialImagePaste.images} onRemove={initialImagePaste.removeImage} />
+            {error && <div className="text-xs text-red-500">{error}</div>}
+            <Button disabled={!inputValue.trim() || sending} onClick={() => void handleStartChat()}>
+                {sending ? '...' : 'Start Chat'}
+            </Button>
+        </div>
+    );
 
-    if (!chatTaskId) {
-        return (
-            <div className="flex flex-col items-center justify-center h-full p-8 gap-4">
-                <div className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]">Chat with this repository</div>
-                <textarea
-                    className="w-full max-w-md border rounded p-2 text-sm resize-none bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] border-[#e0e0e0] dark:border-[#3c3c3c]"
-                    rows={3}
-                    placeholder="Ask anything about this repository…"
-                    value={inputValue}
-                    onChange={e => setInputValue(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleStartChat(); } }}
-                    onPaste={initialImagePaste.addFromPaste}
-                />
-                <ImagePreviews images={initialImagePaste.images} onRemove={initialImagePaste.removeImage} />
-                {error && <div className="text-xs text-red-500">{error}</div>}
-                <Button disabled={!inputValue.trim() || sending} onClick={() => void handleStartChat()}>
-                    {sending ? '...' : 'Start Chat'}
-                </Button>
-            </div>
-        );
-    }
-
-    return (
+    const renderConversation = () => (
         <div className="flex flex-col min-h-0 flex-1">
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
                 <span className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]">Chat</span>
                 <div className="flex gap-2">
                     {isStreaming && <Button size="sm" variant="secondary" onClick={stopStreaming}>Stop</Button>}
-                    <Button size="sm" variant="ghost" onClick={handleNewChat}>New Chat</Button>
                 </div>
             </div>
 
@@ -348,6 +386,27 @@ export function RepoChatTab({ workspaceId, workspacePath }: RepoChatTabProps) {
                         {sending ? '...' : 'Send'}
                     </Button>
                 </div>
+            </div>
+        </div>
+    );
+
+    // --- render ---
+
+    return (
+        <div className="flex h-full overflow-hidden" data-testid="chat-split-panel">
+            {/* Left sidebar — fixed width */}
+            <ChatSessionSidebar
+                className="w-80 flex-shrink-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c]"
+                workspaceId={workspaceId}
+                sessions={sessionsHook.sessions}
+                activeTaskId={selectedTaskId}
+                onSelectSession={handleSelectSession}
+                onNewChat={handleNewChat}
+                loading={sessionsHook.loading}
+            />
+            {/* Right panel — grows to fill */}
+            <div className="flex-1 min-w-0 overflow-hidden flex flex-col">
+                {!chatTaskId ? renderStartScreen() : renderConversation()}
             </div>
         </div>
     );
