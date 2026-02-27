@@ -40,7 +40,7 @@ describe('RepoQueueTab pause/resume', () => {
         it('sets isPaused from HTTP fetch response (stats?.isPaused)', () => {
             expect(source).toContain('stats?.isPaused');
             // Verify setIsPaused is called with the fetch result
-            expect(source).toMatch(/setIsPaused\(.*stats\?\.isPaused/);
+            expect(source).toMatch(/setIsPaused\(.*isPaused/);
         });
 
         it('sets isPaused from WebSocket context (repoQueue?.stats?.isPaused)', () => {

@@ -34,11 +34,28 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
     const fetchQueue = async () => {
         try {
             const data = await fetchApi('/queue?repoId=' + encodeURIComponent(workspaceId));
-            setRunning(data?.running || []);
-            setQueued(data?.queued || []);
-            setIsPaused(!!data.stats?.isPaused);
+            const nextRunning = data?.running || [];
+            const nextQueued = data?.queued || [];
+            const nextStats = data?.stats || undefined;
+            setRunning(nextRunning);
+            setQueued(nextQueued);
+            setIsPaused(!!nextStats?.isPaused);
             const historyData = await fetchApi('/queue/history?repoId=' + encodeURIComponent(workspaceId)).catch(() => null);
-            setHistory(historyData?.history || []);
+            const nextHistory = historyData?.history || [];
+            setHistory(nextHistory);
+
+            // Keep repoQueueMap aligned with authoritative HTTP data so later WS/stats updates
+            // can preserve completed history instead of reverting to stale empty arrays.
+            queueDispatch({
+                type: 'REPO_QUEUE_UPDATED',
+                repoId: workspaceId,
+                queue: {
+                    queued: nextQueued,
+                    running: nextRunning,
+                    history: nextHistory,
+                    stats: nextStats,
+                },
+            });
         } catch {
             setRunning([]);
             setQueued([]);

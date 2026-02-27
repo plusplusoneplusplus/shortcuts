@@ -130,6 +130,19 @@ describe('RepoQueueTab split-panel layout', () => {
         });
     });
 
+    describe('context sync after HTTP fetch', () => {
+        it('syncs fetched queue lists back into repoQueueMap', () => {
+            expect(source).toContain("type: 'REPO_QUEUE_UPDATED'");
+            expect(source).toContain('repoId: workspaceId');
+        });
+
+        it('includes queued, running, and history in the synced payload', () => {
+            expect(source).toContain('queued: nextQueued');
+            expect(source).toContain('running: nextRunning');
+            expect(source).toContain('history: nextHistory');
+        });
+    });
+
     describe('history default expanded', () => {
         it('showHistory defaults to true so completed tasks are visible on load', () => {
             expect(source).toContain('useState(true)');
