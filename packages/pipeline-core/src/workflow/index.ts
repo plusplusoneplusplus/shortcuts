@@ -75,6 +75,9 @@ export { validate, WorkflowValidationError } from './validator';
 // Scheduler
 export { schedule, getExecutionOrder, getTierIndex } from './scheduler';
 
+// Executor
+export { executeWorkflow } from './executor';
+
 // Node executors
 export { executeScript } from './nodes/script';
 export { executeFilter, evaluateRule, evaluateFieldRule } from './nodes/filter';

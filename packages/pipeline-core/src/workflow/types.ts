@@ -399,6 +399,8 @@ export interface WorkflowResult {
     results: Map<string, NodeResult>;
     /** Results for leaf nodes only (nodes with no downstream dependents). */
     leaves: Map<string, NodeResult>;
+    /** Execution tiers as produced by the scheduler. */
+    tiers: ExecutionTier[];
     /** Total wall-clock duration in milliseconds. */
     totalDurationMs: number;
     /** Error message if the workflow failed. */
@@ -477,6 +479,11 @@ export interface WorkflowExecutionOptions {
     timeoutMs?: number;
     /** Abort signal for cancellation support. */
     signal?: AbortSignal;
+    /**
+     * Progress callback invoked when a node starts, completes, or warns.
+     * Useful for UI integration and logging.
+     */
+    onProgress?: (nodeId: string, event: 'start' | 'complete' | 'warn') => void;
 }
 
 // =============================================================================

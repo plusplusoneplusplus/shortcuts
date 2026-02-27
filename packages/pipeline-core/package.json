@@ -16,7 +16,8 @@
       "editor/parsing": ["dist/editor/parsing/index.d.ts"],
       "editor/anchor": ["dist/editor/anchor.d.ts"],
       "editor/anchor-types": ["dist/editor/anchor-types.d.ts"],
-      "editor/types": ["dist/editor/types.d.ts"]
+      "editor/types": ["dist/editor/types.d.ts"],
+      "workflow": ["dist/workflow/index.d.ts"]
     }
   },
   "exports": {
@@ -31,7 +32,8 @@
     "./editor/parsing": "./dist/editor/parsing/index.js",
     "./editor/anchor": "./dist/editor/anchor.js",
     "./editor/anchor-types": "./dist/editor/anchor-types.js",
-    "./editor/types": "./dist/editor/types.js"
+    "./editor/types": "./dist/editor/types.js",
+    "./workflow": "./dist/workflow/index.js"
   },
   "files": [
     "dist"
