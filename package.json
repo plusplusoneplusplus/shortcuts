@@ -3995,7 +3995,7 @@
     "test:packages": "npm run test:run -w packages/pipeline-core && npm run test:run -w packages/coc && npm run test:run -w packages/deep-wiki",
     "test:all": "npm run test",
     "build:packages": "npm run build -w packages/pipeline-core && npm run build -w packages/coc && npm run build -w packages/deep-wiki",
-    "coc:link": "cd packages/pipeline-core && npm run build && npm link && cd ../coc && npm run build && npm link",
+    "coc:link": "cd packages/pipeline-core && npm run build && npm link && cd ../coc-server && npm run build && npm link && cd ../coc && npm run build && npm link",
     "deep-wiki:link": "cd packages/deep-wiki && npm run build && npm link",
     "vsce:package": "vsce package",
     "vsce:publish": "vsce publish"
