@@ -105,4 +105,25 @@ describe('QueueTaskDetail', () => {
             expect(source).toContain('setFollowUpSessionExpired(true)');
         });
     });
+
+    describe('no-session follow-up guard', () => {
+        it('computes noSessionForFollowUp from terminal status and missing session', () => {
+            expect(source).toContain('noSessionForFollowUp');
+            // Must check both terminal status and processDetails loaded
+            expect(source).toMatch(/isTerminal\s*&&\s*processDetails\s*!==\s*null\s*&&\s*!resumeSessionId/);
+        });
+
+        it('hides chat input when noSessionForFollowUp is true', () => {
+            expect(source).toContain('!isPending && !noSessionForFollowUp && (');
+        });
+
+        it('shows informational message when follow-up is unavailable', () => {
+            expect(source).toContain('!isPending && noSessionForFollowUp && (');
+            expect(source).toContain('Follow-up chat is not available for this process type.');
+        });
+
+        it('defines isTerminal from completed or failed status', () => {
+            expect(source).toMatch(/isTerminal\s*=.*completed.*failed|isTerminal\s*=.*failed.*completed/);
+        });
+    });
 });

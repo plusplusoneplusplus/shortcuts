@@ -1274,6 +1274,7 @@ describe('QueueTaskDetail follow-up input', () => {
                             process: {
                                 id: processId,
                                 status: 'completed',
+                                sdkSessionId: 'test-session-follow-1',
                                 conversationTurns: [
                                     { role: 'user', content: 'First question', timeline: [] },
                                     { role: 'assistant', content: 'First answer', timeline: [] },
@@ -1290,6 +1291,7 @@ describe('QueueTaskDetail follow-up input', () => {
                         process: {
                             id: processId,
                             status: 'completed',
+                            sdkSessionId: 'test-session-follow-1',
                             conversationTurns: [
                                 { role: 'user', content: 'First question', timeline: [] },
                                 { role: 'assistant', content: 'First answer', timeline: [] },
@@ -1365,6 +1367,7 @@ describe('QueueTaskDetail follow-up input', () => {
                         process: {
                             id: processId,
                             status: 'completed',
+                            sdkSessionId: 'test-session-expired-1',
                             conversationTurns: [
                                 { role: 'user', content: 'Start', timeline: [] },
                                 { role: 'assistant', content: 'Done', timeline: [] },
@@ -1477,6 +1480,7 @@ describe('QueueTaskDetail semantic hooks', () => {
                         process: {
                             id: processId,
                             status: 'completed',
+                            sdkSessionId: 'test-session-err-1',
                             conversationTurns: [
                                 { role: 'user', content: 'Q', timeline: [] },
                                 { role: 'assistant', content: 'A', timeline: [] },
@@ -1529,6 +1533,7 @@ describe('QueueTaskDetail semantic hooks', () => {
                         process: {
                             id: processId,
                             status: 'completed',
+                            sdkSessionId: 'test-session-retry-1',
                             conversationTurns: [
                                 { role: 'user', content: 'Q', timeline: [] },
                                 { role: 'assistant', content: 'A', timeline: [] },
@@ -1698,6 +1703,7 @@ describe('QueueTaskDetail semantic hooks', () => {
                         process: {
                             id: processId,
                             status: 'completed',
+                            sdkSessionId: 'test-session-410-1',
                             conversationTurns: [
                                 { role: 'user', content: 'Q', timeline: [] },
                                 { role: 'assistant', content: 'A', timeline: [] },

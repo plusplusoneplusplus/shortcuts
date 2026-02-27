@@ -474,6 +474,8 @@ export function QueueTaskDetail() {
     };
     const metadataProcess = processDetails || fullTask || task;
     const resumeSessionId = getSessionIdFromProcess(metadataProcess);
+    const isTerminal = task?.status === 'completed' || task?.status === 'failed';
+    const noSessionForFollowUp = isTerminal && processDetails !== null && !resumeSessionId;
 
     const launchInteractiveResume = async () => {
         if (!selectedProcessId || !resumeSessionId) return;
@@ -599,7 +601,14 @@ export function QueueTaskDetail() {
                 </button>
             </div>
 
-            {!isPending && (
+            {!isPending && noSessionForFollowUp && (
+                <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3">
+                    <div className="text-[#848484] text-sm text-center">
+                        Follow-up chat is not available for this process type.
+                    </div>
+                </div>
+            )}
+            {!isPending && !noSessionForFollowUp && (
                 <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3 space-y-2">
                     {resumeFeedback && (
                         <div className={`text-xs ${resumeFeedback.type === 'error' ? 'text-[#f14c4c]' : 'text-[#6a9955] dark:text-[#89d185]'}`}>
