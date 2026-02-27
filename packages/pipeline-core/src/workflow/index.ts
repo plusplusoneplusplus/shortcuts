@@ -77,3 +77,4 @@ export { schedule, getExecutionOrder, getTierIndex } from './scheduler';
 
 // Node executors
 export { executeScript } from './nodes/script';
+export { executeFilter, evaluateRule, evaluateFieldRule } from './nodes/filter';
