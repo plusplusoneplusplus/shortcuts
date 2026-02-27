@@ -1,247 +1,90 @@
 # Discovery Module - Developer Reference
 
-This module provides AI-powered feature discovery that automatically finds and organizes files, documentation, and commits related to a specific feature or topic. It uses Copilot CLI for semantic search capabilities.
+This module provides AI-powered feature discovery that automatically finds and organizes files, documentation, and commits related to a specific feature or topic.
 
 ## Architecture Overview
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                      User Interface                             │
-│  (Discovery command, Quick Pick, Webview Preview)               │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              │ Feature description
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    Discovery Module                             │
-│  ┌─────────────────────────────────────────────────────────────┐│
-│  │              AIDiscoveryEngine (Primary)                    ││
-│  │  - Semantic search via Copilot CLI                          ││
-│  │  - Understands context and code relationships               ││
-│  │  - Searches files, docs, tests, and git history             ││
-│  └─────────────────────────────────────────────────────────────┘│
-│  ┌─────────────────────────────────────────────────────────────┐│
-│  │              DiscoveryEngine (Fallback)                     ││
-│  │  - Keyword-based search for non-AI environments             ││
-│  │  - Uses grep, glob, and git log                             ││
-│  └─────────────────────────────────────────────────────────────┘│
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐ │
-│  │ KeywordExtractor│  │ RelevanceScorer │  │ SearchProviders │ │
-│  │ (Term analysis) │  │ (Result ranking)│  │ (File/Git/etc.) │ │
-│  └─────────────────┘  └─────────────────┘  └─────────────────┘ │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              │ Results
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│              Discovery Webview Preview                          │
-│  (Interactive selection and preview of discovered items)        │
-└─────────────────────────────────────────────────────────────────┘
+User Interface (Discovery command, Quick Pick, Webview Preview)
+  │ Feature description
+  ▼
+Discovery Module
+  ├── AIDiscoveryEngine (Primary) - Semantic search via Copilot SDK/CLI
+  ├── DiscoveryEngine (Orchestrator) - Defaults to AI, keyword fallback
+  ├── KeywordExtractor - Term extraction, search pattern generation
+  ├── RelevanceScorer - Deduplication, type grouping, score filtering
+  ├── SearchProviders - FileSearchProvider, GitSearchProvider
+  └── DiscoveryPreviewPanel - Webview for interactive result selection
 ```
 
 ## Key Components
 
-### AIDiscoveryEngine
-
-The primary discovery engine using AI for semantic search.
+### AIDiscoveryEngine & createAIDiscoveryRequest
 
 ```typescript
 import { AIDiscoveryEngine, createAIDiscoveryRequest } from '../discovery';
 
-// Create the engine
 const engine = new AIDiscoveryEngine();
-
-// Create a discovery request
-const request = createAIDiscoveryRequest(
-    'User authentication with OAuth',
-    workspaceRoot,
-    {
-        keywords: ['oauth', 'authentication', 'login'],
-        targetGroupPath: 'Authentication Feature',
-        scope: {
-            includeSourceFiles: true,
-            includeDocs: true,
-            includeGitHistory: true,
-            maxCommits: 50
-        }
-    }
-);
-
-// Run discovery
+const request = createAIDiscoveryRequest('User authentication', workspaceRoot, {
+    keywords: ['oauth', 'login'],
+    scope: { includeSourceFiles: true, includeDocs: true, includeGitHistory: true, maxCommits: 50 }
+});
 const process = await engine.discover(request);
 
-// Check results
-if (process.status === 'completed') {
-    console.log(`Found ${process.results?.length} items`);
-    for (const result of process.results || []) {
-        console.log(`- ${result.name} (${result.type}): ${result.relevanceScore}%`);
-    }
-}
+// Listen for progress
+engine.onDidChangeProcess((event) => {
+    console.log(`${event.type}: ${event.process.phase} ${event.process.progress}%`);
+});
 ```
 
-### ai-discovery-engine.ts
+**Exports from `ai-discovery-engine.ts`:** `AIDiscoveryEngine`, `createAIDiscoveryRequest`, `parseDiscoveryResponse`, `buildExistingItemsSection`, `AIDiscoveryConfig`, `DEFAULT_AI_DISCOVERY_CONFIG`, `AIDiscoveryItem`, `AIDiscoveryResponse`
 
-AI-powered search engine using Copilot SDK/CLI with prompt construction, response parsing, and process cancellation support.
-
-```typescript
-import {
-    AIDiscoveryEngine,
-    buildDiscoveryPrompt,
-    parseDiscoveryResponse,
-    cancelDiscoveryProcess
-} from '../discovery/ai-discovery-engine';
-
-const engine = new AIDiscoveryEngine();
-
-// Build discovery prompt with feature description and keywords
-const prompt = buildDiscoveryPrompt(
-    'User authentication with OAuth',
-    ['oauth', 'authentication', 'login'],
-    { includeSourceFiles: true, includeDocs: true }
-);
-
-// Parse AI response into structured discovery results
-const results = parseDiscoveryResponse(aiOutput, featureDescription);
-
-// Cancel a running discovery process
-await cancelDiscoveryProcess(processId);
-```
-
-### keyword-extractor.ts
-
-NLP utilities for extracting keywords, filtering stop words, and generating search patterns. Used as fallback when AI is unavailable.
-
-```typescript
-import {
-    extractKeywords,
-    filterStopWords,
-    generateSearchPatterns,
-    tokenizeText
-} from '../discovery/keyword-extractor';
-
-// Extract keywords from feature description
-const keywords = extractKeywords('User authentication with OAuth');
-// Returns: ['user', 'authentication', 'oauth']
-
-// Filter out common stop words
-const filtered = filterStopWords(['the', 'user', 'authentication', 'with', 'oauth']);
-// Returns: ['user', 'authentication', 'oauth']
-
-// Generate search patterns for grep/glob
-const patterns = generateSearchPatterns(['auth', 'login', 'session']);
-// Returns: ['*auth*', '*login*', '*session*']
-
-// Tokenize text for analysis
-const tokens = tokenizeText('User authentication system');
-// Returns: ['user', 'authentication', 'system']
-```
-
-### relevance-scorer.ts
-
-Scoring system with heuristics: keyword matches, directory relevance, deduplication, and grouping by type.
-
-```typescript
-import {
-    RelevanceScorer,
-    scoreResult,
-    calculateKeywordMatches,
-    calculateDirectoryRelevance,
-    deduplicateResults,
-    groupByType
-} from '../discovery/relevance-scorer';
-
-const scorer = new RelevanceScorer();
-
-// Score a discovery result
-const score = scoreResult(
-    result,
-    featureDescription,
-    keywords
-);
-// Returns: 0-100 relevance score
-
-// Calculate keyword match score
-const keywordScore = calculateKeywordMatches(
-    result,
-    keywords
-);
-
-// Calculate directory relevance (e.g., src/ more relevant than docs/)
-const dirScore = calculateDirectoryRelevance(
-    result.path,
-    focusAreas
-);
-
-// Deduplicate results by path/content
-const unique = deduplicateResults(results);
-
-// Group results by type (file, doc, commit)
-const grouped = groupByType(results);
-// Returns: { files: [...], docs: [...], commits: [...] }
-```
-
-### DiscoveryEngine (Keyword-based Fallback)
-
-Used when AI is not available or disabled.
+### DiscoveryEngine (Orchestrator)
 
 ```typescript
 import { DiscoveryEngine } from '../discovery';
 
-const engine = new DiscoveryEngine(searchProviders);
+const engine = new DiscoveryEngine({ forceMode: 'keyword' }); // or 'ai' or 'auto'
+const process = await engine.discover(request);
+```
 
-// Run keyword-based discovery
-const results = await engine.discover({
-    featureDescription: 'authentication',
-    keywords: ['auth', 'login', 'session'],
-    scope: {
-        includeSourceFiles: true,
-        includeDocs: true
-    },
-    repositoryRoot: workspaceRoot
-});
+### keyword-extractor.ts
+
+**Exports:** `extractKeywords`, `combineKeywords`, `generateSearchPatterns`, `calculateKeywordMatchScore`
+
+```typescript
+const keywords = extractKeywords('User authentication with OAuth');
+const patterns = generateSearchPatterns(keywords);
+const score = calculateKeywordMatchScore('auth login handler', keywords);
+```
+
+### relevance-scorer.ts
+
+**Exports:** `deduplicateResults`, `groupResultsByType`, `filterByScore`, `getRelevanceLevel`
+
+```typescript
+const unique = deduplicateResults(results);
+const grouped = groupResultsByType(results); // Map<DiscoverySourceType, DiscoveryResult[]>
+const highQuality = filterByScore(results, 70);
+const level = getRelevanceLevel(85); // 'high' | 'medium' | 'low'
 ```
 
 ### Search Providers
 
-Pluggable providers for different search types.
-
 ```typescript
 import { FileSearchProvider, GitSearchProvider } from '../discovery/search-providers';
-
-// File search provider
-const fileProvider = new FileSearchProvider();
-const fileResults = await fileProvider.search(keywords, options);
-
-// Git search provider
-const gitProvider = new GitSearchProvider();
-const commitResults = await gitProvider.search(keywords, options);
+const fileResults = await new FileSearchProvider().search(keywords, options);
+const commitResults = await new GitSearchProvider().search(keywords, options);
 ```
 
-### Discovery Webview
-
-Interactive preview for selecting discovered items.
+### DiscoveryPreviewPanel
 
 ```typescript
-import { DiscoveryPreviewProvider } from '../discovery/discovery-webview';
-
-const previewProvider = new DiscoveryPreviewProvider(context);
-
-// Show discovery results in webview
-await previewProvider.showPreview({
-    featureDescription: 'authentication',
-    results: discoveryResults,
-    targetGroup: 'Auth Feature'
-});
-
-// Listen for user selections
-previewProvider.onDidSelectItems((selectedItems) => {
-    // Add selected items to group
-});
+import { DiscoveryPreviewPanel } from '../discovery/discovery-webview';
+DiscoveryPreviewPanel.createOrShow(extensionUri, discoveryEngine, configManager, taskManager);
 ```
 
 ## Configuration
-
-The module reads configuration from VSCode settings:
 
 ```json
 {
@@ -254,222 +97,39 @@ The module reads configuration from VSCode settings:
 }
 ```
 
-## Discovery Process Lifecycle
-
-```
-┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│ Initializing │ ──▶ │  Extracting  │ ──▶ │  Scanning    │
-│              │     │   Keywords   │     │    Files     │
-└──────────────┘     └──────────────┘     └──────────────┘
-                                                │
-                                                ▼
-┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│  Completed   │ ◀── │   Scoring    │ ◀── │  Searching   │
-│              │     │  Relevance   │     │  Git History │
-└──────────────┘     └──────────────┘     └──────────────┘
-```
-
-## Usage Examples
-
-### Example 1: Basic Feature Discovery
+## Usage: Excluding Existing Group Items
 
 ```typescript
-import { AIDiscoveryEngine, createAIDiscoveryRequest } from '../discovery';
-
-async function discoverFeature(description: string, workspaceRoot: string) {
-    const engine = new AIDiscoveryEngine();
-    
-    const request = createAIDiscoveryRequest(description, workspaceRoot);
-    
-    const process = await engine.discover(request);
-    
-    if (process.status === 'completed' && process.results) {
-        return process.results.filter(r => r.relevanceScore >= 70);
-    }
-    
-    return [];
-}
-
-// Usage
-const authFiles = await discoverFeature('user authentication', '/path/to/project');
-```
-
-### Example 2: Discovery with Progress Tracking
-
-```typescript
-const engine = new AIDiscoveryEngine();
-
-// Listen for progress updates
-engine.onDidChangeProcess((event) => {
-    switch (event.type) {
-        case 'process-started':
-            console.log('Discovery started');
-            break;
-        case 'process-updated':
-            console.log(`Phase: ${event.process.phase}, Progress: ${event.process.progress}%`);
-            break;
-        case 'process-completed':
-            console.log(`Found ${event.process.results?.length} items`);
-            break;
-        case 'process-failed':
-            console.error(`Discovery failed: ${event.process.error}`);
-            break;
+const request = createAIDiscoveryRequest('authentication', workspaceRoot, {
+    existingGroupSnapshot: {
+        name: 'Auth Feature',
+        items: [{ type: 'file', path: 'src/auth/login.ts' }]
     }
 });
-
-await engine.discover(request);
 ```
-
-### Example 3: Excluding Existing Group Items
-
-```typescript
-// When augmenting an existing group, exclude items already in the group
-const request = createAIDiscoveryRequest(
-    'authentication',
-    workspaceRoot,
-    {
-        existingGroupSnapshot: {
-            name: 'Auth Feature',
-            items: [
-                { type: 'file', path: 'src/auth/login.ts' },
-                { type: 'commit', commitHash: 'abc123' }
-            ]
-        }
-    }
-);
-
-// AI will not include already-added items
-const process = await engine.discover(request);
-```
-
-### Example 4: Custom Relevance Filtering
-
-```typescript
-import { RelevanceScorer } from '../discovery';
-
-const scorer = new RelevanceScorer();
-
-// Score results against feature description
-const scoredResults = results.map(result => ({
-    ...result,
-    relevanceScore: scorer.score(result, featureDescription, keywords)
-}));
-
-// Filter by custom threshold
-const highRelevance = scoredResults.filter(r => r.relevanceScore >= 80);
-const mediumRelevance = scoredResults.filter(r => 
-    r.relevanceScore >= 50 && r.relevanceScore < 80
-);
-```
-
-## Types
-
-### DiscoveryRequest
-
-```typescript
-interface DiscoveryRequest {
-    /** Natural language description of the feature */
-    featureDescription: string;
-    /** Optional explicit keywords to search for */
-    keywords?: string[];
-    /** Search scope configuration */
-    scope: {
-        includeSourceFiles: boolean;
-        includeDocs: boolean;
-        includeConfigFiles: boolean;
-        includeGitHistory: boolean;
-        maxCommits: number;
-        excludePatterns: string[];
-    };
-    /** Target group path for organizing results */
-    targetGroupPath?: string;
-    /** Repository root path */
-    repositoryRoot: string;
-    /** Existing items to exclude from results */
-    existingGroupSnapshot?: ExistingGroupSnapshot;
-}
-```
-
-### DiscoveryResult
-
-```typescript
-interface DiscoveryResult {
-    /** Unique identifier */
-    id: string;
-    /** Type: 'file', 'doc', 'commit' */
-    type: DiscoverySourceType;
-    /** Display name */
-    name: string;
-    /** File path (for file/doc types) */
-    path?: string;
-    /** Commit info (for commit type) */
-    commit?: DiscoveryCommitInfo;
-    /** Relevance score (0-100) */
-    relevanceScore: number;
-    /** Keywords that matched */
-    matchedKeywords: string[];
-    /** Human-readable relevance explanation */
-    relevanceReason?: string;
-    /** Whether user selected this item */
-    selected: boolean;
-}
-```
-
-### DiscoveryProcess
-
-```typescript
-interface DiscoveryProcess {
-    /** Unique process ID */
-    id: string;
-    /** Current status */
-    status: 'running' | 'completed' | 'failed' | 'cancelled';
-    /** Feature being searched for */
-    featureDescription: string;
-    /** Current phase */
-    phase: DiscoveryPhase;
-    /** Progress percentage (0-100) */
-    progress: number;
-    /** Start time */
-    startTime: Date;
-    /** End time (when completed) */
-    endTime?: Date;
-    /** Results (when completed) */
-    results?: DiscoveryResult[];
-    /** Error message (when failed) */
-    error?: string;
-}
-```
-
-## Best Practices
-
-1. **Provide clear descriptions**: More specific feature descriptions yield better AI results.
-
-2. **Use focus areas**: Set `focusAreas` to prioritize relevant directories.
-
-3. **Set reasonable limits**: Use `maxResults` and `minRelevance` to control result quality.
-
-4. **Handle cancellation**: Allow users to cancel long-running discovery processes.
-
-5. **Cache results**: Consider caching discovery results for repeated queries.
-
-6. **Fallback gracefully**: Use keyword-based discovery when AI is unavailable.
 
 ## Module Files
 
 | File | Purpose |
 |------|---------|
-| `discovery-engine.ts` | `DiscoveryEngine`: primary orchestrator, defaults to AI with keyword fallback |
+| `discovery-engine.ts` | `DiscoveryEngine`: orchestrator, defaults to AI with keyword fallback |
 | `ai-discovery-engine.ts` | `AIDiscoveryEngine`: Copilot SDK/CLI semantic search, prompt construction, response parsing |
-| `keyword-extractor.ts` | NLP utilities: stop words, keyword extraction, search pattern generation |
-| `relevance-scorer.ts` | Heuristic scoring: keyword matches, directory relevance, deduplication, grouping |
+| `keyword-extractor.ts` | NLP utilities: keyword extraction, search pattern generation |
+| `relevance-scorer.ts` | Heuristic utilities: deduplication, type grouping, score filtering, relevance levels |
 | `discovery-commands.ts` | VS Code commands: discover globally or for a specific group |
 | `search-providers/` | Pluggable search providers for files and git history |
-| `discovery-webview/` | Webview preview panel for interactive result selection |
+| `discovery-webview/` | `DiscoveryPreviewPanel`: webview panel for interactive result selection and filtering |
 | `types.ts` | All types: requests, results, process states, scoring config |
-| `index.ts` | Module exports |
+| `index.ts` | Exports from: types, keyword-extractor, relevance-scorer, discovery-engine, ai-discovery-engine, discovery-commands, search-providers, discovery-webview |
+
+## Best Practices
+
+1. **Provide clear descriptions**: More specific feature descriptions yield better AI results.
+2. **Use focus areas**: Set `focusAreas` to prioritize relevant directories.
+3. **Handle cancellation**: Allow users to cancel long-running discovery processes.
+4. **Fallback gracefully**: Use keyword-based discovery when AI is unavailable.
 
 ## See Also
 
 - `src/shortcuts/ai-service/AGENTS.md` - AI process tracking
 - `docs/designs/ai-discovery-design.md` - Detailed design documentation
-- `src/shortcuts/discovery/discovery-webview/` - Webview preview components

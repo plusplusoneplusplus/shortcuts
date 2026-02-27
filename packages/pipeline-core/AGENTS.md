@@ -27,19 +27,22 @@ packages/pipeline-core/
 │   │   ├── types.ts          # TaskType, TaskPriority, QueueStatus, payload types
 │   │   ├── task-queue-manager.ts  # TaskQueueManager (priority-based queue)
 │   │   └── queue-executor.ts     # QueueExecutor (executes tasks with concurrency)
-│   ├── ai/                   # AI service components
+│   ├── ai/                   # AI service components (lightweight)
 │   │   ├── index.ts          # AI module exports
 │   │   ├── types.ts          # AI types (backends, models, results)
-│   │   ├── session-pool.ts   # Reusable Copilot SDK session pool
 │   │   ├── cli-utils.ts      # Shell escaping, temp file handling
-│   │   ├── copilot-sdk-service.ts  # Copilot SDK wrapper
-│   │   ├── model-registry.ts      # Central AI model registry (6 models)
-│   │   ├── mcp-config-loader.ts   # MCP server config loader
 │   │   ├── command-types.ts       # AI command type definitions
 │   │   ├── process-types.ts       # AI process tracking types
 │   │   ├── prompt-builder.ts      # Pure prompt template variable substitution
 │   │   ├── program-utils.ts       # Program existence checking
 │   │   └── timeouts.ts            # Re-exports default AI timeout
+│   ├── copilot-sdk-wrapper/  # Copilot SDK integration
+│   │   ├── index.ts          # Module exports
+│   │   ├── copilot-sdk-service.ts  # Copilot SDK wrapper with session pooling
+│   │   ├── model-registry.ts      # Central AI model registry
+│   │   ├── mcp-config-loader.ts   # MCP server config loader (~/.copilot/mcp-config.json)
+│   │   ├── trusted-folder.ts      # Trusted folder management
+│   │   └── types.ts               # SDK wrapper type definitions
 │   ├── process-store.ts      # ProcessStore interface — abstract storage for AI processes
 │   ├── file-process-store.ts # FileProcessStore — JSON file-based persistence
 │   ├── map-reduce/           # Map-reduce framework
@@ -62,6 +65,33 @@ packages/pipeline-core/
 │   │   ├── prompt-resolver.ts    # Prompt file resolution
 │   │   ├── skill-resolver.ts     # Skill loading
 │   │   └── input-generator.ts    # AI input generation
+│   ├── tasks/                # Task discovery and execution
+│   │   ├── index.ts          # Task module exports
+│   │   ├── types.ts          # Task types (TaskInfo, TaskDocument, etc.)
+│   │   ├── task-manager.ts   # Task lifecycle management
+│   │   ├── task-operations.ts # Task CRUD operations
+│   │   ├── task-parser.ts    # Parse task markdown files
+│   │   ├── task-scanner.ts   # Scan directories for task files
+│   │   ├── task-prompt-builder.ts  # Build AI prompts for tasks
+│   │   ├── discovery-prompt-builder.ts  # Discovery-specific prompts
+│   │   └── related-items-loader.ts     # Load related task items
+│   ├── discovery/            # Discovery features
+│   │   ├── index.ts          # Discovery module exports
+│   │   ├── types.ts          # Discovery types
+│   │   ├── prompt-files.ts   # Prompt file resolution
+│   │   └── skill-files.ts    # Skill file resolution
+│   ├── editor/               # Editor integration (parsing & rendering)
+│   │   ├── index.ts          # Editor module exports
+│   │   ├── types.ts          # Editor types
+│   │   ├── anchor.ts         # Comment anchor positioning
+│   │   ├── anchor-types.ts   # Anchor type definitions
+│   │   ├── file-state-store.ts  # File state persistence
+│   │   ├── state-store.ts    # General state store
+│   │   ├── host.ts           # Editor host interface
+│   │   ├── messages.ts       # Editor message types
+│   │   ├── transport.ts      # Message transport layer
+│   │   ├── parsing/          # Markdown parsing (markdown-parser, block-renderers)
+│   │   └── rendering/        # Markdown rendering (renderer, headings, selections, cursors)
 │   └── utils/                # Shared utilities
 │       ├── index.ts          # Utils exports
 │       ├── file-utils.ts     # Safe file I/O
@@ -75,7 +105,7 @@ packages/pipeline-core/
 │       ├── window-focus-service.ts  # Window focus service
 │       ├── external-terminal-launcher.ts  # External terminal launcher
 │       └── process-monitor.ts     # Process monitoring utilities
-├── test/                     # Vitest tests (29 test files)
+├── test/                     # Vitest tests (61 test files)
 │   ├── ai/                   # AI tests
 │   │   ├── mcp-config-loader.test.ts
 │   │   └── model-registry.test.ts
@@ -526,7 +556,7 @@ await store.clearProcesses('completed');
 
 ## Testing
 
-Tests use Vitest and are located in `test/`. There are 29 test files covering all modules.
+Tests use Vitest and are located in `test/`. There are 61 test files covering all modules.
 
 ```bash
 # Run all tests

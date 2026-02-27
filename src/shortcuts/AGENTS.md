@@ -38,6 +38,7 @@ This is the main module directory for the "Markdown Review & Workspace Shortcuts
 | **shared** | Shared utilities (logging, text matching, **tree provider base classes**) |
 | **sync** | Cloud synchronization via VSCode Settings Sync |
 | **tasks-viewer** | Markdown task list management |
+| **skills** | Skill installation from GitHub repos, local dirs, or bundled sources |
 | **yaml-pipeline** | VS Code UI layer (core in `pipeline-core`) |
 
 ## Module Dependencies

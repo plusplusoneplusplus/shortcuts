@@ -27,6 +27,7 @@ coc run <path>              # Execute a pipeline
 coc validate <path>         # Validate YAML without executing
 coc list [dir]              # List pipeline packages in a directory
 coc serve                   # Start AI Execution Dashboard web server
+coc wipe-data               # Clear all stored data
 ```
 
 ### `run` Options
@@ -79,7 +80,9 @@ src/
 │   ├── run.ts            # Execute pipeline - Handles execution, progress, and result formatting
 │   ├── validate.ts       # Validate YAML - Checks structure, input sources, and filter config
 │   ├── list.ts           # List packages - Discovers and displays pipeline packages in a directory
-│   └── serve.ts          # Start server - Launches AI Execution Dashboard with browser auto-open
+│   ├── serve.ts          # Start server - Launches AI Execution Dashboard with browser auto-open
+│   ├── wipe-data.ts      # Wipe data - Clears stored processes, queues, and schedules
+│   └── options-resolver.ts  # Shared option resolution logic for commands
 ├── server/
 │   ├── index.ts          # Server factory - createExecutionServer(), wires store + WebSocket + routes
 │   ├── router.ts         # HTTP router - Request routing, CORS, static files, SPA fallback
@@ -87,6 +90,44 @@ src/
 │   ├── websocket.ts      # WebSocket server - `ws` library, workspace-scoped event broadcasting
 │   ├── sse-handler.ts    # SSE streaming - Real-time process output via Server-Sent Events
 │   ├── types.ts          # Server types - ExecutionServer, Route, ServeCommandOptions
+│   ├── queue-handler.ts          # Queue management API endpoints
+│   ├── queue-executor-bridge.ts  # Bridges queue system to pipeline executor
+│   ├── queue-persistence.ts      # Persistent queue state storage
+│   ├── multi-repo-executor-bridge.ts  # Multi-repo pipeline execution
+│   ├── multi-repo-queue-persistence.ts # Per-repo queue persistence
+│   ├── pipelines-handler.ts      # Pipeline CRUD and listing API
+│   ├── pipeline-watcher.ts       # File watcher for pipeline changes
+│   ├── tasks-handler.ts          # Task management API endpoints
+│   ├── task-watcher.ts           # File watcher for task changes
+│   ├── task-comments-handler.ts  # Task comment/annotation API
+│   ├── task-generation-handler.ts # AI-powered task generation
+│   ├── stale-task-detector.ts    # Detects and flags stale tasks
+│   ├── schedule-handler.ts       # Scheduled execution API
+│   ├── schedule-manager.ts       # Schedule lifecycle management
+│   ├── schedule-persistence.ts   # Persistent schedule storage
+│   ├── process-resume-handler.ts # Resume interrupted processes
+│   ├── prompt-handler.ts         # Prompt management API
+│   ├── prompt-utils.ts           # Prompt utilities
+│   ├── preferences-handler.ts    # User preference storage API
+│   ├── admin-handler.ts          # Admin/diagnostic endpoints
+│   ├── output-file-manager.ts    # Manage output file storage
+│   ├── output-pruner.ts          # Prune old output files
+│   ├── data-exporter.ts          # Export stored data
+│   ├── data-importer.ts          # Import data
+│   ├── data-wiper.ts             # Data cleanup/reset
+│   ├── wiki/                     # Wiki integration
+│   │   ├── index.ts              # Wiki module exports
+│   │   ├── types.ts              # Wiki types
+│   │   ├── wiki-manager.ts       # Wiki lifecycle management
+│   │   ├── wiki-data.ts          # Wiki data access layer
+│   │   ├── wiki-routes.ts        # Wiki HTTP routes
+│   │   ├── generate-handler.ts   # Wiki generation API
+│   │   ├── explore-handler.ts    # Wiki exploration API
+│   │   ├── ask-handler.ts        # Wiki Q&A endpoint
+│   │   ├── context-builder.ts    # Build context for wiki AI queries
+│   │   ├── conversation-session-manager.ts  # Manage wiki chat sessions
+│   │   ├── file-watcher.ts       # Watch wiki source files
+│   │   └── admin-handlers.ts     # Wiki admin endpoints
 │   └── spa/              # Dashboard SPA
 │       ├── html-template.ts  # HTML generation - Inline SPA with all CSS/JS embedded
 │       ├── styles.ts         # CSS styles - Dark/light theme, responsive layout
@@ -96,7 +137,12 @@ src/
 ├── ai-invoker.ts         # AI invoker factory - Creates CopilotSDKService instances with session pooling
 ├── logger.ts             # Console logger - Colored output, spinners, and progress bars
 ├── output-formatter.ts   # Result formatting - Formats results as table/json/csv/markdown
-└── config.ts             # Config resolution - Loads and merges ~/.coc/config.yaml with defaults (legacy fallback: ~/.coc.yaml)
+├── config.ts             # Config resolution - Loads and merges ~/.coc/config.yaml with defaults (legacy fallback: ~/.coc.yaml)
+├── config/
+│   └── schema.ts         # Configuration JSON schema for validation
+├── validation/
+│   ├── index.ts          # Validation module exports
+│   └── schemas.ts        # Pipeline YAML validation schemas
 ```
 
 ## Configuration
@@ -134,20 +180,18 @@ serve:
 
 ## Testing
 
-201+ tests across 13 test files using Vitest:
+114+ tests across 114 test files using Vitest:
 - `cli.test.ts` - CLI argument parsing and command routing
-- `config.test.ts` - Configuration file loading and merging
+- `config.test.ts`, `config/schema.test.ts` - Configuration and schema validation
 - `logger.test.ts` - Colored output and spinner functionality
 - `ai-invoker.test.ts` - AI invoker creation and session management
 - `output-formatter.test.ts` - Result formatting (table/json/csv/markdown)
-- `commands/list.test.ts` - Pipeline package discovery and listing
-- `commands/run.test.ts` - Pipeline execution and progress handling
-- `commands/validate.test.ts` - YAML validation logic
-- `commands/serve.test.ts` - Serve command startup, banner, browser open
-- `server/api-handler.test.ts` - REST API endpoints (CRUD, filtering, stats)
-- `server/integration.test.ts` - End-to-end server integration tests
-- `server/spa.test.ts` - SPA HTML generation, theming
-- `server/websocket.test.ts` - WebSocket frame encoding/decoding, event broadcasting
+- `options-resolver.test.ts` - Shared option resolution logic
+- `commands/` - run, validate, list, serve, wipe-data command tests
+- `server/` - 70+ test files covering API handlers, queue, scheduling, tasks, wiki, SPA, WebSocket, SSE
+- `spa/react/` - React component and hook tests
+- `validation/` - Schema validation tests
+- `e2e/` - End-to-end integration tests
 
 ## Exit Codes
 

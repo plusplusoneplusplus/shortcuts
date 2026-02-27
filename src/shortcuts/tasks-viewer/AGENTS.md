@@ -61,13 +61,12 @@ This module provides a tree view for managing markdown task files. It parses tas
 
 ### TasksTreeDataProvider
 
-The main tree data provider for tasks. **Extends `FilterableTreeDataProvider`** (as of 2026-01 refactoring) for built-in filtering, search capabilities, EventEmitter, refresh, dispose, and error handling.
+The main tree data provider for tasks. **Extends `BaseTreeDataProvider`** (as of 2026-01 refactoring) for built-in EventEmitter, refresh, dispose, and error handling.
 
 ```typescript
 import { TasksTreeDataProvider } from '../tasks-viewer';
 
-// The provider extends FilterableTreeDataProvider (refactored in 2026-01)
-// Inherits from BaseTreeDataProvider → FilterableTreeDataProvider
+// The provider extends BaseTreeDataProvider (refactored in 2026-01)
 // All common tree provider functionality built-in
 const provider = new TasksTreeDataProvider(taskManager);
 
@@ -82,12 +81,6 @@ const treeView = vscode.window.createTreeView('workspaceShortcuts.tasks', {
 
 // Refresh the tree (inherited from base class)
 provider.refresh();
-
-// Set filter (inherited from FilterableTreeDataProvider)
-provider.setFilter('incomplete');
-
-// Set search
-provider.setSearch('implement');
 ```
 
 ### TaskManager
@@ -776,20 +769,13 @@ async function reviewWorkflow(
 }
 ```
 
-### Example 5: Filtering Tasks
+### Example 5: Refreshing the Task Tree
 
 ```typescript
-// Filter by status
-treeProvider.setFilter('incomplete');  // Only incomplete tasks
-treeProvider.setFilter('complete');    // Only complete tasks
-treeProvider.setFilter('all');         // All tasks
+// Refresh the tree to reflect file changes
+treeProvider.refresh();
 
-// Search by text
-treeProvider.setSearch('authentication');  // Tasks containing text
-
-// Combined filtering
-treeProvider.setFilter('incomplete');
-treeProvider.setSearch('bug');  // Incomplete tasks containing 'bug'
+// The tree automatically rebuilds from TaskManager on refresh
 ```
 
 ## Types

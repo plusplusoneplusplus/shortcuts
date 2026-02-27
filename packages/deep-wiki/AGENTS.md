@@ -1,6 +1,6 @@
 # Deep Wiki Generator - Developer Reference
 
-CLI tool that auto-generates comprehensive wikis for any codebase using a six-phase AI pipeline.
+CLI tool that auto-generates comprehensive wikis for any codebase using a six-phase AI pipeline, with optional theme-based article generation.
 
 ## Package Structure
 
@@ -17,7 +17,16 @@ packages/deep-wiki/
 │   ├── commands/
 │   │   ├── seeds.ts          # `seeds` command: Generate theme seeds for breadth-first discovery
 │   │   ├── discover.ts       # `discover` command: Phase 1 only, outputs ComponentGraph JSON
-│   │   └── generate.ts       # `generate` command: Full pipeline (Seeds → Discovery → Consolidation → Analysis → Writing → Website)
+│   │   ├── generate.ts       # `generate` command: Full pipeline (Seeds → Discovery → Consolidation → Analysis → Writing → Website)
+│   │   ├── theme.ts          # `theme` command: Theme article generation pipeline (probe → outline → analysis → articles → integration)
+│   │   ├── init.ts           # `init` command: Generate template deep-wiki.config.yaml
+│   │   └── phases/           # Per-phase runner modules used by generate command
+│   │       ├── index.ts
+│   │       ├── discovery-phase.ts
+│   │       ├── consolidation-phase.ts
+│   │       ├── analysis-phase.ts
+│   │       ├── writing-phase.ts
+│   │       └── website-phase.ts
 │   ├── seeds/
 │   │   ├── index.ts          # Exports: generateThemeSeeds(), parseSeedFile()
 │   │   ├── seeds-session.ts  # SDK session orchestration for theme seed generation
@@ -56,7 +65,28 @@ packages/deep-wiki/
 │   │   ├── file-writer.ts    # Write articles and index files to disk
 │   │   ├── prompts.ts        # Article writing prompt templates
 │   │   ├── reduce-prompts.ts # Reduce/synthesis prompts for overview articles
-│   │   └── website-generator.ts  # Static HTML website generation with themes
+│   │   ├── website-generator.ts  # Static HTML website generation with themes
+│   │   ├── website-styles.ts # CSS styles for generated website
+│   │   ├── website-client-script.ts # Client-side JS for website interactivity
+│   │   └── website-data.ts   # Data serialization for website templates
+│   ├── theme/
+│   │   ├── index.ts          # Barrel exports for theme module
+│   │   ├── coverage-checker.ts   # Load wiki graph, list theme areas, check theme coverage gaps
+│   │   ├── theme-probe.ts    # Build theme seed and run single-theme probe against repo
+│   │   ├── theme-analysis.ts # Analyze article scope and cross-cutting concerns for a theme
+│   │   ├── analysis-prompts.ts   # Prompts for theme article analysis and cross-cutting analysis
+│   │   ├── outline-generator.ts  # Generate/parse theme outline (article structure)
+│   │   ├── outline-prompts.ts    # Prompts for theme outline generation
+│   │   ├── article-generator.ts  # Generate theme articles from outline and analysis
+│   │   ├── article-prompts.ts    # Prompts for sub-article and index page generation
+│   │   ├── file-writer.ts    # Write theme articles to disk
+│   │   └── wiki-integrator.ts    # Update module graph, wiki index, and add cross-links
+│   ├── utils/
+│   │   ├── error-utils.ts    # Error handling utilities
+│   │   ├── git-init.ts       # Git initialization helpers
+│   │   ├── parse-ai-response.ts  # AI response extraction
+│   │   └── resolve-working-directory.ts  # Working directory resolution
+│   ├── config-loader.ts      # Load deep-wiki.config.yaml configuration
 │   ├── rendering/
 │   │   └── mermaid-zoom.ts   # Shared Mermaid diagram zoom/pan CSS, HTML, JS for SPA and static website
 │   └── cache/
@@ -64,7 +94,7 @@ packages/deep-wiki/
 │       ├── cache-utils.ts    # Low-level atomic read/write/scan primitives shared by all cache modules
 │       ├── discovery-cache.ts # Intermediate discovery artifact caching (seeds, probes, structural scans)
 │       └── git-utils.ts      # Git HEAD hash for cache invalidation
-├── test/                     # 59 Vitest test files (mirrors src/ structure)
+├── test/                     # 64 Vitest test files (mirrors src/ structure)
 ├── package.json
 ├── tsconfig.json
 └── vitest.config.ts
@@ -111,12 +141,28 @@ Generates wiki articles from analysis results:
 - Per-component article generation from analysis results
 - Reduce/synthesis step for overview and cross-cutting articles
 - File writer outputs markdown articles organized by domain/category
+- Website data serialization and client-side scripting
 
 ### Phase 5: Website
 
 Creates optional static HTML website:
 - Website generator creates static HTML with navigation, themes (light/dark/auto)
 - Shared Mermaid zoom/pan controls via `rendering/mermaid-zoom.ts`
+- Customizable CSS styles and client-side JavaScript
+
+## Theme Article Generation
+
+The `theme/` module provides a separate pipeline for generating cross-cutting theme articles on an existing wiki:
+
+- **coverage-checker.ts** — Loads the wiki's `module-graph.json`, lists existing theme areas, and identifies coverage gaps
+- **theme-probe.ts** — Runs a single-theme probe against the repo using iterative discovery infrastructure
+- **outline-generator.ts** — Generates a structured outline (list of sub-articles) for the theme
+- **theme-analysis.ts** — Analyzes article scope and cross-cutting concerns across involved components
+- **article-generator.ts** — Generates individual theme articles from outline and analysis
+- **file-writer.ts** — Writes theme articles to the wiki output directory
+- **wiki-integrator.ts** — Updates `module-graph.json`, wiki index, and adds cross-links to existing articles
+
+Orchestrated by the `theme` command (`commands/theme.ts`) with phases: Probe → Outline → Analysis → Articles → File Writing & Integration → optional Website Regeneration.
 
 ## CLI Commands
 
@@ -152,7 +198,28 @@ deep-wiki generate ./my-project --output ./wiki --concurrency 3 --depth normal
 
 Options: `--output`, `--model`, `--concurrency`, `--timeout`, `--focus`, `--seeds`, `--depth` (shallow/normal/deep), `--force`, `--use-cache`, `--phase` (start from phase N: 1, 2, 3, or 4), `--skip-website`, `--no-cluster`, `--no-strict`, `--theme` (light/dark/auto), `--title`, `--verbose`, `--no-color`
 
-> **Note:** Wiki serving has been moved to CoC. Use `coc wiki serve` instead.
+### `deep-wiki theme <repo-path> [theme-name]`
+
+Generate or manage theme-based cross-cutting articles for an existing wiki.
+
+```bash
+deep-wiki theme ./my-project "Authentication"     # Generate articles for a theme
+deep-wiki theme ./my-project --list                # List existing themes
+deep-wiki theme ./my-project --check "Security"    # Check theme coverage
+```
+
+Options: `--output`, `--model`, `--list`, `--check`, `--skip-website`, `--verbose`, `--no-color`
+
+### `deep-wiki init`
+
+Generate a template `deep-wiki.config.yaml` configuration file.
+
+```bash
+deep-wiki init                    # Write to current directory
+deep-wiki init --output ./config  # Write to specified path
+```
+
+> **Note:** Wiki serving has been moved to the `coc-server` package. Use `coc wiki serve` instead.
 
 ## Core Concepts: Domain, Component, and Theme
 
@@ -285,16 +352,17 @@ interface GeneratedArticle {
 
 ## Testing
 
-59 Vitest test files covering:
+64 Vitest test files covering:
 - Seeds: prompt templates, response parsing, seed file parsing, heuristic fallback
 - Discovery: prompt templates, response parsing, large repo handler, domain tagging, logging, iterative discovery (probes, merges, caching)
 - Consolidation: consolidator orchestration, rule-based consolidator, AI consolidator
 - Analysis: executor, prompts, response parsing
 - Writing: article executor, file writer, prompts, website generator, hierarchical structure
+- Theme: article generator, coverage checker, file writer, outline generator, theme analysis, theme probe, wiki integrator
 - Rendering: mermaid zoom/pan module
 - Cache: discovery, analysis, article, reduce-article, consolidation, domain-article caches, cache utilities, git utilities, index
-- Commands: seeds, discover, generate integration tests
-- CLI argument parsing, AI invoker, type validation, usage tracker
+- Commands: seeds, discover, generate, init, theme integration tests; phases/ (phase runners)
+- CLI argument parsing, AI invoker, config loader, type validation, usage tracker, bundle
 
 Run with `npm run test:run` in `packages/deep-wiki/` directory.
 
@@ -302,3 +370,4 @@ Run with `npm run test:run` in `packages/deep-wiki/` directory.
 
 - `packages/pipeline-core/AGENTS.md` - AI SDK and pipeline engine
 - `packages/coc/AGENTS.md` - CoC CLI (sibling package)
+- `packages/coc-server/AGENTS.md` - Server that hosts wiki serving (`coc wiki serve`)

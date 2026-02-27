@@ -16,7 +16,7 @@ NEVER create document file unless user's explicit ask.
   - `map-reduce` - Parallel AI processing framework (executor, splitters, reducers, jobs)
   - `pipeline` - YAML pipeline execution (executor, CSV reader, template engine, filters)
 
-- **Monorepo Structure:** npm workspaces with `packages/pipeline-core`, `packages/coc`, `packages/deep-wiki`, and root extension
+- **Monorepo Structure:** npm workspaces with `packages/pipeline-core`, `packages/coc`, `packages/coc-server`, `packages/deep-wiki`, and root extension
 - **Testing:** Vitest for pipeline-core/coc/deep-wiki, Mocha for extension (6900+ extension tests passing)
 
 **Deep Wiki Generator** - A standalone CLI tool that auto-generates comprehensive wikis for any codebase:
@@ -115,6 +115,7 @@ shortcuts/
 ├── packages/                          # Standalone Node.js packages (no VS Code deps)
 │   ├── pipeline-core/                 # Core AI/pipeline engine (used by coc & deep-wiki)
 │   ├── coc/                           # CoC CLI for running pipelines
+│   ├── coc-server/                    # HTTP/WebSocket server for AI execution dashboard
 │   └── deep-wiki/                     # Wiki generator CLI
 │
 ├── src/                               # VS Code extension source
@@ -126,6 +127,7 @@ shortcuts/
 │       ├── code-review/               # Code review against rules
 │       ├── yaml-pipeline/             # Pipeline management UI
 │       ├── tasks-viewer/              # Task management UI
+│       ├── skills/                    # Skill installation from GitHub/local sources
 │       └── shared/                    # Shared utilities
 │
 └── out/                               # Compiled JavaScript (generated)
@@ -366,6 +368,13 @@ const result = await service.sendMessage({
 - `GlobalNotesTreeDataProvider` - Manages global notes view separate from shortcuts groups
 - `NoteDocumentProvider` - Virtual document provider for note content
 - Notes stored in `globalNotes` array in config, accessible from any workspace
+
+**Skills (`src/shortcuts/skills/`)**
+- `SkillInstaller` - Installs skills from GitHub repos or local directories
+- `SkillScanner` - Discovers available skills from a source
+- `SourceDetector` - Parses GitHub URLs and local paths into skill sources
+- `BundledSkillsProvider` - Manages skills bundled with the extension
+- Skills installed to `.github/skills` by default
 
 **Command System (`src/shortcuts/commands.ts`)**
 - Centralized command registration and handling

@@ -88,8 +88,11 @@ class MyTreeProvider extends BaseTreeDataProvider<vscode.TreeItem> {
 }
 ```
 
+**Note:** This class is not re-exported from `index.ts`; import directly from `'../shared/base-tree-data-provider'`.
+
 **Providers using BaseTreeDataProvider (as of 2026-01):**
 - GlobalNotesTreeDataProvider
+- TasksTreeDataProvider
 
 #### FilterableTreeDataProvider
 
@@ -135,8 +138,9 @@ const current = provider.getFilter(); // Gets current filter
 const isActive = provider.hasFilter; // Check if filter is active
 ```
 
+**Note:** This class is not re-exported from `index.ts`; import directly from `'../shared/filterable-tree-data-provider'`.
+
 **Providers using FilterableTreeDataProvider (as of 2026-01):**
-- TasksTreeDataProvider
 - PipelinesTreeDataProvider
 - LogicalTreeDataProvider
 
@@ -222,7 +226,7 @@ const highlighted = getHighlightedHTMLLines(
 
 #### Tree Filter Utils
 
-Utilities for filter matching operations in tree data providers.
+Utilities for filter matching operations in tree data providers. **Not re-exported from `index.ts`**; import directly.
 
 ```typescript
 import { FilterMatcher } from '../shared/tree-filter-utils';
@@ -246,7 +250,7 @@ const filterText = matcher.getFilterText();
 
 #### Tree Icon Utils
 
-Centralized icon constants and mapping functions for tree providers. **Added in 2026-01** to eliminate icon duplication.
+Centralized icon constants and mapping functions for tree providers. **Added in 2026-01** to eliminate icon duplication. **Not re-exported from `index.ts`**; import directly.
 
 ```typescript
 import {
@@ -286,7 +290,7 @@ const customIcon = PROCESS_STATUS_ICONS['completed'];
 
 #### Tree Error Handler
 
-Utilities for consistent error handling in tree data providers. **Added in 2026-01** to standardize error handling patterns.
+Utilities for consistent error handling in tree data providers. **Added in 2026-01** to standardize error handling patterns. **Not re-exported from `index.ts`**; import directly.
 
 ```typescript
 import { TreeErrorHandler } from '../shared/tree-error-handler';
@@ -316,7 +320,7 @@ const normalizedError = TreeErrorHandler.normalize(unknownError);
 - Consistent behavior for refresh, dispose, error handling
 - Centralized icon management
 - Simplified filter implementation
-- All 5690 tests passing
+- All existing tests passing
 - 100% backward compatible
 
 ### CommentsTreeProviderBase
