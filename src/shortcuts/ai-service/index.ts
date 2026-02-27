@@ -180,6 +180,9 @@ export {
     AIInvoker
 } from './ai-invoker-factory';
 
+// Re-export Attachment type from pipeline-core for convenience
+export type { Attachment } from '@plusplusoneplusplus/pipeline-core';
+
 // Export AI Queue Service
 export {
     AIQueueService,

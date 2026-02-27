@@ -15,7 +15,7 @@
 
 import * as vscode from 'vscode';
 import { copyToClipboard, invokeCopilotCLI } from './copilot-cli-invoker';
-import { getCopilotSDKService, AIInvocationResult, approveAllPermissions } from '@plusplusoneplusplus/pipeline-core';
+import { getCopilotSDKService, AIInvocationResult, approveAllPermissions, Attachment } from '@plusplusoneplusplus/pipeline-core';
 import { getAIBackendSetting, getSDKLoadMcpConfigSetting, getSDKRequestTimeoutSetting } from './ai-config-helpers';
 import { getExtensionLogger, LogCategory } from './ai-service-logger';
 import { IAIProcessManager } from './types';
@@ -95,7 +95,7 @@ export interface AIInvokerResult extends AIInvocationResult {
  */
 export type AIInvoker = (
     prompt: string,
-    options?: { model?: string }
+    options?: { model?: string; attachments?: Attachment[] }
 ) => Promise<AIInvokerResult>;
 
 /**
@@ -141,8 +141,9 @@ export function createAIInvoker(options: AIInvokerFactoryOptions): AIInvoker {
     // Use explicit timeout if provided, otherwise use VS Code setting
     const effectiveTimeoutMs = timeoutMs ?? getSDKRequestTimeoutSetting();
 
-    return async (prompt: string, invokeOptions?: { model?: string }): Promise<AIInvokerResult> => {
+    return async (prompt: string, invokeOptions?: { model?: string; attachments?: Attachment[] }): Promise<AIInvokerResult> => {
         const model = invokeOptions?.model || defaultModel;
+        const attachments = invokeOptions?.attachments;
         
         // Register process if manager provided
         let processId: string | undefined;
@@ -206,7 +207,8 @@ export function createAIInvoker(options: AIInvokerFactoryOptions): AIInvoker {
                         workingDirectory,
                         timeoutMs: effectiveTimeoutMs,
                         loadDefaultMcpConfig: loadMcpConfig,
-                        onPermissionRequest: approvePermissions ? approveAllPermissions : undefined
+                        onPermissionRequest: approvePermissions ? approveAllPermissions : undefined,
+                        attachments
                     });
 
                     // Store session ID for potential cancellation
