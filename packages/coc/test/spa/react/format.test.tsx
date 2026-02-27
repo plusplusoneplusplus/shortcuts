@@ -217,4 +217,33 @@ describe('repoName', () => {
     it('handles deeply nested paths', () => {
         expect(repoName('/a/b/c/d/e/repo-name')).toBe('repo-name');
     });
+
+    it('extracts basename from Windows backslash path', () => {
+        expect(repoName('D:\\projects\\shortcuts')).toBe('shortcuts');
+    });
+
+    it('extracts basename from Windows backslash path with trailing backslash', () => {
+        expect(repoName('D:\\projects\\shortcuts\\')).toBe('shortcuts');
+    });
+
+    it('extracts basename from Windows backslash path with multiple trailing backslashes', () => {
+        expect(repoName('D:\\projects\\shortcuts\\\\\\')).toBe('shortcuts');
+    });
+
+    it('extracts basename from Windows drive root with backslash', () => {
+        expect(repoName('C:\\repo')).toBe('repo');
+    });
+
+    it('extracts basename from deeply nested Windows backslash path', () => {
+        expect(repoName('C:\\Users\\dev\\projects\\my-repo')).toBe('my-repo');
+    });
+
+    it('handles mixed forward and backslash separators', () => {
+        expect(repoName('C:\\Users/dev\\projects/my-repo')).toBe('my-repo');
+    });
+
+    it('handles mixed separators with trailing slashes', () => {
+        expect(repoName('C:\\Users/dev\\repo/')).toBe('repo');
+        expect(repoName('C:/Users\\dev/repo\\')).toBe('repo');
+    });
 });
