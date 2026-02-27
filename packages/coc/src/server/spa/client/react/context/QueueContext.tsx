@@ -36,11 +36,32 @@ export interface QueueContextState {
     queueInitialized: boolean;
 }
 
+function createEmptyQueueStats(): QueueStats {
+    return {
+        queued: 0,
+        running: 0,
+        completed: 0,
+        failed: 0,
+        cancelled: 0,
+        total: 0,
+        isPaused: false,
+        isDraining: false,
+    };
+}
+
+function mergeQueueStats(stats: any, fallback?: QueueStats): QueueStats {
+    return {
+        ...createEmptyQueueStats(),
+        ...(fallback || {}),
+        ...(stats || {}),
+    };
+}
+
 const initialState: QueueContextState = {
     queued: [],
     running: [],
     history: [],
-    stats: { queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0, total: 0, isPaused: false, isDraining: false },
+    stats: createEmptyQueueStats(),
     repoQueueMap: {},
     showDialog: false,
     dialogInitialFolderPath: null,
@@ -58,7 +79,8 @@ const initialState: QueueContextState = {
 
 export type QueueAction =
     | { type: 'QUEUE_UPDATED'; queue: { queued: any[]; running: any[]; history?: any[]; stats: any } }
-    | { type: 'REPO_QUEUE_UPDATED'; repoId: string; queue: { queued: any[]; running: any[]; history?: any[]; stats: any } }
+    | { type: 'REPO_QUEUE_UPDATED'; repoId: string; queue: { queued?: any[]; running?: any[]; history?: any[]; stats?: any } }
+    | { type: 'REPO_QUEUE_STATS_UPDATED'; repoId: string; stats: Partial<QueueStats> }
     | { type: 'SEED_QUEUE'; queue: { queued: any[]; running: any[]; stats?: any } }
     | { type: 'SET_HISTORY'; history: any[] }
     | { type: 'DRAIN_START'; queued: number; running: number }
@@ -95,11 +117,25 @@ export function queueReducer(state: QueueContextState, action: QueueAction): Que
             };
         }
         case 'REPO_QUEUE_UPDATED': {
+            const existingRepo = state.repoQueueMap[action.repoId];
             const repoData = {
-                queued: action.queue.queued || [],
-                running: action.queue.running || [],
-                history: action.queue.history ?? state.repoQueueMap[action.repoId]?.history ?? [],
-                stats: action.queue.stats || { queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0, total: 0, isPaused: false, isDraining: false },
+                queued: action.queue.queued ?? existingRepo?.queued ?? [],
+                running: action.queue.running ?? existingRepo?.running ?? [],
+                history: action.queue.history ?? existingRepo?.history ?? [],
+                stats: mergeQueueStats(action.queue.stats, existingRepo?.stats),
+            };
+            return {
+                ...state,
+                repoQueueMap: { ...state.repoQueueMap, [action.repoId]: repoData },
+            };
+        }
+        case 'REPO_QUEUE_STATS_UPDATED': {
+            const existingRepo = state.repoQueueMap[action.repoId];
+            const repoData = {
+                queued: existingRepo?.queued ?? [],
+                running: existingRepo?.running ?? [],
+                history: existingRepo?.history ?? [],
+                stats: mergeQueueStats(action.stats, existingRepo?.stats),
             };
             return {
                 ...state,

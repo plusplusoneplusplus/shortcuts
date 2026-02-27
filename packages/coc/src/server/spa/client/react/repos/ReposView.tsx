@@ -88,21 +88,17 @@ export function ReposView() {
                 const match = enriched.find(r => r.workspace.rootPath === qr.rootPath);
                 const repoId = match?.workspace.id ?? qr.repoId;
                 queueDispatch({
-                    type: 'REPO_QUEUE_UPDATED',
+                    type: 'REPO_QUEUE_STATS_UPDATED',
                     repoId,
-                    queue: {
-                        queued: [],
-                        running: [],
-                        stats: {
-                            queued: qr.queuedCount ?? 0,
-                            running: qr.runningCount ?? 0,
-                            completed: 0,
-                            failed: 0,
-                            cancelled: 0,
-                            total: 0,
-                            isPaused: qr.isPaused ?? false,
-                            isDraining: false,
-                        },
+                    stats: {
+                        queued: qr.queuedCount ?? 0,
+                        running: qr.runningCount ?? 0,
+                        completed: 0,
+                        failed: 0,
+                        cancelled: 0,
+                        total: 0,
+                        isPaused: qr.isPaused ?? false,
+                        isDraining: false,
                     },
                 });
             }

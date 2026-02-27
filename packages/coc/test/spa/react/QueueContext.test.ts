@@ -11,6 +11,7 @@ function makeState(overrides: Partial<QueueContextState> = {}): QueueContextStat
         running: [],
         history: [],
         stats: { queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0, total: 0, isPaused: false, isDraining: false },
+        repoQueueMap: {},
         showDialog: false,
         dialogInitialFolderPath: null,
         showHistory: false,
@@ -129,6 +130,99 @@ describe('QueueContext reducer', () => {
                 },
             });
             expect(result.showHistory).toBe(false);
+        });
+    });
+
+    // ── REPO_QUEUE_STATS_UPDATED ───────────────────────────────────
+    describe('REPO_QUEUE_STATS_UPDATED', () => {
+        it('updates only stats for an existing repo queue entry', () => {
+            const state = makeState({
+                repoQueueMap: {
+                    'ws-1': {
+                        queued: [{ id: 'q1' }],
+                        running: [{ id: 'r1' }],
+                        history: [{ id: 'h1' }],
+                        stats: {
+                            queued: 1,
+                            running: 1,
+                            completed: 2,
+                            failed: 0,
+                            cancelled: 0,
+                            total: 4,
+                            isPaused: false,
+                            isDraining: false,
+                        },
+                    },
+                },
+            });
+
+            const result = queueReducer(state, {
+                type: 'REPO_QUEUE_STATS_UPDATED',
+                repoId: 'ws-1',
+                stats: {
+                    queued: 3,
+                    running: 2,
+                    isPaused: true,
+                },
+            });
+
+            expect(result.repoQueueMap['ws-1'].queued).toEqual([{ id: 'q1' }]);
+            expect(result.repoQueueMap['ws-1'].running).toEqual([{ id: 'r1' }]);
+            expect(result.repoQueueMap['ws-1'].history).toEqual([{ id: 'h1' }]);
+            expect(result.repoQueueMap['ws-1'].stats.queued).toBe(3);
+            expect(result.repoQueueMap['ws-1'].stats.running).toBe(2);
+            expect(result.repoQueueMap['ws-1'].stats.isPaused).toBe(true);
+            expect(result.repoQueueMap['ws-1'].stats.completed).toBe(2);
+        });
+
+        it('creates a repo entry when only stats are known', () => {
+            const state = makeState();
+
+            const result = queueReducer(state, {
+                type: 'REPO_QUEUE_STATS_UPDATED',
+                repoId: 'ws-2',
+                stats: {
+                    queued: 4,
+                    running: 1,
+                    isPaused: false,
+                },
+            });
+
+            expect(result.repoQueueMap['ws-2']).toBeDefined();
+            expect(result.repoQueueMap['ws-2'].queued).toEqual([]);
+            expect(result.repoQueueMap['ws-2'].running).toEqual([]);
+            expect(result.repoQueueMap['ws-2'].history).toEqual([]);
+            expect(result.repoQueueMap['ws-2'].stats.queued).toBe(4);
+            expect(result.repoQueueMap['ws-2'].stats.running).toBe(1);
+        });
+    });
+
+    describe('REPO_QUEUE_UPDATED', () => {
+        it('does not clear task arrays when payload only updates stats', () => {
+            const state = makeState({
+                repoQueueMap: {
+                    'ws-keep': {
+                        queued: [{ id: 'q-keep' }],
+                        running: [{ id: 'r-keep' }],
+                        history: [{ id: 'h-keep' }],
+                        stats: { queued: 1, running: 1, completed: 0, failed: 0, cancelled: 0, total: 2, isPaused: false, isDraining: false },
+                    },
+                },
+            });
+
+            const result = queueReducer(state, {
+                type: 'REPO_QUEUE_UPDATED',
+                repoId: 'ws-keep',
+                queue: {
+                    stats: { queued: 5, running: 0, completed: 0, failed: 0, cancelled: 0, total: 5, isPaused: true, isDraining: false },
+                },
+            });
+
+            expect(result.repoQueueMap['ws-keep'].queued).toEqual([{ id: 'q-keep' }]);
+            expect(result.repoQueueMap['ws-keep'].running).toEqual([{ id: 'r-keep' }]);
+            expect(result.repoQueueMap['ws-keep'].history).toEqual([{ id: 'h-keep' }]);
+            expect(result.repoQueueMap['ws-keep'].stats.queued).toBe(5);
+            expect(result.repoQueueMap['ws-keep'].stats.isPaused).toBe(true);
         });
     });
 
