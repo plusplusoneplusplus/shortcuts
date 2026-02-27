@@ -7,6 +7,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Dialog, Button, Spinner } from './index';
 import { usePreferences } from '../hooks/usePreferences';
+import { useRecentPrompts } from '../hooks/useRecentPrompts';
 import { useApp } from '../context/AppContext';
 import { useGlobalToast } from '../context/ToastContext';
 import { getApiBase } from '../utils/config';
@@ -76,6 +77,7 @@ function collectMarkdownFiles(folder: TaskFolder): TaskFile[] {
 export function BulkFollowPromptDialog({ wsId, folder, onClose }: BulkFollowPromptDialogProps) {
     const { state } = useApp();
     const { model, setModel } = usePreferences();
+    const { recentItems, trackUsage } = useRecentPrompts();
     const { addToast } = useGlobalToast();
 
     const [models, setModels] = useState<string[]>([]);
@@ -109,9 +111,11 @@ export function BulkFollowPromptDialog({ wsId, folder, onClose }: BulkFollowProm
         return () => { cancelled = true; };
     }, [selectedWsId]);
 
-    const handleSubmit = useCallback(async (type: 'prompt' | 'skill', name: string, path?: string) => {
+    const handleSubmit = useCallback(async (type: 'prompt' | 'skill', name: string, path?: string, description?: string) => {
         setSubmitting(true);
         try {
+            trackUsage(type, name, path, description);
+
             const ws = state.workspaces.find((w: any) => w.id === selectedWsId);
             const workingDirectory = ws?.rootPath || '';
             const tasksFolder = await getTasksFolderPath(selectedWsId);
@@ -173,7 +177,7 @@ export function BulkFollowPromptDialog({ wsId, folder, onClose }: BulkFollowProm
         } finally {
             setSubmitting(false);
         }
-    }, [selectedWsId, taskFiles, model, state.workspaces, addToast, onClose]);
+    }, [selectedWsId, taskFiles, model, state.workspaces, addToast, onClose, trackUsage]);
 
     return (
         <Dialog open onClose={onClose} title="Follow Prompt" id="bulk-follow-prompt-dialog">
@@ -222,6 +226,25 @@ export function BulkFollowPromptDialog({ wsId, folder, onClose }: BulkFollowProm
                     </select>
                 </div>
 
+                {/* Last Used section */}
+                {recentItems.length > 0 && !loading && (
+                    <div>
+                        <div className="text-[10px] uppercase tracking-wider text-[#848484] mb-1">Last Used</div>
+                        {recentItems.map(item => (
+                            <button
+                                key={`${item.type}-${item.name}`}
+                                className="fp-item fp-recent-item w-full text-left flex items-center gap-2 px-2 py-1.5 text-sm rounded hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:opacity-50"
+                                data-name={item.name}
+                                disabled={submitting || taskFiles.length === 0}
+                                onClick={() => handleSubmit(item.type, item.name, item.path, item.description)}
+                            >
+                                <span>{item.type === 'prompt' ? '📝' : '⚡'}</span>
+                                <span className="truncate">{item.name}</span>
+                            </button>
+                        ))}
+                    </div>
+                )}
+
                 {/* Prompts and Skills list */}
                 {loading ? (
                     <div className="flex items-center gap-2 py-4 text-xs text-[#848484]">
@@ -260,7 +283,7 @@ export function BulkFollowPromptDialog({ wsId, folder, onClose }: BulkFollowProm
                                         className="fp-item w-full text-left flex items-center gap-2 px-2 py-1.5 text-sm rounded hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:opacity-50"
                                         data-name={s.name}
                                         disabled={submitting || taskFiles.length === 0}
-                                        onClick={() => handleSubmit('skill', s.name)}
+                                        onClick={() => handleSubmit('skill', s.name, undefined, s.description)}
                                     >
                                         <span>⚡</span>
                                         <span className="flex-shrink-0 font-medium">{s.name}</span>

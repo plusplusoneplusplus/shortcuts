@@ -17,12 +17,23 @@ import type { Route } from '@plusplusoneplusplus/coc-server';
 // Types
 // ============================================================================
 
+/** A recently-used prompt or skill in the Follow Prompt dialog. */
+export interface RecentFollowPromptEntry {
+    type: 'prompt' | 'skill';
+    name: string;
+    path?: string;
+    description?: string;
+    timestamp: number;
+}
+
 /** User UI preferences persisted on disk. */
 export interface UserPreferences {
     /** Last-selected AI model in the SPA (empty string = default). */
     lastModel?: string;
     /** Persisted dashboard theme ('light' | 'dark' | 'auto'). */
     theme?: 'light' | 'dark' | 'auto';
+    /** Recently-used prompts/skills in Follow Prompt dialog (max 10, newest first). */
+    recentFollowPrompts?: RecentFollowPromptEntry[];
 }
 
 // ============================================================================
@@ -83,6 +94,31 @@ export function validatePreferences(raw: unknown): UserPreferences {
 
     if (obj.theme === 'light' || obj.theme === 'dark' || obj.theme === 'auto') {
         result.theme = obj.theme;
+    }
+
+    if (Array.isArray(obj.recentFollowPrompts)) {
+        const validated: RecentFollowPromptEntry[] = [];
+        for (const entry of obj.recentFollowPrompts) {
+            if (
+                typeof entry === 'object' && entry !== null &&
+                (entry.type === 'prompt' || entry.type === 'skill') &&
+                typeof entry.name === 'string' && entry.name.length > 0 &&
+                typeof entry.timestamp === 'number'
+            ) {
+                const clean: RecentFollowPromptEntry = {
+                    type: entry.type,
+                    name: entry.name,
+                    timestamp: entry.timestamp,
+                };
+                if (typeof entry.path === 'string') clean.path = entry.path;
+                if (typeof entry.description === 'string') clean.description = entry.description;
+                validated.push(clean);
+            }
+            if (validated.length >= 10) break;
+        }
+        if (validated.length > 0) {
+            result.recentFollowPrompts = validated;
+        }
     }
 
     return result;

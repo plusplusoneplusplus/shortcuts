@@ -498,4 +498,117 @@ describe('BulkFollowPromptDialog', () => {
         fireEvent.click(document.getElementById('bfp-close')!);
         expect(onClose).toHaveBeenCalled();
     });
+
+    it('renders Last Used section when recent items exist', async () => {
+        mockFetch.mockImplementation((url: string) => {
+            if (url.includes('/preferences')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        recentFollowPrompts: [
+                            { type: 'prompt', name: 'review', path: 'review.prompt.md', timestamp: 1000 },
+                            { type: 'skill', name: 'draft', timestamp: 900 },
+                        ],
+                    }),
+                });
+            }
+            if (url.includes('/prompts')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ prompts: [{ name: 'review', relativePath: 'review.prompt.md' }] }),
+                });
+            }
+            if (url.includes('/skills')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ skills: [{ name: 'draft' }] }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+        });
+
+        await act(async () => {
+            renderDialog();
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('Last Used')).toBeDefined();
+            const recentButtons = document.querySelectorAll('.fp-recent-item');
+            expect(recentButtons.length).toBe(2);
+        });
+    });
+
+    it('does not render Last Used section when no recent items', async () => {
+        mockFetch.mockImplementation((url: string) => {
+            if (url.includes('/preferences')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({}),
+                });
+            }
+            if (url.includes('/prompts')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ prompts: [{ name: 'review', relativePath: 'review.prompt.md' }] }),
+                });
+            }
+            if (url.includes('/skills')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ skills: [] }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+        });
+
+        await act(async () => {
+            renderDialog();
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('review')).toBeDefined();
+        });
+
+        expect(screen.queryByText('Last Used')).toBeNull();
+    });
+
+    it('disables recent item buttons when folder has no files', async () => {
+        mockFetch.mockImplementation((url: string) => {
+            if (url.includes('/preferences')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        recentFollowPrompts: [
+                            { type: 'prompt', name: 'review', path: 'review.prompt.md', timestamp: 1000 },
+                        ],
+                    }),
+                });
+            }
+            if (url.includes('/prompts')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ prompts: [{ name: 'review', relativePath: 'review.prompt.md' }] }),
+                });
+            }
+            if (url.includes('/skills')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ skills: [] }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+        });
+
+        const emptyFolder = makeFolder({ singleDocuments: [], documentGroups: [], children: [] });
+        await act(async () => {
+            renderDialog(emptyFolder);
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('Last Used')).toBeDefined();
+        });
+
+        const recentBtn = document.querySelector('.fp-recent-item') as HTMLButtonElement;
+        expect(recentBtn.disabled).toBe(true);
+    });
 });

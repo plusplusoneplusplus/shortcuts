@@ -6,6 +6,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Dialog, Button, Spinner } from './index';
 import { usePreferences } from '../hooks/usePreferences';
+import { useRecentPrompts } from '../hooks/useRecentPrompts';
 import { useApp } from '../context/AppContext';
 import { useGlobalToast } from '../context/ToastContext';
 import { getApiBase } from '../utils/config';
@@ -43,6 +44,7 @@ async function getTasksFolderPath(wsId: string): Promise<string> {
 export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: FollowPromptDialogProps) {
     const { state } = useApp();
     const { model, setModel, loaded: prefsLoaded } = usePreferences();
+    const { recentItems, trackUsage } = useRecentPrompts();
     const { addToast } = useGlobalToast();
 
     const [models, setModels] = useState<string[]>([]);
@@ -75,9 +77,11 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
         return () => { cancelled = true; };
     }, [selectedWsId]);
 
-    const handleSubmit = useCallback(async (type: 'prompt' | 'skill', name: string, path?: string) => {
+    const handleSubmit = useCallback(async (type: 'prompt' | 'skill', name: string, path?: string, description?: string) => {
         setSubmitting(true);
         try {
+            trackUsage(type, name, path, description);
+
             const ws = state.workspaces.find((w: any) => w.id === selectedWsId);
             const workingDirectory = ws?.rootPath || '';
             const tasksFolder = await getTasksFolderPath(selectedWsId);
@@ -124,7 +128,7 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
         } finally {
             setSubmitting(false);
         }
-    }, [selectedWsId, taskPath, taskName, model, state.workspaces, addToast, onClose]);
+    }, [selectedWsId, taskPath, taskName, model, state.workspaces, addToast, onClose, trackUsage]);
 
     return (
         <>
@@ -170,6 +174,25 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
                         </select>
                     </div>
 
+                    {/* Last Used section */}
+                    {recentItems.length > 0 && !loading && (
+                        <div>
+                            <div className="text-[10px] uppercase tracking-wider text-[#848484] mb-1">Last Used</div>
+                            {recentItems.map(item => (
+                                <button
+                                    key={`${item.type}-${item.name}`}
+                                    className="fp-item fp-recent-item w-full text-left flex items-center gap-2 px-2 py-1.5 text-sm rounded hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:opacity-50"
+                                    data-name={item.name}
+                                    disabled={submitting}
+                                    onClick={() => handleSubmit(item.type, item.name, item.path, item.description)}
+                                >
+                                    <span>{item.type === 'prompt' ? '📝' : '⚡'}</span>
+                                    <span className="truncate">{item.name}</span>
+                                </button>
+                            ))}
+                        </div>
+                    )}
+
                     {/* Prompts and Skills list */}
                     {loading ? (
                         <div className="flex items-center gap-2 py-4 text-xs text-[#848484]">
@@ -208,7 +231,7 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
                                             className="fp-item w-full text-left flex items-center gap-2 px-2 py-1.5 text-sm rounded hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:opacity-50"
                                             data-name={s.name}
                                             disabled={submitting}
-                                            onClick={() => handleSubmit('skill', s.name)}
+                                            onClick={() => handleSubmit('skill', s.name, undefined, s.description)}
                                         >
                                             <span>⚡</span>
                                             <span className="flex-shrink-0 font-medium">{s.name}</span>

@@ -173,6 +173,34 @@ describe('readPreferences / writePreferences', () => {
         const prefs = readPreferences(tmpDir);
         expect(prefs.theme).toBeUndefined();
     });
+
+    it('round-trips recentFollowPrompts through write and read', () => {
+        const original = {
+            recentFollowPrompts: [
+                { type: 'prompt' as const, name: 'review', path: 'review.prompt.md', timestamp: 1000 },
+                { type: 'skill' as const, name: 'impl', description: 'Implement', timestamp: 900 },
+            ],
+        };
+        writePreferences(tmpDir, original);
+        const loaded = readPreferences(tmpDir);
+        expect(loaded).toEqual(original);
+    });
+
+    it('strips invalid recentFollowPrompts entries on read', () => {
+        fs.writeFileSync(
+            path.join(tmpDir, PREFERENCES_FILE_NAME),
+            JSON.stringify({
+                recentFollowPrompts: [
+                    { type: 'prompt', name: 'valid', timestamp: 1000 },
+                    { type: 'invalid', name: 'bad', timestamp: 900 },
+                ],
+            }),
+            'utf-8'
+        );
+        const prefs = readPreferences(tmpDir);
+        expect(prefs.recentFollowPrompts!.length).toBe(1);
+        expect(prefs.recentFollowPrompts![0].name).toBe('valid');
+    });
 });
 
 describe('validatePreferences', () => {
@@ -229,6 +257,89 @@ describe('validatePreferences', () => {
     it('accepts theme alongside lastModel', () => {
         const result = validatePreferences({ lastModel: 'gpt-5.2', theme: 'dark' });
         expect(result).toEqual({ lastModel: 'gpt-5.2', theme: 'dark' });
+    });
+
+    // -- recentFollowPrompts field --
+
+    it('accepts valid recentFollowPrompts array', () => {
+        const entries = [
+            { type: 'prompt', name: 'review', path: 'review.prompt.md', timestamp: 1000 },
+            { type: 'skill', name: 'impl', description: 'Implement changes', timestamp: 900 },
+        ];
+        const result = validatePreferences({ recentFollowPrompts: entries });
+        expect(result.recentFollowPrompts).toEqual(entries);
+    });
+
+    it('rejects non-array recentFollowPrompts', () => {
+        expect(validatePreferences({ recentFollowPrompts: 'not-array' })).toEqual({});
+        expect(validatePreferences({ recentFollowPrompts: 42 })).toEqual({});
+        expect(validatePreferences({ recentFollowPrompts: {} })).toEqual({});
+    });
+
+    it('filters out invalid entries from recentFollowPrompts', () => {
+        const entries = [
+            { type: 'prompt', name: 'valid', timestamp: 1000 },
+            { type: 'invalid', name: 'bad-type', timestamp: 900 },
+            { type: 'prompt', name: '', timestamp: 800 },  // empty name
+            { type: 'skill', timestamp: 700 },  // missing name
+            'not-an-object',
+            null,
+            { type: 'skill', name: 'also-valid', timestamp: 600 },
+        ];
+        const result = validatePreferences({ recentFollowPrompts: entries });
+        expect(result.recentFollowPrompts).toEqual([
+            { type: 'prompt', name: 'valid', timestamp: 1000 },
+            { type: 'skill', name: 'also-valid', timestamp: 600 },
+        ]);
+    });
+
+    it('caps recentFollowPrompts at 10 entries', () => {
+        const entries = Array.from({ length: 15 }, (_, i) => ({
+            type: 'prompt',
+            name: `prompt-${i}`,
+            timestamp: 1000 - i,
+        }));
+        const result = validatePreferences({ recentFollowPrompts: entries });
+        expect(result.recentFollowPrompts!.length).toBe(10);
+        expect(result.recentFollowPrompts![9].name).toBe('prompt-9');
+    });
+
+    it('strips unknown keys from recentFollowPrompts entries', () => {
+        const entries = [
+            { type: 'prompt', name: 'review', timestamp: 1000, extraKey: 'should-be-stripped' },
+        ];
+        const result = validatePreferences({ recentFollowPrompts: entries });
+        expect(result.recentFollowPrompts).toEqual([
+            { type: 'prompt', name: 'review', timestamp: 1000 },
+        ]);
+        expect((result.recentFollowPrompts![0] as any).extraKey).toBeUndefined();
+    });
+
+    it('preserves optional path and description fields', () => {
+        const entries = [
+            { type: 'prompt', name: 'review', path: 'a/b.prompt.md', timestamp: 1000 },
+            { type: 'skill', name: 'impl', description: 'Some description', timestamp: 900 },
+        ];
+        const result = validatePreferences({ recentFollowPrompts: entries });
+        expect(result.recentFollowPrompts![0].path).toBe('a/b.prompt.md');
+        expect(result.recentFollowPrompts![1].description).toBe('Some description');
+    });
+
+    it('omits recentFollowPrompts when all entries are invalid', () => {
+        const entries = [
+            { type: 'invalid', name: 'bad', timestamp: 1000 },
+            null,
+        ];
+        const result = validatePreferences({ recentFollowPrompts: entries });
+        expect(result.recentFollowPrompts).toBeUndefined();
+    });
+
+    it('rejects entries with missing timestamp', () => {
+        const entries = [
+            { type: 'prompt', name: 'no-timestamp' },
+        ];
+        const result = validatePreferences({ recentFollowPrompts: entries });
+        expect(result.recentFollowPrompts).toBeUndefined();
     });
 });
 
@@ -434,5 +545,54 @@ describe('Preferences REST API', () => {
 
         const res = await getJSON(`${baseUrl}/api/preferences`);
         expect(JSON.parse(res.body)).toEqual({ lastModel: 'gpt-5.2', theme: 'dark' });
+    });
+
+    // -- recentFollowPrompts persistence via API --
+
+    it('PATCH persists recentFollowPrompts', async () => {
+        const entries = [
+            { type: 'prompt', name: 'review', path: 'review.prompt.md', timestamp: 1000 },
+        ];
+        const res = await patchJSON(`${baseUrl}/api/preferences`, { recentFollowPrompts: entries });
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.recentFollowPrompts).toEqual(entries);
+
+        const get = await getJSON(`${baseUrl}/api/preferences`);
+        expect(JSON.parse(get.body).recentFollowPrompts).toEqual(entries);
+    });
+
+    it('PATCH merges recentFollowPrompts with existing fields', async () => {
+        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'gpt-5.2' });
+        const entries = [{ type: 'skill', name: 'impl', timestamp: 1000 }];
+        const res = await patchJSON(`${baseUrl}/api/preferences`, { recentFollowPrompts: entries });
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.lastModel).toBe('gpt-5.2');
+        expect(body.recentFollowPrompts).toEqual(entries);
+    });
+
+    it('PUT with recentFollowPrompts replaces all', async () => {
+        const entries = [{ type: 'prompt', name: 'review', timestamp: 1000 }];
+        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'x', recentFollowPrompts: entries });
+        const res = await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'y' });
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.recentFollowPrompts).toBeUndefined();
+    });
+
+    it('recentFollowPrompts survive server restart', async () => {
+        const entries = [
+            { type: 'prompt', name: 'review', path: 'r.md', timestamp: 1000 },
+            { type: 'skill', name: 'impl', description: 'Implement', timestamp: 900 },
+        ];
+        await putJSON(`${baseUrl}/api/preferences`, { recentFollowPrompts: entries });
+        await server.close();
+
+        server = await createExecutionServer({ port: 0, dataDir: tmpDir });
+        baseUrl = server.url;
+
+        const res = await getJSON(`${baseUrl}/api/preferences`);
+        expect(JSON.parse(res.body).recentFollowPrompts).toEqual(entries);
     });
 });

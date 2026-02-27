@@ -294,4 +294,143 @@ describe('FollowPromptDialog', () => {
             expect(body.model).toBeUndefined();
         });
     });
+
+    it('renders Last Used section when recent items exist', async () => {
+        mockFetch.mockImplementation((url: string) => {
+            if (url.includes('/preferences')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        recentFollowPrompts: [
+                            { type: 'prompt', name: 'review', path: 'review.prompt.md', timestamp: 1000 },
+                            { type: 'skill', name: 'impl', timestamp: 900 },
+                        ],
+                    }),
+                });
+            }
+            if (url.includes('/prompts')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ prompts: [{ name: 'review', relativePath: 'review.prompt.md' }] }),
+                });
+            }
+            if (url.includes('/skills')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ skills: [{ name: 'impl' }] }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+        });
+
+        await act(async () => {
+            renderDialog();
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('Last Used')).toBeDefined();
+            // Recent items should appear as buttons
+            const recentButtons = document.querySelectorAll('.fp-recent-item');
+            expect(recentButtons.length).toBe(2);
+        });
+    });
+
+    it('does not render Last Used section when no recent items', async () => {
+        mockFetch.mockImplementation((url: string) => {
+            if (url.includes('/preferences')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({}),
+                });
+            }
+            if (url.includes('/prompts')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ prompts: [{ name: 'review', relativePath: 'review.prompt.md' }] }),
+                });
+            }
+            if (url.includes('/skills')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ skills: [] }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+        });
+
+        await act(async () => {
+            renderDialog();
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('review')).toBeDefined();
+        });
+
+        expect(screen.queryByText('Last Used')).toBeNull();
+    });
+
+    it('clicking a recent item submits and tracks usage', async () => {
+        const onClose = vi.fn();
+
+        mockFetch.mockImplementation((url: string, opts?: any) => {
+            if (url.includes('/preferences') && !opts?.method) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        recentFollowPrompts: [
+                            { type: 'prompt', name: 'review', path: '.vscode/review.prompt.md', timestamp: 1000 },
+                        ],
+                    }),
+                });
+            }
+            if (url.includes('/prompts')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ prompts: [{ name: 'review', relativePath: '.vscode/review.prompt.md' }] }),
+                });
+            }
+            if (url.includes('/skills')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ skills: [] }),
+                });
+            }
+            if (url.includes('/tasks/settings')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ folderPath: '.vscode/tasks' }),
+                });
+            }
+            if (opts?.method === 'POST' && url.includes('/queue/tasks')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'q-1' }) });
+            }
+            if (opts?.method === 'PATCH') {
+                return Promise.resolve({ ok: true });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        await act(async () => {
+            renderDialog(onClose);
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('Last Used')).toBeDefined();
+        });
+
+        const recentButtons = document.querySelectorAll('.fp-recent-item');
+        await act(async () => {
+            fireEvent.click(recentButtons[0]);
+        });
+
+        await waitFor(() => {
+            const postCalls = mockFetch.mock.calls.filter(
+                ([_, opts]: [string, any]) => opts?.method === 'POST' && _.includes('/queue/tasks')
+            );
+            expect(postCalls.length).toBe(1);
+            const body = JSON.parse(postCalls[0][1].body);
+            expect(body.type).toBe('follow-prompt');
+            expect(body.payload.promptFilePath).toContain('review.prompt.md');
+        });
+    });
 });
