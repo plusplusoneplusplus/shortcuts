@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react';
 import { Button, Badge, Dialog, Spinner } from '../shared';
 import { useGlobalToast } from '../context/ToastContext';
 import { fetchPipelineContent, savePipelineContent, deletePipeline, runPipeline } from './pipeline-api';
+import { PipelineRunHistory } from './PipelineRunHistory';
 import type { PipelineInfo } from './repoGrouping';
 
 export interface PipelineDetailProps {
@@ -14,9 +15,10 @@ export interface PipelineDetailProps {
     onClose: () => void;
     onDeleted: () => void;
     onRunSuccess?: () => void;
+    refreshKey?: number;
 }
 
-export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRunSuccess }: PipelineDetailProps) {
+export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRunSuccess, refreshKey }: PipelineDetailProps) {
     const { addToast } = useGlobalToast();
     const [mode, setMode] = useState<'view' | 'edit'>('view');
     const [content, setContent] = useState('');
@@ -161,6 +163,15 @@ export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRu
                         />
                         {error && <p className="text-xs text-red-500">{error}</p>}
                     </div>
+                )}
+
+                {/* Run History */}
+                {mode === 'view' && (
+                    <PipelineRunHistory
+                        workspaceId={workspaceId}
+                        pipelineName={pipeline.name}
+                        refreshKey={refreshKey}
+                    />
                 )}
             </div>
 

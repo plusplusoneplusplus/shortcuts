@@ -17,6 +17,7 @@ export function PipelinesTab({ repo }: PipelinesTabProps) {
     const { state, dispatch } = useApp();
     const pipelines = repo.pipelines || [];
     const [showAddDialog, setShowAddDialog] = useState(false);
+    const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
 
     const selectedPipeline: PipelineInfo | null =
         pipelines.find(p => p.name === state.selectedPipelineName) ?? null;
@@ -36,8 +37,7 @@ export function PipelinesTab({ repo }: PipelinesTabProps) {
     };
 
     const handleRunSuccess = () => {
-        dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'queue' });
-        location.hash = '#repos/' + encodeURIComponent(repo.workspace.id) + '/queue';
+        setHistoryRefreshKey(k => k + 1);
     };
 
     return (
@@ -95,6 +95,7 @@ export function PipelinesTab({ repo }: PipelinesTabProps) {
                         onClose={handleClose}
                         onDeleted={handleDeleted}
                         onRunSuccess={handleRunSuccess}
+                        refreshKey={historyRefreshKey}
                     />
                 ) : (
                     <div className="flex items-center justify-center h-full text-sm text-[#848484]">

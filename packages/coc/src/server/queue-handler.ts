@@ -690,6 +690,16 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
                 history = history.filter(t => t.type === typeFilter);
             }
 
+            const pipelineName = typeof parsed.query.pipelineName === 'string' && parsed.query.pipelineName
+                ? parsed.query.pipelineName
+                : undefined;
+            if (pipelineName) {
+                history = history.filter(t =>
+                    (t as any).metadata?.pipelineName === pipelineName ||
+                    (t as any).displayName?.includes(pipelineName)
+                );
+            }
+
             // Enrich chat tasks with conversation metadata when filtering by chat type
             if (typeFilter === 'chat') {
                 await enrichChatTasks(history, store);

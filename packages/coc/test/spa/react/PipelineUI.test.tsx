@@ -14,6 +14,11 @@ import { PipelinesTab } from '../../../src/server/spa/client/react/repos/Pipelin
 import type { RepoData, PipelineInfo } from '../../../src/server/spa/client/react/repos/repoGrouping';
 import * as pipelineApi from '../../../src/server/spa/client/react/repos/pipeline-api';
 
+// Mock fetchApi used by PipelineRunHistory (rendered inside PipelineDetail)
+vi.mock('../../../src/server/spa/client/react/hooks/useApi', () => ({
+    fetchApi: vi.fn().mockResolvedValue({ history: [] }),
+}));
+
 const mockAddToast = vi.fn();
 
 function Wrap({ children }: { children: ReactNode }) {
@@ -1086,7 +1091,7 @@ describe('PipelinesTab (split-panel layout)', () => {
         expect(screen.getByText(/Create your first pipeline by describing what it should do/)).toBeDefined();
     });
 
-    it('successful ▶ Run switches to queue tab and updates hash', async () => {
+    it('successful ▶ Run stays on Pipelines tab (no auto-navigation to queue)', async () => {
         vi.spyOn(pipelineApi, 'fetchPipelineContent').mockResolvedValue({
             content: sampleYaml,
             path: samplePipeline.path,
@@ -1103,7 +1108,8 @@ describe('PipelinesTab (split-panel layout)', () => {
         fireEvent.click(screen.getByTestId('pipeline-run-btn'));
         await waitFor(() => {
             expect(pipelineApi.runPipeline).toHaveBeenCalledWith('ws-1', 'my-pipeline');
-            expect(location.hash).toBe('#repos/ws-1/queue');
+            // Hash stays on pipelines (no auto-switch to queue tab)
+            expect(location.hash).toBe('#repos/ws-1/pipelines/my-pipeline');
         });
     });
 });
