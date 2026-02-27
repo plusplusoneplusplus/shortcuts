@@ -873,7 +873,8 @@ describe('POST /api/processes/:id/message', () => {
             expect(updated!.conversationTurns![0].content.length).toBe(100_000);
             expect(mockBridge.executeFollowUp).toHaveBeenCalledWith(
                 'proc-large-store',
-                largeContent
+                largeContent,
+                undefined
             );
         });
     });

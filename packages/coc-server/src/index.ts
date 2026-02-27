@@ -81,6 +81,9 @@ export {
 } from './api-handler';
 export type { QueueExecutorBridge } from './api-handler';
 
+// Image utilities
+export { parseDataUrl, saveImagesToTempFiles, cleanupTempDir } from './image-utils';
+
 // WebSocket server
 export {
     ProcessWebSocketServer,

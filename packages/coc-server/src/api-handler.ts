@@ -16,9 +16,11 @@ import * as fs from 'fs';
 import * as os from 'os';
 import type { ProcessStore, ProcessFilter, AIProcess, AIProcessStatus, AIProcessType, WorkspaceInfo, ConversationTurn } from '@plusplusoneplusplus/pipeline-core';
 import { deserializeProcess } from '@plusplusoneplusplus/pipeline-core';
+import type { Attachment } from '@plusplusoneplusplus/pipeline-core';
 import type { Route } from './types';
 import { handleProcessStream } from './sse-handler';
 import { handleAPIError, invalidJSON, missingFields, notFound, badRequest, internalError, APIError } from './errors';
+import { saveImagesToTempFiles, cleanupTempDir } from './image-utils';
 
 /**
  * Bridge interface for executing follow-up messages on existing AI sessions.
@@ -26,7 +28,7 @@ import { handleAPIError, invalidJSON, missingFields, notFound, badRequest, inter
  * and will be moved in a later commit.
  */
 export interface QueueExecutorBridge {
-    executeFollowUp(processId: string, message: string): Promise<void>;
+    executeFollowUp(processId: string, message: string, attachments?: Attachment[]): Promise<void>;
     isSessionAlive(processId: string): Promise<boolean>;
 }
 
@@ -632,6 +634,20 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                 return handleAPIError(res, missingFields(['content']));
             }
 
+            // Decode optional base64 images to temp files
+            let attachments: Attachment[] | undefined;
+            let imageTempDir: string | undefined;
+            if (Array.isArray(body.images) && body.images.length > 0) {
+                const validImages = body.images
+                    .filter((img: unknown) => typeof img === 'string')
+                    .slice(0, 10);
+                if (validImages.length > 0) {
+                    const result = saveImagesToTempFiles(validImages);
+                    imageTempDir = result.tempDir;
+                    attachments = result.attachments.length > 0 ? result.attachments : undefined;
+                }
+            }
+
             // Validate the process has an SDK session to follow up on
             if (!process.sdkSessionId) {
                 return handleAPIError(res, new APIError(409, 'Process has no SDK session — follow-up not supported', 'CONFLICT'));
@@ -664,8 +680,10 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             });
 
             // Delegate AI execution to the queue executor bridge (fire-and-forget)
-            bridge.executeFollowUp(id, body.content).catch(() => {
+            bridge.executeFollowUp(id, body.content, attachments).catch(() => {
                 // Error handling is done inside executeFollowUp
+            }).finally(() => {
+                if (imageTempDir) { cleanupTempDir(imageTempDir); }
             });
 
             globalThis.process.stderr.write(`[Process] message id=${id} turnIndex=${turnIndex}\n`);

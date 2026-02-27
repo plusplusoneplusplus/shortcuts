@@ -152,6 +152,11 @@ function validateAndParseTask(taskSpec: any): TaskValidationResult {
         payload.workingDirectory = taskSpec.workingDirectory.trim();
     }
 
+    // Promote top-level images into payload when not already present
+    if (Array.isArray(taskSpec.images) && taskSpec.images.length > 0 && !payload.images) {
+        payload.images = taskSpec.images.filter((img: unknown) => typeof img === 'string');
+    }
+
     const displayName = (typeof taskSpec.displayName === 'string' && taskSpec.displayName.trim())
         ? taskSpec.displayName.trim()
         : generateDisplayName(taskSpec.type, payload);

@@ -44,8 +44,9 @@ import {
     parsePipelineYAMLSync,
     executePipeline,
 } from '@plusplusoneplusplus/pipeline-core';
-import type { ProcessStore, AIProcess, ConversationTurn, ToolEvent, TimelineItem, CopilotSDKService, TaskGenerationPayload, RunPipelinePayload, SelectedContext } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore, AIProcess, ConversationTurn, ToolEvent, TimelineItem, CopilotSDKService, TaskGenerationPayload, RunPipelinePayload, SelectedContext, Attachment } from '@plusplusoneplusplus/pipeline-core';
 import { createCLIAIInvoker } from '../ai-invoker';
+import { saveImagesToTempFiles, cleanupTempDir } from '@plusplusoneplusplus/coc-server';
 
 // ============================================================================
 // Types
@@ -73,7 +74,7 @@ export interface QueueExecutorBridgeOptions {
  * Implemented by CLITaskExecutor, surfaced via the bridge factory.
  */
 export interface QueueExecutorBridge {
-    executeFollowUp(processId: string, message: string): Promise<void>;
+    executeFollowUp(processId: string, message: string, attachments?: Attachment[]): Promise<void>;
     /** Check whether the underlying SDK session for a process is still alive. */
     isSessionAlive(processId: string): Promise<boolean>;
 }
@@ -298,7 +299,7 @@ export class CLITaskExecutor implements TaskExecutor {
      * 4. On completion, append assistant turn to conversationTurns
      * 5. Update process status back to 'completed'
      */
-    async executeFollowUp(processId: string, message: string): Promise<void> {
+    async executeFollowUp(processId: string, message: string, attachments?: Attachment[]): Promise<void> {
         const logger = getLogger();
         const startTime = Date.now();
 
@@ -321,6 +322,7 @@ export class CLITaskExecutor implements TaskExecutor {
             const result = await this.aiService.sendFollowUp(process.sdkSessionId, message, {
                 workingDirectory,
                 onPermissionRequest: this.approvePermissions ? approveAllPermissions : undefined,
+                attachments,
                 onStreamingChunk: (chunk: string) => {
                     // Accumulate for persistence
                     const existing = this.outputBuffers.get(processId) ?? '';
@@ -567,6 +569,20 @@ export class CLITaskExecutor implements TaskExecutor {
         this.outputBuffers.set(processId, '');
         this.store.registerFlushHandler?.(processId, () => this.flushConversationTurn(processId, true));
 
+        // Decode optional base64 images from payload
+        let attachments: Attachment[] | undefined;
+        let imageTempDir: string | undefined;
+        const payloadImages = (task.payload as any)?.images;
+        if (Array.isArray(payloadImages) && payloadImages.length > 0) {
+            const validImages = payloadImages.filter((img: unknown) => typeof img === 'string').slice(0, 10);
+            if (validImages.length > 0) {
+                const result = saveImagesToTempFiles(validImages);
+                imageTempDir = result.tempDir;
+                attachments = result.attachments.length > 0 ? result.attachments : undefined;
+            }
+        }
+
+        try {
         const availability = await this.aiService.isAvailable();
         if (!availability.available) {
             throw new Error(`Copilot SDK not available: ${availability.error || 'unknown reason'}`);
@@ -581,6 +597,7 @@ export class CLITaskExecutor implements TaskExecutor {
             workingDirectory,
             timeoutMs,
             keepAlive: true,
+            attachments,
             onPermissionRequest: this.approvePermissions ? approveAllPermissions : undefined,
             // Stream response chunks to the process store for real-time UI updates
             onStreamingChunk: (chunk: string) => {
@@ -645,6 +662,9 @@ export class CLITaskExecutor implements TaskExecutor {
             sessionId: result.sessionId,
             toolCalls: result.toolCalls,
         };
+        } finally {
+            if (imageTempDir) { cleanupTempDir(imageTempDir); }
+        }
     }
 
     private async executeTaskGeneration(task: QueuedTask): Promise<unknown> {
