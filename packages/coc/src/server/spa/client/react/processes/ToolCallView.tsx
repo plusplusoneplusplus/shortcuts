@@ -67,6 +67,10 @@ function shortenPath(p: string): string {
         .replace(/^\/home\/[^/]+\//, '~/');
 }
 
+function isImageDataUrl(s: string): boolean {
+    return /^data:image\/(png|jpeg|jpg|gif|webp|svg\+xml);base64,/i.test(s.trim());
+}
+
 function getToolSummary(toolName: string, args: any): string {
     if (!args || typeof args !== 'object') return '';
 
@@ -364,9 +368,18 @@ export function ToolCallView({
                     {resultText && (
                         <div>
                             <div className="text-[10px] uppercase text-[#848484] mb-0.5">Result</div>
-                            <pre className="overflow-x-auto text-[11px] whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc]">
-                                <code>{visibleResult}</code>
-                            </pre>
+                            {isImageDataUrl(resultText) ? (
+                                <img
+                                    src={resultText}
+                                    alt="Tool result image"
+                                    className="max-w-full max-h-64 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] cursor-pointer"
+                                    data-testid="tool-result-image"
+                                />
+                            ) : (
+                                <pre className="overflow-x-auto text-[11px] whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc]">
+                                    <code>{visibleResult}</code>
+                                </pre>
+                            )}
                         </div>
                     )}
                     {toolCall.error && (

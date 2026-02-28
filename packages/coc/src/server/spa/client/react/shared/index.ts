@@ -15,3 +15,5 @@ export type { SourceEditorProps } from './SourceEditor';
 export { cn } from './cn';
 export { ImagePreviews } from './ImagePreviews';
 export type { ImagePreviewsProps } from './ImagePreviews';
+export { ImageGallery } from './ImageGallery';
+export type { ImageGalleryProps } from './ImageGallery';

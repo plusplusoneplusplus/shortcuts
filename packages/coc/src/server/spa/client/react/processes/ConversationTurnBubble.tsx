@@ -2,7 +2,7 @@
  * ConversationTurnBubble — role-aware chat bubble for conversation turns.
  */
 import React, { useState } from 'react';
-import { cn } from '../shared';
+import { cn, ImageGallery } from '../shared';
 import type { ClientConversationTurn } from '../types/dashboard';
 import { MarkdownView } from './MarkdownView';
 import { ToolCallView } from './ToolCallView';
@@ -462,6 +462,9 @@ export function ConversationTurnBubble({ turn }: ConversationTurnBubbleProps) {
 
                 <div className="space-y-2 chat-message-content">
                     {isUser && userContentHtml && <MarkdownView html={userContentHtml} />}
+                    {isUser && turn.images && turn.images.length > 0 && (
+                        <ImageGallery images={turn.images} />
+                    )}
                     {!isUser && assistantRender && assistantRender.chunks.map((chunk) => {
                         if (chunk.kind === 'content' && chunk.html) {
                             // Content emitted while a sub-task is active should render under that task.
