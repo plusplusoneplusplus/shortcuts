@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
-import ReactDOM from 'react-dom';
 import { cn } from './cn';
+import { ImageLightbox } from './ImageLightbox';
 
 export interface ImageGalleryProps {
     /** Base64 data-URL strings to render as thumbnails */
@@ -38,38 +38,11 @@ export function ImageGallery({ images, className }: ImageGalleryProps) {
                     </div>
                 ))}
             </div>
-            {lightboxIndex !== null && (
-                <ImageLightbox
-                    src={images[lightboxIndex]}
-                    alt={`Attached image ${lightboxIndex + 1}`}
-                    onClose={closeLightbox}
-                />
-            )}
-        </>
-    );
-}
-
-interface ImageLightboxProps {
-    src: string;
-    alt: string;
-    onClose: () => void;
-}
-
-function ImageLightbox({ src, alt, onClose }: ImageLightboxProps) {
-    return ReactDOM.createPortal(
-        <div
-            className="fixed inset-0 z-[10003] flex items-center justify-center bg-black/80"
-            data-testid="image-lightbox"
-            onClick={onClose}
-            onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
-        >
-            <img
-                src={src}
-                alt={alt}
-                className="max-w-[90vw] max-h-[90vh] object-contain rounded"
-                onClick={(e) => e.stopPropagation()}
+            <ImageLightbox
+                src={lightboxIndex !== null ? images[lightboxIndex] : null}
+                alt={lightboxIndex !== null ? `Attached image ${lightboxIndex + 1}` : undefined}
+                onClose={closeLightbox}
             />
-        </div>,
-        document.body
+        </>
     );
 }

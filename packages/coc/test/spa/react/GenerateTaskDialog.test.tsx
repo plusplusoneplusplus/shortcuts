@@ -794,4 +794,40 @@ describe('GenerateTaskDialog', () => {
         fireEvent.click(removeButtons[1]);
         expect(mockRemoveImage).toHaveBeenCalledWith(1);
     });
+
+    it('clicking a thumbnail opens the lightbox', async () => {
+        mockUseImagePaste.mockReturnValue({
+            images: ['data:image/png;base64,abc'],
+            addFromPaste: mockAddFromPaste,
+            removeImage: mockRemoveImage,
+            clearImages: mockClearImages,
+        });
+
+        await act(async () => { renderDialog(); });
+
+        expect(screen.queryByTestId('image-lightbox')).toBeNull();
+
+        const img = document.querySelector('#gen-task-images img')!;
+        fireEvent.click(img);
+
+        expect(screen.getByTestId('image-lightbox')).toBeTruthy();
+        const lightboxImg = screen.getByTestId('image-lightbox').querySelector('img');
+        expect(lightboxImg?.getAttribute('src')).toBe('data:image/png;base64,abc');
+    });
+
+    it('remove button does not open the lightbox', async () => {
+        mockUseImagePaste.mockReturnValue({
+            images: ['data:image/png;base64,abc'],
+            addFromPaste: mockAddFromPaste,
+            removeImage: mockRemoveImage,
+            clearImages: mockClearImages,
+        });
+
+        await act(async () => { renderDialog(); });
+
+        const removeBtn = document.querySelector('[aria-label="Remove image 1"]')!;
+        fireEvent.click(removeBtn);
+
+        expect(screen.queryByTestId('image-lightbox')).toBeNull();
+    });
 });

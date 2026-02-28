@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { Dialog, Button } from '../shared';
+import { Dialog, Button, ImageLightbox } from '../shared';
 import { useQueueTaskGeneration } from '../hooks/useQueueTaskGeneration';
 import { usePreferences } from '../hooks/usePreferences';
 import { useImagePaste } from '../hooks/useImagePaste';
@@ -71,6 +71,9 @@ export function GenerateTaskDialog({
 
     // --- image paste ---
     const { images, addFromPaste, removeImage, clearImages } = useImagePaste();
+
+    // --- image lightbox ---
+    const [viewImageIndex, setViewImageIndex] = useState<number | null>(null);
 
     // --- fetch models on mount ---
     useEffect(() => {
@@ -188,7 +191,8 @@ export function GenerateTaskDialog({
                                     <img
                                         src={img}
                                         alt={`Attachment ${i + 1}`}
-                                        className="w-[80px] h-[80px] object-cover rounded border border-[#e0e0e0] dark:border-[#3c3c3c]"
+                                        className="w-[80px] h-[80px] object-cover rounded border border-[#e0e0e0] dark:border-[#3c3c3c] cursor-zoom-in"
+                                        onClick={() => setViewImageIndex(i)}
                                     />
                                     <button
                                         className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center opacity-80 hover:opacity-100"
@@ -301,6 +305,13 @@ export function GenerateTaskDialog({
                         <option value="normal">Normal</option>
                     </select>
                 </div>
+
+                {/* Image lightbox */}
+                <ImageLightbox
+                    src={viewImageIndex !== null ? images[viewImageIndex] : null}
+                    alt={viewImageIndex !== null ? `Attachment ${viewImageIndex + 1}` : undefined}
+                    onClose={() => setViewImageIndex(null)}
+                />
 
                 {/* Error banner with Retry */}
                 {isError && (

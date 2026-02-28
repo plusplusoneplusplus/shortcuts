@@ -62,4 +62,32 @@ describe('ImagePreviews', () => {
         const container = screen.getByTestId('previews');
         expect(container.className).toContain('my-extra');
     });
+
+    it('clicking a thumbnail opens the lightbox', () => {
+        render(<ImagePreviews images={[IMG_A]} onRemove={vi.fn()} />);
+        expect(screen.queryByTestId('image-lightbox')).toBeNull();
+
+        fireEvent.click(screen.getByRole('img'));
+        expect(screen.getByTestId('image-lightbox')).toBeTruthy();
+
+        const lightboxImg = screen.getByTestId('image-lightbox').querySelector('img');
+        expect(lightboxImg?.getAttribute('src')).toBe(IMG_A);
+    });
+
+    it('remove button does NOT open the lightbox', () => {
+        render(<ImagePreviews images={[IMG_A]} onRemove={vi.fn()} />);
+        fireEvent.click(screen.getByTestId('remove-image-0'));
+        expect(screen.queryByTestId('image-lightbox')).toBeNull();
+    });
+
+    it('closing the lightbox returns to thumbnail view', () => {
+        render(<ImagePreviews images={[IMG_A]} onRemove={vi.fn()} />);
+
+        fireEvent.click(screen.getByRole('img'));
+        expect(screen.getByTestId('image-lightbox')).toBeTruthy();
+
+        // Click backdrop to close
+        fireEvent.click(screen.getByTestId('image-lightbox'));
+        expect(screen.queryByTestId('image-lightbox')).toBeNull();
+    });
 });

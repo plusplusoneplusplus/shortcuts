@@ -17,3 +17,5 @@ export { ImagePreviews } from './ImagePreviews';
 export type { ImagePreviewsProps } from './ImagePreviews';
 export { ImageGallery } from './ImageGallery';
 export type { ImageGalleryProps } from './ImageGallery';
+export { ImageLightbox } from './ImageLightbox';
+export type { ImageLightboxProps } from './ImageLightbox';
