@@ -56,6 +56,7 @@ export function GenerateTaskDialog({
     const [model, setModel] = useState('');
     const [priority, setPriority] = useState<'high' | 'normal' | 'low'>('normal');
     const [depth, setDepth] = useState<'deep' | 'normal'>('deep');
+    const [includeContext, setIncludeContext] = useState(false);
 
     useEffect(() => {
         if (savedModel && !model) setModel(savedModel);
@@ -123,12 +124,12 @@ export function GenerateTaskDialog({
             name: name.trim() || undefined,
             targetFolder: targetFolder || undefined,
             model: model || undefined,
-            mode: 'from-feature',
+            mode: includeContext ? 'from-feature' : undefined,
             depth,
             priority,
             images: images.length > 0 ? images : undefined,
         });
-    }, [prompt, name, targetFolder, model, depth, priority, images, enqueue]);
+    }, [prompt, name, targetFolder, model, includeContext, depth, priority, images, enqueue]);
 
     const isSubmitting = status === 'submitting';
     const isQueued = status === 'queued';
@@ -256,6 +257,22 @@ export function GenerateTaskDialog({
                             ))}
                     </select>
                 </div>
+
+                {/* Include folder context (optional) */}
+                <label className="flex items-start gap-2 cursor-pointer select-none">
+                    <input
+                        id="gen-task-include-context"
+                        type="checkbox"
+                        className="mt-0.5"
+                        checked={includeContext}
+                        onChange={e => setIncludeContext(e.target.checked)}
+                        disabled={isSubmitting || isQueued}
+                    />
+                    <span className="flex flex-col">
+                        <span className="text-xs text-[#1e1e1e] dark:text-[#cccccc]">Include folder context</span>
+                        <span className="text-[10px] text-[#848484]">Attach plan.md, spec.md, and related files from the target folder</span>
+                    </span>
+                </label>
 
                 {/* Model (optional) */}
                 <div className="flex flex-col gap-1">

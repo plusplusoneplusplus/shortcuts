@@ -167,7 +167,7 @@ describe('GenerateTaskDialog', () => {
             name: undefined,
             targetFolder: undefined,
             model: undefined,
-            mode: 'from-feature',
+            mode: undefined,
             depth: 'deep',
             priority: 'normal',
         });
@@ -996,5 +996,77 @@ describe('GenerateTaskDialog', () => {
         const kbd = document.querySelector('#gen-task-generate kbd');
         expect(kbd).toBeTruthy();
         expect(kbd!.textContent).toBe('Ctrl+Enter');
+    });
+
+    // ── include folder context checkbox tests ───────────────────────────────
+
+    it('renders include context checkbox unchecked by default', async () => {
+        await act(async () => { renderDialog(); });
+
+        const checkbox = document.getElementById('gen-task-include-context') as HTMLInputElement;
+        expect(checkbox).toBeDefined();
+        expect(checkbox).not.toBeNull();
+        expect(checkbox.type).toBe('checkbox');
+        expect(checkbox.checked).toBe(false);
+    });
+
+    it('submit sends mode undefined when include context is unchecked (default)', async () => {
+        const enqueueSpy = vi.fn();
+        mockUseQueueTaskGeneration.mockReturnValue(makeHookReturn({ enqueue: enqueueSpy }));
+
+        await act(async () => { renderDialog(); });
+
+        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
+        fireEvent.change(textarea, { target: { value: 'hello' } });
+
+        await act(async () => {
+            fireEvent.click(screen.getByText('Generate'));
+        });
+
+        expect(enqueueSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ mode: undefined }),
+        );
+    });
+
+    it('submit sends mode from-feature when include context is checked', async () => {
+        const enqueueSpy = vi.fn();
+        mockUseQueueTaskGeneration.mockReturnValue(makeHookReturn({ enqueue: enqueueSpy }));
+
+        await act(async () => { renderDialog(); });
+
+        const checkbox = document.getElementById('gen-task-include-context') as HTMLInputElement;
+        fireEvent.click(checkbox);
+        expect(checkbox.checked).toBe(true);
+
+        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
+        fireEvent.change(textarea, { target: { value: 'hello' } });
+
+        await act(async () => {
+            fireEvent.click(screen.getByText('Generate'));
+        });
+
+        expect(enqueueSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ mode: 'from-feature' }),
+        );
+    });
+
+    it('include context checkbox is disabled while submitting', async () => {
+        mockUseQueueTaskGeneration.mockReturnValue(
+            makeHookReturn({ status: 'submitting' }),
+        );
+
+        await act(async () => { renderDialog(); });
+
+        const checkbox = document.getElementById('gen-task-include-context') as HTMLInputElement;
+        expect(checkbox.disabled).toBe(true);
+    });
+
+    it('include context checkbox shows descriptive label', async () => {
+        await act(async () => { renderDialog(); });
+
+        const label = document.getElementById('gen-task-include-context')!.closest('label');
+        expect(label).toBeTruthy();
+        expect(label!.textContent).toContain('Include folder context');
+        expect(label!.textContent).toContain('plan.md');
     });
 });
