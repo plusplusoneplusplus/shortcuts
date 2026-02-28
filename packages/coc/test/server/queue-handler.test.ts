@@ -1374,6 +1374,90 @@ describe('Queue Handler', () => {
     });
 
     // ========================================================================
+    // Chat history includes active tasks
+    // ========================================================================
+
+    describe('GET /api/queue/history?type=chat — includes running and queued tasks', () => {
+        it('should include queued chat tasks in history response', async () => {
+            const srv = await startServer();
+            // Pause so tasks stay queued
+            await postJSON(`${srv.url}/api/queue/pause`, {});
+            await postJSON(`${srv.url}/api/queue`, makeTask({ type: 'chat', displayName: 'Active chat', payload: { prompt: 'hello' } }));
+
+            const res = await request(`${srv.url}/api/queue/history?type=chat`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.history).toHaveLength(1);
+            expect(body.history[0].type).toBe('chat');
+            expect(body.history[0].status).toBe('queued');
+        });
+
+        it('should merge queued and completed chat tasks without duplicates', async () => {
+            const srv = await startServer();
+            await postJSON(`${srv.url}/api/queue/pause`, {});
+            // Create two chat tasks
+            const r1 = await postJSON(`${srv.url}/api/queue`, makeTask({ type: 'chat', displayName: 'Chat 1', payload: { prompt: 'hi' } }));
+            const r2 = await postJSON(`${srv.url}/api/queue`, makeTask({ type: 'chat', displayName: 'Chat 2', payload: { prompt: 'hey' } }));
+            const id1 = JSON.parse(r1.body).task.id;
+            // Cancel first to move it to history; second stays queued
+            await request(`${srv.url}/api/queue/${id1}`, { method: 'DELETE' });
+
+            const res = await request(`${srv.url}/api/queue/history?type=chat`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.history).toHaveLength(2);
+            const statuses = body.history.map((t: any) => t.status);
+            expect(statuses).toContain('cancelled');
+            expect(statuses).toContain('queued');
+            // No duplicates
+            const ids = body.history.map((t: any) => t.id);
+            expect(new Set(ids).size).toBe(ids.length);
+        });
+
+        it('should NOT include queued non-chat tasks in chat history', async () => {
+            const srv = await startServer();
+            await postJSON(`${srv.url}/api/queue/pause`, {});
+            await postJSON(`${srv.url}/api/queue`, makeTask({ type: 'custom', displayName: 'Custom task' }));
+            await postJSON(`${srv.url}/api/queue`, makeTask({ type: 'chat', displayName: 'Chat task', payload: { prompt: 'hi' } }));
+
+            const res = await request(`${srv.url}/api/queue/history?type=chat`);
+            const body = JSON.parse(res.body);
+            expect(body.history).toHaveLength(1);
+            expect(body.history[0].type).toBe('chat');
+        });
+
+        it('should NOT include active tasks when type filter is not chat', async () => {
+            const srv = await startServer();
+            await postJSON(`${srv.url}/api/queue/pause`, {});
+            await postJSON(`${srv.url}/api/queue`, makeTask({ type: 'custom', displayName: 'Queued custom' }));
+
+            const res = await request(`${srv.url}/api/queue/history?type=custom`);
+            const body = JSON.parse(res.body);
+            // Only history (completed/failed/cancelled) should be returned for non-chat types
+            expect(body.history).toHaveLength(0);
+        });
+
+        it('should sort merged results by createdAt descending', async () => {
+            const srv = await startServer();
+            await postJSON(`${srv.url}/api/queue/pause`, {});
+
+            // Create tasks with a slight ordering
+            const r1 = await postJSON(`${srv.url}/api/queue`, makeTask({ type: 'chat', displayName: 'Older chat', payload: { prompt: 'first' } }));
+            const r2 = await postJSON(`${srv.url}/api/queue`, makeTask({ type: 'chat', displayName: 'Newer chat', payload: { prompt: 'second' } }));
+            const id1 = JSON.parse(r1.body).task.id;
+            // Cancel first to move to history
+            await request(`${srv.url}/api/queue/${id1}`, { method: 'DELETE' });
+
+            const res = await request(`${srv.url}/api/queue/history?type=chat`);
+            const body = JSON.parse(res.body);
+            expect(body.history).toHaveLength(2);
+            // Newer task should come first (higher createdAt)
+            const timestamps = body.history.map((t: any) => t.createdAt);
+            expect(timestamps[0]).toBeGreaterThanOrEqual(timestamps[1]);
+        });
+    });
+
+    // ========================================================================
     // Task config
     // ========================================================================
 

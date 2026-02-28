@@ -690,6 +690,34 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
                 history = history.filter(t => t.type === typeFilter);
             }
 
+            // For chat type, include running and queued tasks so the chat
+            // session list shows newly created chats that haven't completed yet.
+            if (typeFilter === 'chat') {
+                const seenIds = new Set(history.map(t => t.id as string));
+                const collectActive = (mgr: TaskQueueManager) => {
+                    for (const task of [...mgr.getRunning(), ...mgr.getQueued()]) {
+                        if ((task.type as string) === 'chat' && !seenIds.has(task.id)) {
+                            seenIds.add(task.id);
+                            history.push(serializeTask(task));
+                        }
+                    }
+                };
+                if (repoId) {
+                    const mgr = await getManagerByRepoIdentifier(repoId);
+                    if (mgr) collectActive(mgr);
+                } else {
+                    for (const m of bridge.registry.getAllQueues().values()) {
+                        collectActive(m);
+                    }
+                }
+                // Sort combined list by createdAt descending
+                history.sort((a, b) => {
+                    const ta = (a.createdAt as number) ?? 0;
+                    const tb = (b.createdAt as number) ?? 0;
+                    return tb - ta;
+                });
+            }
+
             const pipelineName = typeof parsed.query.pipelineName === 'string' && parsed.query.pipelineName
                 ? parsed.query.pipelineName
                 : undefined;

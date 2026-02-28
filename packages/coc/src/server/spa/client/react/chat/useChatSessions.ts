@@ -14,6 +14,8 @@ export interface UseChatSessionsResult {
     loading: boolean;
     error: string | null;
     refresh: () => void;
+    /** Optimistically prepend a session to the top of the list. */
+    prependSession: (session: ChatSessionItem) => void;
 }
 
 function toSessionItem(task: any): ChatSessionItem {
@@ -59,5 +61,12 @@ export function useChatSessions(workspaceId: string): UseChatSessionsResult {
         return () => { mountedRef.current = false; };
     }, [fetchSessions]);
 
-    return { sessions, loading, error, refresh: fetchSessions };
+    const prependSession = useCallback((session: ChatSessionItem) => {
+        setSessions(prev => {
+            if (prev.some(s => s.id === session.id)) return prev;
+            return [session, ...prev];
+        });
+    }, []);
+
+    return { sessions, loading, error, refresh: fetchSessions, prependSession };
 }

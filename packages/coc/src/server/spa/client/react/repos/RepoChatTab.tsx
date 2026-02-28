@@ -286,6 +286,13 @@ export function RepoChatTab({ workspaceId, workspacePath }: RepoChatTabProps) {
             };
             setTurnsAndCache([userTurn, assistantPlaceholder]);
             initialImagePaste.clearImages();
+            sessionsHook.prependSession({
+                id: newTaskId,
+                processId: body.task?.processId,
+                status: body.task?.status ?? 'queued',
+                createdAt: new Date().toISOString(),
+                firstMessage: prompt,
+            });
             sessionsHook.refresh();
         } catch (err: any) {
             setError(err?.message ?? 'Failed to start chat.');
