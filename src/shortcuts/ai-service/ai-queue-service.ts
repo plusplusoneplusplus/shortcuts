@@ -45,8 +45,21 @@ import { getWorkspaceInfo } from './workspace-identity';
 const CONFIG_SECTION = 'workspaceShortcuts.queue';
 const CONFIG_ENABLED = 'enabled';
 const CONFIG_MAX_CONCURRENCY = 'maxConcurrency';
+const CONFIG_SHARED_CONCURRENCY = 'sharedConcurrency';
+const CONFIG_EXCLUSIVE_CONCURRENCY = 'exclusiveConcurrency';
 const CONFIG_DEFAULT_PRIORITY = 'defaultPriority';
 const CONFIG_NOTIFY_ON_COMPLETE = 'notifyOnComplete';
+
+/**
+ * Task types that use the shared (read-only) concurrency pool.
+ * These are lightweight tasks that don't need exclusive access to the AI session.
+ * Must stay in sync with coc-server's SHARED_TASK_TYPES.
+ */
+export const SHARED_TASK_TYPES: ReadonlySet<string> = new Set([
+    'task-generation',
+    'ai-clarification',
+    'code-review',
+]);
 
 // ============================================================================
 // Types
@@ -402,6 +415,9 @@ export class AIQueueService implements vscode.Disposable {
         // Create queue executor
         this.executor = createQueueExecutor(this.queueManager, taskExecutor, {
             maxConcurrency: this.getMaxConcurrency(),
+            sharedConcurrency: this.getSharedConcurrency(),
+            exclusiveConcurrency: this.getExclusiveConcurrency(),
+            isExclusive: (task) => !SHARED_TASK_TYPES.has(task.type),
             autoStart: this.isEnabled(),
         });
 
@@ -444,6 +460,22 @@ export class AIQueueService implements vscode.Disposable {
     getMaxConcurrency(): number {
         const config = vscode.workspace.getConfiguration(CONFIG_SECTION);
         return config.get<number>(CONFIG_MAX_CONCURRENCY, 1);
+    }
+
+    /**
+     * Get the shared (read-only) concurrency limit from settings
+     */
+    getSharedConcurrency(): number {
+        const config = vscode.workspace.getConfiguration(CONFIG_SECTION);
+        return config.get<number>(CONFIG_SHARED_CONCURRENCY, 5);
+    }
+
+    /**
+     * Get the exclusive (write) concurrency limit from settings
+     */
+    getExclusiveConcurrency(): number {
+        const config = vscode.workspace.getConfiguration(CONFIG_SECTION);
+        return config.get<number>(CONFIG_EXCLUSIVE_CONCURRENCY, 1);
     }
 
     /**
@@ -635,10 +667,20 @@ export class AIQueueService implements vscode.Disposable {
     private onConfigurationChanged(): void {
         const logger = getExtensionLogger();
 
-        // Update concurrency
+        // Update concurrency — legacy maxConcurrency + granular shared/exclusive
         const newConcurrency = this.getMaxConcurrency();
         this.executor.setMaxConcurrency(newConcurrency);
-        logger.info(LogCategory.AI, `Queue concurrency updated to ${newConcurrency}`);
+
+        const newShared = this.getSharedConcurrency();
+        this.executor.setSharedConcurrency(newShared);
+
+        const newExclusive = this.getExclusiveConcurrency();
+        this.executor.setExclusiveConcurrency(newExclusive);
+
+        logger.info(
+            LogCategory.AI,
+            `Queue concurrency updated — max: ${newConcurrency}, shared: ${newShared}, exclusive: ${newExclusive}`
+        );
 
         // Handle enabled/disabled
         if (this.isEnabled() && !this.executor.isRunning()) {

@@ -187,6 +187,7 @@ export type { Attachment } from '@plusplusoneplusplus/pipeline-core';
 // Export AI Queue Service
 export {
     AIQueueService,
+    SHARED_TASK_TYPES,
     getAIQueueService,
     initializeAIQueueService,
     resetAIQueueService,

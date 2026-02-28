@@ -8,6 +8,7 @@ import {
     AIProcessManager,
     MockAIProcessManager,
     AIQueueService,
+    SHARED_TASK_TYPES,
     initializeAIQueueService,
     resetAIQueueService,
     getAIQueueService
@@ -563,6 +564,89 @@ suite('AIQueueService Tests', () => {
             for (const task of tasks) {
                 assert.strictEqual(task.repoId, 'batch-repo');
             }
+        });
+    });
+
+    suite('Shared/Exclusive Concurrency', () => {
+
+        test('SHARED_TASK_TYPES includes shared types', () => {
+            assert.ok(SHARED_TASK_TYPES.has('ai-clarification'));
+            assert.ok(SHARED_TASK_TYPES.has('code-review'));
+            assert.ok(SHARED_TASK_TYPES.has('task-generation'));
+        });
+
+        test('SHARED_TASK_TYPES excludes exclusive types', () => {
+            assert.ok(!SHARED_TASK_TYPES.has('follow-prompt'));
+            assert.ok(!SHARED_TASK_TYPES.has('resolve-comments'));
+            assert.ok(!SHARED_TASK_TYPES.has('run-pipeline'));
+            assert.ok(!SHARED_TASK_TYPES.has('custom'));
+        });
+
+        test('executor receives isExclusive callback without error', () => {
+            const service = initializeAIQueueService(processManager as unknown as AIProcessManager);
+
+            // Queue both shared and exclusive task types — smoke test that executor was created correctly
+            const shared = service.queueTask({
+                type: 'ai-clarification',
+                payload: { prompt: 'test' },
+                displayName: 'Shared task'
+            });
+            const exclusive = service.queueTask({
+                type: 'follow-prompt',
+                payload: { promptFilePath: '/test/prompt.md' },
+                displayName: 'Exclusive task'
+            });
+
+            assert.ok(shared.taskId);
+            assert.ok(exclusive.taskId);
+        });
+
+        test('shared task types are queued correctly', () => {
+            const service = initializeAIQueueService(processManager as unknown as AIProcessManager);
+            const sharedTypes = ['ai-clarification', 'code-review', 'task-generation'];
+
+            for (const type of sharedTypes) {
+                service.queueTask({
+                    type,
+                    payload: { prompt: 'test' },
+                    displayName: `Shared: ${type}`
+                });
+            }
+
+            const tasks = service.getQueuedTasks();
+            assert.strictEqual(tasks.length, sharedTypes.length);
+            for (let i = 0; i < sharedTypes.length; i++) {
+                assert.strictEqual(tasks[i].type, sharedTypes[i]);
+            }
+        });
+
+        test('exclusive task types are queued correctly', () => {
+            const service = initializeAIQueueService(processManager as unknown as AIProcessManager);
+            const exclusiveTypes = ['follow-prompt', 'custom'];
+
+            for (const type of exclusiveTypes) {
+                service.queueTask({
+                    type,
+                    payload: { promptFilePath: '/test/prompt.md' },
+                    displayName: `Exclusive: ${type}`
+                });
+            }
+
+            const tasks = service.getQueuedTasks();
+            assert.strictEqual(tasks.length, exclusiveTypes.length);
+            for (let i = 0; i < exclusiveTypes.length; i++) {
+                assert.strictEqual(tasks[i].type, exclusiveTypes[i]);
+            }
+        });
+
+        test('getSharedConcurrency returns default', () => {
+            const service = initializeAIQueueService(processManager as unknown as AIProcessManager);
+            assert.strictEqual(service.getSharedConcurrency(), 5);
+        });
+
+        test('getExclusiveConcurrency returns default', () => {
+            const service = initializeAIQueueService(processManager as unknown as AIProcessManager);
+            assert.strictEqual(service.getExclusiveConcurrency(), 1);
         });
     });
 });
