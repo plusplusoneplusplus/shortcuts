@@ -10,9 +10,10 @@ export interface DAGNodeProps {
     y: number;
     isDark: boolean;
     onClick?: (phase: PipelinePhase) => void;
+    elapsedMs?: number;
 }
 
-export function DAGNode({ node, x, y, isDark, onClick }: DAGNodeProps) {
+export function DAGNode({ node, x, y, isDark, onClick, elapsedMs }: DAGNodeProps) {
     const colors = getNodeColors(node.state, isDark);
     const icon = getNodeIcon(node.state);
     const hasClick = typeof onClick === 'function';
@@ -26,6 +27,7 @@ export function DAGNode({ node, x, y, isDark, onClick }: DAGNodeProps) {
             : null;
 
     const durationText = node.durationMs != null ? formatDuration(node.durationMs) : null;
+    const elapsedText = node.state === 'running' && elapsedMs != null ? formatDuration(elapsedMs) : null;
     const tooltipText = `${node.label} — ${node.state}${durationText ? ` (${durationText})` : ''}`;
 
     return (
@@ -45,6 +47,9 @@ export function DAGNode({ node, x, y, isDark, onClick }: DAGNodeProps) {
                 stroke={colors.border}
                 strokeWidth={1.5}
                 className={cn(node.state === 'running' && 'animate-pulse')}
+                style={{
+                    transition: 'fill 300ms ease, stroke 300ms ease',
+                }}
             />
             <text
                 x={x + 60}
@@ -78,6 +83,19 @@ export function DAGNode({ node, x, y, isDark, onClick }: DAGNodeProps) {
                     fontFamily="system-ui, sans-serif"
                 >
                     {durationText}
+                </text>
+            )}
+            {elapsedText && !durationText && (
+                <text
+                    data-testid={`dag-node-elapsed-${node.phase}`}
+                    x={x + 60}
+                    y={y + (itemText ? 58 : 44)}
+                    textAnchor="middle"
+                    fill="#848484"
+                    fontSize={10}
+                    fontFamily="system-ui, sans-serif"
+                >
+                    {elapsedText}
                 </text>
             )}
         </g>

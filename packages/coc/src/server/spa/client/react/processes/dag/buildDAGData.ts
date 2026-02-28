@@ -1,5 +1,6 @@
 import type { DAGChartData, DAGNodeData, DAGNodeState } from './types';
-import type { PipelinePhase } from '@plusplusoneplusplus/pipeline-core';
+import type { PipelinePhase, PipelinePhaseStatus } from '@plusplusoneplusplus/pipeline-core';
+import type { LivePhaseEntry, LiveProgress } from '../../hooks/usePipelinePhase';
 
 const phaseLabels: Record<PipelinePhase, string> = {
     input: 'Input',
@@ -143,4 +144,87 @@ export function buildDAGData(process: any): DAGChartData | null {
     const totalDurationMs = process.durationMs ?? process.duration ?? undefined;
 
     return { nodes, totalDurationMs };
+}
+
+const phaseStatusToNodeState: Record<PipelinePhaseStatus, DAGNodeState> = {
+    started: 'running',
+    completed: 'completed',
+    failed: 'failed',
+};
+
+/**
+ * Build DAGChartData from live SSE phase/progress state.
+ * Used when a pipeline process is actively running.
+ */
+export function buildDAGDataFromLive(
+    phases: Map<PipelinePhase, LivePhaseEntry>,
+    progress: LiveProgress | null,
+    metadata?: any,
+): DAGChartData | null {
+    if (phases.size === 0) return null;
+
+    // Determine ordered phase list from metadata or from the live phases
+    const orderedPhases: PipelinePhase[] = [];
+    const canonicalOrder: PipelinePhase[] = ['input', 'filter', 'map', 'reduce', 'job'];
+
+    // Prefer metadata-based ordering if available (includes future phases)
+    if (metadata?.pipelinePhases && Array.isArray(metadata.pipelinePhases)) {
+        const seen = new Set<PipelinePhase>();
+        for (const p of metadata.pipelinePhases) {
+            if (!seen.has(p.phase)) {
+                seen.add(p.phase);
+                orderedPhases.push(p.phase);
+            }
+        }
+    }
+
+    // Add any phases from live data not yet in the list
+    for (const phase of canonicalOrder) {
+        if (phases.has(phase) && !orderedPhases.includes(phase)) {
+            orderedPhases.push(phase);
+        }
+    }
+
+    if (orderedPhases.length === 0) return null;
+
+    const nodes: DAGNodeData[] = orderedPhases.map(phase => {
+        const liveEntry = phases.get(phase);
+        const state: DAGNodeState = liveEntry
+            ? phaseStatusToNodeState[liveEntry.status] ?? 'waiting'
+            : 'waiting';
+
+        const node: DAGNodeData = {
+            phase,
+            state,
+            label: phaseLabels[phase],
+        };
+
+        if (liveEntry?.durationMs != null) {
+            node.durationMs = liveEntry.durationMs;
+        }
+        if (liveEntry?.itemCount != null) {
+            node.itemCount = liveEntry.itemCount;
+        }
+        if (liveEntry?.startedAt != null) {
+            node.startedAt = liveEntry.startedAt;
+        }
+
+        // Map progress data onto the running map/job node
+        if (progress && (phase === 'map' || phase === 'job') && state === 'running') {
+            node.totalItems = progress.totalItems;
+            node.itemCount = progress.completedItems;
+            node.failedItems = progress.failedItems;
+        }
+
+        // For map node with progress when completed, keep the final counts
+        if (progress && (phase === 'map' || phase === 'job') && state === 'completed') {
+            node.totalItems = progress.totalItems;
+            node.itemCount = progress.completedItems;
+            node.failedItems = progress.failedItems;
+        }
+
+        return node;
+    });
+
+    return { nodes };
 }

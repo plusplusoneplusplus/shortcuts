@@ -9,6 +9,8 @@ export interface PipelineDAGChartProps {
     data: DAGChartData;
     isDark: boolean;
     onNodeClick?: (phase: PipelinePhase) => void;
+    /** Current timestamp, used to compute elapsed time for running nodes. */
+    now?: number;
 }
 
 const NODE_W = 120;
@@ -23,7 +25,7 @@ function deriveEdgeState(fromState: string, toState: string): EdgeState {
     return 'waiting';
 }
 
-export function PipelineDAGChart({ data, isDark, onNodeClick }: PipelineDAGChartProps) {
+export function PipelineDAGChart({ data, isDark, onNodeClick, now }: PipelineDAGChartProps) {
     const nodeCount = data.nodes.length;
     if (nodeCount === 0) return null;
 
@@ -73,16 +75,22 @@ export function PipelineDAGChart({ data, isDark, onNodeClick }: PipelineDAGChart
             })}
 
             {/* Nodes */}
-            {data.nodes.map((node, i) => (
-                <DAGNode
-                    key={node.phase}
-                    node={node}
-                    x={positions[i].x}
-                    y={positions[i].y}
-                    isDark={isDark}
-                    onClick={onNodeClick}
-                />
-            ))}
+            {data.nodes.map((node, i) => {
+                const elapsedMs = now != null && node.state === 'running' && node.startedAt != null
+                    ? now - node.startedAt
+                    : undefined;
+                return (
+                    <DAGNode
+                        key={node.phase}
+                        node={node}
+                        x={positions[i].x}
+                        y={positions[i].y}
+                        isDark={isDark}
+                        onClick={onNodeClick}
+                        elapsedMs={elapsedMs}
+                    />
+                );
+            })}
 
             {/* Progress bar for map node */}
             {mapNode && mapNode.totalItems != null && mapNode.totalItems > 0 && (() => {

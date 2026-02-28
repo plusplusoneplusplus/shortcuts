@@ -310,7 +310,7 @@ export function ProcessDetail() {
             </div>
 
             {/* Pipeline DAG visualization */}
-            <PipelineDAGSection process={process} />
+            <PipelineDAGSection process={metadataProcess} eventSourceRef={eventSourceRef} />
 
             {/* Conversation turns */}
             {loading ? (

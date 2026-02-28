@@ -10,6 +10,8 @@ export interface DAGNodeData {
     totalItems?: number;
     failedItems?: number;
     durationMs?: number;
+    /** Epoch ms when this node started running (for elapsed time display). */
+    startedAt?: number;
 }
 
 export interface DAGChartData {

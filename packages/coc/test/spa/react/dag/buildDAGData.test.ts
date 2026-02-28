@@ -239,3 +239,150 @@ describe('buildDAGData', () => {
         expect(stateMap['map']).toBe('running');
     });
 });
+
+// ── buildDAGDataFromLive ───────────────────────────────────────────────
+
+import { buildDAGDataFromLive } from '../../../../src/server/spa/client/react/processes/dag/buildDAGData';
+import type { PipelinePhase } from '@plusplusoneplusplus/pipeline-core';
+import type { LivePhaseEntry, LiveProgress } from '../../../../src/server/spa/client/react/hooks/usePipelinePhase';
+
+describe('buildDAGDataFromLive', () => {
+    it('returns null for empty phases map', () => {
+        expect(buildDAGDataFromLive(new Map(), null)).toBeNull();
+    });
+
+    it('builds nodes from live phases in canonical order', () => {
+        const phases = new Map<PipelinePhase, LivePhaseEntry>([
+            ['input', { status: 'completed' }],
+            ['map', { status: 'started' }],
+        ]);
+        const result = buildDAGDataFromLive(phases, null);
+        expect(result).not.toBeNull();
+        expect(result!.nodes.map(n => n.phase)).toEqual(['input', 'map']);
+        expect(result!.nodes[0].state).toBe('completed');
+        expect(result!.nodes[1].state).toBe('running');
+    });
+
+    it('maps PipelinePhaseStatus to DAGNodeState correctly', () => {
+        const phases = new Map<PipelinePhase, LivePhaseEntry>([
+            ['input', { status: 'completed' }],
+            ['filter', { status: 'failed', error: 'bad filter' }],
+        ]);
+        const result = buildDAGDataFromLive(phases, null);
+        expect(result!.nodes.find(n => n.phase === 'input')?.state).toBe('completed');
+        expect(result!.nodes.find(n => n.phase === 'filter')?.state).toBe('failed');
+    });
+
+    it('includes progress data on running map node', () => {
+        const phases = new Map<PipelinePhase, LivePhaseEntry>([
+            ['input', { status: 'completed' }],
+            ['map', { status: 'started' }],
+        ]);
+        const progress: LiveProgress = {
+            completedItems: 5,
+            failedItems: 1,
+            totalItems: 10,
+            percentage: 60,
+        };
+        const result = buildDAGDataFromLive(phases, progress);
+        const mapNode = result!.nodes.find(n => n.phase === 'map');
+        expect(mapNode?.totalItems).toBe(10);
+        expect(mapNode?.itemCount).toBe(5);
+        expect(mapNode?.failedItems).toBe(1);
+    });
+
+    it('uses metadata pipelinePhases for ordering if available', () => {
+        const phases = new Map<PipelinePhase, LivePhaseEntry>([
+            ['input', { status: 'completed' }],
+            ['map', { status: 'started' }],
+        ]);
+        const metadata = {
+            pipelinePhases: [
+                { phase: 'input', status: 'completed' },
+                { phase: 'map', status: 'started' },
+                { phase: 'reduce', status: 'pending' },
+            ],
+        };
+        const result = buildDAGDataFromLive(phases, null, metadata);
+        // Should include reduce as waiting
+        expect(result!.nodes.map(n => n.phase)).toEqual(['input', 'map', 'reduce']);
+        expect(result!.nodes.find(n => n.phase === 'reduce')?.state).toBe('waiting');
+    });
+
+    it('populates startedAt on nodes from live entry', () => {
+        const phases = new Map<PipelinePhase, LivePhaseEntry>([
+            ['input', { status: 'completed' }],
+            ['map', { status: 'started', startedAt: 5000 }],
+        ]);
+        const result = buildDAGDataFromLive(phases, null);
+        expect(result!.nodes.find(n => n.phase === 'map')?.startedAt).toBe(5000);
+    });
+
+    it('populates durationMs from completed live entry', () => {
+        const phases = new Map<PipelinePhase, LivePhaseEntry>([
+            ['input', { status: 'completed', durationMs: 120 }],
+        ]);
+        const result = buildDAGDataFromLive(phases, null);
+        expect(result!.nodes.find(n => n.phase === 'input')?.durationMs).toBe(120);
+    });
+
+    it('preserves progress on completed map node', () => {
+        const phases = new Map<PipelinePhase, LivePhaseEntry>([
+            ['input', { status: 'completed' }],
+            ['map', { status: 'completed', durationMs: 3000 }],
+        ]);
+        const progress: LiveProgress = {
+            completedItems: 10,
+            failedItems: 0,
+            totalItems: 10,
+            percentage: 100,
+        };
+        const result = buildDAGDataFromLive(phases, progress);
+        const mapNode = result!.nodes.find(n => n.phase === 'map');
+        expect(mapNode?.totalItems).toBe(10);
+        expect(mapNode?.itemCount).toBe(10);
+    });
+
+    it('handles job phase like map for progress', () => {
+        const phases = new Map<PipelinePhase, LivePhaseEntry>([
+            ['input', { status: 'completed' }],
+            ['job', { status: 'started' }],
+        ]);
+        const progress: LiveProgress = {
+            completedItems: 3,
+            failedItems: 0,
+            totalItems: 5,
+            percentage: 60,
+        };
+        const result = buildDAGDataFromLive(phases, progress);
+        const jobNode = result!.nodes.find(n => n.phase === 'job');
+        expect(jobNode?.state).toBe('running');
+        expect(jobNode?.totalItems).toBe(5);
+        expect(jobNode?.itemCount).toBe(3);
+    });
+
+    it('assigns correct labels to nodes', () => {
+        const phases = new Map<PipelinePhase, LivePhaseEntry>([
+            ['input', { status: 'completed' }],
+            ['filter', { status: 'completed' }],
+            ['map', { status: 'started' }],
+            ['reduce', { status: 'started' }],
+        ]);
+        const result = buildDAGDataFromLive(phases, null);
+        const labels = result!.nodes.map(n => n.label);
+        expect(labels).toEqual(['Input', 'Filter', 'Map', 'Reduce']);
+    });
+
+    it('computes edge-state-relevant data by node state', () => {
+        const phases = new Map<PipelinePhase, LivePhaseEntry>([
+            ['input', { status: 'completed' }],
+            ['map', { status: 'started' }],
+            ['reduce', { status: 'started' }],
+        ]);
+        const result = buildDAGDataFromLive(phases, null);
+        // input is completed, map is running — edge between them would be 'active'
+        // This test just verifies the node states are correctly set for edge derivation
+        expect(result!.nodes[0].state).toBe('completed');
+        expect(result!.nodes[1].state).toBe('running');
+    });
+});

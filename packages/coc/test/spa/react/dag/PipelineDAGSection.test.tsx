@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { PipelineDAGSection } from '../../../../src/server/spa/client/react/processes/dag/PipelineDAGSection';
 
 function makeProcess(overrides: Record<string, any> = {}) {
@@ -19,6 +19,30 @@ function makeProcess(overrides: Record<string, any> = {}) {
             },
         },
         ...overrides,
+    };
+}
+
+/**
+ * Minimal mock EventSource for testing live DAG updates in PipelineDAGSection.
+ */
+function createMockEventSource() {
+    const listeners = new Map<string, Set<(e: Event) => void>>();
+    return {
+        addEventListener: vi.fn((type: string, handler: (e: Event) => void) => {
+            if (!listeners.has(type)) listeners.set(type, new Set());
+            listeners.get(type)!.add(handler);
+        }),
+        removeEventListener: vi.fn((type: string, handler: (e: Event) => void) => {
+            listeners.get(type)?.delete(handler);
+        }),
+        close: vi.fn(),
+        _emit(type: string, data: any) {
+            const event = { data: JSON.stringify(data) } as MessageEvent;
+            for (const handler of listeners.get(type) ?? []) handler(event);
+        },
+        _emitError() {
+            for (const handler of listeners.get('error') ?? []) handler(new Event('error'));
+        },
     };
 }
 
@@ -102,5 +126,93 @@ describe('PipelineDAGSection', () => {
         const chart = screen.getByTestId('dag-chart');
         const edges = chart.querySelectorAll('[data-testid="dag-edge"]');
         expect(edges.length).toBe(2); // input→map, map→reduce
+    });
+});
+
+describe('PipelineDAGSection — live mode', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it('uses static data for terminal processes even with eventSourceRef', () => {
+        const es = createMockEventSource();
+        const ref = { current: es as unknown as EventSource };
+        const proc = makeProcess({ status: 'completed' });
+
+        render(<PipelineDAGSection process={proc} eventSourceRef={ref} />);
+        expect(screen.getByTestId('pipeline-dag-section')).toBeDefined();
+        // Static data should produce completed nodes
+        const chart = screen.getByTestId('dag-chart');
+        const nodes = chart.querySelectorAll('[data-testid^="dag-node-"]');
+        expect(nodes.length).toBe(3);
+    });
+
+    it('updates DAG nodes on SSE pipeline-phase events for running process', () => {
+        const es = createMockEventSource();
+        const ref = { current: es as unknown as EventSource };
+        const proc = makeProcess({
+            status: 'running',
+            durationMs: undefined,
+            metadata: {
+                pipelineName: 'Test',
+                pipelinePhases: [
+                    { phase: 'input', status: 'completed' },
+                    { phase: 'map', status: 'started' },
+                    { phase: 'reduce', status: 'pending' },
+                ],
+            },
+        });
+
+        render(<PipelineDAGSection process={proc} eventSourceRef={ref} />);
+
+        // Emit phase events
+        act(() => {
+            es._emit('pipeline-phase', { phase: 'input', status: 'completed', durationMs: 50 });
+            es._emit('pipeline-phase', { phase: 'map', status: 'started' });
+        });
+
+        // Should have at least the live nodes
+        const chart = screen.getByTestId('dag-chart');
+        expect(chart.querySelector('[data-testid="dag-node-input"]')).toBeDefined();
+        expect(chart.querySelector('[data-testid="dag-node-map"]')).toBeDefined();
+    });
+
+    it('shows disconnect warning when EventSource errors', () => {
+        const es = createMockEventSource();
+        const ref = { current: es as unknown as EventSource };
+        const proc = makeProcess({ status: 'running', durationMs: undefined });
+
+        render(<PipelineDAGSection process={proc} eventSourceRef={ref} />);
+
+        // Emit some phases first so we have data
+        act(() => {
+            es._emit('pipeline-phase', { phase: 'input', status: 'completed' });
+        });
+
+        act(() => {
+            es._emitError();
+        });
+
+        const warning = screen.queryByTestId('dag-disconnect-warning');
+        expect(warning).not.toBeNull();
+    });
+
+    it('does not show disconnect warning when connected', () => {
+        const es = createMockEventSource();
+        const ref = { current: es as unknown as EventSource };
+        const proc = makeProcess({ status: 'running', durationMs: undefined });
+
+        render(<PipelineDAGSection process={proc} eventSourceRef={ref} />);
+
+        act(() => {
+            es._emit('pipeline-phase', { phase: 'input', status: 'completed' });
+        });
+
+        const warning = screen.queryByTestId('dag-disconnect-warning');
+        expect(warning).toBeNull();
     });
 });
