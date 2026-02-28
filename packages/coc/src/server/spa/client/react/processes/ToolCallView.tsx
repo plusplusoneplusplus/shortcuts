@@ -242,6 +242,78 @@ function CreateToolView({ args }: { args: Record<string, any> }) {
     );
 }
 
+function ViewToolView({ args, result }: { args: Record<string, any>; result: string }) {
+    const filePath = args.path || args.filePath || '';
+    const viewRange = Array.isArray(args.view_range) ? args.view_range : null;
+
+    const lines = useMemo(() => {
+        if (!result) return [];
+        return result.split('\n').map((raw) => {
+            const m = raw.match(/^(\d+)\.\s(.*)$/);
+            return m
+                ? { num: parseInt(m[1], 10), content: m[2] }
+                : { num: null as number | null, content: raw };
+        });
+    }, [result]);
+
+    const hasLineNumbers = lines.length > 0 && lines[0].num !== null;
+
+    const ext = filePath.split('.').pop()?.toLowerCase() || '';
+
+    if (isImageDataUrl(result)) {
+        return (
+            <div className="space-y-1.5">
+                {filePath && (
+                    <div className="text-[10px] uppercase text-[#848484] mb-0.5">
+                        📁 {shortenPath(filePath)}
+                    </div>
+                )}
+                <img
+                    src={result}
+                    alt={shortenPath(filePath)}
+                    className="max-w-full max-h-64 rounded border border-[#e0e0e0] dark:border-[#3c3c3c]"
+                    data-testid="tool-result-image"
+                />
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-1.5">
+            {/* File path + optional range badge + language tag */}
+            <div className="flex items-center gap-2 text-[10px] text-[#848484]">
+                {filePath && <span className="uppercase">📁 {shortenPath(filePath)}</span>}
+                {viewRange && (
+                    <span className="bg-[#e0e0e0] dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] px-1 rounded text-[9px]">
+                        L{viewRange[0]}–{viewRange[1] === -1 ? 'EOF' : `L${viewRange[1]}`}
+                    </span>
+                )}
+                {ext && (
+                    <span className="ml-auto opacity-60 text-[9px] uppercase">{ext}</span>
+                )}
+            </div>
+
+            {/* Code block with gutter */}
+            <div className="rounded border border-[#e0e0e0] dark:border-[#3c3c3c] overflow-hidden font-mono text-[11px] leading-[1.55]">
+                {hasLineNumbers ? (
+                    lines.map((line, i) => (
+                        <div key={i} className="flex hover:bg-black/[0.03] dark:hover:bg-white/[0.03]">
+                            <span className="select-none text-right pr-2 pl-1 text-[#848484] bg-[#f0f0f0] dark:bg-[#252526] min-w-[3ch] shrink-0">
+                                {line.num ?? ''}
+                            </span>
+                            <span className="px-2 whitespace-pre-wrap break-words overflow-x-auto">{line.content}</span>
+                        </div>
+                    ))
+                ) : (
+                    <pre className="overflow-x-auto text-[11px] whitespace-pre-wrap break-words p-2 text-[#1e1e1e] dark:text-[#cccccc]">
+                        <code>{result}</code>
+                    </pre>
+                )}
+            </div>
+        </div>
+    );
+}
+
 export function ToolCallView({
     toolCall,
     depth = 0,
@@ -357,7 +429,10 @@ export function ToolCallView({
                     {name === 'create' && argsObj && (
                         <CreateToolView args={argsObj} />
                     )}
-                    {name !== 'bash' && name !== 'edit' && name !== 'create' && args && (
+                    {name === 'view' && argsObj && (
+                        <ViewToolView args={argsObj} result={visibleResult} />
+                    )}
+                    {name !== 'bash' && name !== 'edit' && name !== 'create' && name !== 'view' && args && (
                         <div>
                             <div className="text-[10px] uppercase text-[#848484] mb-0.5">Arguments</div>
                             <pre className="overflow-x-auto text-[11px] whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc]">
@@ -365,7 +440,7 @@ export function ToolCallView({
                             </pre>
                         </div>
                     )}
-                    {resultText && (
+                    {name !== 'view' && resultText && (
                         <div>
                             <div className="text-[10px] uppercase text-[#848484] mb-0.5">Result</div>
                             {isImageDataUrl(resultText) ? (
