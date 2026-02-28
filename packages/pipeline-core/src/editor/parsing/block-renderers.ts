@@ -38,6 +38,8 @@ export interface CodeBlockRenderOptions {
     collapsible?: boolean;
     /** Line count threshold for auto-collapsing. Defaults to 15. */
     collapseThreshold?: number;
+    /** Start collapsible blocks in expanded state. Default: false (collapsed). */
+    defaultExpanded?: boolean;
     /** Map of 1-based code-line numbers to comment IDs for highlight styling. */
     commentsMap?: Map<number, string>;
 }
@@ -111,6 +113,7 @@ export function renderCodeBlock(block: CodeBlock, options?: CodeBlockRenderOptio
     const showLanguageLabel = options?.showLanguageLabel ?? false;
     const collapsible = options?.collapsible ?? false;
     const collapseThreshold = options?.collapseThreshold ?? 15;
+    const defaultExpanded = options?.defaultExpanded ?? false;
     const commentsMap = options?.commentsMap;
     const isCollapsible = collapsible && lineCount > collapseThreshold;
 
@@ -151,7 +154,8 @@ export function renderCodeBlock(block: CodeBlock, options?: CodeBlockRenderOptio
         containerAttrs += ' data-raw="' + escapeAttrValue(normalizedCode) + '"';
     }
     if (isCollapsible) {
-        containerAttrs += ' data-collapsible="true" data-collapsed="true"';
+        const collapsed = defaultExpanded ? 'false' : 'true';
+        containerAttrs += ' data-collapsible="true" data-collapsed="' + collapsed + '"';
     }
 
     // Header
@@ -162,7 +166,9 @@ export function renderCodeBlock(block: CodeBlock, options?: CodeBlockRenderOptio
         headerHtml += '<button class="code-block-copy" title="Copy code">\uD83D\uDCCB</button>';
     }
     if (isCollapsible) {
-        headerHtml += '<button class="code-block-collapse" title="Expand">\u25B6</button>';
+        const btnTitle = defaultExpanded ? 'Collapse' : 'Expand';
+        const btnIcon = defaultExpanded ? '\u25BC' : '\u25B6';
+        headerHtml += '<button class="code-block-collapse" title="' + btnTitle + '">' + btnIcon + '</button>';
     }
     headerHtml += '</div>';
 

@@ -249,6 +249,37 @@ describe('renderCodeBlock', () => {
         expect(html).not.toContain('data-collapsed');
     });
 
+    it('starts expanded when defaultExpanded is true', () => {
+        const lines = Array.from({ length: 20 }, (_, i) => `line${i + 1}`).join('\n');
+        const block = makeCodeBlock({ code: lines });
+        const options: CodeBlockRenderOptions = {
+            collapsible: true,
+            collapseThreshold: 15,
+            defaultExpanded: true,
+        };
+        const html = renderCodeBlock(block, options);
+
+        expect(html).toContain('data-collapsible="true"');
+        expect(html).toContain('data-collapsed="false"');
+        expect(html).toContain('title="Collapse"');
+        expect(html).toContain('\u25BC'); // ▼ expanded icon
+        expect(html).not.toContain('title="Expand"');
+    });
+
+    it('starts collapsed by default when defaultExpanded is not set', () => {
+        const lines = Array.from({ length: 20 }, (_, i) => `line${i + 1}`).join('\n');
+        const block = makeCodeBlock({ code: lines });
+        const options: CodeBlockRenderOptions = {
+            collapsible: true,
+            collapseThreshold: 15,
+        };
+        const html = renderCodeBlock(block, options);
+
+        expect(html).toContain('data-collapsed="true"');
+        expect(html).toContain('title="Expand"');
+        expect(html).toContain('\u25B6'); // ▶ collapsed icon
+    });
+
     it('includes data-raw when showCopyButton is true', () => {
         const block = makeCodeBlock({ code: 'const x = 1;' });
         const html = renderCodeBlock(block, { showCopyButton: true });

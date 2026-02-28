@@ -81,6 +81,7 @@ export function renderMarkdownToHtml(content: string, options?: RenderOptions): 
                 showCopyButton: true,
                 showLanguageLabel: true,
                 collapsible: true,
+                defaultExpanded: true,
             }));
         }
     }
