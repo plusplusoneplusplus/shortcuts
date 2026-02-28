@@ -76,6 +76,13 @@ describe('RepoQueueTab pause/resume', () => {
             expect(fnBody).toContain("method: 'POST'");
         });
 
+        it('passes POST options as second argument to fetchApi', () => {
+            const fnStart = source.indexOf('handlePauseResume');
+            const fnBody = source.slice(fnStart, fnStart + 400);
+            // fetchApi must be called with two arguments: endpoint and { method: 'POST' }
+            expect(fnBody).toMatch(/fetchApi\(endpoint\s*\+\s*.*,\s*\{\s*method:\s*'POST'\s*\}/);
+        });
+
         it('calls fetchQueue after the API call to refresh state', () => {
             const fnStart = source.indexOf('handlePauseResume');
             const fnBody = source.slice(fnStart, fnStart + 400);

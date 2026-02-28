@@ -5,8 +5,9 @@
 
 import { getApiBase } from '../utils/config';
 
-export async function fetchApi(path: string): Promise<any> {
-    const res = await fetch(getApiBase() + path);
+export async function fetchApi(path: string, options?: RequestInit): Promise<any> {
+    const url = getApiBase() + path;
+    const res = options ? await fetch(url, options) : await fetch(url);
     if (!res.ok) {
         throw new Error(`API error: ${res.status} ${res.statusText}`);
     }
