@@ -126,4 +126,20 @@ describe('QueueTaskDetail', () => {
             expect(source).toMatch(/isTerminal\s*=.*completed.*failed|isTerminal\s*=.*failed.*completed/);
         });
     });
+
+    describe('lazy image loading', () => {
+        it('PendingTaskPayload fetches images when payload.hasImages is true', () => {
+            expect(source).toContain('payload.hasImages');
+            expect(source).toContain("fetchApi(`/queue/${encodeURIComponent(task.id)}/images`)");
+        });
+
+        it('PendingTaskPayload renders ImageGallery for fetched images', () => {
+            const pendingPayloadSection = source.substring(source.indexOf('function PendingTaskPayload'));
+            expect(pendingPayloadSection).toContain('<ImageGallery');
+        });
+
+        it('ConversationTurnBubble receives taskId prop', () => {
+            expect(source).toContain('taskId={selectedTaskId}');
+        });
+    });
 });

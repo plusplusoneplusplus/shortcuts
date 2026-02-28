@@ -9,7 +9,7 @@ import { useQueue } from '../context/QueueContext';
 import { useApp } from '../context/AppContext';
 import { fetchApi } from '../hooks/useApi';
 import { getApiBase } from '../utils/config';
-import { Badge, Spinner, Button, cn } from '../shared';
+import { Badge, Spinner, Button, cn, ImageGallery } from '../shared';
 import { ConversationTurnBubble } from '../processes/ConversationTurnBubble';
 import { ConversationMetadataPopover, getSessionIdFromProcess } from '../processes/ConversationMetadataPopover';
 import { formatDuration, statusIcon, statusLabel } from '../utils/format';
@@ -583,7 +583,7 @@ export function QueueTaskDetail() {
                                     ? [...turns, { role: 'assistant' as const, content: '', streaming: true, timeline: [] }]
                                     : turns;
                             return renderTurns.map((turn, i) => (
-                                <ConversationTurnBubble key={i} turn={turn} />
+                                <ConversationTurnBubble key={i} turn={turn} taskId={selectedTaskId} />
                             ));
                         })()}
                     </div>
@@ -769,6 +769,28 @@ function MetaRow({ label, value, breakAll }: { label: string; value: string; bre
 function PendingTaskPayload({ task }: { task: any }) {
     const payload = task.payload || {};
     const type = task.type || '';
+    const [payloadImages, setPayloadImages] = useState<string[]>([]);
+    const [payloadImagesLoading, setPayloadImagesLoading] = useState(false);
+
+    useEffect(() => {
+        if (!task?.id || !payload.hasImages || (payload.images && payload.images.length > 0)) return;
+        setPayloadImagesLoading(true);
+        fetchApi(`/queue/${encodeURIComponent(task.id)}/images`)
+            .then((data: any) => { setPayloadImages(data?.images || []); })
+            .catch(() => { /* non-fatal */ })
+            .finally(() => { setPayloadImagesLoading(false); });
+    }, [task?.id, payload.hasImages]);
+
+    const imagesSection = (() => {
+        if (payloadImagesLoading) {
+            return <ImageGallery images={[]} loading={true} imagesCount={payload.imagesCount} />;
+        }
+        const imgs = payload.images?.length > 0 ? payload.images : payloadImages;
+        if (imgs.length > 0) {
+            return <ImageGallery images={imgs} />;
+        }
+        return null;
+    })();
 
     if (type === 'follow-prompt') {
         const hasFollowMeta = payload.skillName || payload.planFilePath || payload.promptFilePath;
@@ -797,6 +819,7 @@ function PendingTaskPayload({ task }: { task: any }) {
                         </pre>
                     </details>
                 )}
+                {imagesSection}
             </div>
         );
     }
@@ -837,6 +860,7 @@ function PendingTaskPayload({ task }: { task: any }) {
                         </pre>
                     </details>
                 )}
+                {imagesSection}
             </div>
         );
     }
@@ -860,6 +884,7 @@ function PendingTaskPayload({ task }: { task: any }) {
                         </pre>
                     </>
                 )}
+                {imagesSection}
             </div>
         );
     }
@@ -873,6 +898,7 @@ function PendingTaskPayload({ task }: { task: any }) {
                     {payload.diffType && <MetaRow label="Diff Type" value={payload.diffType} />}
                     {payload.rulesFolder && <MetaRow label="Rules Folder" value={payload.rulesFolder} />}
                 </div>
+                {imagesSection}
             </div>
         );
     }
@@ -884,6 +910,7 @@ function PendingTaskPayload({ task }: { task: any }) {
                 <pre className="max-h-96 overflow-auto p-3 rounded-md text-xs whitespace-pre-wrap break-words bg-[#f3f3f3] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c]">
                     {JSON.stringify(payload.data, null, 2)}
                 </pre>
+                {imagesSection}
             </div>
         );
     }
@@ -895,9 +922,10 @@ function PendingTaskPayload({ task }: { task: any }) {
                 <pre className="max-h-96 overflow-auto p-3 rounded-md text-xs whitespace-pre-wrap break-words bg-[#f3f3f3] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c]">
                     {JSON.stringify(payload, null, 2)}
                 </pre>
+                {imagesSection}
             </div>
         );
     }
 
-    return null;
+    return imagesSection;
 }

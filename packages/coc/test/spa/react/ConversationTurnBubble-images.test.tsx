@@ -60,3 +60,33 @@ describe('ConversationTurnBubble — image rendering', () => {
         expect(screen.queryByTestId('image-gallery')).toBeNull();
     });
 });
+
+describe('ConversationTurnBubble — lazy image loading', () => {
+    beforeEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('renders "Load N images" button when turn has imagesCount but no images', () => {
+        render(<ConversationTurnBubble turn={makeTurn({ imagesCount: 3, images: undefined })} taskId="task-1" />);
+        const btn = screen.getByTestId('load-images-btn');
+        expect(btn.textContent).toContain('Load 3 images');
+    });
+
+    it('renders inline images directly when images array is present (backward compat)', () => {
+        render(<ConversationTurnBubble turn={makeTurn({ images: [IMG_A], imagesCount: 1 })} taskId="task-1" />);
+        expect(screen.getByTestId('image-gallery')).toBeTruthy();
+        expect(screen.queryByTestId('load-images-btn')).toBeNull();
+    });
+
+    it('does not render fetch button when taskId is not provided', () => {
+        render(<ConversationTurnBubble turn={makeTurn({ imagesCount: 3, images: undefined })} />);
+        expect(screen.queryByTestId('load-images-btn')).toBeNull();
+    });
+
+    it('renders singular "image" for imagesCount of 1', () => {
+        render(<ConversationTurnBubble turn={makeTurn({ imagesCount: 1, images: undefined })} taskId="task-1" />);
+        const btn = screen.getByTestId('load-images-btn');
+        expect(btn.textContent).toContain('Load 1 image');
+        expect(btn.textContent).not.toContain('images');
+    });
+});

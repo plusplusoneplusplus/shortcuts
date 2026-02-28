@@ -2,15 +2,18 @@
  * ConversationTurnBubble — role-aware chat bubble for conversation turns.
  */
 import React, { useState } from 'react';
-import { cn, ImageGallery } from '../shared';
+import { cn, ImageGallery, Spinner } from '../shared';
 import type { ClientConversationTurn } from '../types/dashboard';
 import { MarkdownView } from './MarkdownView';
 import { ToolCallView } from './ToolCallView';
 import { renderMarkdownToHtml } from '../../markdown-renderer';
 import { useDisplaySettings } from '../hooks/useDisplaySettings';
+import { fetchApi } from '../hooks/useApi';
 
 interface ConversationTurnBubbleProps {
     turn: ClientConversationTurn;
+    /** Queue task ID — when provided, enables lazy image fetching for turns with imagesCount */
+    taskId?: string;
 }
 
 interface RenderToolCall {
@@ -417,13 +420,32 @@ function buildRawContent(turn: ClientConversationTurn): string {
 
 export { buildRawContent as _buildRawContent };
 
-export function ConversationTurnBubble({ turn }: ConversationTurnBubbleProps) {
+export function ConversationTurnBubble({ turn, taskId }: ConversationTurnBubbleProps) {
     const isUser = turn.role === 'user';
     const assistantRender = !isUser ? buildAssistantRender(turn) : null;
     const userContentHtml = isUser ? toContentHtml(turn.content || '') : '';
     const [collapsedTaskIds, setCollapsedTaskIds] = useState<Record<string, boolean>>({});
     const [showRaw, setShowRaw] = useState(false);
     const { showReportIntent } = useDisplaySettings();
+
+    // Lazy image fetching state
+    const [imageLoadState, setImageLoadState] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
+    const [fetchedImages, setFetchedImages] = useState<string[]>([]);
+
+    const hasInlineImages = turn.images && turn.images.length > 0;
+    const needsLazyImages = isUser && !hasInlineImages && !!taskId && (turn.imagesCount ?? 0) > 0;
+
+    const handleLoadImages = async () => {
+        if (!taskId) return;
+        setImageLoadState('loading');
+        try {
+            const data = await fetchApi(`/queue/${encodeURIComponent(taskId)}/images`);
+            setFetchedImages(data.images || []);
+            setImageLoadState('loaded');
+        } catch {
+            setImageLoadState('error');
+        }
+    };
 
     function renderToolTree(toolId: string, depth: number): React.ReactNode {
         if (depth > 20) return null;
@@ -536,6 +558,30 @@ export function ConversationTurnBubble({ turn }: ConversationTurnBubbleProps) {
                     {isUser && userContentHtml && <MarkdownView html={userContentHtml} />}
                     {isUser && turn.images && turn.images.length > 0 && (
                         <ImageGallery images={turn.images} />
+                    )}
+                    {isUser && needsLazyImages && imageLoadState === 'idle' && (
+                        <button
+                            className="text-[11px] text-[#848484] hover:text-[#005a9e] dark:hover:text-[#7bbef3] cursor-pointer bg-transparent border-none p-0"
+                            data-testid="load-images-btn"
+                            onClick={handleLoadImages}
+                        >
+                            📷 Load {turn.imagesCount} image{(turn.imagesCount ?? 0) > 1 ? 's' : ''}
+                        </button>
+                    )}
+                    {isUser && needsLazyImages && imageLoadState === 'loading' && (
+                        <ImageGallery images={[]} loading={true} imagesCount={turn.imagesCount} />
+                    )}
+                    {isUser && imageLoadState === 'loaded' && fetchedImages.length > 0 && (
+                        <ImageGallery images={fetchedImages} />
+                    )}
+                    {isUser && needsLazyImages && imageLoadState === 'error' && (
+                        <button
+                            className="text-[11px] text-[#f14c4c] hover:text-[#d32f2f] cursor-pointer bg-transparent border-none p-0"
+                            data-testid="retry-images-btn"
+                            onClick={handleLoadImages}
+                        >
+                            ⚠ Failed to load images · Retry
+                        </button>
                     )}
                     {!isUser && showRaw && (
                         <div className="raw-content-view rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#ffffff] dark:bg-[#1e1e1e] overflow-auto max-h-[600px]">

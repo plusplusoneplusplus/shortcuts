@@ -7,16 +7,35 @@ export interface ImageGalleryProps {
     images: string[];
     /** Optional additional className on the outer container */
     className?: string;
+    /** When true, render skeleton placeholders instead of images */
+    loading?: boolean;
+    /** Expected number of images (used for skeleton count when loading) */
+    imagesCount?: number;
 }
 
 /**
  * Read-only gallery of image thumbnails with click-to-expand lightbox.
  * Used in chat conversation bubbles to display user-attached images.
  */
-export function ImageGallery({ images, className }: ImageGalleryProps) {
+export function ImageGallery({ images, className, loading, imagesCount }: ImageGalleryProps) {
     const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
     const closeLightbox = useCallback(() => setLightboxIndex(null), []);
+
+    if (loading) {
+        const count = imagesCount && imagesCount > 0 ? imagesCount : 1;
+        return (
+            <div className={cn('flex flex-wrap gap-2 mt-2', className)} data-testid="image-gallery-loading">
+                {Array.from({ length: count }, (_, i) => (
+                    <div
+                        key={i}
+                        className="w-16 h-16 rounded overflow-hidden border border-[#d0d0d0] dark:border-[#3c3c3c] bg-[#e0e0e0] dark:bg-[#3c3c3c] animate-pulse"
+                        data-testid="image-gallery-skeleton"
+                    />
+                ))}
+            </div>
+        );
+    }
 
     if (!images || images.length === 0) return null;
 

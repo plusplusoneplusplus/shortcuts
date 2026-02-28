@@ -39,6 +39,10 @@ export interface ClientConversationTurn {
     timeline: ClientTimelineItem[];
     /** Base64 data-URL strings for user-attached images */
     images?: string[];
+    /** Number of externalized images available via the images endpoint */
+    imagesCount?: number;
+    /** Whether this turn has externalized images */
+    hasImages?: boolean;
 }
 
 /** Cached conversation data for a historical process. */
