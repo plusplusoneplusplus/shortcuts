@@ -1,0 +1,173 @@
+/**
+ * Tests for chatMarkdownToHtml — the marked-based renderer for chat messages.
+ */
+
+import { describe, it, expect } from 'vitest';
+import { chatMarkdownToHtml } from '../../../src/server/spa/client/react/processes/ConversationTurnBubble';
+
+describe('chatMarkdownToHtml', () => {
+    // --- Empty / whitespace ---
+
+    it('returns empty string for empty input', () => {
+        expect(chatMarkdownToHtml('')).toBe('');
+    });
+
+    it('returns empty string for whitespace-only input', () => {
+        expect(chatMarkdownToHtml('   \n  ')).toBe('');
+    });
+
+    it('returns empty string for undefined-ish input', () => {
+        expect(chatMarkdownToHtml(null as any)).toBe('');
+        expect(chatMarkdownToHtml(undefined as any)).toBe('');
+    });
+
+    // --- Headers ---
+
+    it('renders h1', () => {
+        const html = chatMarkdownToHtml('# Title');
+        expect(html).toContain('<h1');
+        expect(html).toContain('Title');
+    });
+
+    it('renders h3', () => {
+        const html = chatMarkdownToHtml('### Subtitle');
+        expect(html).toContain('<h3');
+        expect(html).toContain('Subtitle');
+    });
+
+    // --- Bold and italic ---
+
+    it('renders bold text with <strong>', () => {
+        const html = chatMarkdownToHtml('This is **bold** text');
+        expect(html).toContain('<strong>bold</strong>');
+    });
+
+    it('renders italic text with <em>', () => {
+        const html = chatMarkdownToHtml('This is *italic* text');
+        expect(html).toContain('<em>italic</em>');
+    });
+
+    // --- Lists ---
+
+    it('renders unordered list', () => {
+        const html = chatMarkdownToHtml('- item one\n- item two');
+        expect(html).toContain('<ul>');
+        expect(html).toContain('<li>');
+        expect(html).toContain('item one');
+        expect(html).toContain('item two');
+    });
+
+    it('renders ordered list', () => {
+        const html = chatMarkdownToHtml('1. first\n2. second');
+        expect(html).toContain('<ol>');
+        expect(html).toContain('<li>');
+        expect(html).toContain('first');
+    });
+
+    // --- Code ---
+
+    it('renders inline code', () => {
+        const html = chatMarkdownToHtml('Use `console.log`');
+        expect(html).toContain('<code>console.log</code>');
+    });
+
+    it('renders fenced code block with <pre><code>', () => {
+        const html = chatMarkdownToHtml('```js\nconst x = 1;\n```');
+        expect(html).toContain('<pre>');
+        expect(html).toContain('<code');
+        expect(html).toContain('const x = 1;');
+    });
+
+    // --- Angle brackets (the HTML_LIKE_RE bypass bug) ---
+
+    it('renders content with Array<string> as markdown, not raw text', () => {
+        const html = chatMarkdownToHtml('Use `Array<string>` for the type');
+        expect(html).toContain('<code>');
+        expect(html).toContain('Array&lt;string&gt;');
+    });
+
+    it('renders content with generic XML-like patterns as markdown', () => {
+        const html = chatMarkdownToHtml('The `<div>` element is **important**');
+        expect(html).toContain('<strong>important</strong>');
+        expect(html).toContain('<code>');
+    });
+
+    // --- Paragraphs ---
+
+    it('renders paragraphs for double newlines', () => {
+        const html = chatMarkdownToHtml('First paragraph\n\nSecond paragraph');
+        expect(html).toContain('<p>First paragraph</p>');
+        expect(html).toContain('<p>Second paragraph</p>');
+    });
+
+    it('renders <br> for single newlines (breaks: true)', () => {
+        const html = chatMarkdownToHtml('Line one\nLine two');
+        expect(html).toContain('<br');
+    });
+
+    // --- Blockquote ---
+
+    it('renders blockquote', () => {
+        const html = chatMarkdownToHtml('> A quote');
+        expect(html).toContain('<blockquote>');
+        expect(html).toContain('A quote');
+    });
+
+    // --- Links ---
+
+    it('renders links with <a>', () => {
+        const html = chatMarkdownToHtml('[Click me](https://example.com)');
+        expect(html).toContain('<a');
+        expect(html).toContain('href="https://example.com"');
+        expect(html).toContain('Click me');
+    });
+
+    // --- Tables ---
+
+    it('renders tables', () => {
+        const md = '| A | B |\n| --- | --- |\n| 1 | 2 |';
+        const html = chatMarkdownToHtml(md);
+        expect(html).toContain('<table>');
+        expect(html).toContain('<th>');
+        expect(html).toContain('<td>');
+    });
+
+    // --- Horizontal rule ---
+
+    it('renders horizontal rule', () => {
+        const html = chatMarkdownToHtml('Above\n\n---\n\nBelow');
+        expect(html).toContain('<hr');
+    });
+
+    // --- Complex AI response ---
+
+    it('renders a complex AI response with mixed elements', () => {
+        const md = [
+            '### Analysis',
+            '',
+            'The function uses `Array<string>` for parameters.',
+            '',
+            '**Key points:**',
+            '',
+            '1. First item',
+            '2. Second item',
+            '',
+            '```typescript',
+            'function foo(items: Array<string>): void {',
+            '  console.log(items);',
+            '}',
+            '```',
+            '',
+            '> Note: This is important.',
+        ].join('\n');
+
+        const html = chatMarkdownToHtml(md);
+        expect(html).toContain('<h3');
+        expect(html).toContain('<strong>Key points:</strong>');
+        expect(html).toContain('<ol>');
+        expect(html).toContain('<pre>');
+        expect(html).toContain('<blockquote>');
+        // Should NOT contain raw ** markers
+        expect(html).not.toContain('**Key points:**');
+    });
+});

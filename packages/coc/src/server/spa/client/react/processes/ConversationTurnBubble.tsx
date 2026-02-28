@@ -7,9 +7,23 @@ import type { ClientConversationTurn } from '../types/dashboard';
 import { MarkdownView } from './MarkdownView';
 import { ToolCallView } from './ToolCallView';
 import { mergeConsecutiveContentItems } from './timeline-utils';
-import { renderMarkdownToHtml } from '../../markdown-renderer';
+import { Marked } from 'marked';
 import { useDisplaySettings } from '../hooks/useDisplaySettings';
 import { fetchApi } from '../hooks/useApi';
+
+const chatMarked = new Marked({
+    gfm: true,
+    breaks: true,
+});
+
+/**
+ * Convert markdown to semantic HTML using `marked` for chat messages.
+ * Produces proper `<h3>`, `<strong>`, `<ul>`, `<pre><code>`, etc.
+ */
+export function chatMarkdownToHtml(content: string): string {
+    if (!content || !content.trim()) return '';
+    return chatMarked.parse(content) as string;
+}
 
 interface ConversationTurnBubbleProps {
     turn: ClientConversationTurn;
@@ -38,11 +52,8 @@ interface RenderChunk {
     parentToolId?: string;
 }
 
-const HTML_LIKE_RE = /<[a-z][\s\S]*>/i;
-
 function toContentHtml(content: string): string {
-    if (!content || !content.trim()) return '';
-    return HTML_LIKE_RE.test(content) ? content : renderMarkdownToHtml(content);
+    return chatMarkdownToHtml(content);
 }
 
 function normalizeToolCall(raw: any, fallbackId: string): RenderToolCall {
