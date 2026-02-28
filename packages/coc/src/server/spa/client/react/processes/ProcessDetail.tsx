@@ -64,6 +64,8 @@ export function ProcessDetail() {
     const [now, setNow] = useState(Date.now());
     const [resumeLaunching, setResumeLaunching] = useState(false);
     const [resumeFeedback, setResumeFeedback] = useState<{ type: 'success' | 'error'; message: string; command?: string } | null>(null);
+    const [pipelinePhases, setPipelinePhases] = useState<Array<{ phase: string; status: string; timestamp?: string; durationMs?: number; error?: string; itemCount?: number }>>([]);
+    const [pipelineProgress, setPipelineProgress] = useState<{ phase: string; totalItems: number; completedItems: number; failedItems: number; percentage: number; message?: string } | null>(null);
 
     const process = processes.find((p: any) => p.id === selectedId);
 
@@ -80,6 +82,8 @@ export function ProcessDetail() {
         if (!selectedId) {
             setTurns([]);
             setProcessDetails(null);
+            setPipelinePhases([]);
+            setPipelineProgress(null);
             return;
         }
 
@@ -130,13 +134,52 @@ export function ProcessDetail() {
         const es = new EventSource(`/api/processes/${encodeURIComponent(selectedId)}/stream`);
         eventSourceRef.current = es;
 
-        es.onmessage = (event) => {
+        es.addEventListener('chunk', (e) => {
             try {
-                const turn = JSON.parse(event.data);
+                const turn = JSON.parse(e.data);
                 dispatch({ type: 'APPEND_TURN', processId: selectedId, turn });
                 setTurns(prev => [...prev, turn]);
             } catch { /* ignore parse errors */ }
-        };
+        });
+
+        es.addEventListener('conversation-snapshot', (e) => {
+            try {
+                const data = JSON.parse(e.data);
+                if (data.turns) {
+                    setTurns(data.turns);
+                    dispatch({ type: 'CACHE_CONVERSATION', processId: selectedId, turns: data.turns });
+                }
+            } catch { /* ignore */ }
+        });
+
+        es.addEventListener('pipeline-phase', (e) => {
+            try {
+                const data = JSON.parse(e.data);
+                setPipelinePhases(prev => {
+                    const idx = prev.findIndex(p => p.phase === data.phase);
+                    if (idx >= 0) {
+                        const updated = [...prev];
+                        updated[idx] = data;
+                        return updated;
+                    }
+                    return [...prev, data];
+                });
+            } catch { /* ignore */ }
+        });
+
+        es.addEventListener('pipeline-progress', (e) => {
+            try {
+                const data = JSON.parse(e.data);
+                setPipelineProgress(data);
+            } catch { /* ignore */ }
+        });
+
+        es.addEventListener('status', (e) => {
+            try {
+                const data = JSON.parse(e.data);
+                dispatch({ type: 'PROCESS_UPDATED', process: { id: selectedId, status: data.status } });
+            } catch { /* ignore */ }
+        });
 
         es.onerror = () => {
             es.close();
