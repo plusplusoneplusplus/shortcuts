@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
-import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
+import { AppProvider, useApp } from '../../../src/server/spa/client/react/context/AppContext';
 import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
 import { GenerateTaskDialog } from '../../../src/server/spa/client/react/tasks/GenerateTaskDialog';
 import { useQueueTaskGeneration } from '../../../src/server/spa/client/react/hooks/useQueueTaskGeneration';
@@ -185,6 +185,34 @@ describe('GenerateTaskDialog', () => {
         await act(async () => { renderDialog({ onSuccess }); });
 
         expect(onSuccess).toHaveBeenCalledWith('task-abc');
+    });
+
+    it('does not navigate to queue tab when status becomes queued', async () => {
+        // Observer component to read activeRepoSubTab from AppContext
+        let capturedTab: string | undefined;
+        function TabObserver() {
+            const { state } = useApp();
+            capturedTab = state.activeRepoSubTab;
+            return null;
+        }
+
+        mockUseQueueTaskGeneration.mockReturnValue(
+            makeHookReturn({ status: 'queued', taskId: 'task-xyz' }),
+        );
+
+        await act(async () => {
+            render(
+                <AppProvider>
+                    <ToastProvider value={{ addToast: vi.fn(), removeToast: vi.fn(), toasts: [] }}>
+                        <GenerateTaskDialog wsId="ws-1" onSuccess={vi.fn()} onClose={vi.fn()} />
+                        <TabObserver />
+                    </ToastProvider>
+                </AppProvider>,
+            );
+        });
+
+        // activeRepoSubTab should remain at its initial value ('info'), not 'queue'
+        expect(capturedTab).toBe('info');
     });
 
     it('error state shows error message and Retry button', async () => {

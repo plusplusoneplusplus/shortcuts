@@ -12,7 +12,6 @@ import { useQueueTaskGeneration } from '../hooks/useQueueTaskGeneration';
 import { usePreferences } from '../hooks/usePreferences';
 import { useImagePaste } from '../hooks/useImagePaste';
 import { useGlobalToast } from '../context/ToastContext';
-import { useApp } from '../context/AppContext';
 import { type TaskFolder, filterGitMetadataFolders } from '../hooks/useTaskTree';
 import { getApiBase } from '../utils/config';
 
@@ -57,7 +56,6 @@ export function GenerateTaskDialog({
     // --- preferences (persisted model + depth) ---
     const { model: savedModel, setModel: persistModel, depth: savedDepth, setDepth: persistDepth } = usePreferences();
     const { addToast } = useGlobalToast();
-    const { dispatch: appDispatch } = useApp();
 
     // --- form state ---
     const [prompt, setPrompt] = useState('');
@@ -118,15 +116,14 @@ export function GenerateTaskDialog({
         return () => { cancelled = true; };
     }, [wsId]);
 
-    // --- notify parent and navigate to Queue tab after successful enqueue ---
+    // --- notify parent after successful enqueue (user navigates to Queue tab manually) ---
     useEffect(() => {
         if (status === 'queued') {
             addToast(`Task queued${taskId ? ` (${taskId.slice(0, 8)})` : ''}`, 'success');
-            appDispatch({ type: 'SET_REPO_SUB_TAB', tab: 'queue' });
             clearImages();
             onSuccess(taskId || '');
         }
-    }, [status, taskId, addToast, appDispatch, clearImages, onSuccess]);
+    }, [status, taskId, addToast, clearImages, onSuccess]);
 
     const handleGenerate = useCallback(() => {
         enqueue({
