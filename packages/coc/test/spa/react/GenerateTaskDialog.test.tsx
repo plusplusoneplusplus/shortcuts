@@ -830,4 +830,104 @@ describe('GenerateTaskDialog', () => {
 
         expect(screen.queryByTestId('image-lightbox')).toBeNull();
     });
+
+    // ── Ctrl+Enter keyboard shortcut tests ──────────────────────────────────
+
+    it('Ctrl+Enter on textarea submits when prompt is non-empty', async () => {
+        const enqueueSpy = vi.fn();
+        mockUseQueueTaskGeneration.mockReturnValue(makeHookReturn({ enqueue: enqueueSpy }));
+
+        await act(async () => { renderDialog(); });
+
+        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
+        fireEvent.change(textarea, { target: { value: 'Build a REST API' } });
+        fireEvent.keyDown(textarea, { key: 'Enter', ctrlKey: true });
+
+        expect(enqueueSpy).toHaveBeenCalledTimes(1);
+        expect(enqueueSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ prompt: 'Build a REST API' }),
+        );
+    });
+
+    it('Cmd+Enter (metaKey) on textarea submits when prompt is non-empty', async () => {
+        const enqueueSpy = vi.fn();
+        mockUseQueueTaskGeneration.mockReturnValue(makeHookReturn({ enqueue: enqueueSpy }));
+
+        await act(async () => { renderDialog(); });
+
+        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
+        fireEvent.change(textarea, { target: { value: 'Build a REST API' } });
+        fireEvent.keyDown(textarea, { key: 'Enter', metaKey: true });
+
+        expect(enqueueSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('Ctrl+Enter does not submit when prompt is empty or whitespace', async () => {
+        const enqueueSpy = vi.fn();
+        mockUseQueueTaskGeneration.mockReturnValue(makeHookReturn({ enqueue: enqueueSpy }));
+
+        await act(async () => { renderDialog(); });
+
+        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
+
+        // empty
+        fireEvent.keyDown(textarea, { key: 'Enter', ctrlKey: true });
+        expect(enqueueSpy).not.toHaveBeenCalled();
+
+        // whitespace only
+        fireEvent.change(textarea, { target: { value: '   ' } });
+        fireEvent.keyDown(textarea, { key: 'Enter', ctrlKey: true });
+        expect(enqueueSpy).not.toHaveBeenCalled();
+    });
+
+    it('Ctrl+Enter does not submit while submitting', async () => {
+        const enqueueSpy = vi.fn();
+        mockUseQueueTaskGeneration.mockReturnValue(
+            makeHookReturn({ enqueue: enqueueSpy, status: 'submitting' }),
+        );
+
+        await act(async () => { renderDialog(); });
+
+        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
+        fireEvent.change(textarea, { target: { value: 'hello' } });
+        fireEvent.keyDown(textarea, { key: 'Enter', ctrlKey: true });
+
+        expect(enqueueSpy).not.toHaveBeenCalled();
+    });
+
+    it('Ctrl+Enter does not submit when already queued', async () => {
+        const enqueueSpy = vi.fn();
+        mockUseQueueTaskGeneration.mockReturnValue(
+            makeHookReturn({ enqueue: enqueueSpy, status: 'queued', taskId: 'q1' }),
+        );
+
+        await act(async () => { renderDialog({ onSuccess: vi.fn() }); });
+
+        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
+        fireEvent.change(textarea, { target: { value: 'hello' } });
+        fireEvent.keyDown(textarea, { key: 'Enter', ctrlKey: true });
+
+        expect(enqueueSpy).not.toHaveBeenCalled();
+    });
+
+    it('plain Enter does not trigger submit', async () => {
+        const enqueueSpy = vi.fn();
+        mockUseQueueTaskGeneration.mockReturnValue(makeHookReturn({ enqueue: enqueueSpy }));
+
+        await act(async () => { renderDialog(); });
+
+        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
+        fireEvent.change(textarea, { target: { value: 'hello' } });
+        fireEvent.keyDown(textarea, { key: 'Enter' });
+
+        expect(enqueueSpy).not.toHaveBeenCalled();
+    });
+
+    it('shows Ctrl+Enter hint on the Generate button', async () => {
+        await act(async () => { renderDialog(); });
+
+        const kbd = document.querySelector('#gen-task-generate kbd');
+        expect(kbd).toBeTruthy();
+        expect(kbd!.textContent).toBe('Ctrl+Enter');
+    });
 });

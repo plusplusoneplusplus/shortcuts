@@ -145,7 +145,7 @@ export function GenerateTaskDialog({
                 loading={isSubmitting}
                 disabled={!prompt.trim() || isSubmitting || isQueued}
             >
-                Generate
+                Generate <kbd className="ml-1 text-[9px] opacity-60">Ctrl+Enter</kbd>
             </Button>
         </>
     );
@@ -179,6 +179,12 @@ export function GenerateTaskDialog({
                         rows={4}
                         value={prompt}
                         onChange={e => setPrompt(e.target.value)}
+                        onKeyDown={e => {
+                            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && prompt.trim() && !isSubmitting && !isQueued) {
+                                e.preventDefault();
+                                handleGenerate();
+                            }
+                        }}
                         onPaste={isSubmitting || isQueued ? undefined : addFromPaste}
                         disabled={isSubmitting || isQueued}
                         placeholder="Describe the task to generate…"
