@@ -261,19 +261,28 @@ describe('File Preview API', () => {
             expect(body.error).toContain('Binary files');
         });
 
-        it('returns 404 for directories', async () => {
+        it('returns directory listing for directories', async () => {
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
 
             const dirPath = path.join(workspaceDir, 'subdir');
             fs.mkdirSync(dirPath, { recursive: true });
+            fs.writeFileSync(path.join(dirPath, 'file-a.ts'), '');
+            fs.mkdirSync(path.join(dirPath, 'nested'), { recursive: true });
 
             const res = await request(
                 `${srv.url}/api/workspaces/${wsId}/files/preview?path=${encodeURIComponent(dirPath)}`
             );
-            expect(res.status).toBe(404);
+            expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
-            expect(body.error).toBe('Not a file');
+            expect(body.type).toBe('directory');
+            expect(body.dirName).toBe('subdir');
+            expect(body.entries).toHaveLength(2);
+            // Directories first, then files
+            expect(body.entries[0]).toEqual({ name: 'nested', isDirectory: true });
+            expect(body.entries[1]).toEqual({ name: 'file-a.ts', isDirectory: false });
+            expect(body.totalEntries).toBe(2);
+            expect(body.truncated).toBe(false);
         });
     });
 
@@ -355,6 +364,68 @@ describe('File Preview API', () => {
                 );
                 expect(res.status).toBe(400);
             }
+        });
+
+        it('returns empty entries for empty directory', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+
+            const dirPath = path.join(workspaceDir, 'empty-dir');
+            fs.mkdirSync(dirPath, { recursive: true });
+
+            const res = await request(
+                `${srv.url}/api/workspaces/${wsId}/files/preview?path=${encodeURIComponent(dirPath)}`
+            );
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.type).toBe('directory');
+            expect(body.entries).toHaveLength(0);
+            expect(body.totalEntries).toBe(0);
+            expect(body.truncated).toBe(false);
+        });
+
+        it('truncates directory entries beyond 30', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+
+            const dirPath = path.join(workspaceDir, 'big-dir');
+            fs.mkdirSync(dirPath, { recursive: true });
+            for (let i = 0; i < 40; i++) {
+                fs.writeFileSync(path.join(dirPath, `file-${String(i).padStart(3, '0')}.txt`), '');
+            }
+
+            const res = await request(
+                `${srv.url}/api/workspaces/${wsId}/files/preview?path=${encodeURIComponent(dirPath)}`
+            );
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.type).toBe('directory');
+            expect(body.entries).toHaveLength(30);
+            expect(body.totalEntries).toBe(40);
+            expect(body.truncated).toBe(true);
+        });
+
+        it('sorts directory entries: directories first, then files, alphabetical', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+
+            const dirPath = path.join(workspaceDir, 'mixed-dir');
+            fs.mkdirSync(dirPath, { recursive: true });
+            fs.writeFileSync(path.join(dirPath, 'zebra.ts'), '');
+            fs.writeFileSync(path.join(dirPath, 'alpha.ts'), '');
+            fs.mkdirSync(path.join(dirPath, 'zoo'), { recursive: true });
+            fs.mkdirSync(path.join(dirPath, 'aaa'), { recursive: true });
+
+            const res = await request(
+                `${srv.url}/api/workspaces/${wsId}/files/preview?path=${encodeURIComponent(dirPath)}`
+            );
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.entries.map((e: any) => e.name)).toEqual(['aaa', 'zoo', 'alpha.ts', 'zebra.ts']);
+            expect(body.entries[0].isDirectory).toBe(true);
+            expect(body.entries[1].isDirectory).toBe(true);
+            expect(body.entries[2].isDirectory).toBe(false);
+            expect(body.entries[3].isDirectory).toBe(false);
         });
     });
 });

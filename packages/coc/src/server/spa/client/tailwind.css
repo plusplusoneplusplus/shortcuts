@@ -111,6 +111,34 @@
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
+/* Directory listing entries */
+.file-preview-dir-listing {
+    padding: 8px 0;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.file-preview-dir-entry {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 12px;
+}
+
+.file-preview-dir-entry:hover {
+    background: rgba(0, 0, 0, 0.04);
+}
+
+.dark .file-preview-dir-entry:hover {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.file-preview-dir-icon {
+    flex-shrink: 0;
+    font-size: 13px;
+    line-height: 1;
+}
+
 .file-preview-line {
     display: flex;
     align-items: baseline;

@@ -13,6 +13,7 @@ interface WorkspaceInfo {
 }
 
 interface FilePreviewResponse {
+    type?: 'file';
     path: string;
     fileName: string;
     lines: string[];
@@ -20,8 +21,19 @@ interface FilePreviewResponse {
     truncated: boolean;
 }
 
+interface DirectoryPreviewResponse {
+    type: 'directory';
+    path: string;
+    dirName: string;
+    entries: { name: string; isDirectory: boolean }[];
+    totalEntries: number;
+    truncated: boolean;
+}
+
+type PreviewResponse = FilePreviewResponse | DirectoryPreviewResponse;
+
 interface CacheEntry {
-    data: FilePreviewResponse | null;
+    data: PreviewResponse | null;
     error: string | null;
     timestamp: number;
 }
@@ -92,7 +104,7 @@ function getFromCache(path: string): CacheEntry | null {
     return entry;
 }
 
-function setCache(path: string, data: FilePreviewResponse | null, error: string | null): void {
+function setCache(path: string, data: PreviewResponse | null, error: string | null): void {
     if (previewCache.size >= MAX_CACHE_ENTRIES) {
         const oldest = previewCache.keys().next().value;
         if (oldest) previewCache.delete(oldest);
@@ -147,7 +159,7 @@ async function resolveWorkspaceId(filePath: string): Promise<string | null> {
     return best?.id || workspaces[0]?.id || null;
 }
 
-async function fetchPreview(path: string): Promise<FilePreviewResponse> {
+async function fetchPreview(path: string): Promise<PreviewResponse> {
     const wsId = await resolveWorkspaceId(path);
     if (!wsId) {
         throw new Error('No workspace available');
@@ -256,6 +268,40 @@ function renderPreview(data: FilePreviewResponse): void {
     tip.style.display = 'block';
 }
 
+function renderDirectoryPreview(data: DirectoryPreviewResponse): void {
+    const tip = createTooltip();
+    const folderCount = data.entries.filter(e => e.isDirectory).length;
+    const fileCount = data.entries.filter(e => !e.isDirectory).length;
+
+    const rows = data.entries.map(e =>
+        '<div class="file-preview-dir-entry">' +
+        `<span class="file-preview-dir-icon">${e.isDirectory ? '\uD83D\uDCC1' : '\uD83D\uDCC4'}</span>` +
+        `<span>${escapeHtml(e.name)}</span>` +
+        '</div>'
+    ).join('');
+
+    const summary = `${folderCount} folder${folderCount !== 1 ? 's' : ''}, ${fileCount} file${fileCount !== 1 ? 's' : ''}`;
+    const totalLabel = data.truncated ? ` (${data.totalEntries} total)` : '';
+
+    tip.innerHTML =
+        '<div class="file-preview-tooltip-header">' +
+        `<span class="file-preview-tooltip-filename">${escapeHtml(data.dirName)}</span>` +
+        `<span class="file-preview-tooltip-info">${escapeHtml(summary + totalLabel)}</span>` +
+        '</div>' +
+        '<div class="file-preview-tooltip-body">' +
+        `<div class="file-preview-dir-listing">${rows}</div>` +
+        '</div>';
+    tip.style.display = 'block';
+}
+
+function renderResponse(data: PreviewResponse): void {
+    if (data.type === 'directory') {
+        renderDirectoryPreview(data);
+    } else {
+        renderPreview(data as FilePreviewResponse);
+    }
+}
+
 async function showTooltip(target: HTMLElement): Promise<void> {
     const fullPath = target.getAttribute('data-full-path');
     if (!fullPath) return;
@@ -269,7 +315,7 @@ async function showTooltip(target: HTMLElement): Promise<void> {
     if (cached) {
         if (activeTarget !== target || reqId !== activeRequestId) return;
         if (cached.error) renderError(cached.error);
-        else if (cached.data) renderPreview(cached.data);
+        else if (cached.data) renderResponse(cached.data);
         positionTooltip(target);
         return;
     }
@@ -278,7 +324,7 @@ async function showTooltip(target: HTMLElement): Promise<void> {
         const data = await fetchPreview(fullPath);
         setCache(fullPath, data, null);
         if (activeTarget !== target || reqId !== activeRequestId) return;
-        renderPreview(data);
+        renderResponse(data);
         positionTooltip(target);
     } catch (err: any) {
         const msg = err?.message || 'Failed to load preview';

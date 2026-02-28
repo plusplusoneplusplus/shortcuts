@@ -293,6 +293,173 @@ describe('file-path-preview delegation', () => {
     });
 });
 
+function mockWorkspaceAndDirectoryPreview(fetchMock: ReturnType<typeof vi.fn>, overrides?: {
+    dirName?: string;
+    entries?: { name: string; isDirectory: boolean }[];
+    totalEntries?: number;
+    truncated?: boolean;
+}) {
+    // Use URL-based routing to handle accumulated event listeners from prior test imports
+    fetchMock.mockImplementation((url: string) => {
+        if (url.includes('/files/preview')) {
+            return Promise.resolve({
+                ok: true,
+                json: async () => ({
+                    type: 'directory',
+                    path: '/Users/test/Documents/Projects/shortcuts/src',
+                    dirName: overrides?.dirName ?? 'src',
+                    entries: overrides?.entries ?? [
+                        { name: 'components', isDirectory: true },
+                        { name: 'index.ts', isDirectory: false },
+                    ],
+                    totalEntries: overrides?.totalEntries ?? 2,
+                    truncated: overrides?.truncated ?? false,
+                }),
+            });
+        }
+        return Promise.resolve({
+            ok: true,
+            json: async () => ({
+                workspaces: [{ id: 'ws-1', rootPath: '/Users/test/Documents/Projects/shortcuts' }],
+            }),
+        });
+    });
+}
+
+async function hoverAndWaitForDirectory(link: HTMLElement) {
+    link.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    await vi.advanceTimersByTimeAsync(300);
+    // Directory rendering requires extra microtask flushes for the promise chain
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+}
+
+describe('directory hover preview', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+        vi.resetModules();
+        document.body.innerHTML = '';
+        delete (window as any).__COC_FILE_PATH_PREVIEW_DELEGATION__;
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+        vi.restoreAllMocks();
+        document.body.innerHTML = '';
+    });
+
+    it('renders directory entry list with icons', async () => {
+        const fullPath = '/Users/test/Documents/Projects/shortcuts/src';
+        document.body.innerHTML = `
+            <div>
+                <span class="file-path-link" data-full-path="${fullPath}">src</span>
+            </div>
+        `;
+
+        const fetchMock = vi.fn();
+        mockWorkspaceAndDirectoryPreview(fetchMock, {
+            dirName: 'src',
+            entries: [
+                { name: 'components', isDirectory: true },
+                { name: 'utils', isDirectory: true },
+                { name: 'app.ts', isDirectory: false },
+            ],
+            totalEntries: 3,
+        });
+        vi.stubGlobal('fetch', fetchMock as any);
+
+        await import('../../../src/server/spa/client/react/file-path-preview');
+        const link = document.querySelector('.file-path-link') as HTMLElement;
+        await hoverAndWaitForDirectory(link);
+
+        const tooltip = document.querySelector('.file-preview-tooltip') as HTMLElement;
+        expect(tooltip).not.toBeNull();
+
+        const entries = document.querySelectorAll('.file-preview-dir-entry');
+        expect(entries.length).toBe(3);
+
+        const icons = document.querySelectorAll('.file-preview-dir-icon');
+        expect(icons[0].textContent).toBe('\uD83D\uDCC1');
+        expect(icons[1].textContent).toBe('\uD83D\uDCC1');
+        expect(icons[2].textContent).toBe('\uD83D\uDCC4');
+    });
+
+    it('shows summary line with folder and file counts', async () => {
+        const fullPath = '/Users/test/Documents/Projects/shortcuts/src';
+        document.body.innerHTML = `
+            <div>
+                <span class="file-path-link" data-full-path="${fullPath}">src</span>
+            </div>
+        `;
+
+        const fetchMock = vi.fn();
+        mockWorkspaceAndDirectoryPreview(fetchMock, {
+            entries: [
+                { name: 'dir1', isDirectory: true },
+                { name: 'dir2', isDirectory: true },
+                { name: 'dir3', isDirectory: true },
+                { name: 'a.ts', isDirectory: false },
+                { name: 'b.ts', isDirectory: false },
+            ],
+            totalEntries: 5,
+        });
+        vi.stubGlobal('fetch', fetchMock as any);
+
+        await import('../../../src/server/spa/client/react/file-path-preview');
+        await hoverAndWaitForDirectory(document.querySelector('.file-path-link') as HTMLElement);
+
+        const tooltip = document.querySelector('.file-preview-tooltip') as HTMLElement;
+        expect(tooltip.textContent).toContain('3 folders, 2 files');
+    });
+
+    it('shows truncation indicator for large directories', async () => {
+        const fullPath = '/Users/test/Documents/Projects/shortcuts/src';
+        document.body.innerHTML = `
+            <div>
+                <span class="file-path-link" data-full-path="${fullPath}">src</span>
+            </div>
+        `;
+
+        const fetchMock = vi.fn();
+        mockWorkspaceAndDirectoryPreview(fetchMock, {
+            entries: [{ name: 'a.ts', isDirectory: false }],
+            totalEntries: 47,
+            truncated: true,
+        });
+        vi.stubGlobal('fetch', fetchMock as any);
+
+        await import('../../../src/server/spa/client/react/file-path-preview');
+        await hoverAndWaitForDirectory(document.querySelector('.file-path-link') as HTMLElement);
+
+        const tooltip = document.querySelector('.file-preview-tooltip') as HTMLElement;
+        expect(tooltip.textContent).toContain('47 total');
+    });
+
+    it('shows singular form for 1 folder, 1 file', async () => {
+        const fullPath = '/Users/test/Documents/Projects/shortcuts/src';
+        document.body.innerHTML = `
+            <div>
+                <span class="file-path-link" data-full-path="${fullPath}">src</span>
+            </div>
+        `;
+
+        const fetchMock = vi.fn();
+        mockWorkspaceAndDirectoryPreview(fetchMock, {
+            entries: [
+                { name: 'sub', isDirectory: true },
+                { name: 'index.ts', isDirectory: false },
+            ],
+            totalEntries: 2,
+        });
+        vi.stubGlobal('fetch', fetchMock as any);
+
+        await import('../../../src/server/spa/client/react/file-path-preview');
+        await hoverAndWaitForDirectory(document.querySelector('.file-path-link') as HTMLElement);
+
+        const tooltip = document.querySelector('.file-preview-tooltip') as HTMLElement;
+        expect(tooltip.textContent).toContain('1 folder, 1 file');
+    });
+});
+
 describe('file-preview-tooltip CSS rules', () => {
     const cssPath = resolve(__dirname, '../../../src/server/spa/client/tailwind.css');
     const css = readFileSync(cssPath, 'utf-8');

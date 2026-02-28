@@ -89,31 +89,61 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore): void {
                 return sendError(res, 403, 'Access denied: path is outside workspace');
             }
 
-            // Binary file rejection by extension
-            const BINARY_EXTS = new Set([
-                '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.ico', '.webp', '.svg',
-                '.mp3', '.mp4', '.avi', '.mov', '.mkv', '.wav', '.flac',
-                '.zip', '.tar', '.gz', '.bz2', '.7z', '.rar',
-                '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
-                '.exe', '.dll', '.so', '.dylib', '.bin', '.o', '.a',
-                '.woff', '.woff2', '.ttf', '.eot', '.otf',
-            ]);
-            const ext = path.extname(resolvedPath).toLowerCase();
-            if (BINARY_EXTS.has(ext)) {
-                return sendError(res, 400, 'Binary files are not supported');
-            }
-
-            // Parse lines parameter (default 20, 0 = all, max 500)
-            let maxLines = 20;
-            const linesParam = parsed.query.lines;
-            if (typeof linesParam === 'string' && linesParam !== '') {
-                maxLines = parseInt(linesParam, 10);
-                if (isNaN(maxLines) || maxLines < 0) maxLines = 20;
-                if (maxLines > 500 && maxLines !== 0) maxLines = 500;
-            }
-
             try {
                 const stat = await fs.promises.stat(resolvedPath);
+
+                // ── Directory listing ──────────────────────────────
+                if (stat.isDirectory()) {
+                    const MAX_DIR_ENTRIES = 30;
+                    const dirents = await fs.promises.readdir(resolvedPath, { withFileTypes: true });
+                    // Sort: directories first, then files, both alphabetical
+                    dirents.sort((a, b) => {
+                        const aDir = a.isDirectory() ? 0 : 1;
+                        const bDir = b.isDirectory() ? 0 : 1;
+                        if (aDir !== bDir) return aDir - bDir;
+                        return a.name.localeCompare(b.name);
+                    });
+                    const totalEntries = dirents.length;
+                    const truncated = totalEntries > MAX_DIR_ENTRIES;
+                    const entries = dirents.slice(0, MAX_DIR_ENTRIES).map(d => ({
+                        name: d.name,
+                        isDirectory: d.isDirectory(),
+                    }));
+                    const dirName = path.basename(resolvedPath);
+                    return sendJSON(res, 200, {
+                        type: 'directory',
+                        path: resolvedPath,
+                        dirName,
+                        entries,
+                        totalEntries,
+                        truncated,
+                    });
+                }
+
+                // ── File preview ───────────────────────────────────
+                // Binary file rejection by extension
+                const BINARY_EXTS = new Set([
+                    '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.ico', '.webp', '.svg',
+                    '.mp3', '.mp4', '.avi', '.mov', '.mkv', '.wav', '.flac',
+                    '.zip', '.tar', '.gz', '.bz2', '.7z', '.rar',
+                    '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+                    '.exe', '.dll', '.so', '.dylib', '.bin', '.o', '.a',
+                    '.woff', '.woff2', '.ttf', '.eot', '.otf',
+                ]);
+                const ext = path.extname(resolvedPath).toLowerCase();
+                if (BINARY_EXTS.has(ext)) {
+                    return sendError(res, 400, 'Binary files are not supported');
+                }
+
+                // Parse lines parameter (default 20, 0 = all, max 500)
+                let maxLines = 20;
+                const linesParam = parsed.query.lines;
+                if (typeof linesParam === 'string' && linesParam !== '') {
+                    maxLines = parseInt(linesParam, 10);
+                    if (isNaN(maxLines) || maxLines < 0) maxLines = 20;
+                    if (maxLines > 500 && maxLines !== 0) maxLines = 500;
+                }
+
                 if (!stat.isFile()) {
                     return sendError(res, 404, 'Not a file');
                 }
@@ -136,6 +166,7 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore): void {
                 const language = ext ? ext.substring(1) : '';
 
                 sendJSON(res, 200, {
+                    type: 'file',
                     path: resolvedPath,
                     fileName,
                     lines,
