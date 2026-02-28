@@ -7,6 +7,7 @@
  *
  * Task types supported:
  * - ai-clarification: Sends prompt to CopilotSDKService
+ * - chat: Interactive SPA conversation, sends prompt to CopilotSDKService
  * - custom: Sends payload.data.prompt to CopilotSDKService
  * - follow-prompt: Reads prompt file and sends to CopilotSDKService
  * - task-generation: Builds task creation prompt and sends to CopilotSDKService
@@ -28,6 +29,7 @@ import {
     TaskExecutionResult,
     isFollowPromptPayload,
     isAIClarificationPayload,
+    isChatPayload,
     isCustomTaskPayload,
     isTaskGenerationPayload,
     isRunPipelinePayload,
@@ -472,6 +474,10 @@ export class CLITaskExecutor implements TaskExecutor {
             return `Run pipeline: ${path.basename(task.payload.pipelinePath)}`;
         }
 
+        if (isChatPayload(task.payload)) {
+            return task.payload.prompt || task.displayName || 'Chat message';
+        }
+
         if (isAIClarificationPayload(task.payload)) {
             return task.payload.prompt || task.displayName || 'AI clarification task';
         }
@@ -562,6 +568,7 @@ export class CLITaskExecutor implements TaskExecutor {
         // For types that need AI execution
         if (
             isAIClarificationPayload(task.payload) ||
+            isChatPayload(task.payload) ||
             isCustomTaskPayload(task.payload) ||
             isFollowPromptPayload(task.payload)
         ) {
@@ -857,6 +864,9 @@ export class CLITaskExecutor implements TaskExecutor {
         }
         if (isFollowPromptPayload(task.payload)) {
             return task.payload.workingDirectory || this.defaultWorkingDirectory;
+        }
+        if (isChatPayload(task.payload)) {
+            return task.payload.folderPath || this.defaultWorkingDirectory;
         }
         if (isAIClarificationPayload(task.payload)) {
             return task.payload.workingDirectory || this.defaultWorkingDirectory;

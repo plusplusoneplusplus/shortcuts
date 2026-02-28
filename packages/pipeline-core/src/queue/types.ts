@@ -19,6 +19,7 @@ export type TaskType =
     | 'resolve-comments'
     | 'code-review'
     | 'ai-clarification'
+    | 'chat'
     | 'task-generation'
     | 'run-pipeline'
     | 'custom';
@@ -136,6 +137,20 @@ export interface AIClarificationPayload {
 }
 
 /**
+ * Payload for chat tasks (interactive SPA conversations)
+ */
+export interface ChatPayload {
+    /** Discriminant field for clean type narrowing */
+    readonly kind: 'chat';
+    /** The chat message prompt */
+    prompt: string;
+    /** Workspace ID for display / process metadata */
+    workspaceId?: string;
+    /** Folder path for queue folder filtering */
+    folderPath?: string;
+}
+
+/**
  * Payload for task-generation tasks (AI-powered task file creation)
  */
 export interface TaskGenerationPayload {
@@ -197,6 +212,7 @@ export type TaskPayload =
     | ResolveCommentsPayload
     | CodeReviewPayload
     | AIClarificationPayload
+    | ChatPayload
     | TaskGenerationPayload
     | RunPipelinePayload
     | CustomTaskPayload;
@@ -579,6 +595,13 @@ export function isCodeReviewPayload(payload: TaskPayload): payload is CodeReview
  */
 export function isAIClarificationPayload(payload: TaskPayload): payload is AIClarificationPayload {
     return 'prompt' in payload && !('data' in payload);
+}
+
+/**
+ * Check if a payload is a ChatPayload
+ */
+export function isChatPayload(payload: TaskPayload): payload is ChatPayload {
+    return (payload as any).kind === 'chat';
 }
 
 /**

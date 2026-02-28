@@ -346,7 +346,7 @@ describe('Queue Handler', () => {
     });
 
     describe('POST /api/queue/enqueue — Legacy enqueue compatibility', () => {
-        it('should enqueue ai-clarification from prompt/model shorthand body', async () => {
+        it('should enqueue chat from prompt/model shorthand body', async () => {
             const srv = await startServer();
 
             const res = await postJSON(`${srv.url}/api/queue/enqueue`, {
@@ -356,7 +356,8 @@ describe('Queue Handler', () => {
             expect(res.status).toBe(201);
             const body = JSON.parse(res.body);
             expect(body.task).toBeDefined();
-            expect(body.task.type).toBe('ai-clarification');
+            expect(body.task.type).toBe('chat');
+            expect(body.task.payload.kind).toBe('chat');
             expect(body.task.payload.prompt).toBe('what time is it');
             expect(body.task.config.model).toBe('claude-haiku-4.5');
         });

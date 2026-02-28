@@ -458,6 +458,12 @@ function renderPendingTaskPayload(task: any): string {
             html += '<pre class="pending-task-prompt-content" style="max-height:300px;overflow:auto;padding:12px;border-radius:6px;font-size:12px;white-space:pre-wrap;word-break:break-word;background:var(--vscode-textBlockQuote-background, #f3f3f3);border:1px solid var(--vscode-panel-border, #e0e0e0);margin-top:8px">' + escapeHtmlClient(payload.additionalContext) + '</pre>';
             html += '</details>';
         }
+    } else if (type === 'chat') {
+        const chatPrompt = payload.prompt || '';
+        if (chatPrompt) {
+            html += '<h3 style="margin:0 0 8px;font-size:14px;font-weight:600">Prompt</h3>';
+            html += '<pre class="pending-task-prompt-content" style="max-height:400px;overflow:auto;padding:12px;border-radius:6px;font-size:12px;white-space:pre-wrap;word-break:break-word;background:var(--vscode-textBlockQuote-background, #f3f3f3);border:1px solid var(--vscode-panel-border, #e0e0e0)">' + escapeHtmlClient(chatPrompt) + '</pre>';
+        }
     } else if (type === 'ai-clarification') {
         const prompt = payload.prompt || '';
         // Metadata grid for ai-clarification fields

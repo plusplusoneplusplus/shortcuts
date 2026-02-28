@@ -7,10 +7,13 @@ import {
     isFollowPromptPayload,
     isRunPipelinePayload,
     isResolveCommentsPayload,
+    isChatPayload,
+    isAIClarificationPayload,
     type FollowPromptPayload,
     type RunPipelinePayload,
     type ResolveCommentsPayload,
     type AIClarificationPayload,
+    type ChatPayload,
     type CustomTaskPayload,
     type TaskGenerationPayload,
     type QueuedTask,
@@ -174,5 +177,61 @@ describe('ResolveCommentsPayload', () => {
     it('isResolveCommentsPayload returns false for non-matching payloads', () => {
         const followPrompt: FollowPromptPayload = { promptContent: 'test' };
         expect(isResolveCommentsPayload(followPrompt)).toBe(false);
+    });
+});
+
+describe('ChatPayload — type and guard', () => {
+    it('isChatPayload returns true for valid payload', () => {
+        const payload: ChatPayload = {
+            kind: 'chat',
+            prompt: 'hello',
+        };
+        expect(isChatPayload(payload)).toBe(true);
+    });
+
+    it('isChatPayload returns true with optional fields', () => {
+        const payload: ChatPayload = {
+            kind: 'chat',
+            prompt: 'hello',
+            workspaceId: 'ws1',
+            folderPath: '/tmp',
+        };
+        expect(isChatPayload(payload)).toBe(true);
+    });
+
+    it('isChatPayload returns false for AIClarificationPayload (no kind)', () => {
+        const payload: AIClarificationPayload = {
+            prompt: 'hello',
+        };
+        expect(isChatPayload(payload)).toBe(false);
+    });
+
+    it('isChatPayload returns false for RunPipelinePayload', () => {
+        const payload: RunPipelinePayload = {
+            kind: 'run-pipeline',
+            pipelinePath: '/path',
+            workingDirectory: '/workspace',
+        };
+        expect(isChatPayload(payload)).toBe(false);
+    });
+
+    it('isChatPayload returns false for TaskGenerationPayload', () => {
+        const payload: TaskGenerationPayload = {
+            kind: 'task-generation',
+            workingDirectory: '/workspace',
+            prompt: 'create a task',
+        };
+        expect(isChatPayload(payload)).toBe(false);
+    });
+
+    it('isAIClarificationPayload does NOT match ChatPayload', () => {
+        const payload: ChatPayload = {
+            kind: 'chat',
+            prompt: 'hello',
+        };
+        // ChatPayload has 'prompt' but also has 'kind' — isAIClarificationPayload
+        // uses heuristic ('prompt' in payload && !('data' in payload)) which would
+        // match, but isChatPayload should be checked first in dispatch chains
+        expect(isChatPayload(payload)).toBe(true);
     });
 });

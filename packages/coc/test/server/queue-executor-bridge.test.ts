@@ -2,7 +2,7 @@
  * Queue Executor Bridge Tests
  *
  * Tests for CLITaskExecutor and createQueueExecutorBridge:
- * - Task execution by type (ai-clarification, custom, follow-prompt)
+ * - Task execution by type (ai-clarification, chat, custom, follow-prompt)
  * - Process tracking in ProcessStore
  * - Cancellation handling
  * - Error handling and failure paths
@@ -179,6 +179,91 @@ describe('CLITaskExecutor', () => {
                 model: 'gpt-4',
                 timeoutMs: 60000,
                 workingDirectory: '/my/dir',
+            }));
+        });
+    });
+
+    // ========================================================================
+    // Chat Tasks
+    // ========================================================================
+
+    describe('chat tasks', () => {
+        it('should execute a chat task successfully', async () => {
+            const executor = new CLITaskExecutor(store);
+
+            const task: QueuedTask = {
+                id: 'chat-1',
+                type: 'chat',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: { kind: 'chat' as const, prompt: 'What does this repo do?' },
+                config: { timeoutMs: 30000 },
+                displayName: 'Chat message',
+            };
+
+            const result = await executor.execute(task);
+
+            expect(result.success).toBe(true);
+            expect(result.durationMs).toBeGreaterThanOrEqual(0);
+            expect(result.result).toEqual({
+                response: 'AI response text',
+                sessionId: 'session-123',
+            });
+
+            // Verify process was created in store
+            expect(store.addProcess).toHaveBeenCalled();
+            const addedProcess = (store.addProcess as any).mock.calls.at(-1)[0];
+            expect(addedProcess.id).toBe('queue_chat-1');
+            expect(addedProcess.type).toBe('queue-chat');
+            expect(addedProcess.status).toBe('running');
+            expect(addedProcess.fullPrompt).toBe('What does this repo do?');
+
+            // Verify process was marked completed
+            expect(store.updateProcess).toHaveBeenCalledWith('queue_chat-1', expect.objectContaining({
+                status: 'completed',
+            }));
+        });
+
+        it('should use displayName as prompt fallback for chat', async () => {
+            const executor = new CLITaskExecutor(store);
+
+            const task: QueuedTask = {
+                id: 'chat-2',
+                type: 'chat',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: { kind: 'chat' as const, prompt: '' },
+                config: {},
+                displayName: 'My chat message',
+            };
+
+            await executor.execute(task);
+
+            // Prompt should fall back to displayName
+            expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+                prompt: 'My chat message',
+            }));
+        });
+
+        it('should fall back to default prompt when both prompt and displayName are empty', async () => {
+            const executor = new CLITaskExecutor(store);
+
+            const task: QueuedTask = {
+                id: 'chat-3',
+                type: 'chat',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: { kind: 'chat' as const, prompt: '' },
+                config: {},
+            };
+
+            await executor.execute(task);
+
+            expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+                prompt: 'Chat message',
             }));
         });
     });

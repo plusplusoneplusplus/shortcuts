@@ -456,14 +456,16 @@ export async function submitEnqueueForm(e: Event): Promise<void> {
     const model = modelSelect ? modelSelect.value : '';
     const cwd = cwdInput ? cwdInput.value.trim() : '';
 
-    let payload: any = type === 'ai-clarification'
-        ? { prompt: prompt || displayName || 'AI clarification task' }
-        : type === 'follow-prompt'
-            ? { promptContent: prompt || '' }
-            : { data: { prompt: prompt || displayName || '' } };
+    let payload: any = type === 'chat'
+        ? { kind: 'chat', prompt: prompt || displayName || 'Chat message' }
+        : type === 'ai-clarification'
+            ? { prompt: prompt || displayName || 'AI clarification task' }
+            : type === 'follow-prompt'
+                ? { promptContent: prompt || '' }
+                : { data: { prompt: prompt || displayName || '' } };
 
     // Add workingDirectory to payload if provided
-    if (cwd && (type === 'ai-clarification' || type === 'follow-prompt')) {
+    if (cwd && (type === 'chat' || type === 'ai-clarification' || type === 'follow-prompt')) {
         payload.workingDirectory = cwd;
     } else if (cwd && type === 'custom') {
         payload.data = payload.data || {};

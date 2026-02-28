@@ -404,9 +404,10 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
             const taskSpec = hasTaskEnvelope
                 ? body
                 : {
-                    type: 'ai-clarification',
+                    type: 'chat',
                     priority: typeof body?.priority === 'string' ? body.priority : 'normal',
                     payload: {
+                        kind: 'chat' as const,
                         prompt: body.prompt.trim(),
                         ...(typeof body?.workspaceId === 'string' && body.workspaceId.trim()
                             ? { workspaceId: body.workspaceId.trim() }
