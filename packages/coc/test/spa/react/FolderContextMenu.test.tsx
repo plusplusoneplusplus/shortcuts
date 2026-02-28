@@ -444,7 +444,7 @@ describe('Folder context menu', () => {
         expect(clipboardSpy).toHaveBeenCalledWith('feature1');
     });
 
-    it('"Generate Task with AI" opens GenerateTaskDialog and closes context menu', async () => {
+    it('"Generate Task with AI" calls onOpenGenerateDialog and closes context menu', async () => {
         global.fetch = vi.fn().mockImplementation((url: string) => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -455,7 +455,8 @@ describe('Folder context menu', () => {
             return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
         });
 
-        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        const mockOpenGenerate = vi.fn();
+        render(<Wrap><TasksPanel wsId="ws1" onOpenGenerateDialog={mockOpenGenerate} /></Wrap>);
         await waitFor(() => {
             expect(screen.getByTestId('task-tree-item-feature1')).toBeTruthy();
         });
@@ -468,10 +469,8 @@ describe('Folder context menu', () => {
         // Context menu should close
         expect(screen.queryByTestId('context-menu')).toBeNull();
 
-        // GenerateTaskDialog should open
-        await waitFor(() => {
-            expect(document.getElementById('generate-task-overlay')).toBeTruthy();
-        });
+        // onOpenGenerateDialog should have been called with the folder path
+        expect(mockOpenGenerate).toHaveBeenCalledWith('feature1');
     });
 
     it('"Queue All Tasks" has a submenu with Follow Prompt', async () => {
@@ -552,7 +551,8 @@ describe('Folder context menu', () => {
         });
         global.fetch = fetchTracker;
 
-        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        const mockOpenGenerate = vi.fn();
+        render(<Wrap><TasksPanel wsId="ws1" onOpenGenerateDialog={mockOpenGenerate} /></Wrap>);
         await waitFor(() => {
             expect(screen.getByTestId('task-tree-item-feature1')).toBeTruthy();
         });
@@ -562,12 +562,10 @@ describe('Folder context menu', () => {
         fireEvent.contextMenu(screen.getByTestId('task-tree-item-feature1'));
         fireEvent.click(screen.getByText('Generate Task with AI…'));
 
-        // Wait for dialog to appear
-        await waitFor(() => {
-            expect(document.getElementById('generate-task-overlay')).toBeTruthy();
-        });
+        // onOpenGenerateDialog should have been called
+        expect(mockOpenGenerate).toHaveBeenCalled();
 
-        // Only models fetch should be new — no mutation calls (rename, delete, archive, etc.)
+        // No mutation calls (rename, delete, archive, etc.)
         const newCalls = fetchTracker.mock.calls.slice(callsBefore);
         const mutationCalls = newCalls.filter((call: any[]) => {
             const url = call[0] as string;

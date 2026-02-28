@@ -24,7 +24,6 @@ import { Dialog } from '../shared/Dialog';
 import { Button } from '../shared/Button';
 import { FollowPromptDialog } from '../shared/FollowPromptDialog';
 import { BulkFollowPromptDialog } from '../shared/BulkFollowPromptDialog';
-import { GenerateTaskDialog } from './GenerateTaskDialog';
 import { Spinner } from '../shared';
 import { normalizeRemoteUrl } from '../repos/repoGrouping';
 import type { RepoData } from '../repos/repoGrouping';
@@ -32,6 +31,7 @@ import type { RepoData } from '../repos/repoGrouping';
 interface TasksPanelProps {
     wsId: string;
     repos?: import('../repos/repoGrouping').RepoData[];
+    onOpenGenerateDialog?: (targetFolder?: string) => void;
 }
 
 export function parseTaskHashParams(hash: string, wsId: string) {
@@ -69,15 +69,11 @@ function scrollToEnd(el: HTMLElement | null) {
     });
 }
 
-function TasksPanelInner({ wsId, repos }: TasksPanelProps) {
+function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps) {
     const { tree, commentCounts, loading, error, refresh } = useTaskTree(wsId);
     const { openFilePath, selectedFilePaths, clearSelection, selectedFolderPath } = useTaskPanel();
     const [initialParams] = useState(() => parseTaskHashParams(location.hash, wsId));
     const scrollRef = useRef<HTMLDivElement>(null);
-    const [generateDialog, setGenerateDialog] = useState<{
-        open: boolean;
-        targetFolder: string | undefined;
-    }>({ open: false, targetFolder: undefined });
 
     const { state: appState } = useApp();
     const { dispatch: queueDispatch } = useQueue();
@@ -236,10 +232,7 @@ function TasksPanelInner({ wsId, repos }: TasksPanelProps) {
             if (actionKey === 'delete') setFolderDialog({ action: 'delete', folder, submitting: false });
             if (actionKey === 'follow-prompt') setFolderDialog({ action: 'follow-prompt', folder, submitting: false });
             if (actionKey === 'generate-task-ai') {
-                setGenerateDialog({
-                    open: true,
-                    targetFolder: folder.relativePath || folder.name,
-                });
+                onOpenGenerateDialog?.(folder.relativePath || folder.name);
             }
             if (actionKey === 'move') {
                 setMoveSourceFolder(folder);
@@ -631,7 +624,6 @@ function TasksPanelInner({ wsId, repos }: TasksPanelProps) {
                         tasksFolderPath=".vscode/tasks"
                         selectedFolderPath={selectedFolderPath}
                         onClearSelection={clearSelection}
-                        onGenerateWithAI={() => setGenerateDialog({ open: true, targetFolder: undefined })}
                         noBorder
                     />
                 </div>
@@ -821,27 +813,14 @@ function TasksPanelInner({ wsId, repos }: TasksPanelProps) {
                     onConfirm={handleMoveConfirm}
                 />
             )}
-
-            {/* Generate Task with AI dialog */}
-            {generateDialog.open && (
-                <GenerateTaskDialog
-                    wsId={wsId}
-                    initialFolder={generateDialog.targetFolder ?? selectedFolderPath ?? undefined}
-                    onClose={() => setGenerateDialog({ open: false, targetFolder: undefined })}
-                    onSuccess={() => {
-                        setGenerateDialog({ open: false, targetFolder: undefined });
-                        refresh();
-                    }}
-                />
-            )}
         </div>
     );
 }
 
-export function TasksPanel({ wsId, repos }: TasksPanelProps) {
+export function TasksPanel({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps) {
     return (
         <TaskProvider>
-            <TasksPanelInner wsId={wsId} repos={repos} />
+            <TasksPanelInner wsId={wsId} repos={repos} onOpenGenerateDialog={onOpenGenerateDialog} />
         </TaskProvider>
     );
 }

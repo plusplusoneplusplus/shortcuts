@@ -41,6 +41,40 @@ describe('RepoDetail RepoChatTab wiring', () => {
     });
 });
 
+describe('RepoDetail Generate button in header', () => {
+    it('imports GenerateTaskDialog', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("import { GenerateTaskDialog } from '../tasks/GenerateTaskDialog'");
+    });
+
+    it('renders generate button in the header row', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-generate-btn"');
+    });
+
+    it('generate button appears before edit button', () => {
+        const genIdx = REPO_DETAIL_SOURCE.indexOf('repo-generate-btn');
+        const editIdx = REPO_DETAIL_SOURCE.indexOf('repo-edit-btn');
+        expect(genIdx).toBeLessThan(editIdx);
+    });
+
+    it('generate button uses primary variant', () => {
+        const line = REPO_DETAIL_SOURCE.split('\n').find(l => l.includes('repo-generate-btn'));
+        expect(line).toContain('variant="primary"');
+    });
+
+    it('passes onOpenGenerateDialog to TasksPanel', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('onOpenGenerateDialog={handleOpenGenerateDialog}');
+    });
+
+    it('renders GenerateTaskDialog when generateDialog.open is true', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('generateDialog.open');
+        expect(REPO_DETAIL_SOURCE).toContain('<GenerateTaskDialog');
+    });
+
+    it('switches to tasks tab when generate button is clicked', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("switchSubTab('tasks')");
+    });
+});
+
 describe('RepoDetail Queue badge wiring', () => {
     it('imports useRepoQueueStats from hooks', () => {
         expect(REPO_DETAIL_SOURCE).toContain("import { useRepoQueueStats } from '../hooks/useRepoQueueStats'");

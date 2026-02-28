@@ -1173,7 +1173,7 @@ function makeGenHookReturn(overrides: Record<string, unknown> = {}) {
     };
 }
 
-describe('TasksPanel — GenerateTaskDialog', () => {
+describe('TasksPanel — GenerateTaskDialog (now in RepoDetail)', () => {
     let fetchSpy: ReturnType<typeof vi.fn>;
 
     beforeEach(() => {
@@ -1198,7 +1198,16 @@ describe('TasksPanel — GenerateTaskDialog', () => {
         });
     }
 
-    it('does not show GenerateTaskDialog initially', async () => {
+    it('does not render generate-with-ai-btn in toolbar (moved to RepoDetail header)', async () => {
+        setupFetch();
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree')).toBeTruthy();
+        });
+        expect(screen.queryByTestId('generate-with-ai-btn')).toBeNull();
+    });
+
+    it('does not render GenerateTaskDialog (now owned by RepoDetail)', async () => {
         setupFetch();
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
         await waitFor(() => {
@@ -1207,36 +1216,15 @@ describe('TasksPanel — GenerateTaskDialog', () => {
         expect(document.getElementById('generate-task-overlay')).toBeNull();
     });
 
-    it('clicking generate button opens the dialog', async () => {
+    it('accepts onOpenGenerateDialog prop', async () => {
         setupFetch();
-        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        const mockFn = vi.fn();
+        render(<Wrap><TasksPanel wsId="ws1" onOpenGenerateDialog={mockFn} /></Wrap>);
         await waitFor(() => {
-            expect(screen.getByTestId('generate-with-ai-btn')).toBeTruthy();
+            expect(screen.getByTestId('task-tree')).toBeTruthy();
         });
-        fireEvent.click(screen.getByTestId('generate-with-ai-btn'));
-        await waitFor(() => {
-            expect(document.getElementById('generate-task-overlay')).toBeTruthy();
-        });
-    });
-
-    it('closing the dialog hides it without refreshing', async () => {
-        setupFetch();
-        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
-        await waitFor(() => {
-            expect(screen.getByTestId('generate-with-ai-btn')).toBeTruthy();
-        });
-        fireEvent.click(screen.getByTestId('generate-with-ai-btn'));
-        await waitFor(() => {
-            expect(document.getElementById('generate-task-overlay')).toBeTruthy();
-        });
-
-        // Click Cancel/Close button
-        const cancelBtn = document.getElementById('gen-task-cancel');
-        expect(cancelBtn).toBeTruthy();
-        fireEvent.click(cancelBtn!);
-        await waitFor(() => {
-            expect(document.getElementById('generate-task-overlay')).toBeNull();
-        });
+        // Just verifies it renders without error
+        expect(screen.getByTestId('task-tree')).toBeTruthy();
     });
 });
 

@@ -25,12 +25,12 @@ function Wrap({ children }: { children: ReactNode }) {
     );
 }
 
-describe('TaskActions — Generate task with AI button', () => {
+describe('TaskActions — toolbar', () => {
     beforeEach(() => {
         vi.restoreAllMocks();
     });
 
-    it('renders the generate button unconditionally', () => {
+    it('does not render a generate-with-ai button (moved to RepoDetail header)', () => {
         render(
             <Wrap>
                 <TaskActions
@@ -42,44 +42,22 @@ describe('TaskActions — Generate task with AI button', () => {
                 />
             </Wrap>
         );
-        const btn = screen.getByTestId('generate-with-ai-btn');
-        expect(btn).toBeTruthy();
-        expect(btn.textContent).toContain('Generate task with AI');
+        expect(screen.queryByTestId('generate-with-ai-btn')).toBeNull();
     });
 
-    it('fires the callback on click', () => {
-        const mockFn = vi.fn();
+    it('renders copy path and open in editor when file is open', () => {
         render(
             <Wrap>
                 <TaskActions
                     wsId="ws1"
-                    openFilePath={null}
-                    selectedFilePaths={[]}
-                    tasksFolderPath=".vscode/tasks"
-                    onClearSelection={vi.fn()}
-                    onGenerateWithAI={mockFn}
-                />
-            </Wrap>
-        );
-        fireEvent.click(screen.getByTestId('generate-with-ai-btn'));
-        expect(mockFn).toHaveBeenCalledOnce();
-    });
-
-    it('still renders when onGenerateWithAI is undefined', () => {
-        render(
-            <Wrap>
-                <TaskActions
-                    wsId="ws1"
-                    openFilePath={null}
+                    openFilePath="some/file.md"
                     selectedFilePaths={[]}
                     tasksFolderPath=".vscode/tasks"
                     onClearSelection={vi.fn()}
                 />
             </Wrap>
         );
-        const btn = screen.getByTestId('generate-with-ai-btn');
-        expect(btn).toBeTruthy();
-        // Click should not crash
-        fireEvent.click(btn);
+        expect(screen.getByText('Copy path')).toBeTruthy();
+        expect(screen.getByText('Open in editor')).toBeTruthy();
     });
 });

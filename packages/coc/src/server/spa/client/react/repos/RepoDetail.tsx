@@ -2,7 +2,7 @@
  * RepoDetail — right panel showing sub-tabs for the selected repo.
  */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useQueue } from '../context/QueueContext';
 import { Button, cn } from '../shared';
@@ -13,6 +13,7 @@ import { RepoQueueTab } from './RepoQueueTab';
 import { RepoSchedulesTab } from './RepoSchedulesTab';
 import { RepoChatTab } from './RepoChatTab';
 import { AddRepoDialog } from './AddRepoDialog';
+import { GenerateTaskDialog } from '../tasks/GenerateTaskDialog';
 import { getApiBase } from '../utils/config';
 import { fetchApi } from '../hooks/useApi';
 import { useRepoQueueStats } from '../hooks/useRepoQueueStats';
@@ -38,6 +39,10 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const { state, dispatch } = useApp();
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const [editOpen, setEditOpen] = useState(false);
+    const [generateDialog, setGenerateDialog] = useState<{
+        open: boolean;
+        targetFolder: string | undefined;
+    }>({ open: false, targetFolder: undefined });
     const ws = repo.workspace;
     const color = ws.color || '#848484';
     const activeSubTab = state.activeRepoSubTab;
@@ -61,6 +66,11 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         location.hash = '#repos/' + encodeURIComponent(ws.id) + suffix;
     };
 
+    const handleOpenGenerateDialog = useCallback((targetFolder?: string) => {
+        if (activeSubTab !== 'tasks') switchSubTab('tasks');
+        setGenerateDialog({ open: true, targetFolder });
+    }, [activeSubTab]);
+
     const handleRemove = async () => {
         if (!confirm('Remove this repo from the dashboard? Processes will be preserved.')) return;
         await fetch(getApiBase() + '/workspaces/' + encodeURIComponent(ws.id), { method: 'DELETE' });
@@ -78,6 +88,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                     style={{ background: color }}
                 />
                 <h1 className="text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc] flex-1">{ws.name}</h1>
+                <Button variant="primary" size="sm" id="repo-generate-btn" data-testid="repo-generate-btn" onClick={() => handleOpenGenerateDialog()}>✨ Generate</Button>
                 <Button variant="secondary" size="sm" id="repo-edit-btn" data-testid="repo-edit-btn" onClick={() => setEditOpen(true)}>Edit</Button>
                 <Button variant="danger" size="sm" id="repo-remove-btn" data-testid="repo-remove-btn" onClick={handleRemove}>Remove</Button>
             </div>
@@ -119,7 +130,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
             {/* Sub-tab content */}
             <div id="repo-sub-tab-content" className="flex-1 min-h-0 min-w-0 overflow-hidden">
                 {activeSubTab === 'tasks' ? (
-                    <TasksPanel wsId={ws.id} repos={repos} />
+                    <TasksPanel wsId={ws.id} repos={repos} onOpenGenerateDialog={handleOpenGenerateDialog} />
                 ) : (
                     <div className="h-full overflow-y-auto min-w-0">
                         {activeSubTab === 'info' && <RepoInfoTab repo={repo} />}
@@ -130,6 +141,18 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                     </div>
                 )}
             </div>
+
+            {/* Generate Task with AI dialog */}
+            {generateDialog.open && (
+                <GenerateTaskDialog
+                    wsId={ws.id}
+                    initialFolder={generateDialog.targetFolder}
+                    onClose={() => setGenerateDialog({ open: false, targetFolder: undefined })}
+                    onSuccess={() => {
+                        setGenerateDialog({ open: false, targetFolder: undefined });
+                    }}
+                />
+            )}
 
             {/* Edit dialog */}
             <AddRepoDialog
