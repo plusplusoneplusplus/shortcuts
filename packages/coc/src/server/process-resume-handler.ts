@@ -5,7 +5,7 @@
  * from an existing process/session ID.
  */
 
-import { spawn } from 'child_process';
+import { spawn, type SpawnOptions } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
@@ -73,11 +73,12 @@ function escapeAppleScriptString(value: string): string {
     return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
-function spawnDetached(command: string, args: string[]): Promise<void> {
+function spawnDetached(command: string, args: string[], extraOptions?: SpawnOptions): Promise<void> {
     return new Promise((resolve, reject) => {
         const child = spawn(command, args, {
             detached: true,
             stdio: 'ignore',
+            ...extraOptions,
         });
 
         let settled = false;
@@ -157,8 +158,13 @@ export async function launchResumeCommandInTerminal(input: LaunchResumeInput): P
     }
 
     if (platform === 'win32') {
-        // Open a new cmd window and keep it open (/k) so users can continue interacting.
-        await spawnDetached('cmd.exe', ['/c', 'start', '', 'cmd.exe', '/k', command]);
+        // Use `start /D` to set the working directory instead of `cd /d ... &&`.
+        // The `&&` approach fails because the outer `cmd.exe /c` interprets `&&`
+        // as its own command separator, so `start` only receives the `cd /d` part.
+        // `windowsVerbatimArguments` prevents Node.js from C-runtime-escaping quotes.
+        const resumeCmd = `copilot --yolo --resume ${quoteWindows(input.sessionId)}`;
+        const startLine = `/c start "" /D ${quoteWindows(input.workingDirectory)} cmd.exe /k ${resumeCmd}`;
+        await spawnDetached('cmd.exe', [startLine], { windowsVerbatimArguments: true });
         return {
             launched: true,
             command,

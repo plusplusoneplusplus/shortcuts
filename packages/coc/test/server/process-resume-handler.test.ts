@@ -14,7 +14,13 @@ import { FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
 import type { AIProcess } from '@plusplusoneplusplus/pipeline-core';
 import { createRequestHandler, generateDashboardHtml, registerApiRoutes } from '../../src/server/index';
 import type { Route } from '@plusplusoneplusplus/coc-server';
-import { registerProcessResumeRoutes } from '../../src/server/process-resume-handler';
+import { registerProcessResumeRoutes, launchResumeCommandInTerminal } from '../../src/server/process-resume-handler';
+import { spawn } from 'child_process';
+
+vi.mock('child_process', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('child_process')>();
+    return { ...actual, spawn: vi.fn(actual.spawn) };
+});
 
 function request(
     url: string,
@@ -235,6 +241,86 @@ describe('POST /api/processes/:id/resume-cli', () => {
                 .filter(Boolean);
             expect(lines.some(l => l.includes('[Process] resume-cli id=proc-log-1 sessionId=sess-log-1 launched=true'))).toBe(true);
         });
+    });
+});
+
+describe('launchResumeCommandInTerminal – Windows spawn arguments', () => {
+    let originalPlatform: PropertyDescriptor | undefined;
+    const spawnMock = vi.mocked(spawn);
+
+    beforeEach(() => {
+        originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
+        Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+
+        spawnMock.mockImplementation((() => {
+            const ee = new (require('events').EventEmitter)();
+            ee.unref = vi.fn();
+            process.nextTick(() => ee.emit('spawn'));
+            return ee;
+        }) as any);
+    });
+
+    afterEach(() => {
+        spawnMock.mockRestore();
+        if (originalPlatform) {
+            Object.defineProperty(process, 'platform', originalPlatform);
+        }
+    });
+
+    it('uses start /D with windowsVerbatimArguments instead of && chaining', async () => {
+        const result = await launchResumeCommandInTerminal({
+            sessionId: 'sess-win-1',
+            workingDirectory: 'C:\\Users\\test\\project',
+        });
+
+        expect(result.launched).toBe(true);
+        expect(result.terminal).toBe('cmd');
+
+        expect(spawnMock).toHaveBeenCalledTimes(1);
+        const [cmd, args, opts] = spawnMock.mock.calls[0];
+        expect(cmd).toBe('cmd.exe');
+
+        // Single argument string containing the full start /D command
+        expect(args).toHaveLength(1);
+        const startLine = (args as string[])[0];
+        expect(startLine).toContain('/c start ""');
+        expect(startLine).toContain('/D "C:\\Users\\test\\project"');
+        expect(startLine).toContain('cmd.exe /k copilot --yolo --resume "sess-win-1"');
+
+        // windowsVerbatimArguments must be true to prevent Node.js quote escaping
+        expect((opts as any).windowsVerbatimArguments).toBe(true);
+        expect((opts as any).detached).toBe(true);
+    });
+
+    it('quotes session IDs and paths containing spaces', async () => {
+        await launchResumeCommandInTerminal({
+            sessionId: 'sess with spaces',
+            workingDirectory: 'C:\\Program Files\\My App',
+        });
+
+        const startLine = (spawnMock.mock.calls[0][1] as string[])[0];
+        expect(startLine).toContain('/D "C:\\Program Files\\My App"');
+        expect(startLine).toContain('--resume "sess with spaces"');
+    });
+
+    it('escapes double quotes in session IDs using "" convention', async () => {
+        await launchResumeCommandInTerminal({
+            sessionId: 'sess"quoted',
+            workingDirectory: 'C:\\test',
+        });
+
+        const startLine = (spawnMock.mock.calls[0][1] as string[])[0];
+        expect(startLine).toContain('--resume "sess""quoted"');
+    });
+
+    it('does not include && in the spawn arguments', async () => {
+        await launchResumeCommandInTerminal({
+            sessionId: 'sess-no-ampersand',
+            workingDirectory: 'C:\\test',
+        });
+
+        const startLine = (spawnMock.mock.calls[0][1] as string[])[0];
+        expect(startLine).not.toContain('&&');
     });
 });
 
