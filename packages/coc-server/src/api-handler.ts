@@ -20,7 +20,7 @@ import type { Attachment } from '@plusplusoneplusplus/pipeline-core';
 import type { Route } from './types';
 import { handleProcessStream } from './sse-handler';
 import { handleAPIError, invalidJSON, missingFields, notFound, badRequest, internalError, APIError } from './errors';
-import { saveImagesToTempFiles, cleanupTempDir } from './image-utils';
+import { saveImagesToTempFiles, cleanupTempDir, isImageDataUrl } from './image-utils';
 
 /**
  * Bridge interface for executing follow-up messages on existing AI sessions.
@@ -634,7 +634,18 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                 return handleAPIError(res, missingFields(['content']));
             }
 
-            // Decode optional base64 images to temp files
+            // Validate and extract image data URLs for persistence (cap at 5)
+            let validatedImages: string[] | undefined;
+            if (Array.isArray(body.images) && body.images.length > 0) {
+                const filtered = body.images
+                    .filter((img: unknown): img is string => typeof img === 'string' && isImageDataUrl(img as string))
+                    .slice(0, 5);
+                if (filtered.length > 0) {
+                    validatedImages = filtered;
+                }
+            }
+
+            // Decode optional base64 images to temp files for SDK attachment
             let attachments: Attachment[] | undefined;
             let imageTempDir: string | undefined;
             if (Array.isArray(body.images) && body.images.length > 0) {
@@ -671,6 +682,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                 timestamp: new Date(),
                 turnIndex,
                 timeline: [],
+                images: validatedImages,
             };
             const updatedTurns = [...existingTurns, userTurn];
 
