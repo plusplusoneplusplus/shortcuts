@@ -779,10 +779,41 @@ export class CLITaskExecutor implements TaskExecutor {
         });
 
         // Execute
+        const processId = `queue_${task.id}`;
         const result = await executePipeline(config, {
             aiInvoker,
             pipelineDirectory: payload.pipelinePath,
             workspaceRoot: payload.workingDirectory,
+            onPhaseChange: (event) => {
+                try {
+                    this.store.emitProcessEvent(processId, {
+                        type: 'pipeline-phase',
+                        pipelinePhase: event,
+                    });
+                } catch {
+                    // Non-fatal: store may be a stub
+                }
+            },
+            onProgress: (progress) => {
+                try {
+                    this.store.emitProcessEvent(processId, {
+                        type: 'pipeline-progress',
+                        pipelineProgress: {
+                            phase: progress.phase === 'splitting' ? 'filter'
+                                : progress.phase === 'mapping' ? 'map'
+                                : progress.phase === 'reducing' ? 'reduce'
+                                : 'map',
+                            totalItems: progress.totalItems,
+                            completedItems: progress.completedItems,
+                            failedItems: progress.failedItems,
+                            percentage: progress.percentage,
+                            message: progress.message,
+                        },
+                    });
+                } catch {
+                    // Non-fatal
+                }
+            },
         });
 
         return {

@@ -32,7 +32,9 @@ import {
     PipelineParameter,
     ProcessTracker,
     FilterResult,
-    JobConfig
+    JobConfig,
+    PipelinePhaseEvent,
+    PipelinePhase
 } from './types';
 import { validateGenerateConfig } from './input-generator';
 import { executeFilter } from './filter-executor';
@@ -94,8 +96,55 @@ export interface ExecutePipelineOptions {
     processTracker?: ProcessTracker;
     /** Progress callback */
     onProgress?: (progress: JobProgress) => void;
+    /** Callback invoked at each pipeline phase transition (input/filter/map/reduce/complete) */
+    onPhaseChange?: (event: PipelinePhaseEvent) => void;
     /** Optional cancellation check function - returns true if execution should be cancelled */
     isCancelled?: () => boolean;
+}
+
+/** Emit a phase change event via the options callback (no-op when callback is absent). */
+function emitPhase(
+    options: ExecutePipelineOptions,
+    phase: PipelinePhase,
+    status: PipelinePhaseEvent['status'],
+    extra?: Partial<Pick<PipelinePhaseEvent, 'durationMs' | 'error' | 'itemCount'>>
+): void {
+    options.onPhaseChange?.({
+        phase,
+        status,
+        timestamp: new Date().toISOString(),
+        ...extra,
+    });
+}
+
+/**
+ * Wrap the original onProgress to detect MR phase transitions and emit pipeline phase events.
+ * Maps MR executor phases: splitting → mapping → reducing → complete
+ * to pipeline phases: map started → map completed / reduce started → reduce completed
+ */
+function createPhaseTrackingProgress(
+    options: ExecutePipelineOptions,
+    totalItems: number
+): (progress: JobProgress) => void {
+    let lastPhase: string | undefined;
+    const mapStartTime = Date.now();
+    return (progress: JobProgress) => {
+        // Forward original progress callback
+        options.onProgress?.(progress);
+        // Detect phase transitions
+        if (progress.phase !== lastPhase) {
+            const prev = lastPhase;
+            lastPhase = progress.phase;
+            if (progress.phase === 'mapping' && (prev === 'splitting' || prev === undefined)) {
+                emitPhase(options, 'map', 'started', { itemCount: totalItems });
+            } else if (progress.phase === 'reducing') {
+                emitPhase(options, 'map', 'completed', { durationMs: Date.now() - mapStartTime, itemCount: totalItems });
+                emitPhase(options, 'reduce', 'started');
+            } else if (progress.phase === 'complete') {
+                emitPhase(options, 'reduce', 'completed');
+            }
+        }
+    };
 }
 
 /**
@@ -140,7 +189,16 @@ export async function executePipeline(
     const prompts = await resolvePrompts(mrConfig, options.pipelineDirectory, options.workspaceRoot);
 
     // Load items from input source
-    let items = await loadInputItems(mrConfig, options.pipelineDirectory);
+    emitPhase(options, 'input', 'started');
+    const inputStart = Date.now();
+    let items: PromptItem[];
+    try {
+        items = await loadInputItems(mrConfig, options.pipelineDirectory);
+        emitPhase(options, 'input', 'completed', { durationMs: Date.now() - inputStart, itemCount: items.length });
+    } catch (error) {
+        emitPhase(options, 'input', 'failed', { durationMs: Date.now() - inputStart, error: error instanceof Error ? error.message : String(error) });
+        throw error;
+    }
 
     // Apply limit and merge parameters
     items = prepareItems(items, mrConfig, prompts.mapPrompt);
@@ -218,6 +276,8 @@ async function executeSingleJob(
         const timeoutMs = job.timeoutMs ?? DEFAULT_AI_TIMEOUT_MS;
 
         // 5. Call AI with timeout and retry
+        emitPhase(options, 'job', 'started');
+        const jobStart = Date.now();
         let aiResult = await Promise.race([
             options.aiInvoker(prompt, { model: job.model }),
             new Promise<never>((_, reject) =>
@@ -234,6 +294,7 @@ async function executeSingleJob(
         if (!aiResult.success || !aiResult.response) {
             const executionTimeMs = Date.now() - startTime;
             const errorMsg = aiResult.error || 'AI invocation failed';
+            emitPhase(options, 'job', 'failed', { durationMs: Date.now() - jobStart, error: errorMsg });
             return {
                 success: false,
                 output: {
@@ -274,6 +335,7 @@ async function executeSingleJob(
                 formattedOutput = JSON.stringify(parsedOutput, null, 2);
             } catch (error) {
                 const parseError = `Failed to parse AI response: ${error instanceof Error ? error.message : String(error)}`;
+                emitPhase(options, 'job', 'failed', { durationMs: Date.now() - jobStart, error: parseError });
                 return {
                     success: false,
                     output: {
@@ -297,6 +359,7 @@ async function executeSingleJob(
         }
 
         // 8. Return success result
+        emitPhase(options, 'job', 'completed', { durationMs: Date.now() - jobStart });
         return {
             success: true,
             output: {
@@ -321,8 +384,6 @@ async function executeSingleJob(
 
         const executionTimeMs = Date.now() - startTime;
         const errorMsg = error instanceof Error ? error.message : String(error);
-
-        // Handle timeout with retry
         if (errorMsg.includes('timed out')) {
             const job = config.job!;
             const timeoutMs = job.timeoutMs ?? DEFAULT_AI_TIMEOUT_MS;
@@ -367,6 +428,7 @@ async function executeSingleJob(
                         }
                     }
 
+                    emitPhase(options, 'job', 'completed', { durationMs: retryTimeMs });
                     return {
                         success: true,
                         output: {
@@ -390,6 +452,7 @@ async function executeSingleJob(
             }
         }
 
+        emitPhase(options, 'job', 'failed', { durationMs: executionTimeMs, error: errorMsg });
         return {
             success: false,
             output: {
@@ -438,6 +501,7 @@ export async function executePipelineWithItems(
     const prompts = await resolvePrompts(mrConfig, options.pipelineDirectory, options.workspaceRoot);
 
     // Apply limit and merge parameters to provided items
+    emitPhase(options, 'input', 'completed', { itemCount: items.length });
     const processItems = prepareItems(items, mrConfig, prompts.mapPrompt);
 
     // Execute the pipeline with resolved prompts and items
@@ -674,6 +738,8 @@ async function executeWithItems(
     // Filter Phase (optional): Filter items before map phase
     let filterResult: FilterResult | undefined;
     if (config.filter) {
+        emitPhase(options, 'filter', 'started', { itemCount: processItems.length });
+        const filterStart = Date.now();
         try {
             filterResult = await executeFilter(processItems, config.filter, {
                 aiInvoker: options.aiInvoker,
@@ -691,6 +757,7 @@ async function executeWithItems(
             });
 
             processItems = filterResult.included;
+            emitPhase(options, 'filter', 'completed', { durationMs: Date.now() - filterStart, itemCount: filterResult.stats.includedCount });
 
             getLogger().info(
                 LogCategory.PIPELINE,
@@ -702,6 +769,7 @@ async function executeWithItems(
                 getLogger().warn(LogCategory.PIPELINE, 'Filter excluded all items - map phase will have no work');
             }
         } catch (error) {
+            emitPhase(options, 'filter', 'failed', { durationMs: Date.now() - filterStart, error: error instanceof Error ? error.message : String(error) });
             if (error instanceof PipelineExecutionError) {
                 throw error;
             }
@@ -744,7 +812,7 @@ async function executeStandardMode(
         showProgress: true,
         retryOnFailure: false,
         processTracker: options.processTracker,
-        onProgress: options.onProgress,
+        onProgress: createPhaseTrackingProgress(options, processItems.length),
         jobName: config.name,
         timeoutMs,
         isCancelled: options.isCancelled
@@ -779,6 +847,7 @@ async function executeStandardMode(
         const result = await executor.execute(job, jobInput);
         return { ...result, filterResult };
     } catch (error) {
+        emitPhase(options, 'map', 'failed', { error: error instanceof Error ? error.message : String(error) });
         throw new PipelineExecutionError(
             `Pipeline execution failed: ${error instanceof Error ? error.message : String(error)}`,
             'map'
@@ -853,6 +922,7 @@ async function executeBatchMode(
     }
 
     // Report initial progress
+    emitPhase(options, 'map', 'started', { itemCount: processItems.length });
     options.onProgress?.({
         phase: 'mapping',
         totalItems: totalBatches,
@@ -1050,6 +1120,7 @@ async function executeBatchMode(
     const failedMaps = allResults.filter(r => !r.success).length;
 
     // Report map complete
+    emitPhase(options, 'map', 'completed', { durationMs: mapPhaseTimeMs, itemCount: processItems.length });
     options.onProgress?.({
         phase: 'reducing',
         totalItems: processItems.length,
@@ -1060,6 +1131,7 @@ async function executeBatchMode(
     });
 
     // Execute reduce phase
+    emitPhase(options, 'reduce', 'started');
     const reduceStartTime = Date.now();
     const reduceParameters = config.input.parameters
         ? convertParametersToObject(config.input.parameters)
@@ -1075,6 +1147,7 @@ async function executeBatchMode(
     );
 
     const reducePhaseTimeMs = Date.now() - reduceStartTime;
+    emitPhase(options, 'reduce', 'completed', { durationMs: reducePhaseTimeMs });
     const totalTimeMs = Date.now() - startTime;
 
     // Build execution stats
