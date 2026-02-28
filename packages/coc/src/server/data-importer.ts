@@ -14,6 +14,7 @@ import * as path from 'path';
 import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
 import type {
     CoCExportPayload,
+    ImageBlobEntry,
     ImportOptions,
     ImportResult,
     QueueSnapshot,
@@ -63,6 +64,7 @@ async function replaceImport(
         importedWorkspaces: 0,
         importedWikis: 0,
         importedQueueFiles: 0,
+        importedBlobFiles: 0,
         errors: [],
     };
 
@@ -106,6 +108,9 @@ async function replaceImport(
     // 6. Restore queue files
     result.importedQueueFiles = writeQueueFiles(dataDir, payload.queueHistory, result.errors);
 
+    // 6b. Restore blob files
+    result.importedBlobFiles = writeBlobFiles(dataDir, payload.imageBlobs ?? [], result.errors);
+
     // 7. Restore preferences
     try {
         writePreferences(dataDir, payload.preferences);
@@ -137,6 +142,7 @@ async function mergeImport(
         importedWorkspaces: 0,
         importedWikis: 0,
         importedQueueFiles: 0,
+        importedBlobFiles: 0,
         errors: [],
     };
 
@@ -181,6 +187,9 @@ async function mergeImport(
 
     // 4. Merge queue files — merge tasks into existing per-repo files
     result.importedQueueFiles = mergeQueueFiles(dataDir, payload.queueHistory, result.errors);
+
+    // 4b. Merge blob files — skip existing, write only new ones
+    result.importedBlobFiles = mergeBlobFiles(dataDir, payload.imageBlobs ?? [], result.errors);
 
     // 5. Merge preferences
     try {
@@ -294,6 +303,61 @@ function mergeQueueFiles(dataDir: string, snapshots: QueueSnapshot[], errors: st
             written++;
         } catch (err: any) {
             errors.push(`Failed to merge queue file for ${rootPath}: ${err.message}`);
+        }
+    }
+    return written;
+}
+
+// ============================================================================
+// Blob file helpers
+// ============================================================================
+
+/**
+ * Write blob files to disk (replace mode — overwrite).
+ * Returns the number of files successfully written.
+ */
+function writeBlobFiles(dataDir: string, blobs: ImageBlobEntry[], errors: string[]): number {
+    let written = 0;
+    for (const entry of blobs) {
+        if (!entry.taskId) { continue; }
+        const blobsDir = path.join(dataDir, 'blobs');
+        const filePath = path.join(blobsDir, `${entry.taskId}.images.json`);
+        try {
+            if (!fs.existsSync(blobsDir)) {
+                fs.mkdirSync(blobsDir, { recursive: true });
+            }
+            const tmpPath = filePath + '.tmp';
+            fs.writeFileSync(tmpPath, JSON.stringify(entry.images), 'utf-8');
+            fs.renameSync(tmpPath, filePath);
+            written++;
+        } catch (err: any) {
+            errors.push(`Failed to write blob file for task ${entry.taskId}: ${err.message}`);
+        }
+    }
+    return written;
+}
+
+/**
+ * Merge blob files — skip writing if the file already exists on disk.
+ * Returns the number of files successfully written.
+ */
+function mergeBlobFiles(dataDir: string, blobs: ImageBlobEntry[], errors: string[]): number {
+    let written = 0;
+    for (const entry of blobs) {
+        if (!entry.taskId) { continue; }
+        const blobsDir = path.join(dataDir, 'blobs');
+        const filePath = path.join(blobsDir, `${entry.taskId}.images.json`);
+        if (fs.existsSync(filePath)) { continue; }
+        try {
+            if (!fs.existsSync(blobsDir)) {
+                fs.mkdirSync(blobsDir, { recursive: true });
+            }
+            const tmpPath = filePath + '.tmp';
+            fs.writeFileSync(tmpPath, JSON.stringify(entry.images), 'utf-8');
+            fs.renameSync(tmpPath, filePath);
+            written++;
+        } catch (err: any) {
+            errors.push(`Failed to write blob file for task ${entry.taskId}: ${err.message}`);
         }
     }
     return written;

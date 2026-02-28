@@ -69,6 +69,7 @@ describe('exportAllData', () => {
             workspaceCount: 0,
             wikiCount: 0,
             queueFileCount: 0,
+            blobFileCount: 0,
         });
         expect(payload.processes).toEqual([]);
         expect(payload.workspaces).toEqual([]);
@@ -242,5 +243,60 @@ describe('exportAllData', () => {
 
         expect(payload.queueHistory).toEqual([]);
         expect(payload.metadata.queueFileCount).toBe(0);
+    });
+
+    // ========================================================================
+    // Image blobs
+    // ========================================================================
+
+    it('includes imageBlobs and blobFileCount when blob files exist', async () => {
+        const blobsDir = path.join(dataDir, 'blobs');
+        writeJSON(path.join(blobsDir, 'task-abc.images.json'), ['data:image/png;base64,abc']);
+        writeJSON(path.join(blobsDir, 'task-def.images.json'), ['data:image/png;base64,def', 'data:image/png;base64,ghi']);
+
+        const payload = await exportAllData({ store, dataDir });
+
+        expect(payload.metadata.blobFileCount).toBe(2);
+        expect(payload.imageBlobs).toHaveLength(2);
+
+        const abc = payload.imageBlobs!.find(b => b.taskId === 'task-abc');
+        expect(abc).toBeDefined();
+        expect(abc!.images).toEqual(['data:image/png;base64,abc']);
+
+        const def = payload.imageBlobs!.find(b => b.taskId === 'task-def');
+        expect(def).toBeDefined();
+        expect(def!.images).toHaveLength(2);
+
+        const validation = validateExportPayload(payload);
+        expect(validation).toEqual({ valid: true });
+    });
+
+    it('returns empty imageBlobs and blobFileCount 0 when no blobs dir', async () => {
+        const payload = await exportAllData({ store, dataDir });
+
+        expect(payload.imageBlobs).toEqual([]);
+        expect(payload.metadata.blobFileCount).toBe(0);
+    });
+
+    it('skips corrupt blob files and continues', async () => {
+        const blobsDir = path.join(dataDir, 'blobs');
+        writeJSON(path.join(blobsDir, 'task-good.images.json'), ['data:image/png;base64,abc']);
+        writeFile(path.join(blobsDir, 'task-bad.images.json'), '{corrupt json!!!');
+
+        const payload = await exportAllData({ store, dataDir });
+
+        expect(payload.imageBlobs).toHaveLength(1);
+        expect(payload.imageBlobs![0].taskId).toBe('task-good');
+        expect(payload.metadata.blobFileCount).toBe(1);
+    });
+
+    it('extracts taskId from filename correctly', async () => {
+        const blobsDir = path.join(dataDir, 'blobs');
+        writeJSON(path.join(blobsDir, 'my-complex-task-id.images.json'), ['img1']);
+
+        const payload = await exportAllData({ store, dataDir });
+
+        expect(payload.imageBlobs).toHaveLength(1);
+        expect(payload.imageBlobs![0].taskId).toBe('my-complex-task-id');
     });
 });

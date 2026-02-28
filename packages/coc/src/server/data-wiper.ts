@@ -28,6 +28,7 @@ export interface WipeResult {
     deletedWorkspaces: number;
     deletedWikis: number;
     deletedQueues: number;
+    deletedBlobs: number;
     deletedPreferences: boolean;
     deletedWikiDirs: string[];
     preservedFiles: string[];
@@ -65,6 +66,7 @@ export class DataWiper {
             deletedWorkspaces: 0,
             deletedWikis: 0,
             deletedQueues: 0,
+            deletedBlobs: 0,
             deletedPreferences: false,
             deletedWikiDirs: [],
             preservedFiles: [],
@@ -91,6 +93,11 @@ export class DataWiper {
         const queuesDir = path.join(this.dataDir, 'queues');
         const queueFiles = this.listQueueFiles(queuesDir);
         result.deletedQueues = queueFiles.length;
+
+        // 3b. Count blob files
+        const blobsDir = path.join(this.dataDir, 'blobs');
+        const blobFiles = this.listBlobFiles(blobsDir);
+        result.deletedBlobs = blobFiles.length;
 
         // 4. Check preferences
         const prefsPath = path.join(this.dataDir, 'preferences.json');
@@ -138,6 +145,15 @@ export class DataWiper {
             }
         }
 
+        // Delete blob files
+        for (const filePath of blobFiles) {
+            try {
+                fs.unlinkSync(filePath);
+            } catch (err: any) {
+                result.errors.push(`Failed to delete blob file ${filePath}: ${err.message}`);
+            }
+        }
+
         // Delete preferences
         if (result.deletedPreferences) {
             try {
@@ -171,6 +187,19 @@ export class DataWiper {
             return fs.readdirSync(queuesDir)
                 .filter(f => f.startsWith('repo-') && f.endsWith('.json'))
                 .map(f => path.join(queuesDir, f));
+        } catch {
+            return [];
+        }
+    }
+
+    private listBlobFiles(blobsDir: string): string[] {
+        try {
+            if (!fs.existsSync(blobsDir) || !fs.statSync(blobsDir).isDirectory()) {
+                return [];
+            }
+            return fs.readdirSync(blobsDir)
+                .filter(f => f.endsWith('.images.json'))
+                .map(f => path.join(blobsDir, f));
         } catch {
             return [];
         }

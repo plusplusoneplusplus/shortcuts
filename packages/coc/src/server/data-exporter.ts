@@ -14,6 +14,7 @@ import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
 import type {
     CoCExportPayload,
     ExportOptions,
+    ImageBlobEntry,
     QueueSnapshot,
 } from '@plusplusoneplusplus/coc-server';
 import { EXPORT_SCHEMA_VERSION } from '@plusplusoneplusplus/coc-server';
@@ -43,6 +44,9 @@ export async function exportAllData(options: ExportOptions): Promise<CoCExportPa
     // Gather queue history from disk
     const queueHistory = readQueueFiles(dataDir);
 
+    // Gather image blobs from disk
+    const imageBlobs = readBlobFiles(dataDir);
+
     // Gather preferences
     const preferences = readPreferences(dataDir);
 
@@ -61,6 +65,7 @@ export async function exportAllData(options: ExportOptions): Promise<CoCExportPa
             workspaceCount: workspaces.length,
             wikiCount: wikis.length,
             queueFileCount: queueHistory.length,
+            blobFileCount: imageBlobs.length,
         },
         processes,
         workspaces,
@@ -68,6 +73,7 @@ export async function exportAllData(options: ExportOptions): Promise<CoCExportPa
         queueHistory,
         preferences,
         serverConfig,
+        imageBlobs,
     };
 
     return payload;
@@ -111,4 +117,37 @@ function readQueueFiles(dataDir: string): QueueSnapshot[] {
     }
 
     return snapshots;
+}
+
+/**
+ * Read all image blob files from `dataDir/blobs/`.
+ * Corrupt or unparseable files are silently skipped.
+ */
+function readBlobFiles(dataDir: string): ImageBlobEntry[] {
+    const blobsDir = path.join(dataDir, 'blobs');
+    if (!fs.existsSync(blobsDir) || !fs.statSync(blobsDir).isDirectory()) {
+        return [];
+    }
+
+    const files = fs.readdirSync(blobsDir)
+        .filter(f => f.endsWith('.images.json'));
+
+    const entries: ImageBlobEntry[] = [];
+
+    for (const file of files) {
+        const filePath = path.join(blobsDir, file);
+        try {
+            const raw = fs.readFileSync(filePath, 'utf-8');
+            const parsed = JSON.parse(raw);
+            const taskId = file.replace(/\.images\.json$/, '');
+            entries.push({
+                taskId,
+                images: Array.isArray(parsed) ? parsed : [],
+            });
+        } catch {
+            // Skip corrupt files
+        }
+    }
+
+    return entries;
 }

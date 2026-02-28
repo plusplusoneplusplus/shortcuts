@@ -51,6 +51,7 @@ export type {
     CLIConfig,
     DataWiper,
     QueuePersistence,
+    ImageBlobEntry,
 } from './export-import-types';
 export {
     EXPORT_SCHEMA_VERSION,

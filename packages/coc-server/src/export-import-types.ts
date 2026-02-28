@@ -65,6 +65,14 @@ export interface ExportMetadata {
     workspaceCount: number;
     wikiCount: number;
     queueFileCount: number;
+    /** Number of image blob files included in the export. Optional for backward compat. */
+    blobFileCount?: number;
+}
+
+/** One task's externalized images, included in the export payload. */
+export interface ImageBlobEntry {
+    taskId: string;
+    images: unknown[];
 }
 
 /** Per-repo queue snapshot included in an export. */
@@ -91,6 +99,8 @@ export interface CoCExportPayload {
     preferences: UserPreferences;
     /** Optional snapshot of the server configuration at export time. */
     serverConfig?: CLIConfig;
+    /** Externalized image blobs per task. Optional for backward compat with pre-feature exports. */
+    imageBlobs?: ImageBlobEntry[];
 }
 
 /** Options passed to the data exporter. */
@@ -128,6 +138,7 @@ export interface ImportResult {
     importedWorkspaces: number;
     importedWikis: number;
     importedQueueFiles: number;
+    importedBlobFiles: number;
     errors: string[];
 }
 
@@ -194,6 +205,11 @@ export function validateExportPayload(raw: unknown): ValidationResult {
     // preferences -------------------------------------------------------
     if (obj.preferences === null || obj.preferences === undefined || typeof obj.preferences !== 'object') {
         return { valid: false, error: 'Missing or invalid field: preferences (expected object)' };
+    }
+
+    // imageBlobs (optional, forward compat) -----------------------------
+    if (obj.imageBlobs !== undefined && !Array.isArray(obj.imageBlobs)) {
+        return { valid: false, error: 'Field "imageBlobs" must be an array when present' };
     }
 
     return { valid: true };

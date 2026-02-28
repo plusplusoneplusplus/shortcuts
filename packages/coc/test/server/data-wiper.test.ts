@@ -135,6 +135,37 @@ describe('DataWiper', () => {
 
             expect(summary.preservedFiles).toContain(path.join(dataDir, 'config.yaml'));
         });
+
+        it('should count blob files in blobs/ directory', async () => {
+            const blobsDir = path.join(dataDir, 'blobs');
+            fs.mkdirSync(blobsDir, { recursive: true });
+            writeJSON(path.join(blobsDir, 'task-1.images.json'), ['data:image/png;base64,abc']);
+            writeJSON(path.join(blobsDir, 'task-2.images.json'), ['data:image/png;base64,def']);
+
+            const wiper = new DataWiper(dataDir, store);
+            const summary = await wiper.getDryRunSummary();
+
+            expect(summary.deletedBlobs).toBe(2);
+        });
+
+        it('should return deletedBlobs: 0 when blobs dir does not exist', async () => {
+            const wiper = new DataWiper(dataDir, store);
+            const summary = await wiper.getDryRunSummary();
+
+            expect(summary.deletedBlobs).toBe(0);
+        });
+
+        it('should not delete blob files during dry run', async () => {
+            const blobsDir = path.join(dataDir, 'blobs');
+            fs.mkdirSync(blobsDir, { recursive: true });
+            const blobFile = path.join(blobsDir, 'task-1.images.json');
+            writeJSON(blobFile, ['data:image/png;base64,abc']);
+
+            const wiper = new DataWiper(dataDir, store);
+            await wiper.getDryRunSummary();
+
+            expect(fs.existsSync(blobFile)).toBe(true);
+        });
     });
 
     // ========================================================================
@@ -254,6 +285,30 @@ describe('DataWiper', () => {
             const result = await wiper.wipeData({ includeWikis: false });
 
             expect(result.deletedQueues).toBe(0);
+            expect(result.errors).toEqual([]);
+        });
+
+        it('should delete all blob files from blobs/ directory', async () => {
+            const blobsDir = path.join(dataDir, 'blobs');
+            fs.mkdirSync(blobsDir, { recursive: true });
+            const blob1 = path.join(blobsDir, 'task-1.images.json');
+            const blob2 = path.join(blobsDir, 'task-2.images.json');
+            writeJSON(blob1, ['data:image/png;base64,abc']);
+            writeJSON(blob2, ['data:image/png;base64,def']);
+
+            const wiper = new DataWiper(dataDir, store);
+            const result = await wiper.wipeData({ includeWikis: false });
+
+            expect(result.deletedBlobs).toBe(2);
+            expect(fs.existsSync(blob1)).toBe(false);
+            expect(fs.existsSync(blob2)).toBe(false);
+        });
+
+        it('should handle missing blobs directory gracefully', async () => {
+            const wiper = new DataWiper(dataDir, store);
+            const result = await wiper.wipeData({ includeWikis: false });
+
+            expect(result.deletedBlobs).toBe(0);
             expect(result.errors).toEqual([]);
         });
 

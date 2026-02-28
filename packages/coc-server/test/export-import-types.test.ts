@@ -201,6 +201,31 @@ describe('validateExportPayload', () => {
         const result = validateExportPayload(payload);
         expect(result).toEqual({ valid: true });
     });
+
+    // ---- imageBlobs (optional field) ----------------------------------
+
+    it('accepts payload with imageBlobs array', () => {
+        const payload = {
+            ...validPayload(),
+            imageBlobs: [{ taskId: 'task-1', images: ['data:image/png;base64,abc'] }],
+        };
+        const result = validateExportPayload(payload);
+        expect(result).toEqual({ valid: true });
+    });
+
+    it('accepts payload without imageBlobs (backward compat)', () => {
+        const payload = validPayload();
+        const result = validateExportPayload(payload);
+        expect(result).toEqual({ valid: true });
+        expect((payload as any).imageBlobs).toBeUndefined();
+    });
+
+    it('rejects payload with non-array imageBlobs', () => {
+        const payload = { ...validPayload(), imageBlobs: 'not-an-array' };
+        const result = validateExportPayload(payload);
+        expect(result.valid).toBe(false);
+        expect(result.error).toMatch(/imageBlobs/);
+    });
 });
 
 // ============================================================================

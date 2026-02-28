@@ -244,6 +244,64 @@ describe('importData', () => {
             expect(result.importedWorkspaces).toBe(0);
             expect(result.importedWikis).toBe(0);
             expect(result.importedQueueFiles).toBe(0);
+            expect(result.importedBlobFiles).toBe(0);
+            expect(result.errors).toEqual([]);
+        });
+
+        it('writes blob files to blobs/ directory from payload imageBlobs', async () => {
+            const payload = buildPayload({
+                imageBlobs: [
+                    { taskId: 'task-1', images: ['data:image/png;base64,abc'] },
+                    { taskId: 'task-2', images: ['data:image/png;base64,def', 'data:image/png;base64,ghi'] },
+                ],
+            });
+
+            const result = await importData(payload, baseOptions());
+
+            expect(result.importedBlobFiles).toBe(2);
+            const blob1 = path.join(dataDir, 'blobs', 'task-1.images.json');
+            const blob2 = path.join(dataDir, 'blobs', 'task-2.images.json');
+            expect(fs.existsSync(blob1)).toBe(true);
+            expect(fs.existsSync(blob2)).toBe(true);
+            expect(JSON.parse(fs.readFileSync(blob1, 'utf-8'))).toEqual(['data:image/png;base64,abc']);
+            expect(JSON.parse(fs.readFileSync(blob2, 'utf-8'))).toHaveLength(2);
+        });
+
+        it('wipe clears existing blob files before writing new ones', async () => {
+            // Pre-existing blob
+            const blobsDir = path.join(dataDir, 'blobs');
+            fs.mkdirSync(blobsDir, { recursive: true });
+            fs.writeFileSync(path.join(blobsDir, 'old-task.images.json'), '["old"]', 'utf-8');
+
+            const payload = buildPayload({
+                imageBlobs: [
+                    { taskId: 'new-task', images: ['new-img'] },
+                ],
+            });
+
+            const result = await importData(payload, baseOptions());
+
+            expect(result.importedBlobFiles).toBe(1);
+            expect(fs.existsSync(path.join(blobsDir, 'old-task.images.json'))).toBe(false);
+            expect(fs.existsSync(path.join(blobsDir, 'new-task.images.json'))).toBe(true);
+        });
+
+        it('handles empty imageBlobs gracefully', async () => {
+            const payload = buildPayload({ imageBlobs: [] });
+
+            const result = await importData(payload, baseOptions());
+
+            expect(result.importedBlobFiles).toBe(0);
+            expect(result.errors).toEqual([]);
+        });
+
+        it('handles payload without imageBlobs field (backward compat)', async () => {
+            const payload = buildPayload();
+            delete (payload as any).imageBlobs;
+
+            const result = await importData(payload, baseOptions());
+
+            expect(result.importedBlobFiles).toBe(0);
             expect(result.errors).toEqual([]);
         });
     });
@@ -402,6 +460,53 @@ describe('importData', () => {
             expect(result.importedProcesses).toBe(1);
             expect(result.importedWorkspaces).toBe(1);
             expect(result.importedWikis).toBe(1);
+        });
+
+        it('skips existing blob files, writes only new ones', async () => {
+            const blobsDir = path.join(dataDir, 'blobs');
+            fs.mkdirSync(blobsDir, { recursive: true });
+            fs.writeFileSync(path.join(blobsDir, 'existing-task.images.json'), '["existing-img"]', 'utf-8');
+
+            const payload = buildPayload({
+                imageBlobs: [
+                    { taskId: 'existing-task', images: ['should-not-overwrite'] },
+                    { taskId: 'new-task', images: ['new-img'] },
+                ],
+            });
+
+            const result = await importData(payload, baseOptions({ mode: 'merge' }));
+
+            expect(result.importedBlobFiles).toBe(1);
+            // Existing file should not be overwritten
+            const existingContent = JSON.parse(fs.readFileSync(path.join(blobsDir, 'existing-task.images.json'), 'utf-8'));
+            expect(existingContent).toEqual(['existing-img']);
+            // New file should be written
+            expect(fs.existsSync(path.join(blobsDir, 'new-task.images.json'))).toBe(true);
+        });
+
+        it('writes all blob files when blobs dir is empty', async () => {
+            const payload = buildPayload({
+                imageBlobs: [
+                    { taskId: 'task-1', images: ['img1'] },
+                    { taskId: 'task-2', images: ['img2'] },
+                ],
+            });
+
+            const result = await importData(payload, baseOptions({ mode: 'merge' }));
+
+            expect(result.importedBlobFiles).toBe(2);
+            expect(fs.existsSync(path.join(dataDir, 'blobs', 'task-1.images.json'))).toBe(true);
+            expect(fs.existsSync(path.join(dataDir, 'blobs', 'task-2.images.json'))).toBe(true);
+        });
+
+        it('handles missing imageBlobs in payload (merge mode)', async () => {
+            const payload = buildPayload();
+            delete (payload as any).imageBlobs;
+
+            const result = await importData(payload, baseOptions({ mode: 'merge' }));
+
+            expect(result.importedBlobFiles).toBe(0);
+            expect(result.errors).toEqual([]);
         });
     });
 
