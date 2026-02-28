@@ -515,6 +515,7 @@ export function MarkdownReviewEditor({
                                 ref={previewRef}
                                 id="task-preview-body"
                                 className="markdown-body text-sm text-[#1e1e1e] dark:text-[#cccccc]"
+                                data-source-file={filePath}
                                 dangerouslySetInnerHTML={{ __html: html }}
                                 onContextMenu={handleContextMenu}
                             />

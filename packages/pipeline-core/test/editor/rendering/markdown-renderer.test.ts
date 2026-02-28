@@ -155,6 +155,31 @@ describe('applyInlineMarkdown', () => {
         expect(html).toContain('http://example.com');
     });
 
+    it('renders links with data-href attribute', () => {
+        const html = applyInlineMarkdown('[text](http://example.com)');
+        expect(html).toContain('data-href="http://example.com"');
+    });
+
+    it('renders relative links with data-href attribute', () => {
+        const html = applyInlineMarkdown('[readme](./README.md)');
+        expect(html).toContain('data-href="./README.md"');
+        expect(html).not.toContain('md-anchor-link');
+    });
+
+    it('does not add data-href to anchor links', () => {
+        const html = applyInlineMarkdown('[section](#heading)');
+        expect(html).toContain('md-anchor-link');
+        expect(html).not.toContain('data-href');
+    });
+
+    it('escapes special characters in data-href', () => {
+        const html = applyInlineMarkdown('[file](path/a&b<c>.md)');
+        // The URL is first HTML-escaped by the outer escapeHtml pass, then
+        // escapeHtml runs again for data-href — resulting in double encoding.
+        expect(html).toContain('data-href=');
+        expect(html).toContain('md-link');
+    });
+
     it('renders images', () => {
         const html = applyInlineMarkdown('![alt](img.png)');
         expect(html).toContain('md-image-container');

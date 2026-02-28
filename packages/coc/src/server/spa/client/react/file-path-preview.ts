@@ -182,6 +182,17 @@ function findPathLink(target: EventTarget | null): HTMLElement | null {
     return target.closest('.file-path-link');
 }
 
+function findMdLink(target: EventTarget | null): HTMLElement | null {
+    if (!(target instanceof HTMLElement)) return null;
+    const link = target.classList.contains('md-link')
+        ? target
+        : target.closest<HTMLElement>('.md-link');
+    if (!link) return null;
+    // Skip anchor links (handled separately for ToC navigation)
+    if (link.classList.contains('md-anchor-link')) return null;
+    return link;
+}
+
 function positionTooltip(target: HTMLElement): void {
     const tip = createTooltip();
     const rect = target.getBoundingClientRect();
@@ -377,6 +388,32 @@ function initFilePathPreviewDelegation(): void {
         hideTooltip();
         window.dispatchEvent(new CustomEvent('coc-open-markdown-review', {
             detail: { filePath: fullPath },
+        }));
+    });
+
+    // Click delegation for markdown link spans (.md-link) — open referenced files.
+    document.body.addEventListener('click', (event) => {
+        const target = findMdLink(event.target);
+        if (!target) return;
+        event.preventDefault();
+        event.stopPropagation();
+
+        const href = target.getAttribute('data-href');
+        if (!href) return;
+
+        // External URLs — open in new tab
+        if (/^https?:\/\/|^mailto:/i.test(href)) {
+            window.open(href, '_blank', 'noopener');
+            return;
+        }
+
+        // Determine the source file for relative path resolution
+        const sourceContainer = target.closest('[data-source-file]');
+        const sourceFilePath = sourceContainer?.getAttribute('data-source-file') || '';
+
+        hideTooltip();
+        window.dispatchEvent(new CustomEvent('coc-open-markdown-review', {
+            detail: { filePath: href, sourceFilePath },
         }));
     });
 }

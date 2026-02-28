@@ -16,6 +16,7 @@ import { ToastContainer, useToast } from './shared';
 import { toForwardSlashes } from '@plusplusoneplusplus/pipeline-core/utils/path-utils';
 import { MarkdownReviewDialog } from './processes/MarkdownReviewDialog';
 import { EnqueueDialog } from './queue/EnqueueDialog';
+import { isAbsolutePath, resolveRelativePath } from './utils/path-resolution';
 
 interface MarkdownReviewDialogState {
     open: boolean;
@@ -263,9 +264,18 @@ function AppInner() {
 
     useEffect(() => {
         const handleOpenMarkdownReview = (event: Event) => {
-            const detail = (event as CustomEvent<{ filePath?: string }>).detail;
-            const fullPath = typeof detail?.filePath === 'string' ? detail.filePath : '';
-            if (!fullPath) return;
+            const detail = (event as CustomEvent<{ filePath?: string; sourceFilePath?: string }>).detail;
+            let filePath = typeof detail?.filePath === 'string' ? detail.filePath : '';
+            if (!filePath) return;
+
+            // Resolve relative paths against the source file's directory
+            const sourceFilePath = typeof detail?.sourceFilePath === 'string' ? detail.sourceFilePath : '';
+            if (sourceFilePath && !isAbsolutePath(filePath)) {
+                const sourceDir = normalizePath(sourceFilePath).replace(/\/[^/]*$/, '');
+                filePath = resolveRelativePath(sourceDir, filePath);
+            }
+
+            const fullPath = filePath;
 
             const matchedWorkspace = resolveWorkspaceForPath(fullPath, appState.workspaces || []);
             const fallbackWorkspace = appState.workspaces?.[0];

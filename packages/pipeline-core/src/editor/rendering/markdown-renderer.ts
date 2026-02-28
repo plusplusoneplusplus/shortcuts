@@ -281,7 +281,8 @@ export function applyInlineMarkdown(text: string): string {
         const isAnchorLink = url.startsWith('#');
         const linkClass = isAnchorLink ? 'md-link md-anchor-link' : 'md-link';
         const dataAttr = isAnchorLink ? ` data-anchor="${escapeHtml(url.substring(1))}"` : '';
-        return `<span class="${linkClass}"${dataAttr}><span class="md-link-text">[${text}]</span><span class="md-link-url">(${url})</span></span>`;
+        const hrefAttr = isAnchorLink ? '' : ` data-href="${escapeHtml(url)}"`;
+        return `<span class="${linkClass}"${dataAttr}${hrefAttr}><span class="md-link-text">[${text}]</span><span class="md-link-url">(${url})</span></span>`;
     });
     
     // Bold + Italic (***text*** or ___text___)
