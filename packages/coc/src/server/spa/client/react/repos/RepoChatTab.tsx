@@ -64,6 +64,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId }: Re
     const [error, setError] = useState<string | null>(null);
     const [sessionExpired, setSessionExpired] = useState(false);
     const [isStreaming, setIsStreaming] = useState(false);
+    const [resuming, setResuming] = useState(false);
 
     const initialImagePaste = useImagePaste();
     const followUpImagePaste = useImagePaste();
@@ -400,6 +401,59 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId }: Re
         }
     };
 
+    const handleResumeChat = async () => {
+        if (!chatTaskId || resuming) return;
+        setResuming(true);
+        setError(null);
+        try {
+            const response = await fetch(`${getApiBase()}/queue/${encodeURIComponent(chatTaskId)}/resume-chat`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+            });
+            if (!response.ok) {
+                const body = await response.json().catch(() => null);
+                throw new Error(body?.error ?? `Resume failed (${response.status})`);
+            }
+            const body = await response.json();
+            if (body.resumed) {
+                // Warm path: session is alive again
+                setSessionExpired(false);
+            } else if (body.newTaskId) {
+                // Cold path: navigate to new session
+                const newTaskId = body.newTaskId;
+                currentChatTaskIdRef.current = newTaskId;
+                setSelectedTaskId(newTaskId);
+                setChatTaskId(newTaskId);
+                setTask(body.task ?? null);
+                setSessionExpired(false);
+                location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/chat/' + encodeURIComponent(newTaskId);
+                // Load the new session (which will stream the initial response)
+                loadSession(newTaskId);
+                sessionsHook.refresh();
+            }
+        } catch (err: any) {
+            setError(err?.message ?? 'Failed to resume chat.');
+        } finally {
+            setResuming(false);
+        }
+    };
+
+    const handleResumeInTerminal = async () => {
+        if (!processId) return;
+        try {
+            const response = await fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/resume-cli`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+            });
+            if (!response.ok) {
+                const body = await response.json().catch(() => null);
+                throw new Error(body?.error ?? `Resume in terminal failed (${response.status})`);
+            }
+        } catch (err: any) {
+            setError(err?.message ?? 'Failed to resume in terminal.');
+        }
+    };
+
     // --- render helpers ---
 
     const renderStartScreen = () => (
@@ -429,33 +483,69 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId }: Re
                 <span className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]">Chat</span>
                 <div className="flex gap-2">
                     {isStreaming && <Button size="sm" variant="secondary" onClick={stopStreaming}>Stop</Button>}
+                    {sessionExpired && (
+                        <Button size="sm" variant="primary" onClick={() => void handleResumeChat()} disabled={resuming}>
+                            {resuming ? '…' : '↻ Resume'}
+                        </Button>
+                    )}
                 </div>
             </div>
 
             {/* Conversation area */}
             <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
-                {loading ? <Spinner /> : turns.map((turn, i) => <ConversationTurnBubble key={i} turn={turn} />)}
+                {loading ? <Spinner /> : turns.map((turn, i) => {
+                    const prevTurn = i > 0 ? turns[i - 1] : null;
+                    const showSeparator = prevTurn?.historical && !turn.historical;
+                    return (
+                        <div key={i}>
+                            {showSeparator && (
+                                <div className="flex items-center gap-2 py-2 text-xs text-[#848484]">
+                                    <div className="flex-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]" />
+                                    <span>Resumed from previous session</span>
+                                    <div className="flex-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]" />
+                                </div>
+                            )}
+                            <ConversationTurnBubble turn={turn} />
+                        </div>
+                    );
+                })}
             </div>
 
             {/* Input area */}
             <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3 space-y-2">
                 {error && <div className="text-xs text-red-500">{error}</div>}
-                <ImagePreviews images={followUpImagePaste.images} onRemove={followUpImagePaste.removeImage} />
-                <div className="flex items-end gap-2">
-                    <textarea
-                        rows={1}
-                        value={inputValue}
-                        disabled={sending || sessionExpired}
-                        placeholder={sessionExpired ? 'Session expired. Start a new chat.' : 'Follow up…'}
-                        onChange={e => setInputValue(e.target.value)}
-                        onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendFollowUp(); } }}
-                        onPaste={followUpImagePaste.addFromPaste}
-                        className="flex-1 border rounded p-2 text-sm resize-none bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] border-[#e0e0e0] dark:border-[#3c3c3c]"
-                    />
-                    <Button disabled={sending || !inputValue.trim() || sessionExpired} onClick={() => void sendFollowUp()}>
-                        {sending ? '...' : 'Send'}
-                    </Button>
-                </div>
+                {sessionExpired ? (
+                    <div className="flex items-center justify-center gap-2 py-2">
+                        <Button variant="primary" onClick={() => void handleResumeChat()} disabled={resuming}>
+                            {resuming ? 'Resuming…' : 'Resume'}
+                        </Button>
+                        <Button variant="secondary" onClick={() => void handleResumeInTerminal()}>
+                            Resume in Terminal
+                        </Button>
+                        <Button variant="secondary" onClick={handleNewChat}>
+                            New Chat
+                        </Button>
+                    </div>
+                ) : (
+                    <>
+                        <ImagePreviews images={followUpImagePaste.images} onRemove={followUpImagePaste.removeImage} />
+                        <div className="flex items-end gap-2">
+                            <textarea
+                                rows={1}
+                                value={inputValue}
+                                disabled={sending}
+                                placeholder="Follow up…"
+                                onChange={e => setInputValue(e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendFollowUp(); } }}
+                                onPaste={followUpImagePaste.addFromPaste}
+                                className="flex-1 border rounded p-2 text-sm resize-none bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] border-[#e0e0e0] dark:border-[#3c3c3c]"
+                            />
+                            <Button disabled={sending || !inputValue.trim()} onClick={() => void sendFollowUp()}>
+                                {sending ? '...' : 'Send'}
+                            </Button>
+                        </div>
+                    </>
+                )}
             </div>
         </div>
     );

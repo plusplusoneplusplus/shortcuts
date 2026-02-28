@@ -221,6 +221,30 @@ export class CLITaskExecutor implements TaskExecutor {
                 },
             ];
 
+            // Cold resume: prepend historical turns from the original session
+            const resumedFrom = (task.payload as any)?.resumedFrom;
+            let combinedTurns = finalTurns;
+            if (resumedFrom && typeof resumedFrom === 'string') {
+                try {
+                    const oldProcess = await this.store.getProcess(resumedFrom);
+                    if (oldProcess?.conversationTurns?.length) {
+                        const historicalTurns: ConversationTurn[] = oldProcess.conversationTurns.map((t, i) => ({
+                            ...t,
+                            historical: true,
+                            turnIndex: i,
+                        }));
+                        // Re-index the new turns after historical ones
+                        const offset = historicalTurns.length;
+                        combinedTurns = [
+                            ...historicalTurns,
+                            ...finalTurns.map((t, i) => ({ ...t, turnIndex: offset + i })),
+                        ];
+                    }
+                } catch {
+                    // Non-fatal: old process may be gone
+                }
+            }
+
             // Update process as completed — now includes session + conversation data
             try {
                 await this.store.updateProcess(processId, {
@@ -228,7 +252,7 @@ export class CLITaskExecutor implements TaskExecutor {
                     endTime: new Date(),
                     result: typeof result === 'string' ? result : JSON.stringify(result),
                     sdkSessionId: sessionId,
-                    conversationTurns: finalTurns,
+                    conversationTurns: combinedTurns,
                 });
                 this.store.emitProcessComplete(processId, 'completed', `${duration}ms`);
             } catch {

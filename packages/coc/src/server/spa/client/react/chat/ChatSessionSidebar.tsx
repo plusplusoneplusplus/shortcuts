@@ -70,6 +70,12 @@ export function ChatSessionSidebar({
                                 <span>{session.turnCount != null ? `${session.turnCount} turns` : '—'}</span>
                                 <span>·</span>
                                 <span>{formatRelativeTime(session.createdAt)}</span>
+                                {session.status === 'failed' && (
+                                    <>
+                                        <span>·</span>
+                                        <span className="text-[#f85149]" title="Session expired">expired</span>
+                                    </>
+                                )}
                             </div>
                         </Card>
                     ))

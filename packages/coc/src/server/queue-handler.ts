@@ -9,7 +9,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { TaskQueueManager, QueuedTask, CreateTaskInput, TaskPriority, QueueStats, ProcessStore } from '@plusplusoneplusplus/pipeline-core';
+import type { TaskQueueManager, QueuedTask, CreateTaskInput, TaskPriority, QueueStats, ProcessStore, ConversationTurn } from '@plusplusoneplusplus/pipeline-core';
 import { getActiveModels } from '@plusplusoneplusplus/pipeline-core';
 import { sendJSON, sendError, parseBody } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
@@ -283,6 +283,30 @@ async function enrichChatTasks(
             // Non-fatal: process may not exist
         }
     }
+}
+
+/**
+ * Maximum number of conversation turns to include in a cold-resume context prompt.
+ * Prevents exceeding token limits for very long conversations.
+ */
+const MAX_RESUME_CONTEXT_TURNS = 20;
+
+/**
+ * Build a context prompt from prior conversation turns for cold session resume.
+ * Includes the last N turns to stay within token limits.
+ */
+export function buildContextPrompt(turns: ConversationTurn[]): string {
+    const recent = turns.slice(-MAX_RESUME_CONTEXT_TURNS);
+    const formatted = recent
+        .map(t => `${t.role === 'user' ? 'User' : 'Assistant'}: ${t.content}`)
+        .join('\n\n');
+    return (
+        'Continue this conversation. Here is the prior context:\n\n' +
+        '<conversation_history>\n' +
+        formatted + '\n' +
+        '</conversation_history>\n\n' +
+        'Acknowledge you have the context and are ready to continue.'
+    );
 }
 
 export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecutorBridge, store?: ProcessStore): void {
@@ -1052,6 +1076,99 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
                 }
             }
             sendJSON(res, 200, { images: [] });
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // POST /api/queue/:id/resume-chat — Resume an expired chat session
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/queue\/([^/]+)\/resume-chat$/,
+        handler: async (_req, res, match) => {
+            const taskId = decodeURIComponent(match![1]);
+
+            if (!store) {
+                return sendError(res, 500, 'Process store not available');
+            }
+
+            // Look up the task to get the processId
+            const mgr = findTaskManager(bridge, taskId);
+            const task = mgr?.getTask(taskId);
+            if (!task) {
+                return sendError(res, 404, 'Task not found');
+            }
+
+            const pid = task.processId ?? `queue_${taskId}`;
+            const proc = await store.getProcess(pid);
+            if (!proc) {
+                return sendError(res, 404, 'Process not found');
+            }
+
+            // Don't resume an active session
+            if (proc.status === 'running') {
+                return sendError(res, 400, 'Session is still active');
+            }
+
+            // Warm path: SDK session is still alive
+            const sessionAlive = await bridge.isSessionAlive(pid);
+            if (sessionAlive) {
+                // Clear error state so the session can accept follow-ups again
+                await store.updateProcess(pid, {
+                    status: 'completed',
+                    error: undefined,
+                });
+                process.stderr.write(`[Queue] resume-chat warm taskId=${taskId} processId=${pid}\n`);
+                return sendJSON(res, 200, { resumed: true, processId: pid });
+            }
+
+            // Cold path: create a new chat task with context from old conversation
+            const oldTurns = proc.conversationTurns ?? [];
+            if (oldTurns.length === 0) {
+                return sendError(res, 409, 'No conversation history to resume from');
+            }
+
+            const contextPrompt = buildContextPrompt(oldTurns);
+            const payload = task.payload as any;
+
+            const newTaskSpec: any = {
+                type: 'chat',
+                priority: 'normal',
+                payload: {
+                    kind: 'chat',
+                    prompt: contextPrompt,
+                    resumedFrom: pid,
+                    ...(payload?.workingDirectory ? { workingDirectory: payload.workingDirectory } : {}),
+                    ...(payload?.workspaceId ? { workspaceId: payload.workspaceId } : {}),
+                },
+                config: {
+                    ...(task.config ?? {}),
+                    retryOnFailure: false,
+                },
+                displayName: task.displayName ?? 'Resumed Chat',
+            };
+
+            const validation = validateAndParseTask(newTaskSpec);
+            if (!validation.valid) {
+                return sendError(res, 400, validation.error!);
+            }
+
+            try {
+                const newTaskId = await enqueueViaBridge(validation.input!);
+                const newTask = findTaskManager(bridge, newTaskId)?.getTask(newTaskId);
+                const newProcessId = newTask?.processId ?? `queue_${newTaskId}`;
+
+                process.stderr.write(`[Queue] resume-chat cold taskId=${taskId} -> newTaskId=${newTaskId}\n`);
+                sendJSON(res, 200, {
+                    resumed: false,
+                    newTaskId,
+                    newProcessId,
+                    task: newTask ? serializeTask(newTask) : { id: newTaskId },
+                });
+            } catch (err) {
+                const message = err instanceof Error ? err.message : 'Failed to create resume task';
+                return sendError(res, 400, message);
+            }
         },
     });
 

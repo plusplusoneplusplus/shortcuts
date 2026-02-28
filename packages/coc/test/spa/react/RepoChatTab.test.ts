@@ -321,7 +321,9 @@ describe('RepoChatTab', () => {
         });
 
         it('disables textarea when session is expired', () => {
-            expect(source).toContain('disabled={sending || sessionExpired}');
+            // sessionExpired now shows resume buttons instead of a disabled textarea
+            expect(source).toContain('sessionExpired');
+            expect(source).toContain('handleResumeChat');
         });
     });
 

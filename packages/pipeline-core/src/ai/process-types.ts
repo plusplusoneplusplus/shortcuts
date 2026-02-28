@@ -132,6 +132,8 @@ export interface ConversationTurn {
     timeline: TimelineItem[];
     /** Base64 data-URL strings for user-attached images */
     images?: string[];
+    /** True for turns prepended from a prior session during cold resume */
+    historical?: boolean;
 }
 
 /**
@@ -148,6 +150,8 @@ export interface SerializedConversationTurn {
     timeline: SerializedTimelineItem[];
     /** Base64 data-URL strings for user-attached images */
     images?: string[];
+    /** True for turns prepended from a prior session during cold resume */
+    historical?: boolean;
 }
 
 /**

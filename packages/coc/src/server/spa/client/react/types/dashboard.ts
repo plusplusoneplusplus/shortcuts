@@ -43,6 +43,8 @@ export interface ClientConversationTurn {
     imagesCount?: number;
     /** Whether this turn has externalized images */
     hasImages?: boolean;
+    /** True for turns prepended from a prior session during cold resume */
+    historical?: boolean;
 }
 
 /** Cached conversation data for a historical process. */
