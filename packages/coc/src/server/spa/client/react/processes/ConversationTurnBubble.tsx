@@ -37,7 +37,7 @@ interface RenderChunk {
 const HTML_LIKE_RE = /<[a-z][\s\S]*>/i;
 
 function toContentHtml(content: string): string {
-    if (!content) return '';
+    if (!content || !content.trim()) return '';
     return HTML_LIKE_RE.test(content) ? content : renderMarkdownToHtml(content);
 }
 

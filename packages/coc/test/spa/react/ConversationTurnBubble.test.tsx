@@ -178,6 +178,51 @@ describe('ConversationTurnBubble — semantic hooks', () => {
     });
 });
 
+describe('ConversationTurnBubble — whitespace-only content suppression', () => {
+    beforeEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('does not render empty markdown-body div for whitespace-only user content', () => {
+        const { container } = render(<ConversationTurnBubble turn={makeTurn({ role: 'user', content: '   ' })} />);
+        expect(container.querySelector('.markdown-body')).toBeNull();
+    });
+
+    it('does not render empty markdown-body div for newline-only user content', () => {
+        const { container } = render(<ConversationTurnBubble turn={makeTurn({ role: 'user', content: '\n' })} />);
+        expect(container.querySelector('.markdown-body')).toBeNull();
+    });
+
+    it('does not render empty markdown-body div for empty string user content', () => {
+        const { container } = render(<ConversationTurnBubble turn={makeTurn({ role: 'user', content: '' })} />);
+        expect(container.querySelector('.markdown-body')).toBeNull();
+    });
+
+    it('does not render markdown-body for whitespace-only timeline content event', () => {
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn({
+                    role: 'assistant',
+                    content: '',
+                    timeline: [
+                        { type: 'content', content: '  \n  ' },
+                        {
+                            type: 'tool-start',
+                            toolCall: { id: 'tool-1', toolName: 'grep', args: {}, status: 'completed' },
+                        },
+                    ],
+                })}
+            />
+        );
+        expect(container.querySelector('.markdown-body')).toBeNull();
+    });
+
+    it('still renders markdown-body for non-whitespace content', () => {
+        const { container } = render(<ConversationTurnBubble turn={makeTurn({ role: 'user', content: 'Hello' })} />);
+        expect(container.querySelector('.markdown-body')).toBeTruthy();
+    });
+});
+
 describe('ConversationTurnBubble — task boundary inference', () => {
     it('keeps tool calls after task-complete at root level without timestamps', () => {
         const { container } = render(
