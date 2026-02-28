@@ -62,6 +62,7 @@ export function ProcessDetail() {
     const [turns, setTurns] = useState<ClientConversationTurn[]>([]);
     const [processDetails, setProcessDetails] = useState<any>(null);
     const eventSourceRef = useRef<EventSource | null>(null);
+    const turnsContainerRef = useRef<HTMLDivElement>(null);
     const [now, setNow] = useState(Date.now());
     const [resumeLaunching, setResumeLaunching] = useState(false);
     const [resumeFeedback, setResumeFeedback] = useState<{ type: 'success' | 'error'; message: string; command?: string } | null>(null);
@@ -202,6 +203,18 @@ export function ProcessDetail() {
         if (wsId) location.hash = '#repos/' + encodeURIComponent(wsId);
     }, [wsId]);
 
+    const scrollToTurn = useCallback((hint: string) => {
+        if (!turnsContainerRef.current || turns.length === 0) return;
+        const lowerHint = hint.toLowerCase();
+        const index = turns.findIndex(t => {
+            const content = typeof t.content === 'string' ? t.content.toLowerCase() : '';
+            return content.includes(lowerHint) || content.includes('error');
+        });
+        if (index < 0) return;
+        const el = turnsContainerRef.current.children[index];
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, [turns]);
+
     if (!selectedId || !process) {
         return (
             <div id="detail-empty" className="flex-1 flex flex-col items-center justify-center text-[#848484]">
@@ -310,7 +323,7 @@ export function ProcessDetail() {
             </div>
 
             {/* Pipeline DAG visualization */}
-            <PipelineDAGSection process={metadataProcess} eventSourceRef={eventSourceRef} />
+            <PipelineDAGSection process={metadataProcess} eventSourceRef={eventSourceRef} onScrollToConversation={scrollToTurn} />
 
             {/* Conversation turns */}
             {loading ? (
@@ -320,7 +333,7 @@ export function ProcessDetail() {
             ) : turns.length === 0 ? (
                 <div className="text-[#848484] text-sm">No conversation data available.</div>
             ) : (
-                <div className="space-y-3">
+                <div className="space-y-3" ref={turnsContainerRef}>
                     {turns.map((turn, i) => (
                         <ConversationTurnBubble key={i} turn={turn} />
                     ))}

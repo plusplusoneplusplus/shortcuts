@@ -3,10 +3,12 @@ import { PipelineDAGChart } from './PipelineDAGChart';
 import { buildDAGData } from './buildDAGData';
 import { usePipelinePhase } from '../../hooks/usePipelinePhase';
 import { formatDuration, statusIcon } from '../../utils/format';
+import type { PhaseDetail } from './PipelinePhasePopover';
 
 export interface PipelineDAGSectionProps {
     process: any;
     eventSourceRef?: RefObject<EventSource | null>;
+    onScrollToConversation?: (phaseName: string) => void;
 }
 
 function detectDarkMode(): boolean {
@@ -16,7 +18,7 @@ function detectDarkMode(): boolean {
     return false;
 }
 
-export function PipelineDAGSection({ process, eventSourceRef }: PipelineDAGSectionProps) {
+export function PipelineDAGSection({ process, eventSourceRef, onScrollToConversation }: PipelineDAGSectionProps) {
     const [expanded, setExpanded] = useState(true);
     const [now, setNow] = useState(Date.now());
     const isDark = detectDarkMode();
@@ -42,6 +44,68 @@ export function PipelineDAGSection({ process, eventSourceRef }: PipelineDAGSecti
         : buildDAGData(process);
 
     if (!dagData) return null;
+
+    // Extract phase detail metadata from process
+    const phaseDetails: Record<string, PhaseDetail> = {};
+    const meta = process?.metadata;
+    const stats = meta?.executionStats;
+    const config = meta?.pipelineConfig;
+
+    for (const node of dagData.nodes) {
+        const detail: PhaseDetail = {
+            phase: node.phase,
+            status: node.state as any,
+            durationMs: node.durationMs,
+            itemCount: node.itemCount ?? node.totalItems,
+        };
+
+        // Phase errors from metadata
+        if (meta?.phaseErrors?.[node.phase]) {
+            detail.error = meta.phaseErrors[node.phase];
+        }
+
+        switch (node.phase) {
+            case 'input':
+                detail.sourceType = config?.input?.type ?? config?.input?.source;
+                if (config?.input?.parameters) detail.parameters = config.input.parameters;
+                break;
+            case 'filter':
+                detail.filterType = config?.filter?.type;
+                detail.rulesSummary = config?.filter?.rules
+                    ? (Array.isArray(config.filter.rules) ? config.filter.rules.join(', ') : String(config.filter.rules))
+                    : undefined;
+                if (stats) {
+                    const totalIn = stats.totalItems ?? 0;
+                    const totalOut = stats.successfulMaps != null ? stats.successfulMaps + (stats.failedMaps ?? 0) : totalIn;
+                    detail.includedCount = totalOut;
+                    detail.excludedCount = totalIn > totalOut ? totalIn - totalOut : undefined;
+                }
+                break;
+            case 'map':
+                detail.concurrency = stats?.maxConcurrency ?? config?.map?.concurrency;
+                detail.batchSize = config?.map?.batchSize;
+                detail.model = config?.map?.model ?? meta?.model;
+                detail.totalItems = stats?.totalItems ?? node.totalItems;
+                detail.successfulItems = stats?.successfulMaps;
+                detail.failedItems = stats?.failedMaps ?? node.failedItems;
+                break;
+            case 'reduce':
+                detail.reduceType = config?.reduce?.type;
+                detail.model = config?.reduce?.model ?? meta?.model;
+                detail.outputPreview = meta?.reduceOutput ?? meta?.result;
+                break;
+            case 'job':
+                detail.model = config?.model ?? meta?.model;
+                detail.promptPreview = config?.prompt ?? meta?.prompt;
+                break;
+        }
+
+        phaseDetails[node.phase] = detail;
+    }
+
+    const handleScrollToConversation = onScrollToConversation
+        ? (phaseName: string) => onScrollToConversation(phaseName)
+        : undefined;
 
     const status = process.status || 'completed';
     const icon = statusIcon(status);
@@ -93,7 +157,13 @@ export function PipelineDAGSection({ process, eventSourceRef }: PipelineDAGSecti
             {/* Body */}
             {expanded && (
                 <div className="px-4 py-3">
-                    <PipelineDAGChart data={dagData} isDark={isDark} now={isRunning ? now : undefined} />
+                    <PipelineDAGChart
+                        data={dagData}
+                        isDark={isDark}
+                        now={isRunning ? now : undefined}
+                        phaseDetails={phaseDetails}
+                        onScrollToConversation={handleScrollToConversation}
+                    />
                     <div className="text-xs text-[#848484] text-center mt-2">
                         {caption}
                     </div>

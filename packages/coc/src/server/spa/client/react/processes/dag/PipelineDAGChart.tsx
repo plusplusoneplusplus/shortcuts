@@ -1,8 +1,11 @@
+import { useState, useEffect, useRef } from 'react';
 import type { PipelinePhase } from '@plusplusoneplusplus/pipeline-core';
 import type { DAGChartData } from './types';
 import { DAGNode } from './DAGNode';
 import { DAGEdge } from './DAGEdge';
 import { DAGProgressBar } from './DAGProgressBar';
+import { PipelinePhasePopover } from './PipelinePhasePopover';
+import type { PhaseDetail } from './PipelinePhasePopover';
 import type { EdgeState } from './dag-colors';
 
 export interface PipelineDAGChartProps {
@@ -11,6 +14,10 @@ export interface PipelineDAGChartProps {
     onNodeClick?: (phase: PipelinePhase) => void;
     /** Current timestamp, used to compute elapsed time for running nodes. */
     now?: number;
+    /** Phase detail metadata keyed by phase name. */
+    phaseDetails?: Record<string, PhaseDetail>;
+    /** Callback to scroll to a conversation turn related to the given phase. */
+    onScrollToConversation?: (phaseName: string) => void;
 }
 
 const NODE_W = 120;
@@ -25,9 +32,40 @@ function deriveEdgeState(fromState: string, toState: string): EdgeState {
     return 'waiting';
 }
 
-export function PipelineDAGChart({ data, isDark, onNodeClick, now }: PipelineDAGChartProps) {
+export function PipelineDAGChart({ data, isDark, onNodeClick, now, phaseDetails, onScrollToConversation }: PipelineDAGChartProps) {
+    const [selectedPhase, setSelectedPhase] = useState<string | null>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
+
     const nodeCount = data.nodes.length;
     if (nodeCount === 0) return null;
+
+    const handleNodeClick = (phase: PipelinePhase) => {
+        setSelectedPhase(prev => prev === phase ? null : phase);
+        onNodeClick?.(phase);
+    };
+
+    // Escape key clears selection
+    useEffect(() => {
+        if (!selectedPhase) return;
+        const handler = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setSelectedPhase(null);
+        };
+        document.addEventListener('keydown', handler);
+        return () => document.removeEventListener('keydown', handler);
+    }, [selectedPhase]);
+
+    // Click outside clears selection
+    useEffect(() => {
+        if (!selectedPhase) return;
+        const handler = (e: MouseEvent | TouchEvent) => {
+            const target = e.target as Node | null;
+            if (!target) return;
+            if (containerRef.current?.contains(target)) return;
+            setSelectedPhase(null);
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [selectedPhase]);
 
     const totalWidth = 2 * PADDING + nodeCount * NODE_W + (nodeCount - 1) * GAP_X;
     const totalHeight = 2 * PADDING + NODE_H + 20; // extra for progress bar
@@ -39,7 +77,10 @@ export function PipelineDAGChart({ data, isDark, onNodeClick, now }: PipelineDAG
 
     const mapNode = data.nodes.find(n => n.phase === 'map');
 
+    const selectedDetail = selectedPhase && phaseDetails?.[selectedPhase] ? phaseDetails[selectedPhase] : null;
+
     return (
+        <div ref={containerRef} data-testid="dag-chart-container">
         <svg
             data-testid="dag-chart"
             className="w-full"
@@ -86,8 +127,9 @@ export function PipelineDAGChart({ data, isDark, onNodeClick, now }: PipelineDAG
                         x={positions[i].x}
                         y={positions[i].y}
                         isDark={isDark}
-                        onClick={onNodeClick}
+                        onClick={handleNodeClick}
                         elapsedMs={elapsedMs}
+                        selected={node.phase === selectedPhase}
                     />
                 );
             })}
@@ -110,5 +152,17 @@ export function PipelineDAGChart({ data, isDark, onNodeClick, now }: PipelineDAG
                 );
             })()}
         </svg>
+        {selectedPhase && selectedDetail && (
+            <PipelinePhasePopover
+                phase={selectedDetail}
+                onClose={() => setSelectedPhase(null)}
+                onScrollToConversation={
+                    selectedDetail.status === 'failed' && onScrollToConversation
+                        ? () => onScrollToConversation(selectedPhase)
+                        : undefined
+                }
+            />
+        )}
+        </div>
     );
 }

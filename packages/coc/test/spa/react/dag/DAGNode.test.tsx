@@ -105,4 +105,46 @@ describe('DAGNode', () => {
         expect(title?.textContent).toContain('Map');
         expect(title?.textContent).toContain('running');
     });
+
+    it('includes item count in tooltip when present', () => {
+        const { container } = renderNode({ label: 'Map', state: 'completed', totalItems: 10 });
+        const title = container.querySelector('title');
+        expect(title?.textContent).toContain('10 items');
+    });
+
+    it('applies stroke-width 2.5 and blue stroke when selected is true', () => {
+        const { container } = renderNode({ state: 'completed' }, { selected: true });
+        const rect = container.querySelector('rect');
+        expect(rect?.getAttribute('stroke-width')).toBe('2.5');
+        expect(rect?.getAttribute('stroke')).toBe('#0078d4');
+    });
+
+    it('applies stroke-width 2.5 and dark-mode blue stroke when selected and isDark', () => {
+        const { container } = render(
+            <svg>
+                <DAGNode node={makeNode({ state: 'completed' })} x={0} y={0} isDark={true} selected={true} />
+            </svg>
+        );
+        const rect = container.querySelector('rect');
+        expect(rect?.getAttribute('stroke')).toBe('#3794ff');
+    });
+
+    it('applies default stroke-width when selected is false', () => {
+        const { container } = renderNode({ state: 'completed' }, { selected: false });
+        const rect = container.querySelector('rect');
+        expect(rect?.getAttribute('stroke-width')).toBe('1.5');
+    });
+
+    it('applies default stroke-width when selected is undefined', () => {
+        const { container } = renderNode({ state: 'completed' });
+        const rect = container.querySelector('rect');
+        expect(rect?.getAttribute('stroke-width')).toBe('1.5');
+    });
+
+    it('has cursor: pointer style on the group element when onClick provided', () => {
+        const { container } = renderNode({ phase: 'map', label: 'Map' }, { onClick: vi.fn() });
+        const g = container.querySelector('[data-testid="dag-node-map"]');
+        expect(g).toBeDefined();
+        expect((g as HTMLElement)?.style.cursor).toBe('pointer');
+    });
 });

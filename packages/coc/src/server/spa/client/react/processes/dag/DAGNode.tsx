@@ -11,9 +11,10 @@ export interface DAGNodeProps {
     isDark: boolean;
     onClick?: (phase: PipelinePhase) => void;
     elapsedMs?: number;
+    selected?: boolean;
 }
 
-export function DAGNode({ node, x, y, isDark, onClick, elapsedMs }: DAGNodeProps) {
+export function DAGNode({ node, x, y, isDark, onClick, elapsedMs, selected }: DAGNodeProps) {
     const colors = getNodeColors(node.state, isDark);
     const icon = getNodeIcon(node.state);
     const hasClick = typeof onClick === 'function';
@@ -28,7 +29,11 @@ export function DAGNode({ node, x, y, isDark, onClick, elapsedMs }: DAGNodeProps
 
     const durationText = node.durationMs != null ? formatDuration(node.durationMs) : null;
     const elapsedText = node.state === 'running' && elapsedMs != null ? formatDuration(elapsedMs) : null;
-    const tooltipText = `${node.label} — ${node.state}${durationText ? ` (${durationText})` : ''}`;
+    const tooltipText = `${node.label} — ${node.state}${durationText ? ` (${durationText})` : ''}${itemText ? ` • ${itemText}` : ''}`;
+
+    const strokeColor = selected
+        ? (isDark ? '#3794ff' : '#0078d4')
+        : colors.border;
 
     return (
         <g
@@ -44,8 +49,8 @@ export function DAGNode({ node, x, y, isDark, onClick, elapsedMs }: DAGNodeProps
                 height={70}
                 rx={6}
                 fill={colors.fill}
-                stroke={colors.border}
-                strokeWidth={1.5}
+                stroke={strokeColor}
+                strokeWidth={selected ? 2.5 : 1.5}
                 className={cn(node.state === 'running' && 'animate-pulse')}
                 style={{
                     transition: 'fill 300ms ease, stroke 300ms ease',
