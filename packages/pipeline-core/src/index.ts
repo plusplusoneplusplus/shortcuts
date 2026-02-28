@@ -172,6 +172,9 @@ export {
     getProcessMonitor,
     resetProcessMonitor,
     DEFAULT_POLL_INTERVAL_MS,
+    // Path utilities
+    toForwardSlashes,
+    isWithinDirectory,
     // Template engine
     TEMPLATE_VARIABLE_REGEX,
     SPECIAL_VARIABLES,

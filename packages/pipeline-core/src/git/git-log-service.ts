@@ -10,6 +10,7 @@
 import { execSync } from 'child_process';
 import * as path from 'path';
 import { getLogger, LogCategory } from '../logger';
+import { toForwardSlashes } from '../utils/path-utils';
 import { GitCommit, GitCommitFile, GitChangeStatus, CommitLoadOptions, CommitLoadResult } from './types';
 
 /**
@@ -280,7 +281,7 @@ export class GitLogService {
      */
     getFileContentAtCommit(repoRoot: string, commitHash: string, filePath: string): string | undefined {
         try {
-            const normalizedPath = filePath.replace(/\\/g, '/');
+            const normalizedPath = toForwardSlashes(filePath);
 
             const command = `git show "${commitHash}:${normalizedPath}"`;
             const output = execSync(command, {
@@ -306,7 +307,7 @@ export class GitLogService {
      */
     fileExistsAtCommit(repoRoot: string, commitHash: string, filePath: string): boolean {
         try {
-            const normalizedPath = filePath.replace(/\\/g, '/');
+            const normalizedPath = toForwardSlashes(filePath);
             execSync(`git cat-file -e "${commitHash}:${normalizedPath}"`, {
                 cwd: repoRoot,
                 encoding: 'utf-8',

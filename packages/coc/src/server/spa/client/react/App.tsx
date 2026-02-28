@@ -13,6 +13,7 @@ import { Router } from './layout/Router';
 import { useWebSocket } from './hooks/useWebSocket';
 import { fetchApi } from './hooks/useApi';
 import { ToastContainer, useToast } from './shared';
+import { toForwardSlashes } from '@plusplusoneplusplus/pipeline-core/utils/path-utils';
 import { MarkdownReviewDialog } from './processes/MarkdownReviewDialog';
 import { EnqueueDialog } from './queue/EnqueueDialog';
 
@@ -41,7 +42,7 @@ interface QueueMessageLike {
 }
 
 function normalizePath(pathValue: string): string {
-    return pathValue.replace(/\\/g, '/');
+    return toForwardSlashes(pathValue);
 }
 
 function normalizeComparablePath(pathValue: string): string {

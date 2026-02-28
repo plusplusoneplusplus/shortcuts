@@ -6,6 +6,7 @@
  */
 
 import { getApiBase } from './utils/config';
+import { toForwardSlashes } from '@plusplusoneplusplus/pipeline-core/utils/path-utils';
 
 interface WorkspaceInfo {
     id: string;
@@ -138,7 +139,7 @@ async function fetchWorkspaces(): Promise<WorkspaceInfo[]> {
 }
 
 function normalizePath(p: string): string {
-    return p.replace(/\\/g, '/').toLowerCase();
+    return toForwardSlashes(p).toLowerCase();
 }
 
 async function resolveWorkspaceId(filePath: string): Promise<string | null> {

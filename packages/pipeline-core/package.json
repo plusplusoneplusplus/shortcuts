@@ -28,6 +28,7 @@
     "./map-reduce": "./dist/map-reduce/index.js",
     "./pipeline": "./dist/pipeline/index.js",
     "./utils": "./dist/utils/index.js",
+    "./utils/path-utils": "./dist/utils/path-utils.js",
     "./tasks": "./dist/tasks/index.js",
     "./discovery": "./dist/discovery/index.js",
     "./editor/rendering": "./dist/editor/rendering/index.js",

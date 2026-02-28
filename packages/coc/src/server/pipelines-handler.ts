@@ -15,7 +15,7 @@ import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 import type { ProcessStore, CopilotSDKService } from '@plusplusoneplusplus/pipeline-core';
 import type { CreateTaskInput, RunPipelinePayload } from '@plusplusoneplusplus/pipeline-core';
-import { denyAllPermissions } from '@plusplusoneplusplus/pipeline-core';
+import { denyAllPermissions, isWithinDirectory } from '@plusplusoneplusplus/pipeline-core';
 import { sendJSON, sendError, parseBody } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
 import { discoverPipelines } from '@plusplusoneplusplus/coc-server';
@@ -232,7 +232,7 @@ async function resolveWorkspace(store: ProcessStore, id: string) {
  */
 function resolveAndValidatePath(base: string, name: string): string | null {
     const resolved = path.resolve(base, name);
-    if (resolved === base || resolved.startsWith(base + path.sep)) {
+    if (isWithinDirectory(resolved, base)) {
         return resolved;
     }
     return null;

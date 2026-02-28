@@ -11,6 +11,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { execSync } from 'child_process';
 import type { TaskPayload } from '@plusplusoneplusplus/pipeline-core';
+import { toForwardSlashes } from '@plusplusoneplusplus/pipeline-core';
 
 /**
  * Extract repository identifier from a task payload.
@@ -137,7 +138,7 @@ export function normalizeRepoPath(repoPath: string): string {
     }
 
     // Normalize separators (forward slashes)
-    normalized = normalized.split(path.sep).join('/');
+    normalized = toForwardSlashes(normalized);
 
     // On Windows, convert to lowercase (case-insensitive file systems)
     if (process.platform === 'win32') {

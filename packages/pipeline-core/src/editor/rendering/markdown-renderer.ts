@@ -5,6 +5,8 @@
  * These functions are testable in Node.js and used in the webview.
  */
 
+import { toForwardSlashes } from '../../utils/path-utils';
+
 /**
  * Result of applying markdown highlighting to a line
  */
@@ -256,7 +258,7 @@ export function applyInlineMarkdown(text: string): string {
         if (opens > closes) return match;
 
         // Normalize backslashes to forward slashes for consistent downstream handling
-        const normalized = match.replace(/\\/g, '/');
+        const normalized = toForwardSlashes(match);
         const short = shortenFilePath(normalized);
         return '<span class="file-path-link" data-full-path="' + normalized + '" title="' + normalized + '">' + short + '</span>';
     });

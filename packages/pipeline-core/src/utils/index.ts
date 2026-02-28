@@ -105,6 +105,15 @@ export {
     DEFAULT_POLL_INTERVAL_MS
 } from './process-monitor';
 
+// Path utilities
+export {
+    toForwardSlashes,
+} from './path-utils';
+
+export {
+    isWithinDirectory
+} from './path-security';
+
 // Template engine
 export {
     TEMPLATE_VARIABLE_REGEX,

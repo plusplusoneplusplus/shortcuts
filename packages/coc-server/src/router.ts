@@ -10,6 +10,7 @@
 import * as http from 'http';
 import * as path from 'path';
 import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
+import { isWithinDirectory } from '@plusplusoneplusplus/pipeline-core';
 import type { Route } from './types';
 import {
     createRouter,
@@ -122,7 +123,7 @@ export function createRequestHandler(
             }
             const resolved = path.resolve(wikiDir, fileSuffix);
             // Security: prevent directory traversal
-            if (!resolved.startsWith(path.resolve(wikiDir) + path.sep) && resolved !== path.resolve(wikiDir)) {
+            if (!isWithinDirectory(resolved, wikiDir)) {
                 res.setHeader('Access-Control-Allow-Origin', '*');
                 res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
                 res.setHeader('Access-Control-Allow-Headers', 'Content-Type');

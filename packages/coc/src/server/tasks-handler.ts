@@ -13,7 +13,7 @@ import * as url from 'url';
 import * as path from 'path';
 import * as fs from 'fs';
 import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
-import { TaskManager, scanDocumentsRecursively, scanFoldersRecursively, groupTaskDocuments } from '@plusplusoneplusplus/pipeline-core';
+import { TaskManager, scanDocumentsRecursively, scanFoldersRecursively, groupTaskDocuments, isWithinDirectory } from '@plusplusoneplusplus/pipeline-core';
 import type { TasksViewerSettings, TaskFolder } from '@plusplusoneplusplus/pipeline-core';
 import { sendJSON, sendError, parseBody } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
@@ -85,7 +85,7 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore): void {
             // Resolve and validate path is within workspace
             const resolvedPath = path.resolve(filePath);
             const wsRoot = path.resolve(ws.rootPath);
-            if (!resolvedPath.startsWith(wsRoot + path.sep) && resolvedPath !== wsRoot) {
+            if (!isWithinDirectory(resolvedPath, wsRoot)) {
                 return sendError(res, 403, 'Access denied: path is outside workspace');
             }
 
@@ -210,7 +210,7 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore): void {
 
             // Path-traversal guard
             const resolvedPath = path.resolve(tasksFolder, filePath);
-            if (!resolvedPath.startsWith(tasksFolder + path.sep) && resolvedPath !== tasksFolder) {
+            if (!isWithinDirectory(resolvedPath, tasksFolder)) {
                 return sendError(res, 403, 'Access denied: path is outside tasks folder');
             }
 
@@ -346,7 +346,7 @@ const VALID_TASK_STATUSES = ['pending', 'in-progress', 'done', 'future'];
  */
 function resolveAndValidatePath(tasksFolder: string, userPath: string): string | null {
     const resolved = path.resolve(tasksFolder, userPath);
-    if (resolved === tasksFolder || resolved.startsWith(tasksFolder + path.sep)) {
+    if (isWithinDirectory(resolved, tasksFolder)) {
         return resolved;
     }
     return null;
@@ -829,7 +829,7 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore): v
                     return sendError(res, 400, 'Source is already in the destination folder');
                 }
 
-                if (resolvedDest.startsWith(resolvedSource + path.sep) || resolvedDest === resolvedSource) {
+                if (isWithinDirectory(resolvedDest, resolvedSource)) {
                     return sendError(res, 400, 'Cannot move a folder into itself or its descendant');
                 }
             }

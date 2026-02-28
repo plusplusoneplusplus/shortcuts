@@ -6,6 +6,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { ensureDirectoryExists, safeExists, safeReadDir, safeRename, safeStats, safeWriteFile } from '../utils';
+import { toForwardSlashes } from '../utils/path-utils';
 import { parseFileName, sanitizeFileName } from './task-parser';
 
 // Re-export parseFileName and sanitizeFileName for convenience
@@ -293,8 +294,8 @@ export async function archiveTask(
 
     if (preserveStructure) {
         const fileDir = path.dirname(filePath);
-        const normalizedTasksFolder = tasksFolder.replace(/\\/g, '/');
-        const normalizedFileDir = fileDir.replace(/\\/g, '/');
+        const normalizedTasksFolder = toForwardSlashes(tasksFolder);
+        const normalizedFileDir = toForwardSlashes(fileDir);
 
         if (normalizedFileDir.startsWith(normalizedTasksFolder)) {
             const relativePath = normalizedFileDir.substring(normalizedTasksFolder.length).replace(/^[/\\]/, '');
