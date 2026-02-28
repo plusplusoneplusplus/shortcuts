@@ -41,10 +41,10 @@ Use this skill when the user asks you to **implement** a change in the codebase 
    - **Do not proceed to commit until the build is clean and all tests pass.**
    - If tests are flaky or OS-dependent, fix them to be deterministic before committing.
 
-7. **Update touched `AGENTS.md` files (if needed)**
+7. **Update `AGENTS.md` files**
    - For each folder you changed, check the nearest relevant `AGENTS.md`.
    - If behavior, architecture, workflows, commands, or constraints changed, patch `AGENTS.md` to match the new state.
-   - Keep updates concise and current-state only. Do not add history text like "after this change..." or "it used to...".
+   - Keep updates concise, compact and current-state only. Do not add history text like "after this change..." or "it used to...".
 
 8. **If a plan file exists, keep it updated**
    - If a plan markdown file is provided with task checkboxes, mark tasks complete as you finish them.
