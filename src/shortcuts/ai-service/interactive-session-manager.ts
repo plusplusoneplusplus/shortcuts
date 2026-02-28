@@ -352,6 +352,13 @@ export function getInteractiveSessionManager(): InteractiveSessionManager {
 }
 
 /**
+ * Set the default InteractiveSessionManager instance (useful for testing)
+ */
+export function setInteractiveSessionManager(manager: InteractiveSessionManager): void {
+    defaultManager = manager;
+}
+
+/**
  * Reset the default manager (useful for testing)
  */
 export function resetInteractiveSessionManager(): void {

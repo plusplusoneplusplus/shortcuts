@@ -141,6 +141,7 @@ export {
     getInteractiveSessionManager,
     InteractiveSessionManager,
     resetInteractiveSessionManager,
+    setInteractiveSessionManager,
     StartSessionOptions
 } from './interactive-session-manager';
 

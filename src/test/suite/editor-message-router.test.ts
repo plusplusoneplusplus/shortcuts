@@ -10,6 +10,7 @@ import * as os from 'os';
 import { EditorHost, MessageContext, DispatchResult } from '../../shortcuts/markdown-comments/editor-host';
 import { EditorMessageRouter, WebviewMessage } from '../../shortcuts/markdown-comments/editor-message-router';
 import { CommentsManager } from '../../shortcuts/markdown-comments/comments-manager';
+import { InteractiveSessionManager, setInteractiveSessionManager, resetInteractiveSessionManager } from '../../shortcuts/ai-service';
 
 /**
  * Mock EditorHost that records all calls for verification.
@@ -568,7 +569,23 @@ suite('EditorMessageRouter', () => {
 
     // --- Chat In CLI ---
 
-    test('chatInCLI dispatches without error', async () => {
+    suite('chatInCLI (with mock session manager)', () => {
+        setup(() => {
+            // Inject a mock InteractiveSessionManager so no real terminal is spawned.
+            // Construct with a mock launcher whose launch() always returns a failure,
+            // exercising the fallback path (copy prompt to clipboard).
+            const mockLauncher = {
+                launch: async () => ({ success: false, terminalType: 'unknown' as const, error: 'mock' })
+            };
+            const mockManager = new InteractiveSessionManager(mockLauncher as any);
+            setInteractiveSessionManager(mockManager);
+        });
+
+        teardown(() => {
+            resetInteractiveSessionManager();
+        });
+
+        test('chatInCLI dispatches without error', async () => {
         const message: WebviewMessage = {
             type: 'chatInCLI'
         };
@@ -607,4 +624,5 @@ suite('EditorMessageRouter', () => {
             assert.ok((infoCalls[0].args[0] as string).includes('CLI chat session started'));
         }
     });
+    }); // end chatInCLI suite
 });
