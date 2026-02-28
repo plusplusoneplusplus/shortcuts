@@ -110,6 +110,9 @@ export interface QueuedTask {
 
     /** Number of retry attempts made */
     retryCount?: number;
+
+    /** Concurrency mode: 'shared' tasks run in the shared pool, 'exclusive' tasks in the exclusive pool */
+    concurrencyMode?: 'shared' | 'exclusive';
 }
 
 /**
@@ -250,6 +253,16 @@ export interface QueueExecutorOptions {
     maxConcurrency?: number;
     /** Whether to auto-start processing (default: true) */
     autoStart?: boolean;
+    /** Concurrency limit for shared (read-only) tasks (default: 5) */
+    sharedConcurrency?: number;
+    /** Concurrency limit for exclusive (write) tasks (default: 1) */
+    exclusiveConcurrency?: number;
+    /**
+     * Policy callback to classify a task as exclusive.
+     * Returns true for exclusive tasks, false for shared.
+     * Default: () => true (all exclusive — preserves current serial behavior).
+     */
+    isExclusive?: (task: QueuedTask) => boolean;
 }
 
 /**
@@ -258,6 +271,9 @@ export interface QueueExecutorOptions {
 export const DEFAULT_EXECUTOR_OPTIONS: Required<QueueExecutorOptions> = {
     maxConcurrency: 1,
     autoStart: true,
+    sharedConcurrency: 5,
+    exclusiveConcurrency: 1,
+    isExclusive: () => true,
 };
 
 // ============================================================================

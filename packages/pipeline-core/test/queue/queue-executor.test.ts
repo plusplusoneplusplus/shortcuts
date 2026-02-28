@@ -516,8 +516,176 @@ describe('QueueExecutor', () => {
     });
 
     // ========================================================================
-    // Dispose
+    // Shared/Exclusive Concurrency (Dual-Limiter)
     // ========================================================================
+
+    describe('shared/exclusive concurrency', () => {
+        it('shared tasks run concurrently up to sharedConcurrency limit', async () => {
+            const executionOrder: string[] = [];
+            taskExecutor = createSimpleTaskExecutor(async (task) => {
+                executionOrder.push(`start-${task.displayName}`);
+                await delay(50);
+                executionOrder.push(`end-${task.displayName}`);
+                return task.displayName;
+            });
+
+            executor = new QueueExecutor(queueManager, taskExecutor, {
+                sharedConcurrency: 2,
+                exclusiveConcurrency: 1,
+                isExclusive: (task) => task.concurrencyMode !== 'shared',
+                autoStart: true,
+            });
+
+            queueManager.enqueue(createTestTask({ displayName: 'A', concurrencyMode: 'shared' }));
+            queueManager.enqueue(createTestTask({ displayName: 'B', concurrencyMode: 'shared' }));
+            queueManager.enqueue(createTestTask({ displayName: 'C', concurrencyMode: 'shared' }));
+
+            await waitFor(() => queueManager.getCompleted().length === 3, 2000);
+
+            // First two start before either ends; third waits
+            expect(executionOrder.indexOf('start-A')).toBeLessThan(executionOrder.indexOf('end-A'));
+            expect(executionOrder.indexOf('start-B')).toBeLessThan(executionOrder.indexOf('end-A'));
+            expect(executionOrder.indexOf('start-C')).toBeGreaterThan(executionOrder.indexOf('end-A'));
+        });
+
+        it('exclusive tasks serialize against each other', async () => {
+            const executionOrder: string[] = [];
+            taskExecutor = createSimpleTaskExecutor(async (task) => {
+                executionOrder.push(`start-${task.displayName}`);
+                await delay(30);
+                executionOrder.push(`end-${task.displayName}`);
+                return task.displayName;
+            });
+
+            executor = new QueueExecutor(queueManager, taskExecutor, {
+                sharedConcurrency: 5,
+                exclusiveConcurrency: 1,
+                isExclusive: (task) => task.concurrencyMode !== 'shared',
+                autoStart: true,
+            });
+
+            queueManager.enqueue(createTestTask({ displayName: 'A', concurrencyMode: 'exclusive' }));
+            queueManager.enqueue(createTestTask({ displayName: 'B', concurrencyMode: 'exclusive' }));
+
+            await waitFor(() => queueManager.getCompleted().length === 2, 2000);
+
+            expect(executionOrder).toEqual([
+                'start-A', 'end-A', 'start-B', 'end-B',
+            ]);
+        });
+
+        it('shared and exclusive tasks run simultaneously on independent pools', async () => {
+            const executionOrder: string[] = [];
+            taskExecutor = createSimpleTaskExecutor(async (task) => {
+                executionOrder.push(`start-${task.displayName}`);
+                await delay(60);
+                executionOrder.push(`end-${task.displayName}`);
+                return task.displayName;
+            });
+
+            executor = new QueueExecutor(queueManager, taskExecutor, {
+                sharedConcurrency: 3,
+                exclusiveConcurrency: 1,
+                isExclusive: (task) => task.concurrencyMode !== 'shared',
+                autoStart: true,
+            });
+
+            queueManager.enqueue(createTestTask({ displayName: 'shared1', concurrencyMode: 'shared' }));
+            queueManager.enqueue(createTestTask({ displayName: 'excl1', concurrencyMode: 'exclusive' }));
+
+            await waitFor(() => queueManager.getCompleted().length === 2, 2000);
+
+            // Both should start before either ends (independent pools)
+            expect(executionOrder.indexOf('start-shared1')).toBeLessThan(executionOrder.indexOf('end-shared1'));
+            expect(executionOrder.indexOf('start-excl1')).toBeLessThan(executionOrder.indexOf('end-shared1'));
+            expect(executionOrder.indexOf('start-excl1')).toBeLessThan(executionOrder.indexOf('end-excl1'));
+        });
+
+        it('isExclusive callback is respected for classification', async () => {
+            const pools: Record<string, string> = {};
+            taskExecutor = createSimpleTaskExecutor(async (task) => {
+                pools[task.displayName!] = task.type;
+                return task.displayName;
+            });
+
+            executor = new QueueExecutor(queueManager, taskExecutor, {
+                sharedConcurrency: 3,
+                exclusiveConcurrency: 1,
+                isExclusive: (task) => task.type === 'resolve-comments',
+                autoStart: true,
+            });
+
+            queueManager.enqueue(createTestTask({ displayName: 'prompt', type: 'follow-prompt' }));
+            queueManager.enqueue(createTestTask({ displayName: 'resolve', type: 'resolve-comments' }));
+
+            await waitFor(() => queueManager.getCompleted().length === 2, 2000);
+
+            // Both completed — callback classified correctly
+            expect(pools['prompt']).toBe('follow-prompt');
+            expect(pools['resolve']).toBe('resolve-comments');
+        });
+
+        it('concurrencyMode field is preserved on QueuedTask', () => {
+            const taskId = queueManager.enqueue(createTestTask({ concurrencyMode: 'shared' }));
+            const task = queueManager.getTask(taskId);
+            expect(task?.concurrencyMode).toBe('shared');
+        });
+
+        it('default concurrencyMode is undefined (exclusive by default)', () => {
+            const taskId = queueManager.enqueue(createTestTask());
+            const task = queueManager.getTask(taskId);
+            expect(task?.concurrencyMode).toBeUndefined();
+
+            // Default isExclusive returns true for any task
+            executor = new QueueExecutor(queueManager, taskExecutor, { autoStart: false });
+            // Access the default isExclusive via getExclusiveConcurrency to verify defaults
+            expect(executor.getExclusiveConcurrency()).toBe(1);
+        });
+
+        it('setMaxConcurrency updates both limiters (backward compat)', () => {
+            executor = new QueueExecutor(queueManager, taskExecutor, { autoStart: false });
+            executor.setMaxConcurrency(3);
+            expect(executor.getMaxConcurrency()).toBe(3);
+            expect(executor.getSharedConcurrency()).toBe(3);
+            expect(executor.getExclusiveConcurrency()).toBe(3);
+        });
+
+        it('setSharedConcurrency updates only shared limiter', () => {
+            executor = new QueueExecutor(queueManager, taskExecutor, { autoStart: false });
+            executor.setSharedConcurrency(4);
+            expect(executor.getSharedConcurrency()).toBe(4);
+            expect(executor.getExclusiveConcurrency()).toBe(1); // unchanged default
+        });
+
+        it('setExclusiveConcurrency updates only exclusive limiter', () => {
+            executor = new QueueExecutor(queueManager, taskExecutor, { autoStart: false });
+            executor.setExclusiveConcurrency(2);
+            expect(executor.getExclusiveConcurrency()).toBe(2);
+            expect(executor.getSharedConcurrency()).toBe(5); // unchanged default
+        });
+
+        it('setSharedConcurrency throws for invalid value', () => {
+            executor = new QueueExecutor(queueManager, taskExecutor, { autoStart: false });
+            expect(() => executor.setSharedConcurrency(0)).toThrow(/at least 1/);
+            expect(() => executor.setSharedConcurrency(-1)).toThrow(/at least 1/);
+        });
+
+        it('setExclusiveConcurrency throws for invalid value', () => {
+            executor = new QueueExecutor(queueManager, taskExecutor, { autoStart: false });
+            expect(() => executor.setExclusiveConcurrency(0)).toThrow(/at least 1/);
+            expect(() => executor.setExclusiveConcurrency(-1)).toThrow(/at least 1/);
+        });
+
+        it('maxConcurrency alone sets both limiters (backward compat)', () => {
+            executor = new QueueExecutor(queueManager, taskExecutor, {
+                maxConcurrency: 3,
+                autoStart: false,
+            });
+            expect(executor.getMaxConcurrency()).toBe(3);
+            expect(executor.getSharedConcurrency()).toBe(3);
+            expect(executor.getExclusiveConcurrency()).toBe(3);
+        });
+    });
 
     describe('dispose', () => {
         it('stops executor and cleans up', () => {

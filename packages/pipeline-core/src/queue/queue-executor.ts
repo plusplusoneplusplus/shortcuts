@@ -27,8 +27,12 @@ export class QueueExecutor extends EventEmitter {
     private readonly queueManager: TaskQueueManager;
     /** The task executor implementation */
     private readonly taskExecutor: TaskExecutor;
-    /** Concurrency limiter for parallel execution */
-    private limiter: ConcurrencyLimiter;
+    /** Concurrency limiter for shared (read-only) tasks */
+    private sharedLimiter: ConcurrencyLimiter;
+    /** Concurrency limiter for exclusive (write) tasks */
+    private exclusiveLimiter: ConcurrencyLimiter;
+    /** Policy callback to classify tasks */
+    private readonly isExclusive: (task: QueuedTask) => boolean;
     /** Whether the executor is running */
     private running = false;
     /** Whether stop was requested */
@@ -48,8 +52,18 @@ export class QueueExecutor extends EventEmitter {
         super();
         this.queueManager = queueManager;
         this.taskExecutor = taskExecutor;
-        this.options = { ...DEFAULT_EXECUTOR_OPTIONS, ...options };
-        this.limiter = new ConcurrencyLimiter(this.options.maxConcurrency);
+        const opts = { ...DEFAULT_EXECUTOR_OPTIONS, ...options };
+        // Backward compat: if only maxConcurrency was provided, use it for both limiters
+        if (options.maxConcurrency !== undefined && options.exclusiveConcurrency === undefined) {
+            opts.exclusiveConcurrency = options.maxConcurrency;
+        }
+        if (options.maxConcurrency !== undefined && options.sharedConcurrency === undefined) {
+            opts.sharedConcurrency = options.maxConcurrency;
+        }
+        this.options = opts;
+        this.sharedLimiter = new ConcurrencyLimiter(this.options.sharedConcurrency);
+        this.exclusiveLimiter = new ConcurrencyLimiter(this.options.exclusiveConcurrency);
+        this.isExclusive = this.options.isExclusive;
 
         // Listen to queue events
         this.setupQueueListeners();
@@ -193,7 +207,10 @@ export class QueueExecutor extends EventEmitter {
             throw new Error('maxConcurrency must be at least 1');
         }
         this.options.maxConcurrency = n;
-        this.limiter = new ConcurrencyLimiter(n);
+        this.options.sharedConcurrency = n;
+        this.options.exclusiveConcurrency = n;
+        this.sharedLimiter = new ConcurrencyLimiter(n);
+        this.exclusiveLimiter = new ConcurrencyLimiter(n);
     }
 
     /**
@@ -201,6 +218,42 @@ export class QueueExecutor extends EventEmitter {
      */
     getMaxConcurrency(): number {
         return this.options.maxConcurrency;
+    }
+
+    /**
+     * Set the concurrency limit for shared (read-only) tasks
+     */
+    setSharedConcurrency(n: number): void {
+        if (n < 1) {
+            throw new Error('sharedConcurrency must be at least 1');
+        }
+        this.options.sharedConcurrency = n;
+        this.sharedLimiter = new ConcurrencyLimiter(n);
+    }
+
+    /**
+     * Set the concurrency limit for exclusive (write) tasks
+     */
+    setExclusiveConcurrency(n: number): void {
+        if (n < 1) {
+            throw new Error('exclusiveConcurrency must be at least 1');
+        }
+        this.options.exclusiveConcurrency = n;
+        this.exclusiveLimiter = new ConcurrencyLimiter(n);
+    }
+
+    /**
+     * Get the current shared concurrency limit
+     */
+    getSharedConcurrency(): number {
+        return this.options.sharedConcurrency;
+    }
+
+    /**
+     * Get the current exclusive concurrency limit
+     */
+    getExclusiveConcurrency(): number {
+        return this.options.exclusiveConcurrency;
     }
 
     // ========================================================================
@@ -245,17 +298,18 @@ export class QueueExecutor extends EventEmitter {
                 continue;
             }
 
-            // Check if we have capacity
-            if (this.limiter.runningCount >= this.limiter.limit) {
-                await this.delay(50);
-                continue;
-            }
-
             // Try to get next task
             const task = this.queueManager.peek();
             if (!task) {
                 // No tasks, wait a bit
                 await this.delay(100);
+                continue;
+            }
+
+            // Check if we have capacity on the correct limiter
+            const limiter = this.isExclusive(task) ? this.exclusiveLimiter : this.sharedLimiter;
+            if (limiter.runningCount >= limiter.limit) {
+                await this.delay(50);
                 continue;
             }
 
@@ -294,8 +348,9 @@ export class QueueExecutor extends EventEmitter {
         const isCancelled = () => this.cancelledTasks.has(taskId);
 
         try {
-            // Execute with concurrency limiting
-            const result = await this.limiter.run(
+            // Execute with concurrency limiting via correct pool
+            const taskLimiter = this.isExclusive(startedTask) ? this.exclusiveLimiter : this.sharedLimiter;
+            const result = await taskLimiter.run(
                 () => this.executeWithTimeout(startedTask),
                 isCancelled
             );
