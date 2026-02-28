@@ -66,6 +66,14 @@ export function requestSendToCLIInteractive(format: string = 'markdown'): void {
 }
 
 /**
+ * Request the extension to start a CLI chat session about the current file
+ * Opens an interactive AI CLI session with a file-path-based prompt
+ */
+export function requestChatInCLI(): void {
+    postMessage({ type: 'chatInCLI' });
+}
+
+/**
  * Request the extension to send the AI prompt to CLI background session
  * Uses the Copilot SDK to process in background, tracking progress in AI Processes panel
  * @param format - The format of the prompt ('markdown' or 'json')

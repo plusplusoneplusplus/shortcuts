@@ -180,7 +180,8 @@ export type WebviewMessage =
     | { type: 'copyFollowPrompt'; promptFilePath: string; skillName?: string; additionalContext?: string }
     | { type: 'updateDocument'; instruction: string }
     | { type: 'requestRefreshPlanDialog' }
-    | { type: 'refreshPlan'; additionalContext?: string };
+    | { type: 'refreshPlan'; additionalContext?: string }
+    | { type: 'chatInCLI' };
 
 /**
  * Options selected in the Follow Prompt dialog

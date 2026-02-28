@@ -55,7 +55,7 @@ export interface AskAIContext {
 export interface WebviewMessage {
     type: 'addComment' | 'editComment' | 'deleteComment' | 'resolveComment' |
     'reopenComment' | 'updateContent' | 'ready' | 'generatePrompt' |
-    'copyPrompt' | 'sendToChat' | 'sendCommentToChat' | 'sendToCLIInteractive' | 'sendToCLIBackground' | 'resolveAll' | 'deleteAll' | 'requestState' | 'resolveImagePath' | 'openFile' | 'askAI' | 'askAIInteractive' | 'askAIQueued' | 'collapsedSectionsChanged' | 'requestPromptFiles' | 'requestSkills' | 'executeWorkPlan' | 'executeWorkPlanWithSkill' | 'promptSearch' | 'followPromptDialogResult' | 'copyFollowPrompt' | 'requestUpdateDocumentDialog' | 'updateDocument' | 'requestRefreshPlanDialog' | 'refreshPlan';
+    'copyPrompt' | 'sendToChat' | 'sendCommentToChat' | 'sendToCLIInteractive' | 'sendToCLIBackground' | 'resolveAll' | 'deleteAll' | 'requestState' | 'resolveImagePath' | 'openFile' | 'askAI' | 'askAIInteractive' | 'askAIQueued' | 'collapsedSectionsChanged' | 'requestPromptFiles' | 'requestSkills' | 'executeWorkPlan' | 'executeWorkPlanWithSkill' | 'promptSearch' | 'followPromptDialogResult' | 'copyFollowPrompt' | 'requestUpdateDocumentDialog' | 'updateDocument' | 'requestRefreshPlanDialog' | 'refreshPlan' | 'chatInCLI';
     commentId?: string;
     content?: string;
     selection?: {
@@ -175,6 +175,8 @@ export class EditorMessageRouter {
                 return this.handleRequestRefreshPlanDialog();
             case 'refreshPlan':
                 return this.handleRefreshPlan(message, ctx);
+            case 'chatInCLI':
+                return this.handleChatInCLI(message, ctx);
             default:
                 return {};
         }
@@ -455,6 +457,33 @@ export class EditorMessageRouter {
         } else {
             await this.host.copyToClipboard(prompt);
             await this.host.showWarning('Failed to start interactive AI session. Prompt copied to clipboard.');
+        }
+        return {};
+    }
+
+    private async handleChatInCLI(_message: WebviewMessage, ctx: MessageContext): Promise<DispatchResult> {
+        const filePath = ctx.documentPath;
+        const prompt = [
+            `The user has opened the file: ${filePath}`,
+            ``,
+            `Please ask the user what they would like to know or do with this file.`,
+            `Be helpful and proactive — suggest relevant questions based on the file type and content.`
+        ].join('\n');
+
+        const sessionManager = getInteractiveSessionManager();
+        const workingDirectory = getWorkingDirectory(ctx.workspaceRoot);
+
+        const sessionId = await sessionManager.startSession({
+            workingDirectory,
+            tool: 'copilot',
+            initialPrompt: prompt
+        });
+
+        if (sessionId) {
+            await this.host.showInfo('CLI chat session started for this file.');
+        } else {
+            await this.host.copyToClipboard(prompt);
+            await this.host.showWarning('Failed to start CLI session. Prompt copied to clipboard.');
         }
         return {};
     }

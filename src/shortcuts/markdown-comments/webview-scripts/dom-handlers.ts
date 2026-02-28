@@ -22,7 +22,7 @@ import { render } from './render';
 import { getSelectionPosition } from './selection-handler';
 import { state } from './state';
 import { AICommandMode, PromptFileInfo, RecentItem, RecentPrompt, SkillInfo } from './types';
-import { deleteCommentMessage, openFile, reopenComment, requestAskAI, requestAskAIInteractive, requestAskAIQueued, requestCopyPrompt, requestDeleteAll, requestExecuteWorkPlan, requestExecuteWorkPlanWithSkill, requestPromptFiles, requestPromptSearch, requestRefreshPlan, requestResolveAll, requestSendCommentToChat, requestSendToChat, requestSendToCLIBackground, requestSendToCLIInteractive, requestSkills, requestUpdateDocument, resolveComment, updateContent } from './vscode-bridge';
+import { deleteCommentMessage, openFile, reopenComment, requestAskAI, requestAskAIInteractive, requestAskAIQueued, requestChatInCLI, requestCopyPrompt, requestDeleteAll, requestExecuteWorkPlan, requestExecuteWorkPlanWithSkill, requestPromptFiles, requestPromptSearch, requestRefreshPlan, requestResolveAll, requestSendCommentToChat, requestSendToChat, requestSendToCLIBackground, requestSendToCLIInteractive, requestSkills, requestUpdateDocument, resolveComment, updateContent } from './vscode-bridge';
 import { DEFAULT_MARKDOWN_PREDEFINED_COMMENTS, serializePredefinedComments } from '../../shared/predefined-comment-types';
 import { initSearch, SearchController } from '../../shared/webview/search-handler';
 import {
@@ -548,6 +548,9 @@ function setupToolbarEventListeners(): void {
     // AI Action dropdown
     setupAIActionDropdown();
 
+    // Chat In CLI button
+    setupChatInCLIButton();
+
     showResolvedCheckbox.addEventListener('change', (e) => {
         state.setSettings({ showResolved: (e.target as HTMLInputElement).checked });
         render();
@@ -953,6 +956,16 @@ function navigateToComment(commentId: string): void {
             lineEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
     }
+}
+
+/**
+ * Setup Chat In CLI button handler
+ */
+function setupChatInCLIButton(): void {
+    const chatInCliBtn = document.getElementById('chatInCliBtn');
+    chatInCliBtn?.addEventListener('click', () => {
+        requestChatInCLI();
+    });
 }
 
 /**

@@ -139,6 +139,11 @@ body {
     font-size: 12px;
 }
 
+/* Chat In CLI Button */
+.chat-cli-btn {
+    margin-left: 8px;
+}
+
 /* Mode Toggle Button Group */
 .mode-toggle {
     display: flex;

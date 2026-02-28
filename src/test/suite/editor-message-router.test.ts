@@ -565,4 +565,46 @@ suite('EditorMessageRouter', () => {
         assert.ok(copiedText.includes('Follow the instruction'));
         assert.ok(copiedText.includes('Additional context: Focus on tests'));
     });
+
+    // --- Chat In CLI ---
+
+    test('chatInCLI dispatches without error', async () => {
+        const message: WebviewMessage = {
+            type: 'chatInCLI'
+        };
+        const ctx = createTestContext({
+            documentPath: '/workspace/my-doc.md'
+        });
+
+        // Should not throw — either starts session (showInfo) or falls back (showWarning + copyToClipboard)
+        await router.dispatch(message, ctx);
+
+        const infoCalled = mockHost.wasMethodCalled('showInfo');
+        const warningCalled = mockHost.wasMethodCalled('showWarning');
+        assert.ok(infoCalled || warningCalled, 'Should show either success info or fallback warning');
+    });
+
+    test('chatInCLI prompt includes the file path', async () => {
+        const message: WebviewMessage = {
+            type: 'chatInCLI'
+        };
+        const ctx = createTestContext({
+            documentPath: '/workspace/my-doc.md'
+        });
+
+        await router.dispatch(message, ctx);
+
+        // If session failed, prompt was copied to clipboard — check it contains the file path
+        if (mockHost.wasMethodCalled('copyToClipboard')) {
+            const copyCalls = mockHost.getCallsFor('copyToClipboard');
+            const copiedText = copyCalls[0].args[0] as string;
+            assert.ok(copiedText.includes('/workspace/my-doc.md'), 'Prompt should contain the file path');
+            assert.ok(copiedText.includes('Please ask the user what they would like to know'), 'Prompt should contain instruction');
+        }
+        // If session succeeded, just verify showInfo was called
+        if (mockHost.wasMethodCalled('showInfo')) {
+            const infoCalls = mockHost.getCallsFor('showInfo');
+            assert.ok((infoCalls[0].args[0] as string).includes('CLI chat session started'));
+        }
+    });
 });

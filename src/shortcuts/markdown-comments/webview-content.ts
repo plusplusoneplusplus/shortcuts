@@ -126,6 +126,9 @@ export function getWebviewContent(
                     <span class="icon">📄</span> Source
                 </button>
             </div>
+            <button id="chatInCliBtn" class="toolbar-btn chat-cli-btn" title="Chat about this file in CLI">
+                <span class="icon">💬</span> Chat In CLI
+            </button>
         </div>
         <div class="toolbar-group toolbar-review-only">
             <div class="ai-action-dropdown" id="aiActionDropdown">
