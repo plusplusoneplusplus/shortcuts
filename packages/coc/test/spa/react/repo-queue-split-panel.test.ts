@@ -215,3 +215,89 @@ describe('QueueTaskDetail repoQueueMap lookup', () => {
         expect(globalIdx).toBeLessThan(repoIdx);
     });
 });
+
+describe('RepoQueueTab URL deep-link support', () => {
+    let source: string;
+
+    beforeAll(() => {
+        source = fs.readFileSync(REPO_QUEUE_TAB_PATH, 'utf-8');
+    });
+
+    describe('hash update on task selection', () => {
+        it('selectTask sets location.hash with task ID', () => {
+            const callbackIdx = source.indexOf('const selectTask = useCallback');
+            const callbackBlock = source.slice(callbackIdx, callbackIdx + 300);
+            expect(callbackBlock).toContain('location.hash');
+            expect(callbackBlock).toContain("'#repos/'");
+            expect(callbackBlock).toContain("'/queue/'");
+        });
+
+        it('encodes workspaceId in the hash', () => {
+            const callbackIdx = source.indexOf('const selectTask = useCallback');
+            const callbackBlock = source.slice(callbackIdx, callbackIdx + 300);
+            expect(callbackBlock).toContain('encodeURIComponent(workspaceId)');
+        });
+
+        it('encodes task ID in the hash', () => {
+            const callbackIdx = source.indexOf('const selectTask = useCallback');
+            const callbackBlock = source.slice(callbackIdx, callbackIdx + 300);
+            expect(callbackBlock).toContain('encodeURIComponent(id)');
+        });
+
+        it('includes workspaceId in useCallback dependency array', () => {
+            const callbackIdx = source.indexOf('const selectTask = useCallback');
+            const callbackBlock = source.slice(callbackIdx, callbackIdx + 300);
+            expect(callbackBlock).toContain('workspaceId');
+        });
+    });
+
+    describe('hash reset on auto-clear', () => {
+        it('resets URL to base queue path when task is removed', () => {
+            const clearIdx = source.indexOf('Clear selection if the selected task is no longer');
+            const clearBlock = source.slice(clearIdx, clearIdx + 600);
+            expect(clearBlock).toContain("location.hash");
+            expect(clearBlock).toContain("'/queue'");
+        });
+
+        it('only resets hash when current hash is a queue task deep link', () => {
+            const clearIdx = source.indexOf('Clear selection if the selected task is no longer');
+            const clearBlock = source.slice(clearIdx, clearIdx + 600);
+            expect(clearBlock).toContain("startsWith(queueBase + '/')");
+        });
+    });
+
+    describe('scroll into view', () => {
+        it('has a useEffect that scrolls selected task into view', () => {
+            expect(source).toContain('Scroll selected task card into view');
+        });
+
+        it('uses scrollIntoView with smooth behavior', () => {
+            expect(source).toContain("scrollIntoView({ block: 'nearest', behavior: 'smooth' })");
+        });
+
+        it('queries by data-task-id attribute', () => {
+            expect(source).toContain('data-task-id');
+            expect(source).toContain('CSS.escape(selectedTaskId)');
+        });
+
+        it('uses a small delay to allow DOM rendering', () => {
+            const scrollIdx = source.indexOf('Scroll selected task card into view');
+            const scrollBlock = source.slice(scrollIdx, scrollIdx + 400);
+            expect(scrollBlock).toContain('setTimeout');
+        });
+    });
+
+    describe('data-task-id attributes', () => {
+        it('QueueTaskItem Card has data-task-id', () => {
+            const itemIdx = source.indexOf('function QueueTaskItem');
+            const itemBlock = source.slice(itemIdx);
+            expect(itemBlock).toContain('data-task-id={task.id}');
+        });
+
+        it('history Card has data-task-id', () => {
+            const historyIdx = source.indexOf('Completed Tasks');
+            const historyBlock = source.slice(historyIdx, historyIdx + 900);
+            expect(historyBlock).toContain('data-task-id={task.id}');
+        });
+    });
+});

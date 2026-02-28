@@ -3,7 +3,7 @@
  * Split-panel layout: left = task list, right = task detail / placeholder.
  */
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Badge, Card, Button, cn } from '../shared';
 import { fetchApi } from '../hooks/useApi';
 import { getApiBase } from '../utils/config';
@@ -127,12 +127,28 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
         const allTasks = [...running, ...queued, ...history];
         if (!allTasks.find(t => t.id === selectedTaskId)) {
             queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null });
+            // Reset URL to base queue path when auto-clearing
+            const queueBase = '#repos/' + encodeURIComponent(workspaceId) + '/queue';
+            if (location.hash.startsWith(queueBase + '/')) {
+                location.hash = queueBase;
+            }
         }
-    }, [selectedTaskId, running, queued, history, queueDispatch]);
+    }, [selectedTaskId, running, queued, history, queueDispatch, workspaceId]);
 
     const selectTask = useCallback((id: string) => {
         queueDispatch({ type: 'SELECT_QUEUE_TASK', id });
-    }, [queueDispatch]);
+        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/queue/' + encodeURIComponent(id);
+    }, [queueDispatch, workspaceId]);
+
+    // Scroll selected task card into view (e.g. after deep-link navigation)
+    useEffect(() => {
+        if (!selectedTaskId) return;
+        const timer = setTimeout(() => {
+            const el = document.querySelector(`[data-task-id="${CSS.escape(selectedTaskId)}"]`);
+            el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }, 100);
+        return () => clearTimeout(timer);
+    }, [selectedTaskId]);
 
     // Live timer for running tasks
     const hasActive = useMemo(() => running.length > 0, [running]);
@@ -296,6 +312,7 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
                                                 selectedTaskId === task.id && "ring-2 ring-[#0078d4]"
                                             )}
                                             onClick={() => selectTask(task.id)}
+                                            data-task-id={task.id}
                                         >
                                             <div className="flex items-center justify-between text-xs">
                                                 <span>
@@ -357,7 +374,7 @@ function QueueTaskItem({ task, status, now, selected, onCancel, onMoveUp, onMove
     }
 
     return (
-        <Card className={cn("p-2 cursor-pointer", selected && "ring-2 ring-[#0078d4]")} onClick={onClick}>
+        <Card className={cn("p-2 cursor-pointer", selected && "ring-2 ring-[#0078d4]")} onClick={onClick} data-task-id={task.id}>
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc]">
                     <span>{icon}</span>
