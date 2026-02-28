@@ -3,9 +3,10 @@
  * Replaces renderToolCall / normalizeToolCall from tool-renderer.ts.
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useCallback } from 'react';
 import { cn } from '../shared';
 import { computeLineDiff, type DiffLine } from '../../diff-utils';
+import { ToolResultPopover } from './ToolResultPopover';
 
 interface ToolCallData {
     id?: string;
@@ -323,6 +324,12 @@ export function ToolCallView({
     children,
 }: ToolCallProps) {
     const [expanded, setExpanded] = useState(false);
+    const [hoverVisible, setHoverVisible] = useState(false);
+    const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+    const headerRef = useRef<HTMLDivElement | null>(null);
+    const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const graceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
     if (depth > 20) return null;
 
     const depthLevel = Math.max(0, Math.min(depth, 8));
@@ -349,6 +356,39 @@ export function ToolCallView({
         : null;
     const bashOptionsText = bashOptions && Object.keys(bashOptions).length > 0 ? JSON.stringify(bashOptions, null, 2) : '';
 
+    const isTaskTool = name === 'task';
+    const hasHoverResult = isTaskTool && !!resultText;
+
+    const clearTimers = useCallback(() => {
+        if (hoverTimerRef.current) { clearTimeout(hoverTimerRef.current); hoverTimerRef.current = null; }
+        if (graceTimerRef.current) { clearTimeout(graceTimerRef.current); graceTimerRef.current = null; }
+    }, []);
+
+    const handleHeaderMouseEnter = useCallback(() => {
+        if (!hasHoverResult) return;
+        clearTimers();
+        hoverTimerRef.current = setTimeout(() => {
+            if (headerRef.current) {
+                setAnchorRect(headerRef.current.getBoundingClientRect());
+                setHoverVisible(true);
+            }
+        }, 300);
+    }, [hasHoverResult, clearTimers]);
+
+    const handleHeaderMouseLeave = useCallback(() => {
+        if (!hasHoverResult) return;
+        if (hoverTimerRef.current) { clearTimeout(hoverTimerRef.current); hoverTimerRef.current = null; }
+        graceTimerRef.current = setTimeout(() => setHoverVisible(false), 100);
+    }, [hasHoverResult]);
+
+    const handlePopoverMouseEnter = useCallback(() => {
+        if (graceTimerRef.current) { clearTimeout(graceTimerRef.current); graceTimerRef.current = null; }
+    }, []);
+
+    const handlePopoverMouseLeave = useCallback(() => {
+        setHoverVisible(false);
+    }, []);
+
     return (
         <div
             className={cn(
@@ -359,11 +399,14 @@ export function ToolCallView({
             style={depthLevel > 0 ? { marginLeft: `${depthLevel * 12}px` } : undefined}
         >
             <div
+                ref={headerRef}
                 className={cn(
                     'tool-call-header flex items-center gap-2 px-2.5 py-1.5 cursor-pointer select-none',
                     hasDetails && 'hover:bg-black/[0.03] dark:hover:bg-white/[0.03]'
                 )}
                 onClick={() => hasDetails && setExpanded(!expanded)}
+                onMouseEnter={handleHeaderMouseEnter}
+                onMouseLeave={handleHeaderMouseLeave}
             >
                 <span>{statusIndicator(toolCall.status)}</span>
                 {hasSubtools && (
@@ -471,6 +514,14 @@ export function ToolCallView({
                 <div className={cn('tool-call-children', subtoolsCollapsed && 'subtree-collapsed')}>
                     {children}
                 </div>
+            )}
+            {hoverVisible && anchorRect && hasHoverResult && (
+                <ToolResultPopover
+                    result={resultText}
+                    anchorRect={anchorRect}
+                    onMouseEnter={handlePopoverMouseEnter}
+                    onMouseLeave={handlePopoverMouseLeave}
+                />
             )}
         </div>
     );
