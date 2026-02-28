@@ -355,3 +355,66 @@ describe('ConversationTurnBubble — task boundary inference', () => {
         expect(taskCard?.contains(outsideView as HTMLElement)).toBe(false);
     });
 });
+
+describe('ConversationTurnBubble — timeline content merging', () => {
+    it('renders merged content instead of one-per-chunk when timeline has consecutive content items', () => {
+        const timeline = Array.from({ length: 10 }, (_, i) => ({
+            type: 'content' as const,
+            timestamp: `2026-01-15T10:30:0${i}Z`,
+            content: `word${i} `,
+        }));
+
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn({
+                    role: 'assistant',
+                    content: 'word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 ',
+                    timeline,
+                })}
+            />
+        );
+
+        const markdownViews = container.querySelectorAll('[data-testid="markdown-view"]');
+        // All 10 content items should be merged into 1 markdown view
+        expect(markdownViews.length).toBe(1);
+        // The merged content should contain all words
+        const html = markdownViews[0].innerHTML;
+        expect(html).toContain('word0');
+        expect(html).toContain('word9');
+    });
+
+    it('preserves tool boundaries when merging content', () => {
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn({
+                    role: 'assistant',
+                    content: '',
+                    timeline: [
+                        { type: 'content', timestamp: '2026-01-15T10:30:00Z', content: 'before ' },
+                        { type: 'content', timestamp: '2026-01-15T10:30:01Z', content: 'tool ' },
+                        {
+                            type: 'tool-start',
+                            timestamp: '2026-01-15T10:30:02Z',
+                            toolCall: { id: 'grep-1', toolName: 'grep', args: {}, status: 'running' },
+                        },
+                        {
+                            type: 'tool-complete',
+                            timestamp: '2026-01-15T10:30:03Z',
+                            toolCall: { id: 'grep-1', toolName: 'grep', args: {}, status: 'completed', result: 'found' },
+                        },
+                        { type: 'content', timestamp: '2026-01-15T10:30:04Z', content: 'after ' },
+                        { type: 'content', timestamp: '2026-01-15T10:30:05Z', content: 'tool' },
+                    ],
+                })}
+            />
+        );
+
+        const markdownViews = container.querySelectorAll('[data-testid="markdown-view"]');
+        // 2 content groups (before+tool and after+tool) — not 4 individual ones
+        expect(markdownViews.length).toBe(2);
+
+        // Tool call card should be present
+        const toolCard = container.querySelector('[data-tool-id="grep-1"]');
+        expect(toolCard).toBeTruthy();
+    });
+});

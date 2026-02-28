@@ -3864,11 +3864,10 @@ describe('timeline population during execution', () => {
         const process = await store.getProcess('queue_task-tl-content');
         const assistantTurn = process!.conversationTurns!.find(t => t.role === 'assistant');
         expect(assistantTurn).toBeDefined();
-        expect(assistantTurn!.timeline.length).toBe(2);
+        // Consecutive content chunks are merged during flush
+        expect(assistantTurn!.timeline.length).toBe(1);
         expect(assistantTurn!.timeline[0].type).toBe('content');
-        expect(assistantTurn!.timeline[0].content).toBe('Hello ');
-        expect(assistantTurn!.timeline[1].type).toBe('content');
-        expect(assistantTurn!.timeline[1].content).toBe('world');
+        expect(assistantTurn!.timeline[0].content).toBe('Hello world');
     });
 
     it('should append tool events to assistant turn timeline', async () => {
@@ -4174,6 +4173,44 @@ describe('timeline population during execution', () => {
             'content', 'tool-start', 'tool-complete',
             'content',
         ]);
+    });
+
+    it('should merge consecutive content items but preserve tool boundaries during flush', async () => {
+        mockSendMessage.mockImplementation(async (opts: any) => {
+            // Simulate: 3 content chunks → tool → 2 content chunks
+            if (opts.onStreamingChunk) opts.onStreamingChunk('word1 ');
+            if (opts.onStreamingChunk) opts.onStreamingChunk('word2 ');
+            if (opts.onStreamingChunk) opts.onStreamingChunk('word3 ');
+            if (opts.onToolEvent) opts.onToolEvent({ type: 'tool-start', toolCallId: 'tc-merge', toolName: 'grep' });
+            if (opts.onToolEvent) opts.onToolEvent({ type: 'tool-complete', toolCallId: 'tc-merge', toolName: 'grep', result: 'ok' });
+            if (opts.onStreamingChunk) opts.onStreamingChunk('word4 ');
+            if (opts.onStreamingChunk) opts.onStreamingChunk('word5');
+            return { success: true, response: 'word1 word2 word3 word4 word5', sessionId: 'sess-merge' };
+        });
+
+        const executor = new CLITaskExecutor(store);
+        const task: QueuedTask = {
+            id: 'task-merge-flush',
+            type: 'ai-clarification',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { prompt: 'test merge' },
+            config: {},
+        };
+
+        await executor.execute(task);
+
+        const process = await store.getProcess('queue_task-merge-flush');
+        const assistantTurn = process!.conversationTurns!.find(t => t.role === 'assistant');
+        expect(assistantTurn).toBeDefined();
+
+        // 3 content chunks merged into 1, tool-start, tool-complete, 2 content chunks merged into 1
+        expect(assistantTurn!.timeline.length).toBe(4);
+        expect(assistantTurn!.timeline[0]).toMatchObject({ type: 'content', content: 'word1 word2 word3 ' });
+        expect(assistantTurn!.timeline[1]).toMatchObject({ type: 'tool-start' });
+        expect(assistantTurn!.timeline[2]).toMatchObject({ type: 'tool-complete' });
+        expect(assistantTurn!.timeline[3]).toMatchObject({ type: 'content', content: 'word4 word5' });
     });
 });
 

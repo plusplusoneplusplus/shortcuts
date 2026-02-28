@@ -339,7 +339,9 @@ export {
     clearMcpConfigCache,
     mcpConfigExists,
     getCachedMcpConfig,
-    setHomeDirectoryOverride
+    setHomeDirectoryOverride,
+    // Timeline Utilities
+    mergeConsecutiveContentItems,
 } from './ai';
 
 // ============================================================================

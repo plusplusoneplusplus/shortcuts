@@ -6,6 +6,7 @@ import { cn, ImageGallery, Spinner } from '../shared';
 import type { ClientConversationTurn } from '../types/dashboard';
 import { MarkdownView } from './MarkdownView';
 import { ToolCallView } from './ToolCallView';
+import { mergeConsecutiveContentItems } from './timeline-utils';
 import { renderMarkdownToHtml } from '../../markdown-renderer';
 import { useDisplaySettings } from '../hooks/useDisplaySettings';
 import { fetchApi } from '../hooks/useApi';
@@ -223,7 +224,7 @@ function buildAssistantRender(turn: ClientConversationTurn): {
     toolsWithChildren: Set<string>;
 } {
     const chunks: RenderChunk[] = [];
-    const timeline = Array.isArray(turn.timeline) ? turn.timeline : [];
+    const timeline = mergeConsecutiveContentItems(Array.isArray(turn.timeline) ? turn.timeline : []);
     let hasContent = false;
 
     const callsById = new Map<string, RenderToolCall>();

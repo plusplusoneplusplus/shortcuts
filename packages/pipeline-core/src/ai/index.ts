@@ -148,5 +148,8 @@ export {
     BuildCliCommandOptions
 } from './cli-utils';
 
+// Timeline Utilities
+export { mergeConsecutiveContentItems } from './timeline-utils';
+
 // Default timeouts
 export { DEFAULT_AI_TIMEOUT_MS } from './timeouts';

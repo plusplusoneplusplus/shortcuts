@@ -47,6 +47,7 @@ import {
     parsePipelineYAMLSync,
     executePipeline,
     toForwardSlashes,
+    mergeConsecutiveContentItems,
 } from '@plusplusoneplusplus/pipeline-core';
 import type { ProcessStore, AIProcess, ConversationTurn, ToolEvent, TimelineItem, CopilotSDKService, TaskGenerationPayload, RunPipelinePayload, ResolveCommentsPayload, SelectedContext, Attachment } from '@plusplusoneplusplus/pipeline-core';
 import { createCLIAIInvoker } from '../ai-invoker';
@@ -200,7 +201,7 @@ export class CLITaskExecutor implements TaskExecutor {
             this.throttleState.delete(processId);
 
             // Drain accumulated timeline items for the final assistant turn
-            const finalTimeline = this.timelineBuffers.get(processId) || [];
+            const finalTimeline = mergeConsecutiveContentItems(this.timelineBuffers.get(processId) || []);
             this.timelineBuffers.delete(processId);
 
             // Build final conversation turns (re-read from store to include any flushed streaming data)
@@ -394,7 +395,7 @@ export class CLITaskExecutor implements TaskExecutor {
             this.throttleState.delete(processId);
 
             // Drain accumulated timeline items for the final assistant turn
-            const followUpTimeline = this.timelineBuffers.get(processId) || [];
+            const followUpTimeline = mergeConsecutiveContentItems(this.timelineBuffers.get(processId) || []);
             this.timelineBuffers.delete(processId);
 
             if (!result.success) {
@@ -976,8 +977,8 @@ export class CLITaskExecutor implements TaskExecutor {
         const buffer = this.outputBuffers.get(processId);
         if (!buffer) return;
 
-        // Snapshot current timeline for this flush
-        const timelineSnapshot = [...(this.timelineBuffers.get(processId) || [])];
+        // Snapshot current timeline for this flush, merging consecutive content items to reduce bloat
+        const timelineSnapshot = mergeConsecutiveContentItems([...(this.timelineBuffers.get(processId) || [])]);
 
         try {
             const currentProcess = await this.store.getProcess(processId);
