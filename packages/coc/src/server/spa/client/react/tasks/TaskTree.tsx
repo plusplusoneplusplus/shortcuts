@@ -6,7 +6,9 @@ import { useEffect, useRef, useState } from 'react';
 import { useTaskPanel } from '../context/TaskContext';
 import { useQueueActivity } from '../hooks/useQueueActivity';
 import type { TaskFolder, TaskNode, TaskDocument, TaskDocumentGroup } from '../hooks/useTaskTree';
-import { countMarkdownFilesInFolder, folderToNodes, isTaskFolder } from '../hooks/useTaskTree';
+import { countMarkdownFilesInFolder, folderToNodes, isTaskFolder, isTaskDocument, isTaskDocumentGroup } from '../hooks/useTaskTree';
+import { useTaskDragDrop } from '../hooks/useTaskDragDrop';
+import type { DragItem } from '../hooks/useTaskDragDrop';
 import { TaskTreeItem } from './TaskTreeItem';
 
 interface TaskTreeProps {
@@ -19,6 +21,7 @@ interface TaskTreeProps {
     onFolderContextMenu?: (folder: TaskFolder, x: number, y: number) => void;
     onFolderEmptySpaceContextMenu?: (folder: TaskFolder, x: number, y: number) => void;
     onFileContextMenu?: (item: TaskDocument | TaskDocumentGroup, x: number, y: number) => void;
+    onDrop?: (items: DragItem[], targetFolderPath: string) => void;
 }
 
 function getNodePath(node: TaskNode): string | null {
@@ -71,9 +74,11 @@ export function TaskTree({
     onFolderContextMenu,
     onFolderEmptySpaceContextMenu,
     onFileContextMenu,
+    onDrop: onDropCallback,
 }: TaskTreeProps) {
     const { openFilePath, setOpenFilePath, selectedFilePaths, toggleSelectedFile, showContextFiles, setSelectedFolderPath } = useTaskPanel();
     const { fileMap: queueActivity, folderMap: queueFolderActivity } = useQueueActivity(wsId);
+    const dnd = useTaskDragDrop();
     const [columns, setColumns] = useState<TaskNode[][]>([]);
     const [activeFolderKeys, setActiveFolderKeys] = useState<(string | null)[]>([]);
     const activeFolderKeysRef = useRef<(string | null)[]>([]);
@@ -160,16 +165,50 @@ export function TaskTree({
         return findFolderByKey(tree, parentKey);
     };
 
+    // Resolve selected file paths into DragItem[] for multi-select drag
+    const resolveSelectedItems = (paths: Set<string>): DragItem[] => {
+        const items: DragItem[] = [];
+        for (const p of paths) {
+            const name = p.includes('/') ? p.split('/').pop()! : p;
+            items.push({ path: p, type: 'file', name });
+        }
+        return items;
+    };
+
+    // Build a DragItem for a given node
+    const nodeToDragItem = (node: TaskNode): DragItem | null => {
+        if (isTaskFolder(node)) {
+            const folder = node as TaskFolder;
+            return { path: getFolderKey(folder), type: 'folder', name: folder.name };
+        }
+        const path = getNodePath(node);
+        if (!path) return null;
+        const name = isTaskDocument(node)
+            ? node.baseName || node.fileName
+            : isTaskDocumentGroup(node)
+                ? node.baseName
+                : '';
+        return { path, type: 'file', name };
+    };
+
+    const handleDndDrop = onDropCallback
+        ? (items: DragItem[], targetFolder: string) => onDropCallback(items, targetFolder)
+        : () => {};
+
     return (
         <div
             className="flex flex-row h-full min-h-0"
             data-testid="task-tree"
         >
             {columns.map((colNodes, colIndex) => {
+                const columnFolder = getColumnFolder(colIndex);
+                const columnFolderPath = columnFolder ? getFolderKey(columnFolder) : '';
                 return (
                 <div
                     key={colIndex}
-                    className="flex-shrink-0 w-56 h-full border-r border-[#e0e0e0] dark:border-[#3c3c3c] overflow-y-auto"
+                    className={`flex-shrink-0 w-56 h-full border-r border-[#e0e0e0] dark:border-[#3c3c3c] overflow-y-auto ${
+                        dnd.dropTargetPath === columnFolderPath ? 'bg-[#0078d4]/5 dark:bg-[#3794ff]/5' : ''
+                    }`}
                     data-testid={`miller-column-${colIndex}`}
                     onContextMenu={(e) => {
                         if (e.shiftKey || !onFolderEmptySpaceContextMenu) return;
@@ -183,6 +222,10 @@ export function TaskTree({
                         e.stopPropagation();
                         onFolderEmptySpaceContextMenu(folder, e.clientX, e.clientY);
                     }}
+                    onDragOver={dnd.createDragOverHandler(columnFolderPath)}
+                    onDragEnter={dnd.createDragEnterHandler(columnFolderPath)}
+                    onDragLeave={dnd.createDragLeaveHandler(columnFolderPath)}
+                    onDrop={dnd.createDropHandler(columnFolderPath, handleDndDrop)}
                 >
                     {colNodes.length === 0 ? (
                         <div className="py-6 px-4 text-center text-xs text-[#848484] dark:text-[#666] italic">
@@ -192,7 +235,9 @@ export function TaskTree({
                         <ul className="py-1">
                             {colNodes.map((node, nodeIndex) => {
                                 const path = getNodePath(node);
+                                const dragItem = nodeToDragItem(node);
                                 const folderMdCount = isTaskFolder(node) ? countMarkdownFilesInFolder(node) : 0;
+                                const folderKey = isTaskFolder(node) ? getFolderKey(node as TaskFolder) : null;
                                 return (
                                     <TaskTreeItem
                                         key={nodeIndex}
@@ -211,6 +256,14 @@ export function TaskTree({
                                         onCheckboxChange={handleCheckboxChange}
                                         onFolderContextMenu={onFolderContextMenu}
                                         onFileContextMenu={onFileContextMenu}
+                                        onDragStart={dragItem ? dnd.createDragStartHandler(dragItem, selectedFilePaths, resolveSelectedItems) : undefined}
+                                        onDragEnd={dnd.createDragEndHandler()}
+                                        onDragOver={folderKey ? dnd.createDragOverHandler(folderKey) : undefined}
+                                        onDragEnter={folderKey ? dnd.createDragEnterHandler(folderKey) : undefined}
+                                        onDragLeave={folderKey ? dnd.createDragLeaveHandler(folderKey) : undefined}
+                                        onDrop={folderKey ? dnd.createDropHandler(folderKey, handleDndDrop) : undefined}
+                                        isDropTarget={isTaskFolder(node) && dnd.dropTargetPath === folderKey}
+                                        isDragSource={dnd.isDragging && dragItem != null && dnd.draggedItems.some(d => d.path === dragItem.path)}
                                     />
                                 );
                             })}

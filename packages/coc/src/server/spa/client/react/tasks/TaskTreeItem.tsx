@@ -23,6 +23,15 @@ export interface TaskTreeItemProps {
     onCheckboxChange: (path: string, checked: boolean) => void;
     onFolderContextMenu?: (folder: TaskFolder, x: number, y: number) => void;
     onFileContextMenu?: (item: TaskDocument | TaskDocumentGroup, x: number, y: number) => void;
+    // Drag-and-drop handlers
+    onDragStart?: (e: React.DragEvent) => void;
+    onDragEnd?: (e: React.DragEvent) => void;
+    onDragOver?: (e: React.DragEvent) => void;
+    onDragEnter?: (e: React.DragEvent) => void;
+    onDragLeave?: (e: React.DragEvent) => void;
+    onDrop?: (e: React.DragEvent) => void;
+    isDropTarget?: boolean;
+    isDragSource?: boolean;
 }
 
 function getItemFileName(item: TaskNode): string {
@@ -91,6 +100,14 @@ export function TaskTreeItem({
     onCheckboxChange,
     onFolderContextMenu,
     onFileContextMenu,
+    onDragStart,
+    onDragEnd,
+    onDragOver,
+    onDragEnter,
+    onDragLeave,
+    onDrop,
+    isDropTarget,
+    isDragSource,
 }: TaskTreeItemProps) {
     const isFolder = isTaskFolder(item);
     const fileName = getItemFileName(item);
@@ -126,6 +143,15 @@ export function TaskTreeItem({
         }
     };
 
+    const handleDragStart = (e: React.DragEvent) => {
+        // Don't start drag from checkbox clicks
+        if ((e.target as HTMLElement).tagName === 'INPUT') {
+            e.preventDefault();
+            return;
+        }
+        onDragStart?.(e);
+    };
+
     return (
         <li
             className={cn(
@@ -138,7 +164,16 @@ export function TaskTreeItem({
                 isArchived && 'opacity-60 italic',
                 isArchiveFolder && 'opacity-60 italic',
                 !isFolder && 'miller-file-row',
+                isDragSource && 'opacity-40',
+                isDropTarget && 'ring-2 ring-[#0078d4] dark:ring-[#3794ff] bg-[#0078d4]/10 dark:bg-[#3794ff]/10',
             )}
+            draggable={!isContext}
+            onDragStart={handleDragStart}
+            onDragEnd={onDragEnd}
+            onDragOver={isFolder ? onDragOver : undefined}
+            onDragEnter={isFolder ? onDragEnter : undefined}
+            onDragLeave={isFolder ? onDragLeave : undefined}
+            onDrop={isFolder ? onDrop : undefined}
             onClick={handleClick}
             onContextMenu={(e) => {
                 if (e.shiftKey) {

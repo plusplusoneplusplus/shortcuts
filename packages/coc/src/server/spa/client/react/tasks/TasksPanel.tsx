@@ -9,6 +9,7 @@ import { useTaskTree, countMarkdownFilesInFolder, isTaskDocument, isTaskDocument
 import type { TaskFolder, TaskDocument, TaskDocumentGroup } from '../hooks/useTaskTree';
 import { useFolderActions } from '../hooks/useFolderActions';
 import { useFileActions } from '../hooks/useFileActions';
+import type { DragItem } from '../hooks/useTaskDragDrop';
 import { useApp } from '../context/AppContext';
 import { useQueue } from '../context/QueueContext';
 import { useGlobalToast } from '../context/ToastContext';
@@ -301,6 +302,21 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
         setMoveDialogOpen(false);
         setMoveSourceFolder(null);
     }, [moveSourceFolder, folderActions, refresh]);
+
+    const handleDragDrop = useCallback(async (items: DragItem[], targetFolderPath: string) => {
+        try {
+            for (const item of items) {
+                if (item.type === 'folder') {
+                    await folderActions.moveFolder(item.path, targetFolderPath);
+                } else {
+                    await fileActions.moveFile(item.path, targetFolderPath);
+                }
+            }
+            refresh();
+        } catch (err: any) {
+            addToast(err.message || 'Move failed', 'error');
+        }
+    }, [folderActions, fileActions, refresh, addToast]);
 
     useEffect(() => {
         scrollToEnd(scrollRef.current);
@@ -645,6 +661,7 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
                             onFolderContextMenu={handleFolderContextMenu}
                             onFolderEmptySpaceContextMenu={handleFolderEmptySpaceContextMenu}
                             onFileContextMenu={handleFileContextMenu}
+                            onDrop={handleDragDrop}
                         />
                     </div>
 
