@@ -70,8 +70,11 @@ describe('RepoDetail Generate button in header', () => {
         expect(REPO_DETAIL_SOURCE).toContain('<GenerateTaskDialog');
     });
 
-    it('switches to tasks tab when generate button is clicked', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("switchSubTab('tasks')");
+    it('does not switch tabs when generate button is clicked (modal is tab-independent)', () => {
+        const handler = REPO_DETAIL_SOURCE.match(/const handleOpenGenerateDialog = useCallback\([^)]*\) => \{([\s\S]*?)\}, \[/);
+        expect(handler).toBeTruthy();
+        const body = handler![1];
+        expect(body).not.toContain("switchSubTab");
     });
 });
 

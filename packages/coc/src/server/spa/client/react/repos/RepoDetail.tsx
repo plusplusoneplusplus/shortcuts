@@ -67,9 +67,8 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     };
 
     const handleOpenGenerateDialog = useCallback((targetFolder?: string) => {
-        if (activeSubTab !== 'tasks') switchSubTab('tasks');
         setGenerateDialog({ open: true, targetFolder });
-    }, [activeSubTab]);
+    }, []);
 
     const handleRemove = async () => {
         if (!confirm('Remove this repo from the dashboard? Processes will be preserved.')) return;
