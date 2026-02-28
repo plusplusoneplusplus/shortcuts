@@ -5,6 +5,7 @@
 
 import * as path from 'path';
 import { safeReadDir, safeStats, safeExists } from '../utils/file-utils';
+import { toForwardSlashes } from '../utils/path-utils';
 import { parseTaskStatus, parseFileName } from './task-parser';
 import { Task, TaskDocument, TaskDocumentGroup, TaskFolder } from './types';
 
@@ -52,7 +53,7 @@ export function scanTasksRecursively(dirPath: string, relativePath: string, isAr
             if (!isArchived && item === archiveFolderName) {
                 continue;
             }
-            const subRelativePath = relativePath ? path.join(relativePath, item) : item;
+            const subRelativePath = toForwardSlashes(relativePath ? path.join(relativePath, item) : item);
             const subTasks = scanTasksRecursively(itemPath, subRelativePath, isArchived);
             tasks.push(...subTasks);
         } else if (statsResult.data.isFile() && item.endsWith('.md') && !isContextFile(item)) {
@@ -96,7 +97,7 @@ export function scanDocumentsRecursively(dirPath: string, relativePath: string, 
             if (!isArchived && item === archiveFolderName) {
                 continue;
             }
-            const subRelativePath = relativePath ? path.join(relativePath, item) : item;
+            const subRelativePath = toForwardSlashes(relativePath ? path.join(relativePath, item) : item);
             const subDocuments = scanDocumentsRecursively(itemPath, subRelativePath, isArchived);
             documents.push(...subDocuments);
         } else if (statsResult.data.isFile() && item.endsWith('.md') && !isContextFile(item)) {
@@ -148,7 +149,7 @@ export function scanFoldersRecursively(
                 continue;
             }
 
-            const folderRelativePath = relativePath ? path.join(relativePath, item) : item;
+            const folderRelativePath = toForwardSlashes(relativePath ? path.join(relativePath, item) : item);
 
             if (!folderMap.has(folderRelativePath)) {
                 const newFolder: TaskFolder = {
@@ -299,12 +300,12 @@ export function buildTaskFolderHierarchy(
             continue;
         }
 
-        const pathParts = doc.relativePath.split(path.sep);
+        const pathParts = doc.relativePath.split('/');
         let currentPath = '';
 
         for (const part of pathParts) {
             const parentPath = currentPath;
-            currentPath = currentPath ? path.join(currentPath, part) : part;
+            currentPath = currentPath ? `${currentPath}/${part}` : part;
 
             if (!folderMap.has(currentPath)) {
                 const newFolder: TaskFolder = {

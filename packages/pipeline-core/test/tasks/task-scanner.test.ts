@@ -118,7 +118,7 @@ describe('scanTasksRecursively', () => {
 
         const deep = result.find(t => t.name === 'deep');
         expect(deep).toBeDefined();
-        expect(deep!.relativePath).toBe(path.join('sub1', 'sub2'));
+        expect(deep!.relativePath).toBe('sub1/sub2');
     });
 
     it('skips archive folder when isArchived=false', () => {
@@ -162,7 +162,7 @@ describe('scanTasksRecursively', () => {
         const b = result.find(t => t.name === 'b')!;
 
         expect(a.relativePath).toBe('feature1');
-        expect(b.relativePath).toBe(path.join('feature1', 'backlog'));
+        expect(b.relativePath).toBe('feature1/backlog');
     });
 
     it('parses task status from frontmatter', () => {
@@ -221,6 +221,27 @@ describe('scanTasksRecursively', () => {
         const result = scanTasksRecursively(tmpDir, '', false);
         expect(result).toHaveLength(2);
         expect(result.map(t => t.name).sort()).toEqual(['actual-task', 'task']);
+    });
+
+    it('relativePath always uses forward slashes', () => {
+        createMd('a.md', 'feature1');
+        createMd('b.md', path.join('feature1', 'sub'));
+        createMd('c.md', path.join('feature1', 'sub', 'deep'));
+
+        const result = scanTasksRecursively(tmpDir, '', false);
+        const a = result.find(t => t.name === 'a')!;
+        const b = result.find(t => t.name === 'b')!;
+        const c = result.find(t => t.name === 'c')!;
+
+        expect(a.relativePath).toBe('feature1');
+        expect(b.relativePath).toBe('feature1/sub');
+        expect(c.relativePath).toBe('feature1/sub/deep');
+        // Ensure no backslashes
+        for (const task of result) {
+            if (task.relativePath) {
+                expect(task.relativePath).not.toContain('\\');
+            }
+        }
     });
 });
 
@@ -304,7 +325,7 @@ describe('scanDocumentsRecursively', () => {
         const b = result.find(d => d.fileName === 'b.md')!;
 
         expect(a.relativePath).toBe('feature1');
-        expect(b.relativePath).toBe(path.join('feature1', 'backlog'));
+        expect(b.relativePath).toBe('feature1/backlog');
     });
 
     it('excludes context files (README.md, CLAUDE.md, etc.)', () => {
@@ -339,6 +360,26 @@ describe('scanDocumentsRecursively', () => {
         expect(result).toHaveLength(2);
         expect(result.map(d => d.fileName).sort()).toEqual(['actual-task.spec.md', 'task.md']);
     });
+
+    it('relativePath always uses forward slashes', () => {
+        createMd('a.plan.md', 'feature1');
+        createMd('b.spec.md', path.join('feature1', 'sub'));
+        createMd('c.md', path.join('feature1', 'sub', 'deep'));
+
+        const result = scanDocumentsRecursively(tmpDir, '', false);
+        const a = result.find(d => d.fileName === 'a.plan.md')!;
+        const b = result.find(d => d.fileName === 'b.spec.md')!;
+        const c = result.find(d => d.fileName === 'c.md')!;
+
+        expect(a.relativePath).toBe('feature1');
+        expect(b.relativePath).toBe('feature1/sub');
+        expect(c.relativePath).toBe('feature1/sub/deep');
+        for (const doc of result) {
+            if (doc.relativePath) {
+                expect(doc.relativePath).not.toContain('\\');
+            }
+        }
+    });
 });
 
 // ============================================================================
@@ -369,7 +410,7 @@ describe('scanFoldersRecursively', () => {
 
         scanFoldersRecursively(tmpDir, '', false, folderMap, root);
         expect(folderMap.has('a')).toBe(true);
-        expect(folderMap.has(path.join('a', 'b'))).toBe(true);
+        expect(folderMap.has('a/b')).toBe(true);
     });
 
     it('skips archive folder when isArchived=false', () => {
@@ -417,9 +458,9 @@ describe('scanFoldersRecursively', () => {
         scanFoldersRecursively(tmpDir, '', false, folderMap, root);
 
         expect(folderMap.has('a')).toBe(true);
-        expect(folderMap.has(path.join('a', 'b'))).toBe(true);
-        expect(folderMap.has(path.join('a', 'b', 'c'))).toBe(true);
-        expect(folderMap.has(path.join('a', 'b', 'c', 'd'))).toBe(true);
+        expect(folderMap.has('a/b')).toBe(true);
+        expect(folderMap.has('a/b/c')).toBe(true);
+        expect(folderMap.has('a/b/c/d')).toBe(true);
 
         const aFolder = folderMap.get('a')!;
         expect(aFolder.children).toHaveLength(1);
@@ -433,6 +474,25 @@ describe('scanFoldersRecursively', () => {
 
         scanFoldersRecursively(path.join(tmpDir, 'nonexistent'), '', false, folderMap, root);
         expect(root.children).toHaveLength(0);
+    });
+
+    it('relativePath always uses forward slashes', () => {
+        createDir('a', 'b', 'c');
+
+        const folderMap = new Map<string, TaskFolder>();
+        const root = makeRootFolder();
+        folderMap.set('', root);
+
+        scanFoldersRecursively(tmpDir, '', false, folderMap, root);
+
+        for (const [key, folder] of folderMap) {
+            if (key) {
+                expect(key).not.toContain('\\');
+                expect(folder.relativePath).not.toContain('\\');
+            }
+        }
+        expect(folderMap.has('a/b')).toBe(true);
+        expect(folderMap.has('a/b/c')).toBe(true);
     });
 });
 
@@ -555,7 +615,7 @@ describe('buildTaskFolderHierarchy', () => {
     it('intermediate folders auto-created for document relativePaths', () => {
         // Don't create directories on disk — only pass docs with relativePath
         const docs: TaskDocument[] = [
-            makeDocWithPath('task', undefined, path.join('a', 'b'), false, path.join(tmpDir, 'a', 'b', 'task.md')),
+            makeDocWithPath('task', undefined, 'a/b', false, path.join(tmpDir, 'a', 'b', 'task.md')),
         ];
 
         const { root } = buildTaskFolderHierarchy(tmpDir, docs, false);
@@ -856,7 +916,7 @@ describe('buildTaskFolderHierarchy contextDocuments', () => {
         const docs = scanDocumentsRecursively(tmpDir, '', false);
         const { folderMap } = buildTaskFolderHierarchy(tmpDir, docs, false);
 
-        const ab = folderMap.get(path.join('a', 'b'));
+        const ab = folderMap.get('a/b');
         expect(ab).toBeDefined();
         expect(ab!.contextDocuments).toHaveLength(1);
         expect(ab!.contextDocuments![0].fileName).toBe('CONTEXT.md');

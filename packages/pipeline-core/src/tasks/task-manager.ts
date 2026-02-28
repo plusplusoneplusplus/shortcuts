@@ -13,6 +13,7 @@
 
 import * as path from 'path';
 import { ensureDirectoryExists, safeExists, safeReadDir, safeStats } from '../utils';
+import { toForwardSlashes } from '../utils/path-utils';
 import {
     Task,
     TaskDocument,
@@ -356,7 +357,7 @@ export class TaskManager {
                 continue;
             }
 
-            const itemRelativePath = relativePath ? path.join(relativePath, item) : item;
+            const itemRelativePath = toForwardSlashes(relativePath ? path.join(relativePath, item) : item);
             const displayName = relativePath ? `${relativePath}/${item}` : item;
 
             folders.push({
