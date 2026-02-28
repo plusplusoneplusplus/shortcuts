@@ -10,6 +10,7 @@ import { getApiBase } from '../utils/config';
 import { useQueue } from '../context/QueueContext';
 import { QueueTaskDetail } from '../queue/QueueTaskDetail';
 import { formatDuration, statusIcon, formatRelativeTime } from '../utils/format';
+import { useQueueDragDrop } from '../hooks/useQueueDragDrop';
 
 interface RepoQueueTabProps {
     workspaceId: string;
@@ -174,6 +175,23 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
         fetchQueue();
     };
 
+    const handleMoveToPosition = async (taskId: string, newIndex: number) => {
+        await fetch(getApiBase() + '/queue/' + encodeURIComponent(taskId) + '/move-to/' + newIndex, { method: 'POST' });
+        fetchQueue();
+    };
+
+    const {
+        draggedTaskId,
+        dropTargetIndex,
+        dropPosition,
+        createDragStartHandler,
+        createDragEndHandler,
+        createDragOverHandler,
+        createDragEnterHandler,
+        createDragLeaveHandler,
+        createDropHandler,
+    } = useQueueDragDrop();
+
     async function handlePauseResume() {
         setIsPauseResumeLoading(true);
         try {
@@ -278,17 +296,33 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
                             </div>
                             <div className="flex flex-col gap-1">
                                 {filteredQueued.map((task, index) => (
-                                    <QueueTaskItem
+                                    <div
                                         key={task.id}
-                                        task={task}
-                                        status="queued"
-                                        now={now}
-                                        selected={selectedTaskId === task.id}
-                                        onCancel={() => handleCancel(task.id)}
-                                        onMoveUp={index > 0 ? () => handleMoveUp(task.id) : undefined}
-                                        onMoveToTop={() => handleMoveToTop(task.id)}
-                                        onClick={() => selectTask(task.id)}
-                                    />
+                                        draggable
+                                        onDragStart={createDragStartHandler(task.id, index)}
+                                        onDragEnd={createDragEndHandler()}
+                                        onDragOver={createDragOverHandler(index)}
+                                        onDragEnter={createDragEnterHandler(index)}
+                                        onDragLeave={createDragLeaveHandler(index)}
+                                        onDrop={createDropHandler(index, handleMoveToPosition)}
+                                        className={cn(
+                                            'cursor-grab active:cursor-grabbing',
+                                            draggedTaskId === task.id && 'opacity-40',
+                                            dropTargetIndex === index && dropPosition === 'above' && 'border-t-2 border-[#007fd4]',
+                                            dropTargetIndex === index && dropPosition === 'below' && 'border-b-2 border-[#007fd4]',
+                                        )}
+                                    >
+                                        <QueueTaskItem
+                                            task={task}
+                                            status="queued"
+                                            now={now}
+                                            selected={selectedTaskId === task.id}
+                                            onCancel={() => handleCancel(task.id)}
+                                            onMoveUp={index > 0 ? () => handleMoveUp(task.id) : undefined}
+                                            onMoveToTop={() => handleMoveToTop(task.id)}
+                                            onClick={() => selectTask(task.id)}
+                                        />
+                                    </div>
                                 ))}
                             </div>
                         </div>

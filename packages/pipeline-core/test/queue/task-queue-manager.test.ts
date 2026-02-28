@@ -570,6 +570,102 @@ describe('TaskQueueManager', () => {
         });
     });
 
+    describe('moveToPosition', () => {
+        it('moves task forward (index 0 → 2)', () => {
+            const id1 = manager.enqueue(createTestTask({ displayName: 'first' }));
+            const id2 = manager.enqueue(createTestTask({ displayName: 'second' }));
+            const id3 = manager.enqueue(createTestTask({ displayName: 'third' }));
+
+            manager.moveToPosition(id1, 2);
+
+            const tasks = manager.getQueued();
+            expect(tasks[0].id).toBe(id2);
+            expect(tasks[1].id).toBe(id3);
+            expect(tasks[2].id).toBe(id1);
+        });
+
+        it('moves task backward (index 2 → 0)', () => {
+            const id1 = manager.enqueue(createTestTask({ displayName: 'first' }));
+            const id2 = manager.enqueue(createTestTask({ displayName: 'second' }));
+            const id3 = manager.enqueue(createTestTask({ displayName: 'third' }));
+
+            manager.moveToPosition(id3, 0);
+
+            const tasks = manager.getQueued();
+            expect(tasks[0].id).toBe(id3);
+            expect(tasks[1].id).toBe(id1);
+            expect(tasks[2].id).toBe(id2);
+        });
+
+        it('returns true when already at target position (noop)', () => {
+            const id1 = manager.enqueue(createTestTask());
+            manager.enqueue(createTestTask());
+
+            expect(manager.moveToPosition(id1, 0)).toBe(true);
+            expect(manager.getQueued()[0].id).toBe(id1);
+        });
+
+        it('returns false for unknown ID', () => {
+            expect(manager.moveToPosition('unknown', 0)).toBe(false);
+        });
+
+        it('clamps out-of-bounds index to last position', () => {
+            const id1 = manager.enqueue(createTestTask({ displayName: 'first' }));
+            const id2 = manager.enqueue(createTestTask({ displayName: 'second' }));
+            const id3 = manager.enqueue(createTestTask({ displayName: 'third' }));
+
+            manager.moveToPosition(id1, 999);
+
+            const tasks = manager.getQueued();
+            expect(tasks[2].id).toBe(id1);
+        });
+
+        it('clamps negative index to 0', () => {
+            const id1 = manager.enqueue(createTestTask({ displayName: 'first' }));
+            const id2 = manager.enqueue(createTestTask({ displayName: 'second' }));
+            const id3 = manager.enqueue(createTestTask({ displayName: 'third' }));
+
+            manager.moveToPosition(id3, -5);
+
+            const tasks = manager.getQueued();
+            expect(tasks[0].id).toBe(id3);
+        });
+
+        it('does not mutate priority', () => {
+            const id = manager.enqueue(createTestTask({ priority: 'low' }));
+            manager.enqueue(createTestTask());
+
+            manager.moveToPosition(id, 0);
+
+            expect(manager.getTask(id)!.priority).toBe('low');
+        });
+
+        it('emits reordered event', () => {
+            const listener = vi.fn();
+            manager.on('change', listener);
+
+            const id1 = manager.enqueue(createTestTask());
+            const id2 = manager.enqueue(createTestTask());
+            listener.mockClear();
+
+            manager.moveToPosition(id2, 0);
+
+            expect(listener).toHaveBeenCalledWith(
+                expect.objectContaining({ type: 'reordered' })
+            );
+        });
+
+        it('moves to end position', () => {
+            const id1 = manager.enqueue(createTestTask({ displayName: 'first' }));
+            const id2 = manager.enqueue(createTestTask({ displayName: 'second' }));
+            const id3 = manager.enqueue(createTestTask({ displayName: 'third' }));
+
+            manager.moveToPosition(id1, 2);
+
+            expect(manager.getPosition(id1)).toBe(3);
+        });
+    });
+
     describe('getPosition', () => {
         it('returns 1-based position', () => {
             const id1 = manager.enqueue(createTestTask());

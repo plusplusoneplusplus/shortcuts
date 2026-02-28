@@ -483,6 +483,24 @@ export class TaskQueueManager extends EventEmitter {
     }
 
     /**
+     * Move a task to an arbitrary position in the queue (0-based index).
+     * Does not mutate priority (unlike moveToTop).
+     * @param id Task ID
+     * @param targetIndex Desired 0-based index (clamped to valid range)
+     * @returns true if the task was found (even if already at target), false if not found
+     */
+    moveToPosition(id: string, targetIndex: number): boolean {
+        const currentIndex = this.queue.findIndex(t => t.id === id);
+        if (currentIndex === -1) return false;
+        const clamped = Math.max(0, Math.min(targetIndex, this.queue.length - 1));
+        if (currentIndex === clamped) return true;
+        const [task] = this.queue.splice(currentIndex, 1);
+        this.queue.splice(clamped, 0, task);
+        this.emitChange('reordered', task);
+        return true;
+    }
+
+    /**
      * Get the position of a task in the queue (1-based)
      * @param id Task ID
      * @returns Position (1-based) or -1 if not found

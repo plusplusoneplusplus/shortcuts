@@ -879,6 +879,56 @@ describe('Queue Handler', () => {
     });
 
     // ========================================================================
+    // Move to position
+    // ========================================================================
+
+    describe('Move to position', () => {
+        it('should move a task to a specific position', async () => {
+            const srv = await startServer();
+
+            const res1 = await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'First' }));
+            const res2 = await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'Second' }));
+            const res3 = await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'Third' }));
+            const firstId = JSON.parse(res1.body).task.id;
+
+            const moveRes = await postJSON(`${srv.url}/api/queue/${firstId}/move-to/2`, {});
+            expect(moveRes.status).toBe(200);
+            const moveBody = JSON.parse(moveRes.body);
+            expect(moveBody.moved).toBe(true);
+            expect(moveBody.position).toBe(3); // 1-based: position 3 (0-based index 2)
+
+            // Verify order
+            const listRes = await request(`${srv.url}/api/queue`);
+            const listBody = JSON.parse(listRes.body);
+            expect(listBody.queued[2].id).toBe(firstId);
+        });
+
+        it('should move a task to position 0 (first)', async () => {
+            const srv = await startServer();
+
+            const res1 = await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'First' }));
+            const res2 = await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'Second' }));
+            const res3 = await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'Third' }));
+            const thirdId = JSON.parse(res3.body).task.id;
+
+            const moveRes = await postJSON(`${srv.url}/api/queue/${thirdId}/move-to/0`, {});
+            expect(moveRes.status).toBe(200);
+            expect(JSON.parse(moveRes.body).position).toBe(1);
+
+            const listRes = await request(`${srv.url}/api/queue`);
+            const listBody = JSON.parse(listRes.body);
+            expect(listBody.queued[0].id).toBe(thirdId);
+        });
+
+        it('should return 404 for unknown task', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(`${srv.url}/api/queue/nonexistent/move-to/0`, {});
+            expect(res.status).toBe(404);
+        });
+    });
+
+    // ========================================================================
     // Pause / Resume
     // ========================================================================
 

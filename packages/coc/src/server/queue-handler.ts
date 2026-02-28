@@ -1150,4 +1150,23 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
             sendJSON(res, 200, { moved: true, position });
         },
     });
+
+    // ------------------------------------------------------------------
+    // POST /api/queue/:id/move-to/:position — Move task to arbitrary position
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/queue\/([^/]+)\/move-to\/(\d+)$/,
+        handler: async (_req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const position = parseInt(match![2], 10);
+            const moved = findTaskManager(bridge, id)?.moveToPosition(id, position) ?? false;
+            if (!moved) {
+                return sendError(res, 404, 'Task not found in queue');
+            }
+            const finalPos = findTaskManager(bridge, id)?.getPosition(id);
+            process.stderr.write(`[Queue] move-to-position task=${id} position=${position}\n`);
+            sendJSON(res, 200, { moved: true, position: finalPos });
+        },
+    });
 }
