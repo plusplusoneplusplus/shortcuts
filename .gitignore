@@ -132,6 +132,3 @@ dist/
 # Playwright
 playwright-report/
 test-results/
-
-# Deep Wiki output
-wiki/
