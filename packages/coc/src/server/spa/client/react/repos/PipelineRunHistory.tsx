@@ -62,16 +62,19 @@ export function PipelineRunHistory({ workspaceId, pipelineName, refreshKey }: Pi
         // Fetch process detail if processId is available
         const processId = task.processId || `queue_${task.id}`;
         try {
-            const proc = await fetchApi(`/processes/${encodeURIComponent(processId)}`);
-            setSelectedProcess(proc);
+            const data = await fetchApi(`/processes/${encodeURIComponent(processId)}`);
+            setSelectedProcess(data.process || data);
         } catch {
             // Show what we have from the task itself
+            const duration = task.startedAt && task.completedAt
+                ? new Date(task.completedAt).getTime() - new Date(task.startedAt).getTime()
+                : undefined;
             setSelectedProcess({
                 id: processId,
                 status: task.status,
                 result: task.result,
-                metadata: task.metadata,
-                durationMs: task.durationMs,
+                metadata: { pipelineName: task.displayName?.replace(/^Run Pipeline:\s*/, '') },
+                durationMs: duration,
             });
         }
     };

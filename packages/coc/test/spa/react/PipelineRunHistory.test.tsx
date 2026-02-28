@@ -80,7 +80,7 @@ describe('PipelineRunHistory', () => {
                     { id: 't1', status: 'completed', processId: 'queue_t1' },
                 ],
             })
-            .mockResolvedValueOnce({ id: 'queue_t1', status: 'completed', result: '# Done' });
+            .mockResolvedValueOnce({ process: { id: 'queue_t1', status: 'completed', result: '# Done' } });
 
         render(
             <Wrap>
