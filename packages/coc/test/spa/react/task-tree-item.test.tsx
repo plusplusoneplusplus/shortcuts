@@ -438,3 +438,47 @@ describe('buildFileTooltip', () => {
         expect(result).toBe('');
     });
 });
+
+describe('TaskTreeItem — backslash normalization in paths', () => {
+    afterEach(() => cleanup());
+
+    it('normalizes backslashes in relativePath for single document click', () => {
+        const onFileClick = vi.fn();
+        renderItem({
+            item: makeDocument({ relativePath: 'coc\\chat', fileName: 'render.md' }),
+            onFileClick,
+        });
+        fireEvent.click(screen.getByTestId('task-tree-item-task'));
+        expect(onFileClick).toHaveBeenCalledWith('coc/chat/render.md');
+    });
+
+    it('normalizes backslashes in relativePath for document group click', () => {
+        const onFileClick = vi.fn();
+        const group = makeDocumentGroup({
+            baseName: 'design',
+            documents: [
+                { baseName: 'design', docType: 'spec', fileName: 'design.spec.md', relativePath: 'feat\\sub', isArchived: false },
+            ],
+        });
+        renderItem({ item: group, onFileClick });
+        fireEvent.click(screen.getByTestId('task-tree-item-design'));
+        expect(onFileClick).toHaveBeenCalledWith('feat/sub/design.spec.md');
+    });
+
+    it('sets data-file-path with normalized forward slashes', () => {
+        renderItem({
+            item: makeDocument({ relativePath: 'coc\\chat', fileName: 'render.md', baseName: 'render' }),
+        });
+        const li = screen.getByTestId('task-tree-item-render');
+        expect(li.getAttribute('data-file-path')).toBe('coc/chat/render.md');
+    });
+
+    it('tooltip shows normalized path', () => {
+        renderItem({
+            item: makeDocument({ relativePath: 'coc\\chat', fileName: 'render.md', baseName: 'render', status: 'pending' }),
+            commentCount: 1,
+        });
+        const li = screen.getByTestId('task-tree-item-render');
+        expect(li.getAttribute('title')).toContain('coc/chat/render.md');
+    });
+});

@@ -26,13 +26,13 @@ interface TaskTreeProps {
 
 function getNodePath(node: TaskNode): string | null {
     if ('fileName' in node && !('documents' in node) && !('children' in node)) {
-        const rel = (node as any).relativePath || '';
+        const rel = ((node as any).relativePath || '').replace(/\\/g, '/');
         return rel ? rel + '/' + node.fileName : node.fileName;
     }
     if ('documents' in node && 'baseName' in node && !('children' in node)) {
         const firstDoc = (node as any).documents[0];
         if (firstDoc) {
-            const rel = firstDoc.relativePath || '';
+            const rel = (firstDoc.relativePath || '').replace(/\\/g, '/');
             return rel ? rel + '/' + firstDoc.fileName : firstDoc.fileName;
         }
     }
@@ -40,7 +40,7 @@ function getNodePath(node: TaskNode): string | null {
 }
 
 export function getFolderKey(folder: TaskFolder): string {
-    return folder.relativePath || folder.name;
+    return (folder.relativePath || folder.name).replace(/\\/g, '/');
 }
 
 function findFolderByKey(tree: TaskFolder, key: string): TaskFolder | null {

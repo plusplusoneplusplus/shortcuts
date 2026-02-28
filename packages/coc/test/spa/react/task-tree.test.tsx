@@ -10,7 +10,7 @@ import { AppProvider } from '../../../src/server/spa/client/react/context/AppCon
 import { QueueProvider } from '../../../src/server/spa/client/react/context/QueueContext';
 import { TaskProvider, useTaskContext } from '../../../src/server/spa/client/react/context/TaskContext';
 import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
-import { TaskTree } from '../../../src/server/spa/client/react/tasks/TaskTree';
+import { TaskTree, getFolderKey } from '../../../src/server/spa/client/react/tasks/TaskTree';
 import type { TaskFolder } from '../../../src/server/spa/client/react/hooks/useTaskTree';
 
 function Wrap({ children }: { children: ReactNode }) {
@@ -324,5 +324,53 @@ describe('TaskTree', () => {
 
         // After tree update, column 1 should still be present (navigation preserved)
         expect(screen.getByTestId('miller-column-1')).toBeTruthy();
+    });
+
+    it('getNodePath normalizes backslashes in relativePath', () => {
+        // When the server sends backslash-separated relativePaths (Windows),
+        // file paths constructed by getNodePath should use forward slashes
+        // to match the keys built by useQueueActivity.
+        const bsTree = makeTree({
+            children: [
+                makeTree({
+                    name: 'coc',
+                    relativePath: 'coc',
+                    children: [
+                        makeTree({
+                            name: 'chat',
+                            relativePath: 'coc\\chat',
+                            singleDocuments: [
+                                { baseName: 'render', fileName: 'render.md', relativePath: 'coc\\chat', isArchived: false },
+                            ],
+                        }),
+                    ],
+                }),
+            ],
+        });
+
+        vi.spyOn(window.history, 'replaceState').mockImplementation(() => {});
+        render(
+            <Wrap>
+                <TaskTree tree={bsTree} commentCounts={{}} wsId="ws1" />
+                <OpenFilePathReader />
+            </Wrap>
+        );
+
+        // Navigate into coc → chat
+        fireEvent.click(screen.getByTestId('task-tree-item-coc'));
+        fireEvent.click(screen.getByTestId('task-tree-item-chat'));
+        // Click the file — its path should use forward slashes
+        fireEvent.click(screen.getByTestId('task-tree-item-render'));
+        expect(screen.getByTestId('open-file-path').textContent).toBe('coc/chat/render.md');
+    });
+
+    it('getFolderKey normalizes backslashes', () => {
+        const folder = makeTree({ name: 'chat', relativePath: 'coc\\chat' });
+        expect(getFolderKey(folder)).toBe('coc/chat');
+    });
+
+    it('getFolderKey falls back to name when relativePath is empty', () => {
+        const folder = makeTree({ name: 'tasks', relativePath: '' });
+        expect(getFolderKey(folder)).toBe('tasks');
     });
 });

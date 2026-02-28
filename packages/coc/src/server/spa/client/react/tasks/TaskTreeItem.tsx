@@ -42,13 +42,13 @@ function getItemFileName(item: TaskNode): string {
 
 function getItemPath(item: TaskNode): string | null {
     if (isTaskDocument(item)) {
-        const rel = item.relativePath || '';
+        const rel = (item.relativePath || '').replace(/\\/g, '/');
         return rel ? rel + '/' + item.fileName : item.fileName;
     }
     if (isTaskDocumentGroup(item)) {
         const firstDoc = item.documents[0];
         if (firstDoc) {
-            const rel = firstDoc.relativePath || '';
+            const rel = (firstDoc.relativePath || '').replace(/\\/g, '/');
             return rel ? rel + '/' + firstDoc.fileName : firstDoc.fileName;
         }
     }
