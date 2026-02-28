@@ -1087,6 +1087,19 @@
     opacity: 0.7;
 }
 
+/* Chat bubble markdown border — scoped to conversation bubbles only */
+.chat-message-content .markdown-body {
+    border: 1px solid #e0e0e0;
+    border-radius: 0.375rem;
+    padding: 0.75rem;
+    background: #ffffff;
+}
+
+.dark .chat-message-content .markdown-body {
+    border-color: #3c3c3c;
+    background: #1e1e1e;
+}
+
 /* Queue task repo/workspace badge */
 .queue-repo-badge {
     display: inline-block;

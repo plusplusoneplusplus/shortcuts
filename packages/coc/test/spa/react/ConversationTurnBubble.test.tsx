@@ -14,7 +14,7 @@ vi.mock('../../../src/server/spa/client/react/hooks/useDisplaySettings', () => (
 
 // Mock markdown renderer to avoid DOM-heavy dependencies
 vi.mock('../../../src/server/spa/client/react/processes/MarkdownView', () => ({
-    MarkdownView: ({ html }: { html: string }) => <div data-testid="markdown-view" dangerouslySetInnerHTML={{ __html: html }} />,
+    MarkdownView: ({ html }: { html: string }) => <div data-testid="markdown-view" className="markdown-body" dangerouslySetInnerHTML={{ __html: html }} />,
 }));
 
 vi.mock('../../../src/server/spa/client/markdown-renderer', () => ({
@@ -116,6 +116,12 @@ describe('ConversationTurnBubble — semantic hooks', () => {
         const { container } = render(<ConversationTurnBubble turn={makeTurn()} />);
         const content = container.querySelector('.chat-message-content');
         expect(content).toBeTruthy();
+    });
+
+    it('nests .markdown-body inside .chat-message-content for border styling', () => {
+        const { container } = render(<ConversationTurnBubble turn={makeTurn()} />);
+        const md = container.querySelector('.chat-message-content .markdown-body');
+        expect(md).toBeTruthy();
     });
 
     // --- bubble-copy-btn ---
