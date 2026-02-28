@@ -130,6 +130,8 @@ export interface ConversationTurn {
     toolCalls?: ToolCall[];
     /** Chronological execution events (content chunks + tool lifecycle) */
     timeline: TimelineItem[];
+    /** Base64 data-URL strings for user-attached images */
+    images?: string[];
 }
 
 /**
@@ -144,6 +146,8 @@ export interface SerializedConversationTurn {
     toolCalls?: SerializedToolCall[];
     /** Chronological execution events (timestamps as ISO strings) */
     timeline: SerializedTimelineItem[];
+    /** Base64 data-URL strings for user-attached images */
+    images?: string[];
 }
 
 /**
@@ -527,7 +531,8 @@ export function serializeProcess(process: AIProcess & Partial<TrackedProcessFiel
                         reason: item.toolCall.permissionResult.reason
                     } : undefined
                 } : undefined
-            }))
+            })),
+            images: turn.images
         }))
     };
 }
@@ -614,7 +619,8 @@ export function deserializeProcess(serialized: SerializedAIProcess): AIProcess {
                         reason: item.toolCall.permissionResult.reason
                     } : undefined
                 } : undefined
-            }))
+            })),
+            images: turn.images
         }))
     };
 }

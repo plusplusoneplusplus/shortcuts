@@ -7,7 +7,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
-import { parseDataUrl, saveImagesToTempFiles, cleanupTempDir } from '../src/image-utils';
+import { parseDataUrl, saveImagesToTempFiles, cleanupTempDir, isImageDataUrl } from '../src/image-utils';
 
 // ============================================================================
 // Helpers
@@ -138,5 +138,35 @@ describe('cleanupTempDir', () => {
 
     it('should not throw for a non-existent path', () => {
         expect(() => cleanupTempDir('/tmp/does-not-exist-12345')).not.toThrow();
+    });
+});
+
+// ============================================================================
+// isImageDataUrl
+// ============================================================================
+
+describe('isImageDataUrl', () => {
+    it('should return true for valid PNG data URL', () => {
+        expect(isImageDataUrl(PNG_DATA_URL)).toBe(true);
+    });
+
+    it('should return true for valid JPEG data URL', () => {
+        expect(isImageDataUrl(JPEG_DATA_URL)).toBe(true);
+    });
+
+    it('should return false for text data URL', () => {
+        expect(isImageDataUrl('data:text/plain;base64,SGVsbG8=')).toBe(false);
+    });
+
+    it('should return false for empty string', () => {
+        expect(isImageDataUrl('')).toBe(false);
+    });
+
+    it('should return false for plain URL', () => {
+        expect(isImageDataUrl('https://example.com/image.png')).toBe(false);
+    });
+
+    it('should return false for truncated data URL with no payload', () => {
+        expect(isImageDataUrl('data:image/png;base64,')).toBe(false);
     });
 });

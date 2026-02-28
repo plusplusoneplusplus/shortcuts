@@ -55,6 +55,14 @@ export function saveImagesToTempFiles(
     return { tempDir, attachments };
 }
 
+/**
+ * Fast check whether a string is a base64 image data URL.
+ * Unlike `parseDataUrl`, this does not decode the buffer — O(1) regex test only.
+ */
+export function isImageDataUrl(value: string): boolean {
+    return /^data:image\/[\w+]+;base64,.+/.test(value);
+}
+
 /** Best-effort cleanup of a temp directory and its contents. */
 export function cleanupTempDir(tempDir: string): void {
     try {

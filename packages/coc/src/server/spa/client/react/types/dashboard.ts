@@ -37,6 +37,8 @@ export interface ClientConversationTurn {
     streaming?: boolean;
     toolCalls?: ClientToolCall[];
     timeline: ClientTimelineItem[];
+    /** Base64 data-URL strings for user-attached images */
+    images?: string[];
 }
 
 /** Cached conversation data for a historical process. */
