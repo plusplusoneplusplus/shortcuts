@@ -158,6 +158,9 @@ export class CLITaskExecutor implements TaskExecutor {
         };
 
         // Store initial user turn immediately so it survives page refresh
+        const payloadImages = Array.isArray((task.payload as any)?.images)
+            ? (task.payload as any).images.filter((img: unknown) => typeof img === 'string')
+            : undefined;
         const initialTurns: ConversationTurn[] = [
             {
                 role: 'user',
@@ -165,6 +168,7 @@ export class CLITaskExecutor implements TaskExecutor {
                 timestamp: process.startTime,
                 turnIndex: 0,
                 timeline: [],
+                images: payloadImages?.length > 0 ? payloadImages : undefined,
             },
         ];
         process.conversationTurns = initialTurns;

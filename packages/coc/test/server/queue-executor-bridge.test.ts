@@ -325,6 +325,72 @@ describe('CLITaskExecutor', () => {
             const addedProcess = (store.addProcess as any).mock.calls[0][0];
             expect(addedProcess.fullPrompt).toBe('Chat');
         });
+
+        it('should persist images in the initial user conversation turn', async () => {
+            const executor = new CLITaskExecutor(store);
+            const images = ['data:image/png;base64,aaaa', 'data:image/jpeg;base64,bbbb'];
+
+            const task: QueuedTask = {
+                id: 'chat-img-1',
+                type: 'chat',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: { prompt: 'What is in this image?', images },
+                config: {},
+                displayName: 'Chat',
+            };
+
+            await executor.execute(task);
+
+            const addedProcess = (store.addProcess as any).mock.calls[0][0];
+            expect(addedProcess.conversationTurns).toHaveLength(1);
+            expect(addedProcess.conversationTurns[0].role).toBe('user');
+            expect(addedProcess.conversationTurns[0].images).toEqual(images);
+        });
+
+        it('should not set images on user turn when payload has no images', async () => {
+            const executor = new CLITaskExecutor(store);
+
+            const task: QueuedTask = {
+                id: 'chat-img-2',
+                type: 'chat',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: { prompt: 'Hello' },
+                config: {},
+                displayName: 'Chat',
+            };
+
+            await executor.execute(task);
+
+            const addedProcess = (store.addProcess as any).mock.calls[0][0];
+            expect(addedProcess.conversationTurns[0].images).toBeUndefined();
+        });
+
+        it('should filter out non-string values from payload images', async () => {
+            const executor = new CLITaskExecutor(store);
+
+            const task: QueuedTask = {
+                id: 'chat-img-3',
+                type: 'chat',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: { prompt: 'Check these', images: ['data:image/png;base64,ok', 42, null, 'data:image/jpeg;base64,fine'] },
+                config: {},
+                displayName: 'Chat',
+            };
+
+            await executor.execute(task);
+
+            const addedProcess = (store.addProcess as any).mock.calls[0][0];
+            expect(addedProcess.conversationTurns[0].images).toEqual([
+                'data:image/png;base64,ok',
+                'data:image/jpeg;base64,fine',
+            ]);
+        });
     });
 
     // ========================================================================

@@ -319,9 +319,13 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId }: Re
             setChatTaskId(newTaskId);
             setTask(body.task ?? null);
             location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/chat/' + encodeURIComponent(newTaskId);
+            const sentImages = initialImagePaste.images.length > 0
+                ? [...initialImagePaste.images]
+                : undefined;
             const userTurn: ClientConversationTurn = {
                 role: 'user', content: prompt,
                 timestamp: new Date().toISOString(), timeline: [],
+                images: sentImages,
             };
             const assistantPlaceholder: ClientConversationTurn = {
                 role: 'assistant', content: '',
@@ -352,9 +356,12 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId }: Re
         setError(null);
 
         const timestamp = new Date().toISOString();
+        const sentFollowUpImages = followUpImagePaste.images.length > 0
+            ? [...followUpImagePaste.images]
+            : undefined;
         setTurnsAndCache(prev => ([
             ...prev,
-            { role: 'user', content, timestamp, timeline: [] },
+            { role: 'user', content, timestamp, timeline: [], images: sentFollowUpImages },
             { role: 'assistant', content: '', timestamp, streaming: true, timeline: [] },
         ]));
 

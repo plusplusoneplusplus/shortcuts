@@ -516,6 +516,20 @@ describe('RepoChatTab', () => {
             );
             expect(bodySection).toContain(': undefined');
         });
+
+        it('includes images in local user turn for handleStartChat', () => {
+            // After sending, the optimistic user turn should carry the attached images
+            const handleStartChat = source.substring(source.indexOf('const handleStartChat'));
+            expect(handleStartChat).toContain('sentImages');
+            expect(handleStartChat).toContain('images: sentImages');
+        });
+
+        it('includes images in local user turn for sendFollowUp', () => {
+            // After sending a follow-up, the optimistic user turn should carry images
+            const sendFollowUp = source.substring(source.indexOf('const sendFollowUp'));
+            expect(sendFollowUp).toContain('sentFollowUpImages');
+            expect(sendFollowUp).toContain('images: sentFollowUpImages');
+        });
     });
 
     describe('real-time queue updates', () => {
