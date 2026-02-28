@@ -644,6 +644,55 @@ describe('GenerateTaskDialog', () => {
         expect(selectAfter.value).toBe('gpt-4');
     });
 
+    // ── depth selector tests ────────────────────────────────────────────────
+
+    it('renders depth selector with default Deep', async () => {
+        await act(async () => { renderDialog(); });
+        const select = document.getElementById('gen-task-depth') as HTMLSelectElement;
+        expect(select).toBeDefined();
+        expect(select).not.toBeNull();
+        expect(select.value).toBe('deep');
+    });
+
+    it('submit sends selected depth in enqueue call', async () => {
+        const enqueueSpy = vi.fn();
+        mockUseQueueTaskGeneration.mockReturnValue(makeHookReturn({ enqueue: enqueueSpy }));
+
+        await act(async () => { renderDialog(); });
+
+        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
+        fireEvent.change(textarea, { target: { value: 'hello' } });
+
+        const depthSelect = document.getElementById('gen-task-depth') as HTMLSelectElement;
+        fireEvent.change(depthSelect, { target: { value: 'normal' } });
+
+        await act(async () => {
+            fireEvent.click(screen.getByText('Generate'));
+        });
+
+        expect(enqueueSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ depth: 'normal' }),
+        );
+    });
+
+    it('submit sends deep depth by default', async () => {
+        const enqueueSpy = vi.fn();
+        mockUseQueueTaskGeneration.mockReturnValue(makeHookReturn({ enqueue: enqueueSpy }));
+
+        await act(async () => { renderDialog(); });
+
+        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
+        fireEvent.change(textarea, { target: { value: 'hello' } });
+
+        await act(async () => {
+            fireEvent.click(screen.getByText('Generate'));
+        });
+
+        expect(enqueueSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ depth: 'deep' }),
+        );
+    });
+
     // ── image paste tests ────────────────────────────────────────────────────
 
     it('renders image previews when images are present', async () => {

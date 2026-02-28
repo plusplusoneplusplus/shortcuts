@@ -23,6 +23,7 @@ vi.mock('fs', async (importOriginal) => {
         ...actual,
         existsSync: vi.fn(actual.existsSync),
         readFileSync: vi.fn(actual.readFileSync),
+        mkdirSync: vi.fn(),
     };
 });
 
@@ -46,6 +47,7 @@ const sdkMocks = createMockSDKService();
 const { mockSendMessage, mockIsAvailable, mockSendFollowUp, mockCanResumeSession } = sdkMocks;
 
 const mockExecutePipeline = vi.fn();
+const mockGatherFeatureContext = vi.fn();
 
 vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@plusplusoneplusplus/pipeline-core')>();
@@ -53,6 +55,7 @@ vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
         ...actual,
         getCopilotSDKService: () => sdkMocks.service,
         executePipeline: (...args: any[]) => mockExecutePipeline(...args),
+        gatherFeatureContext: (...args: any[]) => mockGatherFeatureContext(...args),
     };
 });
 
@@ -927,6 +930,122 @@ describe('CLITaskExecutor', () => {
                 existsSyncMock.mockReset();
                 readFileSyncMock.mockReset();
             });
+        });
+    });
+
+    // ========================================================================
+    // Task Generation — enriched prompt written to store
+    // ========================================================================
+
+    describe('task-generation prompt store update', () => {
+        beforeEach(() => {
+            mockGatherFeatureContext.mockResolvedValue({
+                description: 'Feature description',
+                planContent: 'Plan content',
+                specContent: 'Spec content',
+                relatedFiles: [],
+            });
+        });
+
+        afterEach(() => {
+            mockGatherFeatureContext.mockReset();
+        });
+
+        it('should update process store with enriched prompt for deep mode', async () => {
+            const executor = new CLITaskExecutor(store);
+
+            const task: QueuedTask = {
+                id: 'task-gen-deep',
+                type: 'task-generation',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: {
+                    kind: 'task-generation' as const,
+                    workingDirectory: '/workspace',
+                    prompt: 'Add retry logic',
+                    mode: 'from-feature',
+                    depth: 'deep',
+                },
+                config: { timeoutMs: 30000 },
+                displayName: 'Generate task',
+            };
+
+            await executor.execute(task);
+
+            const processId = 'queue_task-gen-deep';
+            const process = await store.getProcess(processId);
+            // The enriched prompt should contain go-deep prefix
+            expect(process?.fullPrompt).toContain('Use go-deep skill when available');
+            // The enriched prompt should contain the user ask
+            expect(process?.fullPrompt).toContain('Add retry logic');
+            // The initial conversation turn should also be updated
+            expect(process?.conversationTurns?.[0]?.content).toContain('Use go-deep skill when available');
+            // The prompt preview should be updated (not the raw prompt)
+            expect(process?.promptPreview).not.toBe('Add retry logic');
+        });
+
+        it('should update process store with enriched prompt for normal mode', async () => {
+            const executor = new CLITaskExecutor(store);
+
+            const task: QueuedTask = {
+                id: 'task-gen-normal',
+                type: 'task-generation',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: {
+                    kind: 'task-generation' as const,
+                    workingDirectory: '/workspace',
+                    prompt: 'Add retry logic',
+                    mode: 'from-feature',
+                    depth: 'normal',
+                },
+                config: { timeoutMs: 30000 },
+                displayName: 'Generate task',
+            };
+
+            await executor.execute(task);
+
+            const processId = 'queue_task-gen-normal';
+            const process = await store.getProcess(processId);
+            // Normal mode should NOT contain go-deep prefix
+            expect(process?.fullPrompt).not.toContain('Use go-deep skill when available');
+            // But should contain the enriched content (feature context)
+            expect(process?.fullPrompt).toContain('Add retry logic');
+            expect(process?.fullPrompt).toContain('Output Location Requirement');
+            // The initial conversation turn should also be updated
+            expect(process?.conversationTurns?.[0]?.content).toContain('Output Location Requirement');
+        });
+
+        it('should update process store for simple task generation (no from-feature)', async () => {
+            const executor = new CLITaskExecutor(store);
+
+            const task: QueuedTask = {
+                id: 'task-gen-simple',
+                type: 'task-generation',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: {
+                    kind: 'task-generation' as const,
+                    workingDirectory: '/workspace',
+                    prompt: 'Create a new test file',
+                },
+                config: { timeoutMs: 30000 },
+                displayName: 'Generate task',
+            };
+
+            await executor.execute(task);
+
+            const processId = 'queue_task-gen-simple';
+            const process = await store.getProcess(processId);
+            // Enriched prompt should differ from the raw user text
+            expect(process?.fullPrompt).toContain('Create a new test file');
+            // Should have output location directive (uses OS path separator)
+            expect(process?.fullPrompt).toMatch(/[.\\/]vscode[.\\/]tasks/);
+            // Conversation turn updated
+            expect(process?.conversationTurns?.[0]?.content).toBe(process?.fullPrompt);
         });
     });
 

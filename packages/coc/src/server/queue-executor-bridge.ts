@@ -697,6 +697,25 @@ export class CLITaskExecutor implements TaskExecutor {
             aiPrompt = buildCreateTaskPrompt(payload.prompt, resolvedTarget);
         }
 
+        // Update process store with the actual enriched prompt (replaces raw user text)
+        const processId = `queue_${task.id}`;
+        const enrichedPreview = aiPrompt.length > 80 ? aiPrompt.substring(0, 77) + '...' : aiPrompt;
+        try {
+            await this.store.updateProcess(processId, {
+                fullPrompt: aiPrompt,
+                promptPreview: enrichedPreview,
+            });
+            const existing = await this.store.getProcess(processId);
+            if (existing?.conversationTurns?.[0]) {
+                existing.conversationTurns[0].content = aiPrompt;
+                await this.store.updateProcess(processId, {
+                    conversationTurns: existing.conversationTurns,
+                });
+            }
+        } catch {
+            // Non-fatal: store may be a stub
+        }
+
         return this.executeWithAI(task, aiPrompt);
     }
 

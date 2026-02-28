@@ -145,8 +145,8 @@ export interface TaskGenerationPayload {
     name?: string;
     /** AI model override */
     model?: string;
-    /** Generation depth: simple = buildCreateFromFeaturePrompt, deep = buildDeepModePrompt */
-    depth?: 'simple' | 'deep';
+    /** Generation depth: simple/normal = buildCreateFromFeaturePrompt, deep = buildDeepModePrompt */
+    depth?: 'simple' | 'normal' | 'deep';
     /** When present, activates feature-context mode */
     mode?: 'from-feature';
     /** Optional base64 data URL images to attach as visual context */

@@ -55,6 +55,7 @@ export function GenerateTaskDialog({
     const [targetFolder, setTargetFolder] = useState(initialFolder);
     const [model, setModel] = useState('');
     const [priority, setPriority] = useState<'high' | 'normal' | 'low'>('normal');
+    const [depth, setDepth] = useState<'deep' | 'normal'>('deep');
 
     useEffect(() => {
         if (savedModel && !model) setModel(savedModel);
@@ -116,11 +117,11 @@ export function GenerateTaskDialog({
             targetFolder: targetFolder || undefined,
             model: model || undefined,
             mode: 'from-feature',
-            depth: 'deep',
+            depth,
             priority,
             images: images.length > 0 ? images : undefined,
         });
-    }, [prompt, name, targetFolder, model, priority, images, enqueue]);
+    }, [prompt, name, targetFolder, model, depth, priority, images, enqueue]);
 
     const isSubmitting = status === 'submitting';
     const isQueued = status === 'queued';
@@ -281,6 +282,23 @@ export function GenerateTaskDialog({
                         <option value="high">High</option>
                         <option value="normal">Normal</option>
                         <option value="low">Low</option>
+                    </select>
+                </div>
+
+                {/* Depth (optional) */}
+                <div className="flex flex-col gap-1">
+                    <label className="text-xs text-[#616161] dark:text-[#999]">
+                        Depth <span className="text-[#848484]">(optional)</span>
+                    </label>
+                    <select
+                        id="gen-task-depth"
+                        className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
+                        value={depth}
+                        onChange={e => setDepth(e.target.value as 'deep' | 'normal')}
+                        disabled={isSubmitting || isQueued}
+                    >
+                        <option value="deep">Deep (uses go-deep skill)</option>
+                        <option value="normal">Normal</option>
                     </select>
                 </div>
 
