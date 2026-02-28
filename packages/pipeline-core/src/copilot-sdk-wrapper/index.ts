@@ -54,6 +54,7 @@ export {
     getCopilotSDKService,
     resetCopilotSDKService,
     SendFollowUpOptions,
+    tryConvertImageFileToDataUrl,
 } from './copilot-sdk-service';
 
 // MCP Config Loader
