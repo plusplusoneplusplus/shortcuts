@@ -35,7 +35,7 @@ import {
     TaskExecutionResult,
 } from '@plusplusoneplusplus/pipeline-core';
 import type { ProcessStore, AIProcess } from '@plusplusoneplusplus/pipeline-core';
-import { CLITaskExecutor, createQueueExecutorBridge } from '../../src/server/queue-executor-bridge';
+import { CLITaskExecutor, createQueueExecutorBridge, defaultIsExclusive } from '../../src/server/queue-executor-bridge';
 import { createMockSDKService } from '../helpers/mock-sdk-service';
 import { createMockProcessStore, createCompletedProcessWithSession } from '../helpers/mock-process-store';
 
@@ -4673,5 +4673,197 @@ job:
                 promptPreview: 'Run pipeline: my-named-pipeline',
             }));
         });
+    });
+});
+
+// ============================================================================
+// Shared/Exclusive Concurrency Policy
+// ============================================================================
+
+describe('defaultIsExclusive', () => {
+    it.each([
+        { type: 'follow-prompt', expected: true },
+        { type: 'resolve-comments', expected: true },
+        { type: 'run-pipeline', expected: true },
+        { type: 'custom', expected: true },
+        { type: 'task-generation', expected: false },
+        { type: 'ai-clarification', expected: false },
+        { type: 'code-review', expected: false },
+    ])('should classify "$type" as exclusive=$expected', ({ type, expected }) => {
+        const task = { type } as QueuedTask;
+        expect(defaultIsExclusive(task)).toBe(expected);
+    });
+
+    it('should classify unknown task types as exclusive', () => {
+        const task = { type: 'unknown-future-type' } as QueuedTask;
+        expect(defaultIsExclusive(task)).toBe(true);
+    });
+});
+
+describe('createQueueExecutorBridge dual-limiter options', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+
+    beforeEach(() => {
+        store = createMockProcessStore();
+        mockSendMessage.mockReset();
+        mockIsAvailable.mockReset();
+        mockIsAvailable.mockResolvedValue({ available: true });
+        mockSendMessage.mockResolvedValue({
+            success: true,
+            response: 'AI response',
+            sessionId: 'sess-dual',
+        });
+    });
+
+    it('should use defaults (sharedConcurrency=5, exclusiveConcurrency=1) when no options given', () => {
+        const queueManager = new TaskQueueManager();
+        const { executor } = createQueueExecutorBridge(queueManager, store, {});
+        expect(executor.getSharedConcurrency()).toBe(5);
+        expect(executor.getExclusiveConcurrency()).toBe(1);
+        executor.dispose();
+    });
+
+    it('should pass explicit sharedConcurrency and exclusiveConcurrency', () => {
+        const queueManager = new TaskQueueManager();
+        const { executor } = createQueueExecutorBridge(queueManager, store, {
+            sharedConcurrency: 3,
+            exclusiveConcurrency: 2,
+        });
+        expect(executor.getSharedConcurrency()).toBe(3);
+        expect(executor.getExclusiveConcurrency()).toBe(2);
+        executor.dispose();
+    });
+
+    it('should accept a custom isExclusive callback', async () => {
+        const queueManager = new TaskQueueManager();
+        const customIsExclusive = vi.fn().mockReturnValue(false);
+        const { executor } = createQueueExecutorBridge(queueManager, store, {
+            isExclusive: customIsExclusive,
+            autoStart: false,
+        });
+
+        queueManager.enqueue({
+            type: 'follow-prompt',
+            priority: 'normal',
+            payload: { prompt: 'test' },
+            config: {},
+            displayName: 'Custom test',
+        });
+
+        executor.start();
+        await delay(200);
+
+        expect(customIsExclusive).toHaveBeenCalled();
+        executor.dispose();
+    });
+
+    it('should allow a shared task to start while an exclusive task is running', async () => {
+        const queueManager = new TaskQueueManager();
+
+        // Make the exclusive task take 300ms, the shared task finishes quickly
+        let exclusiveResolve: () => void;
+        const exclusivePromise = new Promise<void>(resolve => { exclusiveResolve = resolve; });
+        let callCount = 0;
+        mockSendMessage.mockImplementation(async () => {
+            callCount++;
+            if (callCount === 1) {
+                // Exclusive task — slow
+                await exclusivePromise;
+            }
+            return { success: true, response: 'done', sessionId: `sess-${callCount}` };
+        });
+
+        const { executor } = createQueueExecutorBridge(queueManager, store, {
+            sharedConcurrency: 5,
+            exclusiveConcurrency: 1,
+        });
+
+        // Enqueue exclusive task first
+        queueManager.enqueue({
+            type: 'follow-prompt',
+            priority: 'normal',
+            payload: { prompt: 'exclusive task' },
+            config: {},
+            displayName: 'Exclusive',
+        });
+
+        // Wait for it to start processing
+        await delay(50);
+
+        // Enqueue shared task
+        const sharedCompleted = new Promise<void>(resolve => {
+            const origListener = executor.listenerCount('taskCompleted');
+            executor.on('taskCompleted', (task: QueuedTask) => {
+                if (task.type === 'ai-clarification') { resolve(); }
+            });
+        });
+        queueManager.enqueue({
+            type: 'ai-clarification',
+            priority: 'normal',
+            payload: { prompt: 'shared task' },
+            config: {},
+            displayName: 'Shared',
+        });
+
+        // The shared task should complete even though exclusive is still running
+        await sharedCompleted;
+
+        // Exclusive is still running
+        expect(queueManager.getRunning().some(t => t.type === 'follow-prompt')).toBe(true);
+
+        // Now let the exclusive task finish
+        exclusiveResolve!();
+        await delay(200);
+
+        executor.dispose();
+    });
+
+    it('should serialise two exclusive tasks', async () => {
+        const queueManager = new TaskQueueManager();
+        const startTimes: number[] = [];
+        const endTimes: number[] = [];
+
+        mockSendMessage.mockImplementation(async () => {
+            startTimes.push(Date.now());
+            await delay(100);
+            endTimes.push(Date.now());
+            return { success: true, response: 'done', sessionId: 'sess-ex' };
+        });
+
+        const { executor } = createQueueExecutorBridge(queueManager, store, {
+            sharedConcurrency: 5,
+            exclusiveConcurrency: 1,
+        });
+
+        let completedCount = 0;
+        const bothCompleted = new Promise<void>(resolve => {
+            executor.on('taskCompleted', () => {
+                completedCount++;
+                if (completedCount >= 2) { resolve(); }
+            });
+        });
+
+        queueManager.enqueue({
+            type: 'follow-prompt',
+            priority: 'normal',
+            payload: { prompt: 'exclusive 1' },
+            config: {},
+            displayName: 'Exclusive 1',
+        });
+        queueManager.enqueue({
+            type: 'follow-prompt',
+            priority: 'normal',
+            payload: { prompt: 'exclusive 2' },
+            config: {},
+            displayName: 'Exclusive 2',
+        });
+
+        await bothCompleted;
+
+        // Second task must have started after first task ended
+        expect(startTimes).toHaveLength(2);
+        expect(startTimes[1]).toBeGreaterThanOrEqual(endTimes[0]);
+
+        executor.dispose();
     });
 });

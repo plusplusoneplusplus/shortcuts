@@ -58,8 +58,14 @@ import { ImageBlobStore } from './image-blob-store';
 // ============================================================================
 
 export interface QueueExecutorBridgeOptions {
-    /** Maximum concurrent task executions (default: 1) */
+    /** Maximum concurrent task executions (default: 1). Deprecated: use sharedConcurrency/exclusiveConcurrency. */
     maxConcurrency?: number;
+    /** Concurrency limit for shared (read-only) tasks (default: 5) */
+    sharedConcurrency?: number;
+    /** Concurrency limit for exclusive (write) tasks (default: 1) */
+    exclusiveConcurrency?: number;
+    /** Policy callback to classify a task as exclusive. Default: defaultIsExclusive */
+    isExclusive?: (task: QueuedTask) => boolean;
     /** Whether to auto-start processing (default: true) */
     autoStart?: boolean;
     /** Whether to auto-approve AI permission requests (default: true) */
@@ -1066,6 +1072,25 @@ export class CLITaskExecutor implements TaskExecutor {
 }
 
 // ============================================================================
+// Default Task Classification Policy
+// ============================================================================
+
+/** Task types that are safe to run concurrently (read-only, stateless, short-lived). */
+const SHARED_TASK_TYPES: ReadonlySet<string> = new Set([
+    'task-generation',
+    'ai-clarification',
+    'code-review',
+]);
+
+/**
+ * Default policy: tasks whose type is in SHARED_TASK_TYPES run as shared
+ * (concurrent); everything else is exclusive (serialised).
+ */
+export function defaultIsExclusive(task: QueuedTask): boolean {
+    return !SHARED_TASK_TYPES.has(task.type);
+}
+
+// ============================================================================
 // Bridge Factory
 // ============================================================================
 
@@ -1089,7 +1114,9 @@ export function createQueueExecutorBridge(
     });
 
     const executor = createQueueExecutor(queueManager, taskExecutor, {
-        maxConcurrency: options.maxConcurrency ?? 1,
+        sharedConcurrency: options.sharedConcurrency ?? 5,
+        exclusiveConcurrency: options.exclusiveConcurrency ?? 1,
+        isExclusive: options.isExclusive ?? defaultIsExclusive,
         autoStart: options.autoStart !== false,
     });
 

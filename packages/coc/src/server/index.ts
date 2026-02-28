@@ -163,7 +163,6 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         : DEFAULT_AI_TIMEOUT_MS;
 
     const bridge = new MultiRepoQueueExecutorBridge(registry, store, {
-        maxConcurrency: 1,
         autoStart: true,
         approvePermissions: true,
         dataDir,
@@ -540,7 +539,7 @@ export type { WSQueueSnapshot as QueueSnapshot } from '@plusplusoneplusplus/coc-
 export type { RouterOptions } from '@plusplusoneplusplus/coc-server';
 export { generateDashboardHtml } from './spa';
 export type { DashboardOptions } from './spa';
-export { CLITaskExecutor, createQueueExecutorBridge } from './queue-executor-bridge';
+export { CLITaskExecutor, createQueueExecutorBridge, defaultIsExclusive } from './queue-executor-bridge';
 export type { QueueExecutorBridgeOptions, QueueExecutorBridge } from './queue-executor-bridge';
 export { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 export { MultiRepoQueuePersistence } from './multi-repo-queue-persistence';
