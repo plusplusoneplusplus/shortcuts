@@ -1,0 +1,531 @@
+themes:
+  - theme: shortcut-group-management
+    description: >-
+      Allows users to organize files and folders into named logical groups for
+      quick access. Supports nested subgroups, icons, and drag-and-drop
+      reordering within the VS Code sidebar.
+    hints:
+      - LogicalGroup
+      - logicalGroups
+      - shortcuts.yaml
+      - FolderShortcutItem
+      - LogicalGroupItem
+  - theme: inline-markdown-review
+    description: >-
+      Provides a custom editor for adding inline comments and annotations to
+      Markdown files. Comments are anchored to content fingerprints so they
+      survive file edits.
+    hints:
+      - ReviewEditorViewProvider
+      - CommentsManager
+      - CommentAnchor
+      - markdown-comments
+      - PromptGenerator
+  - theme: git-diff-review
+    description: >-
+      Enables reviewing git changes with inline comments categorized by type
+      (bug, suggestion, question). Comments persist on diffs and can be used to
+      generate AI review prompts.
+    hints:
+      - GitDiffReviewEditorProvider
+      - DiffCommentsManager
+      - git-diff-comments
+      - DiffCommentsTreeDataProvider
+  - theme: ai-code-review-against-rules
+    description: >-
+      Reviews commits or pending changes against user-defined coding rules
+      stored in Markdown files. Loads rule files from .github/cr-rules/ and
+      sends them with diffs to an AI for structured feedback.
+    hints:
+      - CodeReviewService
+      - RulesLoader
+      - PromptBuilder
+      - code-review
+      - cr-rules
+  - theme: yaml-pipeline-execution
+    description: >-
+      Allows users to define and execute AI-powered data processing pipelines
+      via YAML. Supports CSV input, parallel map steps, optional filter phases,
+      and multiple reduce strategies.
+    hints:
+      - PipelineManager
+      - pipeline.yaml
+      - csv-reader
+      - filter-executor
+      - PipelinesTreeDataProvider
+  - theme: map-reduce-ai-framework
+    description: >-
+      A parallel AI processing framework that splits workloads across multiple
+      AI calls and aggregates results. Used as the execution engine beneath YAML
+      pipelines and code-review jobs.
+    hints:
+      - map-reduce
+      - executor.ts
+      - splitters
+      - reducers
+      - concurrency-limiter
+  - theme: ai-process-queue
+    description: >-
+      Manages a queue of AI tasks with per-repo isolation, status tracking, and
+      real-time progress in the VS Code status bar and tree view. Supports
+      cancellation and retry.
+    hints:
+      - AIQueueService
+      - TaskQueueManager
+      - queue-executor
+      - AIProcessTreeDataProvider
+      - ai-queue-status-bar
+  - theme: copilot-sdk-integration
+    description: >-
+      Wraps the GitHub Copilot SDK to provide session management, session
+      pooling, MCP server control, and permission handling for all AI features
+      in the extension.
+    hints:
+      - CopilotSDKService
+      - session-pool
+      - copilot-sdk-wrapper
+      - SendMessageOptions
+      - MCP
+  - theme: interactive-ai-sessions
+    description: >-
+      Enables long-running, multi-turn conversations with AI that can be
+      monitored and resumed. Sessions are tracked in a tree view and support
+      streaming output.
+    hints:
+      - interactive-session-manager
+      - InteractiveSessionManager
+      - interactive-session-tree-item
+      - ai-session-resume
+  - theme: ai-process-persistence
+    description: >-
+      Persists AI process history across VS Code restarts using the Memento API.
+      Processes are isolated per workspace and can be viewed, removed, or
+      cleared via a dedicated tree view.
+    hints:
+      - AIProcessManager
+      - mock-ai-process-manager
+      - workspaceState
+      - ai-process-document-provider
+      - process-monitor
+  - theme: deep-wiki-generation
+    description: >-
+      Auto-generates comprehensive multi-page wikis for any codebase using a
+      five-phase pipeline: discovery, consolidation, per-component analysis,
+      article writing, and static website output.
+    hints:
+      - deep-wiki
+      - ComponentGraph
+      - ComponentAnalysis
+      - website-generator
+      - deep-wiki generate
+  - theme: codebase-discovery-engine
+    description: >-
+      Analyzes a repository structure using AI to produce a component graph
+      capturing modules, dependencies, and architectural relationships. Supports
+      large repos via multi-round iterative discovery.
+    hints:
+      - discovery-session
+      - large-repo-handler
+      - ComponentGraph
+      - ai-discovery-engine
+      - response-parser
+  - theme: wiki-static-website-output
+    description: >-
+      Generates a browsable static HTML website from wiki articles, with
+      navigation, theming, and search. Used as the final output phase of the
+      deep-wiki generator.
+    hints:
+      - website-generator
+      - website-styles
+      - website-client-script
+      - website-data
+      - '--skip-website'
+  - theme: incremental-cache-invalidation
+    description: >-
+      Uses git commit hashes to cache expensive AI outputs (discovery, analysis,
+      articles) so unchanged components are not reprocessed on re-runs.
+    hints:
+      - cache
+      - git-hash
+      - discovery-cache
+      - analysis-cache
+      - article-cache
+  - theme: coc-cli-pipeline-runner
+    description: >-
+      A standalone CLI (coc) that executes YAML-based AI pipelines outside of VS
+      Code, with commands for run, validate, list, and serve.
+    hints:
+      - coc run
+      - coc validate
+      - coc list
+      - Commander
+      - packages/coc
+  - theme: ai-execution-dashboard
+    description: >-
+      A web server and SPA dashboard for tracking AI process execution across
+      multiple VS Code workspaces in real time. Provides REST API, WebSocket,
+      and SSE streaming.
+    hints:
+      - coc serve
+      - ProcessStore
+      - api-handler
+      - websocket
+      - SPA
+  - theme: multi-workspace-process-tracking
+    description: >-
+      Allows multiple VS Code workspaces to submit AI processes to a shared
+      server with workspace-scoped filtering and deterministic workspace
+      identity via SHA-256 hash.
+    hints:
+      - WorkspaceInfo
+      - workspace-identity
+      - ServerClient
+      - FileProcessStore
+      - WorkspaceAware
+  - theme: mcp-server-configuration
+    description: >-
+      Loads and merges MCP server configuration from ~/.copilot/mcp-config.json,
+      supporting both local stdio and remote HTTP/SSE server types for tool
+      augmentation.
+    hints:
+      - mcpServers
+      - loadMcpConfig
+      - mcp-config.json
+      - MCPServerConfig
+      - availableTools
+  - theme: git-repository-exploration
+    description: >-
+      Provides a tree view of git commits, branches, staged/unstaged changes,
+      and commit ranges within VS Code. Supports looking up commits and browsing
+      file changes per commit.
+    hints:
+      - git-service
+      - GitCommitItem
+      - branch-service
+      - git-log-service
+      - git-range-service
+  - theme: commit-range-review
+    description: >-
+      Lets users select a range of commits and submit the combined diff for AI
+      review or annotation. Surfaces range items in the git tree view.
+    hints:
+      - git-commit-range-item
+      - git-range-service
+      - GitRangeFileItem
+      - commit-range-review
+  - theme: global-notes
+    description: >-
+      Stores short notes accessible from any workspace, independent of shortcut
+      groups. Notes use a virtual document provider and are persisted in global
+      VS Code storage.
+    hints:
+      - GlobalNotesTreeDataProvider
+      - NoteDocumentProvider
+      - globalNotes
+      - 'shortcuts-note:'
+  - theme: tasks-viewer
+    description: >-
+      Displays a hierarchical task management view that scans .vscode/tasks/ for
+      Markdown files, supports nested directories, and groups related documents
+      (e.g., plan/spec/test) under a single parent.
+    hints:
+      - TaskManager
+      - TaskFolder
+      - TaskFolderItem
+      - tasks-viewer
+      - groupRelatedDocuments
+  - theme: configuration-migration
+    description: >-
+      Automatically migrates shortcut configurations across versions (v1–v4)
+      non-destructively, converting old array formats to logical groups and
+      detecting git roots as base paths.
+    hints:
+      - config-migrations
+      - migrateV1toV2
+      - CURRENT_CONFIG_VERSION
+      - BasePath
+      - migration
+  - theme: base-path-aliases
+    description: >-
+      Allows defining named aliases (e.g., @frontend) for directories or git
+      roots, enabling shortcuts to reference files across multiple repositories
+      with portable paths.
+    hints:
+      - BasePath
+      - basePaths
+      - alias
+      - '@frontend'
+      - resolveBasePath
+  - theme: cloud-sync
+    description: >-
+      Synchronizes shortcuts configuration across devices using VS Code Settings
+      Sync. Supports configurable sync providers, intervals, and manual trigger
+      commands.
+    hints:
+      - sync-manager
+      - SyncProvider
+      - vscode-sync-provider
+      - workspaceShortcuts.sync
+      - cloud-sync
+  - theme: drag-and-drop-reordering
+    description: >-
+      Enables drag-and-drop reordering and moving of items and groups within the
+      shortcuts tree view, including support for git file drag-and-drop.
+    hints:
+      - drag-drop-controller
+      - GitDragDropController
+      - onDidDrop
+      - DragDropController
+  - theme: tree-search-and-filtering
+    description: >-
+      Provides inline search and filtering across the shortcuts tree view and
+      pipeline/task panels, with filter matching utilities shared across
+      providers.
+    hints:
+      - inline-search-provider
+      - FilterableTreeDataProvider
+      - tree-filter-utils
+      - searchFilter
+      - filterItems
+  - theme: keyboard-navigation
+    description: >-
+      Registers keyboard shortcuts and navigation handlers for moving between
+      tree items, opening files, and triggering actions without leaving the
+      keyboard.
+    hints:
+      - keyboard-navigation
+      - registerKeyboardHandlers
+      - keybindings
+      - onKey
+  - theme: theme-and-icon-management
+    description: >-
+      Manages VS Code theme-aware icon selection and centralized icon constants,
+      ensuring correct icons appear in light/dark/high-contrast modes across all
+      tree views.
+    hints:
+      - ThemeManager
+      - tree-icon-utils
+      - ThemeIcon
+      - iconPath
+      - theme-manager
+  - theme: skills-management
+    description: >-
+      Discovers, installs, and invokes reusable AI skill bundles from local or
+      bundled sources. Skills are YAML/Markdown packages that can be executed as
+      pipeline steps.
+    hints:
+      - skill-installer
+      - skill-scanner
+      - bundled-skills-provider
+      - SkillType
+      - skills
+  - theme: bundled-pipeline-templates
+    description: >-
+      Ships pre-built pipeline packages (bug triage, code review checklist, doc
+      generator, multi-agent research) that users can run out of the box without
+      authoring YAML.
+    hints:
+      - bundled-pipelines
+      - bug-triage
+      - code-review-checklist
+      - doc-generator
+      - multi-agent-research
+  - theme: pipeline-filtering-phase
+    description: >-
+      An optional pre-processing phase in YAML pipelines that uses rule-based,
+      AI-based, or hybrid filters to reduce the input set before the expensive
+      map phase.
+    hints:
+      - filter-executor
+      - FilterType
+      - rule filter
+      - ai filter
+      - hybrid filter
+  - theme: pipeline-batch-processing
+    description: >-
+      Allows grouping multiple CSV rows into a single AI call using batchSize,
+      enabling efficient bulk processing with a single prompt returning a JSON
+      array of results.
+    hints:
+      - batchSize
+      - ITEMS
+      - batch
+      - map phase
+      - pipeline batch
+  - theme: ai-input-generation
+    description: >-
+      Generates structured AI prompts and input data from templates, CSV
+      parameters, and contextual metadata for use in pipelines and code-review
+      jobs.
+    hints:
+      - input-generator
+      - prompt-resolver
+      - template.ts
+      - ai-input-generation
+      - PromptBuilder
+  - theme: copilot-cli-invocation
+    description: >-
+      Invokes the GitHub Copilot CLI as a child process or copies prompts to the
+      clipboard as a fallback, bridging the VS Code extension with the Copilot
+      CLI tool.
+    hints:
+      - CopilotCLIInvoker
+      - copilot-cli-invoker
+      - externalTerminal
+      - clipboard
+      - CopilotCLI
+  - theme: job-template-system
+    description: >-
+      Provides reusable job templates that pre-fill AI task parameters and
+      prompts, allowing users to launch common AI workflows from a template
+      picker dialog.
+    hints:
+      - job-template-manager
+      - job-template-types
+      - JobTemplate
+      - queue-job-dialog
+      - job-template-commands
+  - theme: lm-tools-integration
+    description: >-
+      Registers language model tools (via VS Code LM API) that can be called by
+      AI agents, such as resolving review comments programmatically.
+    hints:
+      - lm-tools
+      - register-tools
+      - resolve-comments-tool
+      - LanguageModelTool
+      - lm tool
+  - theme: notification-and-error-handling
+    description: >-
+      Provides centralized user-facing error notifications and status messages
+      with consistent formatting across all extension features.
+    hints:
+      - notification-manager
+      - error-handler
+      - ErrorHandler
+      - showErrorMessage
+      - NotificationManager
+  - theme: file-system-watching
+    description: >-
+      Watches configuration files, pipeline YAML, and task directories for live
+      changes and triggers tree refreshes without requiring manual reload.
+    hints:
+      - file-system-watcher-manager
+      - FileSystemWatcher
+      - onDidChange
+      - watch
+      - '**/*.md'
+  - theme: webview-search-integration
+    description: >-
+      Integrates a webview-based search provider that filters the shortcuts tree
+      in response to user search queries entered in a VS Code search input.
+    hints:
+      - inline-search-provider
+      - WebviewSearchProvider
+      - onSearch
+      - searchFilter
+  - theme: debug-panel
+    description: >-
+      Provides a VS Code panel for inspecting extension internals, configuration
+      state, and diagnostic information to aid in development and
+      troubleshooting.
+    hints:
+      - debug-panel
+      - DebugPanel
+      - debug-config
+      - diagnostics
+  - theme: ai-context-clarification
+    description: >-
+      Allows users to submit contextual questions to AI and receive structured
+      clarifications, tracked as named processes in the AI process manager.
+    hints:
+      - ai-context-clarify
+      - clarify
+      - AIProcessManager
+      - prompt-builder
+      - ai-command-registry
+  - theme: pipeline-core-extraction
+    description: >-
+      A standalone Node.js package (pipeline-core) encapsulating the AI pipeline
+      engine, logger, map-reduce framework, and utilities with no VS Code
+      dependencies, enabling reuse in CLI tools.
+    hints:
+      - pipeline-core
+      - packages/pipeline-core
+      - pure Node.js
+      - no VS Code
+      - TaskQueueManager
+  - theme: process-store-persistence
+    description: >-
+      Provides a file-based process store (~/.coc/) with atomic writes and
+      bounded retention for persisting AI process state outside VS Code across
+      server restarts.
+    hints:
+      - FileProcessStore
+      - ProcessStore
+      - process-store
+      - ~/.coc
+      - atomic write
+  - theme: multi-agent-research-pipeline
+    description: >-
+      A bundled pipeline that orchestrates multiple AI agents to conduct
+      parallel research on a topic and synthesize results into a unified report.
+    hints:
+      - multi-agent-research
+      - bundled-pipelines
+      - multi-agent
+      - parallel research
+      - reduce
+  - theme: wiki-serving
+    description: >-
+      Serves generated wiki websites via the CoC CLI (coc wiki serve), allowing
+      teams to browse auto-generated codebase documentation in a browser.
+    hints:
+      - coc wiki serve
+      - website-generator
+      - interactive-server
+      - deep-wiki serve
+  - theme: large-repo-discovery
+    description: >-
+      Handles repositories with 3000+ files by running multi-round AI discovery:
+      structural scan → per-domain drill-down → merge, to produce a complete
+      component graph without hitting context limits.
+    hints:
+      - large-repo-handler
+      - multi-round
+      - iterative
+      - domain-tagging
+      - LargeRepoHandler
+  - theme: go-deep-skill
+    description: >-
+      A bundled AI skill that performs deep research, planning, and verification
+      on a codebase topic using structured prompt templates (deep-research,
+      deep-plan, deep-verify).
+    hints:
+      - go-deep
+      - SKILL.md
+      - deep-research.prompt
+      - deep-plan.prompt
+      - deep-verify.prompt
+  - theme: pipeline-generator-skill
+    description: >-
+      A bundled AI skill that generates new YAML pipeline definitions from
+      natural language descriptions, using schema references and pattern
+      examples.
+    hints:
+      - pipeline-generator
+      - SKILL.md
+      - schema.md
+      - patterns.md
+      - generate pipeline
+  - theme: coc-server-admin-api
+    description: >-
+      Provides an admin HTTP API for the CoC server with export/import of
+      process data, repository management utilities, and server health/stats
+      endpoints.
+    hints:
+      - admin-handler
+      - export-import-types
+      - repo-utils
+      - api-handler
+      - coc-server
