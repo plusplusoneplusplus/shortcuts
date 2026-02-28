@@ -531,6 +531,12 @@ export {
     FilterResult,
     isCSVSource,
     isGenerateConfig,
+    PipelinePhase,
+    PipelinePhaseStatus,
+    PipelinePhaseEvent,
+    PipelineProgressEvent,
+    PipelinePhaseInfo,
+    PipelineProcessMetadata,
     // Executor
     executePipeline,
     executePipelineWithItems,

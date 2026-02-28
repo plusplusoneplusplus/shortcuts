@@ -24,6 +24,12 @@ export type {
     AIFilterConfig,
     FilterStats,
     FilterResult,
+    PipelinePhase,
+    PipelinePhaseStatus,
+    PipelinePhaseEvent,
+    PipelineProgressEvent,
+    PipelinePhaseInfo,
+    PipelineProcessMetadata,
     // Re-exported from map-reduce
     AIInvoker,
     AIInvokerOptions,
