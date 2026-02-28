@@ -301,13 +301,16 @@ describe('QueuePersistence', () => {
     // ========================================================================
 
     describe('dispose flushes pending write', () => {
-        it('writes immediately on dispose before debounce fires', () => {
+        it('writes immediately on dispose before debounce fires', async () => {
             const persistence = new QueuePersistence(queueManager, dataDir);
 
             queueManager.enqueue(createTestInput({ displayName: 'flush-me' }));
 
             // Dispose immediately — before the 300ms debounce fires
             persistence.dispose();
+
+            // save() is now async; allow microtasks to complete
+            await new Promise(resolve => setImmediate(resolve));
 
             const state = readAnyRepoQueueFile(dataDir);
             expect(state.pending).toHaveLength(1);

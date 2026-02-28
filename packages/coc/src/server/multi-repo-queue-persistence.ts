@@ -13,7 +13,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
-import { PersistedQueueState, computeRepoId, getRepoQueueFilePath } from './queue-persistence';
+import { PersistedQueueState, computeRepoId, getRepoQueueFilePath, sanitizeTaskForPersistence } from './queue-persistence';
 import type { QueuedTask, QueueChangeEvent } from '@plusplusoneplusplus/pipeline-core';
 
 const CURRENT_VERSION = 3;
@@ -85,7 +85,7 @@ export class MultiRepoQueuePersistence {
      * Save the queue state for a specific repo to disk.
      * Deletes the file if the queue and history are empty.
      */
-    save(rootPath: string): void {
+    async save(rootPath: string): Promise<void> {
         const bridgeInstance = this.bridge.getOrCreateBridge(rootPath);
 
         // Access the underlying TaskQueueManager via the registry
@@ -112,13 +112,19 @@ export class MultiRepoQueuePersistence {
         }
 
         const repoId = computeRepoId(rootPath);
+        const sanitizedPending = await Promise.all(
+            [...queued, ...running].map(t => sanitizeTaskForPersistence(t, this.dataDir))
+        );
+        const sanitizedHistory = await Promise.all(
+            history.map(t => sanitizeTaskForPersistence(t, this.dataDir))
+        );
         const state: PersistedQueueState = {
             version: CURRENT_VERSION,
             savedAt: new Date().toISOString(),
             repoRootPath: rootPath,
             repoId,
-            pending: [...queued, ...running],
-            history: history.slice(0, MAX_PERSISTED_HISTORY),
+            pending: sanitizedPending,
+            history: sanitizedHistory.slice(0, MAX_PERSISTED_HISTORY),
             isPaused: queueManager.isRepoPaused(repoId),
         };
 
@@ -133,10 +139,12 @@ export class MultiRepoQueuePersistence {
         // Remove bridge-level listener
         this.bridge.removeListener('queueChange', this.bridgeChangeListener);
 
-        // Flush all pending debounced saves synchronously
+        // Flush all pending debounced saves (fire-and-forget async)
         for (const [rootPath, timer] of this.debounceTimers) {
             clearTimeout(timer);
-            this.save(rootPath);
+            this.save(rootPath).catch(err =>
+                process.stderr.write(`[MultiRepoQueuePersistence] Dispose save failed: ${err}\n`)
+            );
         }
         this.debounceTimers.clear();
         this.dirtyRepos.clear();
@@ -265,7 +273,9 @@ export class MultiRepoQueuePersistence {
         }
         this.debounceTimers.set(rootPath, setTimeout(() => {
             this.debounceTimers.delete(rootPath);
-            this.save(rootPath);
+            this.save(rootPath).catch(err =>
+                process.stderr.write(`[MultiRepoQueuePersistence] Debounced save failed: ${err}\n`)
+            );
         }, DEBOUNCE_MS));
     }
 

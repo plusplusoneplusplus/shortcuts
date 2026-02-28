@@ -18,6 +18,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { TaskQueueManager } from '@plusplusoneplusplus/pipeline-core';
 import type { QueuedTask, QueueChangeEvent } from '@plusplusoneplusplus/pipeline-core';
+import { ImageBlobStore } from './image-blob-store';
 
 // ============================================================================
 // Types
@@ -65,6 +66,29 @@ function getTaskRepoPath(task: QueuedTask): string {
         return payload.workingDirectory;
     }
     return process.cwd();
+}
+
+// ============================================================================
+// Sanitize — externalize images before persisting
+// ============================================================================
+
+/**
+ * Deep-clone a QueuedTask and externalize any `payload.images` to a blob file.
+ * Returns the clone with `images: []`, `imagesFilePath`, and `imagesCount`.
+ * Idempotent: if images are already absent/empty, returns clone unchanged.
+ */
+export async function sanitizeTaskForPersistence(task: QueuedTask, dataDir: string): Promise<QueuedTask> {
+    const clone: QueuedTask = JSON.parse(JSON.stringify(task));
+    const payload = clone.payload as any;
+    if (Array.isArray(payload?.images) && payload.images.length > 0) {
+        const filePath = await ImageBlobStore.saveImages(task.id, payload.images, dataDir);
+        if (filePath) {
+            payload.imagesFilePath = filePath;
+            payload.imagesCount = payload.images.length;
+            payload.images = [];
+        }
+    }
+    return clone;
 }
 
 // ============================================================================
@@ -137,7 +161,9 @@ export class QueuePersistence {
             this.debounceTimer = null;
         }
         if (this.dirty) {
-            this.save();
+            this.save().catch(err =>
+                process.stderr.write(`[QueuePersistence] Dispose save failed: ${err}\n`)
+            );
         }
         this.queueManager.removeListener('change', this.changeListener);
     }
@@ -222,6 +248,14 @@ export class QueuePersistence {
     }
 
     // ========================================================================
+    // Private — sanitization
+    // ========================================================================
+
+    private sanitizeTasks(tasks: QueuedTask[]): Promise<QueuedTask[]> {
+        return Promise.all(tasks.map(t => sanitizeTaskForPersistence(t, this.dataDir)));
+    }
+
+    // ========================================================================
     // Private — save helpers
     // ========================================================================
 
@@ -231,11 +265,13 @@ export class QueuePersistence {
         }
         this.debounceTimer = setTimeout(() => {
             this.debounceTimer = null;
-            this.save();
+            this.save().catch(err =>
+                process.stderr.write(`[QueuePersistence] Debounced save failed: ${err}\n`)
+            );
         }, DEBOUNCE_MS);
     }
 
-    private save(): void {
+    private async save(): Promise<void> {
         this.dirty = false;
 
         const queued = this.queueManager.getQueued();
@@ -265,13 +301,15 @@ export class QueuePersistence {
         // Write a file for each repo with tasks
         for (const [rootPath, { pending, history: hist }] of tasksByRepo) {
             const repoId = computeRepoId(rootPath);
+            const sanitizedPending = await this.sanitizeTasks(pending);
+            const sanitizedHist = await this.sanitizeTasks(hist);
             const state: PersistedQueueState = {
                 version: CURRENT_VERSION,
                 savedAt: new Date().toISOString(),
                 repoRootPath: rootPath,
                 repoId,
-                pending,
-                history: hist.slice(0, MAX_PERSISTED_HISTORY),
+                pending: sanitizedPending,
+                history: sanitizedHist.slice(0, MAX_PERSISTED_HISTORY),
                 isPaused: this.queueManager.isRepoPaused(repoId),
             };
             const filePath = getRepoQueueFilePath(this.dataDir, rootPath);

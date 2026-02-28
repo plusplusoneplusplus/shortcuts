@@ -33,8 +33,8 @@ function createManager(options: Partial<TaskQueueManagerOptions> = {}): TaskQueu
  * Trigger a save by emitting a change event (via enqueue) and then
  * advancing timers past the 300ms debounce window.
  */
-function flushSave(): void {
-    vi.advanceTimersByTime(400);
+async function flushSave(): Promise<void> {
+    await vi.advanceTimersByTimeAsync(400);
 }
 
 /** Create a minimal v1 (old format) state for migration tests. */
@@ -161,7 +161,7 @@ describe('QueuePersistence', () => {
     // ========================================================================
 
     describe('save — single repo', () => {
-        it('saves queue state to per-repo file', () => {
+        it('saves queue state to per-repo file', async () => {
             persistence = new QueuePersistence(queueManager, dataDir);
 
             queueManager.enqueue({
@@ -171,7 +171,7 @@ describe('QueuePersistence', () => {
                 config: {},
             });
 
-            flushSave();
+            await flushSave();
 
             const repoId = computeRepoId('/path/to/repo1');
             const filePath = path.join(dataDir, 'queues', `repo-${repoId}.json`);
@@ -184,7 +184,7 @@ describe('QueuePersistence', () => {
             expect(state.pending).toHaveLength(1);
         });
 
-        it('uses process.cwd() for tasks without workingDirectory', () => {
+        it('uses process.cwd() for tasks without workingDirectory', async () => {
             persistence = new QueuePersistence(queueManager, dataDir);
 
             queueManager.enqueue({
@@ -194,7 +194,7 @@ describe('QueuePersistence', () => {
                 config: {},
             });
 
-            flushSave();
+            await flushSave();
 
             const repoId = computeRepoId(process.cwd());
             const filePath = path.join(dataDir, 'queues', `repo-${repoId}.json`);
@@ -210,7 +210,7 @@ describe('QueuePersistence', () => {
     // ========================================================================
 
     describe('save — multi repo', () => {
-        it('saves separate files for different repos', () => {
+        it('saves separate files for different repos', async () => {
             persistence = new QueuePersistence(queueManager, dataDir);
 
             queueManager.enqueue({
@@ -226,7 +226,7 @@ describe('QueuePersistence', () => {
                 config: {},
             });
 
-            flushSave();
+            await flushSave();
 
             const queuesDir = path.join(dataDir, 'queues');
             const files = fs.readdirSync(queuesDir).filter(f => f.startsWith('repo-'));
@@ -240,7 +240,7 @@ describe('QueuePersistence', () => {
             }
         });
 
-        it('groups tasks from same repo in one file', () => {
+        it('groups tasks from same repo in one file', async () => {
             persistence = new QueuePersistence(queueManager, dataDir);
 
             queueManager.enqueue({
@@ -258,7 +258,7 @@ describe('QueuePersistence', () => {
                 displayName: 'task-2',
             });
 
-            flushSave();
+            await flushSave();
 
             const queuesDir = path.join(dataDir, 'queues');
             const files = fs.readdirSync(queuesDir).filter(f => f.startsWith('repo-'));
@@ -399,7 +399,7 @@ describe('QueuePersistence', () => {
     // ========================================================================
 
     describe('cleanup', () => {
-        it('deletes queue file for repos no longer present', () => {
+        it('deletes queue file for repos no longer present', async () => {
             persistence = new QueuePersistence(queueManager, dataDir);
 
             // Manually create a repo file that has no corresponding tasks
@@ -416,7 +416,7 @@ describe('QueuePersistence', () => {
                 config: {},
             });
 
-            flushSave();
+            await flushSave();
 
             // The orphan file should be cleaned up
             expect(fs.existsSync(orphanFile)).toBe(false);
@@ -527,7 +527,7 @@ describe('QueuePersistence', () => {
     // ========================================================================
 
     describe('dispose', () => {
-        it('flushes dirty state on dispose', () => {
+        it('flushes dirty state on dispose', async () => {
             persistence = new QueuePersistence(queueManager, dataDir);
 
             queueManager.enqueue({
@@ -540,6 +540,7 @@ describe('QueuePersistence', () => {
             // Don't flush timers — state is dirty
             persistence.dispose();
             persistence = undefined!;
+            await vi.advanceTimersByTimeAsync(0);
 
             const repoId = computeRepoId('/dispose/repo');
             const filePath = path.join(dataDir, 'queues', `repo-${repoId}.json`);
@@ -552,7 +553,7 @@ describe('QueuePersistence', () => {
     // ========================================================================
 
     describe('round-trip', () => {
-        it('saves and restores a single task across persistence instances', () => {
+        it('saves and restores a single task across persistence instances', async () => {
             persistence = new QueuePersistence(queueManager, dataDir);
 
             queueManager.enqueue({
@@ -563,7 +564,7 @@ describe('QueuePersistence', () => {
                 displayName: 'My Task',
             });
 
-            flushSave();
+            await flushSave();
             persistence.dispose();
             persistence = undefined!;
 
@@ -580,7 +581,7 @@ describe('QueuePersistence', () => {
             p2.dispose();
         });
 
-        it('saves and restores tasks for multiple repos across instances', () => {
+        it('saves and restores tasks for multiple repos across instances', async () => {
             persistence = new QueuePersistence(queueManager, dataDir);
 
             queueManager.enqueue({
@@ -598,7 +599,7 @@ describe('QueuePersistence', () => {
                 displayName: 'R2',
             });
 
-            flushSave();
+            await flushSave();
             persistence.dispose();
             persistence = undefined!;
 
@@ -620,7 +621,7 @@ describe('QueuePersistence', () => {
     // ========================================================================
 
     describe('per-repo pause state', () => {
-        it('saves isPaused: true when repo is paused', () => {
+        it('saves isPaused: true when repo is paused', async () => {
             persistence = new QueuePersistence(queueManager, dataDir);
 
             queueManager.enqueue({
@@ -633,14 +634,14 @@ describe('QueuePersistence', () => {
             const repoId = computeRepoId('/paused/repo');
             queueManager.pauseRepo(repoId);
 
-            flushSave();
+            await flushSave();
 
             const filePath = path.join(dataDir, 'queues', `repo-${repoId}.json`);
             const state = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
             expect(state.isPaused).toBe(true);
         });
 
-        it('saves isPaused: false when repo is not paused', () => {
+        it('saves isPaused: false when repo is not paused', async () => {
             persistence = new QueuePersistence(queueManager, dataDir);
 
             queueManager.enqueue({
@@ -650,7 +651,7 @@ describe('QueuePersistence', () => {
                 config: {},
             });
 
-            flushSave();
+            await flushSave();
 
             const repoId = computeRepoId('/active/repo');
             const filePath = path.join(dataDir, 'queues', `repo-${repoId}.json`);
@@ -658,7 +659,7 @@ describe('QueuePersistence', () => {
             expect(state.isPaused).toBe(false);
         });
 
-        it('persists per-repo pause state independently for different repos', () => {
+        it('persists per-repo pause state independently for different repos', async () => {
             persistence = new QueuePersistence(queueManager, dataDir);
 
             queueManager.enqueue({
@@ -677,7 +678,7 @@ describe('QueuePersistence', () => {
             const alphaId = computeRepoId('/repo/alpha');
             queueManager.pauseRepo(alphaId);
 
-            flushSave();
+            await flushSave();
 
             const alphaFile = path.join(dataDir, 'queues', `repo-${alphaId}.json`);
             const alphaState = JSON.parse(fs.readFileSync(alphaFile, 'utf-8'));
@@ -811,7 +812,7 @@ describe('QueuePersistence', () => {
             expect(queueManager.getQueued()).toHaveLength(0);
         });
 
-        it('round-trip: save paused state and restore across instances', () => {
+        it('round-trip: save paused state and restore across instances', async () => {
             persistence = new QueuePersistence(queueManager, dataDir);
 
             queueManager.enqueue({
@@ -825,7 +826,7 @@ describe('QueuePersistence', () => {
             const repoId = computeRepoId('/roundtrip/paused');
             queueManager.pauseRepo(repoId);
 
-            flushSave();
+            await flushSave();
             persistence.dispose();
             persistence = undefined!;
 
@@ -846,7 +847,7 @@ describe('QueuePersistence', () => {
     // ========================================================================
 
     describe('per-repo pause state persistence', () => {
-        it('persists per-repo paused state to separate files', () => {
+        it('persists per-repo paused state to separate files', async () => {
             persistence = new QueuePersistence(queueManager, dataDir);
 
             // Enqueue tasks for two different repos
@@ -867,7 +868,7 @@ describe('QueuePersistence', () => {
             const repoAId = computeRepoId('/pause/repo-A');
             queueManager.pauseRepo(repoAId);
 
-            flushSave();
+            await flushSave();
 
             // Verify repo-A file has isPaused: true
             const repoAFile = path.join(dataDir, 'queues', `repo-${repoAId}.json`);
@@ -923,7 +924,7 @@ describe('QueuePersistence', () => {
             expect(queueManager.isRepoPaused(repoBId)).toBe(false);
         });
 
-        it('handles mixed paused/resumed repos', () => {
+        it('handles mixed paused/resumed repos', async () => {
             persistence = new QueuePersistence(queueManager, dataDir);
 
             // Enqueue tasks for three repos
@@ -952,7 +953,7 @@ describe('QueuePersistence', () => {
             queueManager.pauseRepo(repo1Id);
             queueManager.pauseRepo(repo3Id);
 
-            flushSave();
+            await flushSave();
 
             // Dispose and create new manager + persistence
             persistence.dispose();

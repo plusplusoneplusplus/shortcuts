@@ -49,6 +49,7 @@ import {
 import type { ProcessStore, AIProcess, ConversationTurn, ToolEvent, TimelineItem, CopilotSDKService, TaskGenerationPayload, RunPipelinePayload, ResolveCommentsPayload, SelectedContext, Attachment } from '@plusplusoneplusplus/pipeline-core';
 import { createCLIAIInvoker } from '../ai-invoker';
 import { saveImagesToTempFiles, cleanupTempDir } from '@plusplusoneplusplus/coc-server';
+import { ImageBlobStore } from './image-blob-store';
 
 // ============================================================================
 // Types
@@ -582,6 +583,12 @@ export class CLITaskExecutor implements TaskExecutor {
         // Initialize output accumulator for this process
         this.outputBuffers.set(processId, '');
         this.store.registerFlushHandler?.(processId, () => this.flushConversationTurn(processId, true));
+
+        // Rehydrate externalized images from blob store if needed
+        const payload = task.payload as any;
+        if (payload?.imagesFilePath && (!Array.isArray(payload.images) || payload.images.length === 0)) {
+            payload.images = await ImageBlobStore.loadImages(payload.imagesFilePath);
+        }
 
         // Decode optional base64 images from payload
         let attachments: Attachment[] | undefined;

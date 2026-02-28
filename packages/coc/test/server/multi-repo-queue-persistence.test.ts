@@ -94,8 +94,8 @@ function writeRepoFile(rootPath: string, state: unknown): void {
 }
 
 /** Advance timers past the 300ms debounce window. */
-function flushDebounce(): void {
-    vi.advanceTimersByTime(400);
+async function flushDebounce(): Promise<void> {
+    await vi.advanceTimersByTimeAsync(400);
 }
 
 // ============================================================================
@@ -300,7 +300,7 @@ describe('MultiRepoQueuePersistence', () => {
     // --------------------------------------------------------------------
 
     describe('save', () => {
-        it('writes correct file path with correct JSON structure', () => {
+        it('writes correct file path with correct JSON structure', async () => {
             persistence = new MultiRepoQueuePersistence(bridge, dataDir);
             persistence.restore(); // ensure queues dir exists
 
@@ -309,7 +309,7 @@ describe('MultiRepoQueuePersistence', () => {
             const qm = registry.getQueueForRepo(rootPath);
             qm.enqueue({ type: 'custom', priority: 'normal', payload: {}, config: {} });
 
-            persistence.save(rootPath);
+            await persistence.save(rootPath);
 
             const filePath = getRepoQueueFilePath(dataDir, rootPath);
             expect(fs.existsSync(filePath)).toBe(true);
@@ -322,7 +322,7 @@ describe('MultiRepoQueuePersistence', () => {
             expect(state.isPaused).toBe(false);
         });
 
-        it('deletes file when queue is empty', () => {
+        it('deletes file when queue is empty', async () => {
             persistence = new MultiRepoQueuePersistence(bridge, dataDir);
             persistence.restore();
 
@@ -337,13 +337,13 @@ describe('MultiRepoQueuePersistence', () => {
             bridge.getOrCreateBridge(rootPath);
 
             // Save with empty queue (bridge was just created, no tasks)
-            persistence.save(rootPath);
+            await persistence.save(rootPath);
 
             // File should be deleted
             expect(fs.existsSync(filePath)).toBe(false);
         });
 
-        it('limits history to MAX_PERSISTED_HISTORY entries', () => {
+        it('limits history to MAX_PERSISTED_HISTORY entries', async () => {
             persistence = new MultiRepoQueuePersistence(bridge, dataDir);
             persistence.restore();
 
@@ -360,14 +360,14 @@ describe('MultiRepoQueuePersistence', () => {
             // Need at least one pending task so the file isn't deleted
             qm.enqueue({ type: 'custom', priority: 'normal', payload: {}, config: {} });
 
-            persistence.save(rootPath);
+            await persistence.save(rootPath);
 
             const filePath = getRepoQueueFilePath(dataDir, rootPath);
             const state = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
             expect(state.history.length).toBeLessThanOrEqual(100);
         });
 
-        it('saves isPaused state correctly', () => {
+        it('saves isPaused state correctly', async () => {
             persistence = new MultiRepoQueuePersistence(bridge, dataDir);
             persistence.restore();
 
@@ -379,7 +379,7 @@ describe('MultiRepoQueuePersistence', () => {
             qm.enqueue({ type: 'custom', priority: 'normal', payload: {}, config: {} });
             qm.pauseRepo(repoId);
 
-            persistence.save(rootPath);
+            await persistence.save(rootPath);
 
             const filePath = getRepoQueueFilePath(dataDir, rootPath);
             const state = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
@@ -392,7 +392,7 @@ describe('MultiRepoQueuePersistence', () => {
     // --------------------------------------------------------------------
 
     describe('auto-save on change event', () => {
-        it('saves after debounce when change event fires', () => {
+        it('saves after debounce when change event fires', async () => {
             const rootPath = '/repo/autosave';
             writeRepoFile(rootPath, makeRepoState(rootPath, [
                 makeTask('t1', 'queued', rootPath),
@@ -412,14 +412,14 @@ describe('MultiRepoQueuePersistence', () => {
             // The on-disk file still has the old data (1 pending)
 
             // Advance past debounce
-            flushDebounce();
+            await flushDebounce();
 
             // Now the file should be updated with 2 pending tasks
             const afterState = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
             expect(afterState.pending.length).toBeGreaterThanOrEqual(2);
         });
 
-        it('debounces multiple changes into a single save', () => {
+        it('debounces multiple changes into a single save', async () => {
             const rootPath = '/repo/debounce';
             writeRepoFile(rootPath, makeRepoState(rootPath, [
                 makeTask('t1', 'queued', rootPath),
@@ -439,7 +439,7 @@ describe('MultiRepoQueuePersistence', () => {
             qm.enqueue({ type: 'custom', priority: 'normal', payload: {}, config: {} });
 
             // Advance past the final debounce
-            flushDebounce();
+            await flushDebounce();
 
             // save should only be called once from the debounce (not 3 times)
             // (it may be called additionally during restore subscription setup,
@@ -454,7 +454,7 @@ describe('MultiRepoQueuePersistence', () => {
     // --------------------------------------------------------------------
 
     describe('dispose', () => {
-        it('flushes pending debounced saves', () => {
+        it('flushes pending debounced saves', async () => {
             const rootPath = '/repo/dispose-flush';
             writeRepoFile(rootPath, makeRepoState(rootPath, [
                 makeTask('t1', 'queued', rootPath),
@@ -468,8 +468,9 @@ describe('MultiRepoQueuePersistence', () => {
             // Enqueue — triggers debounce timer
             qm.enqueue({ type: 'custom', priority: 'normal', payload: {}, config: {} });
 
-            // Don't advance timers — dispose should flush synchronously
+            // Don't advance timers — dispose should flush
             persistence.dispose();
+            await vi.advanceTimersByTimeAsync(0);
 
             // Verify the file was written
             const filePath = getRepoQueueFilePath(dataDir, rootPath);
@@ -480,7 +481,7 @@ describe('MultiRepoQueuePersistence', () => {
             persistence = undefined as any;
         });
 
-        it('removes change listeners so no further saves are scheduled', () => {
+        it('removes change listeners so no further saves are scheduled', async () => {
             const rootPath = '/repo/dispose-unsub';
             writeRepoFile(rootPath, makeRepoState(rootPath, [
                 makeTask('t1', 'queued', rootPath),
@@ -499,7 +500,7 @@ describe('MultiRepoQueuePersistence', () => {
             const qm = registry.getQueueForRepo(rootPath);
             qm.enqueue({ type: 'custom', priority: 'normal', payload: {}, config: {} });
 
-            flushDebounce();
+            await flushDebounce();
 
             // save should not have been called after dispose
             expect(saveSpy).not.toHaveBeenCalled();
@@ -513,7 +514,7 @@ describe('MultiRepoQueuePersistence', () => {
     // --------------------------------------------------------------------
 
     describe('round-trip', () => {
-        it('save then restore preserves queue state across instances', () => {
+        it('save then restore preserves queue state across instances', async () => {
             const rootPath = '/repo/roundtrip';
 
             // First instance: create tasks and save
@@ -524,7 +525,7 @@ describe('MultiRepoQueuePersistence', () => {
             const qm1 = registry.getQueueForRepo(rootPath);
             qm1.enqueue({ type: 'custom', priority: 'normal', payload: { data: 'test' }, config: {} });
 
-            persistence.save(rootPath);
+            await persistence.save(rootPath);
             persistence.dispose();
             bridge.dispose();
             persistence = undefined as any;
