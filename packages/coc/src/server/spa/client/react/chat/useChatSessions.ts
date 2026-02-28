@@ -25,9 +25,13 @@ function toSessionItem(task: any): ChatSessionItem {
         id: task.id,
         processId: task.processId,
         status: task.status ?? 'unknown',
-        createdAt: task.createdAt ?? '',
-        completedAt: task.completedAt,
-        firstMessage: task.chatMeta?.firstMessage ?? task.firstMessage ?? task.payload?.prompt ?? '',
+        createdAt: typeof task.createdAt === 'number'
+            ? new Date(task.createdAt).toISOString()
+            : (task.createdAt ?? ''),
+        completedAt: typeof task.completedAt === 'number'
+            ? new Date(task.completedAt).toISOString()
+            : task.completedAt,
+        firstMessage: task.chatMeta?.firstMessage || task.firstMessage || task.payload?.prompt || '',
         turnCount: task.chatMeta?.turnCount ?? task.turnCount,
     };
 }

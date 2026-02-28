@@ -88,12 +88,18 @@ describe('useChatSessions', () => {
             expect(source).toContain('status: task.status');
         });
 
-        it('maps createdAt', () => {
-            expect(source).toContain('createdAt: task.createdAt');
+        it('converts numeric createdAt to ISO string', () => {
+            expect(source).toContain("typeof task.createdAt === 'number'");
+            expect(source).toContain('new Date(task.createdAt).toISOString()');
         });
 
-        it('maps completedAt', () => {
-            expect(source).toContain('completedAt: task.completedAt');
+        it('passes through string createdAt with empty-string fallback', () => {
+            expect(source).toContain("task.createdAt ?? ''");
+        });
+
+        it('converts numeric completedAt to ISO string', () => {
+            expect(source).toContain("typeof task.completedAt === 'number'");
+            expect(source).toContain('new Date(task.completedAt).toISOString()');
         });
 
         it('maps firstMessage with fallback to payload.prompt', () => {
@@ -105,8 +111,8 @@ describe('useChatSessions', () => {
             expect(source).toContain('task.chatMeta?.turnCount ?? task.turnCount');
         });
 
-        it('reads firstMessage from chatMeta with fallback chain', () => {
-            expect(source).toContain('task.chatMeta?.firstMessage ?? task.firstMessage ?? task.payload?.prompt');
+        it('reads firstMessage from chatMeta with OR fallback chain', () => {
+            expect(source).toContain('task.chatMeta?.firstMessage || task.firstMessage || task.payload?.prompt');
         });
 
         it('reads turnCount from chatMeta with fallback', () => {

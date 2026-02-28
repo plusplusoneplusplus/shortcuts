@@ -514,5 +514,9 @@ describe('RepoChatTab', () => {
             expect(source).toContain('repoQueue.queued');
             expect(source).toContain('repoQueue.history');
         });
+
+        it('skips refresh when streaming is active (eventSourceRef)', () => {
+            expect(source).toContain('eventSourceRef.current) return');
+        });
     });
 });

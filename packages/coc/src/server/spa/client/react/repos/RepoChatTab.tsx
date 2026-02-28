@@ -171,10 +171,11 @@ export function RepoChatTab({ workspaceId, workspacePath }: RepoChatTabProps) {
         setSessionExpired(false);
     }, [workspaceId]);
 
-    // Refresh session list when per-repo queue state changes via WebSocket
+    // Refresh session list when per-repo queue state changes via WebSocket.
+    // Skip refresh while streaming so optimistic status updates are not overwritten.
     const repoQueue = queueState.repoQueueMap[workspaceId];
     useEffect(() => {
-        if (!repoQueue) return;
+        if (!repoQueue || eventSourceRef.current) return;
         const hasChatTask = [...(repoQueue.running ?? []), ...(repoQueue.queued ?? []), ...(repoQueue.history ?? [])]
             .some(t => t.type === 'chat');
         if (hasChatTask) sessionsHook.refresh();
