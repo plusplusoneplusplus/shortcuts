@@ -23,8 +23,8 @@ import {
     buildPromptFromContext,
     type PromptContext,
     type CreateTaskInput,
-    type ResolveCommentsPayload,
 } from '@plusplusoneplusplus/pipeline-core';
+import type { ResolveCommentsPayload } from '@plusplusoneplusplus/coc-server';
 import type { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
 
@@ -433,7 +433,7 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
         const rootPath = await resolveWorkspacePath(wsId) || process.cwd();
         bridge.getOrCreateBridge(rootPath);
         const queueManager = bridge.registry.getQueueForRepo(rootPath);
-        const input: CreateTaskInput<ResolveCommentsPayload> = {
+        const input: CreateTaskInput = {
             type: 'resolve-comments',
             priority: 'normal',
             payload: {

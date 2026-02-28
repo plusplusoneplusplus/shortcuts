@@ -38,17 +38,15 @@ import {
     isTaskGenerationPayload,
     isFollowPromptPayload,
     isAIClarificationPayload,
-    isCodeReviewPayload,
     isCustomTaskPayload,
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/coc-server';
 import type {
     TaskGenerationPayload,
     FollowPromptPayload,
     AIClarificationPayload,
-    CodeReviewPayload,
     CustomTaskPayload,
-    QueuedTask,
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/coc-server';
+import type { QueuedTask } from '@plusplusoneplusplus/pipeline-core';
 import { CLITaskExecutor } from '../../src/server/queue-executor-bridge';
 import { createExecutionServer } from '../../src/server/index';
 import { FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
@@ -143,14 +141,6 @@ describe('isTaskGenerationPayload', () => {
         const payload: AIClarificationPayload = {
             prompt: 'Explain this code',
             workingDirectory: '/tmp',
-        };
-        expect(isTaskGenerationPayload(payload)).toBe(false);
-    });
-
-    it('should return false for CodeReviewPayload', () => {
-        const payload: CodeReviewPayload = {
-            diffType: 'staged',
-            rulesFolder: '/tmp/rules',
         };
         expect(isTaskGenerationPayload(payload)).toBe(false);
     });

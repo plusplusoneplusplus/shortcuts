@@ -14,7 +14,8 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 import type { ProcessStore, CopilotSDKService } from '@plusplusoneplusplus/pipeline-core';
-import type { CreateTaskInput, RunPipelinePayload } from '@plusplusoneplusplus/pipeline-core';
+import type { CreateTaskInput } from '@plusplusoneplusplus/pipeline-core';
+import type { RunPipelinePayload } from '@plusplusoneplusplus/coc-server';
 import { denyAllPermissions, isWithinDirectory } from '@plusplusoneplusplus/pipeline-core';
 import { sendJSON, sendError, parseBody } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
@@ -699,10 +700,10 @@ ${PIPELINE_SCHEMA_REFERENCE}`;
                 workspaceId: id,
             };
 
-            const taskInput: CreateTaskInput<RunPipelinePayload> = {
+            const taskInput: CreateTaskInput = {
                 type: 'run-pipeline',
                 priority: body?.priority || 'normal',
-                payload,
+                payload: payload as unknown as Record<string, unknown>,
                 config: { model: body?.model },
                 displayName: `Run Pipeline: ${pipelineName}`,
             };

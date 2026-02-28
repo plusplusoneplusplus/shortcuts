@@ -10,7 +10,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import { execSync } from 'child_process';
-import type { TaskPayload } from '@plusplusoneplusplus/pipeline-core';
+import type { TaskPayload } from './task-types';
 import { toForwardSlashes } from '@plusplusoneplusplus/pipeline-core';
 
 /**

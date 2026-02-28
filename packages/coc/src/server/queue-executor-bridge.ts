@@ -27,13 +27,6 @@ import {
     QueuedTask,
     TaskExecutor,
     TaskExecutionResult,
-    isFollowPromptPayload,
-    isAIClarificationPayload,
-    isChatPayload,
-    isCustomTaskPayload,
-    isTaskGenerationPayload,
-    isRunPipelinePayload,
-    isResolveCommentsPayload,
     getCopilotSDKService,
     approveAllPermissions,
     DEFAULT_AI_TIMEOUT_MS,
@@ -49,9 +42,15 @@ import {
     toForwardSlashes,
     mergeConsecutiveContentItems,
 } from '@plusplusoneplusplus/pipeline-core';
-import type { ProcessStore, AIProcess, ConversationTurn, ToolEvent, TimelineItem, CopilotSDKService, TaskGenerationPayload, RunPipelinePayload, ResolveCommentsPayload, SelectedContext, Attachment } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore, AIProcess, ConversationTurn, ToolEvent, TimelineItem, CopilotSDKService, SelectedContext, Attachment } from '@plusplusoneplusplus/pipeline-core';
 import { createCLIAIInvoker } from '../ai-invoker';
-import { saveImagesToTempFiles, cleanupTempDir } from '@plusplusoneplusplus/coc-server';
+import {
+    saveImagesToTempFiles, cleanupTempDir,
+    isFollowPromptPayload, isAIClarificationPayload, isChatPayload,
+    isCustomTaskPayload, isTaskGenerationPayload, isRunPipelinePayload,
+    isResolveCommentsPayload,
+} from '@plusplusoneplusplus/coc-server';
+import type { TaskGenerationPayload, RunPipelinePayload, ResolveCommentsPayload } from '@plusplusoneplusplus/coc-server';
 import { ImageBlobStore } from './image-blob-store';
 
 // ============================================================================
@@ -721,7 +720,7 @@ export class CLITaskExecutor implements TaskExecutor {
     }
 
     private async executeTaskGeneration(task: QueuedTask): Promise<unknown> {
-        const payload = task.payload as TaskGenerationPayload;
+        const payload = task.payload as unknown as TaskGenerationPayload;
 
         const tasksBase = path.resolve(payload.workingDirectory, '.vscode/tasks');
         const resolvedTarget = payload.targetFolder
@@ -770,7 +769,7 @@ export class CLITaskExecutor implements TaskExecutor {
     }
 
     private async executeRunPipeline(task: QueuedTask): Promise<unknown> {
-        const payload = task.payload as RunPipelinePayload;
+        const payload = task.payload as unknown as RunPipelinePayload;
         const yamlPath = path.join(payload.pipelinePath, 'pipeline.yaml');
 
         // Read and parse pipeline YAML
@@ -856,7 +855,7 @@ export class CLITaskExecutor implements TaskExecutor {
     }
 
     private async executeResolveComments(task: QueuedTask): Promise<unknown> {
-        const payload = task.payload as ResolveCommentsPayload;
+        const payload = task.payload as unknown as ResolveCommentsPayload;
         const aiPrompt = payload.promptTemplate;
 
         // Update process store with the enriched prompt

@@ -15,7 +15,8 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import type { ServerResponse } from 'http';
-import type { ProcessStore, CreateTaskInput, TaskGenerationPayload } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore, CreateTaskInput } from '@plusplusoneplusplus/pipeline-core';
+import type { TaskGenerationPayload } from '@plusplusoneplusplus/coc-server';
 import {
     buildCreateTaskPrompt,
     buildCreateTaskPromptWithName,
@@ -318,10 +319,10 @@ export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStor
                 workspaceId: id,
             };
 
-            const taskInput: CreateTaskInput<TaskGenerationPayload> = {
+            const taskInput: CreateTaskInput = {
                 type: 'task-generation',
                 priority: priority || 'normal',
-                payload,
+                payload: payload as unknown as Record<string, unknown>,
                 config: { model, timeoutMs: DEFAULT_AI_TIMEOUT_MS },
                 displayName: name || prompt.trim().slice(0, 60),
             };
