@@ -518,5 +518,17 @@ describe('RepoChatTab', () => {
         it('skips refresh when streaming is active (eventSourceRef)', () => {
             expect(source).toContain('eventSourceRef.current) return');
         });
+
+        it('uses a serialized key for repoQueue dependency to avoid unnecessary refreshes', () => {
+            expect(source).toContain('repoQueueKey');
+            // The useEffect should depend on the serialized key, not the raw object
+            expect(source).toContain('[repoQueueKey]');
+        });
+
+        it('derives repoQueueKey from item counts (running, queued, history)', () => {
+            expect(source).toContain('repoQueue.running?.length');
+            expect(source).toContain('repoQueue.queued?.length');
+            expect(source).toContain('repoQueue.history?.length');
+        });
     });
 });

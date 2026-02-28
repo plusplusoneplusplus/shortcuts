@@ -772,3 +772,62 @@ describe('ReposView', () => {
         });
     });
 });
+
+// ============================================================================
+// ReposView source-level tests: throttled process events & stable fetchRepos
+// ============================================================================
+
+describe('ReposView — process event throttling', () => {
+    let source: string;
+
+    beforeEach(() => {
+        const fs = require('fs');
+        const path = require('path');
+        source = fs.readFileSync(
+            path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'ReposView.tsx'),
+            'utf-8',
+        );
+    });
+
+    it('uses a ref to throttle process events instead of calling fetchRepos directly', () => {
+        expect(source).toContain('processThrottleRef');
+        // Should NOT call fetchRepos() directly in the process-event handler
+        const onMessageBlock = source.substring(
+            source.indexOf('onMessage: useCallback'),
+            source.indexOf('], [refreshPipelinesForWorkspace, fetchRepos])'),
+        );
+        // The old pattern was a bare fetchRepos() call; now it should be inside setTimeout
+        const processBlock = onMessageBlock.substring(onMessageBlock.indexOf('process-added'));
+        expect(processBlock).toContain('setTimeout');
+        expect(processBlock).toContain('processThrottleRef');
+    });
+
+    it('throttles to 10 seconds between fetchRepos calls', () => {
+        expect(source).toContain('10_000');
+    });
+
+    it('clears the throttle timer on unmount', () => {
+        expect(source).toContain('clearTimeout(processThrottleRef.current)');
+    });
+
+    it('uses a ref for selectedRepoId to avoid recreating fetchRepos', () => {
+        expect(source).toContain('selectedRepoIdRef');
+        expect(source).toContain('selectedRepoIdRef.current = state.selectedRepoId');
+        // Inside fetchRepos body, selectedRepoIdRef.current should be used instead of state.selectedRepoId
+        const fetchReposBody = source.substring(
+            source.indexOf('const fetchRepos = useCallback'),
+            source.indexOf('}, [dispatch]);') + 15,
+        );
+        expect(fetchReposBody).toContain('selectedRepoIdRef.current');
+        // fetchRepos dependency array should NOT include state.selectedRepoId
+        expect(fetchReposBody).not.toContain(', state.selectedRepoId');
+    });
+
+    it('fetchRepos useCallback depends only on dispatch', () => {
+        expect(source).toContain('}, [dispatch]);');
+        // Verify no selectedRepoId in the dependency
+        const depsMatch = source.match(/const fetchRepos = useCallback\(async[\s\S]*?\}, \[([^\]]*)\]\)/);
+        expect(depsMatch).not.toBeNull();
+        expect(depsMatch![1].trim()).toBe('dispatch');
+    });
+});

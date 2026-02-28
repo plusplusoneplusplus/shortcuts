@@ -3,7 +3,7 @@
  * Left: ReposGrid (sidebar). Right: RepoDetail (when a repo is selected).
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { useQueue } from '../context/QueueContext';
 import { fetchApi } from '../hooks/useApi';
@@ -21,6 +21,9 @@ export function ReposView() {
     const { dispatch: queueDispatch } = useQueue();
     const [repos, setRepos] = useState<RepoData[]>([]);
     const [loading, setLoading] = useState(true);
+    const selectedRepoIdRef = useRef(state.selectedRepoId);
+    selectedRepoIdRef.current = state.selectedRepoId;
+    const processThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const fetchRepos = useCallback(async () => {
         try {
@@ -69,14 +72,14 @@ export function ReposView() {
             seedRepoQueueStats(enriched);
 
             // Clear selection if repo was removed
-            if (state.selectedRepoId && !enriched.find(r => r.workspace.id === state.selectedRepoId)) {
+            if (selectedRepoIdRef.current && !enriched.find(r => r.workspace.id === selectedRepoIdRef.current)) {
                 dispatch({ type: 'SET_SELECTED_REPO', id: null });
             }
         } catch {
             setRepos([]);
         }
         setLoading(false);
-    }, [dispatch, state.selectedRepoId]);
+    }, [dispatch]);
 
     // Seed repoQueueMap from /api/queue/repos (single call for all repos)
     const seedRepoQueueStats = useCallback(async (enriched: RepoData[]) => {
@@ -121,8 +124,14 @@ export function ReposView() {
             if (msg.type === 'pipelines-changed' && msg.workspaceId) {
                 refreshPipelinesForWorkspace(msg.workspaceId);
             }
+            // Throttle process events: at most one fetchRepos per 10 seconds
             if (msg.type === 'process-added' || msg.type === 'process-updated' || msg.type === 'process-removed') {
-                fetchRepos();
+                if (!processThrottleRef.current) {
+                    processThrottleRef.current = setTimeout(() => {
+                        processThrottleRef.current = null;
+                        fetchRepos();
+                    }, 10_000);
+                }
             }
         }, [refreshPipelinesForWorkspace, fetchRepos]),
     });
@@ -130,7 +139,13 @@ export function ReposView() {
     useEffect(() => {
         fetchRepos();
         connect();
-        return () => disconnect();
+        return () => {
+            disconnect();
+            if (processThrottleRef.current) {
+                clearTimeout(processThrottleRef.current);
+                processThrottleRef.current = null;
+            }
+        };
     }, []);
 
     const selectedRepo = repos.find(r => r.workspace.id === state.selectedRepoId) || null;

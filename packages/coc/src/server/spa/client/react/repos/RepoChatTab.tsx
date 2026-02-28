@@ -173,13 +173,17 @@ export function RepoChatTab({ workspaceId, workspacePath }: RepoChatTabProps) {
 
     // Refresh session list when per-repo queue state changes via WebSocket.
     // Skip refresh while streaming so optimistic status updates are not overwritten.
+    // Use a serialized key (item counts) to avoid re-running on every object reference change.
     const repoQueue = queueState.repoQueueMap[workspaceId];
+    const repoQueueKey = repoQueue
+        ? `${repoQueue.running?.length ?? 0}-${repoQueue.queued?.length ?? 0}-${repoQueue.history?.length ?? 0}`
+        : '';
     useEffect(() => {
         if (!repoQueue || eventSourceRef.current) return;
         const hasChatTask = [...(repoQueue.running ?? []), ...(repoQueue.queued ?? []), ...(repoQueue.history ?? [])]
             .some(t => t.type === 'chat');
         if (hasChatTask) sessionsHook.refresh();
-    }, [repoQueue]);
+    }, [repoQueueKey]);
 
     // --- SSE for initial running task ---
 
