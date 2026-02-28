@@ -14,6 +14,7 @@ import { getActiveModels } from '@plusplusoneplusplus/pipeline-core';
 import { sendJSON, sendError, parseBody } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
 import { computeRepoId } from './queue-persistence';
+import { ImageBlobStore } from './image-blob-store';
 import type { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 import * as url from 'url';
 import * as path from 'path';
@@ -85,6 +86,15 @@ function generateDisplayName(type: string, payload: any): string {
  * Converts internal representation to a clean API response.
  */
 function serializeTask(task: QueuedTask): Record<string, unknown> {
+    const payload = task.payload as any;
+    // Strip inline images and server-internal imagesFilePath; expose metadata only
+    const { images, imagesFilePath, ...restPayload } = payload || {};
+    const imagesCount = Array.isArray(images) ? images.length : (payload?.imagesCount ?? 0);
+    const serializedPayload = {
+        ...restPayload,
+        imagesCount,
+        hasImages: imagesCount > 0 || !!imagesFilePath,
+    };
     return {
         id: task.id,
         repoId: task.repoId,
@@ -95,7 +105,7 @@ function serializeTask(task: QueuedTask): Record<string, unknown> {
         createdAt: task.createdAt,
         startedAt: task.startedAt,
         completedAt: task.completedAt,
-        payload: task.payload,
+        payload: serializedPayload,
         config: task.config,
         displayName: task.displayName,
         processId: task.processId,
@@ -1015,6 +1025,32 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
             }
 
             sendJSON(res, 200, result);
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // GET /api/queue/:id/images — Load externalized image blobs
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/queue\/([^/]+)\/images$/,
+        handler: async (_req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const task = findTaskManager(bridge, id)?.getTask(id);
+            if (!task) {
+                return sendError(res, 404, 'Task not found');
+            }
+
+            const filePath = (task.payload as any)?.imagesFilePath;
+            if (filePath) {
+                try {
+                    const images = await ImageBlobStore.loadImages(filePath);
+                    return sendJSON(res, 200, { images });
+                } catch {
+                    return sendJSON(res, 200, { images: [] });
+                }
+            }
+            sendJSON(res, 200, { images: [] });
         },
     });
 
