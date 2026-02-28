@@ -70,6 +70,8 @@ export function RepoChatTab({ workspaceId, workspacePath }: RepoChatTabProps) {
     const turnsRef = useRef<ClientConversationTurn[]>([]);
     const eventSourceRef = useRef<EventSource | null>(null);
     const autoSelectedRef = useRef(false);
+    const currentChatTaskIdRef = useRef<string | null>(null);
+    const loadSessionCounterRef = useRef(0);
 
     const processId = task?.processId ?? (chatTaskId ? `queue_${chatTaskId}` : null);
 
@@ -96,6 +98,7 @@ export function RepoChatTab({ workspaceId, workspacePath }: RepoChatTabProps) {
 
     const waitForFollowUpCompletion = (pid: string) =>
         new Promise<void>(resolve => {
+            const ownerChatTaskId = currentChatTaskIdRef.current;
             const es = new EventSource(`${getApiBase()}/processes/${encodeURIComponent(pid)}/stream`);
             eventSourceRef.current = es;
             setIsStreaming(true);
@@ -106,8 +109,16 @@ export function RepoChatTab({ workspaceId, workspacePath }: RepoChatTabProps) {
                 es.close();
                 eventSourceRef.current = null;
                 setIsStreaming(false);
+                if (currentChatTaskIdRef.current !== ownerChatTaskId) {
+                    resolve();
+                    return;
+                }
                 fetchApi(`/processes/${encodeURIComponent(pid)}`)
-                    .then(data => setTurnsAndCache(getConversationTurns(data)))
+                    .then(data => {
+                        if (currentChatTaskIdRef.current === ownerChatTaskId) {
+                            setTurnsAndCache(getConversationTurns(data));
+                        }
+                    })
                     .catch(() => {})
                     .finally(() => resolve());
             };
@@ -125,25 +136,36 @@ export function RepoChatTab({ workspaceId, workspacePath }: RepoChatTabProps) {
     // --- load a session by task ID ---
 
     const loadSession = useCallback(async (taskId: string) => {
+        const loadId = ++loadSessionCounterRef.current;
         setLoading(true);
         setError(null);
         setSessionExpired(false);
         try {
             const queueData = await fetchApi(`/queue/${encodeURIComponent(taskId)}`);
+            if (loadSessionCounterRef.current !== loadId) return;
             const loadedTask = queueData?.task ?? null;
             setTask(loadedTask);
             setChatTaskId(taskId);
             const pid = loadedTask?.processId ?? `queue_${taskId}`;
             const procData = await fetchApi(`/processes/${encodeURIComponent(pid)}`);
-            setTurnsAndCache(getConversationTurns(procData));
+            if (loadSessionCounterRef.current !== loadId) return;
+            const loadedTurns = getConversationTurns(procData);
+            if (loadedTask?.status === 'running') {
+                setTurnsAndCache([...loadedTurns, { role: 'assistant', content: '', streaming: true, timeline: [] }]);
+            } else {
+                setTurnsAndCache(loadedTurns);
+            }
         } catch (err: any) {
+            if (loadSessionCounterRef.current !== loadId) return;
             if (err?.message?.includes('404') || err?.status === 404) {
                 setError('Chat session not found');
             } else {
                 setError(err?.message ?? 'Failed to load chat');
             }
         } finally {
-            setLoading(false);
+            if (loadSessionCounterRef.current === loadId) {
+                setLoading(false);
+            }
         }
     }, []);
 
@@ -166,7 +188,7 @@ export function RepoChatTab({ workspaceId, workspacePath }: RepoChatTabProps) {
         setSelectedTaskId(null);
         setChatTaskId(null);
         setTask(null);
-        setTurns([]);
+        setTurnsAndCache([]);
         setError(null);
         setSessionExpired(false);
     }, [workspaceId]);
@@ -221,7 +243,7 @@ export function RepoChatTab({ workspaceId, workspacePath }: RepoChatTabProps) {
             es.close();
             eventSourceRef.current = null;
         };
-    }, [chatTaskId, task?.status]);
+    }, [chatTaskId, task?.status, processId]);
 
     // --- cleanup on unmount ---
 
@@ -231,8 +253,9 @@ export function RepoChatTab({ workspaceId, workspacePath }: RepoChatTabProps) {
 
     const handleSelectSession = useCallback((taskId: string) => {
         if (isStreaming) stopStreaming();
+        currentChatTaskIdRef.current = taskId;
         setSelectedTaskId(taskId);
-        setTurns([]);
+        setTurnsAndCache([]);
         setError(null);
         setSessionExpired(false);
         loadSession(taskId);
@@ -240,10 +263,11 @@ export function RepoChatTab({ workspaceId, workspacePath }: RepoChatTabProps) {
 
     const handleNewChat = useCallback(() => {
         if (isStreaming) stopStreaming();
+        currentChatTaskIdRef.current = null;
         setSelectedTaskId(null);
         setChatTaskId(null);
         setTask(null);
-        setTurns([]);
+        setTurnsAndCache([]);
         setError(null);
         setSessionExpired(false);
         setInputValue('');
@@ -278,6 +302,7 @@ export function RepoChatTab({ workspaceId, workspacePath }: RepoChatTabProps) {
             }
             const body = await response.json();
             const newTaskId: string = body.task?.id ?? body.id;
+            currentChatTaskIdRef.current = newTaskId;
             setSelectedTaskId(newTaskId);
             setChatTaskId(newTaskId);
             setTask(body.task ?? null);

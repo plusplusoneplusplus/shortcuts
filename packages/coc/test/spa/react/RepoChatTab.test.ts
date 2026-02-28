@@ -157,6 +157,20 @@ describe('RepoChatTab', () => {
             expect(handler).toContain('setSelectedTaskId(taskId)');
             expect(handler).toContain('loadSession(taskId)');
         });
+
+        it('uses setTurnsAndCache instead of setTurns to keep turnsRef in sync', () => {
+            const handler = source.substring(source.indexOf('const handleSelectSession'), source.indexOf('const handleNewChat'));
+            expect(handler).toContain('setTurnsAndCache([])');
+            expect(handler).not.toContain('setTurns([])');
+        });
+
+        it('updates currentChatTaskIdRef before loading', () => {
+            const handler = source.substring(source.indexOf('const handleSelectSession'));
+            const refIdx = handler.indexOf('currentChatTaskIdRef.current = taskId');
+            const loadIdx = handler.indexOf('loadSession(taskId)');
+            expect(refIdx).toBeGreaterThan(-1);
+            expect(loadIdx).toBeGreaterThan(refIdx);
+        });
     });
 
     describe('empty state', () => {
@@ -341,10 +355,15 @@ describe('RepoChatTab', () => {
             expect(handler).toContain('setSelectedTaskId(null)');
             expect(handler).toContain('setChatTaskId(null)');
             expect(handler).toContain('setTask(null)');
-            expect(handler).toContain('setTurns([])');
+            expect(handler).toContain('setTurnsAndCache([])');
             expect(handler).toContain('setError(null)');
             expect(handler).toContain('setSessionExpired(false)');
             expect(handler).toContain("setInputValue('')");
+        });
+
+        it('clears currentChatTaskIdRef', () => {
+            const handler = source.substring(source.indexOf('const handleNewChat'));
+            expect(handler).toContain('currentChatTaskIdRef.current = null');
         });
     });
 
@@ -432,8 +451,8 @@ describe('RepoChatTab', () => {
             expect(source).toContain("task?.status !== 'running'");
         });
 
-        it('re-runs on chatTaskId or task status change', () => {
-            expect(source).toContain('[chatTaskId, task?.status]');
+        it('re-runs on chatTaskId, task status, or processId change', () => {
+            expect(source).toContain('[chatTaskId, task?.status, processId]');
         });
     });
 
@@ -529,6 +548,151 @@ describe('RepoChatTab', () => {
             expect(source).toContain('repoQueue.running?.length');
             expect(source).toContain('repoQueue.queued?.length');
             expect(source).toContain('repoQueue.history?.length');
+        });
+    });
+
+    describe('session-switch guard: currentChatTaskIdRef', () => {
+        it('declares currentChatTaskIdRef', () => {
+            expect(source).toContain('const currentChatTaskIdRef = useRef<string | null>(null)');
+        });
+
+        it('captures ownerChatTaskId at start of waitForFollowUpCompletion', () => {
+            const fn = source.substring(source.indexOf('const waitForFollowUpCompletion'));
+            expect(fn).toContain('const ownerChatTaskId = currentChatTaskIdRef.current');
+        });
+
+        it('guards finish() — skips state update if session changed', () => {
+            const fn = source.substring(source.indexOf('const waitForFollowUpCompletion'));
+            expect(fn).toContain('if (currentChatTaskIdRef.current !== ownerChatTaskId)');
+        });
+
+        it('guards the fetchApi .then callback as well', () => {
+            const fn = source.substring(source.indexOf('const waitForFollowUpCompletion'), source.indexOf('// --- load a session'));
+            const thenIdx = fn.indexOf('.then(data =>');
+            const guardInThen = fn.indexOf('currentChatTaskIdRef.current === ownerChatTaskId', thenIdx);
+            expect(thenIdx).toBeGreaterThan(-1);
+            expect(guardInThen).toBeGreaterThan(thenIdx);
+        });
+
+        it('handleSelectSession sets currentChatTaskIdRef before loadSession', () => {
+            const fn = source.substring(source.indexOf('const handleSelectSession'), source.indexOf('const handleNewChat'));
+            const setRefIdx = fn.indexOf('currentChatTaskIdRef.current = taskId');
+            const loadIdx = fn.indexOf('loadSession(taskId)');
+            expect(setRefIdx).toBeGreaterThan(-1);
+            expect(loadIdx).toBeGreaterThan(setRefIdx);
+        });
+
+        it('handleNewChat clears currentChatTaskIdRef', () => {
+            const fn = source.substring(source.indexOf('const handleNewChat'), source.indexOf('const handleStartChat'));
+            expect(fn).toContain('currentChatTaskIdRef.current = null');
+        });
+
+        it('handleStartChat sets currentChatTaskIdRef to newTaskId', () => {
+            const fn = source.substring(source.indexOf('const handleStartChat'));
+            expect(fn).toContain('currentChatTaskIdRef.current = newTaskId');
+        });
+    });
+
+    describe('load-session staleness guard: loadSessionCounterRef', () => {
+        it('declares loadSessionCounterRef', () => {
+            expect(source).toContain('const loadSessionCounterRef = useRef(0)');
+        });
+
+        it('increments counter at start of loadSession', () => {
+            const fn = source.substring(source.indexOf('const loadSession'));
+            expect(fn).toContain('const loadId = ++loadSessionCounterRef.current');
+        });
+
+        it('checks counter after first fetch (queue data)', () => {
+            const fn = source.substring(source.indexOf('const loadSession'));
+            const firstFetch = fn.indexOf('fetchApi(`/queue/');
+            const firstGuard = fn.indexOf('if (loadSessionCounterRef.current !== loadId) return', firstFetch);
+            expect(firstGuard).toBeGreaterThan(firstFetch);
+        });
+
+        it('checks counter after second fetch (process data)', () => {
+            const fn = source.substring(source.indexOf('const loadSession'));
+            const secondFetch = fn.indexOf('fetchApi(`/processes/');
+            const secondGuard = fn.indexOf('if (loadSessionCounterRef.current !== loadId) return', secondFetch);
+            expect(secondGuard).toBeGreaterThan(secondFetch);
+        });
+
+        it('guards setLoading(false) in finally block', () => {
+            const fn = source.substring(source.indexOf('const loadSession'));
+            const finallyIdx = fn.indexOf('} finally {');
+            const guardInFinally = fn.indexOf('loadSessionCounterRef.current === loadId', finallyIdx);
+            expect(guardInFinally).toBeGreaterThan(finallyIdx);
+        });
+
+        it('guards catch block against stale errors', () => {
+            const fn = source.substring(source.indexOf('const loadSession'));
+            const catchIdx = fn.indexOf('} catch (err');
+            const guardInCatch = fn.indexOf('loadSessionCounterRef.current !== loadId', catchIdx);
+            expect(guardInCatch).toBeGreaterThan(catchIdx);
+        });
+    });
+
+    describe('streaming placeholder for running chats in loadSession', () => {
+        it('checks if loaded task status is running', () => {
+            const fn = source.substring(source.indexOf('const loadSession'), source.indexOf('// --- auto-select'));
+            expect(fn).toContain("loadedTask?.status === 'running'");
+        });
+
+        it('appends assistant streaming placeholder when task is running', () => {
+            const fn = source.substring(source.indexOf('const loadSession'), source.indexOf('// --- auto-select'));
+            expect(fn).toContain("{ role: 'assistant', content: '', streaming: true, timeline: [] }");
+        });
+
+        it('spreads existing turns before the streaming placeholder', () => {
+            const fn = source.substring(source.indexOf('const loadSession'), source.indexOf('// --- auto-select'));
+            expect(fn).toContain('...loadedTurns, { role:');
+        });
+
+        it('does not append placeholder when task is not running', () => {
+            const fn = source.substring(source.indexOf('const loadSession'), source.indexOf('// --- auto-select'));
+            // The else branch sets turns without a placeholder
+            const elseIdx = fn.indexOf('} else {');
+            expect(elseIdx).toBeGreaterThan(-1);
+            const afterElse = fn.substring(elseIdx, elseIdx + 100);
+            expect(afterElse).toContain('setTurnsAndCache(loadedTurns)');
+        });
+    });
+
+    describe('no raw setTurns([]) calls (turnsRef sync)', () => {
+        it('handleSelectSession uses setTurnsAndCache, not setTurns', () => {
+            const fn = source.substring(source.indexOf('const handleSelectSession'), source.indexOf('const handleNewChat'));
+            expect(fn).not.toMatch(/\bsetTurns\b\(\[\]\)/);
+            expect(fn).toContain('setTurnsAndCache([])');
+        });
+
+        it('handleNewChat uses setTurnsAndCache, not setTurns', () => {
+            const fn = source.substring(source.indexOf('const handleNewChat'), source.indexOf('const handleStartChat'));
+            expect(fn).not.toMatch(/\bsetTurns\b\(\[\]\)/);
+            expect(fn).toContain('setTurnsAndCache([])');
+        });
+
+        it('workspace reset effect uses setTurnsAndCache, not setTurns', () => {
+            const resetEffect = source.substring(
+                source.indexOf('// Reset auto-select when workspace changes'),
+                source.indexOf('// Refresh session list')
+            );
+            expect(resetEffect).not.toMatch(/\bsetTurns\b\(\[\]\)/);
+            expect(resetEffect).toContain('setTurnsAndCache([])');
+        });
+    });
+
+    describe('processId in SSE effect deps', () => {
+        it('includes processId in the SSE effect dependency array', () => {
+            expect(source).toContain('[chatTaskId, task?.status, processId]');
+        });
+
+        it('does not have the old two-element dependency array', () => {
+            // Make sure the old pattern is gone. We look for the exact old dep array
+            // that is NOT followed by ", processId]"
+            const sseEffect = source.substring(source.indexOf('// --- SSE for initial running task'), source.indexOf('// --- cleanup on unmount'));
+            expect(sseEffect).not.toContain('[chatTaskId, task?.status]');
+            // But the three-element array should be present
+            expect(sseEffect).toContain('[chatTaskId, task?.status, processId]');
         });
     });
 });
