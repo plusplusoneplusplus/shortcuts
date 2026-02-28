@@ -121,9 +121,10 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
         setLoading(false);
     }, [repoQueue]);
 
-    // Clear selection if the selected task is no longer in any list
+    // Clear selection if the selected task is no longer in any list.
+    // Skip while loading so deep-link selections survive the initial fetch.
     useEffect(() => {
-        if (!selectedTaskId) return;
+        if (!selectedTaskId || loading) return;
         const allTasks = [...running, ...queued, ...history];
         if (!allTasks.find(t => t.id === selectedTaskId)) {
             queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null });
@@ -133,7 +134,7 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
                 location.hash = queueBase;
             }
         }
-    }, [selectedTaskId, running, queued, history, queueDispatch, workspaceId]);
+    }, [selectedTaskId, running, queued, history, loading, queueDispatch, workspaceId]);
 
     const selectTask = useCallback((id: string) => {
         queueDispatch({ type: 'SELECT_QUEUE_TASK', id });

@@ -112,9 +112,15 @@ describe('RepoQueueTab split-panel layout', () => {
         it('dispatches SELECT_QUEUE_TASK with null when task disappears', () => {
             // Find the deselection effect
             const deselectIdx = source.indexOf('Clear selection');
-            const deselectBlock = source.slice(deselectIdx, deselectIdx + 400);
+            const deselectBlock = source.slice(deselectIdx, deselectIdx + 500);
             expect(deselectBlock).toContain("SELECT_QUEUE_TASK");
             expect(deselectBlock).toContain("null");
+        });
+
+        it('skips clearing while loading to preserve deep-link selections', () => {
+            const deselectIdx = source.indexOf('Clear selection');
+            const deselectBlock = source.slice(deselectIdx, deselectIdx + 300);
+            expect(deselectBlock).toContain('loading');
         });
     });
 
@@ -254,14 +260,14 @@ describe('RepoQueueTab URL deep-link support', () => {
     describe('hash reset on auto-clear', () => {
         it('resets URL to base queue path when task is removed', () => {
             const clearIdx = source.indexOf('Clear selection if the selected task is no longer');
-            const clearBlock = source.slice(clearIdx, clearIdx + 600);
+            const clearBlock = source.slice(clearIdx, clearIdx + 700);
             expect(clearBlock).toContain("location.hash");
             expect(clearBlock).toContain("'/queue'");
         });
 
         it('only resets hash when current hash is a queue task deep link', () => {
             const clearIdx = source.indexOf('Clear selection if the selected task is no longer');
-            const clearBlock = source.slice(clearIdx, clearIdx + 600);
+            const clearBlock = source.slice(clearIdx, clearIdx + 700);
             expect(clearBlock).toContain("startsWith(queueBase + '/')");
         });
     });

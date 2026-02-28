@@ -5,10 +5,11 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import type { ReactNode } from 'react';
+import { useLayoutEffect, type ReactNode } from 'react';
 import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
 import { QueueProvider } from '../../../src/server/spa/client/react/context/QueueContext';
 import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
+import { useQueue } from '../../../src/server/spa/client/react/context/QueueContext';
 import { RepoQueueTab } from '../../../src/server/spa/client/react/repos/RepoQueueTab';
 
 vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
@@ -31,6 +32,15 @@ function Wrap({ children }: { children: ReactNode }) {
             </QueueProvider>
         </AppProvider>
     );
+}
+
+/** Simulates the router setting selectedTaskId before data loads (deep-link). */
+function PreSelectTask({ taskId }: { taskId: string }) {
+    const { dispatch } = useQueue();
+    useLayoutEffect(() => {
+        dispatch({ type: 'SELECT_QUEUE_TASK', id: taskId });
+    }, [taskId, dispatch]);
+    return null;
 }
 
 function makeQueueResponse(opts?: { queued?: any[]; running?: any[]; stats?: any }) {
@@ -84,6 +94,11 @@ describe('RepoQueueTab', () => {
     beforeEach(() => {
         fetchMock = vi.fn();
         vi.stubGlobal('fetch', fetchMock);
+        (global as any).EventSource = vi.fn().mockImplementation(() => ({
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+            close: vi.fn(),
+        }));
     });
 
     afterEach(() => {
@@ -272,6 +287,60 @@ describe('RepoQueueTab', () => {
 
         await waitFor(() => {
             expect(screen.getByText('No tasks in queue for this repository')).toBeTruthy();
+        });
+    });
+
+    it('preserves deep-link selectedTaskId through the loading phase', async () => {
+        const deepLinkTaskId = 'deep-linked-task';
+
+        setupFetch({
+            queue: makeQueueResponse({
+                running: [makeRunningTask({ id: deepLinkTaskId, displayName: 'Deep Link Task' })],
+            }),
+            history: makeHistoryResponse([]),
+        });
+
+        render(
+            <Wrap>
+                <PreSelectTask taskId={deepLinkTaskId} />
+                <RepoQueueTab workspaceId="ws1" />
+            </Wrap>
+        );
+
+        // Wait for data to load and task to appear in the list
+        await waitFor(() => {
+            expect(screen.getByText(/Deep Link Task/)).toBeTruthy();
+        });
+
+        // Selection should be preserved — the placeholder must NOT be visible
+        expect(screen.queryByText('Select a task to view details')).toBeNull();
+    });
+
+    it('clears selectedTaskId after loading when task is not in any list', async () => {
+        const missingTaskId = 'task-does-not-exist';
+
+        setupFetch({
+            queue: makeQueueResponse({
+                running: [makeRunningTask()],
+            }),
+            history: makeHistoryResponse([]),
+        });
+
+        render(
+            <Wrap>
+                <PreSelectTask taskId={missingTaskId} />
+                <RepoQueueTab workspaceId="ws1" />
+            </Wrap>
+        );
+
+        // Wait for data to load
+        await waitFor(() => {
+            expect(screen.getAllByText(/Running Task/).length).toBeGreaterThan(0);
+        });
+
+        // The stale selection should have been cleared — placeholder should appear
+        await waitFor(() => {
+            expect(screen.getByText('Select a task to view details')).toBeTruthy();
         });
     });
 });
