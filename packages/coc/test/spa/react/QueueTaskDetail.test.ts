@@ -127,6 +127,41 @@ describe('QueueTaskDetail', () => {
         });
     });
 
+    describe('SSE chunk timeline merging', () => {
+        it('merges consecutive content chunks into a single timeline item', () => {
+            const chunkHandler = source.substring(
+                source.indexOf("es.addEventListener('chunk'"),
+                source.indexOf("es.addEventListener('tool-start'"),
+            );
+            // Should check last timeline item type before appending
+            expect(chunkHandler).toContain("lastItem.type === 'content'");
+            // Should merge content by concatenation
+            expect(chunkHandler).toContain("(lastItem.content || '') + chunk");
+            // Should slice off the last item when merging
+            expect(chunkHandler).toContain('prev.slice(0, -1)');
+        });
+
+        it('creates a new timeline item when last item is not content', () => {
+            const chunkHandler = source.substring(
+                source.indexOf("es.addEventListener('chunk'"),
+                source.indexOf("es.addEventListener('tool-start'"),
+            );
+            // Fallback: push new content item (for empty timeline or after tool events)
+            expect(chunkHandler).toContain("type: 'content' as const");
+            expect(chunkHandler).toContain('timestamp: new Date().toISOString()');
+        });
+
+        it('tool events always push a new timeline item (merge boundary)', () => {
+            const toolHandler = source.substring(
+                source.indexOf('const handleToolSSE'),
+                source.indexOf("es.addEventListener('tool-start'"),
+            );
+            // Tool handler spreads unconditionally
+            expect(toolHandler).toContain('...(last.timeline || [])');
+            expect(toolHandler).toContain('type: eventType');
+        });
+    });
+
     describe('lazy image loading', () => {
         it('PendingTaskPayload fetches images when payload.hasImages is true', () => {
             expect(source).toContain('payload.hasImages');

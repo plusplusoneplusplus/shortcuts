@@ -382,7 +382,14 @@ export function QueueTaskDetail() {
                         ...last,
                         content: (last.content || '') + chunk,
                         streaming: true,
-                        timeline: [...(last.timeline || []), { type: 'content' as const, timestamp: new Date().toISOString(), content: chunk }],
+                        timeline: (() => {
+                            const prev = last.timeline || [];
+                            const lastItem = prev[prev.length - 1];
+                            if (lastItem && lastItem.type === 'content') {
+                                return [...prev.slice(0, -1), { ...lastItem, content: (lastItem.content || '') + chunk }];
+                            }
+                            return [...prev, { type: 'content' as const, timestamp: new Date().toISOString(), content: chunk }];
+                        })(),
                     };
                     return [...turns];
                 });
