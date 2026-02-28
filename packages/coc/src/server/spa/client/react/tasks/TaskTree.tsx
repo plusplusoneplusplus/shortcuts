@@ -92,8 +92,8 @@ export function TaskTree({
         if (isInitialMount.current) {
             isInitialMount.current = false;
             if (initialFolderPath || initialFilePath) {
-                const folderPath = initialFolderPath ?? (initialFilePath ? initialFilePath.split('/').slice(0, -1).join('/') : '');
-                const segments = folderPath.split('/').filter(Boolean);
+                const folderPath = initialFolderPath ?? (initialFilePath ? initialFilePath.split(/[\\/]/).slice(0, -1).join('/') : '');
+                const segments = folderPath.split(/[\\/]/).filter(Boolean);
                 const cols: TaskNode[][] = [rootNodes];
                 const keys: (string | null)[] = [];
                 let cur = tree;
@@ -131,7 +131,7 @@ export function TaskTree({
         setOpenFilePath(null);
 
         const folderPath = getFolderKey(folder);
-        const encoded = folderPath.split('/').map(encodeURIComponent).join('/');
+        const encoded = folderPath.split(/[\\/]/).map(encodeURIComponent).join('/');
         history.replaceState(null, '', `#repos/${encodeURIComponent(wsId)}/tasks/${encoded}`);
 
         setSelectedFolderPath(getFolderKey(folder));
@@ -146,11 +146,11 @@ export function TaskTree({
         setActiveFolderKeys(newKeys);
         activeFolderKeysRef.current = newKeys;
 
-        const parentFolderPath = path.includes('/') ? path.split('/').slice(0, -1).join('/') : null;
+        const parentFolderPath = path.match(/[\\/]/) ? path.split(/[\\/]/).slice(0, -1).join('/') : null;
         setSelectedFolderPath(parentFolderPath);
 
         setOpenFilePath(path);
-        const encoded = path.split('/').map(encodeURIComponent).join('/');
+        const encoded = path.split(/[\\/]/).map(encodeURIComponent).join('/');
         history.replaceState(null, '', `#repos/${encodeURIComponent(wsId)}/tasks/${encoded}`);
     };
 

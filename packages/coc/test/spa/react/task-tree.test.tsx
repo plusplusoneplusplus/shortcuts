@@ -200,6 +200,98 @@ describe('TaskTree', () => {
         expect(screen.getByTestId('open-file-path').textContent).toBe('feature1/task.md');
     });
 
+    it('initialises to initialFolderPath with backslash separators (Windows)', () => {
+        // On Windows, relativePath may use backslashes; deep-link must still split correctly
+        renderTaskTree(mockTree, { initialFolderPath: 'feature1\\sub' });
+
+        // Should produce root + feature1 + sub = 3 columns
+        expect(screen.getByTestId('miller-column-0')).toBeTruthy();
+        expect(screen.getByTestId('miller-column-1')).toBeTruthy();
+        expect(screen.getByTestId('miller-column-2')).toBeTruthy();
+    });
+
+    it('initialises to initialFilePath with backslash separators (Windows)', () => {
+        renderTaskTree(mockTree, { initialFilePath: 'feature1\\task.md' });
+
+        // Should navigate to feature1 folder and open the file
+        expect(screen.getByTestId('miller-column-1')).toBeTruthy();
+        expect(screen.getByTestId('open-file-path').textContent).toBe('feature1\\task.md');
+    });
+
+    it('encodes URL with forward slashes when folder relativePath has backslashes', () => {
+        // Create tree where relativePath uses backslash separators
+        const bsTree = makeTree({
+            children: [
+                makeTree({
+                    name: 'coc',
+                    relativePath: 'coc',
+                    children: [
+                        makeTree({
+                            name: 'chat',
+                            relativePath: 'coc\\chat',
+                        }),
+                    ],
+                }),
+            ],
+        });
+
+        const replaceSpy = vi.spyOn(window.history, 'replaceState').mockImplementation(() => {});
+        render(
+            <Wrap>
+                <TaskTree tree={bsTree} commentCounts={{}} wsId="ws1" />
+                <OpenFilePathReader />
+            </Wrap>
+        );
+
+        // Click the "coc" folder — URL should use forward slashes
+        fireEvent.click(screen.getByTestId('task-tree-item-coc'));
+        expect(replaceSpy).toHaveBeenCalledWith(
+            null, '',
+            '#repos/ws1/tasks/coc',
+        );
+
+        // Click the "chat" subfolder whose relativePath is "coc\chat"
+        fireEvent.click(screen.getByTestId('task-tree-item-chat'));
+        expect(replaceSpy).toHaveBeenCalledWith(
+            null, '',
+            '#repos/ws1/tasks/coc/chat',
+        );
+    });
+
+    it('encodes URL with forward slashes when file path has backslashes', () => {
+        // Create tree where a document's relativePath uses backslash
+        const bsTree = makeTree({
+            children: [
+                makeTree({
+                    name: 'coc',
+                    relativePath: 'coc',
+                    singleDocuments: [
+                        { baseName: 'readme', fileName: 'readme.md', relativePath: 'coc', isArchived: false },
+                    ],
+                }),
+            ],
+        });
+
+        const replaceSpy = vi.spyOn(window.history, 'replaceState').mockImplementation(() => {});
+        render(
+            <Wrap>
+                <TaskTree tree={bsTree} commentCounts={{}} wsId="ws1" />
+                <OpenFilePathReader />
+            </Wrap>
+        );
+
+        // Navigate to coc folder, then click the file
+        fireEvent.click(screen.getByTestId('task-tree-item-coc'));
+        fireEvent.click(screen.getByTestId('task-tree-item-readme'));
+
+        // The file path is "coc/readme.md" (constructed via getNodePath with '/').
+        // URL should use forward slashes.
+        expect(replaceSpy).toHaveBeenCalledWith(
+            null, '',
+            '#repos/ws1/tasks/coc/readme.md',
+        );
+    });
+
     it('rebuilds columns from activeFolderKeys on tree update', () => {
         const { rerender } = renderTaskTree(mockTree);
 
