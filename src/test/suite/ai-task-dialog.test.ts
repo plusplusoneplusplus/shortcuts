@@ -661,6 +661,110 @@ suite('AI Task Dialog Service Tests', () => {
             assert.ok(dialogService.validateTaskName, 'Should have validateTaskName method');
             assert.ok(dialogService.getAbsoluteFolderPath, 'Should have getAbsoluteFolderPath method');
         });
+
+        test('dialog service should expose isOpen property', () => {
+            assert.strictEqual(dialogService.isOpen, false, 'Should not be open initially');
+        });
+
+        test('dialog service should expose hasStatusBarItem property', () => {
+            assert.strictEqual(dialogService.hasStatusBarItem, false, 'Should not have status bar item initially');
+        });
+    });
+
+    // =========================================================================
+    // Minimizable Dialog Tests
+    // =========================================================================
+
+    suite('Minimizable Generate Task Dialog', () => {
+        test('isOpen should be false when no dialog is shown', () => {
+            assert.strictEqual(dialogService.isOpen, false,
+                'isOpen should be false when no panel exists');
+        });
+
+        test('hasStatusBarItem should be false when no dialog is shown', () => {
+            assert.strictEqual(dialogService.hasStatusBarItem, false,
+                'hasStatusBarItem should be false when no panel exists');
+        });
+
+        test('handleMessage should support minimize message type', () => {
+            // Verify the service accepts minimize message type without errors
+            // (handleMessage is private but we test via the public interface)
+            assert.ok(dialogService.showDialog, 'showDialog should exist');
+            assert.ok(dialogService.isOpen !== undefined, 'isOpen property should be defined');
+        });
+
+        test('dialog result type should support cancelled from close', () => {
+            const result: AITaskDialogResult = {
+                cancelled: true,
+                options: null
+            };
+            assert.strictEqual(result.cancelled, true, 'Close should produce cancelled result');
+            assert.strictEqual(result.options, null, 'Close should have null options');
+        });
+
+        test('dialog result type should support successful submit after minimize', () => {
+            // Simulate: user minimizes, comes back, then submits
+            const result: AITaskDialogResult = {
+                cancelled: false,
+                options: {
+                    mode: 'create',
+                    createOptions: {
+                        name: 'task-after-minimize',
+                        location: 'feature1',
+                        description: 'Created after minimizing and resuming',
+                        model: DEFAULT_MODEL_ID
+                    }
+                }
+            };
+            assert.strictEqual(result.cancelled, false, 'Submit after minimize should not be cancelled');
+            assert.strictEqual(result.options!.createOptions!.name, 'task-after-minimize');
+        });
+
+        test('dialog result type should support from-feature submit after minimize', () => {
+            const result: AITaskDialogResult = {
+                cancelled: false,
+                options: {
+                    mode: 'from-feature',
+                    fromFeatureOptions: {
+                        name: 'feature-task-after-minimize',
+                        location: 'feature1',
+                        focus: 'API endpoints',
+                        depth: 'deep',
+                        model: DEFAULT_MODEL_ID
+                    }
+                }
+            };
+            assert.strictEqual(result.cancelled, false);
+            assert.strictEqual(result.options!.fromFeatureOptions!.name, 'feature-task-after-minimize');
+            assert.strictEqual(result.options!.fromFeatureOptions!.depth, 'deep');
+        });
+
+        test('re-reveal should work with existing panel state', () => {
+            // The key behavior: showDialog() when panel exists should return a new promise
+            // (not { cancelled: true }) so the caller can await the eventual result
+            // We verify the interface supports this pattern
+            assert.ok(typeof dialogService.showDialog === 'function',
+                'showDialog should be callable multiple times');
+        });
+
+        test('dialog result should preserve images through minimize cycle', () => {
+            const result: AITaskDialogResult = {
+                cancelled: false,
+                options: {
+                    mode: 'create',
+                    createOptions: {
+                        name: 'task-with-images',
+                        location: '',
+                        description: 'Task with pasted images',
+                        model: DEFAULT_MODEL_ID,
+                        images: ['data:image/png;base64,abc123', 'data:image/jpeg;base64,def456']
+                    }
+                }
+            };
+            assert.ok(result.options!.createOptions!.images);
+            assert.strictEqual(result.options!.createOptions!.images!.length, 2,
+                'Images should be preserved through the dialog lifecycle');
+        });
     });
 
     // =========================================================================

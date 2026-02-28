@@ -37,11 +37,22 @@ export class AITaskDialogService {
     private readonly context: vscode.ExtensionContext;
     private currentPanel: vscode.WebviewPanel | undefined;
     private pendingResolve: ((result: AITaskDialogResult) => void) | undefined;
+    private statusBarItem: vscode.StatusBarItem | undefined;
 
     constructor(taskManager: TaskManager, extensionUri: vscode.Uri, context: vscode.ExtensionContext) {
         this.taskManager = taskManager;
         this.extensionUri = extensionUri;
         this.context = context;
+    }
+
+    /** Whether the dialog panel is currently open (visible or minimized) */
+    get isOpen(): boolean {
+        return this.currentPanel !== undefined;
+    }
+
+    /** Whether the status bar indicator is currently visible */
+    get hasStatusBarItem(): boolean {
+        return this.statusBarItem !== undefined;
     }
 
     /**
@@ -54,10 +65,12 @@ export class AITaskDialogService {
         initialMode?: TaskCreationMode;
         featureContext?: FeatureContext;
     }): Promise<AITaskDialogResult> {
-        // If panel already exists, reveal it
+        // If panel already exists, reveal it and return a new promise
         if (this.currentPanel) {
             this.currentPanel.reveal(vscode.ViewColumn.Active);
-            return { cancelled: true, options: null };
+            return new Promise<AITaskDialogResult>((resolve) => {
+                this.pendingResolve = resolve;
+            });
         }
 
         return new Promise<AITaskDialogResult>((resolve) => {
@@ -80,7 +93,7 @@ export class AITaskDialogService {
             { viewColumn: vscode.ViewColumn.Active, preserveFocus: false },
             {
                 enableScripts: true,
-                retainContextWhenHidden: false,
+                retainContextWhenHidden: true,
                 localResourceRoots: [
                     vscode.Uri.joinPath(this.extensionUri, 'media')
                 ]
@@ -88,6 +101,20 @@ export class AITaskDialogService {
         );
 
         this.currentPanel = panel;
+
+        // Create status bar item for re-revealing minimized dialog
+        this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
+        this.statusBarItem.text = '$(edit) Generate Task';
+        this.statusBarItem.tooltip = 'Click to resume the Generate Task dialog';
+        this.statusBarItem.command = 'workspaceShortcuts.revealAITaskDialog';
+        this.statusBarItem.show();
+
+        // Register a disposable command to reveal the panel
+        const revealCommand = vscode.commands.registerCommand('workspaceShortcuts.revealAITaskDialog', () => {
+            if (this.currentPanel) {
+                this.currentPanel.reveal(vscode.ViewColumn.Active);
+            }
+        });
 
         // Get available folders and models
         const folders = await this.getAvailableFolders();
@@ -119,6 +146,11 @@ export class AITaskDialogService {
         // Handle panel disposal
         panel.onDidDispose(() => {
             this.currentPanel = undefined;
+            if (this.statusBarItem) {
+                this.statusBarItem.dispose();
+                this.statusBarItem = undefined;
+            }
+            revealCommand.dispose();
             if (this.pendingResolve) {
                 this.pendingResolve({ cancelled: true, options: null });
                 this.pendingResolve = undefined;
@@ -181,6 +213,11 @@ export class AITaskDialogService {
                     this.pendingResolve = undefined;
                 }
                 this.currentPanel?.dispose();
+                break;
+
+            case 'minimize':
+                // Move focus away from the dialog without disposing it
+                vscode.commands.executeCommand('workbench.action.focusSideBar');
                 break;
         }
     }
@@ -535,7 +572,8 @@ export class AITaskDialogService {
         </div>
         
         <div class="dialog-footer">
-            <button class="btn btn-secondary" id="cancelBtn">Cancel</button>
+            <button class="btn btn-secondary" id="minimizeBtn" title="Minimize to status bar (Escape)">↓ Minimize</button>
+            <button class="btn btn-secondary" id="cancelBtn" title="Close and discard (Shift+Escape)">✕ Close</button>
             <button class="btn btn-primary" id="createBtn">Create Task</button>
         </div>
     </div>
@@ -585,6 +623,7 @@ export class AITaskDialogService {
             const createBtn = document.getElementById('createBtn');
             const cancelBtn = document.getElementById('cancelBtn');
             const closeBtn = document.getElementById('closeBtn');
+            const minimizeBtn = document.getElementById('minimizeBtn');
             
             // Image storage per mode
             const createImages = [];
@@ -847,10 +886,18 @@ export class AITaskDialogService {
                 vscode.postMessage({ type: 'cancel' });
             });
             
+            minimizeBtn.addEventListener('click', () => {
+                vscode.postMessage({ type: 'minimize' });
+            });
+            
             // Keyboard shortcuts
             document.addEventListener('keydown', (e) => {
-                if (e.key === 'Escape') {
+                if (e.key === 'Escape' && e.shiftKey) {
+                    // Shift+Escape: Close and discard
                     vscode.postMessage({ type: 'cancel' });
+                } else if (e.key === 'Escape') {
+                    // Escape: Minimize (move to background)
+                    vscode.postMessage({ type: 'minimize' });
                 }
                 if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
                     e.preventDefault();
