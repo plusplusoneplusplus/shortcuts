@@ -6,6 +6,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import ReactDOM from 'react-dom';
 import { Dialog, Button, ImageLightbox } from '../shared';
 import { useQueueTaskGeneration } from '../hooks/useQueueTaskGeneration';
 import { usePreferences } from '../hooks/usePreferences';
@@ -30,6 +31,12 @@ export interface GenerateTaskDialogProps {
     wsId: string;
     /** Pre-selected target folder path (relative). Empty string = root. */
     initialFolder?: string;
+    /** Whether the dialog is currently minimized into a pill. */
+    minimized?: boolean;
+    /** Called when the user wants to minimize the dialog. */
+    onMinimize?: () => void;
+    /** Called when the user wants to restore from minimized state. */
+    onRestore?: () => void;
     /** Called when the task is successfully queued; receives the taskId. */
     onSuccess: (taskId: string) => void;
     /** Called when the user cancels or closes without completing. */
@@ -41,6 +48,9 @@ export interface GenerateTaskDialogProps {
 export function GenerateTaskDialog({
     wsId,
     initialFolder = '',
+    minimized = false,
+    onMinimize,
+    onRestore,
     onSuccess,
     onClose,
 }: GenerateTaskDialogProps) {
@@ -155,11 +165,39 @@ export function GenerateTaskDialog({
         </>
     );
 
+    // ── minimized pill ─────────────────────────────────────────────────────
+    if (minimized) {
+        const preview = prompt.trim().length > 30 ? prompt.trim().slice(0, 30) + '…' : prompt.trim();
+        return ReactDOM.createPortal(
+            <div
+                data-testid="generate-task-pill"
+                className="fixed bottom-4 right-4 z-[10001] flex items-center gap-2 px-4 py-2.5 rounded-lg shadow-lg border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#252526] cursor-pointer hover:shadow-xl transition-shadow"
+                onClick={onRestore}
+            >
+                <span className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]">✨ Generate Task</span>
+                {preview && (
+                    <span className="text-xs text-[#848484] max-w-[160px] truncate" data-testid="pill-prompt-preview">
+                        ▪ &ldquo;{preview}&rdquo;
+                    </span>
+                )}
+                <span
+                    className="ml-1 text-xs text-[#0078d4] dark:text-[#3794ff] hover:underline"
+                    data-testid="pill-restore-btn"
+                >
+                    Restore
+                </span>
+            </div>,
+            document.body,
+        );
+    }
+
+    // ── full dialog ─────────────────────────────────────────────────────────
     return (
         <Dialog
             open
             id="generate-task-overlay"
             onClose={isSubmitting ? undefined : onClose}
+            onMinimize={isSubmitting ? undefined : onMinimize}
             title="Generate Task"
             className="max-w-[600px]"
             footer={footer}

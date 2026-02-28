@@ -41,8 +41,9 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const [editOpen, setEditOpen] = useState(false);
     const [generateDialog, setGenerateDialog] = useState<{
         open: boolean;
+        minimized: boolean;
         targetFolder: string | undefined;
-    }>({ open: false, targetFolder: undefined });
+    }>({ open: false, minimized: false, targetFolder: undefined });
     const ws = repo.workspace;
     const color = ws.color || '#848484';
     const activeSubTab = state.activeRepoSubTab;
@@ -74,7 +75,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     };
 
     const handleOpenGenerateDialog = useCallback((targetFolder?: string) => {
-        setGenerateDialog({ open: true, targetFolder });
+        setGenerateDialog({ open: true, minimized: false, targetFolder });
     }, []);
 
     const handleRemove = async () => {
@@ -94,7 +95,12 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                     style={{ background: color }}
                 />
                 <h1 className="text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc] flex-1">{ws.name}</h1>
-                <Button variant="primary" size="sm" id="repo-generate-btn" data-testid="repo-generate-btn" onClick={() => handleOpenGenerateDialog()}>✨ Generate</Button>
+                <Button variant="primary" size="sm" id="repo-generate-btn" data-testid="repo-generate-btn" onClick={() => handleOpenGenerateDialog()} className="relative">
+                    ✨ Generate
+                    {generateDialog.open && generateDialog.minimized && (
+                        <span data-testid="generate-minimized-badge" className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-[#0078d4] border-2 border-white dark:border-[#252526]" />
+                    )}
+                </Button>
                 <Button variant="secondary" size="sm" id="repo-edit-btn" data-testid="repo-edit-btn" onClick={() => setEditOpen(true)}>Edit</Button>
                 <Button variant="danger" size="sm" id="repo-remove-btn" data-testid="repo-remove-btn" onClick={handleRemove}>Remove</Button>
             </div>
@@ -153,9 +159,12 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                 <GenerateTaskDialog
                     wsId={ws.id}
                     initialFolder={generateDialog.targetFolder}
-                    onClose={() => setGenerateDialog({ open: false, targetFolder: undefined })}
+                    minimized={generateDialog.minimized}
+                    onMinimize={() => setGenerateDialog(prev => ({ ...prev, minimized: true }))}
+                    onRestore={() => setGenerateDialog(prev => ({ ...prev, minimized: false }))}
+                    onClose={() => setGenerateDialog({ open: false, minimized: false, targetFolder: undefined })}
                     onSuccess={() => {
-                        setGenerateDialog({ open: false, targetFolder: undefined });
+                        setGenerateDialog({ open: false, minimized: false, targetFolder: undefined });
                     }}
                 />
             )}

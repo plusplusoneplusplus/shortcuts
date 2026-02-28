@@ -84,6 +84,22 @@ describe('RepoDetail Generate button in header', () => {
         const body = handler![1];
         expect(body).not.toContain("switchSubTab");
     });
+
+    it('generateDialog state includes minimized boolean', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('minimized: boolean');
+        expect(REPO_DETAIL_SOURCE).toContain('minimized: false');
+    });
+
+    it('passes minimized, onMinimize, and onRestore props to GenerateTaskDialog', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('minimized={generateDialog.minimized}');
+        expect(REPO_DETAIL_SOURCE).toContain('onMinimize={');
+        expect(REPO_DETAIL_SOURCE).toContain('onRestore={');
+    });
+
+    it('renders minimized badge on generate button when dialog is minimized', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="generate-minimized-badge"');
+        expect(REPO_DETAIL_SOURCE).toContain('generateDialog.open && generateDialog.minimized');
+    });
 });
 
 describe('RepoDetail Queue badge wiring', () => {

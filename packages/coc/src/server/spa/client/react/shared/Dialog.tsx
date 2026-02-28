@@ -5,6 +5,8 @@ import { cn } from './cn';
 export interface DialogProps {
     open: boolean;
     onClose: () => void;
+    /** When provided, a minimize button (▬) is rendered in the header next to the title. */
+    onMinimize?: () => void;
     title?: string;
     children?: ReactNode;
     footer?: ReactNode;
@@ -13,15 +15,18 @@ export interface DialogProps {
     id?: string;
 }
 
-export function Dialog({ open, onClose, title, children, footer, className, id }: DialogProps) {
+export function Dialog({ open, onClose, onMinimize, title, children, footer, className, id }: DialogProps) {
     useEffect(() => {
         if (!open) return;
         const handler = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
+            if (e.key === 'Escape') {
+                if (onMinimize) onMinimize();
+                else onClose();
+            }
         };
         document.addEventListener('keydown', handler);
         return () => document.removeEventListener('keydown', handler);
-    }, [open, onClose]);
+    }, [open, onClose, onMinimize]);
 
     if (!open) return null;
 
@@ -41,7 +46,20 @@ export function Dialog({ open, onClose, title, children, footer, className, id }
                 onClick={e => e.stopPropagation()}
             >
                 {title && (
-                    <h2 className="text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc]">{title}</h2>
+                    <div className="flex items-center gap-2">
+                        <h2 className="text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc]">{title}</h2>
+                        {onMinimize && (
+                            <button
+                                data-testid="dialog-minimize-btn"
+                                className="ml-auto text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] text-sm leading-none px-1"
+                                onClick={onMinimize}
+                                aria-label="Minimize"
+                                title="Minimize (Esc)"
+                            >
+                                ▬
+                            </button>
+                        )}
+                    </div>
                 )}
                 <div className="text-sm text-[#1e1e1e] dark:text-[#cccccc]">{children}</div>
                 {footer && (

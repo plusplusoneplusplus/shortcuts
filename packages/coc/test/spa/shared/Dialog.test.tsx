@@ -82,4 +82,51 @@ describe('Dialog', () => {
         const panel = document.querySelector('.custom-dialog');
         expect(panel).toBeDefined();
     });
+
+    // ── onMinimize prop tests ───────────────────────────────────────────────
+
+    it('does not render minimize button when onMinimize is not provided', () => {
+        render(
+            <Dialog open={true} onClose={vi.fn()} title="Test">
+                Content
+            </Dialog>
+        );
+        expect(document.querySelector('[data-testid="dialog-minimize-btn"]')).toBeNull();
+    });
+
+    it('renders minimize button when onMinimize is provided', () => {
+        render(
+            <Dialog open={true} onClose={vi.fn()} onMinimize={vi.fn()} title="Test">
+                Content
+            </Dialog>
+        );
+        const btn = document.querySelector('[data-testid="dialog-minimize-btn"]');
+        expect(btn).not.toBeNull();
+        expect(btn!.getAttribute('aria-label')).toBe('Minimize');
+        expect(btn!.getAttribute('title')).toBe('Minimize (Esc)');
+    });
+
+    it('clicking minimize button calls onMinimize', () => {
+        const onMinimize = vi.fn();
+        render(
+            <Dialog open={true} onClose={vi.fn()} onMinimize={onMinimize} title="Test">
+                Content
+            </Dialog>
+        );
+        fireEvent.click(document.querySelector('[data-testid="dialog-minimize-btn"]')!);
+        expect(onMinimize).toHaveBeenCalledOnce();
+    });
+
+    it('Escape calls onMinimize instead of onClose when onMinimize is provided', () => {
+        const onClose = vi.fn();
+        const onMinimize = vi.fn();
+        render(
+            <Dialog open={true} onClose={onClose} onMinimize={onMinimize} title="Test">
+                Content
+            </Dialog>
+        );
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(onMinimize).toHaveBeenCalledOnce();
+        expect(onClose).not.toHaveBeenCalled();
+    });
 });
