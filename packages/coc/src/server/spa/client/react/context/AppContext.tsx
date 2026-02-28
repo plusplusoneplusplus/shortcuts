@@ -28,6 +28,7 @@ export interface AppContextState {
     wikiDetailInitialAdminTab: string | null;
     wikis: any[];
     selectedPipelineName: string | null;
+    selectedChatSessionId: string | null;
     conversationCache: Record<string, ConversationCacheEntry>;
     wsStatus: WsStatus;
 }
@@ -51,6 +52,7 @@ const initialState: AppContextState = {
     wikiDetailInitialAdminTab: null,
     wikis: [],
     selectedPipelineName: null,
+    selectedChatSessionId: null,
     conversationCache: {},
     wsStatus: 'closed',
 };
@@ -93,6 +95,7 @@ export type AppAction =
     | { type: 'APPEND_TURN'; processId: string; turn: any }
     | { type: 'INVALIDATE_CONVERSATION'; processId: string }
     | { type: 'SET_SELECTED_PIPELINE'; name: string | null }
+    | { type: 'SET_SELECTED_CHAT_SESSION'; id: string | null }
     | { type: 'SET_WS_STATUS'; status: WsStatus };
 
 // ── Reducer ────────────────────────────────────────────────────────────
@@ -237,6 +240,8 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
         }
         case 'SET_SELECTED_PIPELINE':
             return { ...state, selectedPipelineName: action.name };
+        case 'SET_SELECTED_CHAT_SESSION':
+            return { ...state, selectedChatSessionId: action.id };
         case 'SET_WS_STATUS':
             return state.wsStatus === action.status ? state : { ...state, wsStatus: action.status };
         default:

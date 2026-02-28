@@ -39,6 +39,14 @@ describe('RepoDetail RepoChatTab wiring', () => {
         expect(REPO_DETAIL_SOURCE).toContain('workspacePath={ws.rootPath}');
         expect(REPO_DETAIL_SOURCE).not.toContain('workspacePath={ws.path}');
     });
+
+    it('passes initialSessionId from AppContext to RepoChatTab', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('initialSessionId={state.selectedChatSessionId}');
+    });
+
+    it('clears selectedChatSessionId after consuming it (one-shot signal)', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("dispatch({ type: 'SET_SELECTED_CHAT_SESSION', id: null })");
+    });
 });
 
 describe('RepoDetail Generate button in header', () => {

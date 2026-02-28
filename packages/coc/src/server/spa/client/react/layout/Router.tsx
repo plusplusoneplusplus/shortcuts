@@ -93,6 +93,15 @@ export function parseQueueDeepLink(hash: string): string | null {
     return null;
 }
 
+export function parseChatDeepLink(hash: string): string | null {
+    const cleaned = hash.replace(/^#/, '');
+    const parts = cleaned.split('/');
+    if (parts[0] === 'repos' && parts[1] && parts[2] === 'chat' && parts[3]) {
+        return decodeURIComponent(parts[3]);
+    }
+    return null;
+}
+
 export const VALID_REPO_SUB_TABS: Set<string> = new Set(['info', 'pipelines', 'tasks', 'queue', 'schedules', 'chat']);
 
 export function Router() {
@@ -161,6 +170,12 @@ export function Router() {
                         queueDispatch({ type: 'SELECT_QUEUE_TASK', id: decodeURIComponent(parts[3]) });
                     } else if (parts[2] === 'queue') {
                         queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null });
+                    }
+                    // Chat session deep-link handling
+                    if (parts[2] === 'chat' && parts[3]) {
+                        dispatch({ type: 'SET_SELECTED_CHAT_SESSION', id: decodeURIComponent(parts[3]) });
+                    } else if (parts[2] === 'chat') {
+                        dispatch({ type: 'SET_SELECTED_CHAT_SESSION', id: null });
                     }
                 }
             }

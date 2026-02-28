@@ -22,6 +22,7 @@ import type { ClientConversationTurn } from '../types/dashboard';
 interface RepoChatTabProps {
     workspaceId: string;
     workspacePath?: string;
+    initialSessionId?: string | null;
 }
 
 function getConversationTurns(data: any): ClientConversationTurn[] {
@@ -49,7 +50,7 @@ function getConversationTurns(data: any): ClientConversationTurn[] {
     return [];
 }
 
-export function RepoChatTab({ workspaceId, workspacePath }: RepoChatTabProps) {
+export function RepoChatTab({ workspaceId, workspacePath, initialSessionId }: RepoChatTabProps) {
     const sessionsHook = useChatSessions(workspaceId);
     const { state: queueState } = useQueue();
 
@@ -172,7 +173,16 @@ export function RepoChatTab({ workspaceId, workspacePath }: RepoChatTabProps) {
     // --- auto-select on mount when sessions load ---
 
     useEffect(() => {
-        if (sessionsHook.loading || autoSelectedRef.current || sessionsHook.sessions.length === 0) return;
+        if (sessionsHook.loading || autoSelectedRef.current) return;
+        // Prefer initialSessionId from deep link
+        if (initialSessionId) {
+            autoSelectedRef.current = true;
+            setSelectedTaskId(initialSessionId);
+            loadSession(initialSessionId);
+            location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/chat/' + encodeURIComponent(initialSessionId);
+            return;
+        }
+        if (sessionsHook.sessions.length === 0) return;
         autoSelectedRef.current = true;
         const running = sessionsHook.sessions.find(s => s.status === 'running');
         const target = running ?? sessionsHook.sessions[0];
@@ -180,7 +190,7 @@ export function RepoChatTab({ workspaceId, workspacePath }: RepoChatTabProps) {
             setSelectedTaskId(target.id);
             loadSession(target.id);
         }
-    }, [sessionsHook.loading, sessionsHook.sessions, loadSession]);
+    }, [sessionsHook.loading, sessionsHook.sessions, loadSession, initialSessionId, workspaceId]);
 
     // Reset auto-select when workspace changes
     useEffect(() => {
@@ -259,7 +269,8 @@ export function RepoChatTab({ workspaceId, workspacePath }: RepoChatTabProps) {
         setError(null);
         setSessionExpired(false);
         loadSession(taskId);
-    }, [isStreaming, loadSession]);
+        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/chat/' + encodeURIComponent(taskId);
+    }, [isStreaming, loadSession, workspaceId]);
 
     const handleNewChat = useCallback(() => {
         if (isStreaming) stopStreaming();
@@ -273,7 +284,8 @@ export function RepoChatTab({ workspaceId, workspacePath }: RepoChatTabProps) {
         setInputValue('');
         initialImagePaste.clearImages();
         followUpImagePaste.clearImages();
-    }, [isStreaming, initialImagePaste, followUpImagePaste]);
+        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/chat';
+    }, [isStreaming, initialImagePaste, followUpImagePaste, workspaceId]);
 
     const handleStartChat = async () => {
         const prompt = inputValue.trim();
@@ -306,6 +318,7 @@ export function RepoChatTab({ workspaceId, workspacePath }: RepoChatTabProps) {
             setSelectedTaskId(newTaskId);
             setChatTaskId(newTaskId);
             setTask(body.task ?? null);
+            location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/chat/' + encodeURIComponent(newTaskId);
             const userTurn: ClientConversationTurn = {
                 role: 'user', content: prompt,
                 timestamp: new Date().toISOString(), timeline: [],

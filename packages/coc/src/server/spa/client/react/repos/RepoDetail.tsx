@@ -59,6 +59,13 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
             .catch(() => {});
     }, [ws.id]);
 
+    // Clear chat deep-link after consuming it (one-shot signal)
+    useEffect(() => {
+        if (state.selectedChatSessionId && activeSubTab === 'chat') {
+            dispatch({ type: 'SET_SELECTED_CHAT_SESSION', id: null });
+        }
+    }, [state.selectedChatSessionId, activeSubTab, dispatch]);
+
     const switchSubTab = (tab: RepoSubTab) => {
         dispatch({ type: 'SET_REPO_SUB_TAB', tab });
         // Update hash
@@ -136,7 +143,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                         {activeSubTab === 'pipelines' && <PipelinesTab repo={repo} />}
                         {activeSubTab === 'queue' && <RepoQueueTab workspaceId={ws.id} />}
                         {activeSubTab === 'schedules' && <RepoSchedulesTab workspaceId={ws.id} />}
-                        {activeSubTab === 'chat' && <RepoChatTab workspaceId={ws.id} workspacePath={ws.rootPath} />}
+                        {activeSubTab === 'chat' && <RepoChatTab workspaceId={ws.id} workspacePath={ws.rootPath} initialSessionId={state.selectedChatSessionId} />}
                     </div>
                 )}
             </div>

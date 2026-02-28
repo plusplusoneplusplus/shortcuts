@@ -48,6 +48,10 @@ describe('RepoChatTab', () => {
             expect(source).toContain('workspacePath?: string');
         });
 
+        it('accepts optional initialSessionId prop', () => {
+            expect(source).toContain('initialSessionId?: string | null');
+        });
+
         it('defines RepoChatTabProps interface', () => {
             expect(source).toContain('interface RepoChatTabProps');
         });
@@ -693,6 +697,76 @@ describe('RepoChatTab', () => {
             expect(sseEffect).not.toContain('[chatTaskId, task?.status]');
             // But the three-element array should be present
             expect(sseEffect).toContain('[chatTaskId, task?.status, processId]');
+        });
+    });
+
+    describe('deep-link URL updates', () => {
+        it('handleSelectSession updates location.hash with chat session ID', () => {
+            const handler = source.substring(source.indexOf('const handleSelectSession'), source.indexOf('const handleNewChat'));
+            expect(handler).toContain("location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/chat/' + encodeURIComponent(taskId)");
+        });
+
+        it('handleNewChat resets location.hash to chat without session ID', () => {
+            const handler = source.substring(source.indexOf('const handleNewChat'), source.indexOf('const handleStartChat'));
+            expect(handler).toContain("location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/chat'");
+        });
+
+        it('handleStartChat updates location.hash with new task ID', () => {
+            const handler = source.substring(source.indexOf('const handleStartChat'));
+            expect(handler).toContain("location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/chat/' + encodeURIComponent(newTaskId)");
+        });
+
+        it('includes workspaceId in handleSelectSession dependency array', () => {
+            const handler = source.substring(source.indexOf('const handleSelectSession'), source.indexOf('const handleNewChat'));
+            expect(handler).toContain('workspaceId');
+        });
+
+        it('includes workspaceId in handleNewChat dependency array', () => {
+            const handler = source.substring(source.indexOf('const handleNewChat'), source.indexOf('const handleStartChat'));
+            expect(handler).toContain('workspaceId');
+        });
+    });
+
+    describe('initialSessionId prop', () => {
+        it('destructures initialSessionId from props', () => {
+            expect(source).toContain('{ workspaceId, workspacePath, initialSessionId }');
+        });
+
+        it('prefers initialSessionId over auto-select when provided', () => {
+            const autoSelectEffect = source.substring(
+                source.indexOf('// --- auto-select on mount'),
+                source.indexOf('// Reset auto-select when workspace changes')
+            );
+            expect(autoSelectEffect).toContain('initialSessionId');
+            // initialSessionId check should come before sessions[0] fallback
+            const initialIdx = autoSelectEffect.indexOf('initialSessionId');
+            const fallbackIdx = autoSelectEffect.indexOf('sessionsHook.sessions[0]');
+            expect(initialIdx).toBeGreaterThan(-1);
+            expect(fallbackIdx).toBeGreaterThan(initialIdx);
+        });
+
+        it('calls loadSession with initialSessionId', () => {
+            const autoSelectEffect = source.substring(
+                source.indexOf('// --- auto-select on mount'),
+                source.indexOf('// Reset auto-select when workspace changes')
+            );
+            expect(autoSelectEffect).toContain('loadSession(initialSessionId)');
+        });
+
+        it('sets autoSelectedRef when initialSessionId is used', () => {
+            const autoSelectEffect = source.substring(
+                source.indexOf('if (initialSessionId)'),
+                source.indexOf('if (sessionsHook.sessions.length === 0)')
+            );
+            expect(autoSelectEffect).toContain('autoSelectedRef.current = true');
+        });
+
+        it('updates location.hash when initialSessionId is used', () => {
+            const autoSelectEffect = source.substring(
+                source.indexOf('if (initialSessionId)'),
+                source.indexOf('if (sessionsHook.sessions.length === 0)')
+            );
+            expect(autoSelectEffect).toContain("location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/chat/' + encodeURIComponent(initialSessionId)");
         });
     });
 });

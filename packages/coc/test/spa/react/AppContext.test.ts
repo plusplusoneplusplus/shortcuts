@@ -25,6 +25,7 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         wikiDetailInitialAdminTab: null,
         wikis: [],
         selectedPipelineName: null,
+        selectedChatSessionId: null,
         conversationCache: {},
         wsStatus: 'closed',
         ...overrides,
@@ -316,6 +317,26 @@ describe('AppContext reducer', () => {
             const state = makeState({ selectedPipelineName: 'old' });
             const result = appReducer(state, { type: 'SET_SELECTED_PIPELINE', name: 'new' });
             expect(result.selectedPipelineName).toBe('new');
+        });
+    });
+
+    // ── SET_SELECTED_CHAT_SESSION ──────────────────────────────────
+    describe('SET_SELECTED_CHAT_SESSION', () => {
+        it('sets selectedChatSessionId to a string', () => {
+            const result = appReducer(makeState(), { type: 'SET_SELECTED_CHAT_SESSION', id: 'task-abc' });
+            expect(result.selectedChatSessionId).toBe('task-abc');
+        });
+
+        it('clears selectedChatSessionId to null', () => {
+            const state = makeState({ selectedChatSessionId: 'task-abc' });
+            const result = appReducer(state, { type: 'SET_SELECTED_CHAT_SESSION', id: null });
+            expect(result.selectedChatSessionId).toBeNull();
+        });
+
+        it('overwrites existing selectedChatSessionId', () => {
+            const state = makeState({ selectedChatSessionId: 'old-task' });
+            const result = appReducer(state, { type: 'SET_SELECTED_CHAT_SESSION', id: 'new-task' });
+            expect(result.selectedChatSessionId).toBe('new-task');
         });
     });
 
