@@ -81,6 +81,26 @@ function commentUrl(wsId: string, taskPath: string, commentId: string): string {
     return commentsUrl(wsId, taskPath) + '/' + encodeURIComponent(commentId);
 }
 
+/** Poll a queued task until it completes or fails. Returns the task result. */
+async function pollTaskResult<T>(taskId: string, timeoutMs = 180_000): Promise<T> {
+    const start = Date.now();
+    let delay = 1000;
+    while (Date.now() - start < timeoutMs) {
+        await new Promise(r => setTimeout(r, delay));
+        const res = await fetch(getApiBase() + '/queue/' + encodeURIComponent(taskId));
+        if (!res.ok) throw new Error('Failed to fetch task status');
+        const { task } = await res.json();
+        if (task.status === 'completed') {
+            return task.result as T;
+        }
+        if (task.status === 'failed' || task.status === 'cancelled') {
+            throw new Error(task.error || `Task ${task.status}`);
+        }
+        delay = Math.min(delay * 1.5, 5000);
+    }
+    throw new Error('Task timed out');
+}
+
 // ============================================================================
 // Hook
 // ============================================================================
@@ -254,8 +274,22 @@ export function useTaskComments(wsId: string, taskPath: string): UseTaskComments
                     body: JSON.stringify({ documentContent }),
                 });
                 if (!aiRes.ok) throw new Error('Batch resolve failed');
-                const { revisedContent, commentIds }: { revisedContent: string; commentIds: string[] }
-                    = await aiRes.json();
+
+                let revisedContent: string;
+                let commentIds: string[];
+
+                if (aiRes.status === 202) {
+                    // Async queue path: poll for result
+                    const { taskId } = await aiRes.json();
+                    const result = await pollTaskResult<{ revisedContent: string; commentIds: string[] }>(taskId);
+                    revisedContent = result.revisedContent;
+                    commentIds = result.commentIds;
+                } else {
+                    // Sync fallback path
+                    const data = await aiRes.json();
+                    revisedContent = data.revisedContent;
+                    commentIds = data.commentIds;
+                }
 
                 // Step 2 — write revised file (abort if this fails)
                 const patchRes = await fetch(
@@ -292,8 +326,19 @@ export function useTaskComments(wsId: string, taskPath: string): UseTaskComments
                     body: JSON.stringify({ commandId: 'resolve', documentContent }),
                 });
                 if (!aiRes.ok) throw new Error('AI resolve failed');
-                const { revisedContent }: { revisedContent: string; commentId: string }
-                    = await aiRes.json();
+
+                let revisedContent: string;
+
+                if (aiRes.status === 202) {
+                    // Async queue path: poll for result
+                    const { taskId } = await aiRes.json();
+                    const result = await pollTaskResult<{ revisedContent: string; commentIds: string[] }>(taskId);
+                    revisedContent = result.revisedContent;
+                } else {
+                    // Sync fallback path
+                    const data = await aiRes.json();
+                    revisedContent = data.revisedContent;
+                }
 
                 // Step 2 — write revised file
                 const patchRes = await fetch(

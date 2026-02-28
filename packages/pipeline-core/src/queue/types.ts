@@ -77,6 +77,12 @@ export interface ResolveCommentsPayload {
     commentIds: string[];
     /** Template for generating the prompt */
     promptTemplate: string;
+    /** Working directory for execution */
+    workingDirectory?: string;
+    /** Full document text for prompt context */
+    documentContent: string;
+    /** Relative task path (for prompt context) */
+    filePath: string;
 }
 
 /**

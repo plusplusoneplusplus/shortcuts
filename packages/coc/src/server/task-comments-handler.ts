@@ -22,7 +22,11 @@ import {
     type AICommand,
     buildPromptFromContext,
     type PromptContext,
+    type CreateTaskInput,
+    type ResolveCommentsPayload,
 } from '@plusplusoneplusplus/pipeline-core';
+import type { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
+import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
 
 // ============================================================================
 // Types
@@ -394,9 +398,57 @@ function isValidWorkspaceId(wsId: string): boolean {
  *
  * @param routes - Shared route table
  * @param dataDir - Directory for comment storage (e.g. ~/.coc)
+ * @param bridge - Optional multi-repo queue bridge for async AI execution
+ * @param store - Optional process store for workspace resolution
  */
-export function registerTaskCommentsRoutes(routes: Route[], dataDir: string): void {
+export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bridge?: MultiRepoQueueExecutorBridge, store?: ProcessStore): void {
     const manager = new TaskCommentsManager(dataDir);
+
+    /**
+     * Resolve workspace rootPath from a workspace ID via the process store.
+     */
+    async function resolveWorkspacePath(wsId: string): Promise<string | undefined> {
+        if (!store) return undefined;
+        try {
+            const workspaces = await store.getWorkspaces();
+            const ws = workspaces.find((w: any) => w.id === wsId.trim());
+            return ws?.rootPath;
+        } catch {
+            return undefined;
+        }
+    }
+
+    /**
+     * Enqueue a resolve-comments task via the multi-repo bridge.
+     * Returns the task ID, or undefined if the bridge is unavailable.
+     */
+    async function enqueueResolveTask(
+        wsId: string,
+        taskPath: string,
+        commentIds: string[],
+        prompt: string,
+        documentContent: string,
+    ): Promise<string | undefined> {
+        if (!bridge) return undefined;
+        const rootPath = await resolveWorkspacePath(wsId) || process.cwd();
+        bridge.getOrCreateBridge(rootPath);
+        const queueManager = bridge.registry.getQueueForRepo(rootPath);
+        const input: CreateTaskInput<ResolveCommentsPayload> = {
+            type: 'resolve-comments',
+            priority: 'normal',
+            payload: {
+                documentUri: taskPath,
+                commentIds,
+                promptTemplate: prompt,
+                workingDirectory: rootPath,
+                documentContent,
+                filePath: taskPath,
+            },
+            config: {},
+            displayName: `Resolve comments: ${taskPath}`,
+        };
+        return queueManager.enqueue(input);
+    }
 
     // Pattern for comment counts endpoint: /api/comment-counts/{wsId}
     const countsPattern = /^\/api\/comment-counts\/([a-zA-Z0-9_-]+)$/;
@@ -555,6 +607,18 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string): vo
                         return sendError(res, 400, 'Missing required field: documentContent');
                     }
                     const resolvePrompt = buildBatchResolvePrompt([comment], documentContent, taskPath);
+
+                    // Try async queue path first
+                    try {
+                        const taskId = await enqueueResolveTask(wsId, taskPath, [comment.id], resolvePrompt, documentContent);
+                        if (taskId) {
+                            return sendJSON(res, 202, { taskId });
+                        }
+                    } catch {
+                        // Fall through to direct AI invocation
+                    }
+
+                    // Fallback: direct AI invocation when bridge is unavailable
                     let revisedContent: string;
                     try {
                         const { createCLIAIInvoker } = await import('../ai-invoker');
@@ -650,6 +714,19 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string): vo
 
             // Build prompt and invoke AI
             const prompt = buildBatchResolvePrompt(openComments, documentContent, taskPath);
+            const commentIds = openComments.map(c => c.id);
+
+            // Try async queue path first
+            try {
+                const taskId = await enqueueResolveTask(wsId, taskPath, commentIds, prompt, documentContent);
+                if (taskId) {
+                    return sendJSON(res, 202, { taskId });
+                }
+            } catch {
+                // Fall through to direct AI invocation
+            }
+
+            // Fallback: direct AI invocation when bridge is unavailable
             let revisedContent: string;
             try {
                 const { createCLIAIInvoker } = await import('../ai-invoker');
@@ -665,7 +742,7 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string): vo
 
             sendJSON(res, 200, {
                 revisedContent,
-                commentIds: openComments.map(c => c.id),
+                commentIds,
             });
         },
     });

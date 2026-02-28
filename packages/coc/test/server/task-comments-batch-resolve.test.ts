@@ -217,19 +217,16 @@ describe('batch-resolve endpoints', () => {
     // Per-comment resolve (commandId: 'resolve')
     // ------------------------------------------------------------------
     describe('POST /ask-ai with commandId=resolve', () => {
-        it('returns { revisedContent, commentId } on success', async () => {
+        it('returns 202 with taskId when bridge is available (async queue path)', async () => {
             const commentId = await createComment();
             const res = await postJSON(askAiUrl(commentId), {
                 commandId: 'resolve',
                 documentContent: DOC_CONTENT,
             });
-            expect(res.status).toBe(200);
+            expect(res.status).toBe(202);
             const body = JSON.parse(res.body);
-            expect(body.revisedContent).toBe('revised document content');
-            expect(body.commentId).toBe(commentId);
-            // Should NOT have the Q&A shape
-            expect(body.aiResponse).toBeUndefined();
-            expect(body.reply).toBeUndefined();
+            expect(body.taskId).toBeDefined();
+            expect(typeof body.taskId).toBe('string');
         });
 
         it('returns 400 when documentContent is missing', async () => {
@@ -242,35 +239,21 @@ describe('batch-resolve endpoints', () => {
             expect(body.error).toContain('documentContent');
         });
 
-        it('returns 502 when AI invoker returns success: false', async () => {
-            mockAIResponse = { success: false, response: '' } as any;
+        it('enqueues with correct comment ID in payload', async () => {
             const commentId = await createComment();
             const res = await postJSON(askAiUrl(commentId), {
                 commandId: 'resolve',
                 documentContent: DOC_CONTENT,
             });
-            expect(res.status).toBe(502);
-        });
-
-        it('returns 503 when AI service throws', async () => {
-            mockAIThrow = true;
-            const commentId = await createComment();
-            const res = await postJSON(askAiUrl(commentId), {
-                commandId: 'resolve',
-                documentContent: DOC_CONTENT,
-            });
-            expect(res.status).toBe(503);
-        });
-
-        it('builds prompt with the single comment', async () => {
-            const commentId = await createComment();
-            await postJSON(askAiUrl(commentId), {
-                commandId: 'resolve',
-                documentContent: DOC_CONTENT,
-            });
-            expect(capturedPrompt).toContain('# Document Revision Request');
-            expect(capturedPrompt).toContain(DOC_CONTENT);
-            expect(capturedPrompt).toContain('### Comment 1');
+            expect(res.status).toBe(202);
+            const body = JSON.parse(res.body);
+            // Verify the task exists in the queue
+            const taskRes = await request(`${baseUrl}/api/queue/${body.taskId}`);
+            const taskBody = JSON.parse(taskRes.body);
+            expect(taskBody.task).toBeDefined();
+            expect(taskBody.task.type).toBe('resolve-comments');
+            expect(taskBody.task.payload.commentIds).toContain(commentId);
+            expect(taskBody.task.payload.documentContent).toBe(DOC_CONTENT);
         });
     });
 
@@ -278,17 +261,34 @@ describe('batch-resolve endpoints', () => {
     // Batch resolve endpoint
     // ------------------------------------------------------------------
     describe('POST .../batch-resolve', () => {
-        it('returns { revisedContent, commentIds } with correct IDs', async () => {
+        it('returns 202 with taskId when bridge is available', async () => {
             const id1 = await createComment({ selectedText: 'text A', comment: 'fix A' });
             const id2 = await createComment({ selectedText: 'text B', comment: 'fix B' });
 
             const res = await postJSON(batchResolveUrl(), { documentContent: DOC_CONTENT });
-            expect(res.status).toBe(200);
+            expect(res.status).toBe(202);
             const body = JSON.parse(res.body);
-            expect(body.revisedContent).toBe('revised document content');
-            expect(body.commentIds).toContain(id1);
-            expect(body.commentIds).toContain(id2);
-            expect(body.commentIds).toHaveLength(2);
+            expect(body.taskId).toBeDefined();
+            expect(typeof body.taskId).toBe('string');
+        });
+
+        it('enqueues task with all open comment IDs in payload', async () => {
+            const id1 = await createComment({ selectedText: 'text A', comment: 'fix A' });
+            const id2 = await createComment({ selectedText: 'text B', comment: 'fix B' });
+
+            const res = await postJSON(batchResolveUrl(), { documentContent: DOC_CONTENT });
+            expect(res.status).toBe(202);
+            const body = JSON.parse(res.body);
+
+            // Verify the task in the queue has correct payload
+            const taskRes = await request(`${baseUrl}/api/queue/${body.taskId}`);
+            const taskBody = JSON.parse(taskRes.body);
+            expect(taskBody.task.type).toBe('resolve-comments');
+            expect(taskBody.task.payload.commentIds).toContain(id1);
+            expect(taskBody.task.payload.commentIds).toContain(id2);
+            expect(taskBody.task.payload.commentIds).toHaveLength(2);
+            expect(taskBody.task.payload.documentContent).toBe(DOC_CONTENT);
+            expect(taskBody.task.payload.filePath).toBe(TASK_PATH);
         });
 
         it('returns 400 when there are no open comments', async () => {
@@ -313,21 +313,7 @@ describe('batch-resolve endpoints', () => {
             expect(body.error).toContain('documentContent');
         });
 
-        it('returns 502 when AI invoker returns success: false', async () => {
-            mockAIResponse = { success: false, response: '' } as any;
-            await createComment();
-            const res = await postJSON(batchResolveUrl(), { documentContent: DOC_CONTENT });
-            expect(res.status).toBe(502);
-        });
-
-        it('returns 503 when AI service throws', async () => {
-            mockAIThrow = true;
-            await createComment();
-            const res = await postJSON(batchResolveUrl(), { documentContent: DOC_CONTENT });
-            expect(res.status).toBe(503);
-        });
-
-        it('only includes open comments in the prompt and response', async () => {
+        it('only includes open comments in the enqueued task', async () => {
             const openId = await createComment({ selectedText: 'open text', comment: 'open comment' });
             const resolvedId = await createComment();
             // Resolve the second comment
@@ -337,10 +323,26 @@ describe('batch-resolve endpoints', () => {
             });
 
             const res = await postJSON(batchResolveUrl(), { documentContent: DOC_CONTENT });
-            expect(res.status).toBe(200);
+            expect(res.status).toBe(202);
             const body = JSON.parse(res.body);
-            expect(body.commentIds).toEqual([openId]);
-            expect(capturedPrompt).toContain('open text');
+
+            const taskRes = await request(`${baseUrl}/api/queue/${body.taskId}`);
+            const taskBody = JSON.parse(taskRes.body);
+            expect(taskBody.task.payload.commentIds).toEqual([openId]);
+        });
+
+        it('includes the batch resolve prompt in the task payload', async () => {
+            await createComment({ selectedText: 'my selected text', comment: 'fix this' });
+
+            const res = await postJSON(batchResolveUrl(), { documentContent: DOC_CONTENT });
+            expect(res.status).toBe(202);
+            const body = JSON.parse(res.body);
+
+            const taskRes = await request(`${baseUrl}/api/queue/${body.taskId}`);
+            const taskBody = JSON.parse(taskRes.body);
+            expect(taskBody.task.payload.promptTemplate).toContain('# Document Revision Request');
+            expect(taskBody.task.payload.promptTemplate).toContain(DOC_CONTENT);
+            expect(taskBody.task.payload.promptTemplate).toContain('my selected text');
         });
     });
 
@@ -352,10 +354,10 @@ describe('batch-resolve endpoints', () => {
             await createComment();
             // POST to batch-resolve should NOT be interpreted as "create comment"
             const res = await postJSON(batchResolveUrl(), { documentContent: DOC_CONTENT });
-            expect(res.status).toBe(200);
+            // Should get batch-resolve response (202 queue or 200 fallback), not "create comment" response
+            expect([200, 202]).toContain(res.status);
             const body = JSON.parse(res.body);
-            // Should get batch-resolve response, not "create comment" response
-            expect(body.revisedContent).toBeDefined();
+            expect(body.taskId ?? body.revisedContent).toBeDefined();
             expect(body.comment).toBeUndefined();
         });
     });

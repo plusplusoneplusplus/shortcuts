@@ -1077,7 +1077,7 @@ describe('CLITaskExecutor', () => {
             }));
         });
 
-        it('should complete resolve-comments tasks as no-op', async () => {
+        it('should execute resolve-comments tasks via AI (no longer no-op)', async () => {
             const executor = new CLITaskExecutor(store);
 
             const task: QueuedTask = {
@@ -1086,14 +1086,24 @@ describe('CLITaskExecutor', () => {
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { documentUri: 'file:///test.md', commentIds: ['c1'], promptTemplate: '' },
+                payload: {
+                    documentUri: 'file:///test.md',
+                    commentIds: ['c1'],
+                    promptTemplate: 'resolve prompt',
+                    documentContent: 'doc content',
+                    filePath: 'test.md',
+                },
                 config: {},
             };
 
             const result = await executor.execute(task);
 
             expect(result.success).toBe(true);
-            expect(mockSendMessage).not.toHaveBeenCalled();
+            expect(mockSendMessage).toHaveBeenCalled();
+            expect(result.result).toEqual({
+                revisedContent: 'AI response text',
+                commentIds: ['c1'],
+            });
         });
     });
 
@@ -1416,6 +1426,160 @@ describe('CLITaskExecutor', () => {
             expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
                 onPermissionRequest: undefined,
             }));
+        });
+    });
+
+    // ========================================================================
+    // Resolve Comments Tasks
+    // ========================================================================
+
+    describe('resolve-comments tasks', () => {
+        it('should execute a resolve-comments task and return revisedContent + commentIds', async () => {
+            mockSendMessage.mockResolvedValue({
+                success: true,
+                response: '# Revised Document\n\nFixed content.',
+                sessionId: 'session-resolve-1',
+            });
+
+            const executor = new CLITaskExecutor(store);
+
+            const task: QueuedTask = {
+                id: 'resolve-1',
+                type: 'resolve-comments',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: {
+                    documentUri: 'feature/task.md',
+                    commentIds: ['comment-a', 'comment-b'],
+                    promptTemplate: '# Document Revision Request\n\nRevise this document.',
+                    workingDirectory: '/workspace',
+                    documentContent: '# Original Document\n\nOld content.',
+                    filePath: 'feature/task.md',
+                },
+                config: { timeoutMs: 60000 },
+                displayName: 'Resolve comments: feature/task.md',
+            };
+
+            const result = await executor.execute(task);
+
+            expect(result.success).toBe(true);
+            expect(result.result).toEqual({
+                revisedContent: '# Revised Document\n\nFixed content.',
+                commentIds: ['comment-a', 'comment-b'],
+            });
+        });
+
+        it('should pass promptTemplate as the AI prompt', async () => {
+            const executor = new CLITaskExecutor(store);
+
+            const task: QueuedTask = {
+                id: 'resolve-2',
+                type: 'resolve-comments',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: {
+                    documentUri: 'task.md',
+                    commentIds: ['c1'],
+                    promptTemplate: 'Custom resolve prompt for testing',
+                    documentContent: 'doc content',
+                    filePath: 'task.md',
+                },
+                config: {},
+            };
+
+            await executor.execute(task);
+
+            expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+                prompt: 'Custom resolve prompt for testing',
+            }));
+        });
+
+        it('should use workingDirectory from payload', async () => {
+            const executor = new CLITaskExecutor(store);
+
+            const task: QueuedTask = {
+                id: 'resolve-3',
+                type: 'resolve-comments',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: {
+                    documentUri: 'task.md',
+                    commentIds: ['c1'],
+                    promptTemplate: 'test prompt',
+                    workingDirectory: '/my/workspace',
+                    documentContent: 'doc',
+                    filePath: 'task.md',
+                },
+                config: {},
+            };
+
+            await executor.execute(task);
+
+            expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+                workingDirectory: '/my/workspace',
+            }));
+        });
+
+        it('should fail gracefully when AI service is unavailable', async () => {
+            mockIsAvailable.mockResolvedValue({ available: false, error: 'not running' });
+
+            const executor = new CLITaskExecutor(store);
+
+            const task: QueuedTask = {
+                id: 'resolve-4',
+                type: 'resolve-comments',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: {
+                    documentUri: 'task.md',
+                    commentIds: ['c1'],
+                    promptTemplate: 'test prompt',
+                    documentContent: 'doc',
+                    filePath: 'task.md',
+                },
+                config: {},
+            };
+
+            const result = await executor.execute(task);
+
+            expect(result.success).toBe(false);
+            expect(result.error?.message || String(result.error)).toContain('not running');
+        });
+
+        it('should update process store with the prompt preview', async () => {
+            const executor = new CLITaskExecutor(store);
+
+            const longPrompt = 'A'.repeat(100);
+            const task: QueuedTask = {
+                id: 'resolve-5',
+                type: 'resolve-comments',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: {
+                    documentUri: 'task.md',
+                    commentIds: ['c1'],
+                    promptTemplate: longPrompt,
+                    documentContent: 'doc',
+                    filePath: 'task.md',
+                },
+                config: {},
+            };
+
+            await executor.execute(task);
+
+            // Verify process store was updated with truncated preview
+            expect(store.updateProcess).toHaveBeenCalledWith(
+                'queue_resolve-5',
+                expect.objectContaining({
+                    fullPrompt: longPrompt,
+                    promptPreview: longPrompt.substring(0, 77) + '...',
+                })
+            );
         });
     });
 });

@@ -6,8 +6,10 @@ import { describe, it, expect } from 'vitest';
 import {
     isFollowPromptPayload,
     isRunPipelinePayload,
+    isResolveCommentsPayload,
     type FollowPromptPayload,
     type RunPipelinePayload,
+    type ResolveCommentsPayload,
     type AIClarificationPayload,
     type CustomTaskPayload,
     type TaskGenerationPayload,
@@ -129,5 +131,48 @@ describe('RunPipelinePayload — type and guard', () => {
         expect(payload.kind).toBe('run-pipeline');
         expect(payload.pipelinePath).toBe('/path/to/pipeline');
         expect(payload.workingDirectory).toBe('/workspace');
+    });
+});
+
+describe('ResolveCommentsPayload', () => {
+    it('accepts all fields including new workingDirectory, documentContent, filePath', () => {
+        const payload: ResolveCommentsPayload = {
+            documentUri: 'feature/task1.md',
+            commentIds: ['id-1', 'id-2'],
+            promptTemplate: 'test prompt',
+            workingDirectory: '/workspace',
+            documentContent: '# My Doc\n\nContent',
+            filePath: 'feature/task1.md',
+        };
+        expect(payload.workingDirectory).toBe('/workspace');
+        expect(payload.documentContent).toBe('# My Doc\n\nContent');
+        expect(payload.filePath).toBe('feature/task1.md');
+    });
+
+    it('allows omitting optional workingDirectory', () => {
+        const payload: ResolveCommentsPayload = {
+            documentUri: 'task.md',
+            commentIds: ['id-1'],
+            promptTemplate: 'prompt',
+            documentContent: 'content',
+            filePath: 'task.md',
+        };
+        expect(payload.workingDirectory).toBeUndefined();
+    });
+
+    it('isResolveCommentsPayload returns true for valid payload', () => {
+        const payload: ResolveCommentsPayload = {
+            documentUri: 'task.md',
+            commentIds: ['id-1'],
+            promptTemplate: 'prompt',
+            documentContent: 'content',
+            filePath: 'task.md',
+        };
+        expect(isResolveCommentsPayload(payload)).toBe(true);
+    });
+
+    it('isResolveCommentsPayload returns false for non-matching payloads', () => {
+        const followPrompt: FollowPromptPayload = { promptContent: 'test' };
+        expect(isResolveCommentsPayload(followPrompt)).toBe(false);
     });
 });

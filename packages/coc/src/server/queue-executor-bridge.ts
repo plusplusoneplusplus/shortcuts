@@ -31,6 +31,7 @@ import {
     isCustomTaskPayload,
     isTaskGenerationPayload,
     isRunPipelinePayload,
+    isResolveCommentsPayload,
     getCopilotSDKService,
     approveAllPermissions,
     DEFAULT_AI_TIMEOUT_MS,
@@ -44,7 +45,7 @@ import {
     parsePipelineYAMLSync,
     executePipeline,
 } from '@plusplusoneplusplus/pipeline-core';
-import type { ProcessStore, AIProcess, ConversationTurn, ToolEvent, TimelineItem, CopilotSDKService, TaskGenerationPayload, RunPipelinePayload, SelectedContext, Attachment } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore, AIProcess, ConversationTurn, ToolEvent, TimelineItem, CopilotSDKService, TaskGenerationPayload, RunPipelinePayload, ResolveCommentsPayload, SelectedContext, Attachment } from '@plusplusoneplusplus/pipeline-core';
 import { createCLIAIInvoker } from '../ai-invoker';
 import { saveImagesToTempFiles, cleanupTempDir } from '@plusplusoneplusplus/coc-server';
 
@@ -561,7 +562,12 @@ export class CLITaskExecutor implements TaskExecutor {
             return this.executeWithAI(task, prompt);
         }
 
-        // For code-review and resolve-comments: placeholder (no-op)
+        // Resolve comments: build prompt from payload and execute with AI
+        if (isResolveCommentsPayload(task.payload)) {
+            return this.executeResolveComments(task);
+        }
+
+        // For code-review: placeholder (no-op)
         return { status: 'completed', message: `Task type '${task.type}' executed (no-op in CLI mode)` };
     }
 
@@ -774,6 +780,31 @@ export class CLITaskExecutor implements TaskExecutor {
         };
     }
 
+    private async executeResolveComments(task: QueuedTask): Promise<unknown> {
+        const payload = task.payload as ResolveCommentsPayload;
+        const aiPrompt = payload.promptTemplate;
+
+        // Update process store with the enriched prompt
+        const processId = `queue_${task.id}`;
+        const preview = aiPrompt.length > 80 ? aiPrompt.substring(0, 77) + '...' : aiPrompt;
+        try {
+            await this.store.updateProcess(processId, {
+                fullPrompt: aiPrompt,
+                promptPreview: preview,
+            });
+        } catch {
+            // Non-fatal: store may be a stub
+        }
+
+        const result = await this.executeWithAI(task, aiPrompt);
+        const response = (result as { response?: string })?.response ?? '';
+
+        return {
+            revisedContent: response,
+            commentIds: payload.commentIds,
+        };
+    }
+
     private getWorkingDirectory(task: QueuedTask): string | undefined {
         if (isTaskGenerationPayload(task.payload)) {
             return task.payload.workingDirectory || this.defaultWorkingDirectory;
@@ -785,6 +816,9 @@ export class CLITaskExecutor implements TaskExecutor {
             return task.payload.workingDirectory || this.defaultWorkingDirectory;
         }
         if (isAIClarificationPayload(task.payload)) {
+            return task.payload.workingDirectory || this.defaultWorkingDirectory;
+        }
+        if (isResolveCommentsPayload(task.payload)) {
             return task.payload.workingDirectory || this.defaultWorkingDirectory;
         }
         return this.defaultWorkingDirectory;
