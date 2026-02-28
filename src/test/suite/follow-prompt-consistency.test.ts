@@ -24,7 +24,7 @@ import {
     DEFAULT_MODEL_ID
 } from '../../shortcuts/ai-service';
 import { buildFollowPromptText } from '../../shortcuts/ai-service/ai-queue-service';
-import { FollowPromptPayload } from '@plusplusoneplusplus/pipeline-core';
+import { FollowPromptPayload } from '../../shortcuts/ai-service/task-types';
 
 suite('Follow Prompt Consistency Tests', () => {
 

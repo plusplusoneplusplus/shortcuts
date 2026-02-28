@@ -19,7 +19,6 @@ import {
     createQueueExecutor,
     QueuedTask,
     CreateTaskInput,
-    TaskPayload,
     TaskPriority,
     QueueStats,
     TaskExecutor,
@@ -27,11 +26,13 @@ import {
     QueueChangeEvent,
     getCopilotSDKService,
     approveAllPermissions,
-    isFollowPromptPayload,
-    isAIClarificationPayload,
+} from '@plusplusoneplusplus/pipeline-core';
+import {
     FollowPromptPayload,
     AIClarificationPayload,
-} from '@plusplusoneplusplus/pipeline-core';
+    isFollowPromptPayload,
+    isAIClarificationPayload,
+} from './task-types';
 import { DEFAULT_AI_TIMEOUT_MS } from '../shared/ai-timeouts';
 import { AIProcessManager } from './ai-process-manager';
 import { getExtensionLogger, LogCategory } from './ai-service-logger';
@@ -58,7 +59,7 @@ export interface QueueTaskOptions {
     /** Task type */
     type: CreateTaskInput['type'];
     /** Task payload */
-    payload: TaskPayload;
+    payload: Record<string, unknown>;
     /** Priority (defaults to setting) */
     priority?: TaskPriority;
     /** Display name for the task */
