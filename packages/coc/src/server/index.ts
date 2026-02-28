@@ -325,6 +325,14 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         id: t.id, repoId: t.repoId, type: t.type, priority: t.priority,
         status: t.status, displayName: t.displayName, createdAt: t.createdAt,
         workingDirectory: (t.payload as any)?.workingDirectory,
+        payload: {
+            planFilePath: (t.payload as any)?.planFilePath,
+            filePath: (t.payload as any)?.filePath,
+            workingDirectory: (t.payload as any)?.workingDirectory,
+            data: (t.payload as any)?.data ? {
+                originalTaskPath: (t.payload as any)?.data?.originalTaskPath,
+            } : undefined,
+        },
     });
     const mapRunning = (t: any) => ({
         ...mapQueued(t), startedAt: t.startedAt,
