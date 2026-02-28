@@ -44,8 +44,8 @@ export function GenerateTaskDialog({
     onSuccess,
     onClose,
 }: GenerateTaskDialogProps) {
-    // --- preferences (persisted model) ---
-    const { model: savedModel, setModel: persistModel } = usePreferences();
+    // --- preferences (persisted model + depth) ---
+    const { model: savedModel, setModel: persistModel, depth: savedDepth, setDepth: persistDepth } = usePreferences();
     const { addToast } = useGlobalToast();
     const { dispatch: appDispatch } = useApp();
 
@@ -60,6 +60,10 @@ export function GenerateTaskDialog({
     useEffect(() => {
         if (savedModel && !model) setModel(savedModel);
     }, [savedModel]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    useEffect(() => {
+        if (savedDepth === 'deep' || savedDepth === 'normal') setDepth(savedDepth);
+    }, [savedDepth]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // --- data ---
     const [models, setModels] = useState<string[]>([]);
@@ -304,7 +308,10 @@ export function GenerateTaskDialog({
                         id="gen-task-depth"
                         className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
                         value={depth}
-                        onChange={e => setDepth(e.target.value as 'deep' | 'normal')}
+                        onChange={e => {
+                            setDepth(e.target.value as 'deep' | 'normal');
+                            persistDepth(e.target.value);
+                        }}
                         disabled={isSubmitting || isQueued}
                     >
                         <option value="deep">Deep (uses go-deep skill)</option>

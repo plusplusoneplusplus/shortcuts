@@ -61,6 +61,13 @@ describe('validateExportPayload', () => {
         expect(result).toEqual({ valid: true });
     });
 
+    it('accepts a payload with lastDepth in preferences', () => {
+        const payload = validPayload();
+        payload.preferences = { lastModel: 'gpt-4', lastDepth: 'deep' };
+        const result = validateExportPayload(payload);
+        expect(result).toEqual({ valid: true });
+    });
+
     // ---- version checks -----------------------------------------------
 
     it('rejects when version is missing', () => {

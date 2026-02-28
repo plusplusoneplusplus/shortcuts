@@ -16,6 +16,8 @@ import type { AIProcess, WorkspaceInfo, WikiInfo, QueuedTask, ProcessStore, Task
 export interface UserPreferences {
     /** Last-selected AI model in the SPA (empty string = default). */
     lastModel?: string;
+    /** Last-selected generation depth in the SPA. */
+    lastDepth?: 'deep' | 'normal';
 }
 
 /** CLI configuration from ~/.coc.yaml. */

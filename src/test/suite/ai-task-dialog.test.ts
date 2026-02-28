@@ -11,7 +11,7 @@ import * as vscode from 'vscode';
 import { AITaskDialogService } from '../../shortcuts/tasks-viewer/ai-task-dialog';
 import { TaskManager } from '../../shortcuts/tasks-viewer/task-manager';
 import { AITaskCreationOptions, AITaskDialogResult, AITaskCreateOptions, AITaskFromFeatureOptions } from '../../shortcuts/tasks-viewer/types';
-import { getLastUsedAIModel, saveLastUsedAIModel, getFollowPromptDefaultModel } from '../../shortcuts/ai-service/ai-config-helpers';
+import { getLastUsedAIModel, saveLastUsedAIModel, getFollowPromptDefaultModel, getLastUsedDepth, saveLastUsedDepth } from '../../shortcuts/ai-service/ai-config-helpers';
 import { VALID_MODELS, DEFAULT_MODEL_ID } from '../../shortcuts/ai-service';
 
 /**
@@ -791,6 +791,75 @@ suite('AI Task Dialog Service Tests', () => {
             const persistedModel = getLastUsedAIModel(mockContext as unknown as vscode.ExtensionContext);
             assert.strictEqual(persistedModel, VALID_MODELS[2], 
                 'Dialog service context should have persisted model');
+        });
+    });
+
+    // =========================================================================
+    // Persistent Depth Selection Tests
+    // =========================================================================
+    
+    suite('Persistent Depth Selection', () => {
+        test('getLastUsedDepth should return simple when no saved state', () => {
+            const freshContext = new MockExtensionContext();
+            const depth = getLastUsedDepth(freshContext as unknown as vscode.ExtensionContext);
+            
+            assert.strictEqual(depth, 'simple', 
+                'Should return simple when no saved state');
+        });
+
+        test('saveLastUsedDepth should persist depth to workspace state', () => {
+            const context = new MockExtensionContext();
+            
+            saveLastUsedDepth(context as unknown as vscode.ExtensionContext, 'deep');
+            
+            const storedValue = context.workspaceState.getStoredValue('workspaceShortcuts.aiTask.lastUsedDepth');
+            assert.strictEqual(storedValue, 'deep', 
+                'Should store depth in workspace state');
+        });
+
+        test('getLastUsedDepth should retrieve saved depth', () => {
+            const context = new MockExtensionContext();
+            
+            saveLastUsedDepth(context as unknown as vscode.ExtensionContext, 'deep');
+            const depth = getLastUsedDepth(context as unknown as vscode.ExtensionContext);
+            
+            assert.strictEqual(depth, 'deep', 
+                'Should retrieve previously saved depth');
+        });
+
+        test('getLastUsedDepth should return simple for invalid saved value', () => {
+            const context = new MockExtensionContext();
+            
+            context.workspaceState.update('workspaceShortcuts.aiTask.lastUsedDepth', 'invalid-depth');
+            const depth = getLastUsedDepth(context as unknown as vscode.ExtensionContext);
+            
+            assert.strictEqual(depth, 'simple', 
+                'Should return simple when saved value is invalid');
+        });
+
+        test('saveLastUsedDepth should overwrite previous selection', () => {
+            const context = new MockExtensionContext();
+            
+            saveLastUsedDepth(context as unknown as vscode.ExtensionContext, 'simple');
+            saveLastUsedDepth(context as unknown as vscode.ExtensionContext, 'deep');
+            
+            const depth = getLastUsedDepth(context as unknown as vscode.ExtensionContext);
+            assert.strictEqual(depth, 'deep', 
+                'Should return the most recently saved depth');
+        });
+
+        test('depth persistence should be isolated per context', () => {
+            const context1 = new MockExtensionContext();
+            const context2 = new MockExtensionContext();
+            
+            saveLastUsedDepth(context1 as unknown as vscode.ExtensionContext, 'simple');
+            saveLastUsedDepth(context2 as unknown as vscode.ExtensionContext, 'deep');
+            
+            const depth1 = getLastUsedDepth(context1 as unknown as vscode.ExtensionContext);
+            const depth2 = getLastUsedDepth(context2 as unknown as vscode.ExtensionContext);
+            
+            assert.strictEqual(depth1, 'simple', 'Context 1 should have simple');
+            assert.strictEqual(depth2, 'deep', 'Context 2 should have deep');
         });
     });
 });

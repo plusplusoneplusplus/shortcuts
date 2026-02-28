@@ -174,6 +174,30 @@ describe('readPreferences / writePreferences', () => {
         expect(prefs.theme).toBeUndefined();
     });
 
+    it('round-trips lastDepth through write and read', () => {
+        const original = { lastDepth: 'deep' as const };
+        writePreferences(tmpDir, original);
+        const loaded = readPreferences(tmpDir);
+        expect(loaded).toEqual(original);
+    });
+
+    it('round-trips lastDepth normal through write and read', () => {
+        const original = { lastModel: 'gpt-5.2', lastDepth: 'normal' as const };
+        writePreferences(tmpDir, original);
+        const loaded = readPreferences(tmpDir);
+        expect(loaded).toEqual(original);
+    });
+
+    it('strips invalid lastDepth on read', () => {
+        fs.writeFileSync(
+            path.join(tmpDir, PREFERENCES_FILE_NAME),
+            JSON.stringify({ lastDepth: 'shallow' }),
+            'utf-8'
+        );
+        const prefs = readPreferences(tmpDir);
+        expect(prefs.lastDepth).toBeUndefined();
+    });
+
     it('round-trips recentFollowPrompts through write and read', () => {
         const original = {
             recentFollowPrompts: [
@@ -257,6 +281,26 @@ describe('validatePreferences', () => {
     it('accepts theme alongside lastModel', () => {
         const result = validatePreferences({ lastModel: 'gpt-5.2', theme: 'dark' });
         expect(result).toEqual({ lastModel: 'gpt-5.2', theme: 'dark' });
+    });
+
+    // -- lastDepth field --
+
+    it('accepts valid lastDepth values', () => {
+        expect(validatePreferences({ lastDepth: 'deep' })).toEqual({ lastDepth: 'deep' });
+        expect(validatePreferences({ lastDepth: 'normal' })).toEqual({ lastDepth: 'normal' });
+    });
+
+    it('rejects invalid lastDepth values', () => {
+        expect(validatePreferences({ lastDepth: 'shallow' })).toEqual({});
+        expect(validatePreferences({ lastDepth: 42 })).toEqual({});
+        expect(validatePreferences({ lastDepth: true })).toEqual({});
+        expect(validatePreferences({ lastDepth: null })).toEqual({});
+        expect(validatePreferences({ lastDepth: '' })).toEqual({});
+    });
+
+    it('accepts lastDepth alongside lastModel and theme', () => {
+        const result = validatePreferences({ lastModel: 'gpt-5.2', lastDepth: 'deep', theme: 'dark' });
+        expect(result).toEqual({ lastModel: 'gpt-5.2', lastDepth: 'deep', theme: 'dark' });
     });
 
     // -- recentFollowPrompts field --
@@ -545,6 +589,48 @@ describe('Preferences REST API', () => {
 
         const res = await getJSON(`${baseUrl}/api/preferences`);
         expect(JSON.parse(res.body)).toEqual({ lastModel: 'gpt-5.2', theme: 'dark' });
+    });
+
+    // -- lastDepth persistence via API --
+
+    it('PUT persists lastDepth field', async () => {
+        const res = await putJSON(`${baseUrl}/api/preferences`, { lastDepth: 'deep' });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body)).toEqual({ lastDepth: 'deep' });
+
+        const get = await getJSON(`${baseUrl}/api/preferences`);
+        expect(JSON.parse(get.body)).toEqual({ lastDepth: 'deep' });
+    });
+
+    it('PATCH merges lastDepth into existing preferences', async () => {
+        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'gpt-5.2' });
+        const res = await patchJSON(`${baseUrl}/api/preferences`, { lastDepth: 'normal' });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body)).toEqual({ lastModel: 'gpt-5.2', lastDepth: 'normal' });
+    });
+
+    it('PATCH updates lastDepth without affecting other fields', async () => {
+        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'claude-sonnet-4.6', lastDepth: 'deep', theme: 'dark' });
+        const res = await patchJSON(`${baseUrl}/api/preferences`, { lastDepth: 'normal' });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body)).toEqual({ lastModel: 'claude-sonnet-4.6', lastDepth: 'normal', theme: 'dark' });
+    });
+
+    it('PUT strips invalid lastDepth values', async () => {
+        const res = await putJSON(`${baseUrl}/api/preferences`, { lastDepth: 'shallow' });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body)).toEqual({});
+    });
+
+    it('lastDepth survives server restart', async () => {
+        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'gpt-5.2', lastDepth: 'deep' });
+        await server.close();
+
+        server = await createExecutionServer({ port: 0, dataDir: tmpDir });
+        baseUrl = server.url;
+
+        const res = await getJSON(`${baseUrl}/api/preferences`);
+        expect(JSON.parse(res.body)).toEqual({ lastModel: 'gpt-5.2', lastDepth: 'deep' });
     });
 
     // -- recentFollowPrompts persistence via API --

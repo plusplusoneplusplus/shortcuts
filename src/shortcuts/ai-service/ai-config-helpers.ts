@@ -158,3 +158,38 @@ export function getLastUsedAIModel(context: vscode.ExtensionContext): string {
 export function saveLastUsedAIModel(context: vscode.ExtensionContext, model: string): void {
     context.workspaceState.update(LAST_USED_MODEL_KEY, model);
 }
+
+// ============================================================================
+// Persistent Depth Selection
+// ============================================================================
+
+/** Storage key for last-used generation depth */
+const LAST_USED_DEPTH_KEY = 'workspaceShortcuts.aiTask.lastUsedDepth';
+
+/** Valid depth values for the VS Code dialog */
+type VSCodeDepth = 'deep' | 'simple';
+
+/**
+ * Get the last-used generation depth from workspace state.
+ * Defaults to 'simple' when no preference exists.
+ *
+ * @param context VS Code extension context for workspace state access
+ * @returns The depth to use as default ('deep' | 'simple')
+ */
+export function getLastUsedDepth(context: vscode.ExtensionContext): VSCodeDepth {
+    const saved = context.workspaceState.get<string>(LAST_USED_DEPTH_KEY);
+    if (saved === 'deep' || saved === 'simple') {
+        return saved;
+    }
+    return 'simple';
+}
+
+/**
+ * Save the selected generation depth to workspace state for persistence.
+ *
+ * @param context VS Code extension context for workspace state access
+ * @param depth The depth to save ('deep' | 'simple')
+ */
+export function saveLastUsedDepth(context: vscode.ExtensionContext, depth: string): void {
+    context.workspaceState.update(LAST_USED_DEPTH_KEY, depth);
+}

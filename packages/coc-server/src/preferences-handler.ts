@@ -21,6 +21,8 @@ import type { Route } from './types';
 export interface UserPreferences {
     /** Last-selected AI model in the SPA (empty string = default). */
     lastModel?: string;
+    /** Last-selected generation depth in the SPA ('deep' | 'normal'). */
+    lastDepth?: 'deep' | 'normal';
     /** Persisted dashboard theme ('light' | 'dark' | 'auto'). */
     theme?: 'light' | 'dark' | 'auto';
 }
@@ -79,6 +81,10 @@ export function validatePreferences(raw: unknown): UserPreferences {
 
     if (typeof obj.lastModel === 'string') {
         result.lastModel = obj.lastModel;
+    }
+
+    if (obj.lastDepth === 'deep' || obj.lastDepth === 'normal') {
+        result.lastDepth = obj.lastDepth;
     }
 
     if (obj.theme === 'light' || obj.theme === 'dark' || obj.theme === 'auto') {

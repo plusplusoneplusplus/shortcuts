@@ -83,4 +83,78 @@ describe('usePreferences', () => {
             expect(body.lastModel).toBe('claude-3');
         });
     });
+
+    // -- depth support --
+
+    it('loads depth from GET /api/preferences', async () => {
+        mockFetch.mockResolvedValueOnce({
+            ok: true,
+            json: () => Promise.resolve({ lastModel: 'gpt-4', lastDepth: 'normal' }),
+        });
+
+        const { result } = renderHook(() => usePreferences());
+
+        await waitFor(() => {
+            expect(result.current.loaded).toBe(true);
+            expect(result.current.depth).toBe('normal');
+        });
+    });
+
+    it('defaults depth to empty string when API fails', async () => {
+        mockFetch.mockRejectedValueOnce(new Error('Network error'));
+
+        const { result } = renderHook(() => usePreferences());
+
+        await waitFor(() => {
+            expect(result.current.loaded).toBe(true);
+            expect(result.current.depth).toBe('');
+        });
+    });
+
+    it('setDepth updates depth state immediately', async () => {
+        mockFetch.mockResolvedValueOnce({
+            ok: true,
+            json: () => Promise.resolve({ lastDepth: 'deep' }),
+        });
+        mockFetch.mockResolvedValueOnce({ ok: true });
+
+        const { result } = renderHook(() => usePreferences());
+
+        await waitFor(() => {
+            expect(result.current.loaded).toBe(true);
+        });
+
+        act(() => {
+            result.current.setDepth('normal');
+        });
+
+        expect(result.current.depth).toBe('normal');
+    });
+
+    it('setDepth fires PATCH /api/preferences with lastDepth', async () => {
+        mockFetch.mockResolvedValueOnce({
+            ok: true,
+            json: () => Promise.resolve({ lastDepth: 'deep' }),
+        });
+        mockFetch.mockResolvedValueOnce({ ok: true });
+
+        const { result } = renderHook(() => usePreferences());
+
+        await waitFor(() => {
+            expect(result.current.loaded).toBe(true);
+        });
+
+        act(() => {
+            result.current.setDepth('normal');
+        });
+
+        await waitFor(() => {
+            const patchCalls = mockFetch.mock.calls.filter(
+                ([_, opts]: [string, any]) => opts?.method === 'PATCH'
+            );
+            expect(patchCalls.length).toBe(1);
+            const body = JSON.parse(patchCalls[0][1].body);
+            expect(body.lastDepth).toBe('normal');
+        });
+    });
 });

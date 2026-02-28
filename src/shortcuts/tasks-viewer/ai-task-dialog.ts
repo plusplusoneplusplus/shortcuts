@@ -16,7 +16,7 @@ import {
     TaskCreationMode,
     FeatureContext
 } from './types';
-import { getAvailableModels, getLastUsedAIModel, saveLastUsedAIModel } from '../ai-service/ai-config-helpers';
+import { getAvailableModels, getLastUsedAIModel, saveLastUsedAIModel, getLastUsedDepth, saveLastUsedDepth } from '../ai-service/ai-config-helpers';
 import { skillExists } from '@plusplusoneplusplus/pipeline-core';
 import { getSharedDialogCSS } from '../shared/webview/dialog-styles';
 
@@ -93,6 +93,7 @@ export class AITaskDialogService {
         const folders = await this.getAvailableFolders();
         const models = getAvailableModels();
         const defaultModel = getLastUsedAIModel(this.context);
+        const defaultDepth = getLastUsedDepth(this.context);
         const workspaceRoot = this.taskManager.getWorkspaceRoot();
         const hasDeepSkill = skillExists('go-deep', workspaceRoot);
 
@@ -102,6 +103,7 @@ export class AITaskDialogService {
             folders,
             models,
             defaultModel,
+            defaultDepth,
             hasDeepSkill,
             options?.preselectedFolder,
             options?.initialMode,
@@ -157,6 +159,11 @@ export class AITaskDialogService {
                     // Save the selected model for future dialogs
                     if (message.model) {
                         saveLastUsedAIModel(this.context, message.model);
+                    }
+
+                    // Save the selected depth for future dialogs
+                    if (message.depth) {
+                        saveLastUsedDepth(this.context, message.depth);
                     }
 
                     this.pendingResolve({
@@ -246,6 +253,7 @@ export class AITaskDialogService {
         folders: FolderOption[],
         models: Array<{ id: string; label: string; description?: string; isDefault?: boolean }>,
         defaultModel: string,
+        defaultDepth: string,
         hasDeepSkill: boolean,
         preselectedFolder?: string,
         initialMode?: TaskCreationMode,
@@ -495,15 +503,15 @@ export class AITaskDialogService {
                 <div class="form-group">
                     <label>Generation Depth</label>
                     <div class="depth-options">
-                        <label class="depth-option selected" id="depthSimple">
-                            <input type="radio" name="depth" value="simple" checked />
+                        <label class="depth-option ${defaultDepth !== 'deep' ? 'selected' : ''}" id="depthSimple">
+                            <input type="radio" name="depth" value="simple" ${defaultDepth !== 'deep' ? 'checked' : ''} />
                             <div class="depth-content">
                                 <div class="depth-title">⚡ Simple</div>
                                 <div class="depth-desc">Quick, single-pass AI analysis - fast task creation</div>
                             </div>
                         </label>
-                        <label class="depth-option ${!hasDeepSkill ? 'disabled' : ''}" id="depthDeep">
-                            <input type="radio" name="depth" value="deep" ${!hasDeepSkill ? 'disabled' : ''} />
+                        <label class="depth-option ${!hasDeepSkill ? 'disabled' : (defaultDepth === 'deep' ? 'selected' : '')}" id="depthDeep">
+                            <input type="radio" name="depth" value="deep" ${!hasDeepSkill ? 'disabled' : (defaultDepth === 'deep' ? 'checked' : '')} />
                             <div class="depth-content">
                                 <div class="depth-title">🔬 Deep</div>
                                 <div class="depth-desc">${hasDeepSkill 

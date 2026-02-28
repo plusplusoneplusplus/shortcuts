@@ -51,11 +51,13 @@ function makeHookReturn(overrides: Record<string, unknown> = {}) {
 const mockFetch = vi.fn();
 
 const mockPersistModel = vi.fn();
+const mockPersistDepth = vi.fn();
 
 beforeEach(() => {
     vi.restoreAllMocks();
     mockFetch.mockReset();
     mockPersistModel.mockReset();
+    mockPersistDepth.mockReset();
     mockClearImages.mockReset();
     mockAddFromPaste.mockReset();
     mockRemoveImage.mockReset();
@@ -64,6 +66,8 @@ beforeEach(() => {
     mockUsePreferences.mockReturnValue({
         model: '',
         setModel: mockPersistModel,
+        depth: '',
+        setDepth: mockPersistDepth,
         loaded: true,
     });
     mockUseImagePaste.mockReturnValue({
@@ -412,6 +416,8 @@ describe('GenerateTaskDialog', () => {
         mockUsePreferences.mockReturnValue({
             model: 'gpt-4',
             setModel: mockPersistModel,
+            depth: '',
+            setDepth: mockPersistDepth,
             loaded: true,
         });
 
@@ -488,6 +494,8 @@ describe('GenerateTaskDialog', () => {
         mockUsePreferences.mockReturnValue({
             model: 'gpt-4',
             setModel: mockPersistModel,
+            depth: '',
+            setDepth: mockPersistDepth,
             loaded: true,
         });
 
@@ -534,6 +542,8 @@ describe('GenerateTaskDialog', () => {
         mockUsePreferences.mockReturnValue({
             model: 'claude-3',
             setModel: mockPersistModel,
+            depth: '',
+            setDepth: mockPersistDepth,
             loaded: true,
         });
 
@@ -583,6 +593,8 @@ describe('GenerateTaskDialog', () => {
         mockUsePreferences.mockReturnValue({
             model: '',
             setModel: mockPersistModel,
+            depth: '',
+            setDepth: mockPersistDepth,
             loaded: true,
         });
 
@@ -626,6 +638,8 @@ describe('GenerateTaskDialog', () => {
         mockUsePreferences.mockReturnValue({
             model: 'claude-3',
             setModel: mockPersistModel,
+            depth: '',
+            setDepth: mockPersistDepth,
             loaded: true,
         });
 
@@ -690,6 +704,59 @@ describe('GenerateTaskDialog', () => {
 
         expect(enqueueSpy).toHaveBeenCalledWith(
             expect.objectContaining({ depth: 'deep' }),
+        );
+    });
+
+    // ── depth persistence tests ─────────────────────────────────────────────
+
+    it('restores saved depth from preferences on mount', async () => {
+        mockUsePreferences.mockReturnValue({
+            model: '',
+            setModel: mockPersistModel,
+            depth: 'normal',
+            setDepth: mockPersistDepth,
+            loaded: true,
+        });
+
+        await act(async () => { renderDialog(); });
+
+        await waitFor(() => {
+            const select = document.getElementById('gen-task-depth') as HTMLSelectElement;
+            expect(select.value).toBe('normal');
+        });
+    });
+
+    it('persists depth selection when user changes depth', async () => {
+        await act(async () => { renderDialog(); });
+
+        const depthSelect = document.getElementById('gen-task-depth') as HTMLSelectElement;
+        fireEvent.change(depthSelect, { target: { value: 'normal' } });
+
+        expect(mockPersistDepth).toHaveBeenCalledWith('normal');
+    });
+
+    it('submit sends saved depth in enqueue call', async () => {
+        const enqueueSpy = vi.fn();
+        mockUseQueueTaskGeneration.mockReturnValue(makeHookReturn({ enqueue: enqueueSpy }));
+        mockUsePreferences.mockReturnValue({
+            model: '',
+            setModel: mockPersistModel,
+            depth: 'normal',
+            setDepth: mockPersistDepth,
+            loaded: true,
+        });
+
+        await act(async () => { renderDialog(); });
+
+        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
+        fireEvent.change(textarea, { target: { value: 'test' } });
+
+        await act(async () => {
+            fireEvent.click(screen.getByText('Generate'));
+        });
+
+        expect(enqueueSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ depth: 'normal' }),
         );
     });
 

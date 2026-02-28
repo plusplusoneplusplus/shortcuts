@@ -1,5 +1,5 @@
 /**
- * usePreferences — fetches and persists the user's last-selected AI model.
+ * usePreferences — fetches and persists the user's last-selected AI model and depth.
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -8,11 +8,14 @@ import { getApiBase } from '../utils/config';
 export interface UsePreferencesResult {
     model: string;
     setModel: (m: string) => void;
+    depth: string;
+    setDepth: (d: string) => void;
     loaded: boolean;
 }
 
 export function usePreferences(): UsePreferencesResult {
     const [model, setModelState] = useState('');
+    const [depth, setDepthState] = useState('');
     const [loaded, setLoaded] = useState(false);
 
     useEffect(() => {
@@ -22,8 +25,13 @@ export function usePreferences(): UsePreferencesResult {
                 const res = await fetch(getApiBase() + '/preferences');
                 if (!res.ok) return;
                 const prefs = await res.json();
-                if (!cancelled && typeof prefs.lastModel === 'string') {
-                    setModelState(prefs.lastModel);
+                if (!cancelled) {
+                    if (typeof prefs.lastModel === 'string') {
+                        setModelState(prefs.lastModel);
+                    }
+                    if (typeof prefs.lastDepth === 'string') {
+                        setDepthState(prefs.lastDepth);
+                    }
                 }
             } catch {
                 // Preferences are optional
@@ -44,5 +52,15 @@ export function usePreferences(): UsePreferencesResult {
         }).catch(() => {});
     }, []);
 
-    return { model, setModel, loaded };
+    const setDepth = useCallback((d: string) => {
+        setDepthState(d);
+        // Fire-and-forget persistence
+        fetch(getApiBase() + '/preferences', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lastDepth: d }),
+        }).catch(() => {});
+    }, []);
+
+    return { model, setModel, depth, setDepth, loaded };
 }
