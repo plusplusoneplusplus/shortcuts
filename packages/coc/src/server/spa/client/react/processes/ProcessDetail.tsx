@@ -11,6 +11,7 @@ import { Badge, Button, Spinner } from '../shared';
 import { ConversationTurnBubble } from './ConversationTurnBubble';
 import { ConversationMetadataPopover, getSessionIdFromProcess } from './ConversationMetadataPopover';
 import { formatDuration, statusIcon, statusLabel } from '../utils/format';
+import { PipelineDAGSection } from './dag';
 import { resolveWorkspaceName, getProcessWorkspaceId, getProcessWorkspaceName } from '../utils/workspace';
 import type { ClientConversationTurn } from '../types/dashboard';
 
@@ -307,6 +308,9 @@ export function ProcessDetail() {
                     </div>
                 )}
             </div>
+
+            {/* Pipeline DAG visualization */}
+            <PipelineDAGSection process={process} />
 
             {/* Conversation turns */}
             {loading ? (
