@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
-import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
+import { useEffect, type ReactNode } from 'react';
+import { AppProvider, useApp } from '../../../src/server/spa/client/react/context/AppContext';
 import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
 import { BulkFollowPromptDialog } from '../../../src/server/spa/client/react/shared/BulkFollowPromptDialog';
 import type { TaskFolder } from '../../../src/server/spa/client/react/hooks/useTaskTree';
@@ -34,6 +35,24 @@ function renderDialog(folder = makeFolder(), onClose = vi.fn()) {
         <AppProvider>
             <ToastProvider value={{ addToast: mockAddToast, removeToast: vi.fn(), toasts: [] }}>
                 <BulkFollowPromptDialog wsId="ws-1" folder={folder} onClose={onClose} />
+            </ToastProvider>
+        </AppProvider>
+    );
+}
+
+function WorkspaceInjector({ workspaces, children }: { workspaces: any[]; children: ReactNode }) {
+    const { dispatch } = useApp();
+    useEffect(() => { dispatch({ type: 'WORKSPACES_LOADED', workspaces }); }, []);
+    return <>{children}</>;
+}
+
+function renderDialogWithWorkspace(workspaces: any[], folder = makeFolder(), onClose = vi.fn()) {
+    return render(
+        <AppProvider>
+            <ToastProvider value={{ addToast: mockAddToast, removeToast: vi.fn(), toasts: [] }}>
+                <WorkspaceInjector workspaces={workspaces}>
+                    <BulkFollowPromptDialog wsId="ws-1" folder={folder} onClose={onClose} />
+                </WorkspaceInjector>
             </ToastProvider>
         </AppProvider>
     );
@@ -610,5 +629,63 @@ describe('BulkFollowPromptDialog', () => {
 
         const recentBtn = document.querySelector('.fp-recent-item') as HTMLButtonElement;
         expect(recentBtn.disabled).toBe(true);
+    });
+
+    it('normalizes backslashes in planFilePath when workingDirectory has backslashes', async () => {
+        const onClose = vi.fn();
+        const workspaces = [{ id: 'ws-1', name: 'Test', rootPath: 'D:\\projects\\shortcuts' }];
+        const folder = makeFolder({
+            singleDocuments: [
+                { baseName: 'task', fileName: 'task.md', relativePath: 'feature1', isArchived: false },
+            ],
+        });
+
+        mockFetch.mockImplementation((url: string, opts?: any) => {
+            if (url.includes('/prompts')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ prompts: [{ name: 'impl', relativePath: '.vscode/impl.prompt.md' }] }),
+                });
+            }
+            if (url.includes('/skills')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ skills: [] }),
+                });
+            }
+            if (url.includes('/tasks/settings')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ folderPath: '.vscode/tasks' }),
+                });
+            }
+            if (opts?.method === 'POST' && url.includes('/queue/tasks')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'q-1' }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        await act(async () => {
+            renderDialogWithWorkspace(workspaces, folder, onClose);
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('impl')).toBeDefined();
+        });
+
+        await act(async () => {
+            fireEvent.click(screen.getByText('impl'));
+        });
+
+        await waitFor(() => {
+            const postCalls = mockFetch.mock.calls.filter(
+                ([url, opts]: [string, any]) => opts?.method === 'POST' && url.includes('/queue/tasks')
+            );
+            expect(postCalls.length).toBe(1);
+            const body = JSON.parse(postCalls[0][1].body);
+            expect(body.payload.planFilePath).not.toContain('\\');
+            expect(body.payload.planFilePath).toBe('D:/projects/shortcuts/.vscode/tasks/feature1/task.md');
+            expect(body.payload.promptFilePath).not.toContain('\\');
+        });
     });
 });

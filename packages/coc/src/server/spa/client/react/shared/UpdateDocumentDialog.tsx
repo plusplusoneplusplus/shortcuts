@@ -9,6 +9,7 @@ import { usePreferences } from '../hooks/usePreferences';
 import { useApp } from '../context/AppContext';
 import { useGlobalToast } from '../context/ToastContext';
 import { getApiBase } from '../utils/config';
+import { toForwardSlashes } from '@plusplusoneplusplus/pipeline-core/utils/path-utils';
 
 export interface UpdateDocumentDialogProps {
     wsId: string;
@@ -59,7 +60,7 @@ export function UpdateDocumentDialog({ wsId, taskPath, taskName, onClose }: Upda
             const workingDirectory = ws?.rootPath || '';
             const tasksFolder = await getTasksFolderPath(selectedWsId);
             const planFilePath = workingDirectory
-                ? workingDirectory + '/' + tasksFolder + '/' + taskPath
+                ? toForwardSlashes(workingDirectory + '/' + tasksFolder + '/' + taskPath)
                 : taskPath;
 
             const body: any = {

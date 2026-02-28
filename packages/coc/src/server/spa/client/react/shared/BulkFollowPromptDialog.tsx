@@ -11,6 +11,7 @@ import { useRecentPrompts } from '../hooks/useRecentPrompts';
 import { useApp } from '../context/AppContext';
 import { useGlobalToast } from '../context/ToastContext';
 import { getApiBase } from '../utils/config';
+import { toForwardSlashes } from '@plusplusoneplusplus/pipeline-core/utils/path-utils';
 import type { TaskFolder } from '../hooks/useTaskTree';
 import { isContextFile } from '../hooks/useTaskTree';
 
@@ -125,7 +126,7 @@ export function BulkFollowPromptDialog({ wsId, folder, onClose }: BulkFollowProm
 
             for (const file of taskFiles) {
                 const planFilePath = workingDirectory
-                    ? workingDirectory + '/' + tasksFolder + '/' + file.relativePath
+                    ? toForwardSlashes(workingDirectory + '/' + tasksFolder + '/' + file.relativePath)
                     : file.relativePath;
 
                 const taskName = file.fileName.replace(/\.md$/, '');
@@ -133,7 +134,7 @@ export function BulkFollowPromptDialog({ wsId, folder, onClose }: BulkFollowProm
                 let payload: Record<string, string>;
                 if (type === 'prompt') {
                     const promptFilePath = workingDirectory
-                        ? workingDirectory + '/' + (path || '')
+                        ? toForwardSlashes(workingDirectory + '/' + (path || ''))
                         : path || '';
                     payload = { promptFilePath, planFilePath, workingDirectory };
                 } else {

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
-import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
+import { useEffect, type ReactNode } from 'react';
+import { AppProvider, useApp } from '../../../src/server/spa/client/react/context/AppContext';
 import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
 import { FollowPromptDialog } from '../../../src/server/spa/client/react/shared/FollowPromptDialog';
 
@@ -19,6 +20,24 @@ function renderDialog(onClose = vi.fn()) {
         <AppProvider>
             <ToastProvider value={{ addToast: mockAddToast, removeToast: vi.fn(), toasts: [] }}>
                 <FollowPromptDialog wsId="ws-1" taskPath="test/task.md" taskName="task" onClose={onClose} />
+            </ToastProvider>
+        </AppProvider>
+    );
+}
+
+function WorkspaceInjector({ workspaces, children }: { workspaces: any[]; children: ReactNode }) {
+    const { dispatch } = useApp();
+    useEffect(() => { dispatch({ type: 'WORKSPACES_LOADED', workspaces }); }, []);
+    return <>{children}</>;
+}
+
+function renderDialogWithWorkspace(workspaces: any[], onClose = vi.fn()) {
+    return render(
+        <AppProvider>
+            <ToastProvider value={{ addToast: mockAddToast, removeToast: vi.fn(), toasts: [] }}>
+                <WorkspaceInjector workspaces={workspaces}>
+                    <FollowPromptDialog wsId="ws-1" taskPath="test/task.md" taskName="task" onClose={onClose} />
+                </WorkspaceInjector>
             </ToastProvider>
         </AppProvider>
     );
@@ -431,6 +450,62 @@ describe('FollowPromptDialog', () => {
             const body = JSON.parse(postCalls[0][1].body);
             expect(body.type).toBe('follow-prompt');
             expect(body.payload.promptFilePath).toContain('review.prompt.md');
+        });
+    });
+
+    it('normalizes backslashes in planFilePath and promptFilePath when workingDirectory has backslashes', async () => {
+        const onClose = vi.fn();
+        const workspaces = [{ id: 'ws-1', name: 'Test', rootPath: 'D:\\projects\\shortcuts' }];
+
+        mockFetch.mockImplementation((url: string, opts?: any) => {
+            if (url.includes('/prompts')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ prompts: [{ name: 'impl', relativePath: '.vscode/impl.prompt.md' }] }),
+                });
+            }
+            if (url.includes('/skills')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ skills: [] }),
+                });
+            }
+            if (url.includes('/tasks/settings')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ folderPath: '.vscode/tasks' }),
+                });
+            }
+            if (opts?.method === 'POST' && url.includes('/queue/tasks')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'q-1' }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        await act(async () => {
+            renderDialogWithWorkspace(workspaces, onClose);
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('impl')).toBeDefined();
+        });
+
+        await act(async () => {
+            fireEvent.click(screen.getByText('impl'));
+        });
+
+        await waitFor(() => {
+            const postCalls = mockFetch.mock.calls.filter(
+                ([_, opts]: [string, any]) => opts?.method === 'POST' && _.includes('/queue/tasks')
+            );
+            expect(postCalls.length).toBe(1);
+            const body = JSON.parse(postCalls[0][1].body);
+            // planFilePath should have no backslashes
+            expect(body.payload.planFilePath).not.toContain('\\');
+            expect(body.payload.planFilePath).toBe('D:/projects/shortcuts/.vscode/tasks/test/task.md');
+            // promptFilePath should also have no backslashes
+            expect(body.payload.promptFilePath).not.toContain('\\');
+            expect(body.payload.promptFilePath).toBe('D:/projects/shortcuts/.vscode/impl.prompt.md');
         });
     });
 });
