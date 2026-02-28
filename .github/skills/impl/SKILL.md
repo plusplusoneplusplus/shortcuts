@@ -41,14 +41,19 @@ Use this skill when the user asks you to **implement** a change in the codebase 
    - **Do not proceed to commit until the build is clean and all tests pass.**
    - If tests are flaky or OS-dependent, fix them to be deterministic before committing.
 
-7. **If a plan file exists, keep it updated**
+7. **Update touched `AGENTS.md` files (if needed)**
+   - For each folder you changed, check the nearest relevant `AGENTS.md`.
+   - If behavior, architecture, workflows, commands, or constraints changed, patch `AGENTS.md` to match the new state.
+   - Keep updates concise and current-state only. Do not add history text like "after this change..." or "it used to...".
+
+8. **If a plan file exists, keep it updated**
    - If a plan markdown file is provided with task checkboxes, mark tasks complete as you finish them.
 
-8. **Commit when clean**
+9. **Commit when clean**
    - Only create a commit after the build succeeds and all tests pass (step 6).
    - Write a clear commit message describing the change and the test additions.
 
-9. **Archive the task file (if applicable)**
+10. **Archive the task file (if applicable)**
    - If the task/plan file you followed lives under `.vscode/`, archive it after the commit succeeds:
 ```bash
      python3 .github/skills/impl/scripts/archive-task-file.py --task <path-to-task-file>
