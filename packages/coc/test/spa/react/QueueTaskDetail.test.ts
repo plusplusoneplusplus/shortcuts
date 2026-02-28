@@ -162,6 +162,44 @@ describe('QueueTaskDetail', () => {
         });
     });
 
+    describe('scroll-to-bottom button positioning', () => {
+        it('button is outside the scrollable conversation container', () => {
+            // The button should be a sibling of #queue-task-conversation, not a child
+            const scrollDivStart = source.indexOf('id="queue-task-conversation"');
+            const scrollDivTag = source.lastIndexOf('<div', scrollDivStart);
+            // Find the closing </div> of the scrollable container
+            // The button must appear AFTER the scrollable div closes
+            const buttonIdx = source.indexOf('id="scroll-to-bottom-btn"');
+            // Find the </div> that closes #queue-task-conversation before the button
+            const closingDivBeforeButton = source.lastIndexOf('</div>', buttonIdx);
+            expect(closingDivBeforeButton).toBeGreaterThan(scrollDivStart);
+        });
+
+        it('scrollable container does not have relative class', () => {
+            const scrollDivIdx = source.indexOf('id="queue-task-conversation"');
+            // Extract just the opening tag of the scrollable div (from '<div' to '>')
+            const tagStart = source.lastIndexOf('<div', scrollDivIdx);
+            const tagEnd = source.indexOf('>', scrollDivIdx);
+            const scrollDivTag = source.substring(tagStart, tagEnd + 1);
+            // The scroll div should NOT have 'relative' — it was moved to the wrapper
+            expect(scrollDivTag).not.toContain('relative');
+        });
+
+        it('wrapper div around conversation and button has relative positioning', () => {
+            // The parent wrapper of #queue-task-conversation should have 'relative flex-1 min-h-0'
+            const scrollDivIdx = source.indexOf('id="queue-task-conversation"');
+            const precedingChunk = source.substring(scrollDivIdx - 300, scrollDivIdx);
+            // Find the wrapper div that contains 'relative flex-1 min-h-0' before the scroll div
+            expect(precedingChunk).toContain('className="relative flex-1 min-h-0"');
+        });
+
+        it('button uses absolute positioning', () => {
+            const buttonIdx = source.indexOf('id="scroll-to-bottom-btn"');
+            const buttonSection = source.substring(buttonIdx, buttonIdx + 300);
+            expect(buttonSection).toContain('absolute bottom-4 right-4');
+        });
+    });
+
     describe('lazy image loading', () => {
         it('PendingTaskPayload fetches images when payload.hasImages is true', () => {
             expect(source).toContain('payload.hasImages');

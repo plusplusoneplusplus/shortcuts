@@ -572,29 +572,31 @@ export function QueueTaskDetail() {
             )}
 
             {/* Content area */}
-            <div id="queue-task-conversation" className="relative flex-1 min-h-0 overflow-y-auto p-4">
-                {isPending ? (
-                    <PendingTaskInfoPanel task={fullTask || task} onCancel={handleCancel} onMoveToTop={handleMoveToTop} />
-                ) : loading ? (
-                    <div className="flex items-center gap-2 text-[#848484] text-sm">
-                        <Spinner size="sm" /> Loading conversation...
-                    </div>
-                ) : turns.length === 0 ? (
-                    <div className="text-[#848484] text-sm">No conversation data available.</div>
-                ) : (
-                    <div className="space-y-3">
-                        {(() => {
-                            const hasStreaming = turns.some(t => t.streaming);
-                            const renderTurns =
-                                task?.status === 'running' && !hasStreaming && turns.length > 0
-                                    ? [...turns, { role: 'assistant' as const, content: '', streaming: true, timeline: [] }]
-                                    : turns;
-                            return renderTurns.map((turn, i) => (
-                                <ConversationTurnBubble key={i} turn={turn} taskId={selectedTaskId} />
-                            ));
-                        })()}
-                    </div>
-                )}
+            <div className="relative flex-1 min-h-0">
+                <div id="queue-task-conversation" className="flex-1 min-h-0 overflow-y-auto p-4 h-full">
+                    {isPending ? (
+                        <PendingTaskInfoPanel task={fullTask || task} onCancel={handleCancel} onMoveToTop={handleMoveToTop} />
+                    ) : loading ? (
+                        <div className="flex items-center gap-2 text-[#848484] text-sm">
+                            <Spinner size="sm" /> Loading conversation...
+                        </div>
+                    ) : turns.length === 0 ? (
+                        <div className="text-[#848484] text-sm">No conversation data available.</div>
+                    ) : (
+                        <div className="space-y-3">
+                            {(() => {
+                                const hasStreaming = turns.some(t => t.streaming);
+                                const renderTurns =
+                                    task?.status === 'running' && !hasStreaming && turns.length > 0
+                                        ? [...turns, { role: 'assistant' as const, content: '', streaming: true, timeline: [] }]
+                                        : turns;
+                                return renderTurns.map((turn, i) => (
+                                    <ConversationTurnBubble key={i} turn={turn} taskId={selectedTaskId} />
+                                ));
+                            })()}
+                        </div>
+                    )}
+                </div>
                 <button
                     id="scroll-to-bottom-btn"
                     className={cn(

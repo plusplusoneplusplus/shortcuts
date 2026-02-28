@@ -1613,7 +1613,7 @@ describe('QueueTaskDetail semantic hooks', () => {
         expect(btn!.classList.contains('visible')).toBe(false);
     });
 
-    it('renders conversation container with relative class', async () => {
+    it('renders conversation container with wrapper that has relative class', async () => {
         const processId = 'queue_task-rel-1';
         (global as any).fetch = vi.fn().mockImplementation((input: RequestInfo | URL) => {
             const url = String(input);
@@ -1648,7 +1648,10 @@ describe('QueueTaskDetail semantic hooks', () => {
         await screen.findByText('There');
         const conv = container.querySelector('#queue-task-conversation');
         expect(conv).toBeDefined();
-        expect(conv!.classList.contains('relative')).toBe(true);
+        // The scrollable container itself should NOT have 'relative'
+        expect(conv!.classList.contains('relative')).toBe(false);
+        // Its parent wrapper should have 'relative' for positioning the scroll-to-bottom button
+        expect(conv!.parentElement!.classList.contains('relative')).toBe(true);
     });
 
     it('shows streaming placeholder when task is running with non-streaming turns', async () => {
