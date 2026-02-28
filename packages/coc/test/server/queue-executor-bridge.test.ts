@@ -3870,6 +3870,142 @@ describe('timeline population during execution', () => {
         expect(assistantTurn!.timeline[0].content).toBe('Hello world');
     });
 
+    it('should merge consecutive content chunks into single timeline item', async () => {
+        mockSendMessage.mockImplementation(async (opts: any) => {
+            if (opts.onStreamingChunk) {
+                opts.onStreamingChunk('Hello ');
+                opts.onStreamingChunk('beautiful ');
+                opts.onStreamingChunk('world');
+            }
+            return { success: true, response: 'Hello beautiful world', sessionId: 'sess-tl-merge' };
+        });
+
+        const executor = new CLITaskExecutor(store);
+        const task: QueuedTask = {
+            id: 'task-tl-merge',
+            type: 'ai-clarification',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { prompt: 'test' },
+            config: {},
+        };
+
+        await executor.execute(task);
+
+        const process = await store.getProcess('queue_task-tl-merge');
+        const assistantTurn = process!.conversationTurns!.find(t => t.role === 'assistant');
+        expect(assistantTurn).toBeDefined();
+        expect(assistantTurn!.timeline.length).toBe(1);
+        expect(assistantTurn!.timeline[0].type).toBe('content');
+        expect(assistantTurn!.timeline[0].content).toBe('Hello beautiful world');
+    });
+
+    it('should not merge content across tool event boundaries', async () => {
+        mockSendMessage.mockImplementation(async (opts: any) => {
+            if (opts.onStreamingChunk) opts.onStreamingChunk('before ');
+            if (opts.onToolEvent) {
+                opts.onToolEvent({ type: 'tool-start', toolCallId: 'tc-bnd-1', toolName: 'grep' });
+            }
+            if (opts.onStreamingChunk) opts.onStreamingChunk('after');
+            return { success: true, response: 'before after', sessionId: 'sess-tl-bnd' };
+        });
+
+        const executor = new CLITaskExecutor(store);
+        const task: QueuedTask = {
+            id: 'task-tl-bnd',
+            type: 'ai-clarification',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { prompt: 'test' },
+            config: {},
+        };
+
+        await executor.execute(task);
+
+        const process = await store.getProcess('queue_task-tl-bnd');
+        const assistantTurn = process!.conversationTurns!.find(t => t.role === 'assistant');
+        expect(assistantTurn).toBeDefined();
+        // content → tool-start → content = 3 items (tool breaks merge)
+        expect(assistantTurn!.timeline.length).toBe(3);
+        expect(assistantTurn!.timeline[0].type).toBe('content');
+        expect(assistantTurn!.timeline[0].content).toBe('before ');
+        expect(assistantTurn!.timeline[1].type).toBe('tool-start');
+        expect(assistantTurn!.timeline[2].type).toBe('content');
+        expect(assistantTurn!.timeline[2].content).toBe('after');
+    });
+
+    it('should preserve first timestamp when merging content items', async () => {
+        mockSendMessage.mockImplementation(async (opts: any) => {
+            if (opts.onStreamingChunk) {
+                opts.onStreamingChunk('first ');
+                opts.onStreamingChunk('second');
+            }
+            return { success: true, response: 'first second', sessionId: 'sess-tl-tstamp' };
+        });
+
+        const executor = new CLITaskExecutor(store);
+        const task: QueuedTask = {
+            id: 'task-tl-tstamp',
+            type: 'ai-clarification',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { prompt: 'test' },
+            config: {},
+        };
+
+        await executor.execute(task);
+
+        const process = await store.getProcess('queue_task-tl-tstamp');
+        const assistantTurn = process!.conversationTurns!.find(t => t.role === 'assistant');
+        expect(assistantTurn).toBeDefined();
+        expect(assistantTurn!.timeline.length).toBe(1);
+        // Timestamp should be a valid Date (the first chunk's timestamp)
+        expect(assistantTurn!.timeline[0].timestamp).toBeInstanceOf(Date);
+    });
+
+    it('should handle complex merge boundaries with multiple tool types', async () => {
+        mockSendMessage.mockImplementation(async (opts: any) => {
+            // content → content → tool-start → tool-complete → content → content
+            if (opts.onStreamingChunk) opts.onStreamingChunk('a');
+            if (opts.onStreamingChunk) opts.onStreamingChunk('b');
+            if (opts.onToolEvent) {
+                opts.onToolEvent({ type: 'tool-start', toolCallId: 'tc-cx-1', toolName: 'view' });
+                opts.onToolEvent({ type: 'tool-complete', toolCallId: 'tc-cx-1', toolName: 'view', result: 'ok' });
+            }
+            if (opts.onStreamingChunk) opts.onStreamingChunk('c');
+            if (opts.onStreamingChunk) opts.onStreamingChunk('d');
+            return { success: true, response: 'abcd', sessionId: 'sess-tl-cx' };
+        });
+
+        const executor = new CLITaskExecutor(store);
+        const task: QueuedTask = {
+            id: 'task-tl-cx',
+            type: 'ai-clarification',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { prompt: 'test' },
+            config: {},
+        };
+
+        await executor.execute(task);
+
+        const process = await store.getProcess('queue_task-tl-cx');
+        const assistantTurn = process!.conversationTurns!.find(t => t.role === 'assistant');
+        expect(assistantTurn).toBeDefined();
+        // merged-content('ab') → tool-start → tool-complete → merged-content('cd')
+        expect(assistantTurn!.timeline.length).toBe(4);
+        expect(assistantTurn!.timeline[0].type).toBe('content');
+        expect(assistantTurn!.timeline[0].content).toBe('ab');
+        expect(assistantTurn!.timeline[1].type).toBe('tool-start');
+        expect(assistantTurn!.timeline[2].type).toBe('tool-complete');
+        expect(assistantTurn!.timeline[3].type).toBe('content');
+        expect(assistantTurn!.timeline[3].content).toBe('cd');
+    });
+
     it('should append tool events to assistant turn timeline', async () => {
         mockSendMessage.mockImplementation(async (opts: any) => {
             if (opts.onToolEvent) {

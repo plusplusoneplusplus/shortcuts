@@ -940,7 +940,14 @@ export class CLITaskExecutor implements TaskExecutor {
         if (!this.timelineBuffers.has(processId)) {
             this.timelineBuffers.set(processId, []);
         }
-        this.timelineBuffers.get(processId)!.push(item);
+        const buffer = this.timelineBuffers.get(processId)!;
+        const last = buffer.length > 0 ? buffer[buffer.length - 1] : undefined;
+        // Merge consecutive content items to avoid word-per-line rendering
+        if (last && last.type === 'content' && item.type === 'content') {
+            last.content = (last.content ?? '') + (item.content ?? '');
+        } else {
+            buffer.push(item);
+        }
     }
 
     /**
