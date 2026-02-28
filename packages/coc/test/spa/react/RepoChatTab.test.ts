@@ -260,6 +260,35 @@ describe('RepoChatTab', () => {
         });
     });
 
+    describe('follow-up sidebar status wiring', () => {
+        it('calls updateSessionStatus with running after successful POST', () => {
+            expect(source).toContain("sessionsHook.updateSessionStatus(chatTaskId, 'running')");
+        });
+
+        it('guards updateSessionStatus call with chatTaskId check', () => {
+            expect(source).toContain('if (chatTaskId) sessionsHook.updateSessionStatus');
+        });
+
+        it('calls sessionsHook.refresh() after waitForFollowUpCompletion in sendFollowUp', () => {
+            const sendFollowUpStart = source.indexOf('const sendFollowUp');
+            const sendFollowUpBlock = source.slice(sendFollowUpStart, sendFollowUpStart + 3000);
+            const waitIdx = sendFollowUpBlock.indexOf('await waitForFollowUpCompletion(processId)');
+            const refreshIdx = sendFollowUpBlock.indexOf('sessionsHook.refresh()', waitIdx);
+            expect(waitIdx).toBeGreaterThan(-1);
+            expect(refreshIdx).toBeGreaterThan(waitIdx);
+        });
+
+        it('updateSessionStatus is called before waitForFollowUpCompletion', () => {
+            const sendFollowUpStart = source.indexOf('const sendFollowUp');
+            const sendFollowUpBlock = source.slice(sendFollowUpStart, sendFollowUpStart + 3000);
+            const updateIdx = sendFollowUpBlock.indexOf("sessionsHook.updateSessionStatus(chatTaskId, 'running')");
+            const waitIdx = sendFollowUpBlock.indexOf('await waitForFollowUpCompletion(processId)');
+            expect(updateIdx).toBeGreaterThan(-1);
+            expect(waitIdx).toBeGreaterThan(-1);
+            expect(updateIdx).toBeLessThan(waitIdx);
+        });
+    });
+
     describe('session expiry (410)', () => {
         it('detects 410 status on follow-up', () => {
             expect(source).toContain('response.status === 410');

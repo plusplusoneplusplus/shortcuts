@@ -16,6 +16,8 @@ export interface UseChatSessionsResult {
     refresh: () => void;
     /** Optimistically prepend a session to the top of the list. */
     prependSession: (session: ChatSessionItem) => void;
+    /** Optimistically update a single session's status in local state. */
+    updateSessionStatus: (taskId: string, status: string) => void;
 }
 
 function toSessionItem(task: any): ChatSessionItem {
@@ -25,8 +27,8 @@ function toSessionItem(task: any): ChatSessionItem {
         status: task.status ?? 'unknown',
         createdAt: task.createdAt ?? '',
         completedAt: task.completedAt,
-        firstMessage: task.firstMessage ?? task.payload?.prompt ?? '',
-        turnCount: task.turnCount,
+        firstMessage: task.chatMeta?.firstMessage ?? task.firstMessage ?? task.payload?.prompt ?? '',
+        turnCount: task.chatMeta?.turnCount ?? task.turnCount,
     };
 }
 
@@ -68,5 +70,9 @@ export function useChatSessions(workspaceId: string): UseChatSessionsResult {
         });
     }, []);
 
-    return { sessions, loading, error, refresh: fetchSessions, prependSession };
+    const updateSessionStatus = useCallback((taskId: string, status: string) => {
+        setSessions(prev => prev.map(s => s.id === taskId ? { ...s, status } : s));
+    }, []);
+
+    return { sessions, loading, error, refresh: fetchSessions, prependSession, updateSessionStatus };
 }

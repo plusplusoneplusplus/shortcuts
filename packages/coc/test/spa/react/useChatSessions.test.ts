@@ -101,8 +101,16 @@ describe('useChatSessions', () => {
             expect(source).toContain('task.payload?.prompt');
         });
 
-        it('maps turnCount', () => {
-            expect(source).toContain('turnCount: task.turnCount');
+        it('maps turnCount from chatMeta with fallback', () => {
+            expect(source).toContain('task.chatMeta?.turnCount ?? task.turnCount');
+        });
+
+        it('reads firstMessage from chatMeta with fallback chain', () => {
+            expect(source).toContain('task.chatMeta?.firstMessage ?? task.firstMessage ?? task.payload?.prompt');
+        });
+
+        it('reads turnCount from chatMeta with fallback', () => {
+            expect(source).toContain('task.chatMeta?.turnCount ?? task.turnCount');
         });
     });
 
@@ -121,6 +129,29 @@ describe('useChatSessions', () => {
 
         it('clears sessions on error', () => {
             expect(source).toContain('setSessions([])');
+        });
+    });
+
+    describe('updateSessionStatus', () => {
+        it('defines updateSessionStatus with useCallback', () => {
+            expect(source).toContain('const updateSessionStatus = useCallback');
+        });
+
+        it('updates matching session status via setSessions', () => {
+            expect(source).toContain("prev.map(s => s.id === taskId ? { ...s, status } : s)");
+        });
+
+        it('is included in the return object', () => {
+            expect(source).toContain('updateSessionStatus');
+            // Check it's in the return statement
+            const returnMatch = source.match(/return\s*\{[^}]*updateSessionStatus[^}]*\}/);
+            expect(returnMatch).not.toBeNull();
+        });
+
+        it('is declared in UseChatSessionsResult interface', () => {
+            const iface = source.match(/export interface UseChatSessionsResult\s*\{[\s\S]*?\}/);
+            expect(iface).not.toBeNull();
+            expect(iface![0]).toContain('updateSessionStatus');
         });
     });
 
