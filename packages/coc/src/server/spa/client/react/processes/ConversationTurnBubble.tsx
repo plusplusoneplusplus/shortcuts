@@ -356,11 +356,73 @@ function buildAssistantRender(turn: ClientConversationTurn): {
     };
 }
 
+function buildRawContent(turn: ClientConversationTurn): string {
+    const parts: string[] = [];
+    if (turn.content) {
+        parts.push(turn.content);
+    }
+
+    const toolCalls = Array.isArray(turn.toolCalls) ? turn.toolCalls : [];
+    const timeline = Array.isArray(turn.timeline) ? turn.timeline : [];
+
+    // Collect tool calls from timeline or fallback to turn.toolCalls
+    const seen = new Set<string>();
+    const allCalls: Array<{ toolName: string; status?: string; args: any; result?: string; error?: string }> = [];
+
+    for (const item of timeline) {
+        if (item?.toolCall) {
+            const tc = item.toolCall;
+            const id = tc.id || '';
+            if (id && seen.has(id)) {
+                // Merge: update status/result/error on existing entry
+                const existing = allCalls.find((c) => (c as any)._id === id);
+                if (existing) {
+                    if (tc.status) existing.status = tc.status;
+                    if (tc.result !== undefined) existing.result = tc.result;
+                    if (tc.error !== undefined) existing.error = tc.error;
+                }
+                continue;
+            }
+            if (id) seen.add(id);
+            allCalls.push({ toolName: tc.toolName || 'unknown', status: tc.status, args: tc.args, result: tc.result, error: tc.error, _id: id } as any);
+        }
+    }
+
+    if (allCalls.length === 0) {
+        for (const tc of toolCalls) {
+            allCalls.push({ toolName: tc.toolName || 'unknown', status: tc.status, args: tc.args, result: tc.result, error: tc.error });
+        }
+    }
+
+    for (const call of allCalls) {
+        parts.push('');
+        parts.push(`--- tool: ${call.toolName} [${call.status || 'pending'}] ---`);
+        if (call.args) {
+            const argsStr = typeof call.args === 'string' ? call.args : JSON.stringify(call.args, null, 2);
+            parts.push(`Args: ${argsStr}`);
+        }
+        if (call.result !== undefined) {
+            const resultStr = typeof call.result === 'string'
+                ? (call.result.length > 2000 ? call.result.slice(0, 2000) + '\n... (truncated)' : call.result)
+                : JSON.stringify(call.result, null, 2);
+            parts.push(`Result: ${resultStr}`);
+        }
+        if (call.error !== undefined) {
+            parts.push(`Error: ${call.error}`);
+        }
+    }
+
+    return parts.join('\n');
+}
+
+export { buildRawContent as _buildRawContent };
+
 export function ConversationTurnBubble({ turn }: ConversationTurnBubbleProps) {
     const isUser = turn.role === 'user';
     const assistantRender = !isUser ? buildAssistantRender(turn) : null;
     const userContentHtml = isUser ? toContentHtml(turn.content || '') : '';
     const [collapsedTaskIds, setCollapsedTaskIds] = useState<Record<string, boolean>>({});
+    const [showRaw, setShowRaw] = useState(false);
     const { showReportIntent } = useDisplaySettings();
 
     function renderToolTree(toolId: string, depth: number): React.ReactNode {
@@ -448,10 +510,20 @@ export function ConversationTurnBubble({ turn }: ConversationTurnBubbleProps) {
                     )}
                     {!isUser && (
                         <button
-                            className="bubble-copy-btn ml-auto text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] opacity-0 group-hover:opacity-100 transition-opacity text-[10px]"
+                            className="bubble-raw-btn ml-auto text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] opacity-0 group-hover:opacity-100 transition-opacity text-[10px]"
+                            title={showRaw ? 'View rendered content' : 'View raw content'}
+                            onClick={() => setShowRaw((v) => !v)}
+                            style={showRaw ? { opacity: 1, color: '#0078d4' } : undefined}
+                        >
+                            &lt;/&gt;
+                        </button>
+                    )}
+                    {!isUser && (
+                        <button
+                            className="bubble-copy-btn text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] opacity-0 group-hover:opacity-100 transition-opacity text-[10px]"
                             title="Copy to clipboard"
                             onClick={() => {
-                                const text = turn.content || '';
+                                const text = showRaw ? buildRawContent(turn) : (turn.content || '');
                                 navigator.clipboard?.writeText(text).catch(() => {});
                             }}
                         >
@@ -465,7 +537,14 @@ export function ConversationTurnBubble({ turn }: ConversationTurnBubbleProps) {
                     {isUser && turn.images && turn.images.length > 0 && (
                         <ImageGallery images={turn.images} />
                     )}
-                    {!isUser && assistantRender && assistantRender.chunks.map((chunk) => {
+                    {!isUser && showRaw && (
+                        <div className="raw-content-view rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#ffffff] dark:bg-[#1e1e1e] overflow-auto max-h-[600px]">
+                            <pre className="p-3 font-mono text-xs whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc]">
+                                <code>{buildRawContent(turn)}</code>
+                            </pre>
+                        </div>
+                    )}
+                    {!isUser && !showRaw && assistantRender && assistantRender.chunks.map((chunk) => {
                         if (chunk.kind === 'content' && chunk.html) {
                             // Content emitted while a sub-task is active should render under that task.
                             if (chunk.parentToolId && assistantRender.toolById.has(chunk.parentToolId)) {
