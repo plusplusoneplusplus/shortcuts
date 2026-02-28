@@ -13,9 +13,6 @@ import {
     QueueChangeEvent,
     TaskPriority,
     generateTaskId,
-    FollowPromptPayload,
-    CodeReviewPayload,
-    AIClarificationPayload,
 } from '../../src/queue';
 
 describe('TaskQueueManager', () => {
@@ -1736,17 +1733,17 @@ describe('repoId field support', () => {
     });
 
     it('supports repoId on FollowPromptPayload', () => {
-        const payload: FollowPromptPayload = {
+        const payload: Record<string, unknown> = {
             promptFilePath: '/test/prompt.md',
             repoId: 'frontend-repo',
         };
         const taskId = manager.enqueue(createTestTask({ payload }));
         const task = manager.getTask(taskId);
-        expect((task?.payload as FollowPromptPayload).repoId).toBe('frontend-repo');
+        expect((task?.payload as Record<string, unknown>).repoId).toBe('frontend-repo');
     });
 
     it('supports repoId on CodeReviewPayload', () => {
-        const payload: CodeReviewPayload = {
+        const payload: Record<string, unknown> = {
             diffType: 'staged',
             rulesFolder: '/rules',
             repoId: 'backend-repo',
@@ -1756,11 +1753,11 @@ describe('repoId field support', () => {
             payload,
         }));
         const task = manager.getTask(taskId);
-        expect((task?.payload as CodeReviewPayload).repoId).toBe('backend-repo');
+        expect((task?.payload as Record<string, unknown>).repoId).toBe('backend-repo');
     });
 
     it('supports repoId on AIClarificationPayload', () => {
-        const payload: AIClarificationPayload = {
+        const payload: Record<string, unknown> = {
             prompt: 'explain this',
             repoId: 'docs-repo',
         };
@@ -1769,16 +1766,16 @@ describe('repoId field support', () => {
             payload,
         }));
         const task = manager.getTask(taskId);
-        expect((task?.payload as AIClarificationPayload).repoId).toBe('docs-repo');
+        expect((task?.payload as Record<string, unknown>).repoId).toBe('docs-repo');
     });
 
     it('allows payload without repoId for backward compatibility', () => {
-        const payload: FollowPromptPayload = {
+        const payload: Record<string, unknown> = {
             promptFilePath: '/test/prompt.md',
         };
         const taskId = manager.enqueue(createTestTask({ payload }));
         const task = manager.getTask(taskId);
-        expect((task?.payload as FollowPromptPayload).repoId).toBeUndefined();
+        expect((task?.payload as Record<string, unknown>).repoId).toBeUndefined();
     });
 });
 

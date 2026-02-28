@@ -620,20 +620,8 @@ export {
 
 export {
     // Core types
-    TaskType,
     TaskPriority,
     QueueStatus,
-
-    // Payload types
-    FollowPromptPayload,
-    ResolveCommentsPayload,
-    CodeReviewPayload,
-    AIClarificationPayload,
-    ChatPayload,
-    TaskGenerationPayload,
-    RunPipelinePayload,
-    CustomTaskPayload,
-    TaskPayload,
 
     // Task configuration
     TaskExecutionConfig,
@@ -670,16 +658,6 @@ export {
     // Priority helpers
     PRIORITY_VALUES,
     comparePriority,
-
-    // Type guards
-    isFollowPromptPayload,
-    isResolveCommentsPayload,
-    isCodeReviewPayload,
-    isAIClarificationPayload,
-    isChatPayload,
-    isTaskGenerationPayload,
-    isRunPipelinePayload,
-    isCustomTaskPayload,
 
     // Utilities
     generateTaskId,

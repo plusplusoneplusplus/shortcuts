@@ -15,7 +15,6 @@ import {
     QueuedTask,
     CreateTaskInput,
     TaskUpdate,
-    TaskPayload,
     QueueChangeEvent,
     QueueChangeType,
     QueueStats,
@@ -64,9 +63,7 @@ export class TaskQueueManager extends EventEmitter {
      * @param input Task input (without auto-generated fields)
      * @returns The ID of the queued task
      */
-    enqueue<TPayload extends TaskPayload = TaskPayload>(
-        input: CreateTaskInput<TPayload>
-    ): string {
+    enqueue(input: CreateTaskInput): string {
         // Reject new tasks when in drain mode
         if (this.draining) {
             throw new Error('Queue is draining — no new tasks accepted');
@@ -77,7 +74,7 @@ export class TaskQueueManager extends EventEmitter {
             throw new Error(`Queue is full (max size: ${this.options.maxQueueSize})`);
         }
 
-        const task: QueuedTask<TPayload> = {
+        const task: QueuedTask = {
             ...input,
             id: generateTaskId(),
             status: 'queued',

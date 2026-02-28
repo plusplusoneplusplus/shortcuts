@@ -12,19 +12,6 @@
 // ============================================================================
 
 /**
- * Type of task that can be queued
- */
-export type TaskType =
-    | 'follow-prompt'
-    | 'resolve-comments'
-    | 'code-review'
-    | 'ai-clarification'
-    | 'chat'
-    | 'task-generation'
-    | 'run-pipeline'
-    | 'custom';
-
-/**
  * Priority level for queued tasks
  * Higher priority tasks are executed first
  */
@@ -39,183 +26,6 @@ export type QueueStatus =
     | 'completed'   // Finished successfully
     | 'failed'      // Finished with error
     | 'cancelled';  // Cancelled by user
-
-// ============================================================================
-// Payload Types
-// ============================================================================
-
-/**
- * Payload for follow-prompt tasks
- */
-export interface FollowPromptPayload {
-    /** Repository identifier (for multi-repo workspaces) */
-    repoId?: string;
-    /** Path to the prompt file (required for skill-based jobs; optional when promptContent is provided) */
-    promptFilePath?: string;
-    /** Direct prompt content (preferred over promptFilePath for freeform prompts) */
-    promptContent?: string;
-    /** Optional path to the plan file */
-    planFilePath?: string;
-    /** Optional skill name to use */
-    skillName?: string;
-    /** Optional additional context */
-    additionalContext?: string;
-    /** Working directory for execution */
-    workingDirectory?: string;
-    /** Folder path for queue folder filtering (relative to workspace tasks root) */
-    folderPath?: string;
-}
-
-/**
- * Payload for resolve-comments tasks
- */
-export interface ResolveCommentsPayload {
-    /** Repository identifier (for multi-repo workspaces) */
-    repoId?: string;
-    /** URI of the document containing comments */
-    documentUri: string;
-    /** IDs of comments to resolve */
-    commentIds: string[];
-    /** Template for generating the prompt */
-    promptTemplate: string;
-    /** Working directory for execution */
-    workingDirectory?: string;
-    /** Full document text for prompt context */
-    documentContent: string;
-    /** Relative task path (for prompt context) */
-    filePath: string;
-}
-
-/**
- * Payload for code-review tasks
- */
-export interface CodeReviewPayload {
-    /** Repository identifier (for multi-repo workspaces) */
-    repoId?: string;
-    /** Commit SHA to review (optional) */
-    commitSha?: string;
-    /** Type of diff to review */
-    diffType: 'staged' | 'pending' | 'commit';
-    /** Path to the rules folder */
-    rulesFolder: string;
-    /** Working directory for the review */
-    workingDirectory?: string;
-}
-
-/**
- * Payload for AI clarification tasks
- */
-export interface AIClarificationPayload {
-    /** Repository identifier (for multi-repo workspaces) */
-    repoId?: string;
-    /** The prompt to send to AI (if pre-built) */
-    prompt?: string;
-    /** Working directory for execution */
-    workingDirectory?: string;
-    /** Optional model to use */
-    model?: string;
-    /** Selected text for clarification */
-    selectedText?: string;
-    /** File path containing the selection */
-    filePath?: string;
-    /** Start line of selection */
-    startLine?: number;
-    /** End line of selection */
-    endLine?: number;
-    /** Surrounding lines for context */
-    surroundingLines?: string;
-    /** Nearest heading in the document */
-    nearestHeading?: string | null;
-    /** Instruction type (clarify, go-deeper, custom) */
-    instructionType?: string;
-    /** Custom instruction text */
-    customInstruction?: string;
-    /** Content from prompt file */
-    promptFileContent?: string;
-    /** Skill name if using a skill */
-    skillName?: string;
-}
-
-/**
- * Payload for chat tasks (interactive SPA conversations)
- */
-export interface ChatPayload {
-    /** Discriminant field for clean type narrowing */
-    readonly kind: 'chat';
-    /** The chat message prompt */
-    prompt: string;
-    /** Workspace ID for display / process metadata */
-    workspaceId?: string;
-    /** Folder path for queue folder filtering */
-    folderPath?: string;
-}
-
-/**
- * Payload for task-generation tasks (AI-powered task file creation)
- */
-export interface TaskGenerationPayload {
-    /** Discriminant field for clean type narrowing */
-    readonly kind: 'task-generation';
-    /** Absolute workspace root path — used as workingDirectory for the AI session */
-    workingDirectory: string;
-    /** User's feature description / instructions */
-    prompt: string;
-    /** Relative path under .vscode/tasks/ where the task file should be written */
-    targetFolder?: string;
-    /** Desired task name (used with buildCreateTaskPromptWithName) */
-    name?: string;
-    /** AI model override */
-    model?: string;
-    /** Generation depth: simple/normal = buildCreateFromFeaturePrompt, deep = buildDeepModePrompt */
-    depth?: 'simple' | 'normal' | 'deep';
-    /** When present, activates feature-context mode */
-    mode?: 'from-feature';
-    /** Optional base64 data URL images to attach as visual context */
-    images?: string[];
-    /** Workspace ID for display / process metadata */
-    workspaceId?: string;
-}
-
-/**
- * Payload for run-pipeline tasks (execute a pipeline via the queue)
- */
-export interface RunPipelinePayload {
-    /** Discriminant field for clean type narrowing */
-    readonly kind: 'run-pipeline';
-    /** Absolute path to the pipeline package directory (contains pipeline.yaml) */
-    pipelinePath: string;
-    /** Working directory for AI session execution */
-    workingDirectory: string;
-    /** Optional AI model override */
-    model?: string;
-    /** Optional pipeline parameter overrides (key=value) */
-    params?: Record<string, string>;
-    /** Workspace ID for display / process metadata */
-    workspaceId?: string;
-}
-
-/**
- * Payload for custom tasks
- */
-export interface CustomTaskPayload {
-    /** Repository identifier (for multi-repo workspaces) */
-    repoId?: string;
-    /** Custom data for the task */
-    data: Record<string, unknown>;
-}
-
-/**
- * Union of all payload types
- */
-export type TaskPayload =
-    | FollowPromptPayload
-    | ResolveCommentsPayload
-    | CodeReviewPayload
-    | AIClarificationPayload
-    | ChatPayload
-    | TaskGenerationPayload
-    | RunPipelinePayload
-    | CustomTaskPayload;
 
 // ============================================================================
 // Task Configuration
@@ -260,7 +70,7 @@ export const DEFAULT_TASK_CONFIG: TaskExecutionConfig = {
 /**
  * A task that has been queued for execution
  */
-export interface QueuedTask<TPayload extends TaskPayload = TaskPayload, TResult = unknown> {
+export interface QueuedTask {
     /** Unique identifier for the task */
     id: string;
     /** Repository identifier (for multi-repo workspaces) */
@@ -268,7 +78,7 @@ export interface QueuedTask<TPayload extends TaskPayload = TaskPayload, TResult 
     /** Folder path associated with this task (for folder-scoped queue badges) */
     folderPath?: string;
     /** Type of task */
-    type: TaskType;
+    type: string;
     /** Priority level */
     priority: TaskPriority;
     /** Current status */
@@ -281,7 +91,7 @@ export interface QueuedTask<TPayload extends TaskPayload = TaskPayload, TResult 
     completedAt?: number;
 
     /** Task-specific payload */
-    payload: TPayload;
+    payload: Record<string, unknown>;
 
     /** Execution configuration */
     config: TaskExecutionConfig;
@@ -293,7 +103,7 @@ export interface QueuedTask<TPayload extends TaskPayload = TaskPayload, TResult 
     processId?: string;
 
     /** Result of execution (when completed) */
-    result?: TResult;
+    result?: unknown;
 
     /** Error message (when failed) */
     error?: string;
@@ -305,17 +115,17 @@ export interface QueuedTask<TPayload extends TaskPayload = TaskPayload, TResult 
 /**
  * Input for creating a new queued task (without auto-generated fields)
  */
-export type CreateTaskInput<TPayload extends TaskPayload = TaskPayload> = Omit<
-    QueuedTask<TPayload>,
+export type CreateTaskInput = Omit<
+    QueuedTask,
     'id' | 'createdAt' | 'status' | 'startedAt' | 'completedAt' | 'result' | 'error' | 'retryCount'
 >;
 
 /**
  * Partial update for a queued task
  */
-export type TaskUpdate<TPayload extends TaskPayload = TaskPayload, TResult = unknown> = Partial<
+export type TaskUpdate = Partial<
     Pick<
-        QueuedTask<TPayload, TResult>,
+        QueuedTask,
         'status' | 'startedAt' | 'completedAt' | 'processId' | 'result' | 'error' | 'retryCount' | 'priority' | 'displayName'
     >
 >;
@@ -563,66 +373,6 @@ export function comparePriority(a: QueuedTask, b: QueuedTask): number {
     }
     // Same priority: earlier created task comes first (FIFO within priority)
     return a.createdAt - b.createdAt;
-}
-
-// ============================================================================
-// Type Guards
-// ============================================================================
-
-/**
- * Check if a payload is a FollowPromptPayload
- */
-export function isFollowPromptPayload(payload: TaskPayload): payload is FollowPromptPayload {
-    return 'promptFilePath' in payload || 'promptContent' in payload;
-}
-
-/**
- * Check if a payload is a ResolveCommentsPayload
- */
-export function isResolveCommentsPayload(payload: TaskPayload): payload is ResolveCommentsPayload {
-    return 'documentUri' in payload && 'commentIds' in payload;
-}
-
-/**
- * Check if a payload is a CodeReviewPayload
- */
-export function isCodeReviewPayload(payload: TaskPayload): payload is CodeReviewPayload {
-    return 'diffType' in payload && 'rulesFolder' in payload;
-}
-
-/**
- * Check if a payload is an AIClarificationPayload
- */
-export function isAIClarificationPayload(payload: TaskPayload): payload is AIClarificationPayload {
-    return 'prompt' in payload && !('data' in payload);
-}
-
-/**
- * Check if a payload is a ChatPayload
- */
-export function isChatPayload(payload: TaskPayload): payload is ChatPayload {
-    return (payload as any).kind === 'chat';
-}
-
-/**
- * Check if a payload is a CustomTaskPayload
- */
-export function isCustomTaskPayload(payload: TaskPayload): payload is CustomTaskPayload {
-    return 'data' in payload;
-}
-
-/**
- * Check if a payload is a TaskGenerationPayload
- */
-export function isTaskGenerationPayload(payload: TaskPayload): payload is TaskGenerationPayload {
-    return (payload as any).kind === 'task-generation';
-}
-
-/**
- * Check if a payload is a RunPipelinePayload
- */
-export function isRunPipelinePayload(payload: TaskPayload): payload is RunPipelinePayload {
-    return (payload as any).kind === 'run-pipeline';
 }
 
 /**

@@ -24,7 +24,7 @@ packages/pipeline-core/
 │   │   └── policy.ts         # Unified policy runner (runWithPolicy)
 │   ├── queue/                # Task queue system
 │   │   ├── index.ts          # Queue module exports
-│   │   ├── types.ts          # TaskType, TaskPriority, QueueStatus, payload types
+│   │   ├── types.ts          # TaskPriority, QueueStatus, QueuedTask (generic payload)
 │   │   ├── task-queue-manager.ts  # TaskQueueManager (priority-based queue)
 │   │   └── queue-executor.ts     # QueueExecutor (executes tasks with concurrency)
 │   ├── ai/                   # AI service components (lightweight)
@@ -285,13 +285,12 @@ const result = await aiPolicy(() => invokeAI(prompt));
 
 ### Task Queue
 
-Priority-based task queue with concurrency control.
+Priority-based task queue with concurrency control. `QueuedTask` uses generic `type: string` and `payload: Record<string, unknown>` — domain-specific payload types are defined by consuming packages.
 
 ```typescript
 import { 
     TaskQueueManager, 
     QueueExecutor,
-    TaskType,
     TaskPriority 
 } from 'pipeline-core';
 
@@ -303,26 +302,25 @@ const queueManager = new TaskQueueManager({
 
 // Enqueue tasks with priorities
 const taskId1 = queueManager.enqueue({
-    type: TaskType.AI_REQUEST,
-    priority: TaskPriority.HIGH,
-    payload: { prompt: 'Analyze code', model: 'claude-sonnet-4.6' }
+    type: 'follow-prompt',
+    priority: 'high',
+    payload: { prompt: 'Analyze code', model: 'claude-sonnet-4.6' },
+    config: { timeoutMs: 60000 }
 });
 
 const taskId2 = queueManager.enqueue({
-    type: TaskType.AI_REQUEST,
-    priority: TaskPriority.LOW,
-    payload: { prompt: 'Generate summary', model: 'claude-haiku-4.5' }
+    type: 'follow-prompt',
+    priority: 'low',
+    payload: { prompt: 'Generate summary', model: 'claude-haiku-4.5' },
+    config: { timeoutMs: 60000 }
 });
 
 // Create executor
 const executor = new QueueExecutor(
     queueManager,
     async (task) => {
-        // Execute the task
-        if (task.type === TaskType.AI_REQUEST) {
-            return await processAIRequest(task.payload);
-        }
-        throw new Error(`Unknown task type: ${task.type}`);
+        // Execute the task — use task.type to dispatch
+        return await processTask(task);
     },
     {
         maxConcurrency: 3,
