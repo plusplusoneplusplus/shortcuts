@@ -120,7 +120,13 @@ describe('ToolCallView — task result hover popover', () => {
 
     it('does not show popover for non-task tool calls', () => {
         const { container } = render(
-            <ToolCallView toolCall={makeNonTaskToolCall()} />
+            <ToolCallView toolCall={{
+                id: 'tc-edit-1',
+                toolName: 'edit',
+                args: { path: '/project/foo.ts', old_str: 'a', new_str: 'b' },
+                status: 'completed',
+                result: 'File edited',
+            }} />
         );
 
         const header = container.querySelector('.tool-call-header')!;
@@ -322,16 +328,16 @@ describe('ToolCallView — view tool hover popover', () => {
         expect(document.querySelector('[data-testid="tool-result-popover"]')).toBeNull();
     });
 
-    it('does not show popover for grep tool calls', () => {
+    it('shows popover for grep tool calls', () => {
         const { container } = render(
             <ToolCallView toolCall={makeNonTaskToolCall()} />
         );
 
         const header = container.querySelector('.tool-call-header')!;
         fireEvent.mouseEnter(header);
-        act(() => { vi.advanceTimersByTime(500); });
+        act(() => { vi.advanceTimersByTime(300); });
 
-        expect(document.querySelector('[data-testid="tool-result-popover"]')).toBeNull();
+        expect(document.querySelector('[data-testid="tool-result-popover"]')).toBeTruthy();
     });
 });
 
@@ -400,5 +406,103 @@ describe('ToolCallView — bash tool hover popover', () => {
         expect(terminalEl!.textContent).toContain('Success: build completed');
         expect(terminalEl!.textContent).toContain('Done');
         expect(terminalEl!.textContent).not.toContain('\x1b');
+    });
+});
+
+describe('ToolCallView — glob tool hover popover', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it('shows popover after 300ms hover on a glob tool call header', () => {
+        const { container } = render(
+            <ToolCallView toolCall={{
+                id: 'tc-glob-1',
+                toolName: 'glob',
+                args: { pattern: '**/*.ts', path: '/project' },
+                status: 'completed',
+                result: '/project/src/index.ts\n/project/src/utils.ts',
+            }} />
+        );
+
+        const header = container.querySelector('.tool-call-header')!;
+        fireEvent.mouseEnter(header);
+        act(() => { vi.advanceTimersByTime(300); });
+
+        const popover = document.querySelector('[data-testid="tool-result-popover"]');
+        expect(popover).toBeTruthy();
+        expect(popover!.textContent).toContain('Glob Matches');
+        expect(popover!.textContent).toContain('2 files');
+    });
+
+    it('does not show popover for glob tool call with empty result', () => {
+        const { container } = render(
+            <ToolCallView toolCall={{
+                id: 'tc-glob-2',
+                toolName: 'glob',
+                args: { pattern: '**/*.ts' },
+                status: 'completed',
+                result: '',
+            }} />
+        );
+
+        const header = container.querySelector('.tool-call-header')!;
+        fireEvent.mouseEnter(header);
+        act(() => { vi.advanceTimersByTime(500); });
+
+        expect(document.querySelector('[data-testid="tool-result-popover"]')).toBeNull();
+    });
+});
+
+describe('ToolCallView — grep tool hover popover', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it('shows popover after 300ms hover on a grep tool call header', () => {
+        const { container } = render(
+            <ToolCallView toolCall={{
+                id: 'tc-grep-1',
+                toolName: 'grep',
+                args: { pattern: 'doThing' },
+                status: 'completed',
+                result: 'src/foo.ts:12:export function doThing() {\nsrc/bar.ts:45:    doThing();',
+            }} />
+        );
+
+        const header = container.querySelector('.tool-call-header')!;
+        fireEvent.mouseEnter(header);
+        act(() => { vi.advanceTimersByTime(300); });
+
+        const popover = document.querySelector('[data-testid="tool-result-popover"]');
+        expect(popover).toBeTruthy();
+        expect(popover!.textContent).toContain('Grep Matches');
+        expect(popover!.textContent).toContain('2 matches in 2 files');
+    });
+
+    it('does not show popover for grep tool call with empty result', () => {
+        const { container } = render(
+            <ToolCallView toolCall={{
+                id: 'tc-grep-2',
+                toolName: 'grep',
+                args: { pattern: 'nonexistent' },
+                status: 'completed',
+                result: '',
+            }} />
+        );
+
+        const header = container.querySelector('.tool-call-header')!;
+        fireEvent.mouseEnter(header);
+        act(() => { vi.advanceTimersByTime(500); });
+
+        expect(document.querySelector('[data-testid="tool-result-popover"]')).toBeNull();
     });
 });

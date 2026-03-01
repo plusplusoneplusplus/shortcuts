@@ -388,3 +388,230 @@ describe('ToolResultPopover', () => {
         expect(document.querySelector('[data-testid="popover-terminal"]')).toBeTruthy();
     });
 });
+
+// --- glob tool: file list preview ---
+
+describe('ToolResultPopover — glob tool', () => {
+    it('renders glob preview with file list', () => {
+        render(
+            <ToolResultPopover
+                result={"/project/src/index.ts\n/project/src/utils.ts\n/project/src/app.ts"}
+                toolName="glob"
+                args={{ pattern: '**/*.ts', path: '/project' }}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        const popover = document.querySelector('[data-testid="tool-result-popover"]');
+        expect(popover).toBeTruthy();
+        expect(popover!.textContent).toContain('Glob Matches');
+        expect(popover!.textContent).toContain('3 files');
+
+        const globEl = document.querySelector('[data-testid="popover-glob"]');
+        expect(globEl).toBeTruthy();
+        expect(globEl!.textContent).toContain('src/index.ts');
+        expect(globEl!.textContent).toContain('src/utils.ts');
+        expect(globEl!.textContent).toContain('src/app.ts');
+    });
+
+    it('renders relative paths when basePath is provided', () => {
+        render(
+            <ToolResultPopover
+                result={"/workspace/foo/bar.ts\n/workspace/foo/baz.ts"}
+                toolName="glob"
+                args={{ pattern: '*.ts', path: '/workspace/foo' }}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        const globEl = document.querySelector('[data-testid="popover-glob"]');
+        expect(globEl).toBeTruthy();
+        expect(globEl!.textContent).toContain('bar.ts');
+        expect(globEl!.textContent).toContain('baz.ts');
+        expect(globEl!.textContent).not.toContain('/workspace/foo');
+    });
+
+    it('shows "No matches found" for empty glob result', () => {
+        render(
+            <ToolResultPopover
+                result=""
+                toolName="glob"
+                args={{ pattern: '**/*.xyz' }}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        const globEl = document.querySelector('[data-testid="popover-glob"]');
+        expect(globEl).toBeTruthy();
+        expect(globEl!.textContent).toContain('No matches found');
+    });
+
+    it('handles Windows-style paths in glob results', () => {
+        render(
+            <ToolResultPopover
+                result={"D:\\project\\src\\index.ts\nD:\\project\\src\\utils.ts"}
+                toolName="glob"
+                args={{ pattern: '**/*.ts', path: 'D:\\project' }}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        const globEl = document.querySelector('[data-testid="popover-glob"]');
+        expect(globEl).toBeTruthy();
+        expect(globEl!.textContent).toContain('src/index.ts');
+    });
+
+    it('does not render other sub-testids for glob tool', () => {
+        render(
+            <ToolResultPopover
+                result="/project/file.ts"
+                toolName="glob"
+                args={{ pattern: '*.ts' }}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        expect(document.querySelector('[data-testid="popover-markdown"]')).toBeNull();
+        expect(document.querySelector('[data-testid="popover-code"]')).toBeNull();
+        expect(document.querySelector('[data-testid="popover-terminal"]')).toBeNull();
+        expect(document.querySelector('[data-testid="popover-grep"]')).toBeNull();
+        expect(document.querySelector('[data-testid="popover-glob"]')).toBeTruthy();
+    });
+});
+
+// --- grep tool: grouped match list preview ---
+
+describe('ToolResultPopover — grep tool', () => {
+    it('renders grep preview grouped by file', () => {
+        render(
+            <ToolResultPopover
+                result={"src/foo.ts:12:export function doThing() {\nsrc/foo.ts:20:  return doThing;\nsrc/bar.ts:45:    doThing();"}
+                toolName="grep"
+                args={{ pattern: 'doThing' }}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        const popover = document.querySelector('[data-testid="tool-result-popover"]');
+        expect(popover).toBeTruthy();
+        expect(popover!.textContent).toContain('Grep Matches');
+        expect(popover!.textContent).toContain('3 matches in 2 files');
+
+        const grepEl = document.querySelector('[data-testid="popover-grep"]');
+        expect(grepEl).toBeTruthy();
+        expect(grepEl!.textContent).toContain('src/foo.ts');
+        expect(grepEl!.textContent).toContain('src/bar.ts');
+        expect(grepEl!.textContent).toContain('12');
+        expect(grepEl!.textContent).toContain('export function doThing() {');
+    });
+
+    it('highlights matched pattern in grep results', () => {
+        const { container } = render(
+            <ToolResultPopover
+                result="src/foo.ts:12:hello world"
+                toolName="grep"
+                args={{ pattern: 'hello' }}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        const grepEl = document.querySelector('[data-testid="popover-grep"]');
+        expect(grepEl).toBeTruthy();
+        // The matched text should be wrapped in a highlight span
+        const highlights = grepEl!.querySelectorAll('.bg-\\[\\#fff3cd\\]');
+        expect(highlights.length).toBeGreaterThan(0);
+        expect(highlights[0].textContent).toBe('hello');
+    });
+
+    it('shows "No matches found" for empty grep result', () => {
+        render(
+            <ToolResultPopover
+                result=""
+                toolName="grep"
+                args={{ pattern: 'nonexistent' }}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        const grepEl = document.querySelector('[data-testid="popover-grep"]');
+        expect(grepEl).toBeTruthy();
+        expect(grepEl!.textContent).toContain('No matches found');
+    });
+
+    it('handles Windows paths with drive letters in grep results', () => {
+        render(
+            <ToolResultPopover
+                result={"C:\\project\\src\\foo.ts:12:some content"}
+                toolName="grep"
+                args={{ pattern: 'content' }}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        const grepEl = document.querySelector('[data-testid="popover-grep"]');
+        expect(grepEl).toBeTruthy();
+        expect(grepEl!.textContent).toContain('C:\\project\\src\\foo.ts');
+        expect(grepEl!.textContent).toContain('12');
+        expect(grepEl!.textContent).toContain('some content');
+    });
+
+    it('handles files_with_matches mode (file paths only)', () => {
+        render(
+            <ToolResultPopover
+                result={"src/foo.ts\nsrc/bar.ts"}
+                toolName="grep"
+                args={{ pattern: 'something' }}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        const grepEl = document.querySelector('[data-testid="popover-grep"]');
+        expect(grepEl).toBeTruthy();
+        expect(grepEl!.textContent).toContain('src/foo.ts');
+        expect(grepEl!.textContent).toContain('src/bar.ts');
+    });
+
+    it('gracefully handles invalid regex pattern', () => {
+        render(
+            <ToolResultPopover
+                result="src/foo.ts:12:some (unclosed"
+                toolName="grep"
+                args={{ pattern: '(unclosed' }}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        const grepEl = document.querySelector('[data-testid="popover-grep"]');
+        expect(grepEl).toBeTruthy();
+        expect(grepEl!.textContent).toContain('some (unclosed');
+    });
+
+    it('does not render other sub-testids for grep tool', () => {
+        render(
+            <ToolResultPopover
+                result="src/foo.ts:1:line"
+                toolName="grep"
+                args={{ pattern: 'line' }}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        expect(document.querySelector('[data-testid="popover-markdown"]')).toBeNull();
+        expect(document.querySelector('[data-testid="popover-code"]')).toBeNull();
+        expect(document.querySelector('[data-testid="popover-terminal"]')).toBeNull();
+        expect(document.querySelector('[data-testid="popover-glob"]')).toBeNull();
+        expect(document.querySelector('[data-testid="popover-grep"]')).toBeTruthy();
+    });
+});
