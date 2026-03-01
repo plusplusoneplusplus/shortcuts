@@ -33,7 +33,7 @@ function flattenFolders(node: any, depth = 0): FolderOption[] {
 export function EnqueueDialog() {
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { state: appState } = useApp();
-    const { model: savedModel, setModel: persistModel } = usePreferences();
+    const { model: savedModel, setModel: persistModel, skill: savedSkill, setSkill: persistSkill } = usePreferences();
     const [prompt, setPrompt] = useState('');
     const [model, setModel] = useState('');
     const [workspaceId, setWorkspaceId] = useState('');
@@ -90,12 +90,27 @@ export function EnqueueDialog() {
                 }
             })
             .catch(() => { /* ignore */ });
-    }, [workspaceId]);
+    }, [workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Restore saved skill when both preferences and skills are loaded
+    useEffect(() => {
+        if (savedSkill && skills.length > 0 && !selectedSkill) {
+            const match = skills.find(s => s.name === savedSkill);
+            if (match) {
+                setSelectedSkill(savedSkill);
+            }
+        }
+    }, [savedSkill, skills]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const handleModelChange = useCallback((value: string) => {
         setModel(value);
         persistModel(value);
     }, [persistModel]);
+
+    const handleSkillChange = useCallback((value: string) => {
+        setSelectedSkill(value);
+        persistSkill(value);
+    }, [persistSkill]);
 
     const handleSubmit = useCallback(async () => {
         if (!selectedSkill && !prompt.trim()) return;
@@ -188,7 +203,7 @@ export function EnqueueDialog() {
                         <label className="block text-xs font-medium text-[#848484] mb-1">Skill (optional)</label>
                         <select
                             value={selectedSkill}
-                            onChange={e => setSelectedSkill(e.target.value)}
+                            onChange={e => handleSkillChange(e.target.value)}
                             className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]"
                             data-testid="skill-select"
                         >

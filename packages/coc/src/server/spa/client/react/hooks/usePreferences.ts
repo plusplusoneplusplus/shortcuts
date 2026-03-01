@@ -12,6 +12,8 @@ export interface UsePreferencesResult {
     setDepth: (d: string) => void;
     effort: string;
     setEffort: (e: string) => void;
+    skill: string;
+    setSkill: (s: string) => void;
     loaded: boolean;
 }
 
@@ -19,6 +21,7 @@ export function usePreferences(): UsePreferencesResult {
     const [model, setModelState] = useState('');
     const [depth, setDepthState] = useState('');
     const [effort, setEffortState] = useState('');
+    const [skill, setSkillState] = useState('');
     const [loaded, setLoaded] = useState(false);
 
     useEffect(() => {
@@ -37,6 +40,9 @@ export function usePreferences(): UsePreferencesResult {
                     }
                     if (typeof prefs.lastEffort === 'string') {
                         setEffortState(prefs.lastEffort);
+                    }
+                    if (typeof prefs.lastSkill === 'string') {
+                        setSkillState(prefs.lastSkill);
                     }
                 }
             } catch {
@@ -78,5 +84,15 @@ export function usePreferences(): UsePreferencesResult {
         }).catch(() => {});
     }, []);
 
-    return { model, setModel, depth, setDepth, effort, setEffort, loaded };
+    const setSkill = useCallback((s: string) => {
+        setSkillState(s);
+        // Fire-and-forget persistence
+        fetch(getApiBase() + '/preferences', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lastSkill: s }),
+        }).catch(() => {});
+    }, []);
+
+    return { model, setModel, depth, setDepth, effort, setEffort, skill, setSkill, loaded };
 }

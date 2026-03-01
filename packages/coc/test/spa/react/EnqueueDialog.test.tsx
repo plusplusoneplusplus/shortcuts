@@ -904,4 +904,169 @@ describe('EnqueueDialog', () => {
         });
         expect(postBody.payload.workingDirectory).toBe('/my/project');
     });
+
+    it('persists selected skill to preferences via PATCH', async () => {
+        fetchSpy.mockImplementation((url: string, opts?: any) => {
+            if (typeof url === 'string' && url.includes('/queue/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            }
+            if (typeof url === 'string' && url.includes('/skills')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        skills: [
+                            { name: 'impl', description: 'Implementation tasks' },
+                            { name: 'go-deep', description: 'Deep research' },
+                        ],
+                    }),
+                });
+            }
+            if (typeof url === 'string' && url.includes('/tasks')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        name: 'tasks', relativePath: '', children: [],
+                    }),
+                });
+            }
+            if (typeof url === 'string' && url.includes('/preferences') && opts?.method === 'PATCH') {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        render(
+            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS' }]}>
+                <DialogOpener />
+                <EnqueueDialog />
+            </Wrap>
+        );
+        await waitFor(() => {
+            expect(screen.getByText('Enqueue AI Task')).toBeTruthy();
+        });
+
+        // Select workspace
+        const wsSelect = screen.getAllByRole('combobox')[1];
+        fireEvent.change(wsSelect, { target: { value: 'ws1' } });
+
+        // Wait for skill selector
+        await waitFor(() => {
+            expect(screen.getByTestId('skill-select')).toBeTruthy();
+        });
+
+        // Select skill
+        fireEvent.change(screen.getByTestId('skill-select'), { target: { value: 'impl' } });
+
+        // Verify PATCH was called with lastSkill
+        await waitFor(() => {
+            const patchCalls = fetchSpy.mock.calls.filter(
+                ([u, opts]: [string, any]) =>
+                    typeof u === 'string' && u.includes('/preferences') && opts?.method === 'PATCH'
+            );
+            expect(patchCalls.length).toBeGreaterThanOrEqual(1);
+            const lastPatch = patchCalls[patchCalls.length - 1];
+            const body = JSON.parse(lastPatch[1].body);
+            expect(body.lastSkill).toBe('impl');
+        });
+    });
+
+    it('restores last-used skill from preferences when skills load', async () => {
+        fetchSpy.mockImplementation((url: string) => {
+            if (typeof url === 'string' && url.includes('/queue/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            }
+            if (typeof url === 'string' && url.includes('/preferences')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ lastSkill: 'go-deep' }),
+                });
+            }
+            if (typeof url === 'string' && url.includes('/skills')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        skills: [
+                            { name: 'impl', description: 'Implementation tasks' },
+                            { name: 'go-deep', description: 'Deep research' },
+                        ],
+                    }),
+                });
+            }
+            if (typeof url === 'string' && url.includes('/tasks')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        name: 'tasks', relativePath: '', children: [],
+                    }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        render(
+            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS' }]}>
+                <DialogOpener workspaceId="ws1" />
+                <EnqueueDialog />
+            </Wrap>
+        );
+        await waitFor(() => {
+            expect(screen.getByText('Enqueue AI Task')).toBeTruthy();
+        });
+
+        // Wait for skill selector to appear with pre-selected value
+        await waitFor(() => {
+            const skillSelect = screen.getByTestId('skill-select') as HTMLSelectElement;
+            expect(skillSelect.value).toBe('go-deep');
+        });
+    });
+
+    it('does not restore skill if it is not in available skills list', async () => {
+        fetchSpy.mockImplementation((url: string) => {
+            if (typeof url === 'string' && url.includes('/queue/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            }
+            if (typeof url === 'string' && url.includes('/preferences')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ lastSkill: 'nonexistent-skill' }),
+                });
+            }
+            if (typeof url === 'string' && url.includes('/skills')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        skills: [{ name: 'impl', description: 'Implementation tasks' }],
+                    }),
+                });
+            }
+            if (typeof url === 'string' && url.includes('/tasks')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        name: 'tasks', relativePath: '', children: [],
+                    }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        render(
+            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS' }]}>
+                <DialogOpener workspaceId="ws1" />
+                <EnqueueDialog />
+            </Wrap>
+        );
+        await waitFor(() => {
+            expect(screen.getByText('Enqueue AI Task')).toBeTruthy();
+        });
+
+        // Wait for skill selector
+        await waitFor(() => {
+            expect(screen.getByTestId('skill-select')).toBeTruthy();
+        });
+
+        // Should remain on "None" since the saved skill doesn't exist
+        const skillSelect = screen.getByTestId('skill-select') as HTMLSelectElement;
+        expect(skillSelect.value).toBe('');
+    });
 });

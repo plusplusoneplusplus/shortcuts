@@ -217,6 +217,19 @@ describe('readPreferences / writePreferences', () => {
         expect(prefs.lastEffort).toBeUndefined();
     });
 
+    it('round-trips lastSkill through write and read', () => {
+        const original = { lastSkill: 'impl' };
+        writePreferences(tmpDir, original);
+        const loaded = readPreferences(tmpDir);
+        expect(loaded).toEqual(original);
+    });
+
+    it('handles empty lastSkill string', () => {
+        writePreferences(tmpDir, { lastSkill: '' });
+        const prefs = readPreferences(tmpDir);
+        expect(prefs.lastSkill).toBe('');
+    });
+
     it('round-trips recentFollowPrompts through write and read', () => {
         const original = {
             recentFollowPrompts: [
@@ -358,6 +371,27 @@ describe('validatePreferences', () => {
     it('accepts lastEffort alongside other fields', () => {
         const result = validatePreferences({ lastModel: 'gpt-5.2', lastEffort: 'high', lastDepth: 'deep', theme: 'dark' });
         expect(result).toEqual({ lastModel: 'gpt-5.2', lastDepth: 'deep', lastEffort: 'high', theme: 'dark' });
+    });
+
+    // -- lastSkill field --
+
+    it('accepts valid lastSkill string', () => {
+        expect(validatePreferences({ lastSkill: 'impl' })).toEqual({ lastSkill: 'impl' });
+    });
+
+    it('accepts empty lastSkill string (means "None")', () => {
+        expect(validatePreferences({ lastSkill: '' })).toEqual({ lastSkill: '' });
+    });
+
+    it('rejects non-string lastSkill', () => {
+        expect(validatePreferences({ lastSkill: 42 })).toEqual({});
+        expect(validatePreferences({ lastSkill: true })).toEqual({});
+        expect(validatePreferences({ lastSkill: null })).toEqual({});
+    });
+
+    it('accepts lastSkill alongside other fields', () => {
+        const result = validatePreferences({ lastModel: 'gpt-5.2', lastSkill: 'go-deep', theme: 'dark' });
+        expect(result).toEqual({ lastModel: 'gpt-5.2', lastSkill: 'go-deep', theme: 'dark' });
     });
 
     // -- recentFollowPrompts field --
@@ -773,6 +807,42 @@ describe('Preferences REST API', () => {
 
         const res = await getJSON(`${baseUrl}/api/preferences`);
         expect(JSON.parse(res.body)).toEqual({ lastModel: 'gpt-5.2', lastEffort: 'high' });
+    });
+
+    // -- lastSkill persistence via API --
+
+    it('PATCH persists lastSkill field', async () => {
+        const res = await patchJSON(`${baseUrl}/api/preferences`, { lastSkill: 'impl' });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body)).toEqual({ lastSkill: 'impl' });
+
+        const get = await getJSON(`${baseUrl}/api/preferences`);
+        expect(JSON.parse(get.body)).toEqual({ lastSkill: 'impl' });
+    });
+
+    it('PATCH merges lastSkill into existing preferences', async () => {
+        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'gpt-5.2' });
+        const res = await patchJSON(`${baseUrl}/api/preferences`, { lastSkill: 'go-deep' });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body)).toEqual({ lastModel: 'gpt-5.2', lastSkill: 'go-deep' });
+    });
+
+    it('PATCH updates lastSkill without affecting other fields', async () => {
+        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'claude-sonnet-4.6', lastSkill: 'impl', theme: 'dark' });
+        const res = await patchJSON(`${baseUrl}/api/preferences`, { lastSkill: 'go-deep' });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body)).toEqual({ lastModel: 'claude-sonnet-4.6', lastSkill: 'go-deep', theme: 'dark' });
+    });
+
+    it('lastSkill survives server restart', async () => {
+        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'gpt-5.2', lastSkill: 'impl' });
+        await server.close();
+
+        server = await createExecutionServer({ port: 0, dataDir: tmpDir });
+        baseUrl = server.url;
+
+        const res = await getJSON(`${baseUrl}/api/preferences`);
+        expect(JSON.parse(res.body)).toEqual({ lastModel: 'gpt-5.2', lastSkill: 'impl' });
     });
 
     // -- recentFollowPrompts persistence via API --

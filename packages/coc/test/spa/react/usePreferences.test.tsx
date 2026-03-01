@@ -157,4 +157,78 @@ describe('usePreferences', () => {
             expect(body.lastDepth).toBe('normal');
         });
     });
+
+    // -- skill support --
+
+    it('loads skill from GET /api/preferences', async () => {
+        mockFetch.mockResolvedValueOnce({
+            ok: true,
+            json: () => Promise.resolve({ lastSkill: 'impl' }),
+        });
+
+        const { result } = renderHook(() => usePreferences());
+
+        await waitFor(() => {
+            expect(result.current.loaded).toBe(true);
+            expect(result.current.skill).toBe('impl');
+        });
+    });
+
+    it('defaults skill to empty string when API fails', async () => {
+        mockFetch.mockRejectedValueOnce(new Error('Network error'));
+
+        const { result } = renderHook(() => usePreferences());
+
+        await waitFor(() => {
+            expect(result.current.loaded).toBe(true);
+            expect(result.current.skill).toBe('');
+        });
+    });
+
+    it('setSkill updates skill state immediately', async () => {
+        mockFetch.mockResolvedValueOnce({
+            ok: true,
+            json: () => Promise.resolve({ lastSkill: 'impl' }),
+        });
+        mockFetch.mockResolvedValueOnce({ ok: true });
+
+        const { result } = renderHook(() => usePreferences());
+
+        await waitFor(() => {
+            expect(result.current.loaded).toBe(true);
+        });
+
+        act(() => {
+            result.current.setSkill('go-deep');
+        });
+
+        expect(result.current.skill).toBe('go-deep');
+    });
+
+    it('setSkill fires PATCH /api/preferences with lastSkill', async () => {
+        mockFetch.mockResolvedValueOnce({
+            ok: true,
+            json: () => Promise.resolve({ lastSkill: '' }),
+        });
+        mockFetch.mockResolvedValueOnce({ ok: true });
+
+        const { result } = renderHook(() => usePreferences());
+
+        await waitFor(() => {
+            expect(result.current.loaded).toBe(true);
+        });
+
+        act(() => {
+            result.current.setSkill('impl');
+        });
+
+        await waitFor(() => {
+            const patchCalls = mockFetch.mock.calls.filter(
+                ([_, opts]: [string, any]) => opts?.method === 'PATCH'
+            );
+            expect(patchCalls.length).toBe(1);
+            const body = JSON.parse(patchCalls[0][1].body);
+            expect(body.lastSkill).toBe('impl');
+        });
+    });
 });

@@ -25,6 +25,8 @@ export interface UserPreferences {
     lastDepth?: 'deep' | 'normal';
     /** Last-selected effort level in the Generate Task dialog. */
     lastEffort?: 'low' | 'medium' | 'high';
+    /** Last-selected skill name in the Enqueue AI Task dialog (empty string = none). */
+    lastSkill?: string;
     /** Persisted dashboard theme ('light' | 'dark' | 'auto'). */
     theme?: 'light' | 'dark' | 'auto';
     /** Pinned chat session IDs per workspace (ordered by pin time, newest first). */
@@ -93,6 +95,10 @@ export function validatePreferences(raw: unknown): UserPreferences {
 
     if (obj.lastEffort === 'low' || obj.lastEffort === 'medium' || obj.lastEffort === 'high') {
         result.lastEffort = obj.lastEffort;
+    }
+
+    if (typeof obj.lastSkill === 'string') {
+        result.lastSkill = obj.lastSkill;
     }
 
     if (obj.theme === 'light' || obj.theme === 'dark' || obj.theme === 'auto') {
