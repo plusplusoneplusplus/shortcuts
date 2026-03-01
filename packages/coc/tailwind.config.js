@@ -4,6 +4,9 @@ export default {
   darkMode: 'class',
   theme: {
     extend: {
+      screens: {
+        'md-split': '900px',
+      },
       keyframes: {
         'toast-in': {
           from: { opacity: '0', transform: 'translateY(10px)' },

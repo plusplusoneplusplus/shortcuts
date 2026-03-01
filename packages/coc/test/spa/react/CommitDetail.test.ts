@@ -1,8 +1,8 @@
 /**
  * Tests for CommitDetail component source structure.
  *
- * Validates exports, props, API usage, error handling, and rendering
- * of the commit detail expanded view.
+ * Validates exports, props, API usage, always-visible diff,
+ * error handling with retry, and rendering of the commit detail panel.
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -34,6 +34,10 @@ describe('CommitDetail', () => {
         it('exports CommitDetail as a named export', () => {
             expect(source).toContain('export function CommitDetail');
         });
+
+        it('exports CommitDetailProps interface', () => {
+            expect(source).toContain('export interface CommitDetailProps');
+        });
     });
 
     describe('component signature', () => {
@@ -43,6 +47,10 @@ describe('CommitDetail', () => {
 
         it('accepts hash prop', () => {
             expect(source).toContain('hash: string');
+        });
+
+        it('accepts subject prop', () => {
+            expect(source).toContain('subject: string');
         });
 
         it('accepts author prop', () => {
@@ -69,22 +77,34 @@ describe('CommitDetail', () => {
         });
     });
 
-    describe('diff API integration', () => {
+    describe('diff API integration — always visible', () => {
         it('fetches from /git/commits/:hash/diff endpoint', () => {
             expect(source).toContain('/diff');
         });
 
-        it('has View Full Diff button', () => {
-            expect(source).toContain('View Full Diff');
-            expect(source).toContain('data-testid="view-diff-btn"');
+        it('auto-fetches diff on mount (no toggle button)', () => {
+            // Diff is fetched in a useEffect, not on button click
+            expect(source).not.toContain('View Full Diff');
+            expect(source).not.toContain('Hide Diff');
+            expect(source).not.toContain('data-testid="view-diff-btn"');
         });
 
-        it('has Hide Diff toggle', () => {
-            expect(source).toContain('Hide Diff');
+        it('has diff loading state', () => {
+            expect(source).toContain('data-testid="diff-loading"');
         });
 
         it('renders diff content in a pre block', () => {
             expect(source).toContain('data-testid="diff-content"');
+        });
+
+        it('has diff section container', () => {
+            expect(source).toContain('data-testid="diff-section"');
+        });
+
+        it('has retry button for diff errors', () => {
+            expect(source).toContain('data-testid="retry-diff-btn"');
+            expect(source).toContain('Retry');
+            expect(source).toContain('handleRetryDiff');
         });
     });
 
@@ -108,9 +128,22 @@ describe('CommitDetail', () => {
         });
 
         it('does NOT silently catch errors', () => {
-            // Error state is displayed, not swallowed
             expect(source).toContain('catch(err');
             expect(source).not.toContain('catch(() => setFiles([]))');
+        });
+    });
+
+    describe('header bar', () => {
+        it('has header section with data-testid', () => {
+            expect(source).toContain('data-testid="commit-detail-header"');
+        });
+
+        it('displays commit subject as title', () => {
+            expect(source).toContain('{subject}');
+        });
+
+        it('displays short hash badge', () => {
+            expect(source).toContain('hash.substring(0, 8)');
         });
     });
 
@@ -168,6 +201,11 @@ describe('CommitDetail', () => {
 
         it('has loading state for files', () => {
             expect(source).toContain('data-testid="files-loading"');
+        });
+
+        it('shows empty state when no files changed', () => {
+            expect(source).toContain('No files changed');
+            expect(source).toContain('data-testid="no-files-changed"');
         });
     });
 

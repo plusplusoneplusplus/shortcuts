@@ -1,7 +1,8 @@
 /**
  * Tests for CommitList component source structure.
  *
- * Validates exports, props, rendering patterns, and accordion behavior.
+ * Validates exports, props, single-select behavior, keyboard navigation,
+ * and rendering patterns.
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -48,8 +49,12 @@ describe('CommitList', () => {
             expect(source).toContain('commits: GitCommitItem[]');
         });
 
-        it('accepts workspaceId prop', () => {
-            expect(source).toContain('workspaceId: string');
+        it('accepts optional selectedHash prop', () => {
+            expect(source).toContain('selectedHash');
+        });
+
+        it('accepts optional onSelect callback', () => {
+            expect(source).toContain('onSelect');
         });
 
         it('accepts optional loading prop', () => {
@@ -83,19 +88,63 @@ describe('CommitList', () => {
         });
     });
 
-    describe('accordion behavior', () => {
-        it('tracks expanded hash state', () => {
-            expect(source).toContain('expandedHash');
-            expect(source).toContain('setExpandedHash');
+    describe('single-select behavior', () => {
+        it('uses selectedHash for selection state', () => {
+            expect(source).toContain('selectedHash');
         });
 
-        it('toggles expansion on click', () => {
-            expect(source).toContain('toggleExpand');
+        it('calls onSelect when a commit row is clicked', () => {
+            expect(source).toContain('onSelect');
         });
 
-        it('renders CommitDetail when expanded', () => {
-            expect(source).toContain('<CommitDetail');
-            expect(source).toContain("import { CommitDetail }");
+        it('shows filled dot for selected commit', () => {
+            expect(source).toContain('●');
+        });
+
+        it('shows hollow dot for unselected commit', () => {
+            expect(source).toContain('○');
+        });
+
+        it('applies selected background style', () => {
+            expect(source).toContain('bg-blue-50');
+            expect(source).toContain('dark:bg-blue-900/20');
+        });
+
+        it('does not use accordion expand/collapse', () => {
+            expect(source).not.toContain('expandedHash');
+            expect(source).not.toContain('toggleExpand');
+            expect(source).not.toContain('▼');
+            expect(source).not.toContain('▶');
+        });
+
+        it('does not render CommitDetail inline', () => {
+            expect(source).not.toContain('<CommitDetail');
+        });
+    });
+
+    describe('keyboard navigation', () => {
+        it('handles ArrowDown key', () => {
+            expect(source).toContain('ArrowDown');
+        });
+
+        it('handles ArrowUp key', () => {
+            expect(source).toContain('ArrowUp');
+        });
+
+        it('has onKeyDown handler', () => {
+            expect(source).toContain('onKeyDown');
+        });
+
+        it('uses listbox role for accessibility', () => {
+            expect(source).toContain('role="listbox"');
+        });
+
+        it('uses option role on rows', () => {
+            expect(source).toContain('role="option"');
+        });
+
+        it('sets aria-selected on rows', () => {
+            expect(source).toContain('aria-selected');
         });
     });
 
@@ -126,13 +175,16 @@ describe('CommitList', () => {
             expect(source).toContain('commit.author');
         });
 
-        it('shows expand/collapse indicator', () => {
-            expect(source).toContain('▼');
-            expect(source).toContain('▶');
-        });
-
         it('renders commit count in title', () => {
             expect(source).toContain('commits.length');
+        });
+
+        it('has sticky section headers', () => {
+            expect(source).toContain('sticky');
+        });
+
+        it('scrolls selected row into view', () => {
+            expect(source).toContain('scrollIntoView');
         });
     });
 });

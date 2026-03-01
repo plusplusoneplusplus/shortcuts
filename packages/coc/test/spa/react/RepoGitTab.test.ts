@@ -1,8 +1,8 @@
 /**
  * Tests for RepoGitTab component source structure.
  *
- * Validates exports, props, API usage, state management, and rendering
- * of the git commit history tab.
+ * Validates exports, props, API usage, split layout, state management,
+ * auto-selection, and rendering of the git commit history tab.
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -72,6 +72,53 @@ describe('RepoGitTab', () => {
         it('tracks error state', () => {
             expect(source).toContain('setError');
         });
+
+        it('tracks selectedCommit state', () => {
+            expect(source).toContain('selectedCommit');
+            expect(source).toContain('setSelectedCommit');
+        });
+    });
+
+    describe('auto-selection', () => {
+        it('auto-selects the most recent commit on load', () => {
+            expect(source).toContain('loaded[0]');
+            expect(source).toContain('setSelectedCommit');
+        });
+
+        it('clears selection when no commits', () => {
+            expect(source).toContain('setSelectedCommit(null)');
+        });
+    });
+
+    describe('split layout', () => {
+        it('has left panel for commit list', () => {
+            expect(source).toContain('data-testid="git-commit-list-panel"');
+        });
+
+        it('has right panel for commit detail', () => {
+            expect(source).toContain('data-testid="git-detail-panel"');
+        });
+
+        it('uses aside element for commit list panel', () => {
+            expect(source).toContain('<aside');
+        });
+
+        it('uses main element for detail panel', () => {
+            expect(source).toContain('<main');
+        });
+
+        it('has responsive breakpoint for stacked/split layout', () => {
+            expect(source).toContain('md-split:');
+        });
+
+        it('sets fixed width on left panel at breakpoint', () => {
+            expect(source).toContain('md-split:w-[320px]');
+        });
+
+        it('has empty state when no commit is selected', () => {
+            expect(source).toContain('data-testid="git-detail-empty"');
+            expect(source).toContain('Select a commit to view details');
+        });
     });
 
     describe('rendering', () => {
@@ -79,8 +126,16 @@ describe('RepoGitTab', () => {
             expect(source).toContain('<CommitList');
         });
 
+        it('renders CommitDetail component', () => {
+            expect(source).toContain('<CommitDetail');
+        });
+
         it('imports CommitList', () => {
             expect(source).toContain("import { CommitList }");
+        });
+
+        it('imports CommitDetail', () => {
+            expect(source).toContain("import { CommitDetail }");
         });
 
         it('has loading state with Spinner', () => {
@@ -108,6 +163,19 @@ describe('RepoGitTab', () => {
         it('splits commits into unpushed and history based on unpushedCount', () => {
             expect(source).toContain('commits.slice(0, unpushedCount)');
             expect(source).toContain('commits.slice(unpushedCount)');
+        });
+
+        it('passes selectedHash and onSelect to CommitList', () => {
+            expect(source).toContain('selectedHash=');
+            expect(source).toContain('onSelect=');
+        });
+
+        it('passes subject to CommitDetail', () => {
+            expect(source).toContain('subject={selectedCommit.subject}');
+        });
+
+        it('uses key prop on CommitDetail to force remount on hash change', () => {
+            expect(source).toContain('key={selectedCommit.hash}');
         });
     });
 });
