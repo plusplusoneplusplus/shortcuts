@@ -231,4 +231,86 @@ describe('ToolResultPopover', () => {
         expect(popover!.textContent).toContain('Result Preview');
         expect(popover!.textContent).toContain('Some result');
     });
+
+    // --- image data URL rendering ---
+
+    it('renders an img tag when result is a PNG image data URL', () => {
+        const imgDataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUA';
+        render(
+            <ToolResultPopover
+                result={imgDataUrl}
+                toolName="view"
+                args={{ path: '/project/screenshot.png' }}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        const img = document.querySelector('[data-testid="popover-image"]') as HTMLImageElement;
+        expect(img).toBeTruthy();
+        expect(img.src).toBe(imgDataUrl);
+        expect(img.alt).toContain('screenshot.png');
+        // Should NOT render markdown, code, or raw text branches
+        expect(document.querySelector('[data-testid="popover-markdown"]')).toBeNull();
+        expect(document.querySelector('[data-testid="popover-code"]')).toBeNull();
+    });
+
+    it('renders an img tag for JPEG image data URL', () => {
+        const imgDataUrl = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ';
+        render(
+            <ToolResultPopover
+                result={imgDataUrl}
+                toolName="view"
+                args={{ path: '/project/photo.jpg' }}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        expect(document.querySelector('[data-testid="popover-image"]')).toBeTruthy();
+    });
+
+    it('renders an img tag for image data URL even without view toolName', () => {
+        const imgDataUrl = 'data:image/webp;base64,UklGRh4AAABXRUJQVlA';
+        render(
+            <ToolResultPopover
+                result={imgDataUrl}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        const img = document.querySelector('[data-testid="popover-image"]') as HTMLImageElement;
+        expect(img).toBeTruthy();
+        expect(img.alt).toBe('Image preview');
+    });
+
+    it('uses "Image preview" alt when no filePath is available', () => {
+        const imgDataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUA';
+        render(
+            <ToolResultPopover
+                result={imgDataUrl}
+                toolName="view"
+                args={{}}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        const img = document.querySelector('[data-testid="popover-image"]') as HTMLImageElement;
+        expect(img).toBeTruthy();
+        expect(img.alt).toBe('Image preview');
+    });
+
+    it('does not render image for non-image data URLs', () => {
+        render(
+            <ToolResultPopover
+                result="data:text/plain;base64,aGVsbG8="
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        expect(document.querySelector('[data-testid="popover-image"]')).toBeNull();
+    });
 });

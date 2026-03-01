@@ -16,6 +16,18 @@ const MAX_PREVIEW_LENGTH = 2000;
 
 const MARKDOWN_EXTENSIONS = new Set(['md', 'markdown', 'mdx']);
 
+function isImageDataUrl(s: string): boolean {
+    return /^data:image\/(png|jpeg|jpg|gif|webp|svg\+xml);base64,/i.test(s.trim());
+}
+
+function shortenPath(p: string): string {
+    if (!p) return '';
+    return p
+        .replace(/^\/Users\/[^/]+\/Documents\/Projects\//, '')
+        .replace(/^\/Users\/[^/]+\//, '~/')
+        .replace(/^\/home\/[^/]+\//, '~/');
+}
+
 function isMarkdownPath(filePath: string | undefined): boolean {
     if (!filePath) return false;
     const ext = filePath.split('.').pop()?.toLowerCase() || '';
@@ -106,7 +118,20 @@ export function ToolResultPopover({ result, toolName, args, anchorRect, onMouseE
         setPos({ top, left });
     }, [anchorRect]);
 
+    const isImage = isImageDataUrl(result);
+
     const renderBody = () => {
+        if (isImage) {
+            return (
+                <img
+                    src={result}
+                    alt={filePath ? shortenPath(filePath) : 'Image preview'}
+                    className="max-w-full max-h-64 rounded border border-[#e0e0e0] dark:border-[#3c3c3c]"
+                    data-testid="popover-image"
+                />
+            );
+        }
+
         if (isMd) {
             return (
                 <div
