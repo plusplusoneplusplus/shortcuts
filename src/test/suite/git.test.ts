@@ -672,12 +672,12 @@ suite('Git View Tests', () => {
                 assert.strictEqual(item.collapsibleState, vscode.TreeItemCollapsibleState.None);
             });
 
-            test('should set command to open diff', () => {
+            test('should set command to open diff review', () => {
                 const file = createMockCommitFile();
                 const item = new GitCommitFileItem(file);
-                assert.strictEqual(item.command?.command, 'gitView.openCommitFileDiff');
+                assert.strictEqual(item.command?.command, 'gitDiffComments.openWithReview');
                 assert.strictEqual(item.command?.title, 'Open Diff');
-                assert.deepStrictEqual(item.command?.arguments, [file]);
+                assert.deepStrictEqual(item.command?.arguments, [item]);
             });
 
             test('should store the file object', () => {
@@ -712,11 +712,12 @@ suite('Git View Tests', () => {
                 assert.ok(item.description?.toString().includes('R'));
             });
 
-            test('should include directory path for nested files', () => {
+            test('should not include directory path (shown in tooltip instead)', () => {
                 const file = createMockCommitFile('modified', 'src/components/Button.tsx');
                 const item = new GitCommitFileItem(file);
-                assert.ok(item.description?.toString().includes('src/components') ||
-                    item.description?.toString().includes('src\\components'));
+                // Directory path is now omitted from description (matching branch changes style)
+                const desc = item.description?.toString() || '';
+                assert.ok(!desc.includes('src/components') && !desc.includes('src\\components'));
             });
 
             test('should show original filename for renames', () => {
@@ -728,9 +729,37 @@ suite('Git View Tests', () => {
             test('should not show directory for root level files', () => {
                 const file = createMockCommitFile('modified', 'file.ts');
                 const item = new GitCommitFileItem(file);
-                // Should just have status, no bullet point for directory
+                // Should just have status, no directory info
                 const desc = item.description?.toString() || '';
-                assert.ok(!desc.includes('\u2022') || desc.indexOf('\u2022') > desc.indexOf('M'));
+                assert.ok(!desc.includes('\u2022'));
+            });
+
+            test('should show line change stats when present', () => {
+                const file = createMockCommitFile('modified', 'file.ts');
+                file.additions = 10;
+                file.deletions = 3;
+                const item = new GitCommitFileItem(file);
+                const desc = item.description?.toString() || '';
+                assert.ok(desc.includes('+10'));
+                assert.ok(desc.includes('-3'));
+            });
+
+            test('should not show stats when additions and deletions are undefined', () => {
+                const file = createMockCommitFile('modified', 'file.ts');
+                const item = new GitCommitFileItem(file);
+                const desc = item.description?.toString() || '';
+                assert.ok(!desc.includes('+'));
+                assert.ok(!desc.includes('-'));
+            });
+
+            test('should show only additions when deletions are zero', () => {
+                const file = createMockCommitFile('added', 'file.ts');
+                file.additions = 50;
+                file.deletions = 0;
+                const item = new GitCommitFileItem(file);
+                const desc = item.description?.toString() || '';
+                assert.ok(desc.includes('+50'));
+                assert.ok(!desc.includes('-'));
             });
         });
 
@@ -1298,8 +1327,9 @@ suite('Git View Tests', () => {
             };
             const item = new GitCommitFileItem(file);
             assert.strictEqual(item.label, 'PrimaryButton.tsx');
-            assert.ok(item.description?.toString().includes('src/components/ui/buttons') ||
-                item.description?.toString().includes('src\\components\\ui\\buttons'));
+            // Full path is in tooltip, not description (matching branch changes style)
+            const tooltip = item.tooltip as vscode.MarkdownString;
+            assert.ok(tooltip.value.includes('src/components/ui/buttons/PrimaryButton.tsx'));
         });
 
         test('should handle commit file with copy status', () => {
@@ -1360,7 +1390,7 @@ suite('Git View Tests', () => {
             assert.ok(item.description?.toString().includes('D'));
         });
 
-        test('should pass file object to command for added files', () => {
+        test('should pass item to command for added files', () => {
             const file: GitCommitFile = {
                 path: 'src/new-file.ts',
                 status: 'added',
@@ -1369,13 +1399,13 @@ suite('Git View Tests', () => {
                 repositoryRoot: '/repo'
             };
             const item = new GitCommitFileItem(file);
-            assert.strictEqual(item.command?.command, 'gitView.openCommitFileDiff');
-            assert.deepStrictEqual(item.command?.arguments, [file]);
-            // Verify the file object contains the status for proper handling
-            assert.strictEqual((item.command?.arguments?.[0] as GitCommitFile).status, 'added');
+            assert.strictEqual(item.command?.command, 'gitDiffComments.openWithReview');
+            assert.deepStrictEqual(item.command?.arguments, [item]);
+            // Verify the commitFile accessor contains the status for proper handling
+            assert.strictEqual(item.commitFile.status, 'added');
         });
 
-        test('should pass file object to command for deleted files', () => {
+        test('should pass item to command for deleted files', () => {
             const file: GitCommitFile = {
                 path: 'src/deleted-file.ts',
                 status: 'deleted',
@@ -1384,10 +1414,10 @@ suite('Git View Tests', () => {
                 repositoryRoot: '/repo'
             };
             const item = new GitCommitFileItem(file);
-            assert.strictEqual(item.command?.command, 'gitView.openCommitFileDiff');
-            assert.deepStrictEqual(item.command?.arguments, [file]);
-            // Verify the file object contains the status for proper handling
-            assert.strictEqual((item.command?.arguments?.[0] as GitCommitFile).status, 'deleted');
+            assert.strictEqual(item.command?.command, 'gitDiffComments.openWithReview');
+            assert.deepStrictEqual(item.command?.arguments, [item]);
+            // Verify the commitFile accessor contains the status for proper handling
+            assert.strictEqual(item.commitFile.status, 'deleted');
         });
 
         test('should include status in tooltip for added files', () => {

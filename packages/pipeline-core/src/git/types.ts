@@ -118,6 +118,10 @@ export interface GitCommitFile {
     parentHash: string;
     /** Repository root path */
     repositoryRoot: string;
+    /** Number of lines added (from --numstat) */
+    additions?: number;
+    /** Number of lines deleted (from --numstat) */
+    deletions?: number;
 }
 
 /**

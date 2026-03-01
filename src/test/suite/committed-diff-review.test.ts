@@ -29,33 +29,31 @@ function createMockCommitFile(
 
 suite('Committed Diff Review Tests', () => {
     suite('GitCommitFileItem Command', () => {
-        test('should set command to open commit file diff', () => {
+        test('should set command to open diff review', () => {
             const file = createMockCommitFile();
             const item = new GitCommitFileItem(file);
             
-            assert.strictEqual(item.command?.command, 'gitView.openCommitFileDiff');
+            assert.strictEqual(item.command?.command, 'gitDiffComments.openWithReview');
             assert.strictEqual(item.command?.title, 'Open Diff');
-            assert.deepStrictEqual(item.command?.arguments, [file]);
+            assert.deepStrictEqual(item.command?.arguments, [item]);
         });
 
-        test('should pass complete file information in command arguments', () => {
+        test('should expose commitFile with complete file information', () => {
             const file = createMockCommitFile('modified', 'src/components/Button.tsx');
             const item = new GitCommitFileItem(file);
             
-            const fileArg = item.command?.arguments?.[0] as GitCommitFile;
-            assert.strictEqual(fileArg.path, 'src/components/Button.tsx');
-            assert.strictEqual(fileArg.commitHash, 'abc123def456789');
-            assert.strictEqual(fileArg.parentHash, 'parent123456789');
-            assert.strictEqual(fileArg.repositoryRoot, '/test/repo');
+            assert.strictEqual(item.commitFile.path, 'src/components/Button.tsx');
+            assert.strictEqual(item.commitFile.commitHash, 'abc123def456789');
+            assert.strictEqual(item.commitFile.parentHash, 'parent123456789');
+            assert.strictEqual(item.commitFile.repositoryRoot, '/test/repo');
         });
 
         test('should include original path for renamed files', () => {
             const file = createMockCommitFile('renamed', 'new-name.ts', 'old-name.ts');
             const item = new GitCommitFileItem(file);
             
-            const fileArg = item.command?.arguments?.[0] as GitCommitFile;
-            assert.strictEqual(fileArg.path, 'new-name.ts');
-            assert.strictEqual(fileArg.originalPath, 'old-name.ts');
+            assert.strictEqual(item.commitFile.path, 'new-name.ts');
+            assert.strictEqual(item.commitFile.originalPath, 'old-name.ts');
         });
     });
 
@@ -112,10 +110,9 @@ suite('Committed Diff Review Tests', () => {
                 const item = new GitCommitFileItem(file);
                 
                 assert.ok(item.command, `Command should exist for ${status} status`);
-                assert.strictEqual(item.command?.command, 'gitView.openCommitFileDiff');
+                assert.strictEqual(item.command?.command, 'gitDiffComments.openWithReview');
                 
-                const fileArg = item.command?.arguments?.[0] as GitCommitFile;
-                assert.strictEqual(fileArg.status, status);
+                assert.strictEqual(item.commitFile.status, status);
             }
         });
     });
@@ -125,24 +122,21 @@ suite('Committed Diff Review Tests', () => {
             const file = createMockCommitFile('modified', 'src/components/ui/Button.tsx');
             const item = new GitCommitFileItem(file);
             
-            const fileArg = item.command?.arguments?.[0] as GitCommitFile;
-            assert.strictEqual(fileArg.path, 'src/components/ui/Button.tsx');
+            assert.strictEqual(item.commitFile.path, 'src/components/ui/Button.tsx');
         });
 
         test('should handle files at repository root', () => {
             const file = createMockCommitFile('modified', 'package.json');
             const item = new GitCommitFileItem(file);
             
-            const fileArg = item.command?.arguments?.[0] as GitCommitFile;
-            assert.strictEqual(fileArg.path, 'package.json');
+            assert.strictEqual(item.commitFile.path, 'package.json');
         });
 
         test('should preserve relative path format', () => {
             const file = createMockCommitFile('modified', './src/test.ts');
             const item = new GitCommitFileItem(file);
             
-            const fileArg = item.command?.arguments?.[0] as GitCommitFile;
-            assert.strictEqual(fileArg.path, './src/test.ts');
+            assert.strictEqual(item.commitFile.path, './src/test.ts');
         });
     });
 
@@ -150,8 +144,8 @@ suite('Committed Diff Review Tests', () => {
         test('should construct full path from commitFile', () => {
             const file = createMockCommitFile('modified', 'src/test.ts');
             
-            // Simulate what DiffReviewEditorProvider.openDiffReview does
-            const item = { commitFile: file };
+            // GitCommitFileItem now exposes commitFile getter for DiffReviewEditorProvider
+            const item = new GitCommitFileItem(file);
             const filePath = path.join(item.commitFile.repositoryRoot, item.commitFile.path);
             
             assert.strictEqual(filePath, path.join('/test/repo', 'src/test.ts'));
@@ -191,17 +185,15 @@ suite('Committed Diff Review Tests', () => {
             file.parentHash = '';
             
             const item = new GitCommitFileItem(file);
-            const fileArg = item.command?.arguments?.[0] as GitCommitFile;
             
-            assert.strictEqual(fileArg.parentHash, '');
+            assert.strictEqual(item.commitFile.parentHash, '');
         });
 
         test('should handle files with special characters in path', () => {
             const file = createMockCommitFile('modified', 'src/components/My Component.tsx');
             const item = new GitCommitFileItem(file);
             
-            const fileArg = item.command?.arguments?.[0] as GitCommitFile;
-            assert.strictEqual(fileArg.path, 'src/components/My Component.tsx');
+            assert.strictEqual(item.commitFile.path, 'src/components/My Component.tsx');
         });
 
         test('should handle very long commit hashes', () => {
@@ -210,9 +202,8 @@ suite('Committed Diff Review Tests', () => {
             file.commitHash = longHash;
             
             const item = new GitCommitFileItem(file);
-            const fileArg = item.command?.arguments?.[0] as GitCommitFile;
             
-            assert.strictEqual(fileArg.commitHash, longHash);
+            assert.strictEqual(item.commitFile.commitHash, longHash);
         });
     });
 });

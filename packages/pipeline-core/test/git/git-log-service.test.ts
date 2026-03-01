@@ -129,6 +129,33 @@ describe('GitLogService', () => {
             }
         });
 
+        it('should populate additions and deletions from numstat', () => {
+            const files = service.getCommitFiles(REPO_ROOT, HEAD_HASH);
+            if (files.length > 0) {
+                const file = files[0];
+                // additions and deletions should be numbers (or undefined for binary)
+                if (file.additions !== undefined) {
+                    expect(typeof file.additions).toBe('number');
+                    expect(file.additions).toBeGreaterThanOrEqual(0);
+                }
+                if (file.deletions !== undefined) {
+                    expect(typeof file.deletions).toBe('number');
+                    expect(file.deletions).toBeGreaterThanOrEqual(0);
+                }
+            }
+        });
+
+        it('should have at least one file with non-zero additions or deletions', () => {
+            const files = service.getCommitFiles(REPO_ROOT, HEAD_HASH);
+            if (files.length > 0) {
+                const hasStats = files.some(f =>
+                    (f.additions !== undefined && f.additions > 0) ||
+                    (f.deletions !== undefined && f.deletions > 0)
+                );
+                expect(hasStats).toBe(true);
+            }
+        });
+
         it('should return empty array for invalid repoRoot', () => {
             const files = service.getCommitFiles('/nonexistent-repo-path', HEAD_HASH);
             expect(files).toEqual([]);

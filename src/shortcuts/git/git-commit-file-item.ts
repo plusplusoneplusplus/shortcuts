@@ -33,7 +33,7 @@ export class GitCommitFileItem extends vscode.TreeItem {
         const isMarkdown = ext === '.md';
         this.contextValue = `gitCommitFile${isMarkdown ? '_md' : ''}`;
 
-        // Description shows relative directory path and status
+        // Description shows status and line change statistics (matching branch changes style)
         this.description = this.createDescription();
 
         // Tooltip with full details
@@ -45,16 +45,31 @@ export class GitCommitFileItem extends vscode.TreeItem {
 
         // Don't set iconPath - let VSCode use the default file icon from icon theme
 
-        // Command to open diff view
+        // Command to open diff review (same as branch changes for preview-mode tab reuse)
         this.command = {
-            command: 'gitView.openCommitFileDiff',
+            command: 'gitDiffComments.openWithReview',
             title: 'Open Diff',
-            arguments: [file]
+            arguments: [this]
         };
     }
 
     /**
-     * Create the description text (relative directory path + status)
+     * Get the commit file representation for diff review editor compatibility
+     */
+    get commitFile() {
+        return {
+            path: this.file.path,
+            originalPath: this.file.originalPath,
+            status: this.file.status,
+            commitHash: this.file.commitHash,
+            parentHash: this.file.parentHash,
+            repositoryRoot: this.file.repositoryRoot,
+        };
+    }
+
+    /**
+     * Create the description text (status + line change stats)
+     * Directory path omitted to match branch changes style; full path in tooltip.
      */
     private createDescription(): string {
         const parts: string[] = [];
@@ -63,34 +78,52 @@ export class GitCommitFileItem extends vscode.TreeItem {
         const statusShort = STATUS_SHORT[this.file.status];
         parts.push(statusShort);
 
-        // Add relative directory path if not in repo root
-        const dirPath = path.dirname(this.file.path);
-        if (dirPath && dirPath !== '.') {
-            parts.push(`\u2022 ${dirPath}`);  // bullet point separator
-        }
-
         // For renames, show the original path
         if (this.file.originalPath) {
             const originalName = path.basename(this.file.originalPath);
             parts.push(`\u2190 ${originalName}`);  // left arrow
         }
 
+        // Add line change statistics (matching GitRangeFileItem format)
+        const statsText = this.formatStats();
+        if (statsText) {
+            parts.push(`(${statsText})`);
+        }
+
         return parts.join(' ');
     }
 
     /**
-     * Create detailed tooltip with markdown
+     * Format additions/deletions as a string
+     */
+    private formatStats(): string {
+        const parts: string[] = [];
+        if (this.file.additions !== undefined && this.file.additions > 0) {
+            parts.push(`+${this.file.additions}`);
+        }
+        if (this.file.deletions !== undefined && this.file.deletions > 0) {
+            parts.push(`-${this.file.deletions}`);
+        }
+        return parts.join('/');
+    }
+
+    /**
+     * Create detailed tooltip with markdown — full path shown first for discoverability
      */
     private createTooltip(): vscode.MarkdownString {
         const md = new vscode.MarkdownString();
         md.supportHtml = true;
 
-        md.appendMarkdown(`**${path.basename(this.file.path)}**\n\n`);
+        md.appendCodeblock(this.file.path, '');
+
         md.appendMarkdown(`**Status:** ${this.file.status}\n\n`);
-        md.appendMarkdown(`**Path:** \`${this.file.path}\`\n\n`);
 
         if (this.file.originalPath) {
             md.appendMarkdown(`**Original:** \`${this.file.originalPath}\`\n\n`);
+        }
+
+        if (this.file.additions !== undefined || this.file.deletions !== undefined) {
+            md.appendMarkdown(`**Changes:** +${this.file.additions ?? 0} / -${this.file.deletions ?? 0}\n\n`);
         }
 
         md.appendMarkdown(`**Commit:** \`${this.file.commitHash.slice(0, 7)}\`\n\n`);

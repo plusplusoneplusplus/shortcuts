@@ -134,6 +134,16 @@ export class GitLogService {
                 }
             }
 
+            // Fetch per-file line stats via --numstat and merge into results
+            const numstatMap = this.getNumstatMap(repoRoot, commitHash);
+            for (const file of files) {
+                const stats = numstatMap.get(file.path);
+                if (stats) {
+                    file.additions = stats.additions;
+                    file.deletions = stats.deletions;
+                }
+            }
+
             return files;
         } catch (error) {
             getLogger().error(LogCategory.GIT, `Failed to get commit files for ${commitHash} from ${repoRoot}`, error instanceof Error ? error : undefined);
@@ -464,6 +474,62 @@ export class GitLogService {
         } catch {
             return GitLogService.EMPTY_TREE_HASH;
         }
+    }
+
+    /**
+     * Get per-file additions/deletions from --numstat for a commit.
+     */
+    private getNumstatMap(repoRoot: string, commitHash: string): Map<string, { additions: number; deletions: number }> {
+        const map = new Map<string, { additions: number; deletions: number }>();
+        try {
+            const command = `git diff-tree --no-commit-id --numstat -r -M -C ${commitHash}`;
+            const output = execSync(command, {
+                cwd: repoRoot,
+                encoding: 'utf-8',
+                timeout: 10000,
+            });
+
+            if (!output.trim()) {
+                return map;
+            }
+
+            for (const line of output.trim().split('\n')) {
+                if (!line.trim()) { continue; }
+                // Format: "additions\tdeletions\tpath" or for renames "additions\tdeletions\toldpath => newpath"
+                const parts = line.split('\t');
+                if (parts.length < 3) { continue; }
+
+                const addStr = parts[0];
+                const delStr = parts[1];
+
+                // Binary files show '-' for additions/deletions
+                if (addStr === '-' || delStr === '-') { continue; }
+
+                const additions = parseInt(addStr, 10);
+                const deletions = parseInt(delStr, 10);
+                if (isNaN(additions) || isNaN(deletions)) { continue; }
+
+                // For renames/copies, the path column may be "old => new" or "{prefix/old => new}/suffix"
+                // The last tab-separated field is the path; for renames with -M/-C, it shows the new path
+                let filePath = parts.slice(2).join('\t');
+                // Handle rename format: "{old => new}" or "old => new"
+                const renameMatch = filePath.match(/^(.*)\{.* => (.*)\}(.*)$/) || filePath.match(/^.* => (.*)$/);
+                if (renameMatch) {
+                    if (renameMatch.length === 4) {
+                        // "{prefix/old => new}/suffix" format
+                        filePath = renameMatch[1] + renameMatch[2] + renameMatch[3];
+                    } else {
+                        // "old => new" format
+                        filePath = renameMatch[1];
+                    }
+                }
+
+                map.set(filePath, { additions, deletions });
+            }
+        } catch {
+            // Non-critical: stats are optional decoration
+        }
+        return map;
     }
 
     private parseCommitLine(line: string, repoRoot: string, repoName: string): GitCommit {
