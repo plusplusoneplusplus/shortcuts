@@ -29,6 +29,7 @@ export interface TaskSearchResultsProps {
     commentCounts: Record<string, number>;
     wsId: string;
     onFileClick: (path: string) => void;
+    onContextMenu?: (item: TaskDocument | TaskDocumentGroup, x: number, y: number) => void;
 }
 
 function getStatusIcon(status?: string): string {
@@ -56,7 +57,7 @@ function getItemPath(item: TaskDocument | TaskDocumentGroup): string | null {
     return null;
 }
 
-export function TaskSearchResults({ results, query, commentCounts, onFileClick }: TaskSearchResultsProps) {
+export function TaskSearchResults({ results, query, commentCounts, onFileClick, onContextMenu }: TaskSearchResultsProps) {
     if (results.length === 0) {
         return (
             <div className="px-4 py-8 text-center text-xs text-[#848484]" data-testid="search-empty-state">
@@ -92,6 +93,12 @@ export function TaskSearchResults({ results, query, commentCounts, onFileClick }
                                 item.isArchived && 'opacity-60 italic',
                             )}
                             onClick={() => itemPath && onFileClick(itemPath)}
+                            onContextMenu={(e) => {
+                                if (onContextMenu) {
+                                    e.preventDefault();
+                                    onContextMenu(item, e.clientX, e.clientY);
+                                }
+                            }}
                             title={itemPath ?? undefined}
                             data-testid={`search-result-${displayName}`}
                         >

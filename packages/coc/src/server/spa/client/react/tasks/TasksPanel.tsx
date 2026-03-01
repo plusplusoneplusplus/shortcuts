@@ -155,6 +155,9 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
     interface FileCtxMenu { ctxItem: FileCtxInfo; x: number; y: number }
     const [fileCtxMenu, setFileCtxMenu] = useState<FileCtxMenu | null>(null);
 
+    // ── Navigate-to-file state (from search → panel reveal) ────────────
+    const [navigateToFilePath, setNavigateToFilePath] = useState<string | null>(null);
+
     type FileDialogAction = 'rename' | 'delete' | null;
     const [fileDialog, setFileDialog] = useState<{
         action: FileDialogAction;
@@ -411,6 +414,19 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
         const { ctxItem } = fileCtxMenu;
         const tasksFolder = '.vscode/tasks';
         return [
+            // ── Reveal in Panel ──
+            {
+                label: 'Reveal in Panel',
+                icon: '🔍',
+                onClick: () => {
+                    setFileCtxMenu(null);
+                    onSearchClear();
+                    if (ctxItem.paths[0]) {
+                        setNavigateToFilePath(ctxItem.paths[0]);
+                    }
+                },
+            },
+            { separator: true, label: '', onClick: noop },
             // ── Clipboard ──
             {
                 label: 'Copy Path',
@@ -757,6 +773,7 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
                                 commentCounts={commentCounts}
                                 wsId={wsId}
                                 onFileClick={(path) => setOpenFilePath(path)}
+                                onContextMenu={handleFileContextMenu}
                             />
                         ) : (
                             <TaskTree
@@ -765,6 +782,8 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
                                 wsId={wsId}
                                 initialFolderPath={initialParams.initialFolderPath}
                                 initialFilePath={initialParams.initialFilePath}
+                                navigateToFilePath={navigateToFilePath}
+                                onNavigated={() => setNavigateToFilePath(null)}
                                 onColumnsChange={handleColumnsChange}
                                 onFolderContextMenu={handleFolderContextMenu}
                                 onFolderEmptySpaceContextMenu={handleFolderEmptySpaceContextMenu}

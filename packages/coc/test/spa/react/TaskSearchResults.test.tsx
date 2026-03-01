@@ -283,4 +283,43 @@ describe('TaskSearchResults', () => {
 
         expect(screen.getByTestId('search-result-fallback.md')).toBeTruthy();
     });
+
+    it('calls onContextMenu with item and coordinates on right-click', () => {
+        const onCtx = vi.fn();
+        const doc = makeDocument({ baseName: 'ctx-test', fileName: 'ctx-test.md', relativePath: 'folder' });
+
+        render(
+            <TaskSearchResults
+                results={[doc]}
+                query="ctx"
+                commentCounts={{}}
+                wsId="ws1"
+                onFileClick={vi.fn()}
+                onContextMenu={onCtx}
+            />,
+        );
+
+        const row = screen.getByTestId('search-result-ctx-test');
+        fireEvent.contextMenu(row, { clientX: 100, clientY: 200 });
+
+        expect(onCtx).toHaveBeenCalledTimes(1);
+        expect(onCtx).toHaveBeenCalledWith(doc, 100, 200);
+    });
+
+    it('does not throw when onContextMenu is not provided and right-click occurs', () => {
+        const doc = makeDocument({ baseName: 'no-ctx', fileName: 'no-ctx.md', relativePath: '' });
+
+        render(
+            <TaskSearchResults
+                results={[doc]}
+                query="no"
+                commentCounts={{}}
+                wsId="ws1"
+                onFileClick={vi.fn()}
+            />,
+        );
+
+        // Should not throw
+        fireEvent.contextMenu(screen.getByTestId('search-result-no-ctx'));
+    });
 });

@@ -17,6 +17,8 @@ interface TaskTreeProps {
     wsId: string;
     initialFolderPath?: string | null;
     initialFilePath?: string | null;
+    navigateToFilePath?: string | null;
+    onNavigated?: () => void;
     onColumnsChange?: () => void;
     onFolderContextMenu?: (folder: TaskFolder, x: number, y: number) => void;
     onFolderEmptySpaceContextMenu?: (folder: TaskFolder, x: number, y: number) => void;
@@ -70,6 +72,8 @@ export function TaskTree({
     wsId,
     initialFolderPath,
     initialFilePath,
+    navigateToFilePath,
+    onNavigated,
     onColumnsChange,
     onFolderContextMenu,
     onFolderEmptySpaceContextMenu,
@@ -119,6 +123,35 @@ export function TaskTree({
         // Subsequent tree updates: rebuild columns preserving current navigation
         setColumns(rebuildColumnsFromKeys(tree, activeFolderKeysRef.current));
     }, [tree]);
+
+    // Navigate to a specific file path (e.g. from search "Reveal in Panel")
+    useEffect(() => {
+        if (!navigateToFilePath || !tree) return;
+
+        const folderPath = navigateToFilePath.includes('/')
+            ? navigateToFilePath.split('/').slice(0, -1).join('/')
+            : '';
+        const segments = folderPath.split('/').filter(Boolean);
+        const rootNodes = folderToNodes(tree);
+        const cols: TaskNode[][] = [rootNodes];
+        const keys: (string | null)[] = [];
+        let cur = tree;
+        for (const seg of segments) {
+            const found = cur.children.find(f => f.name === seg);
+            if (!found) break;
+            cols.push(folderToNodes(found));
+            keys.push(getFolderKey(found));
+            cur = found;
+        }
+        setColumns(cols);
+        setActiveFolderKeys(keys);
+        activeFolderKeysRef.current = keys;
+        setOpenFilePath(navigateToFilePath);
+        setSelectedFolderPath(folderPath || null);
+        const encoded = navigateToFilePath.split('/').map(encodeURIComponent).join('/');
+        history.replaceState(null, '', `#repos/${encodeURIComponent(wsId)}/tasks/${encoded}`);
+        onNavigated?.();
+    }, [navigateToFilePath, tree]);
 
     const handleFolderClick = (folder: TaskFolder, colIndex: number) => {
         const children = folderToNodes(folder);

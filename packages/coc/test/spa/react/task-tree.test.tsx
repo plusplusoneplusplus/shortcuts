@@ -373,4 +373,73 @@ describe('TaskTree', () => {
         const folder = makeTree({ name: 'tasks', relativePath: '' });
         expect(getFolderKey(folder)).toBe('tasks');
     });
+
+    it('navigates to file path when navigateToFilePath is set', () => {
+        const onNavigated = vi.fn();
+        vi.spyOn(window.history, 'replaceState').mockImplementation(() => {});
+
+        render(
+            <Wrap>
+                <TaskTree
+                    tree={mockTree}
+                    commentCounts={{}}
+                    wsId="ws1"
+                    navigateToFilePath="feature1/task.md"
+                    onNavigated={onNavigated}
+                />
+                <OpenFilePathReader />
+            </Wrap>
+        );
+
+        // Should navigate to the file and expand its parent folder
+        expect(screen.getByTestId('miller-column-1')).toBeTruthy();
+        expect(screen.getByTestId('open-file-path').textContent).toBe('feature1/task.md');
+        expect(onNavigated).toHaveBeenCalledTimes(1);
+    });
+
+    it('navigates to root-level file when navigateToFilePath has no folder', () => {
+        const onNavigated = vi.fn();
+        vi.spyOn(window.history, 'replaceState').mockImplementation(() => {});
+
+        render(
+            <Wrap>
+                <TaskTree
+                    tree={mockTree}
+                    commentCounts={{}}
+                    wsId="ws1"
+                    navigateToFilePath="README.md"
+                    onNavigated={onNavigated}
+                />
+                <OpenFilePathReader />
+            </Wrap>
+        );
+
+        // Only root column, file opened
+        expect(screen.getByTestId('miller-column-0')).toBeTruthy();
+        expect(screen.queryByTestId('miller-column-1')).toBeNull();
+        expect(screen.getByTestId('open-file-path').textContent).toBe('README.md');
+        expect(onNavigated).toHaveBeenCalledTimes(1);
+    });
+
+    it('updates URL hash when navigateToFilePath is used', () => {
+        const replaceSpy = vi.spyOn(window.history, 'replaceState').mockImplementation(() => {});
+
+        render(
+            <Wrap>
+                <TaskTree
+                    tree={mockTree}
+                    commentCounts={{}}
+                    wsId="ws1"
+                    navigateToFilePath="feature1/task.md"
+                    onNavigated={vi.fn()}
+                />
+                <OpenFilePathReader />
+            </Wrap>
+        );
+
+        expect(replaceSpy).toHaveBeenCalledWith(
+            null, '',
+            '#repos/ws1/tasks/feature1/task.md',
+        );
+    });
 });
