@@ -253,6 +253,106 @@ describe('FolderActionDialog', () => {
         fireEvent.click(screen.getByText('Save'));
         expect(onConfirm).toHaveBeenCalledWith('my-folder', undefined);
     });
+
+    it('shows error message and disables Confirm when name contains a forward slash', () => {
+        const onConfirm = vi.fn();
+        render(
+            <FolderActionDialog
+                open
+                title="Rename"
+                label="Name"
+                initialValue=""
+                confirmLabel="Save"
+                onClose={vi.fn()}
+                onConfirm={onConfirm}
+            />
+        );
+        const input = screen.getByTestId('folder-action-input');
+        fireEvent.change(input, { target: { value: 'Pause/Resume' } });
+
+        expect(screen.getByTestId('folder-action-error')).toBeTruthy();
+        expect(screen.getByTestId('folder-action-error').textContent).toContain('"/"');
+        const confirmBtn = screen.getByText('Save').closest('button')!;
+        expect(confirmBtn.disabled).toBe(true);
+    });
+
+    it('shows error message for multiple invalid characters', () => {
+        render(
+            <FolderActionDialog
+                open
+                title="Rename"
+                label="Name"
+                initialValue=""
+                confirmLabel="Rename"
+                onClose={vi.fn()}
+                onConfirm={vi.fn()}
+            />
+        );
+        const input = screen.getByTestId('folder-action-input');
+        fireEvent.change(input, { target: { value: 'a/b\\c' } });
+
+        const errorEl = screen.getByTestId('folder-action-error');
+        expect(errorEl.textContent).toContain('"/"');
+        expect(errorEl.textContent).toContain('"\\"');
+    });
+
+    it('does not show error for valid name', () => {
+        render(
+            <FolderActionDialog
+                open
+                title="Rename"
+                label="Name"
+                initialValue=""
+                confirmLabel="Save"
+                onClose={vi.fn()}
+                onConfirm={vi.fn()}
+            />
+        );
+        const input = screen.getByTestId('folder-action-input');
+        fireEvent.change(input, { target: { value: 'valid-name_v2' } });
+
+        expect(screen.queryByTestId('folder-action-error')).toBeNull();
+        const confirmBtn = screen.getByText('Save').closest('button')!;
+        expect(confirmBtn.disabled).toBe(false);
+    });
+
+    it('pressing Enter with invalid chars does not call onConfirm', () => {
+        const onConfirm = vi.fn();
+        render(
+            <FolderActionDialog
+                open
+                title="Rename"
+                label="Name"
+                initialValue="a/b"
+                confirmLabel="Rename"
+                onClose={vi.fn()}
+                onConfirm={onConfirm}
+            />
+        );
+        const input = screen.getByTestId('folder-action-input');
+        fireEvent.keyDown(input, { key: 'Enter' });
+        expect(onConfirm).not.toHaveBeenCalled();
+    });
+
+    it('clears error when invalid chars are removed', () => {
+        render(
+            <FolderActionDialog
+                open
+                title="Rename"
+                label="Name"
+                initialValue=""
+                confirmLabel="Rename"
+                onClose={vi.fn()}
+                onConfirm={vi.fn()}
+            />
+        );
+        const input = screen.getByTestId('folder-action-input');
+        fireEvent.change(input, { target: { value: 'bad/name' } });
+        expect(screen.getByTestId('folder-action-error')).toBeTruthy();
+
+        fireEvent.change(input, { target: { value: 'good-name' } });
+        expect(screen.queryByTestId('folder-action-error')).toBeNull();
+    });
 });
 
 // ── TasksPanel dialog integration tests ───────────────────────────────

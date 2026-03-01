@@ -336,6 +336,66 @@ describe('Tasks Handler Write', () => {
             });
             expect(res.status).toBe(404);
         });
+
+        it('should return 400 when newName contains a forward slash', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            createTaskFiles({ 'task.md': '# Task' });
+
+            const res = await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks`, 'PATCH', {
+                path: 'task.md',
+                newName: 'Pause/Resume',
+            });
+            expect(res.status).toBe(400);
+            expect(res.body).toContain('invalid characters');
+            // Original file should still exist
+            expect(fs.existsSync(path.join(tasksDir(), 'task.md'))).toBe(true);
+        });
+
+        it('should return 400 when newName contains a backslash', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            createTaskFiles({ 'task.md': '# Task' });
+
+            const res = await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks`, 'PATCH', {
+                path: 'task.md',
+                newName: 'foo\\bar',
+            });
+            expect(res.status).toBe(400);
+            expect(res.body).toContain('invalid characters');
+        });
+
+        it.each([
+            ['colon', 'my:task'],
+            ['asterisk', 'my*task'],
+            ['question mark', 'my?task'],
+            ['double quote', 'my"task'],
+            ['angle brackets', 'my<task>'],
+            ['pipe', 'my|task'],
+        ])('should return 400 when newName contains %s', async (_label, invalidName) => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            createTaskFiles({ 'task.md': '# Task' });
+
+            const res = await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks`, 'PATCH', {
+                path: 'task.md',
+                newName: invalidName,
+            });
+            expect(res.status).toBe(400);
+            expect(res.body).toContain('invalid characters');
+        });
+
+        it('should accept a valid name with hyphens, dots, and spaces', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            createTaskFiles({ 'task.md': '# Task' });
+
+            const res = await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks`, 'PATCH', {
+                path: 'task.md',
+                newName: 'my task v2.0 - final',
+            });
+            expect(res.status).toBe(200);
+        });
     });
 
     // ========================================================================

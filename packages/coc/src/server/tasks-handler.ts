@@ -603,6 +603,12 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore): v
                     return sendError(res, 400, 'Missing required field: newName');
                 }
 
+                // Reject names containing characters invalid in file/folder names
+                const INVALID_NAME_CHARS = /[/\\:*?"<>|]/;
+                if (INVALID_NAME_CHARS.test(newName.trim())) {
+                    return sendError(res, 400, 'New name contains invalid characters: / \\ : * ? " < > |');
+                }
+
                 try {
                     const stat = await fs.promises.stat(resolvedPath);
                     const dir = path.dirname(resolvedPath);

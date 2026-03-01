@@ -3,11 +3,18 @@
  * for folder name-prompt actions (Rename, Create Subfolder, Create Task).
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Dialog } from '../shared/Dialog';
 import { Button } from '../shared/Button';
 
 const DOC_TYPES = ['', 'plan', 'spec', 'test', 'notes', 'todo', 'design', 'impl', 'review'] as const;
+
+/** Characters that are invalid in file/folder names across all platforms. */
+const INVALID_NAME_CHARS = /[/\\:*?"<>|]/g;
+
+function getInvalidChars(name: string): string[] {
+    return [...new Set(name.match(INVALID_NAME_CHARS) ?? [])];
+}
 
 export interface FolderActionDialogProps {
     /** Controls Dialog visibility. */
@@ -47,6 +54,9 @@ export function FolderActionDialog({
     const [name, setName] = useState(initialValue);
     const [docType, setDocType] = useState('');
 
+    const invalidChars = useMemo(() => getInvalidChars(name), [name]);
+    const hasInvalidChars = invalidChars.length > 0;
+
     // Reset input when dialog opens
     useEffect(() => {
         if (open) {
@@ -57,8 +67,8 @@ export function FolderActionDialog({
 
     const handleConfirm = useCallback(() => {
         const trimmed = name.trim();
-        if (trimmed) onConfirm(trimmed, showDocType ? docType || undefined : undefined);
-    }, [name, docType, showDocType, onConfirm]);
+        if (trimmed && !hasInvalidChars) onConfirm(trimmed, showDocType ? docType || undefined : undefined);
+    }, [name, docType, showDocType, onConfirm, hasInvalidChars]);
 
     const handleKeyDown = useCallback(
         (e: React.KeyboardEvent) => {
@@ -85,7 +95,7 @@ export function FolderActionDialog({
                         variant="primary"
                         type="submit"
                         loading={submitting}
-                        disabled={!name.trim()}
+                        disabled={!name.trim() || hasInvalidChars}
                         onClick={e => { e.preventDefault(); handleConfirm(); }}
                     >
                         {confirmLabel}
@@ -105,6 +115,11 @@ export function FolderActionDialog({
                     autoFocus
                     data-testid="folder-action-input"
                 />
+                {hasInvalidChars && (
+                    <span className="text-xs text-red-500 dark:text-red-400" data-testid="folder-action-error">
+                        Name contains invalid characters: {invalidChars.map(c => `"${c}"`).join(', ')}
+                    </span>
+                )}
                 {showDocType && (
                     <>
                         <label className="text-xs text-[#616161] dark:text-[#999] mt-1">Document type</label>
