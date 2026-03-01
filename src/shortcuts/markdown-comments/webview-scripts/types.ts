@@ -181,7 +181,8 @@ export type WebviewMessage =
     | { type: 'updateDocument'; instruction: string }
     | { type: 'requestRefreshPlanDialog' }
     | { type: 'refreshPlan'; additionalContext?: string }
-    | { type: 'chatInCLI' };
+    | { type: 'chatInCLI' }
+    | { type: 'copyWithContext'; selectedText: string; filePath: string };
 
 /**
  * Options selected in the Follow Prompt dialog

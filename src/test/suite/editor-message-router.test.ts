@@ -625,4 +625,57 @@ suite('EditorMessageRouter', () => {
         }
     });
     }); // end chatInCLI suite
+
+    // --- Copy with Context ---
+
+    test('copyWithContext copies formatted text with file path to clipboard', async () => {
+        const message: WebviewMessage = {
+            type: 'copyWithContext',
+            selectedText: 'Hello world',
+            filePath: 'docs/readme.md'
+        };
+        const ctx = createTestContext();
+
+        await router.dispatch(message, ctx);
+
+        assert.ok(mockHost.wasMethodCalled('copyToClipboard'));
+        const copyCalls = mockHost.getCallsFor('copyToClipboard');
+        assert.strictEqual(copyCalls.length, 1);
+        const copied = copyCalls[0].args[0] as string;
+        assert.ok(copied.startsWith('docs/readme.md'));
+        assert.ok(copied.includes('```'));
+        assert.ok(copied.includes('Hello world'));
+        assert.ok(mockHost.wasMethodCalled('showInfo'));
+    });
+
+    test('copyWithContext handles empty selected text', async () => {
+        const message: WebviewMessage = {
+            type: 'copyWithContext',
+            selectedText: '',
+            filePath: 'src/index.ts'
+        };
+        const ctx = createTestContext();
+
+        await router.dispatch(message, ctx);
+
+        assert.ok(mockHost.wasMethodCalled('copyToClipboard'));
+        const copyCalls = mockHost.getCallsFor('copyToClipboard');
+        const copied = copyCalls[0].args[0] as string;
+        assert.strictEqual(copied, 'src/index.ts\n```\n\n```');
+    });
+
+    test('copyWithContext preserves multiline selected text', async () => {
+        const message: WebviewMessage = {
+            type: 'copyWithContext',
+            selectedText: 'line 1\nline 2\nline 3',
+            filePath: 'test.md'
+        };
+        const ctx = createTestContext();
+
+        await router.dispatch(message, ctx);
+
+        const copyCalls = mockHost.getCallsFor('copyToClipboard');
+        const copied = copyCalls[0].args[0] as string;
+        assert.strictEqual(copied, 'test.md\n```\nline 1\nline 2\nline 3\n```');
+    });
 });

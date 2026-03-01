@@ -285,6 +285,11 @@ export function getWebviewContent(
             <span class="context-menu-shortcut">Ctrl+V</span>
         </div>
         <div class="context-menu-separator"></div>
+        <div class="context-menu-item" id="contextMenuCopyWithContext">
+            <span class="context-menu-icon">📎</span>
+            <span class="context-menu-label">Copy with Context</span>
+        </div>
+        <div class="context-menu-separator"></div>
         <div class="context-menu-item" id="contextMenuAddComment">
             <span class="context-menu-icon">💬</span>
             <span class="context-menu-label">Add Comment</span>

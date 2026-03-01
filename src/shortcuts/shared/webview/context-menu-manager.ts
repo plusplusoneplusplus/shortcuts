@@ -52,6 +52,7 @@ export class ContextMenuManager {
     private contextMenuCut: HTMLElement | null = null;
     private contextMenuCopy: HTMLElement | null = null;
     private contextMenuPaste: HTMLElement | null = null;
+    private contextMenuCopyWithContext: HTMLElement | null = null;
     private contextMenuAddComment: HTMLElement | null = null;
     private contextMenuPredefined: HTMLElement | null = null;
     private predefinedSubmenu: HTMLElement | null = null;
@@ -116,6 +117,10 @@ export class ContextMenuManager {
             this.contextMenuCopy = document.getElementById('contextMenuCopy');
             this.contextMenuPaste = document.getElementById('contextMenuPaste');
         }
+
+        // Copy with context
+        this.contextMenuCopyWithContext = document.getElementById('contextMenuCopyWithContext') ||
+            document.getElementById('context-menu-copy-with-context');
 
         // Add comment item
         this.contextMenuAddComment = document.getElementById('contextMenuAddComment') ||
@@ -211,6 +216,12 @@ export class ContextMenuManager {
         this.contextMenuAddComment?.addEventListener('click', () => {
             this.hide();
             this.callbacks.onAddComment?.();
+        });
+
+        // Copy with context
+        this.contextMenuCopyWithContext?.addEventListener('click', () => {
+            this.hide();
+            this.callbacks.onCopyWithContext?.();
         });
 
         // Predefined comments parent - position submenu on hover

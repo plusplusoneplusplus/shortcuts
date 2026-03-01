@@ -22,7 +22,7 @@ import { render } from './render';
 import { getSelectionPosition } from './selection-handler';
 import { state } from './state';
 import { AICommandMode, PromptFileInfo, RecentItem, RecentPrompt, SkillInfo } from './types';
-import { deleteCommentMessage, openFile, reopenComment, requestAskAI, requestAskAIInteractive, requestAskAIQueued, requestChatInCLI, requestCopyPrompt, requestDeleteAll, requestExecuteWorkPlan, requestExecuteWorkPlanWithSkill, requestPromptFiles, requestPromptSearch, requestRefreshPlan, requestResolveAll, requestSendCommentToChat, requestSendToChat, requestSendToCLIBackground, requestSendToCLIInteractive, requestSkills, requestUpdateDocument, resolveComment, updateContent } from './vscode-bridge';
+import { copyWithContext, deleteCommentMessage, openFile, reopenComment, requestAskAI, requestAskAIInteractive, requestAskAIQueued, requestChatInCLI, requestCopyPrompt, requestDeleteAll, requestExecuteWorkPlan, requestExecuteWorkPlanWithSkill, requestPromptFiles, requestPromptSearch, requestRefreshPlan, requestResolveAll, requestSendCommentToChat, requestSendToChat, requestSendToCLIBackground, requestSendToCLIInteractive, requestSkills, requestUpdateDocument, resolveComment, updateContent } from './vscode-bridge';
 import { DEFAULT_MARKDOWN_PREDEFINED_COMMENTS, serializePredefinedComments } from '../../shared/predefined-comment-types';
 import { initSearch, SearchController } from '../../shared/webview/search-handler';
 import {
@@ -68,6 +68,7 @@ export function initDomHandlers(): void {
             onCut: handleCut,
             onCopy: handleCopy,
             onPaste: handlePaste,
+            onCopyWithContext: handleCopyWithContext,
             onAddComment: handleAddCommentFromContextMenu,
             onPredefinedComment: handlePredefinedCommentFromContextMenu,
             onAskAI: handleAICommandClick,
@@ -1407,6 +1408,15 @@ function handleCopy(): void {
     if (saved && saved.selectedText) {
         navigator.clipboard.writeText(saved.selectedText);
     }
+}
+
+/**
+ * Handle "Copy with context" — copies selected text (or entire document) with file path
+ */
+function handleCopyWithContext(): void {
+    const saved = state.savedSelectionForContextMenu;
+    const text = (saved?.selectedText?.trim()) || state.currentContent || '';
+    copyWithContext(text, state.filePath);
 }
 
 /**

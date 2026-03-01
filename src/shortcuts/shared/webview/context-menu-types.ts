@@ -143,6 +143,8 @@ export interface ContextMenuCallbacks {
     onActionItemSelected?: (type: 'prompt' | 'skill', path: string, name: string) => void;
     /** Called when action items submenu needs to load (combined prompts + skills) */
     onRequestActionItems?: () => void;
+    /** Called when Copy with Context is clicked */
+    onCopyWithContext?: () => void;
     /** Called when the menu is hidden */
     onHide?: () => void;
 }

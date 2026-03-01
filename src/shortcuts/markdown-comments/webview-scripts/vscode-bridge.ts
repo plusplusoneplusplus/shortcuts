@@ -256,6 +256,13 @@ export function requestPromptSearch(): void {
 }
 
 /**
+ * Copy selected text (or entire document) with the file path as context
+ */
+export function copyWithContext(selectedText: string, filePath: string): void {
+    postMessage({ type: 'copyWithContext', selectedText, filePath });
+}
+
+/**
  * Request to execute a work plan with a specific prompt file
  * @param promptFilePath - Absolute path to the selected prompt file
  */

@@ -55,7 +55,7 @@ export interface AskAIContext {
 export interface WebviewMessage {
     type: 'addComment' | 'editComment' | 'deleteComment' | 'resolveComment' |
     'reopenComment' | 'updateContent' | 'ready' | 'generatePrompt' |
-    'copyPrompt' | 'sendToChat' | 'sendCommentToChat' | 'sendToCLIInteractive' | 'sendToCLIBackground' | 'resolveAll' | 'deleteAll' | 'requestState' | 'resolveImagePath' | 'openFile' | 'askAI' | 'askAIInteractive' | 'askAIQueued' | 'collapsedSectionsChanged' | 'requestPromptFiles' | 'requestSkills' | 'executeWorkPlan' | 'executeWorkPlanWithSkill' | 'promptSearch' | 'followPromptDialogResult' | 'copyFollowPrompt' | 'requestUpdateDocumentDialog' | 'updateDocument' | 'requestRefreshPlanDialog' | 'refreshPlan' | 'chatInCLI';
+    'copyPrompt' | 'sendToChat' | 'sendCommentToChat' | 'sendToCLIInteractive' | 'sendToCLIBackground' | 'resolveAll' | 'deleteAll' | 'requestState' | 'resolveImagePath' | 'openFile' | 'askAI' | 'askAIInteractive' | 'askAIQueued' | 'collapsedSectionsChanged' | 'requestPromptFiles' | 'requestSkills' | 'executeWorkPlan' | 'executeWorkPlanWithSkill' | 'promptSearch' | 'followPromptDialogResult' | 'copyFollowPrompt' | 'requestUpdateDocumentDialog' | 'updateDocument' | 'requestRefreshPlanDialog' | 'refreshPlan' | 'chatInCLI' | 'copyWithContext';
     commentId?: string;
     content?: string;
     selection?: {
@@ -82,6 +82,8 @@ export interface WebviewMessage {
     options?: FollowPromptExecutionOptions;
     additionalContext?: string;
     instruction?: string;
+    selectedText?: string;
+    filePath?: string;
 }
 
 /** Storage key prefix for collapsed sections (per file) */
@@ -177,6 +179,8 @@ export class EditorMessageRouter {
                 return this.handleRefreshPlan(message, ctx);
             case 'chatInCLI':
                 return this.handleChatInCLI(message, ctx);
+            case 'copyWithContext':
+                return this.handleCopyWithContext(message, ctx);
             default:
                 return {};
         }
@@ -485,6 +489,15 @@ export class EditorMessageRouter {
             await this.host.copyToClipboard(prompt);
             await this.host.showWarning('Failed to start CLI session. Prompt copied to clipboard.');
         }
+        return {};
+    }
+
+    private async handleCopyWithContext(message: WebviewMessage, ctx: MessageContext): Promise<DispatchResult> {
+        if (message.type !== 'copyWithContext') return {};
+        const { selectedText, filePath } = message;
+        const formatted = `${filePath}\n\`\`\`\n${selectedText}\n\`\`\``;
+        await this.host.copyToClipboard(formatted);
+        await this.host.showInfo('Copied with context.');
         return {};
     }
 
