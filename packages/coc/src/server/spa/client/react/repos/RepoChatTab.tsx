@@ -281,7 +281,10 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId }: Re
                 const t = data?.task;
                 if (t && t.status !== 'queued') {
                     setTask(t);
-                    if (t.processId || t.status === 'running') {
+                    if (t.status === 'cancelled') {
+                        handleNewChat();
+                        sessionsHook.refresh();
+                    } else if (t.processId || t.status === 'running') {
                         loadSession(chatTaskId);
                     }
                 }
@@ -321,6 +324,22 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId }: Re
         followUpImagePaste.clearImages();
         location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/chat';
     }, [isStreaming, initialImagePaste, followUpImagePaste, workspaceId]);
+
+    const handleCancelChat = useCallback(async (taskId?: string) => {
+        const targetId = taskId ?? chatTaskId;
+        if (!targetId) return;
+        try {
+            const response = await fetch(`${getApiBase()}/queue/${encodeURIComponent(targetId)}`, { method: 'DELETE' });
+            if (!response.ok) {
+                const body = await response.json().catch(() => null);
+                throw new Error(body?.error ?? `Cancel failed (${response.status})`);
+            }
+            if (targetId === chatTaskId) handleNewChat();
+            sessionsHook.refresh();
+        } catch (err: any) {
+            setError(err?.message ?? 'Failed to cancel chat.');
+        }
+    }, [chatTaskId, handleNewChat, sessionsHook]);
 
     const handleStartChat = async () => {
         const prompt = inputValue.trim();
@@ -517,6 +536,11 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId }: Re
                 <span className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]">Chat</span>
                 <div className="flex gap-2">
                     {isStreaming && <Button size="sm" variant="secondary" onClick={stopStreaming}>Stop</Button>}
+                    {task?.status === 'queued' && (
+                        <Button size="sm" variant="secondary" onClick={() => void handleCancelChat()} data-testid="cancel-chat-header-btn">
+                            Cancel
+                        </Button>
+                    )}
                     {(sessionExpired || taskFinished) && !isStreaming && (
                         <Button size="sm" variant="primary" onClick={() => void handleResumeChat()} disabled={resuming}>
                             {resuming ? '…' : '↻ Resume'}
@@ -546,6 +570,9 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId }: Re
                 {!loading && task?.status === 'queued' && (
                     <div className="flex items-center gap-2 text-sm text-[#848484] py-4">
                         <Spinner /> Waiting to start…
+                        <Button size="sm" variant="secondary" onClick={() => void handleCancelChat()} data-testid="cancel-chat-inline-btn">
+                            Cancel
+                        </Button>
                     </div>
                 )}
                 {!loading && error && turns.length === 0 && (
@@ -622,6 +649,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId }: Re
                 activeTaskId={selectedTaskId}
                 onSelectSession={handleSelectSession}
                 onNewChat={handleNewChat}
+                onCancelSession={(taskId) => void handleCancelChat(taskId)}
                 loading={sessionsHook.loading}
             />
             {/* Right panel — grows to fill */}

@@ -16,6 +16,7 @@ export interface ChatSessionSidebarProps {
     activeTaskId: string | null;
     onSelectSession: (taskId: string) => void;
     onNewChat: () => void;
+    onCancelSession?: (taskId: string) => void;
     loading: boolean;
 }
 
@@ -25,6 +26,7 @@ export function ChatSessionSidebar({
     activeTaskId,
     onSelectSession,
     onNewChat,
+    onCancelSession,
     loading,
 }: ChatSessionSidebarProps) {
     return (
@@ -74,6 +76,17 @@ export function ChatSessionSidebar({
                                     <>
                                         <span>·</span>
                                         <span className="text-[#f85149]" title="Session expired">expired</span>
+                                    </>
+                                )}
+                                {session.status === 'queued' && onCancelSession && (
+                                    <>
+                                        <span>·</span>
+                                        <button
+                                            className="text-[#848484] hover:text-[#f85149] cursor-pointer"
+                                            title="Cancel queued chat"
+                                            data-testid="cancel-session-btn"
+                                            onClick={(e) => { e.stopPropagation(); onCancelSession(session.id); }}
+                                        >✕</button>
                                     </>
                                 )}
                             </div>

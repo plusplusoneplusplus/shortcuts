@@ -977,4 +977,106 @@ describe('RepoChatTab', () => {
             expect(taskFinishedIdx).toBeGreaterThan(textareaIdx);
         });
     });
+
+    describe('cancel queued chat', () => {
+        it('defines handleCancelChat as a callback', () => {
+            expect(source).toContain('const handleCancelChat = useCallback(async (taskId?: string)');
+        });
+
+        it('handleCancelChat sends DELETE to /queue/:id', () => {
+            const fn = source.substring(source.indexOf('const handleCancelChat'));
+            expect(fn).toContain('method: \'DELETE\'');
+            expect(fn).toContain('`${getApiBase()}/queue/${encodeURIComponent(targetId)}`');
+        });
+
+        it('handleCancelChat resolves targetId from parameter or chatTaskId', () => {
+            const fn = source.substring(source.indexOf('const handleCancelChat'), source.indexOf('const handleStartChat'));
+            expect(fn).toContain('const targetId = taskId ?? chatTaskId');
+        });
+
+        it('handleCancelChat calls handleNewChat on success when cancelling active chat', () => {
+            const fn = source.substring(source.indexOf('const handleCancelChat'), source.indexOf('const handleStartChat'));
+            expect(fn).toContain('if (targetId === chatTaskId) handleNewChat()');
+        });
+
+        it('handleCancelChat refreshes sidebar sessions on success', () => {
+            const fn = source.substring(source.indexOf('const handleCancelChat'), source.indexOf('const handleStartChat'));
+            expect(fn).toContain('sessionsHook.refresh()');
+        });
+
+        it('handleCancelChat sets error on failure', () => {
+            const fn = source.substring(source.indexOf('const handleCancelChat'), source.indexOf('const handleStartChat'));
+            expect(fn).toContain("setError(err?.message ?? 'Failed to cancel chat.')");
+        });
+
+        it('handleCancelChat is defined after handleNewChat', () => {
+            const newChatIdx = source.indexOf('const handleNewChat');
+            const cancelIdx = source.indexOf('const handleCancelChat');
+            expect(cancelIdx).toBeGreaterThan(newChatIdx);
+        });
+
+        it('handleCancelChat includes handleNewChat in dependency array', () => {
+            const fn = source.substring(source.indexOf('const handleCancelChat'), source.indexOf('const handleStartChat'));
+            expect(fn).toContain('handleNewChat');
+            expect(fn).toContain('[chatTaskId, handleNewChat, sessionsHook]');
+        });
+
+        it('shows Cancel button in header when task is queued', () => {
+            const headerSection = source.substring(source.indexOf('{/* Header */}'), source.indexOf('{/* Conversation area */}'));
+            expect(headerSection).toContain("task?.status === 'queued'");
+            expect(headerSection).toContain('Cancel');
+            expect(headerSection).toContain('data-testid="cancel-chat-header-btn"');
+        });
+
+        it('header Cancel button calls handleCancelChat', () => {
+            const headerSection = source.substring(source.indexOf('{/* Header */}'), source.indexOf('{/* Conversation area */}'));
+            expect(headerSection).toContain('handleCancelChat()');
+        });
+
+        it('shows inline Cancel button next to "Waiting to start…"', () => {
+            const convArea = source.substring(source.indexOf('{/* Conversation area */}'), source.indexOf('{/* Input area */}'));
+            expect(convArea).toContain('Waiting to start…');
+            expect(convArea).toContain('data-testid="cancel-chat-inline-btn"');
+            expect(convArea).toContain('Cancel');
+        });
+
+        it('inline Cancel button calls handleCancelChat', () => {
+            const convArea = source.substring(source.indexOf('Waiting to start'), source.indexOf('{/* Input area */}'));
+            expect(convArea).toContain('handleCancelChat()');
+        });
+
+        it('passes onCancelSession prop to ChatSessionSidebar', () => {
+            expect(source).toContain('onCancelSession=');
+            expect(source).toContain('handleCancelChat(taskId)');
+        });
+    });
+
+    describe('polling handles cancelled status', () => {
+        it('checks for cancelled status in poll effect', () => {
+            const pollSection = source.substring(source.indexOf('poll for queued'), source.indexOf('// --- cleanup'));
+            expect(pollSection).toContain("t.status === 'cancelled'");
+        });
+
+        it('calls handleNewChat when status is cancelled', () => {
+            const pollSection = source.substring(source.indexOf('poll for queued'), source.indexOf('// --- cleanup'));
+            const cancelledIdx = pollSection.indexOf("t.status === 'cancelled'");
+            const newChatIdx = pollSection.indexOf('handleNewChat()', cancelledIdx);
+            expect(newChatIdx).toBeGreaterThan(cancelledIdx);
+        });
+
+        it('refreshes sessions when status is cancelled', () => {
+            const pollSection = source.substring(source.indexOf('poll for queued'), source.indexOf('// --- cleanup'));
+            const cancelledIdx = pollSection.indexOf("t.status === 'cancelled'");
+            const refreshIdx = pollSection.indexOf('sessionsHook.refresh()', cancelledIdx);
+            expect(refreshIdx).toBeGreaterThan(cancelledIdx);
+        });
+
+        it('cancelled check comes before running/processId check in poll', () => {
+            const pollSection = source.substring(source.indexOf('poll for queued'), source.indexOf('// --- cleanup'));
+            const cancelledIdx = pollSection.indexOf("t.status === 'cancelled'");
+            const runningIdx = pollSection.indexOf("t.processId || t.status === 'running'");
+            expect(cancelledIdx).toBeGreaterThan(-1);
+            expect(runningIdx).toBeGreaterThan(cancelledIdx);
+        });
+    });
 });

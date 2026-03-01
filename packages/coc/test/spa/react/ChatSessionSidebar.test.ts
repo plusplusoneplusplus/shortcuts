@@ -154,4 +154,42 @@ describe('ChatSessionSidebar', () => {
             expect(source).toContain("import type { ChatSessionItem } from '../types/dashboard'");
         });
     });
+
+    describe('cancel queued session', () => {
+        it('accepts optional onCancelSession prop', () => {
+            expect(source).toContain('onCancelSession?: (taskId: string) => void');
+        });
+
+        it('destructures onCancelSession from props', () => {
+            expect(source).toContain('onCancelSession,');
+        });
+
+        it('renders cancel button for queued sessions when onCancelSession is provided', () => {
+            expect(source).toContain("session.status === 'queued' && onCancelSession");
+        });
+
+        it('cancel button has data-testid', () => {
+            expect(source).toContain('data-testid="cancel-session-btn"');
+        });
+
+        it('cancel button calls onCancelSession with session id', () => {
+            expect(source).toContain('onCancelSession(session.id)');
+        });
+
+        it('cancel button stops event propagation to prevent selecting the session', () => {
+            expect(source).toContain('e.stopPropagation()');
+        });
+
+        it('cancel button shows ✕ character', () => {
+            expect(source).toContain('>✕<');
+        });
+
+        it('cancel button has a title for accessibility', () => {
+            expect(source).toContain('title="Cancel queued chat"');
+        });
+
+        it('cancel button has hover color for visual feedback', () => {
+            expect(source).toContain('hover:text-[#f85149]');
+        });
+    });
 });
