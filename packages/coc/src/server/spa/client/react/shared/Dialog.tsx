@@ -5,7 +5,7 @@ import { cn } from './cn';
 export interface DialogProps {
     open: boolean;
     onClose: () => void;
-    /** When provided, a minimize button (▬) is rendered in the header next to the title. */
+    /** When provided, a minimize button (−) is rendered in the header next to the title. */
     onMinimize?: () => void;
     title?: string;
     children?: ReactNode;
@@ -13,9 +13,11 @@ export interface DialogProps {
     className?: string;
     /** Optional id applied to the outer overlay div for test selection. */
     id?: string;
+    /** When true, the header close button is visually disabled and non-interactive. */
+    disableClose?: boolean;
 }
 
-export function Dialog({ open, onClose, onMinimize, title, children, footer, className, id }: DialogProps) {
+export function Dialog({ open, onClose, onMinimize, title, children, footer, className, id, disableClose }: DialogProps) {
     useEffect(() => {
         if (!open) return;
         const handler = (e: KeyboardEvent) => {
@@ -51,14 +53,28 @@ export function Dialog({ open, onClose, onMinimize, title, children, footer, cla
                         {onMinimize && (
                             <button
                                 data-testid="dialog-minimize-btn"
-                                className="ml-auto text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] text-sm leading-none px-1"
+                                className="ml-auto text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] text-lg leading-none px-1"
                                 onClick={onMinimize}
                                 aria-label="Minimize"
                                 title="Minimize (Esc)"
                             >
-                                ▬
+                                −
                             </button>
                         )}
+                        <button
+                            data-testid="dialog-close-btn"
+                            className={cn(
+                                !onMinimize && 'ml-auto',
+                                'text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] text-lg leading-none px-1',
+                                disableClose && 'pointer-events-none opacity-40'
+                            )}
+                            onClick={disableClose ? undefined : onClose}
+                            aria-label="Close"
+                            title="Close"
+                            disabled={disableClose}
+                        >
+                            ×
+                        </button>
                     </div>
                 )}
                 <div className="text-sm text-[#1e1e1e] dark:text-[#cccccc]">{children}</div>

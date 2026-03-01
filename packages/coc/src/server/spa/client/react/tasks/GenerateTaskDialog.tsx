@@ -195,22 +195,12 @@ export function GenerateTaskDialog({
             id="generate-task-overlay"
             onClose={isSubmitting ? undefined : onClose}
             onMinimize={isSubmitting ? undefined : onMinimize}
+            disableClose={isSubmitting}
             title="Generate Task"
             className="max-w-[600px]"
             footer={footer}
         >
             <div className="flex flex-col gap-4">
-                {/* Close × button */}
-                <button
-                    id="gen-task-close"
-                    className="absolute top-3 right-3 text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] text-lg leading-none"
-                    onClick={isSubmitting ? undefined : onClose}
-                    aria-label="Close"
-                >
-                    ×
-                </button>
-
-                {/* Prompt textarea (required) */}
                 <div className="flex flex-col gap-1">
                     <label className="text-xs text-[#616161] dark:text-[#999]">Prompt</label>
                     <textarea

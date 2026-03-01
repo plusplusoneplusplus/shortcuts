@@ -1190,7 +1190,7 @@ describe('GenerateTaskDialog', () => {
         const onMinimize = vi.fn();
         await act(async () => { renderDialog({ onClose, onMinimize }); });
 
-        const closeBtn = document.getElementById('gen-task-close')!;
+        const closeBtn = document.querySelector('[data-testid="dialog-close-btn"]') as HTMLElement;
         fireEvent.click(closeBtn);
         expect(onClose).toHaveBeenCalled();
         expect(onMinimize).not.toHaveBeenCalled();

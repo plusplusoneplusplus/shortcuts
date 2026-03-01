@@ -104,6 +104,7 @@ describe('Dialog', () => {
         expect(btn).not.toBeNull();
         expect(btn!.getAttribute('aria-label')).toBe('Minimize');
         expect(btn!.getAttribute('title')).toBe('Minimize (Esc)');
+        expect(btn!.textContent).toBe('−');
     });
 
     it('clicking minimize button calls onMinimize', () => {
@@ -128,5 +129,52 @@ describe('Dialog', () => {
         fireEvent.keyDown(document, { key: 'Escape' });
         expect(onMinimize).toHaveBeenCalledOnce();
         expect(onClose).not.toHaveBeenCalled();
+    });
+
+    // ── close button in header ──────────────────────────────────────────────
+
+    it('renders close button in header when title is provided', () => {
+        render(
+            <Dialog open={true} onClose={vi.fn()} title="Test">
+                Content
+            </Dialog>
+        );
+        const btn = document.querySelector('[data-testid="dialog-close-btn"]');
+        expect(btn).not.toBeNull();
+        expect(btn!.getAttribute('aria-label')).toBe('Close');
+    });
+
+    it('clicking header close button calls onClose', () => {
+        const onClose = vi.fn();
+        render(
+            <Dialog open={true} onClose={onClose} title="Test">
+                Content
+            </Dialog>
+        );
+        fireEvent.click(document.querySelector('[data-testid="dialog-close-btn"]')!);
+        expect(onClose).toHaveBeenCalledOnce();
+    });
+
+    it('header close button does not call onClose when disableClose is true', () => {
+        const onClose = vi.fn();
+        render(
+            <Dialog open={true} onClose={onClose} title="Test" disableClose>
+                Content
+            </Dialog>
+        );
+        const btn = document.querySelector('[data-testid="dialog-close-btn"]') as HTMLButtonElement;
+        fireEvent.click(btn);
+        expect(onClose).not.toHaveBeenCalled();
+        expect(btn.disabled).toBe(true);
+    });
+
+    it('minimize and close buttons are both rendered when onMinimize is provided', () => {
+        render(
+            <Dialog open={true} onClose={vi.fn()} onMinimize={vi.fn()} title="Test">
+                Content
+            </Dialog>
+        );
+        expect(document.querySelector('[data-testid="dialog-minimize-btn"]')).not.toBeNull();
+        expect(document.querySelector('[data-testid="dialog-close-btn"]')).not.toBeNull();
     });
 });
