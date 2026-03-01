@@ -210,7 +210,7 @@ coc memory add --repo "tests require Node 20+"              # repo-level
 
 | Module | Package | Responsibility |
 |--------|---------|---------------|
-| `MemoryStore` | `pipeline-core` | CRUD for raw + consolidated files, atomic writes, repo hashing, path resolution |
+| `MemoryStore` | `pipeline-core` | CRUD for raw + consolidated files, atomic writes, repo hashing, path resolution. Import via `@plusplusoneplusplus/pipeline-core/memory` |
 | `MemoryCapture` | `pipeline-core` | Post-AI-call "what did you learn?" prompt generation, raw file writing |
 | `MemoryRetriever` | `pipeline-core` | Load consolidated memory, format for prompt injection |
 | `MemoryAggregator` | `pipeline-core` | Batch threshold check, AI consolidation prompt, prune/archive raw files |
@@ -218,6 +218,19 @@ coc memory add --repo "tests require Node 20+"              # repo-level
 | `executePipeline` hooks | `pipeline-core` | Wire retrieve (pre-run) and capture (post-call) into execution flow |
 | `coc memory` command | `coc` | CLI subcommands for show/aggregate/clear/add |
 | Background aggregation | `coc-server` | Timer-based aggregation when running `coc serve` |
+
+## Implementation Status
+
+| Module | Status | Notes |
+|--------|--------|-------|
+| `MemoryStore` | ✅ Done | `pipeline-core/src/memory/` — raw CRUD, consolidated r/w, index, repo-info, clear, stats |
+| `MemoryCapture` | ⬚ Not started | |
+| `MemoryRetriever` | ⬚ Not started | |
+| `MemoryAggregator` | ⬚ Not started | |
+| `PipelineConfig.memory` | ⬚ Not started | |
+| `executePipeline` hooks | ⬚ Not started | |
+| `coc memory` command | ⬚ Not started | |
+| Background aggregation | ⬚ Not started | |
 
 ## Architecture Diagram
 
