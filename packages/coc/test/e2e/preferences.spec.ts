@@ -64,8 +64,11 @@ async function openFollowPromptDialog(page: import('@playwright/test').Page): Pr
         await existing.waitFor({ state: 'hidden', timeout: 3000 }).catch(() => {});
     }
     const fileRow = page.locator('.miller-file-row').first();
-    await fileRow.locator('[data-action="ai-action"]').click();
-    await page.locator('[data-ai-action="follow-prompt"]').click();
+    await expect(fileRow).toBeVisible({ timeout: 10000 });
+    await fileRow.click({ button: 'right' });
+    const contextMenu = page.locator('[data-testid="context-menu"]');
+    await expect(contextMenu).toBeVisible({ timeout: 5000 });
+    await contextMenu.getByRole('menuitem', { name: /Follow Prompt/ }).click();
     await expect(page.locator('#follow-prompt-submenu')).toBeVisible();
 }
 
@@ -78,8 +81,11 @@ async function openUpdateDocumentDialog(page: import('@playwright/test').Page): 
         await fp.waitFor({ state: 'hidden', timeout: 3000 }).catch(() => {});
     }
     const fileRow = page.locator('.miller-file-row').first();
-    await fileRow.locator('[data-action="ai-action"]').click();
-    await page.locator('[data-ai-action="update-document"]').click();
+    await expect(fileRow).toBeVisible({ timeout: 10000 });
+    await fileRow.click({ button: 'right' });
+    const contextMenu = page.locator('[data-testid="context-menu"]');
+    await expect(contextMenu).toBeVisible({ timeout: 5000 });
+    await contextMenu.getByRole('menuitem', { name: /Update Document/ }).click();
     await expect(page.locator('#update-doc-overlay')).toBeVisible();
 }
 

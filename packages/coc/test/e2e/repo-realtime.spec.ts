@@ -37,6 +37,9 @@ test.describe('Repo real-time: stats badge', () => {
         const completedItem = page.locator('.meta-item', { hasText: 'Completed' });
         await expect(completedItem).toContainText('1');
 
+        // ReposView throttles process-event refreshes; give WS connect/subscription time to settle.
+        await page.waitForTimeout(1000);
+
         // POST a new completed process via REST API (triggers WS broadcast)
         await seedProcess(serverUrl, 'rt-stats-p2', {
             status: 'completed',
@@ -44,7 +47,7 @@ test.describe('Repo real-time: stats badge', () => {
         });
 
         // Stats badge should update to 2 without page refresh (WS → debounced fetchReposData)
-        await expect(completedItem).toContainText('2', { timeout: 10000 });
+        await expect(completedItem).toContainText('2', { timeout: 20000 });
     });
 });
 

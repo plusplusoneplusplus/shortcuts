@@ -45,6 +45,16 @@ import { MultiRepoQueuePersistence } from '../../src/server/multi-repo-queue-per
 
 let dataDir: string;
 
+function removeDirSafe(dir: string): void {
+    try {
+        fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    } catch (error: any) {
+        if (error?.code !== 'ENOENT') {
+            throw error;
+        }
+    }
+}
+
 function makeTask(
     id: string,
     payload: Record<string, unknown> = {},
@@ -75,7 +85,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-    fs.rmSync(dataDir, { recursive: true, force: true });
+    removeDirSafe(dataDir);
 });
 
 // ============================================================================
