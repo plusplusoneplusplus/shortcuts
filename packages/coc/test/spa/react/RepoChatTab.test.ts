@@ -910,71 +910,47 @@ describe('RepoChatTab', () => {
             expect(headerSection).toContain('!isStreaming');
         });
 
-        it('shows resume buttons below textarea when taskFinished but not expired', () => {
-            const inputSection = source.substring(source.indexOf('{/* Input area */}'));
-            expect(inputSection).toContain('taskFinished && (');
+        it('shows Resume in Terminal button in header', () => {
+            const headerSection = source.substring(source.indexOf('{/* Header */}'), source.indexOf('{/* Conversation area */}'));
+            expect(headerSection).toContain('handleResumeInTerminal');
+            expect(headerSection).toContain('Resume in Terminal');
         });
 
-        it('renders Resume button in the taskFinished button row', () => {
-            const inputSection = source.substring(source.indexOf('{/* Input area */}'));
-            const taskFinishedBlock = inputSection.substring(inputSection.indexOf('taskFinished && ('));
-            expect(taskFinishedBlock).toContain('handleResumeChat');
-            expect(taskFinishedBlock).toContain('Resume');
+        it('Resume in Terminal appears before Resume in header', () => {
+            const headerSection = source.substring(source.indexOf('{/* Header */}'), source.indexOf('{/* Conversation area */}'));
+            const terminalIdx = headerSection.indexOf('Resume in Terminal');
+            const resumeIdx = headerSection.indexOf('↻ Resume');
+            expect(terminalIdx).toBeLessThan(resumeIdx);
         });
 
-        it('renders Resume in Terminal button in the taskFinished button row', () => {
-            const inputSection = source.substring(source.indexOf('{/* Input area */}'));
-            const taskFinishedBlock = inputSection.substring(inputSection.indexOf('taskFinished && ('));
-            expect(taskFinishedBlock).toContain('handleResumeInTerminal');
-            expect(taskFinishedBlock).toContain('Resume in Terminal');
+        it('disables header Resume in Terminal when processId is falsy', () => {
+            const headerSection = source.substring(source.indexOf('{/* Header */}'), source.indexOf('{/* Conversation area */}'));
+            const resumeBlock = headerSection.substring(headerSection.indexOf('sessionExpired || taskFinished'));
+            expect(resumeBlock).toContain('disabled={!processId}');
         });
 
-        it('renders New Chat button in the taskFinished button row', () => {
+        it('does not render bottom buttons when taskFinished', () => {
             const inputSection = source.substring(source.indexOf('{/* Input area */}'));
-            const taskFinishedBlock = inputSection.substring(inputSection.indexOf('taskFinished && ('));
-            expect(taskFinishedBlock).toContain('handleNewChat');
-            expect(taskFinishedBlock).toContain('New Chat');
+            expect(inputSection).not.toContain('taskFinished && (');
         });
 
-        it('disables Resume in Terminal when processId is falsy', () => {
-            const inputSection = source.substring(source.indexOf('{/* Input area */}'));
-            const taskFinishedBlock = inputSection.substring(inputSection.indexOf('taskFinished && ('));
-            expect(taskFinishedBlock).toContain('disabled={!processId}');
-        });
-
-        it('uses sm size for taskFinished resume buttons', () => {
-            const inputSection = source.substring(source.indexOf('{/* Input area */}'));
-            const taskFinishedBlock = inputSection.substring(inputSection.indexOf('taskFinished && ('), inputSection.indexOf('taskFinished && (') + 800);
-            const smMatches = taskFinishedBlock.match(/size="sm"/g);
-            expect(smMatches).toBeTruthy();
-            expect(smMatches!.length).toBeGreaterThanOrEqual(3);
-        });
-
-        it('keeps textarea visible when taskFinished (not replaced by buttons)', () => {
-            // The textarea should still render inside the else branch alongside taskFinished buttons
-            const inputSection = source.substring(source.indexOf('{/* Input area */}'));
-            const elseBranch = inputSection.substring(inputSection.indexOf(') : ('));
-            expect(elseBranch).toContain('<textarea');
-            expect(elseBranch).toContain('taskFinished && (');
-        });
-
-        it('expired state still replaces textarea with buttons', () => {
+        it('expired state shows informational message instead of buttons', () => {
             const inputSection = source.substring(source.indexOf('{/* Input area */}'));
             const expiredBranch = inputSection.substring(
                 inputSection.indexOf('sessionExpired ? ('),
                 inputSection.indexOf(') : (')
             );
-            expect(expiredBranch).toContain('handleResumeChat');
-            expect(expiredBranch).toContain('Resume in Terminal');
-            expect(expiredBranch).toContain('New Chat');
+            expect(expiredBranch).toContain('Session expired');
+            expect(expiredBranch).not.toContain('handleResumeChat');
+            expect(expiredBranch).not.toContain('Resume in Terminal');
+            expect(expiredBranch).not.toContain('New Chat');
             expect(expiredBranch).not.toContain('<textarea');
         });
 
-        it('taskFinished buttons are in a separate row below the textarea', () => {
+        it('keeps textarea visible when not expired', () => {
             const inputSection = source.substring(source.indexOf('{/* Input area */}'));
-            const textareaIdx = inputSection.indexOf('<textarea');
-            const taskFinishedIdx = inputSection.indexOf('taskFinished && (');
-            expect(taskFinishedIdx).toBeGreaterThan(textareaIdx);
+            const elseBranch = inputSection.substring(inputSection.indexOf(') : ('));
+            expect(elseBranch).toContain('<textarea');
         });
     });
 

@@ -563,9 +563,14 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId }: Re
                         </Button>
                     )}
                     {(sessionExpired || taskFinished) && !isStreaming && (
-                        <Button size="sm" variant="primary" onClick={() => void handleResumeChat()} disabled={resuming}>
-                            {resuming ? '…' : '↻ Resume'}
-                        </Button>
+                        <>
+                            <Button size="sm" variant="secondary" onClick={() => void handleResumeInTerminal()} disabled={!processId}>
+                                Resume in Terminal
+                            </Button>
+                            <Button size="sm" variant="primary" onClick={() => void handleResumeChat()} disabled={resuming}>
+                                {resuming ? '…' : '↻ Resume'}
+                            </Button>
+                        </>
                     )}
                 </div>
             </div>
@@ -610,16 +615,8 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId }: Re
             <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3 space-y-2">
                 {error && <div className="text-xs text-red-500">{error}</div>}
                 {sessionExpired ? (
-                    <div className="flex items-center justify-center gap-2 py-2">
-                        <Button variant="primary" onClick={() => void handleResumeChat()} disabled={resuming}>
-                            {resuming ? 'Resuming…' : 'Resume'}
-                        </Button>
-                        <Button variant="secondary" onClick={() => void handleResumeInTerminal()}>
-                            Resume in Terminal
-                        </Button>
-                        <Button variant="secondary" onClick={handleNewChat}>
-                            New Chat
-                        </Button>
+                    <div className="flex items-center justify-center gap-2 py-2 text-sm text-[#848484]">
+                        Session expired — use header buttons to resume.
                     </div>
                 ) : (
                     <>
@@ -639,19 +636,6 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId }: Re
                                 {sending ? '...' : 'Send'}
                             </Button>
                         </div>
-                        {taskFinished && (
-                            <div className="flex items-center justify-center gap-2 pt-1">
-                                <Button size="sm" variant="primary" onClick={() => void handleResumeChat()} disabled={resuming}>
-                                    {resuming ? 'Resuming…' : 'Resume'}
-                                </Button>
-                                <Button size="sm" variant="secondary" onClick={() => void handleResumeInTerminal()} disabled={!processId}>
-                                    Resume in Terminal
-                                </Button>
-                                <Button size="sm" variant="secondary" onClick={handleNewChat}>
-                                    New Chat
-                                </Button>
-                            </div>
-                        )}
                     </>
                 )}
             </div>
