@@ -314,10 +314,18 @@ function renderPreview(data: FilePreviewResponse): void {
     ).join('');
     const totalLabel = data.truncated ? ` (${data.totalLines} total)` : '';
 
+    const isTaskFile = data.path.includes('.vscode/tasks/');
+    const taskRelativePath = isTaskFile
+        ? data.path.split('.vscode/tasks/').pop() || ''
+        : '';
+    const gotoBtn = isTaskFile
+        ? `<button class="file-preview-goto-btn" data-task-path="${escapeHtml(taskRelativePath)}" title="Reveal in Tasks Panel">\u2B08</button>`
+        : '';
+
     tip.innerHTML =
         '<div class="file-preview-tooltip-header">' +
         `<span class="file-preview-tooltip-filename">${escapeHtml(data.fileName)}</span>` +
-        `<span class="file-preview-tooltip-info">${data.lines.length} lines${escapeHtml(totalLabel)}</span>` +
+        `<span class="file-preview-tooltip-info">${gotoBtn}${data.lines.length} lines${escapeHtml(totalLabel)}</span>` +
         '</div>' +
         '<div class="file-preview-tooltip-body">' +
         `<div class="file-preview-lines">${rows}</div>` +
@@ -435,6 +443,20 @@ function initFilePathPreviewDelegation(): void {
         hideTooltip();
         window.dispatchEvent(new CustomEvent('coc-open-markdown-review', {
             detail: { filePath: fullPath },
+        }));
+    });
+
+    // Click delegation for goto-file buttons inside file preview tooltips.
+    document.body.addEventListener('click', (event) => {
+        const btn = (event.target as HTMLElement).closest('.file-preview-goto-btn');
+        if (!btn) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const taskPath = btn.getAttribute('data-task-path');
+        if (!taskPath) return;
+        hideTooltip();
+        window.dispatchEvent(new CustomEvent('coc-reveal-in-panel', {
+            detail: { filePath: taskPath },
         }));
     });
 

@@ -83,6 +83,20 @@
     color: #9a9a9a;
 }
 
+.file-preview-goto-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 12px;
+    padding: 0 4px;
+    opacity: 0.6;
+    color: inherit;
+    vertical-align: middle;
+}
+.file-preview-goto-btn:hover {
+    opacity: 1;
+}
+
 .file-preview-tooltip-body {
     flex: 1;
     overflow: auto;

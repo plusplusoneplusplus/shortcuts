@@ -716,6 +716,128 @@ describe('tooltip dynamic max-height clamping', () => {
     });
 });
 
+describe('goto-file button for tasks-panel files', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+        vi.resetModules();
+        document.body.innerHTML = '';
+        delete (window as any).__COC_FILE_PATH_PREVIEW_DELEGATION__;
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+        vi.restoreAllMocks();
+        document.body.innerHTML = '';
+    });
+
+    function mockWorkspaceAndTaskFilePreview(fetchMock: ReturnType<typeof vi.fn>, taskPath: string) {
+        fetchMock.mockImplementation((url: string) => {
+            if (url.includes('/files/preview')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: async () => ({
+                        path: taskPath,
+                        fileName: taskPath.split('/').pop() ?? 'file.md',
+                        lines: ['# Plan'],
+                        totalLines: 1,
+                        truncated: false,
+                    }),
+                });
+            }
+            return Promise.resolve({
+                ok: true,
+                json: async () => ({
+                    workspaces: [{ id: 'ws-1', rootPath: '/Users/test/projects/shortcuts' }],
+                }),
+            });
+        });
+    }
+
+    async function hoverAndWaitForTaskFile(link: HTMLElement) {
+        link.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+        await vi.advanceTimersByTimeAsync(300);
+        for (let i = 0; i < 10; i++) await Promise.resolve();
+    }
+
+    it('shows goto button for .vscode/tasks/ file paths', async () => {
+        const taskPath = '/Users/test/projects/shortcuts/.vscode/tasks/coc/plan.md';
+        document.body.innerHTML = `
+            <span class="file-path-link" data-full-path="${taskPath}">plan.md</span>
+        `;
+
+        const fetchMock = vi.fn();
+        mockWorkspaceAndTaskFilePreview(fetchMock, taskPath);
+        vi.stubGlobal('fetch', fetchMock as any);
+
+        await import('../../../src/server/spa/client/react/file-path-preview');
+        await hoverAndWaitForTaskFile(document.querySelector('.file-path-link') as HTMLElement);
+
+        const btn = document.querySelector('.file-preview-goto-btn');
+        expect(btn).not.toBeNull();
+        expect(btn?.getAttribute('data-task-path')).toBe('coc/plan.md');
+    });
+
+    it('does not show goto button for non-task files', async () => {
+        const fullPath = '/Users/test/projects/shortcuts/src/app.ts';
+        document.body.innerHTML = `
+            <span class="file-path-link" data-full-path="${fullPath}">app.ts</span>
+        `;
+
+        const fetchMock = vi.fn().mockImplementation((url: string) => {
+            if (url.includes('/files/preview')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: async () => ({
+                        path: fullPath,
+                        fileName: 'app.ts',
+                        lines: ['const x = 1;'],
+                        totalLines: 1,
+                        truncated: false,
+                    }),
+                });
+            }
+            return Promise.resolve({
+                ok: true,
+                json: async () => ({
+                    workspaces: [{ id: 'ws-1', rootPath: '/Users/test/projects/shortcuts' }],
+                }),
+            });
+        });
+        vi.stubGlobal('fetch', fetchMock as any);
+
+        await import('../../../src/server/spa/client/react/file-path-preview');
+        await hoverAndWaitForTaskFile(document.querySelector('.file-path-link') as HTMLElement);
+
+        expect(document.querySelector('.file-preview-goto-btn')).toBeNull();
+    });
+
+    it('dispatches coc-reveal-in-panel event when goto button is clicked', async () => {
+        const taskPath = '/Users/test/projects/shortcuts/.vscode/tasks/coc/feature/plan.md';
+        document.body.innerHTML = `
+            <span class="file-path-link" data-full-path="${taskPath}">plan.md</span>
+        `;
+
+        const fetchMock = vi.fn();
+        mockWorkspaceAndTaskFilePreview(fetchMock, taskPath);
+        vi.stubGlobal('fetch', fetchMock as any);
+
+        await import('../../../src/server/spa/client/react/file-path-preview');
+        await hoverAndWaitForTaskFile(document.querySelector('.file-path-link') as HTMLElement);
+
+        const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+        const btn = document.querySelector('.file-preview-goto-btn') as HTMLElement;
+        expect(btn).not.toBeNull();
+        btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+        expect(dispatchSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: 'coc-reveal-in-panel',
+                detail: { filePath: 'coc/feature/plan.md' },
+            })
+        );
+    });
+});
+
 describe('file-preview-tooltip CSS rules', () => {
     const cssPath = resolve(__dirname, '../../../src/server/spa/client/tailwind.css');
     const css = readFileSync(cssPath, 'utf-8');

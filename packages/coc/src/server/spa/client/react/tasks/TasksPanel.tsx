@@ -158,6 +158,19 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
     // ── Navigate-to-file state (from search → panel reveal) ────────────
     const [navigateToFilePath, setNavigateToFilePath] = useState<string | null>(null);
 
+    // Listen for external "reveal in panel" requests (e.g. from file preview tooltip goto button).
+    useEffect(() => {
+        const handler = (e: Event) => {
+            const detail = (e as CustomEvent).detail;
+            if (detail?.filePath) {
+                onSearchClear();
+                setNavigateToFilePath(detail.filePath);
+            }
+        };
+        window.addEventListener('coc-reveal-in-panel', handler);
+        return () => window.removeEventListener('coc-reveal-in-panel', handler);
+    }, [onSearchClear]);
+
     type FileDialogAction = 'rename' | 'delete' | null;
     const [fileDialog, setFileDialog] = useState<{
         action: FileDialogAction;

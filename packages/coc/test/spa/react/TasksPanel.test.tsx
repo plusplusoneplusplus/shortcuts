@@ -488,6 +488,31 @@ describe('TasksPanel', () => {
         // Cleanup
         window.location.hash = '';
     });
+
+    it('responds to coc-reveal-in-panel event by navigating to the file', async () => {
+        fetchSpy.mockImplementation((url: string) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
+        });
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree')).toBeTruthy();
+        });
+
+        // Dispatch the reveal event (simulates clicking goto button in file preview tooltip)
+        act(() => {
+            window.dispatchEvent(new CustomEvent('coc-reveal-in-panel', {
+                detail: { filePath: 'feature1/design.md' },
+            }));
+        });
+
+        // TaskTree useEffect processes navigation; feature1 folder should become active
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree-item-feature1')).toBeTruthy();
+        });
+    });
 });
 
 // ============================================================================
