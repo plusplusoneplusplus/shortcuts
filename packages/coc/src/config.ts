@@ -84,7 +84,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     showReportIntent: false,
     serve: {
         port: 4000,
-        host: 'localhost',
+        host: '0.0.0.0',
         dataDir: '~/.coc',
         theme: 'auto',
     },
@@ -213,7 +213,7 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
         showReportIntent: override.showReportIntent ?? base.showReportIntent,
         serve: {
             port: override.serve?.port ?? base.serve?.port ?? 4000,
-            host: override.serve?.host ?? base.serve?.host ?? 'localhost',
+            host: override.serve?.host ?? base.serve?.host ?? '0.0.0.0',
             dataDir: override.serve?.dataDir ?? base.serve?.dataDir ?? '~/.coc',
             theme: override.serve?.theme ?? base.serve?.theme ?? 'auto',
         },

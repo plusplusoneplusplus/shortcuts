@@ -14,7 +14,7 @@ import type { ProcessStore, CopilotSDKService } from '@plusplusoneplusplus/pipel
 export interface ServeCommandOptions {
     /** TCP port (default `4000`). */
     port?: number;
-    /** Bind address (default `'localhost'`). */
+    /** Bind address (default `'0.0.0.0'`). */
     host?: string;
     /** Directory for process storage (default `~/.coc/`). */
     dataDir?: string;
@@ -46,7 +46,7 @@ export interface ExecutionServerOptions {
     store?: ProcessStore;
     /** TCP port (default `4000`). */
     port?: number;
-    /** Bind address (default `'localhost'`). */
+    /** Bind address (default `'0.0.0.0'`). */
     host?: string;
     /** Directory for server state / execution artefacts (default `~/.coc/`). */
     dataDir?: string;

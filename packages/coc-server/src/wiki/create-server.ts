@@ -31,7 +31,7 @@ export interface WikiServerOptions {
     wikiDir: string;
     /** Port to listen on (default: 3000) */
     port?: number;
-    /** Host/address to bind to (default: 'localhost') */
+    /** Host/address to bind to (default: '0.0.0.0') */
     host?: string;
     /** Enable AI features (Q&A, deep dive) */
     aiEnabled?: boolean;
@@ -89,7 +89,7 @@ export interface WikiServer {
  */
 export async function createServer(options: WikiServerOptions): Promise<WikiServer> {
     const port = options.port !== undefined ? options.port : 3000;
-    const host = options.host || 'localhost';
+    const host = options.host || '0.0.0.0';
     const aiEnabled = options.aiEnabled || false;
     const theme = options.theme || 'auto';
 

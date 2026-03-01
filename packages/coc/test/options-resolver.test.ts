@@ -224,7 +224,7 @@ describe('resolveServeOptions', () => {
         const result = resolveServeOptions({}, config);
 
         expect(result.port).toBe(4000);
-        expect(result.host).toBe('localhost');
+        expect(result.host).toBe('0.0.0.0');
         expect(result.dataDir).toBe('~/.coc');
         expect(result.theme).toBe('auto');
     });

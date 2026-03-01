@@ -142,7 +142,7 @@ function createStubStore(): ProcessStore {
  */
 export async function createExecutionServer(options: ExecutionServerOptions = {}): Promise<ExecutionServer> {
     const port = options.port ?? 4000;
-    const host = options.host ?? 'localhost';
+    const host = options.host ?? '0.0.0.0';
     const dataDir = options.dataDir ?? path.join(os.homedir(), '.coc');
     const store = options.store ?? createStubStore();
 
@@ -462,7 +462,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // Resolve actual port (important when port 0 is used for random port)
     const address = server.address();
     const actualPort = typeof address === 'object' && address ? address.port : port;
-    const url = `http://${host}:${actualPort}`;
+    const displayHost = host === '0.0.0.0' || host === '::' ? 'localhost' : host;
+    const url = `http://${displayHost}:${actualPort}`;
 
     // Track active connections for force-close on shutdown
     const activeSockets = new Set<import('net').Socket>();

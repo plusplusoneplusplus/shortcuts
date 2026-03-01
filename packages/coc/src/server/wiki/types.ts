@@ -222,7 +222,7 @@ export type AskAIFunction = (prompt: string, options?: {
 export interface WikiServeCommandOptions {
     /** Port to listen on (default: 3000) */
     port?: number;
-    /** Host/address to bind to (default: 'localhost') */
+    /** Host/address to bind to (default: '0.0.0.0') */
     host?: string;
     /** Generate wiki before serving (path to repo) */
     generate?: string;

@@ -35,7 +35,7 @@ import type { ServeCommandOptions } from '@plusplusoneplusplus/coc-server';
  */
 export async function executeServe(options: ServeCommandOptions): Promise<number> {
     const port = options.port ?? 4000;
-    const host = options.host ?? 'localhost';
+    const host = options.host ?? '0.0.0.0';
     const dataDir = resolveDataDir(options.dataDir ?? '~/.coc');
     const drainEnabled = options.noDrain !== true;
     const drainTimeoutMs = options.drainTimeout !== undefined && options.drainTimeout > 0
