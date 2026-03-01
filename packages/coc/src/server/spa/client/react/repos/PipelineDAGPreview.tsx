@@ -5,6 +5,7 @@
 
 import { useMemo, useState } from 'react';
 import { PipelineDAGChart } from '../processes/dag';
+import { DAGLegend } from '../processes/dag/DAGLegend';
 import { WorkflowDAGChart } from './WorkflowDAGChart';
 import { buildPreviewDAG } from './buildPreviewDAG';
 
@@ -41,7 +42,10 @@ export function PipelineDAGPreview({ yamlContent, validationErrors }: PipelineDA
             {expanded && (
                 <div className="py-2">
                     {result.type === 'linear' ? (
-                        <PipelineDAGChart data={result.data} isDark={isDark} pipelineConfig={result.config} validationErrors={validationErrors} />
+                        <>
+                            <PipelineDAGChart data={result.data} isDark={isDark} pipelineConfig={result.config} validationErrors={validationErrors} previewMode />
+                            <DAGLegend isDark={isDark} />
+                        </>
                     ) : (
                         <WorkflowDAGChart data={result.data} isDark={isDark} />
                     )}

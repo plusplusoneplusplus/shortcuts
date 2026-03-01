@@ -108,3 +108,40 @@ describe('getNodeErrors', () => {
         expect(errors).toEqual(['Invalid filter expression']);
     });
 });
+
+describe('getNodeErrors — previewMode', () => {
+    it('unmapped errors only appear on first node in preview mode', () => {
+        const phaseErrors = mapErrorsToPhases(['Pipeline name is required']);
+        const opts = { previewMode: true, firstPhase: 'input' as const };
+        expect(getNodeErrors(phaseErrors, 'input', opts)).toEqual(['Pipeline name is required']);
+        expect(getNodeErrors(phaseErrors, 'map', opts)).toEqual([]);
+        expect(getNodeErrors(phaseErrors, 'reduce', opts)).toEqual([]);
+    });
+
+    it('phase-specific errors still appear on their node in preview mode', () => {
+        const phaseErrors = mapErrorsToPhases(['Missing prompt template', 'Pipeline name is required']);
+        const opts = { previewMode: true, firstPhase: 'input' as const };
+        expect(getNodeErrors(phaseErrors, 'map', opts)).toEqual(['Missing prompt template']);
+        expect(getNodeErrors(phaseErrors, 'input', opts)).toEqual(['Pipeline name is required']);
+    });
+
+    it('first node gets both specific and unmapped in preview mode', () => {
+        const phaseErrors = mapErrorsToPhases(['Missing input path', 'Pipeline name is required']);
+        const opts = { previewMode: true, firstPhase: 'input' as const };
+        expect(getNodeErrors(phaseErrors, 'input', opts)).toEqual(['Missing input path', 'Pipeline name is required']);
+    });
+
+    it('without previewMode option, unmapped errors appear on all nodes (default)', () => {
+        const phaseErrors = mapErrorsToPhases(['Pipeline name is required']);
+        expect(getNodeErrors(phaseErrors, 'input')).toEqual(['Pipeline name is required']);
+        expect(getNodeErrors(phaseErrors, 'map')).toEqual(['Pipeline name is required']);
+        expect(getNodeErrors(phaseErrors, 'reduce')).toEqual(['Pipeline name is required']);
+    });
+
+    it('previewMode with no unmapped errors returns only specific errors', () => {
+        const phaseErrors = mapErrorsToPhases(['Missing prompt template']);
+        const opts = { previewMode: true, firstPhase: 'input' as const };
+        expect(getNodeErrors(phaseErrors, 'map', opts)).toEqual(['Missing prompt template']);
+        expect(getNodeErrors(phaseErrors, 'input', opts)).toEqual([]);
+    });
+});

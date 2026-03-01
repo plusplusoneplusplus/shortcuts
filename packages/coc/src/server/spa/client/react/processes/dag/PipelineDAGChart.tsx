@@ -31,6 +31,8 @@ export interface PipelineDAGChartProps {
     pipelineConfig?: PipelineConfig;
     /** Validation errors mapped to phases, for rendering error pins on nodes */
     validationErrors?: string[];
+    /** When true, enables preview-mode behaviors: auto-fit on mount, unmapped errors on first node only, no legend (rendered externally). */
+    previewMode?: boolean;
 }
 
 const NODE_W = 120;
@@ -45,7 +47,7 @@ function deriveEdgeState(fromState: string, toState: string): EdgeState {
     return 'waiting';
 }
 
-export function PipelineDAGChart({ data, isDark, onNodeClick, now, phaseDetails, onScrollToConversation, parallelCount, pipelineConfig, validationErrors }: PipelineDAGChartProps) {
+export function PipelineDAGChart({ data, isDark, onNodeClick, now, phaseDetails, onScrollToConversation, parallelCount, pipelineConfig, validationErrors, previewMode }: PipelineDAGChartProps) {
     const [selectedPhase, setSelectedPhase] = useState<string | null>(null);
     const [hoveredPhase, setHoveredPhase] = useState<PipelinePhase | null>(null);
     const [hoverAnchor, setHoverAnchor] = useState<{ x: number; y: number } | null>(null);
@@ -158,10 +160,18 @@ export function PipelineDAGChart({ data, isDark, onNodeClick, now, phaseDetails,
         (zoomContainerRef as React.MutableRefObject<HTMLDivElement | null>).current = node;
     }, [zoomContainerRef]);
 
+    // Auto-fit to view on mount in preview mode
+    useEffect(() => {
+        if (!previewMode) return;
+        // Use rAF to ensure container has been laid out before measuring
+        const id = requestAnimationFrame(() => fitToView());
+        return () => cancelAnimationFrame(id);
+    }, [previewMode, fitToView]);
+
     const selectedDetail = selectedPhase && phaseDetails?.[selectedPhase] ? phaseDetails[selectedPhase] : null;
 
     return (
-        <div ref={mergedRef} data-testid="dag-chart-container" className="relative" style={{ overflow: 'hidden', maxHeight: 200, cursor: zoomState.isDragging ? 'grabbing' : 'grab' }}>
+        <div ref={mergedRef} data-testid="dag-chart-container" className="relative" style={{ overflow: 'hidden', maxHeight: previewMode ? 180 : 300, cursor: zoomState.isDragging ? 'grabbing' : 'grab' }}>
         <DAGBreadcrumb nodes={data.nodes} isDark={isDark} />
         <svg
             ref={svgRef}
@@ -169,6 +179,7 @@ export function PipelineDAGChart({ data, isDark, onNodeClick, now, phaseDetails,
             className="w-full"
             viewBox={`0 0 ${totalWidth} ${totalHeight}`}
             preserveAspectRatio="xMidYMid meet"
+            style={previewMode ? { maxHeight: 140 } : undefined}
         >
             <defs>
                 <style>{`
@@ -225,7 +236,7 @@ export function PipelineDAGChart({ data, isDark, onNodeClick, now, phaseDetails,
                         elapsedMs={elapsedMs}
                         selected={node.phase === selectedPhase}
                         parallelCount={node.phase === 'map' ? parallelCount : undefined}
-                        validationErrors={phaseErrors ? getNodeErrors(phaseErrors, node.phase) : undefined}
+                        validationErrors={phaseErrors ? getNodeErrors(phaseErrors, node.phase, previewMode ? { previewMode: true, firstPhase: data.nodes[0]?.phase } : undefined) : undefined}
                         totalDurationMs={data.totalDurationMs}
                     />
                 );
@@ -277,7 +288,7 @@ export function PipelineDAGChart({ data, isDark, onNodeClick, now, phaseDetails,
                 }
             />
         )}
-        <DAGLegend isDark={isDark} />
+        {!previewMode && <DAGLegend isDark={isDark} />}
         </div>
     );
 }

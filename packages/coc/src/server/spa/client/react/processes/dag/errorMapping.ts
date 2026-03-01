@@ -40,11 +40,23 @@ export function mapErrorsToPhases(errors: string[]): PhaseErrors {
     return result;
 }
 
+export interface GetNodeErrorsOptions {
+    /** When true, unmapped errors are only shown on the first node (by `firstPhase`), not all nodes. */
+    previewMode?: boolean;
+    /** The phase of the first node in the DAG — receives unmapped errors in preview mode. */
+    firstPhase?: PipelinePhase;
+}
+
 /**
  * Get the list of validation errors that should be displayed on a specific node.
- * Returns the phase-specific errors plus any unmapped errors (shown on all nodes).
+ * In normal mode, returns phase-specific errors plus unmapped errors (shown on all nodes).
+ * In preview mode, unmapped errors are only shown on the first node to avoid misleading badges.
  */
-export function getNodeErrors(phaseErrors: PhaseErrors, phase: PipelinePhase): string[] {
+export function getNodeErrors(phaseErrors: PhaseErrors, phase: PipelinePhase, options?: GetNodeErrorsOptions): string[] {
     const specific = phaseErrors.byPhase[phase] ?? [];
+    if (options?.previewMode) {
+        const isFirst = phase === options.firstPhase;
+        return isFirst ? [...specific, ...phaseErrors.unmapped] : specific;
+    }
     return [...specific, ...phaseErrors.unmapped];
 }

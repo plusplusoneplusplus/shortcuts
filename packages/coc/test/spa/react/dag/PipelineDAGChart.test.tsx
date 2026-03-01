@@ -370,3 +370,81 @@ describe('PipelineDAGChart — zoom and pan', () => {
         expect(container.style.overflow).toBe('hidden');
     });
 });
+
+describe('PipelineDAGChart — preview mode', () => {
+    it('does not render legend when previewMode is true', () => {
+        render(<PipelineDAGChart data={makeData()} isDark={false} previewMode />);
+        expect(screen.queryByTestId('dag-legend')).toBeNull();
+    });
+
+    it('renders legend when previewMode is false/undefined', () => {
+        render(<PipelineDAGChart data={makeData()} isDark={false} />);
+        expect(screen.getByTestId('dag-legend')).toBeDefined();
+    });
+
+    it('uses smaller maxHeight in preview mode', () => {
+        render(<PipelineDAGChart data={makeData()} isDark={false} previewMode />);
+        const container = screen.getByTestId('dag-chart-container');
+        expect(container.style.maxHeight).toBe('180px');
+    });
+
+    it('uses larger maxHeight in non-preview mode', () => {
+        render(<PipelineDAGChart data={makeData()} isDark={false} />);
+        const container = screen.getByTestId('dag-chart-container');
+        expect(container.style.maxHeight).toBe('300px');
+    });
+
+    it('SVG has maxHeight style in preview mode', () => {
+        render(<PipelineDAGChart data={makeData()} isDark={false} previewMode />);
+        const svg = screen.getByTestId('dag-chart');
+        expect(svg.style.maxHeight).toBe('140px');
+    });
+
+    it('SVG has no maxHeight style in non-preview mode', () => {
+        render(<PipelineDAGChart data={makeData()} isDark={false} />);
+        const svg = screen.getByTestId('dag-chart');
+        expect(svg.style.maxHeight).toBe('');
+    });
+
+    it('unmapped errors only appear on first node in preview mode', () => {
+        render(
+            <PipelineDAGChart
+                data={makeData()}
+                isDark={false}
+                validationErrors={['Unknown error']}
+                previewMode
+            />
+        );
+        const inputNode = screen.getByTestId('dag-node-input');
+        const mapNode = screen.getByTestId('dag-node-map');
+        const reduceNode = screen.getByTestId('dag-node-reduce');
+        expect(inputNode.querySelector('[data-testid="dag-error-pin"]')).not.toBeNull();
+        expect(mapNode.querySelector('[data-testid="dag-error-pin"]')).toBeNull();
+        expect(reduceNode.querySelector('[data-testid="dag-error-pin"]')).toBeNull();
+    });
+
+    it('unmapped errors still appear on all nodes without preview mode', () => {
+        render(
+            <PipelineDAGChart
+                data={makeData()}
+                isDark={false}
+                validationErrors={['Unknown error']}
+            />
+        );
+        const pins = screen.getAllByTestId('dag-error-pin');
+        expect(pins.length).toBe(3);
+    });
+
+    it('phase-specific errors still show on correct node in preview mode', () => {
+        render(
+            <PipelineDAGChart
+                data={makeData()}
+                isDark={false}
+                validationErrors={['Missing prompt template']}
+                previewMode
+            />
+        );
+        const mapNode = screen.getByTestId('dag-node-map');
+        expect(mapNode.querySelector('[data-testid="dag-error-pin"]')).not.toBeNull();
+    });
+});
