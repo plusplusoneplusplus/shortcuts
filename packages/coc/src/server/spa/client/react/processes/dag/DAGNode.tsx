@@ -12,9 +12,10 @@ export interface DAGNodeProps {
     onClick?: (phase: PipelinePhase) => void;
     elapsedMs?: number;
     selected?: boolean;
+    parallelCount?: number;
 }
 
-export function DAGNode({ node, x, y, isDark, onClick, elapsedMs, selected }: DAGNodeProps) {
+export function DAGNode({ node, x, y, isDark, onClick, elapsedMs, selected, parallelCount }: DAGNodeProps) {
     const colors = getNodeColors(node.state, isDark);
     const icon = getNodeIcon(node.state);
     const hasClick = typeof onClick === 'function';
@@ -42,6 +43,32 @@ export function DAGNode({ node, x, y, isDark, onClick, elapsedMs, selected }: DA
             style={hasClick ? { cursor: 'pointer' } : undefined}
         >
             <title>{tooltipText}</title>
+            {parallelCount != null && parallelCount > 1 && (
+                <>
+                    <rect
+                        x={x + 6}
+                        y={y - 6}
+                        width={120}
+                        height={70}
+                        rx={6}
+                        fill={colors.fill}
+                        stroke={colors.border}
+                        strokeWidth={1.5}
+                        opacity={0.2}
+                    />
+                    <rect
+                        x={x + 3}
+                        y={y - 3}
+                        width={120}
+                        height={70}
+                        rx={6}
+                        fill={colors.fill}
+                        stroke={colors.border}
+                        strokeWidth={1.5}
+                        opacity={0.4}
+                    />
+                </>
+            )}
             <rect
                 x={x}
                 y={y}
@@ -102,6 +129,29 @@ export function DAGNode({ node, x, y, isDark, onClick, elapsedMs, selected }: DA
                 >
                     {elapsedText}
                 </text>
+            )}
+            {parallelCount != null && parallelCount > 1 && (
+                <>
+                    <rect
+                        x={x + 120 - 24}
+                        y={y - 6}
+                        width={24}
+                        height={14}
+                        rx={7}
+                        fill={colors.border}
+                    />
+                    <text
+                        data-testid={`dag-parallel-badge-${node.phase}`}
+                        x={x + 120 - 12}
+                        y={y + 4}
+                        textAnchor="middle"
+                        fontSize={9}
+                        fill="#fff"
+                        fontFamily="system-ui, sans-serif"
+                    >
+                        ×{parallelCount}
+                    </text>
+                </>
             )}
         </g>
     );

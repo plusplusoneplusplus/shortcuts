@@ -50,6 +50,7 @@ export function PipelineDAGSection({ process, eventSourceRef, onScrollToConversa
     const meta = process?.metadata;
     const stats = meta?.executionStats;
     const config = meta?.pipelineConfig;
+    const parallelCount: number | undefined = config?.map?.parallel ?? config?.map?.concurrency;
 
     for (const node of dagData.nodes) {
         const detail: PhaseDetail = {
@@ -163,6 +164,7 @@ export function PipelineDAGSection({ process, eventSourceRef, onScrollToConversa
                         now={isRunning ? now : undefined}
                         phaseDetails={phaseDetails}
                         onScrollToConversation={handleScrollToConversation}
+                        parallelCount={parallelCount}
                     />
                     <div className="text-xs text-[#848484] text-center mt-2">
                         {caption}

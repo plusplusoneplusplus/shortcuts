@@ -147,4 +147,45 @@ describe('DAGNode', () => {
         expect(g).toBeDefined();
         expect((g as HTMLElement)?.style.cursor).toBe('pointer');
     });
+
+    describe('parallel indicator', () => {
+        it('renders shadow rects when parallelCount > 1', () => {
+            const { container } = renderNode({ phase: 'map', label: 'Map' }, { parallelCount: 4 });
+            const rects = container.querySelectorAll('rect');
+            // 2 shadow rects + 1 main rect + 1 badge rect = 4
+            expect(rects.length).toBe(4);
+        });
+
+        it('renders ×N badge with data-testid when parallelCount > 1', () => {
+            const { container } = renderNode({ phase: 'map', label: 'Map' }, { parallelCount: 4 });
+            const badge = container.querySelector('[data-testid="dag-parallel-badge-map"]');
+            expect(badge).toBeDefined();
+            expect(badge?.textContent).toBe('×4');
+        });
+
+        it('does not render shadow rects when parallelCount is undefined', () => {
+            const { container } = renderNode({ phase: 'map', label: 'Map' });
+            const rects = container.querySelectorAll('rect');
+            expect(rects.length).toBe(1);
+        });
+
+        it('does not render shadow rects when parallelCount is 1', () => {
+            const { container } = renderNode({ phase: 'map', label: 'Map' }, { parallelCount: 1 });
+            const rects = container.querySelectorAll('rect');
+            expect(rects.length).toBe(1);
+        });
+
+        it('does not render badge when parallelCount is undefined', () => {
+            const { container } = renderNode({ phase: 'map', label: 'Map' });
+            const badge = container.querySelector('[data-testid="dag-parallel-badge-map"]');
+            expect(badge).toBeNull();
+        });
+
+        it('shadow rects have reduced opacity', () => {
+            const { container } = renderNode({ phase: 'map', label: 'Map' }, { parallelCount: 3 });
+            const rects = container.querySelectorAll('rect');
+            expect(rects[0].getAttribute('opacity')).toBe('0.2');
+            expect(rects[1].getAttribute('opacity')).toBe('0.4');
+        });
+    });
 });

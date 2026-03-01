@@ -136,3 +136,42 @@ describe('PipelineDAGChart — node interaction', () => {
         expect(onScroll).toHaveBeenCalledWith('map');
     });
 });
+
+describe('PipelineDAGChart — visual context layer', () => {
+    it('renders dag-legend', () => {
+        render(<PipelineDAGChart data={makeData()} isDark={false} />);
+        expect(screen.getByTestId('dag-legend')).toBeDefined();
+    });
+
+    it('renders dag-breadcrumb', () => {
+        render(<PipelineDAGChart data={makeData()} isDark={false} />);
+        expect(screen.getByTestId('dag-breadcrumb')).toBeDefined();
+    });
+
+    it('breadcrumb step count matches node count', () => {
+        const data = makeData();
+        render(<PipelineDAGChart data={data} isDark={false} />);
+        for (const node of data.nodes) {
+            expect(screen.getByTestId(`breadcrumb-step-${node.phase}`)).toBeDefined();
+        }
+    });
+
+    it('parallelCount prop causes parallel badge on map node', () => {
+        render(<PipelineDAGChart data={makeData()} isDark={false} parallelCount={4} />);
+        const badge = screen.getByTestId('dag-parallel-badge-map');
+        expect(badge).toBeDefined();
+        expect(badge.textContent).toBe('×4');
+    });
+
+    it('does not show parallel badge when parallelCount is undefined', () => {
+        render(<PipelineDAGChart data={makeData()} isDark={false} />);
+        expect(screen.queryByTestId('dag-parallel-badge-map')).toBeNull();
+    });
+
+    it('parallel badge only appears on map node, not others', () => {
+        render(<PipelineDAGChart data={makeData()} isDark={false} parallelCount={3} />);
+        expect(screen.getByTestId('dag-parallel-badge-map')).toBeDefined();
+        expect(screen.queryByTestId('dag-parallel-badge-input')).toBeNull();
+        expect(screen.queryByTestId('dag-parallel-badge-reduce')).toBeNull();
+    });
+});

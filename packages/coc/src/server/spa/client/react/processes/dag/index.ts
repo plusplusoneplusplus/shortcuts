@@ -4,3 +4,5 @@ export { PipelinePhasePopover } from './PipelinePhasePopover';
 export { buildDAGData, buildDAGDataFromLive } from './buildDAGData';
 export type { DAGNodeState, DAGNodeData, DAGChartData } from './types';
 export type { PhaseDetail } from './PipelinePhasePopover';
+export { DAGLegend } from './DAGLegend';
+export { DAGBreadcrumb } from './DAGBreadcrumb';

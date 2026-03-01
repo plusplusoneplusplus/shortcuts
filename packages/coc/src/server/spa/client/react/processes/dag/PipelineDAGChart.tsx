@@ -4,6 +4,8 @@ import type { DAGChartData } from './types';
 import { DAGNode } from './DAGNode';
 import { DAGEdge } from './DAGEdge';
 import { DAGProgressBar } from './DAGProgressBar';
+import { DAGLegend } from './DAGLegend';
+import { DAGBreadcrumb } from './DAGBreadcrumb';
 import { PipelinePhasePopover } from './PipelinePhasePopover';
 import type { PhaseDetail } from './PipelinePhasePopover';
 import type { EdgeState } from './dag-colors';
@@ -18,6 +20,8 @@ export interface PipelineDAGChartProps {
     phaseDetails?: Record<string, PhaseDetail>;
     /** Callback to scroll to a conversation turn related to the given phase. */
     onScrollToConversation?: (phaseName: string) => void;
+    /** Number of parallel workers for the map phase. */
+    parallelCount?: number;
 }
 
 const NODE_W = 120;
@@ -32,7 +36,7 @@ function deriveEdgeState(fromState: string, toState: string): EdgeState {
     return 'waiting';
 }
 
-export function PipelineDAGChart({ data, isDark, onNodeClick, now, phaseDetails, onScrollToConversation }: PipelineDAGChartProps) {
+export function PipelineDAGChart({ data, isDark, onNodeClick, now, phaseDetails, onScrollToConversation, parallelCount }: PipelineDAGChartProps) {
     const [selectedPhase, setSelectedPhase] = useState<string | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
 
@@ -81,6 +85,7 @@ export function PipelineDAGChart({ data, isDark, onNodeClick, now, phaseDetails,
 
     return (
         <div ref={containerRef} data-testid="dag-chart-container">
+        <DAGBreadcrumb nodes={data.nodes} isDark={isDark} />
         <svg
             data-testid="dag-chart"
             className="w-full"
@@ -130,6 +135,7 @@ export function PipelineDAGChart({ data, isDark, onNodeClick, now, phaseDetails,
                         onClick={handleNodeClick}
                         elapsedMs={elapsedMs}
                         selected={node.phase === selectedPhase}
+                        parallelCount={node.phase === 'map' ? parallelCount : undefined}
                     />
                 );
             })}
@@ -163,6 +169,7 @@ export function PipelineDAGChart({ data, isDark, onNodeClick, now, phaseDetails,
                 }
             />
         )}
+        <DAGLegend isDark={isDark} />
         </div>
     );
 }
