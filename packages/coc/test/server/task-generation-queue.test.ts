@@ -408,7 +408,7 @@ describe('POST /api/workspaces/:id/queue/generate', () => {
         expect(task.displayName).toBe('short-name');
     });
 
-    it('should enqueue task with images in payload', async () => {
+    it('should enqueue task with image metadata in payload', async () => {
         const srv = await startServer();
         const wsId = await registerWorkspace(srv, workspaceDir);
 
@@ -426,7 +426,9 @@ describe('POST /api/workspaces/:id/queue/generate', () => {
         const allTasks = [...(queueBody.queued || []), ...(queueBody.running || [])];
         const task = allTasks.find((t: any) => t.id === body.taskId);
         expect(task).toBeDefined();
-        expect(task.payload.images).toEqual(images);
+        expect(task.payload.images).toBeUndefined();
+        expect(task.payload.imagesCount).toBe(images.length);
+        expect(task.payload.hasImages).toBe(true);
     });
 
     it('should filter non-string images and cap at 10', async () => {
@@ -447,7 +449,10 @@ describe('POST /api/workspaces/:id/queue/generate', () => {
         const queueBody = JSON.parse(queueRes.body);
         const allTasks = [...(queueBody.queued || []), ...(queueBody.running || [])];
         const task = allTasks.find((t: any) => t.id === body.taskId);
-        expect(task.payload.images).toHaveLength(10);
+        expect(task).toBeDefined();
+        expect(task.payload.images).toBeUndefined();
+        expect(task.payload.imagesCount).toBe(10);
+        expect(task.payload.hasImages).toBe(true);
     });
 
     it('should not include images field when images array is empty', async () => {

@@ -122,12 +122,12 @@ describe('code block enhancements — language label', () => {
 // ============================================================================
 
 describe('code block enhancements — collapse', () => {
-    it('marks blocks >15 lines as collapsible and collapsed', () => {
+    it('marks blocks >15 lines as collapsible and expanded by default', () => {
         const md = codeBlock('js', lines(20));
         const html = renderMarkdownToHtml(md);
 
         expect(html).toContain('data-collapsible="true"');
-        expect(html).toContain('data-collapsed="true"');
+        expect(html).toContain('data-collapsed="false"');
     });
 
     it('includes a collapse toggle button for long blocks', () => {

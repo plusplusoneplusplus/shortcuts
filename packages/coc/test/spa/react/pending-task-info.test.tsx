@@ -106,7 +106,9 @@ describe('PendingTaskInfoPanel', () => {
             expect(screen.getByText('task-123')).toBeTruthy();
         });
         expect(screen.getByText('Working Directory')).toBeTruthy();
-        expect(screen.getByText('/home/user/project')).toBeTruthy();
+        const workingDir = screen.getByText('~/project');
+        expect(workingDir).toBeTruthy();
+        expect(workingDir.getAttribute('data-full-path')).toBe('/home/user/project');
         expect(screen.getByText('Repo ID')).toBeTruthy();
         expect(screen.getByText('repo-abc')).toBeTruthy();
     });

@@ -272,7 +272,7 @@ suite('Tasks Viewer Tests', () => {
                 // The placeholder.md file should make the subfolder visible
                 const tasks = await taskManager.getTasks();
                 // Subfolder path should be Parent-Feature/Test-Sub
-                const subfolderTask = tasks.find(t => t.relativePath === path.join('Parent-Feature', 'Test-Sub'));
+                const subfolderTask = tasks.find(t => t.relativePath === path.posix.join('Parent-Feature', 'Test-Sub'));
                 assert.ok(subfolderTask, 'Subfolder should be visible with placeholder.md file');
                 assert.strictEqual(subfolderTask.name, 'placeholder', 'placeholder.md should be found');
             });
@@ -294,7 +294,7 @@ suite('Tasks Viewer Tests', () => {
                 // Verify deeply nested folder is visible in task tree
                 const tasks = await taskManager.getTasks();
                 const deepTask = tasks.find(t => 
-                    t.relativePath === path.join('Level1', 'Level2', 'Level3', 'Level4')
+                    t.relativePath === path.posix.join('Level1', 'Level2', 'Level3', 'Level4')
                 );
                 assert.ok(deepTask, 'Deeply nested subfolder should be visible');
             });
@@ -312,7 +312,7 @@ suite('Tasks Viewer Tests', () => {
                 // The task should be visible in getTasks (with relativePath)
                 const tasks = await taskManager.getTasks();
                 const subTask = tasks.find(t => 
-                    t.relativePath === path.join('Parent-Feature', 'Test-Sub') && t.name === 'task-in-sub'
+                    t.relativePath === path.posix.join('Parent-Feature', 'Test-Sub') && t.name === 'task-in-sub'
                 );
                 assert.ok(subTask, 'Task in subfolder should be found');
             });

@@ -115,11 +115,11 @@ suite('Tasks Viewer - Nested Directories Tests', () => {
             
             const task1 = tasks.find(t => t.name === 'task1.plan');
             assert.ok(task1, 'Should find task1.plan');
-            assert.strictEqual(task1?.relativePath, path.join('feature1', 'backlog1'));
+            assert.strictEqual(task1?.relativePath, path.posix.join('feature1', 'backlog1'));
 
             const task3 = tasks.find(t => t.name === 'task3.plan');
             assert.ok(task3, 'Should find task3.plan');
-            assert.strictEqual(task3?.relativePath, path.join('feature2', 'backlog2'));
+            assert.strictEqual(task3?.relativePath, path.posix.join('feature2', 'backlog2'));
         });
 
         test('should scan mixed root and nested files', async () => {
@@ -160,9 +160,9 @@ suite('Tasks Viewer - Nested Directories Tests', () => {
             const tasks = await taskManager.getTasks();
             const task = tasks[0];
 
-            // Path should use platform-specific separator
+            // relativePath is normalized to forward slashes for consistency
             assert.ok(task.relativePath, 'Task should have relativePath');
-            assert.strictEqual(task.relativePath, path.join('feature1', 'backlog1'));
+            assert.strictEqual(task.relativePath, path.posix.join('feature1', 'backlog1'));
             
             // File path should be absolute and valid
             assert.ok(path.isAbsolute(task.filePath), 'File path should be absolute');
@@ -187,7 +187,7 @@ suite('Tasks Viewer - Nested Directories Tests', () => {
             const tasks = await taskManager.getTasks();
 
             assert.strictEqual(tasks.length, 1, 'Should find deeply nested task');
-            assert.strictEqual(tasks[0].relativePath, path.join('l1', 'l2', 'l3', 'l4', 'l5'));
+            assert.strictEqual(tasks[0].relativePath, path.posix.join('l1', 'l2', 'l3', 'l4', 'l5'));
         });
     });
 

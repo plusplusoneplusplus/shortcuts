@@ -19,15 +19,14 @@ describe('RepoDetail SUB_TABS', () => {
         expect(chatTab!.label).toBe('Chat');
     });
 
-    it('"chat" is followed by "git" entry', () => {
-        const chatIdx = SUB_TABS.findIndex(t => t.key === 'chat');
+    it('"info" is followed by "git" entry', () => {
+        const infoIdx = SUB_TABS.findIndex(t => t.key === 'info');
         const gitIdx = SUB_TABS.findIndex(t => t.key === 'git');
-        expect(gitIdx).toBe(chatIdx + 1);
+        expect(gitIdx).toBe(infoIdx + 1);
     });
 
-    it('"git" is the last entry', () => {
-        const last = SUB_TABS[SUB_TABS.length - 1];
-        expect(last.key).toBe('git');
+    it('"git" is the second entry', () => {
+        expect(SUB_TABS[1].key).toBe('git');
     });
 
     it('has exactly 7 entries', () => {
@@ -36,7 +35,7 @@ describe('RepoDetail SUB_TABS', () => {
 
     it('contains all expected sub-tabs in order', () => {
         const keys = SUB_TABS.map(t => t.key);
-        expect(keys).toEqual(['info', 'pipelines', 'tasks', 'queue', 'schedules', 'chat', 'git']);
+        expect(keys).toEqual(['info', 'git', 'pipelines', 'tasks', 'queue', 'schedules', 'chat']);
     });
 });
 

@@ -499,8 +499,8 @@ suite('Tasks Discovery - TaskManager.getFeatureFolders', () => {
 
         assert.strictEqual(folders.length, 2);
         assert.ok(folders.some(f => f.displayName === 'feature1'));
-        // Path.join uses OS separator, but display name uses forward slash
-        assert.ok(folders.some(f => f.relativePath === path.join('feature1', 'subfolder')));
+        // relativePath is normalized to forward slashes
+        assert.ok(folders.some(f => f.relativePath === path.posix.join('feature1', 'subfolder')));
     });
 });
 
