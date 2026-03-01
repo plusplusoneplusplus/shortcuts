@@ -80,6 +80,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId }: Re
     const loadSessionCounterRef = useRef(0);
 
     const processId = task?.processId ?? (chatTaskId ? `queue_${chatTaskId}` : null);
+    const taskFinished = task?.status === 'completed' || task?.status === 'failed';
 
     // --- helpers ---
 
@@ -516,7 +517,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId }: Re
                 <span className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]">Chat</span>
                 <div className="flex gap-2">
                     {isStreaming && <Button size="sm" variant="secondary" onClick={stopStreaming}>Stop</Button>}
-                    {sessionExpired && (
+                    {(sessionExpired || taskFinished) && !isStreaming && (
                         <Button size="sm" variant="primary" onClick={() => void handleResumeChat()} disabled={resuming}>
                             {resuming ? '…' : '↻ Resume'}
                         </Button>
@@ -590,6 +591,19 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId }: Re
                                 {sending ? '...' : 'Send'}
                             </Button>
                         </div>
+                        {taskFinished && (
+                            <div className="flex items-center justify-center gap-2 pt-1">
+                                <Button size="sm" variant="primary" onClick={() => void handleResumeChat()} disabled={resuming}>
+                                    {resuming ? 'Resuming…' : 'Resume'}
+                                </Button>
+                                <Button size="sm" variant="secondary" onClick={() => void handleResumeInTerminal()} disabled={!processId}>
+                                    Resume in Terminal
+                                </Button>
+                                <Button size="sm" variant="secondary" onClick={handleNewChat}>
+                                    New Chat
+                                </Button>
+                            </div>
+                        )}
                     </>
                 )}
             </div>
