@@ -17,6 +17,7 @@ import { ImagePreviews } from '../shared/ImagePreviews';
 import { ChatSessionSidebar } from '../chat/ChatSessionSidebar';
 import { useChatSessions } from '../chat/useChatSessions';
 import { useQueue } from '../context/QueueContext';
+import { usePreferences } from '../hooks/usePreferences';
 import type { ClientConversationTurn } from '../types/dashboard';
 
 interface RepoChatTabProps {
@@ -57,6 +58,7 @@ function getConversationTurns(data: any, task?: any): ClientConversationTurn[] {
 export function RepoChatTab({ workspaceId, workspacePath, initialSessionId }: RepoChatTabProps) {
     const sessionsHook = useChatSessions(workspaceId);
     const { state: queueState, dispatch: queueDispatch } = useQueue();
+    const { model: savedModel, setModel: persistModel } = usePreferences();
 
     const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
     const [chatTaskId, setChatTaskId] = useState<string | null>(null);
@@ -69,6 +71,8 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId }: Re
     const [sessionExpired, setSessionExpired] = useState(false);
     const [isStreaming, setIsStreaming] = useState(false);
     const [resuming, setResuming] = useState(false);
+    const [model, setModel] = useState('');
+    const [models, setModels] = useState<string[]>([]);
 
     const initialImagePaste = useImagePaste();
     const followUpImagePaste = useImagePaste();
@@ -102,6 +106,26 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId }: Re
             }
         };
     }, [workspaceId, queueDispatch]);
+
+    // Fetch available models on mount
+    useEffect(() => {
+        fetchApi('/queue/models')
+            .then((data: any) => {
+                if (Array.isArray(data)) setModels(data);
+                else if (data?.models && Array.isArray(data.models)) setModels(data.models);
+            })
+            .catch(() => { /* ignore */ });
+    }, []);
+
+    // Rehydrate model from saved preferences
+    useEffect(() => {
+        if (savedModel && !model) setModel(savedModel);
+    }, [savedModel]);
+
+    const handleModelChange = useCallback((value: string) => {
+        setModel(value);
+        persistModel(value);
+    }, [persistModel]);
 
     // --- helpers ---
 
@@ -388,6 +412,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId }: Re
                     images: initialImagePaste.images.length > 0
                         ? initialImagePaste.images
                         : undefined,
+                    ...(model ? { config: { model } } : {}),
                 }),
             });
             if (!response.ok) {
@@ -551,9 +576,22 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId }: Re
             />
             <ImagePreviews images={initialImagePaste.images} onRemove={initialImagePaste.removeImage} />
             {error && <div className="text-xs text-red-500">{error}</div>}
-            <Button disabled={!inputValue.trim() || sending} onClick={() => void handleStartChat()}>
-                {sending ? '...' : 'Start Chat'}
-            </Button>
+            <div className="flex items-center gap-2">
+                <select
+                    value={model}
+                    onChange={e => handleModelChange(e.target.value)}
+                    className="px-2 py-1.5 text-sm rounded border bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] border-[#e0e0e0] dark:border-[#3c3c3c]"
+                    data-testid="chat-model-select"
+                >
+                    <option value="">Default</option>
+                    {models.map(m => (
+                        <option key={m} value={m}>{m}</option>
+                    ))}
+                </select>
+                <Button disabled={!inputValue.trim() || sending} onClick={() => void handleStartChat()}>
+                    {sending ? '...' : 'Start Chat'}
+                </Button>
+            </div>
         </div>
     );
 
@@ -639,6 +677,15 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId }: Re
                                 onPaste={followUpImagePaste.addFromPaste}
                                 className="flex-1 border rounded p-2 text-sm resize-none bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] border-[#e0e0e0] dark:border-[#3c3c3c]"
                             />
+                            {(task?.config?.model || task?.metadata?.model) && (
+                                <span
+                                    className="text-xs px-2 py-1 rounded bg-[#e8e8e8] dark:bg-[#2d2d2d] text-[#848484] whitespace-nowrap"
+                                    data-testid="chat-model-badge"
+                                    title="Model used for this chat session"
+                                >
+                                    {task.config?.model || task.metadata?.model}
+                                </span>
+                            )}
                             <Button disabled={sending || !inputValue.trim()} onClick={() => void sendFollowUp()}>
                                 {sending ? '...' : 'Send'}
                             </Button>

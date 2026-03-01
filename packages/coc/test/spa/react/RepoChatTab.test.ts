@@ -1107,4 +1107,124 @@ describe('RepoChatTab', () => {
             expect(cleanupSection).toContain('CHAT_STREAMING_STOPPED');
         });
     });
+
+    describe('model selector on start screen', () => {
+        it('imports usePreferences hook', () => {
+            expect(source).toContain("import { usePreferences } from '../hooks/usePreferences'");
+        });
+
+        it('destructures model and persistModel from usePreferences', () => {
+            expect(source).toContain('const { model: savedModel, setModel: persistModel } = usePreferences()');
+        });
+
+        it('declares model and models state variables', () => {
+            expect(source).toContain("const [model, setModel] = useState('')");
+            expect(source).toContain('const [models, setModels] = useState<string[]>([])');
+        });
+
+        it('fetches models from /queue/models on mount', () => {
+            expect(source).toContain("fetchApi('/queue/models')");
+        });
+
+        it('handles both array and object response formats for models', () => {
+            expect(source).toContain('if (Array.isArray(data)) setModels(data)');
+            expect(source).toContain('data?.models && Array.isArray(data.models)');
+        });
+
+        it('rehydrates model from saved preferences', () => {
+            expect(source).toContain('if (savedModel && !model) setModel(savedModel)');
+        });
+
+        it('defines handleModelChange that updates state and persists', () => {
+            expect(source).toContain('const handleModelChange = useCallback((value: string)');
+            const fn = source.substring(source.indexOf('const handleModelChange'), source.indexOf('// --- helpers ---'));
+            expect(fn).toContain('setModel(value)');
+            expect(fn).toContain('persistModel(value)');
+        });
+
+        it('renders a select dropdown with data-testid on start screen', () => {
+            const startScreen = source.substring(source.indexOf('renderStartScreen'), source.indexOf('renderConversation'));
+            expect(startScreen).toContain('data-testid="chat-model-select"');
+            expect(startScreen).toContain('<select');
+        });
+
+        it('select has Default option with empty value', () => {
+            const startScreen = source.substring(source.indexOf('renderStartScreen'), source.indexOf('renderConversation'));
+            expect(startScreen).toContain('<option value="">Default</option>');
+        });
+
+        it('maps models array to option elements', () => {
+            const startScreen = source.substring(source.indexOf('renderStartScreen'), source.indexOf('renderConversation'));
+            expect(startScreen).toContain('models.map(m =>');
+            expect(startScreen).toContain('<option key={m} value={m}>{m}</option>');
+        });
+
+        it('select is bound to model state', () => {
+            const startScreen = source.substring(source.indexOf('renderStartScreen'), source.indexOf('renderConversation'));
+            expect(startScreen).toContain('value={model}');
+        });
+
+        it('select calls handleModelChange on change', () => {
+            const startScreen = source.substring(source.indexOf('renderStartScreen'), source.indexOf('renderConversation'));
+            expect(startScreen).toContain('handleModelChange(e.target.value)');
+        });
+
+        it('select is placed inline next to Start Chat button', () => {
+            const startScreen = source.substring(source.indexOf('renderStartScreen'), source.indexOf('renderConversation'));
+            const selectIdx = startScreen.indexOf('<select');
+            const buttonIdx = startScreen.indexOf('Start Chat');
+            expect(selectIdx).toBeGreaterThan(-1);
+            expect(buttonIdx).toBeGreaterThan(selectIdx);
+        });
+    });
+
+    describe('model in Start Chat POST body', () => {
+        it('includes config.model in POST body when model is set', () => {
+            const handler = source.substring(source.indexOf('const handleStartChat'));
+            expect(handler).toContain('config: { model }');
+        });
+
+        it('conditionally spreads config only when model is non-empty', () => {
+            const handler = source.substring(source.indexOf('const handleStartChat'));
+            expect(handler).toContain("...(model ? { config: { model } } : {})");
+        });
+    });
+
+    describe('read-only model badge in follow-up area', () => {
+        it('renders a model badge with data-testid in follow-up area', () => {
+            const inputSection = source.substring(source.indexOf('{/* Input area */}'));
+            expect(inputSection).toContain('data-testid="chat-model-badge"');
+        });
+
+        it('reads model from task.config.model or task.metadata.model', () => {
+            const inputSection = source.substring(source.indexOf('{/* Input area */}'));
+            expect(inputSection).toContain('task?.config?.model');
+            expect(inputSection).toContain('task?.metadata?.model');
+        });
+
+        it('only shows model badge when model is available', () => {
+            const inputSection = source.substring(source.indexOf('{/* Input area */}'));
+            expect(inputSection).toContain("(task?.config?.model || task?.metadata?.model) && (");
+        });
+
+        it('displays model text from config or metadata', () => {
+            const inputSection = source.substring(source.indexOf('{/* Input area */}'));
+            expect(inputSection).toContain('task.config?.model || task.metadata?.model');
+        });
+
+        it('model badge is positioned between textarea and Send button', () => {
+            const inputSection = source.substring(source.indexOf('{/* Input area */}'));
+            const textareaIdx = inputSection.indexOf('<textarea');
+            const badgeIdx = inputSection.indexOf('chat-model-badge');
+            const sendBtnIdx = inputSection.indexOf("'Send'");
+            expect(textareaIdx).toBeGreaterThan(-1);
+            expect(badgeIdx).toBeGreaterThan(textareaIdx);
+            expect(sendBtnIdx).toBeGreaterThan(badgeIdx);
+        });
+
+        it('model badge has a title attribute for accessibility', () => {
+            const inputSection = source.substring(source.indexOf('{/* Input area */}'));
+            expect(inputSection).toContain('title="Model used for this chat session"');
+        });
+    });
 });
