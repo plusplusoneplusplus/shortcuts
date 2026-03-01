@@ -3,8 +3,9 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Button, Badge, Dialog, Spinner } from '../shared';
+import { Button, Badge, Dialog, Spinner, cn } from '../shared';
 import { useGlobalToast } from '../context/ToastContext';
+import { useQueue } from '../context/QueueContext';
 import { fetchPipelineContent, savePipelineContent, deletePipeline, runPipeline } from './pipeline-api';
 import { PipelineRunHistory } from './PipelineRunHistory';
 import { PipelineDAGPreview } from './PipelineDAGPreview';
@@ -21,7 +22,9 @@ export interface PipelineDetailProps {
 
 export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRunSuccess, refreshKey }: PipelineDetailProps) {
     const { addToast } = useGlobalToast();
+    const { state: queueState } = useQueue();
     const [mode, setMode] = useState<'view' | 'edit'>('view');
+    const [activeTab, setActiveTab] = useState<'pipeline' | 'history'>('pipeline');
     const [content, setContent] = useState('');
     const [editContent, setEditContent] = useState('');
     const [loading, setLoading] = useState(true);
@@ -29,6 +32,15 @@ export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRu
     const [error, setError] = useState<string | null>(null);
     const [running, setRunning] = useState(false);
     const [confirmDelete, setConfirmDelete] = useState(false);
+
+    const repoQueue = queueState.repoQueueMap[workspaceId];
+    const activeTaskCount = [...(repoQueue?.running || []), ...(repoQueue?.queued || [])].filter(
+        (t: any) =>
+            t.type === 'run-pipeline' && (
+                t.metadata?.pipelineName === pipeline.name ||
+                t.displayName?.includes(pipeline.name)
+            )
+    ).length;
 
     useEffect(() => {
         let cancelled = false;
@@ -149,12 +161,55 @@ export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRu
                 </div>
             )}
 
+            {/* Tab bar (view mode only) */}
+            {mode === 'view' && (
+                <div className="flex border-b border-[#e0e0e0] dark:border-[#3c3c3c] px-4" data-testid="pipeline-tab-bar">
+                    {(['pipeline', 'history'] as const).map(tab => (
+                        <button
+                            key={tab}
+                            data-tab={tab}
+                            className={cn(
+                                'pipeline-tab px-3 py-2 text-xs font-medium transition-colors relative',
+                                activeTab === tab
+                                    ? 'active text-[#0078d4] dark:text-[#3794ff]'
+                                    : 'text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]'
+                            )}
+                            onClick={() => setActiveTab(tab)}
+                        >
+                            {tab === 'pipeline' ? 'Pipeline' : 'Run History'}
+                            {tab === 'history' && activeTaskCount > 0 && (
+                                <span className="ml-1 text-[10px] bg-[#16825d] text-white px-1 py-px rounded-full" data-testid="active-task-badge">{activeTaskCount}</span>
+                            )}
+                            {activeTab === tab && (
+                                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#0078d4] dark:bg-[#3794ff]" />
+                            )}
+                        </button>
+                    ))}
+                </div>
+            )}
+
             {/* Content area */}
             <div className="flex-1 overflow-auto px-4">
                 {mode === 'view' ? (
-                    <pre className="font-mono text-xs overflow-auto whitespace-pre-wrap bg-[#f5f5f5] dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded p-3">
-                        {content}
-                    </pre>
+                    <>
+                        {activeTab === 'pipeline' && (
+                            <>
+                                <pre className="font-mono text-xs overflow-auto whitespace-pre-wrap bg-[#f5f5f5] dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded p-3">
+                                    {content}
+                                </pre>
+                                {content && (
+                                    <PipelineDAGPreview yamlContent={content} validationErrors={pipeline.validationErrors} />
+                                )}
+                            </>
+                        )}
+                        {activeTab === 'history' && (
+                            <PipelineRunHistory
+                                workspaceId={workspaceId}
+                                pipelineName={pipeline.name}
+                                refreshKey={refreshKey}
+                            />
+                        )}
+                    </>
                 ) : (
                     <div className="flex flex-col gap-2 h-full">
                         <textarea
@@ -164,20 +219,6 @@ export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRu
                         />
                         {error && <p className="text-xs text-red-500">{error}</p>}
                     </div>
-                )}
-
-                {/* DAG Preview */}
-                {mode === 'view' && content && (
-                    <PipelineDAGPreview yamlContent={content} validationErrors={pipeline.validationErrors} />
-                )}
-
-                {/* Run History */}
-                {mode === 'view' && (
-                    <PipelineRunHistory
-                        workspaceId={workspaceId}
-                        pipelineName={pipeline.name}
-                        refreshKey={refreshKey}
-                    />
                 )}
             </div>
 

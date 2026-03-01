@@ -416,6 +416,93 @@ describe('PipelineDetail', () => {
             expect(mockAddToast).toHaveBeenCalledWith('Pipeline queued', 'success');
         });
     });
+
+    // ---- Tab bar tests ----
+
+    it('tab bar renders with Pipeline and Run History tabs in view mode', async () => {
+        render(
+            <Wrap>
+                <PipelineDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
+            </Wrap>
+        );
+        await waitFor(() => screen.getByTestId('pipeline-tab-bar'));
+        expect(screen.getByText('Pipeline')).toBeDefined();
+        expect(screen.getByText('Run History')).toBeDefined();
+    });
+
+    it('default active tab is Pipeline, showing YAML content', async () => {
+        render(
+            <Wrap>
+                <PipelineDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
+            </Wrap>
+        );
+        await waitFor(() => screen.getByText(/name: my-pipeline/));
+        const pre = document.querySelector('pre');
+        expect(pre).not.toBeNull();
+        // Run History component not shown on default tab
+        expect(screen.queryByTestId('pipeline-run-history')).toBeNull();
+    });
+
+    it('clicking Run History tab shows PipelineRunHistory component', async () => {
+        render(
+            <Wrap>
+                <PipelineDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
+            </Wrap>
+        );
+        await waitFor(() => screen.getByTestId('pipeline-tab-bar'));
+        fireEvent.click(screen.getByText('Run History'));
+        await waitFor(() => {
+            expect(screen.getByTestId('pipeline-run-history')).toBeDefined();
+        });
+        expect(document.querySelector('pre')).toBeNull();
+    });
+
+    it('tab bar is hidden in edit mode', async () => {
+        render(
+            <Wrap>
+                <PipelineDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
+            </Wrap>
+        );
+        await waitFor(() => screen.getByText('Edit'));
+        fireEvent.click(screen.getByText('Edit'));
+        expect(screen.queryByTestId('pipeline-tab-bar')).toBeNull();
+    });
+
+    it('active-task badge shows on Run History tab when tasks are running', async () => {
+        const { useQueue } = await import('../../../src/server/spa/client/react/context/QueueContext');
+        const activeTask = {
+            id: 'task-1',
+            type: 'run-pipeline',
+            status: 'running',
+            metadata: { pipelineName: 'my-pipeline' },
+        };
+
+        function SeedQueue() {
+            const { dispatch } = useQueue();
+            // eslint-disable-next-line react-hooks/exhaustive-deps
+            const { useLayoutEffect } = require('react');
+            useLayoutEffect(() => {
+                dispatch({
+                    type: 'REPO_QUEUE_UPDATED',
+                    repoId: 'ws-1',
+                    queue: { running: [activeTask], queued: [], history: [], stats: { total: 1, queued: 0, running: 1, completed: 0, failed: 0 } },
+                });
+            }, []);
+            return null;
+        }
+
+        render(
+            <Wrap>
+                <SeedQueue />
+                <PipelineDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
+            </Wrap>
+        );
+        await waitFor(() => screen.getByTestId('pipeline-tab-bar'));
+        await waitFor(() => {
+            expect(screen.getByTestId('active-task-badge')).toBeDefined();
+            expect(screen.getByTestId('active-task-badge').textContent).toBe('1');
+        });
+    });
 });
 
 // ============================================================================
