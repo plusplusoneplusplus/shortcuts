@@ -244,6 +244,23 @@ describe('readPreferences / writePreferences', () => {
         expect(prefs.recentFollowPrompts!.length).toBe(1);
         expect(prefs.recentFollowPrompts![0].name).toBe('valid');
     });
+
+    it('round-trips pinnedChats through write and read', () => {
+        const original = { pinnedChats: { ws1: ['id-a', 'id-b'], ws2: ['id-c'] } };
+        writePreferences(tmpDir, original);
+        const loaded = readPreferences(tmpDir);
+        expect(loaded).toEqual(original);
+    });
+
+    it('strips invalid pinnedChats entries on read', () => {
+        fs.writeFileSync(
+            path.join(tmpDir, PREFERENCES_FILE_NAME),
+            JSON.stringify({ pinnedChats: { ws1: ['valid', 42, ''], ws2: [null] } }),
+            'utf-8'
+        );
+        const prefs = readPreferences(tmpDir);
+        expect(prefs.pinnedChats).toEqual({ ws1: ['valid'] });
+    });
 });
 
 describe('validatePreferences', () => {
@@ -424,6 +441,49 @@ describe('validatePreferences', () => {
         ];
         const result = validatePreferences({ recentFollowPrompts: entries });
         expect(result.recentFollowPrompts).toBeUndefined();
+    });
+
+    // -- pinnedChats field --
+
+    it('accepts valid pinnedChats record', () => {
+        const result = validatePreferences({ pinnedChats: { ws1: ['a', 'b'], ws2: ['c'] } });
+        expect(result.pinnedChats).toEqual({ ws1: ['a', 'b'], ws2: ['c'] });
+    });
+
+    it('rejects non-object pinnedChats', () => {
+        expect(validatePreferences({ pinnedChats: 'not-object' })).toEqual({});
+        expect(validatePreferences({ pinnedChats: 42 })).toEqual({});
+        expect(validatePreferences({ pinnedChats: null })).toEqual({});
+        expect(validatePreferences({ pinnedChats: true })).toEqual({});
+    });
+
+    it('rejects array pinnedChats', () => {
+        expect(validatePreferences({ pinnedChats: ['a', 'b'] })).toEqual({});
+    });
+
+    it('filters out non-string IDs from pinnedChats arrays', () => {
+        const result = validatePreferences({ pinnedChats: { ws1: ['valid', 42, '', null, 'also-valid'] } });
+        expect(result.pinnedChats).toEqual({ ws1: ['valid', 'also-valid'] });
+    });
+
+    it('omits workspace keys with empty arrays after filtering', () => {
+        const result = validatePreferences({ pinnedChats: { ws1: ['valid'], ws2: [42, ''] } });
+        expect(result.pinnedChats).toEqual({ ws1: ['valid'] });
+    });
+
+    it('omits pinnedChats when all workspaces empty after filtering', () => {
+        const result = validatePreferences({ pinnedChats: { ws1: [42], ws2: [''] } });
+        expect(result.pinnedChats).toBeUndefined();
+    });
+
+    it('omits pinnedChats when empty object', () => {
+        const result = validatePreferences({ pinnedChats: {} });
+        expect(result.pinnedChats).toBeUndefined();
+    });
+
+    it('accepts pinnedChats alongside other fields', () => {
+        const result = validatePreferences({ lastModel: 'gpt-5.2', pinnedChats: { ws1: ['id1'] } });
+        expect(result).toEqual({ lastModel: 'gpt-5.2', pinnedChats: { ws1: ['id1'] } });
     });
 });
 
@@ -762,5 +822,55 @@ describe('Preferences REST API', () => {
 
         const res = await getJSON(`${baseUrl}/api/preferences`);
         expect(JSON.parse(res.body).recentFollowPrompts).toEqual(entries);
+    });
+
+    // -- pinnedChats persistence via API --
+
+    it('PATCH persists pinnedChats', async () => {
+        const pinnedChats = { ws1: ['id-a', 'id-b'] };
+        const res = await patchJSON(`${baseUrl}/api/preferences`, { pinnedChats });
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.pinnedChats).toEqual(pinnedChats);
+
+        const get = await getJSON(`${baseUrl}/api/preferences`);
+        expect(JSON.parse(get.body).pinnedChats).toEqual(pinnedChats);
+    });
+
+    it('PATCH merges pinnedChats with existing fields', async () => {
+        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'gpt-5.2' });
+        const pinnedChats = { ws1: ['id-a'] };
+        const res = await patchJSON(`${baseUrl}/api/preferences`, { pinnedChats });
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.lastModel).toBe('gpt-5.2');
+        expect(body.pinnedChats).toEqual(pinnedChats);
+    });
+
+    it('PUT with pinnedChats replaces all', async () => {
+        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'x', pinnedChats: { ws1: ['id-a'] } });
+        const res = await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'y' });
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.pinnedChats).toBeUndefined();
+    });
+
+    it('PATCH strips invalid pinnedChats values', async () => {
+        const res = await patchJSON(`${baseUrl}/api/preferences`, { pinnedChats: { ws1: [42, ''] } });
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.pinnedChats).toBeUndefined();
+    });
+
+    it('pinnedChats survive server restart', async () => {
+        const pinnedChats = { ws1: ['id-a', 'id-b'], ws2: ['id-c'] };
+        await putJSON(`${baseUrl}/api/preferences`, { pinnedChats });
+        await server.close();
+
+        server = await createExecutionServer({ port: 0, dataDir: tmpDir });
+        baseUrl = server.url;
+
+        const res = await getJSON(`${baseUrl}/api/preferences`);
+        expect(JSON.parse(res.body).pinnedChats).toEqual(pinnedChats);
     });
 });

@@ -192,4 +192,122 @@ describe('ChatSessionSidebar', () => {
             expect(source).toContain('hover:text-[#f85149]');
         });
     });
+
+    describe('pin support — props', () => {
+        it('accepts optional pinnedIds prop', () => {
+            expect(source).toContain('pinnedIds?: string[]');
+        });
+
+        it('accepts optional onTogglePin callback', () => {
+            expect(source).toContain('onTogglePin?: (taskId: string) => void');
+        });
+
+        it('destructures pinnedIds with default empty array', () => {
+            expect(source).toContain('pinnedIds = []');
+        });
+
+        it('destructures onTogglePin from props', () => {
+            expect(source).toContain('onTogglePin,');
+        });
+    });
+
+    describe('pin support — pinned section', () => {
+        it('renders pinned section header with data-testid', () => {
+            expect(source).toContain('data-testid="pinned-section-header"');
+        });
+
+        it('shows pin emoji and count in section header', () => {
+            expect(source).toContain('📌 Pinned (');
+            expect(source).toContain('pinnedSessions.length');
+        });
+
+        it('renders separator between pinned and unpinned sections', () => {
+            expect(source).toContain('data-testid="pinned-separator"');
+        });
+
+        it('uses dashed border for separator', () => {
+            expect(source).toContain('border-dashed');
+        });
+
+        it('only shows pinned section when there are pinned sessions', () => {
+            expect(source).toContain('pinnedSessions.length > 0');
+        });
+
+        it('partitions sessions into pinned and unpinned', () => {
+            expect(source).toContain('pinnedSessions');
+            expect(source).toContain('unpinnedSessions');
+        });
+    });
+
+    describe('pin support — pin icon', () => {
+        it('renders active pin icon on pinned cards with data-testid', () => {
+            expect(source).toContain('data-testid="pin-icon-active"');
+        });
+
+        it('renders hover pin icon on unpinned cards with data-testid', () => {
+            expect(source).toContain('data-testid="pin-icon-hover"');
+        });
+
+        it('active pin icon has accent color', () => {
+            expect(source).toContain('text-[#0078d4]');
+        });
+
+        it('hover pin icon is hidden by default and visible on hover', () => {
+            expect(source).toContain('opacity-0 group-hover:opacity-100');
+        });
+
+        it('active pin icon has unpin title', () => {
+            expect(source).toContain('title="Unpin chat"');
+        });
+
+        it('hover pin icon has pin title', () => {
+            expect(source).toContain('title="Pin chat"');
+        });
+
+        it('pin icon click stops propagation', () => {
+            // Multiple stopPropagation calls (cancel, pin active, pin hover)
+            const matches = source.match(/e\.stopPropagation\(\)/g);
+            expect(matches).not.toBeNull();
+            expect(matches!.length).toBeGreaterThanOrEqual(3);
+        });
+
+        it('pin icon click calls onTogglePin with session id', () => {
+            expect(source).toContain('onTogglePin?.(session.id)');
+            expect(source).toContain('onTogglePin(session.id)');
+        });
+    });
+
+    describe('pin support — context menu', () => {
+        it('imports ContextMenu component', () => {
+            expect(source).toContain("import { ContextMenu } from '../tasks/comments/ContextMenu'");
+        });
+
+        it('imports ContextMenuItem type', () => {
+            expect(source).toContain("import type { ContextMenuItem } from '../tasks/comments/ContextMenu'");
+        });
+
+        it('manages context menu state', () => {
+            expect(source).toContain('contextMenu');
+            expect(source).toContain('setContextMenu');
+        });
+
+        it('attaches onContextMenu handler to cards when onTogglePin is provided', () => {
+            expect(source).toContain('onContextMenu');
+            expect(source).toContain('handleContextMenu');
+        });
+
+        it('context menu items include Pin Chat / Unpin Chat label', () => {
+            expect(source).toContain("'Unpin Chat'");
+            expect(source).toContain("'Pin Chat'");
+        });
+
+        it('prevents default on right-click', () => {
+            expect(source).toContain('e.preventDefault()');
+        });
+
+        it('renders ContextMenu component when context menu is open', () => {
+            expect(source).toContain('<ContextMenu');
+            expect(source).toContain('closeContextMenu');
+        });
+    });
 });

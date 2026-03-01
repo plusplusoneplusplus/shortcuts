@@ -27,6 +27,8 @@ export interface UserPreferences {
     lastEffort?: 'low' | 'medium' | 'high';
     /** Persisted dashboard theme ('light' | 'dark' | 'auto'). */
     theme?: 'light' | 'dark' | 'auto';
+    /** Pinned chat session IDs per workspace (ordered by pin time, newest first). */
+    pinnedChats?: Record<string, string[]>;
 }
 
 // ============================================================================
@@ -95,6 +97,21 @@ export function validatePreferences(raw: unknown): UserPreferences {
 
     if (obj.theme === 'light' || obj.theme === 'dark' || obj.theme === 'auto') {
         result.theme = obj.theme;
+    }
+
+    if (typeof obj.pinnedChats === 'object' && obj.pinnedChats !== null && !Array.isArray(obj.pinnedChats)) {
+        const validated: Record<string, string[]> = {};
+        for (const [key, value] of Object.entries(obj.pinnedChats as Record<string, unknown>)) {
+            if (typeof key === 'string' && Array.isArray(value)) {
+                const ids = value.filter((id: unknown) => typeof id === 'string' && id.length > 0);
+                if (ids.length > 0) {
+                    validated[key] = ids;
+                }
+            }
+        }
+        if (Object.keys(validated).length > 0) {
+            result.pinnedChats = validated;
+        }
     }
 
     return result;

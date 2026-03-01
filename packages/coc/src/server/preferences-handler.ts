@@ -38,6 +38,8 @@ export interface UserPreferences {
     theme?: 'light' | 'dark' | 'auto';
     /** Recently-used prompts/skills in Follow Prompt dialog (max 10, newest first). */
     recentFollowPrompts?: RecentFollowPromptEntry[];
+    /** Pinned chat session IDs per workspace (ordered by pin time, newest first). */
+    pinnedChats?: Record<string, string[]>;
 }
 
 // ============================================================================
@@ -130,6 +132,21 @@ export function validatePreferences(raw: unknown): UserPreferences {
         }
         if (validated.length > 0) {
             result.recentFollowPrompts = validated;
+        }
+    }
+
+    if (typeof obj.pinnedChats === 'object' && obj.pinnedChats !== null && !Array.isArray(obj.pinnedChats)) {
+        const validatedPins: Record<string, string[]> = {};
+        for (const [key, value] of Object.entries(obj.pinnedChats as Record<string, unknown>)) {
+            if (typeof key === 'string' && Array.isArray(value)) {
+                const ids = value.filter((id: unknown) => typeof id === 'string' && id.length > 0);
+                if (ids.length > 0) {
+                    validatedPins[key] = ids;
+                }
+            }
+        }
+        if (Object.keys(validatedPins).length > 0) {
+            result.pinnedChats = validatedPins;
         }
     }
 
