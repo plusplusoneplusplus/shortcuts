@@ -169,6 +169,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         aiService: options.aiService,
         defaultTimeoutMs,
         followUpSuggestions: resolvedConfig.chat.followUpSuggestions,
+        getWsServer: () => wsServer,
     });
 
     // Restore persisted queue state before executor starts processing
@@ -224,7 +225,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     registerTaskGenerationRoutes(routes, store, bridge, resolvedAiService);
     registerPromptRoutes(routes, store);
     registerPreferencesRoutes(routes, dataDir);
-    registerTaskCommentsRoutes(routes, dataDir, bridge, store);
+    registerTaskCommentsRoutes(routes, dataDir, bridge, store, () => wsServer);
     // TODO(004): update AdminRouteOptions to accept MultiRepoQueueExecutorBridge
     registerAdminRoutes(routes, { store, dataDir, getWsServer: () => wsServer, configPath: options.configPath, getQueueManager: () => queueFacade, getQueuePersistence: () => queuePersistence as any });
     registerScheduleRoutes(routes, scheduleManager);

@@ -48,6 +48,8 @@ export interface ResolveCommentsPayload {
     workingDirectory?: string;
     documentContent: string;
     filePath: string;
+    /** Workspace ID — used by server to persist comment resolution and broadcast WS events. */
+    wsId?: string;
 }
 
 export interface AIClarificationPayload {

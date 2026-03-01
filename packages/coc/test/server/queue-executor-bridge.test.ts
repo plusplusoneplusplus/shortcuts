@@ -1644,7 +1644,7 @@ describe('CLITaskExecutor', () => {
 
             expect(result.success).toBe(true);
             expect(mockSendMessage).toHaveBeenCalled();
-            expect(result.result).toEqual({
+            expect(result.result).toMatchObject({
                 commentIds: ['c1'],
             });
         });
@@ -1977,7 +1977,7 @@ describe('CLITaskExecutor', () => {
     // ========================================================================
 
     describe('resolve-comments tasks', () => {
-        it('should execute a resolve-comments task and return commentIds without revisedContent', async () => {
+        it('should execute a resolve-comments task and return revisedContent with commentIds', async () => {
             mockSendMessage.mockResolvedValue({
                 success: true,
                 response: '# Revised Document\n\nFixed content.',
@@ -2007,8 +2007,8 @@ describe('CLITaskExecutor', () => {
             const result = await executor.execute(task);
 
             expect(result.success).toBe(true);
-            // AI edits files via tools; the text response is NOT returned as revisedContent
             expect(result.result).toEqual({
+                revisedContent: '# Revised Document\n\nFixed content.',
                 commentIds: ['comment-a', 'comment-b'],
             });
         });
@@ -2193,7 +2193,7 @@ describe('CLITaskExecutor', () => {
 
             expect(result.success).toBe(true);
             // Only c1 was resolved via tool, c2 was not
-            expect(result.result).toEqual({ commentIds: ['c1'] });
+            expect(result.result).toEqual({ revisedContent: 'revised doc', commentIds: ['c1'] });
         });
 
         it('should fall back to all comment IDs when tool is not called', async () => {
@@ -2226,7 +2226,7 @@ describe('CLITaskExecutor', () => {
 
             expect(result.success).toBe(true);
             // Fallback: all IDs returned
-            expect(result.result).toEqual({ commentIds: ['c1', 'c2', 'c3'] });
+            expect(result.result).toEqual({ revisedContent: 'revised doc', commentIds: ['c1', 'c2', 'c3'] });
         });
     });
 });

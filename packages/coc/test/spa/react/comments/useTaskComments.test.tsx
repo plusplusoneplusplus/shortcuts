@@ -531,8 +531,8 @@ describe('useTaskComments', () => {
         expect(resolveResult.revisedContent).toBe('revised doc');
         expect(resolveResult.resolvedCount).toBe(2);
         expect(resolveResult.totalCount).toBe(2);
-        // resolveComment should have been called for each comment id
-        expect(patchCallCount).toBe(2);
+        // Server handles comment resolution; no PATCH resolve calls from frontend
+        expect(patchCallCount).toBe(0);
     });
 
     it('resolveWithAI — sets resolving=true during execution, false after', async () => {
@@ -909,7 +909,7 @@ describe('useTaskComments', () => {
             fixResult = await result.current.fixWithAI('c1', 'doc', 'task1.md');
         });
 
-        expect(resolveCommentCalled).toBe(true);
+        expect(resolveCommentCalled).toBe(false);
         expect(fixResult.resolved).toBe(true);
     });
 
@@ -952,7 +952,8 @@ describe('useTaskComments', () => {
 
         expect(resolveResult.resolvedCount).toBe(3);
         expect(resolveResult.totalCount).toBe(5);
-        expect(resolvedIds).toEqual(['c1', 'c3', 'c5']);
+        // Server handles resolution; no PATCH resolve calls from frontend
+        expect(resolvedIds).toEqual([]);
     });
 
     it('resolveWithAI — full resolution: resolvedCount equals totalCount', async () => {
@@ -991,7 +992,8 @@ describe('useTaskComments', () => {
 
         expect(resolveResult.resolvedCount).toBe(2);
         expect(resolveResult.totalCount).toBe(2);
-        expect(patchCallCount).toBe(2);
+        // Server handles resolution; no PATCH resolve calls from frontend
+        expect(patchCallCount).toBe(0);
     });
 
     // ======================================================================

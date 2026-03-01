@@ -3,7 +3,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getApiBase } from '../utils/config';
+import { getApiBase, getWsPath } from '../utils/config';
 import type {
     TaskComment,
     TaskCommentStatus,
@@ -265,6 +265,25 @@ export function useTaskComments(wsId: string, taskPath: string): UseTaskComments
         await Promise.all([fetchComments(), fetchCounts()]);
     }, [fetchComments, fetchCounts]);
 
+    // Subscribe to file-scoped WebSocket events for instant comment-resolved updates
+    useEffect(() => {
+        if (!taskPath) return;
+        const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        const ws = new WebSocket(`${protocol}://${window.location.host}${getWsPath()}`);
+        ws.addEventListener('open', () => {
+            ws.send(JSON.stringify({ type: 'subscribe-file', filePath: taskPath }));
+        });
+        ws.addEventListener('message', (event) => {
+            try {
+                const msg = JSON.parse(event.data as string) as { type: string; filePath?: string };
+                if (msg.type === 'comment-resolved' && msg.filePath === taskPath && mountedRef.current) {
+                    void refresh();
+                }
+            } catch { /* ignore */ }
+        });
+        return () => { ws.close(); };
+    }, [taskPath, refresh]);
+
     const resolveWithAI = useCallback(
         async (documentContent: string, filePath: string): Promise<ResolveWithAIResult> => {
             if (mountedRef.current) setResolving(true);
@@ -309,9 +328,7 @@ export function useTaskComments(wsId: string, taskPath: string): UseTaskComments
                     if (!patchRes.ok) throw new Error('Failed to write revised content');
                 }
 
-                // Step 3 — batch-resolve comments
-                await Promise.all(commentIds.map(id => resolveComment(id)));
-
+                // Step 3 — server handles comment resolution; refresh local state
                 await refresh();
 
                 return { revisedContent: revisedContent ?? '', resolvedCount: commentIds.length, totalCount };
@@ -319,7 +336,7 @@ export function useTaskComments(wsId: string, taskPath: string): UseTaskComments
                 if (mountedRef.current) setResolving(false);
             }
         },
-        [wsId, taskPath, comments, resolveComment, refresh]
+        [wsId, taskPath, comments, refresh]
     );
 
     const fixWithAI = useCallback(
@@ -363,11 +380,8 @@ export function useTaskComments(wsId: string, taskPath: string): UseTaskComments
                     if (!patchRes.ok) throw new Error('Failed to write revised content');
                 }
 
-                // Step 3 — resolve only if AI actually resolved it
+                // Step 3 — server handles comment resolution; check if AI resolved this comment
                 const wasResolved = commentIds.includes(id);
-                if (wasResolved) {
-                    await resolveComment(id);
-                }
                 await refresh();
 
                 return { revisedContent, resolved: wasResolved };
@@ -375,7 +389,7 @@ export function useTaskComments(wsId: string, taskPath: string): UseTaskComments
                 if (mountedRef.current) setResolvingCommentId(null);
             }
         },
-        [wsId, taskPath, resolveComment, refresh]
+        [wsId, taskPath, refresh]
     );
 
     const copyResolvePrompt = useCallback(

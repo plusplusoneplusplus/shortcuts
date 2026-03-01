@@ -89,6 +89,8 @@ export interface QueueExecutorBridgeOptions {
     defaultTimeoutMs?: number;
     /** Follow-up suggestions configuration */
     followUpSuggestions?: { enabled: boolean; count: number };
+    /** Lazy getter for the WebSocket server — used to broadcast comment-resolved events. */
+    getWsServer?: () => import('@plusplusoneplusplus/coc-server').ProcessWebSocketServer | undefined;
 }
 
 /**
@@ -137,8 +139,10 @@ export class CLITaskExecutor implements TaskExecutor {
 
     /** Follow-up suggestions configuration */
     private readonly followUpSuggestions: { enabled: boolean; count: number };
+    /** Lazy getter for the WebSocket server to broadcast file events */
+    private readonly getWsServer?: () => import('@plusplusoneplusplus/coc-server').ProcessWebSocketServer | undefined;
 
-    constructor(store: ProcessStore, options: { approvePermissions?: boolean; workingDirectory?: string; dataDir?: string; aiService?: CopilotSDKService; defaultTimeoutMs?: number; followUpSuggestions?: { enabled: boolean; count: number } } = {}) {
+    constructor(store: ProcessStore, options: { approvePermissions?: boolean; workingDirectory?: string; dataDir?: string; aiService?: CopilotSDKService; defaultTimeoutMs?: number; followUpSuggestions?: { enabled: boolean; count: number }; getWsServer?: () => import('@plusplusoneplusplus/coc-server').ProcessWebSocketServer | undefined } = {}) {
         this.store = store;
         this.approvePermissions = options.approvePermissions !== false;
         this.defaultWorkingDirectory = options.workingDirectory;
@@ -146,6 +150,7 @@ export class CLITaskExecutor implements TaskExecutor {
         this.aiService = options.aiService ?? getCopilotSDKService();
         this.defaultTimeoutMs = options.defaultTimeoutMs ?? DEFAULT_AI_TIMEOUT_MS;
         this.followUpSuggestions = options.followUpSuggestions ?? { enabled: true, count: 3 };
+        this.getWsServer = options.getWsServer;
     }
 
     async execute(task: QueuedTask): Promise<TaskExecutionResult> {
@@ -982,14 +987,43 @@ export class CLITaskExecutor implements TaskExecutor {
         const { createResolveCommentTool } = await import('./resolve-comment-tool');
         const { tool, getResolvedIds } = createResolveCommentTool();
 
-        await this.executeWithAI(task, aiPrompt, { tools: [tool] });
+        const aiResult = await this.executeWithAI(task, aiPrompt, { tools: [tool] }) as { response: string } | undefined;
+        const revisedContent = (aiResult as any)?.response as string | undefined;
 
         // Only return comment IDs that AI explicitly resolved via the tool.
         // Fall back to all IDs if the tool wasn't called (backward compat).
         const resolvedIds = getResolvedIds();
         const commentIds = resolvedIds.length > 0 ? resolvedIds : payload.commentIds;
 
+        // Server-side resolution: persist comment status and broadcast WS events
+        if (this.dataDir && payload.wsId && commentIds.length > 0) {
+            try {
+                const { TaskCommentsManager } = await import('./task-comments-handler');
+                const mgr = new TaskCommentsManager(this.dataDir);
+                const wsServer = this.getWsServer?.();
+                await Promise.all(
+                    commentIds.map(async (id) => {
+                        try {
+                            await mgr.updateComment(payload.wsId!, payload.filePath, id, { status: 'resolved' });
+                            if (wsServer) {
+                                wsServer.broadcastFileEvent(payload.filePath, {
+                                    type: 'comment-resolved',
+                                    filePath: payload.filePath,
+                                    commentId: id,
+                                });
+                            }
+                        } catch {
+                            // Non-fatal: best-effort resolution
+                        }
+                    })
+                );
+            } catch {
+                // Non-fatal: server-side resolution is best-effort
+            }
+        }
+
         return {
+            revisedContent,
             commentIds,
         };
     }
@@ -1224,6 +1258,7 @@ export function createQueueExecutorBridge(
         aiService: options.aiService,
         defaultTimeoutMs: options.defaultTimeoutMs,
         followUpSuggestions: options.followUpSuggestions,
+        getWsServer: options.getWsServer,
     });
 
     const executor = createQueueExecutor(queueManager, taskExecutor, {

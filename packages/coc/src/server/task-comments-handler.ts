@@ -16,7 +16,7 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { sendJSON, sendError, parseBody } from '@plusplusoneplusplus/coc-server';
-import type { Route } from '@plusplusoneplusplus/coc-server';
+import type { Route, ProcessWebSocketServer } from '@plusplusoneplusplus/coc-server';
 import {
     DEFAULT_AI_COMMANDS,
     type AICommand,
@@ -404,7 +404,7 @@ function isValidWorkspaceId(wsId: string): boolean {
  * @param bridge - Optional multi-repo queue bridge for async AI execution
  * @param store - Optional process store for workspace resolution
  */
-export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bridge?: MultiRepoQueueExecutorBridge, store?: ProcessStore): void {
+export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bridge?: MultiRepoQueueExecutorBridge, store?: ProcessStore, getWsServer?: () => ProcessWebSocketServer | undefined): void {
     const manager = new TaskCommentsManager(dataDir);
 
     /**
@@ -446,6 +446,7 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
                 workingDirectory: rootPath,
                 documentContent,
                 filePath: taskPath,
+                wsId,
             },
             config: {},
             displayName: `Resolve comments: ${taskPath}`,
@@ -717,7 +718,20 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
                     } catch {
                         return sendError(res, 503, 'AI service unavailable');
                     }
-                    return sendJSON(res, 200, { revisedContent, commentId: resolvedCommentId });
+                    // Persist resolution server-side and broadcast WS event
+                    if (resolvedCommentId) {
+                        try {
+                            await manager.updateComment(wsId, taskPath, resolvedCommentId, { status: 'resolved' });
+                            getWsServer?.()?.broadcastFileEvent(taskPath, {
+                                type: 'comment-resolved',
+                                filePath: taskPath,
+                                commentId: resolvedCommentId,
+                            });
+                        } catch {
+                            // Non-fatal
+                        }
+                    }
+                    return sendJSON(res, 200, { revisedContent, commentIds: resolvedCommentId ? [resolvedCommentId] : [] });
                 }
 
                 let prompt: string;
@@ -830,6 +844,22 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
             } catch {
                 return sendError(res, 503, 'AI service unavailable');
             }
+
+            // Persist resolution server-side and broadcast WS events
+            await Promise.all(
+                resolvedCommentIds.map(async (id) => {
+                    try {
+                        await manager.updateComment(wsId, taskPath, id, { status: 'resolved' });
+                        getWsServer?.()?.broadcastFileEvent(taskPath, {
+                            type: 'comment-resolved',
+                            filePath: taskPath,
+                            commentId: id,
+                        });
+                    } catch {
+                        // Non-fatal
+                    }
+                })
+            );
 
             sendJSON(res, 200, {
                 revisedContent,
