@@ -2,7 +2,7 @@
  * RepoDetail — right panel showing sub-tabs for the selected repo.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useQueue } from '../context/QueueContext';
 import { Button, cn } from '../shared';
@@ -52,6 +52,20 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const taskCount = repo.taskCount || 0;
     const { running: queueRunningCount, queued: queueQueuedCount, chatPending: chatPendingCount } = useRepoQueueStats(ws.id);
 
+    const isRepoPaused = useMemo(() => {
+        return !!queueState.repoQueueMap[ws.id]?.stats?.isPaused;
+    }, [queueState.repoQueueMap[ws.id]?.stats?.isPaused]);
+    const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
+
+    async function handleResumeQueue() {
+        setIsPauseResumeLoading(true);
+        try {
+            await fetchApi('/queue/resume?repoId=' + encodeURIComponent(ws.id), { method: 'POST' });
+        } finally {
+            setIsPauseResumeLoading(false);
+        }
+    }
+
     // Seed repo queue map on first render if not yet populated with task-level data
     useEffect(() => {
         const existing = queueState.repoQueueMap[ws.id];
@@ -98,6 +112,17 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                     style={{ background: color }}
                 />
                 <h1 className="text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc] flex-1">{ws.name}</h1>
+                {activeSubTab === 'queue' && isRepoPaused && (
+                    <Button
+                        variant="secondary"
+                        size="sm"
+                        disabled={isPauseResumeLoading}
+                        onClick={handleResumeQueue}
+                        data-testid="repo-header-resume-btn"
+                    >
+                        ▶ Resume Queue
+                    </Button>
+                )}
                 {activeSubTab === 'queue' && (
                     <Button
                         variant="ghost"

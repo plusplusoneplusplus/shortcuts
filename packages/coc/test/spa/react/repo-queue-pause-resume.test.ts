@@ -145,4 +145,51 @@ describe('RepoQueueTab pause/resume', () => {
             expect(source).toContain('▶ Resume');
         });
     });
+
+    describe('pause banner', () => {
+        it('renders a pause banner with data-testid', () => {
+            expect(source).toContain('data-testid="queue-paused-banner"');
+        });
+
+        it('banner is conditionally rendered when isPaused is true', () => {
+            // Find the banner block: isPaused && (...banner...)
+            const bannerIdx = source.indexOf('queue-paused-banner');
+            const precedingBlock = source.substring(Math.max(0, bannerIdx - 500), bannerIdx);
+            expect(precedingBlock).toContain('isPaused && (');
+        });
+
+        it('banner displays paused message', () => {
+            expect(source).toContain('Queue is paused — new tasks will not start.');
+        });
+
+        it('banner includes a labeled Resume button', () => {
+            expect(source).toContain('data-testid="queue-banner-resume-btn"');
+        });
+
+        it('banner resume button calls handlePauseResume', () => {
+            const idx = source.indexOf('queue-banner-resume-btn');
+            const block = source.substring(Math.max(0, idx - 300), idx);
+            expect(block).toContain('onClick={handlePauseResume}');
+        });
+
+        it('banner resume button is disabled during loading', () => {
+            const idx = source.indexOf('queue-banner-resume-btn');
+            const block = source.substring(Math.max(0, idx - 300), idx);
+            expect(block).toContain('disabled={isPauseResumeLoading}');
+        });
+
+        it('banner appears before the toolbar', () => {
+            const bannerIdx = source.indexOf('queue-paused-banner');
+            const toolbarIdx = source.indexOf('repo-pause-resume-btn"');
+            expect(bannerIdx).toBeGreaterThan(-1);
+            expect(toolbarIdx).toBeGreaterThan(-1);
+            expect(bannerIdx).toBeLessThan(toolbarIdx);
+        });
+
+        it('banner uses warning styling (yellow)', () => {
+            const bannerLine = source.split('\n').find(l => l.includes('queue-paused-banner'));
+            expect(bannerLine).toContain('bg-yellow-500/10');
+            expect(bannerLine).toContain('text-yellow-700');
+        });
+    });
 });

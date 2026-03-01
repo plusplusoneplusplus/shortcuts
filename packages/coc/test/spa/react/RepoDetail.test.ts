@@ -236,6 +236,68 @@ describe('RepoDetail Chat badge wiring', () => {
     });
 });
 
+describe('RepoDetail Resume Queue button in header', () => {
+    it('renders resume button with data-testid when queue is paused', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-header-resume-btn"');
+    });
+
+    it('only shows resume button when activeSubTab is queue and isRepoPaused', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'queue' && isRepoPaused");
+    });
+
+    it('resume button appears before Queue Task button', () => {
+        const resumeIdx = REPO_DETAIL_SOURCE.indexOf('repo-header-resume-btn');
+        const queueTaskIdx = REPO_DETAIL_SOURCE.indexOf('repo-queue-task-btn');
+        expect(resumeIdx).toBeGreaterThan(-1);
+        expect(queueTaskIdx).toBeGreaterThan(-1);
+        expect(resumeIdx).toBeLessThan(queueTaskIdx);
+    });
+
+    it('uses secondary variant for resume button', () => {
+        const idx = REPO_DETAIL_SOURCE.indexOf('repo-header-resume-btn');
+        const block = REPO_DETAIL_SOURCE.substring(Math.max(0, idx - 300), idx);
+        expect(block).toContain('variant="secondary"');
+    });
+
+    it('resume button is disabled during loading', () => {
+        const idx = REPO_DETAIL_SOURCE.indexOf('repo-header-resume-btn');
+        const block = REPO_DETAIL_SOURCE.substring(Math.max(0, idx - 300), idx);
+        expect(block).toContain('disabled={isPauseResumeLoading}');
+    });
+
+    it('resume button text contains "Resume Queue"', () => {
+        const lines = REPO_DETAIL_SOURCE.split('\n');
+        const btnLine = lines.findIndex(l => l.includes('repo-header-resume-btn'));
+        // Check a few lines after for text content
+        const nearbyBlock = lines.slice(btnLine, btnLine + 5).join('\n');
+        expect(nearbyBlock).toContain('Resume Queue');
+    });
+
+    it('derives isRepoPaused from queueState.repoQueueMap', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('queueState.repoQueueMap[ws.id]?.stats?.isPaused');
+    });
+
+    it('handleResumeQueue calls fetchApi with /queue/resume endpoint', () => {
+        const fnStart = REPO_DETAIL_SOURCE.indexOf('handleResumeQueue');
+        const fnBody = REPO_DETAIL_SOURCE.slice(fnStart, fnStart + 400);
+        expect(fnBody).toContain("fetchApi('/queue/resume?repoId='");
+        expect(fnBody).toContain("method: 'POST'");
+    });
+
+    it('handleResumeQueue resets isPauseResumeLoading in finally block', () => {
+        const fnStart = REPO_DETAIL_SOURCE.indexOf('handleResumeQueue');
+        const fnBody = REPO_DETAIL_SOURCE.slice(fnStart, fnStart + 400);
+        expect(fnBody).toContain('finally');
+        expect(fnBody).toContain('setIsPauseResumeLoading(false)');
+    });
+
+    it('isRepoPaused is memoized with useMemo', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('useMemo');
+        const memoLine = REPO_DETAIL_SOURCE.split('\n').find(l => l.includes('isRepoPaused') && l.includes('useMemo'));
+        expect(memoLine).toBeDefined();
+    });
+});
+
 describe('RepoDetail Queue Task button in header', () => {
     it('renders + Queue Task button conditionally for queue sub-tab', () => {
         expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-queue-task-btn"');

@@ -285,6 +285,15 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
             {/* Left panel — task list */}
             <div className="w-80 flex-shrink-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c] flex flex-col overflow-hidden">
                 <div className="p-4 flex flex-col gap-3 overflow-y-auto flex-1">
+                    {/* Pause banner */}
+                    {isPaused && (
+                        <div className="rounded bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 px-3 py-1.5 text-xs flex items-center gap-2" data-testid="queue-paused-banner">
+                            <span className="flex-1">⏸ Queue is paused — new tasks will not start.</span>
+                            <Button variant="ghost" size="sm" disabled={isPauseResumeLoading} onClick={handlePauseResume} data-testid="queue-banner-resume-btn">
+                                ▶ Resume
+                            </Button>
+                        </div>
+                    )}
                     {/* Toolbar: Queue label, filter dropdown, pause/resume */}
                     <div className={cn('flex items-center gap-2 mb-3')}>
                         <span className="text-sm font-medium">Queue</span>
