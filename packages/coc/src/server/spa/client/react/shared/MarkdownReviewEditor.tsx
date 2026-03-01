@@ -25,6 +25,7 @@ import { DASHBOARD_AI_COMMANDS } from './ai-commands';
 import { extractDocumentContext } from '../utils/document-context';
 import { getApiBase } from '../utils/config';
 import { useGlobalToast } from '../context/ToastContext';
+import { selectionToSourcePosition } from '../utils/selection-position';
 
 export interface MarkdownReviewEditorProps {
     wsId: string;
@@ -243,6 +244,20 @@ export function MarkdownReviewEditor({
                 if (previewRef.current?.contains(sel.anchorNode)) {
                     const range = sel.getRangeAt(0);
                     const text = sel.toString().trim();
+
+                    // Use DOM-aware position mapping via data-line attributes
+                    const sourcePos = selectionToSourcePosition(rawContent, previewRef.current, range);
+                    if (sourcePos) {
+                        setSavedSelection({
+                            text,
+                            range: range.cloneRange(),
+                            ...sourcePos,
+                        });
+                        return;
+                    }
+
+                    // Fallback for selections inside block elements (code blocks, tables)
+                    console.warn('Selection is not inside an md-line element; using rendered-text fallback');
                     const previewText = previewRef.current.textContent || '';
                     const startOffset = getTextOffset(previewRef.current, range.startContainer, range.startOffset);
                     const endOffset = getTextOffset(previewRef.current, range.endContainer, range.endOffset);
@@ -264,7 +279,7 @@ export function MarkdownReviewEditor({
 
         document.addEventListener('mouseup', handleMouseUp);
         return () => document.removeEventListener('mouseup', handleMouseUp);
-    }, [viewMode]);
+    }, [viewMode, rawContent]);
 
     const handleContextMenu = useCallback((e: React.MouseEvent) => {
         if (viewMode === 'source') return;
@@ -629,6 +644,10 @@ function getTextOffset(container: Node, targetNode: Node, targetOffset: number):
     return offset + targetOffset;
 }
 
+/**
+ * @deprecated Use `selectionToSourcePosition` from `../utils/selection-position` instead.
+ * Kept as fallback for selections inside block elements without `data-line` ancestors.
+ */
 function offsetToPosition(text: string, offset: number): { line: number; column: number } {
     const clamped = Math.max(0, Math.min(offset, text.length));
     const before = text.substring(0, clamped);
