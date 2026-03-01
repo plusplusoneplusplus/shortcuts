@@ -43,7 +43,7 @@ import {
     mergeConsecutiveContentItems,
     resolveSkillSync,
 } from '@plusplusoneplusplus/pipeline-core';
-import type { ProcessStore, AIProcess, ConversationTurn, ToolEvent, TimelineItem, CopilotSDKService, SelectedContext, Attachment } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore, AIProcess, ConversationTurn, ToolEvent, TimelineItem, CopilotSDKService, SelectedContext, Attachment, Tool } from '@plusplusoneplusplus/pipeline-core';
 import { createCLIAIInvoker } from '../ai-invoker';
 import {
     saveImagesToTempFiles, cleanupTempDir,
@@ -637,7 +637,7 @@ export class CLITaskExecutor implements TaskExecutor {
         return { status: 'completed', message: `Task type '${task.type}' executed (no-op in CLI mode)` };
     }
 
-    private async executeWithAI(task: QueuedTask, prompt: string): Promise<unknown> {
+    private async executeWithAI(task: QueuedTask, prompt: string, options?: { tools?: Tool<any>[] }): Promise<unknown> {
         const processId = `queue_${task.id}`;
 
         // Initialize output accumulator for this process
@@ -679,6 +679,7 @@ export class CLITaskExecutor implements TaskExecutor {
             timeoutMs,
             keepAlive: true,
             attachments,
+            tools: options?.tools,
             onPermissionRequest: this.approvePermissions ? approveAllPermissions : undefined,
             // Stream response chunks to the process store for real-time UI updates
             onStreamingChunk: (chunk: string) => {
@@ -899,13 +900,18 @@ export class CLITaskExecutor implements TaskExecutor {
             // Non-fatal: store may be a stub
         }
 
-        await this.executeWithAI(task, aiPrompt);
+        const { createResolveCommentTool } = await import('./resolve-comment-tool');
+        const { tool, getResolvedIds } = createResolveCommentTool();
 
-        // The AI session edits the file directly via tools (view/edit).
-        // Do NOT return the AI's conversational summary as revisedContent —
-        // it would overwrite the surgical edits the AI already made.
+        await this.executeWithAI(task, aiPrompt, { tools: [tool] });
+
+        // Only return comment IDs that AI explicitly resolved via the tool.
+        // Fall back to all IDs if the tool wasn't called (backward compat).
+        const resolvedIds = getResolvedIds();
+        const commentIds = resolvedIds.length > 0 ? resolvedIds : payload.commentIds;
+
         return {
-            commentIds: payload.commentIds,
+            commentIds,
         };
     }
 

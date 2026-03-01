@@ -1872,6 +1872,110 @@ describe('CLITaskExecutor', () => {
                 })
             );
         });
+
+        it('should pass resolve_comment tool to sendMessage', async () => {
+            const executor = new CLITaskExecutor(store);
+
+            const task: QueuedTask = {
+                id: 'resolve-tool-1',
+                type: 'resolve-comments',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: {
+                    documentUri: 'task.md',
+                    commentIds: ['c1', 'c2'],
+                    promptTemplate: 'resolve prompt',
+                    documentContent: 'doc',
+                    filePath: 'task.md',
+                },
+                config: {},
+            };
+
+            await executor.execute(task);
+
+            expect(mockSendMessage).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    tools: expect.arrayContaining([
+                        expect.objectContaining({ name: 'resolve_comment' }),
+                    ]),
+                })
+            );
+        });
+
+        it('should return only tool-resolved comment IDs when tool is called', async () => {
+            // Mock sendMessage to invoke the resolve_comment tool handler
+            mockSendMessage.mockImplementation(async (opts: any) => {
+                // Simulate AI calling the resolve_comment tool for only one comment
+                if (opts.tools?.length) {
+                    const resolveTool = opts.tools.find((t: any) => t.name === 'resolve_comment');
+                    if (resolveTool) {
+                        resolveTool.handler(
+                            { commentId: 'c1', summary: 'fixed typo' },
+                            { sessionId: 's1', toolCallId: 'tc1', toolName: 'resolve_comment', arguments: {} }
+                        );
+                    }
+                }
+                return { success: true, response: 'revised doc', sessionId: 'sess-1' };
+            });
+
+            const executor = new CLITaskExecutor(store);
+
+            const task: QueuedTask = {
+                id: 'resolve-tool-2',
+                type: 'resolve-comments',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: {
+                    documentUri: 'task.md',
+                    commentIds: ['c1', 'c2'],
+                    promptTemplate: 'resolve prompt',
+                    documentContent: 'doc',
+                    filePath: 'task.md',
+                },
+                config: {},
+            };
+
+            const result = await executor.execute(task);
+
+            expect(result.success).toBe(true);
+            // Only c1 was resolved via tool, c2 was not
+            expect(result.result).toEqual({ commentIds: ['c1'] });
+        });
+
+        it('should fall back to all comment IDs when tool is not called', async () => {
+            // Standard mock: AI responds without calling tools
+            mockSendMessage.mockResolvedValue({
+                success: true,
+                response: 'revised doc',
+                sessionId: 'sess-2',
+            });
+
+            const executor = new CLITaskExecutor(store);
+
+            const task: QueuedTask = {
+                id: 'resolve-tool-3',
+                type: 'resolve-comments',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: {
+                    documentUri: 'task.md',
+                    commentIds: ['c1', 'c2', 'c3'],
+                    promptTemplate: 'resolve prompt',
+                    documentContent: 'doc',
+                    filePath: 'task.md',
+                },
+                config: {},
+            };
+
+            const result = await executor.execute(task);
+
+            expect(result.success).toBe(true);
+            // Fallback: all IDs returned
+            expect(result.result).toEqual({ commentIds: ['c1', 'c2', 'c3'] });
+        });
     });
 });
 

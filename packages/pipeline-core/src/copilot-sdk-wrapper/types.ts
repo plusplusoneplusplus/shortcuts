@@ -73,6 +73,18 @@ export interface Tool<TArgs = unknown> {
     handler: ToolHandler<TArgs>;
 }
 
+/**
+ * Helper to define a tool with proper type inference for the handler.
+ * Mirrors the SDK's `defineTool` helper from `@github/copilot-sdk`.
+ */
+export function defineTool<T = unknown>(name: string, config: {
+    description?: string;
+    parameters?: ZodSchema<T> | Record<string, unknown>;
+    handler: ToolHandler<T>;
+}): Tool<T> {
+    return { name, ...config };
+}
+
 // Re-export model types for convenience
 export { AIModel, VALID_MODELS, DEFAULT_MODEL_ID, ModelDefinition, MODEL_REGISTRY,
     getModelLabel, getModelDescription, getModelDefinition, getAllModels,

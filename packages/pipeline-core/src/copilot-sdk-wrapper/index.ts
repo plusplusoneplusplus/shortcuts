@@ -33,6 +33,7 @@ export {
     Tool,
     ToolHandler,
     ToolInvocation,
+    defineTool,
     ToolResult,
     ToolResultObject,
     ToolResultType,

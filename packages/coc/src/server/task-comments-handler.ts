@@ -700,18 +700,24 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
 
                     // Fallback: direct AI invocation when bridge is unavailable
                     let revisedContent: string;
+                    let resolvedCommentId: string | undefined;
                     try {
                         const { createCLIAIInvoker } = await import('../ai-invoker');
-                        const invoker = createCLIAIInvoker({ approvePermissions: false });
+                        const { createResolveCommentTool } = await import('./resolve-comment-tool');
+                        const { tool, getResolvedIds } = createResolveCommentTool();
+                        const invoker = createCLIAIInvoker({ approvePermissions: false, tools: [tool] });
                         const result = await invoker(resolvePrompt, { timeoutMs: 120000 });
                         if (!result.success) {
                             return sendError(res, 502, result.error || 'AI request failed');
                         }
                         revisedContent = result.response || '';
+                        const resolved = getResolvedIds();
+                        resolvedCommentId = resolved.includes(comment.id) || resolved.length === 0
+                            ? comment.id : undefined;
                     } catch {
                         return sendError(res, 503, 'AI service unavailable');
                     }
-                    return sendJSON(res, 200, { revisedContent, commentId: comment.id });
+                    return sendJSON(res, 200, { revisedContent, commentId: resolvedCommentId });
                 }
 
                 let prompt: string;
@@ -808,21 +814,26 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
 
             // Fallback: direct AI invocation when bridge is unavailable
             let revisedContent: string;
+            let resolvedCommentIds: string[];
             try {
                 const { createCLIAIInvoker } = await import('../ai-invoker');
-                const invoker = createCLIAIInvoker({ approvePermissions: false });
+                const { createResolveCommentTool } = await import('./resolve-comment-tool');
+                const { tool, getResolvedIds } = createResolveCommentTool();
+                const invoker = createCLIAIInvoker({ approvePermissions: false, tools: [tool] });
                 const result = await invoker(prompt, { timeoutMs: 120000 });
                 if (!result.success) {
                     return sendError(res, 502, result.error || 'AI request failed');
                 }
                 revisedContent = result.response || '';
+                const resolved = getResolvedIds();
+                resolvedCommentIds = resolved.length > 0 ? resolved : commentIds;
             } catch {
                 return sendError(res, 503, 'AI service unavailable');
             }
 
             sendJSON(res, 200, {
                 revisedContent,
-                commentIds,
+                commentIds: resolvedCommentIds,
             });
         },
     });
@@ -981,6 +992,8 @@ export function buildBatchResolvePrompt(
     prompt += '2. Preserve the overall document structure and formatting\n';
     prompt += '3. Output the COMPLETE revised document content\n';
     prompt += '4. Do NOT include any markdown fencing or explanation — output ONLY the revised document\n';
+    prompt += '5. You have a `resolve_comment` tool available. For each comment you address, call `resolve_comment` with the comment\'s ID and a brief summary of the change.\n';
+    prompt += '6. Do NOT call `resolve_comment` for comments you cannot address (e.g., ambiguous, need clarification, out of scope).\n';
 
     return prompt;
 }

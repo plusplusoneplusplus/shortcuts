@@ -19,6 +19,7 @@ import type {
     AIInvokerResult,
     CopilotSDKService,
     SendMessageOptions,
+    Tool,
 } from '@plusplusoneplusplus/pipeline-core';
 
 // ============================================================================
@@ -41,6 +42,8 @@ export interface CLIAIInvokerOptions {
     loadMcpConfig?: boolean;
     /** Optional callback invoked with each AI output chunk for streaming */
     onChunk?: (chunk: string) => void;
+    /** Custom tools to expose to the AI session */
+    tools?: Tool<any>[];
 }
 
 /**
@@ -102,6 +105,7 @@ export function createCLIAIInvoker(options: CLIAIInvokerOptions = {}): AIInvoker
                 onPermissionRequest: permissionHandler,
                 loadDefaultMcpConfig: options.loadMcpConfig !== false,
                 onStreamingChunk: options.onChunk,
+                tools: options.tools,
             };
 
             const result = await service.sendMessage(sendOptions);

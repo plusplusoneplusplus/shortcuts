@@ -167,6 +167,14 @@ describe('buildBatchResolvePrompt', () => {
         expect(prompt).not.toContain('### Comment 2');
         expect(prompt).toContain('# Instructions');
     });
+
+    it('includes resolve_comment tool instructions', () => {
+        const comments = [makeComment()];
+        const prompt = buildBatchResolvePrompt(comments, '# Doc', 'file.md');
+
+        expect(prompt).toContain('resolve_comment');
+        expect(prompt).toContain('Do NOT call `resolve_comment`');
+    });
 });
 
 // ============================================================================

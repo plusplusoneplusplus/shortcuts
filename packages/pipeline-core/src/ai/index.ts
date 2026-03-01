@@ -51,6 +51,11 @@ export {
     denyAllPermissions,
     // Tool event types
     ToolEvent,
+    // SDK tool types
+    Tool,
+    ToolHandler,
+    ToolInvocation,
+    defineTool,
     // Copilot SDK Service
     CopilotSDKService,
     getCopilotSDKService,
