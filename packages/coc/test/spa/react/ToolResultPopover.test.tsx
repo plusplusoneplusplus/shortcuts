@@ -389,6 +389,139 @@ describe('ToolResultPopover', () => {
     });
 });
 
+// --- shell tool: terminal-style rendering ---
+
+describe('ToolResultPopover — shell tool', () => {
+    it('renders terminal-style popover for shell tool', () => {
+        render(
+            <ToolResultPopover
+                result="hello world"
+                toolName="shell"
+                args={{ command: 'echo hello world' }}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        const popover = document.querySelector('[data-testid="tool-result-popover"]');
+        expect(popover).toBeTruthy();
+        expect(popover!.textContent).toContain('Shell Output');
+        const terminalEl = document.querySelector('[data-testid="popover-terminal"]');
+        expect(terminalEl).toBeTruthy();
+        expect(terminalEl!.textContent).toContain('$ echo hello world');
+        expect(terminalEl!.textContent).toContain('hello world');
+    });
+
+    it('strips ANSI escape codes in shell popover', () => {
+        const ansiText = '\x1b[32mgreen\x1b[0m normal';
+        render(
+            <ToolResultPopover
+                result={ansiText}
+                toolName="shell"
+                args={{ command: 'echo test' }}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        const terminalEl = document.querySelector('[data-testid="popover-terminal"]');
+        expect(terminalEl).toBeTruthy();
+        expect(terminalEl!.textContent).toContain('green normal');
+        expect(terminalEl!.innerHTML).not.toContain('\x1b');
+    });
+
+    it('does not render other sub-testids for shell tool', () => {
+        render(
+            <ToolResultPopover
+                result="output"
+                toolName="shell"
+                args={{ command: 'ls' }}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        expect(document.querySelector('[data-testid="popover-markdown"]')).toBeNull();
+        expect(document.querySelector('[data-testid="popover-code"]')).toBeNull();
+        expect(document.querySelector('[data-testid="popover-terminal"]')).toBeTruthy();
+    });
+});
+
+// --- powershell tool: terminal-style rendering ---
+
+describe('ToolResultPopover — powershell tool', () => {
+    it('renders terminal-style popover for powershell tool', () => {
+        render(
+            <ToolResultPopover
+                result={'done\n<exited with exit code 0>'}
+                toolName="powershell"
+                args={{ command: 'New-Item -ItemType Directory -Force -Path "D:\\projects"' }}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        const popover = document.querySelector('[data-testid="tool-result-popover"]');
+        expect(popover).toBeTruthy();
+        expect(popover!.textContent).toContain('Shell Output');
+        const terminalEl = document.querySelector('[data-testid="popover-terminal"]');
+        expect(terminalEl).toBeTruthy();
+        expect(terminalEl!.textContent).toContain('$ New-Item -ItemType Directory');
+        expect(terminalEl!.textContent).toContain('done');
+    });
+
+    it('renders powershell popover without command header when no command arg', () => {
+        render(
+            <ToolResultPopover
+                result="some output"
+                toolName="powershell"
+                args={{}}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        const terminalEl = document.querySelector('[data-testid="popover-terminal"]');
+        expect(terminalEl).toBeTruthy();
+        expect(terminalEl!.textContent).not.toContain('$');
+        expect(terminalEl!.textContent).toContain('some output');
+    });
+
+    it('strips ANSI escape codes in powershell popover', () => {
+        const ansiText = '\x1b[32mSuccess\x1b[0m: build completed';
+        render(
+            <ToolResultPopover
+                result={ansiText}
+                toolName="powershell"
+                args={{ command: 'Write-Host "test"' }}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        const terminalEl = document.querySelector('[data-testid="popover-terminal"]');
+        expect(terminalEl).toBeTruthy();
+        expect(terminalEl!.textContent).toContain('Success: build completed');
+        expect(terminalEl!.innerHTML).not.toContain('\x1b');
+    });
+
+    it('does not render other sub-testids for powershell tool', () => {
+        render(
+            <ToolResultPopover
+                result="output"
+                toolName="powershell"
+                args={{ command: 'Get-Process' }}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        expect(document.querySelector('[data-testid="popover-markdown"]')).toBeNull();
+        expect(document.querySelector('[data-testid="popover-code"]')).toBeNull();
+        expect(document.querySelector('[data-testid="popover-terminal"]')).toBeTruthy();
+    });
+});
+
 // --- glob tool: file list preview ---
 
 describe('ToolResultPopover — glob tool', () => {

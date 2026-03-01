@@ -130,7 +130,7 @@ export function ToolResultPopover({ result, toolName, args, anchorRect, onMouseE
     const visibleText = truncated ? result.slice(0, MAX_PREVIEW_LENGTH) + '\n… (truncated — click to see full)' : result;
 
     const isView = toolName === 'view';
-    const isBash = toolName === 'bash';
+    const isBash = toolName === 'bash' || toolName === 'shell' || toolName === 'powershell';
     const isGlob = toolName === 'glob';
     const isGrep = toolName === 'grep';
     const isCreate = toolName === 'create';

@@ -409,6 +409,176 @@ describe('ToolCallView — bash tool hover popover', () => {
     });
 });
 
+describe('ToolCallView — shell tool hover popover', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it('shows popover after 300ms hover on a shell tool call header', () => {
+        const { container } = render(
+            <ToolCallView toolCall={{
+                id: 'tc-shell-1',
+                toolName: 'shell',
+                args: { command: 'echo hello', description: 'Print greeting' },
+                status: 'completed',
+                result: 'hello',
+                startTime: '2026-01-01T00:00:00Z',
+                endTime: '2026-01-01T00:00:01Z',
+            }} />
+        );
+
+        const header = container.querySelector('.tool-call-header')!;
+        fireEvent.mouseEnter(header);
+        act(() => { vi.advanceTimersByTime(300); });
+
+        const popover = document.querySelector('[data-testid="tool-result-popover"]');
+        expect(popover).toBeTruthy();
+        expect(popover!.textContent).toContain('Shell Output');
+    });
+
+    it('renders terminal-style preview with command header for shell tool call', () => {
+        const { container } = render(
+            <ToolCallView toolCall={{
+                id: 'tc-shell-2',
+                toolName: 'shell',
+                args: { command: 'cat /etc/hostname', description: 'Get hostname' },
+                status: 'completed',
+                result: 'my-server',
+                startTime: '2026-01-01T00:00:00Z',
+                endTime: '2026-01-01T00:00:01Z',
+            }} />
+        );
+
+        const header = container.querySelector('.tool-call-header')!;
+        fireEvent.mouseEnter(header);
+        act(() => { vi.advanceTimersByTime(300); });
+
+        const terminalEl = document.querySelector('[data-testid="popover-terminal"]');
+        expect(terminalEl).toBeTruthy();
+        expect(terminalEl!.textContent).toContain('$ cat /etc/hostname');
+        expect(terminalEl!.textContent).toContain('my-server');
+    });
+
+    it('does not show popover for shell tool call with empty result', () => {
+        const { container } = render(
+            <ToolCallView toolCall={{
+                id: 'tc-shell-3',
+                toolName: 'shell',
+                args: { command: 'true' },
+                status: 'completed',
+                result: '',
+            }} />
+        );
+
+        const header = container.querySelector('.tool-call-header')!;
+        fireEvent.mouseEnter(header);
+        act(() => { vi.advanceTimersByTime(500); });
+
+        expect(document.querySelector('[data-testid="tool-result-popover"]')).toBeNull();
+    });
+});
+
+describe('ToolCallView — powershell tool hover popover', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it('shows popover after 300ms hover on a powershell tool call header', () => {
+        const { container } = render(
+            <ToolCallView toolCall={{
+                id: 'tc-ps-1',
+                toolName: 'powershell',
+                args: { command: 'New-Item -ItemType Directory -Force -Path "D:\\projects"', description: 'Ensure directory exists' },
+                status: 'completed',
+                result: 'done\n<exited with exit code 0>',
+                startTime: '2026-01-01T00:00:00Z',
+                endTime: '2026-01-01T00:00:00.841Z',
+            }} />
+        );
+
+        const header = container.querySelector('.tool-call-header')!;
+        fireEvent.mouseEnter(header);
+        act(() => { vi.advanceTimersByTime(300); });
+
+        const popover = document.querySelector('[data-testid="tool-result-popover"]');
+        expect(popover).toBeTruthy();
+        expect(popover!.textContent).toContain('Shell Output');
+    });
+
+    it('renders terminal-style preview with command header for powershell tool call', () => {
+        const { container } = render(
+            <ToolCallView toolCall={{
+                id: 'tc-ps-2',
+                toolName: 'powershell',
+                args: { command: 'Get-Process | Select-Object -First 5', description: 'List processes' },
+                status: 'completed',
+                result: 'Handles  NPM(K)    PM(K)      WS(K) CPU(s)\n-------  ------    -----      ----- ------',
+                startTime: '2026-01-01T00:00:00Z',
+                endTime: '2026-01-01T00:00:02Z',
+            }} />
+        );
+
+        const header = container.querySelector('.tool-call-header')!;
+        fireEvent.mouseEnter(header);
+        act(() => { vi.advanceTimersByTime(300); });
+
+        const terminalEl = document.querySelector('[data-testid="popover-terminal"]');
+        expect(terminalEl).toBeTruthy();
+        expect(terminalEl!.textContent).toContain('$ Get-Process | Select-Object -First 5');
+        expect(terminalEl!.textContent).toContain('Handles');
+    });
+
+    it('does not show popover for powershell tool call with empty result', () => {
+        const { container } = render(
+            <ToolCallView toolCall={{
+                id: 'tc-ps-3',
+                toolName: 'powershell',
+                args: { command: 'Write-Host ""' },
+                status: 'completed',
+                result: '',
+            }} />
+        );
+
+        const header = container.querySelector('.tool-call-header')!;
+        fireEvent.mouseEnter(header);
+        act(() => { vi.advanceTimersByTime(500); });
+
+        expect(document.querySelector('[data-testid="tool-result-popover"]')).toBeNull();
+    });
+
+    it('strips ANSI escape codes from powershell result in popover', () => {
+        const ansiResult = '\x1b[32mSuccess\x1b[0m: operation completed';
+        const { container } = render(
+            <ToolCallView toolCall={{
+                id: 'tc-ps-4',
+                toolName: 'powershell',
+                args: { command: 'Write-Host "Success"', description: 'Test output' },
+                status: 'completed',
+                result: ansiResult,
+                startTime: '2026-01-01T00:00:00Z',
+                endTime: '2026-01-01T00:00:01Z',
+            }} />
+        );
+
+        const header = container.querySelector('.tool-call-header')!;
+        fireEvent.mouseEnter(header);
+        act(() => { vi.advanceTimersByTime(300); });
+
+        const terminalEl = document.querySelector('[data-testid="popover-terminal"]');
+        expect(terminalEl).toBeTruthy();
+        expect(terminalEl!.textContent).toContain('Success: operation completed');
+        expect(terminalEl!.textContent).not.toContain('\x1b');
+    });
+});
+
 describe('ToolCallView — glob tool hover popover', () => {
     beforeEach(() => {
         vi.useFakeTimers();

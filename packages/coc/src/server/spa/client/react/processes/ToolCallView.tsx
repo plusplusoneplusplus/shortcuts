@@ -98,7 +98,9 @@ function getToolSummary(toolName: string, args: any): string {
             if (args.filePath) return shortenPath(args.filePath);
             return '';
         }
-        case 'bash': {
+        case 'bash':
+        case 'shell':
+        case 'powershell': {
             if (typeof args.command === 'string' && args.command.trim()) {
                 const cmd = args.command.trim();
                 return cmd.length > 80 ? `${cmd.slice(0, 77)}...` : cmd;
@@ -343,20 +345,22 @@ export function ToolCallView({
     const isResultTruncated = resultText.length > MAX_RESULT_LENGTH;
     const visibleResult = isResultTruncated ? `${resultText.slice(0, TRUNCATED_RESULT_LENGTH)}\n... (output truncated)` : resultText;
 
-    const bashDescription = name === 'bash' && argsObj && typeof argsObj === 'object' && argsObj.description
+    const isShellLike = name === 'bash' || name === 'shell' || name === 'powershell';
+
+    const bashDescription = isShellLike && argsObj && typeof argsObj === 'object' && argsObj.description
         ? String(argsObj.description)
         : '';
-    const bashCommand = name === 'bash' && argsObj && typeof argsObj === 'object' && argsObj.command
+    const bashCommand = isShellLike && argsObj && typeof argsObj === 'object' && argsObj.command
         ? String(argsObj.command)
         : '';
-    const bashOptions = name === 'bash' && argsObj && typeof argsObj === 'object'
+    const bashOptions = isShellLike && argsObj && typeof argsObj === 'object'
         ? Object.fromEntries(
             Object.entries(argsObj).filter(([key]) => key !== 'description' && key !== 'command')
         )
         : null;
     const bashOptionsText = bashOptions && Object.keys(bashOptions).length > 0 ? JSON.stringify(bashOptions, null, 2) : '';
 
-    const hasHoverResult = (name === 'task' || name === 'view' || name === 'bash' || name === 'glob' || name === 'grep' || name === 'create') && !!resultText;
+    const hasHoverResult = (name === 'task' || name === 'view' || isShellLike || name === 'glob' || name === 'grep' || name === 'create') && !!resultText;
 
     const clearTimers = useCallback(() => {
         if (hoverTimerRef.current) { clearTimeout(hoverTimerRef.current); hoverTimerRef.current = null; }
@@ -441,7 +445,7 @@ export function ToolCallView({
                     !expanded && 'collapsed',
                     !expanded && 'hidden'
                 )}>
-                    {name === 'bash' && bashDescription && (
+                    {isShellLike && bashDescription && (
                         <div>
                             <div className="text-[10px] uppercase text-[#848484] mb-0.5">Description</div>
                             <div className="text-[11px] whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc]">
@@ -449,7 +453,7 @@ export function ToolCallView({
                             </div>
                         </div>
                     )}
-                    {name === 'bash' && bashCommand && (
+                    {isShellLike && bashCommand && (
                         <div>
                             <div className="text-[10px] uppercase text-[#848484] mb-0.5">Command</div>
                             <pre className="overflow-x-auto text-[11px] whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc]">
@@ -457,7 +461,7 @@ export function ToolCallView({
                             </pre>
                         </div>
                     )}
-                    {name === 'bash' && bashOptionsText && (
+                    {isShellLike && bashOptionsText && (
                         <div>
                             <div className="text-[10px] uppercase text-[#848484] mb-0.5">Options</div>
                             <pre className="overflow-x-auto text-[11px] whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc]">
@@ -474,7 +478,7 @@ export function ToolCallView({
                     {name === 'view' && argsObj && (
                         <ViewToolView args={argsObj} result={visibleResult} />
                     )}
-                    {name !== 'bash' && name !== 'edit' && name !== 'create' && name !== 'view' && args && (
+                    {!isShellLike && name !== 'edit' && name !== 'create' && name !== 'view' && args && (
                         <div>
                             <div className="text-[10px] uppercase text-[#848484] mb-0.5">Arguments</div>
                             <pre className="overflow-x-auto text-[11px] whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc]">
