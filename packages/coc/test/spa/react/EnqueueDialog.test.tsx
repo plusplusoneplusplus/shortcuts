@@ -50,10 +50,10 @@ function WorkspaceSetter({ workspaces }: { workspaces: any[] }) {
 }
 
 // Helper to open dialog via dispatch
-function DialogOpener({ folderPath }: { folderPath?: string | null }) {
+function DialogOpener({ folderPath, workspaceId }: { folderPath?: string | null; workspaceId?: string | null }) {
     const { dispatch } = useQueue();
     useEffect(() => {
-        dispatch({ type: 'OPEN_DIALOG', folderPath });
+        dispatch({ type: 'OPEN_DIALOG', folderPath, workspaceId });
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
     return null;
 }
@@ -318,5 +318,332 @@ describe('EnqueueDialog', () => {
             expect(postBody).toBeTruthy();
         });
         expect(postBody.folderPath).toBeUndefined();
+    });
+
+    it('fetches skills when workspace is selected and shows skill selector', async () => {
+        fetchSpy.mockImplementation((url: string) => {
+            if (typeof url === 'string' && url.includes('/queue/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            }
+            if (typeof url === 'string' && url.includes('/skills')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        skills: [
+                            { name: 'impl', description: 'Implementation tasks' },
+                            { name: 'go-deep', description: 'Deep research' },
+                        ],
+                    }),
+                });
+            }
+            if (typeof url === 'string' && url.includes('/tasks')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        name: 'tasks', relativePath: '', children: [],
+                    }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        render(
+            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS' }]}>
+                <DialogOpener />
+                <EnqueueDialog />
+            </Wrap>
+        );
+        await waitFor(() => {
+            expect(screen.getByText('Enqueue AI Task')).toBeTruthy();
+        });
+
+        // Skill selector should not appear without workspace
+        expect(screen.queryByTestId('skill-select')).toBeNull();
+
+        // Select workspace
+        const wsSelect = screen.getAllByRole('combobox')[1];
+        fireEvent.change(wsSelect, { target: { value: 'ws1' } });
+
+        // Wait for skill selector to appear
+        await waitFor(() => {
+            expect(screen.getByTestId('skill-select')).toBeTruthy();
+        });
+
+        const skillSelect = screen.getByTestId('skill-select') as HTMLSelectElement;
+        const options = Array.from(skillSelect.options).map(o => o.value);
+        expect(options).toContain('');  // None option
+        expect(options).toContain('impl');
+        expect(options).toContain('go-deep');
+    });
+
+    it('submits skill-based task to /queue/tasks when skill is selected', async () => {
+        let postBody: any = null;
+        let postUrl: string = '';
+        fetchSpy.mockImplementation((url: string, opts?: any) => {
+            if (typeof url === 'string' && url.includes('/queue/tasks')) {
+                postBody = JSON.parse(opts?.body || '{}');
+                postUrl = url;
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            if (typeof url === 'string' && url.includes('/queue/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            }
+            if (typeof url === 'string' && url.includes('/skills')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        skills: [{ name: 'impl', description: 'Implementation tasks' }],
+                    }),
+                });
+            }
+            if (typeof url === 'string' && url.includes('/tasks')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        name: 'tasks', relativePath: '', children: [],
+                    }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        render(
+            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS', rootPath: '/home/user/project' }]}>
+                <DialogOpener />
+                <EnqueueDialog />
+            </Wrap>
+        );
+        await waitFor(() => {
+            expect(screen.getByText('Enqueue AI Task')).toBeTruthy();
+        });
+
+        // Select workspace
+        const wsSelect = screen.getAllByRole('combobox')[1];
+        fireEvent.change(wsSelect, { target: { value: 'ws1' } });
+
+        // Wait for skill selector
+        await waitFor(() => {
+            expect(screen.getByTestId('skill-select')).toBeTruthy();
+        });
+
+        // Select skill
+        fireEvent.change(screen.getByTestId('skill-select'), { target: { value: 'impl' } });
+
+        // Submit without explicit prompt (should use default)
+        fireEvent.click(screen.getByText('Enqueue'));
+        await waitFor(() => {
+            expect(postBody).toBeTruthy();
+        });
+        expect(postUrl).toContain('/queue/tasks');
+        expect(postBody.type).toBe('follow-prompt');
+        expect(postBody.displayName).toBe('Skill: impl');
+        expect(postBody.payload.skillName).toBe('impl');
+        expect(postBody.payload.promptContent).toBe('Use the impl skill.');
+        expect(postBody.payload.workingDirectory).toBe('/home/user/project');
+    });
+
+    it('uses custom prompt content when skill is selected with prompt', async () => {
+        let postBody: any = null;
+        fetchSpy.mockImplementation((url: string, opts?: any) => {
+            if (typeof url === 'string' && url.includes('/queue/tasks')) {
+                postBody = JSON.parse(opts?.body || '{}');
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            if (typeof url === 'string' && url.includes('/queue/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            }
+            if (typeof url === 'string' && url.includes('/skills')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        skills: [{ name: 'impl' }],
+                    }),
+                });
+            }
+            if (typeof url === 'string' && url.includes('/tasks')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        name: 'tasks', relativePath: '', children: [],
+                    }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        render(
+            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS', rootPath: '/project' }]}>
+                <DialogOpener />
+                <EnqueueDialog />
+            </Wrap>
+        );
+        await waitFor(() => {
+            expect(screen.getByText('Enqueue AI Task')).toBeTruthy();
+        });
+
+        // Select workspace
+        const wsSelect = screen.getAllByRole('combobox')[1];
+        fireEvent.change(wsSelect, { target: { value: 'ws1' } });
+
+        await waitFor(() => {
+            expect(screen.getByTestId('skill-select')).toBeTruthy();
+        });
+
+        // Select skill and enter custom prompt
+        fireEvent.change(screen.getByTestId('skill-select'), { target: { value: 'impl' } });
+        const textarea = screen.getByRole('textbox');
+        fireEvent.change(textarea, { target: { value: 'Fix the login bug' } });
+
+        fireEvent.click(screen.getByText('Enqueue'));
+        await waitFor(() => {
+            expect(postBody).toBeTruthy();
+        });
+        expect(postBody.payload.promptContent).toBe('Fix the login bug');
+    });
+
+    it('pre-selects workspace when dialogInitialWorkspaceId is set', async () => {
+        fetchSpy.mockImplementation((url: string) => {
+            if (typeof url === 'string' && url.includes('/queue/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            }
+            if (typeof url === 'string' && url.includes('/skills')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        skills: [{ name: 'impl', description: 'Implementation' }],
+                    }),
+                });
+            }
+            if (typeof url === 'string' && url.includes('/tasks')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        name: 'tasks', relativePath: '', children: [],
+                    }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        render(
+            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS' }]}>
+                <DialogOpener workspaceId="ws1" />
+                <EnqueueDialog />
+            </Wrap>
+        );
+        await waitFor(() => {
+            expect(screen.getByText('Enqueue AI Task')).toBeTruthy();
+        });
+
+        // Skill selector should appear because workspace was pre-selected
+        await waitFor(() => {
+            expect(screen.getByTestId('skill-select')).toBeTruthy();
+        });
+    });
+
+    it('enables Enqueue button when skill is selected but prompt is empty', async () => {
+        fetchSpy.mockImplementation((url: string) => {
+            if (typeof url === 'string' && url.includes('/queue/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            }
+            if (typeof url === 'string' && url.includes('/skills')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        skills: [{ name: 'impl' }],
+                    }),
+                });
+            }
+            if (typeof url === 'string' && url.includes('/tasks')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        name: 'tasks', relativePath: '', children: [],
+                    }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        render(
+            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS' }]}>
+                <DialogOpener workspaceId="ws1" />
+                <EnqueueDialog />
+            </Wrap>
+        );
+        await waitFor(() => {
+            expect(screen.getByText('Enqueue AI Task')).toBeTruthy();
+        });
+
+        // Initially Enqueue should be disabled (no prompt, no skill)
+        expect((screen.getByText('Enqueue') as HTMLButtonElement).disabled).toBe(true);
+
+        // Wait for skill selector
+        await waitFor(() => {
+            expect(screen.getByTestId('skill-select')).toBeTruthy();
+        });
+
+        // Select a skill
+        fireEvent.change(screen.getByTestId('skill-select'), { target: { value: 'impl' } });
+
+        // Enqueue should now be enabled even without prompt
+        expect((screen.getByText('Enqueue') as HTMLButtonElement).disabled).toBe(false);
+    });
+
+    it('includes model in config when skill task is submitted with model', async () => {
+        let postBody: any = null;
+        fetchSpy.mockImplementation((url: string, opts?: any) => {
+            if (typeof url === 'string' && url.includes('/queue/tasks')) {
+                postBody = JSON.parse(opts?.body || '{}');
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            if (typeof url === 'string' && url.includes('/queue/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ models: ['gpt-4', 'claude-sonnet'] }) });
+            }
+            if (typeof url === 'string' && url.includes('/skills')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        skills: [{ name: 'impl' }],
+                    }),
+                });
+            }
+            if (typeof url === 'string' && url.includes('/tasks')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        name: 'tasks', relativePath: '', children: [],
+                    }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        render(
+            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS', rootPath: '/proj' }]}>
+                <DialogOpener workspaceId="ws1" />
+                <EnqueueDialog />
+            </Wrap>
+        );
+        await waitFor(() => {
+            expect(screen.getByText('Enqueue AI Task')).toBeTruthy();
+        });
+
+        await waitFor(() => {
+            expect(screen.getByTestId('skill-select')).toBeTruthy();
+        });
+
+        // Select model (skill-select=index 0, model=index 1, workspace=index 2)
+        const modelSelect = screen.getAllByRole('combobox')[1];
+        fireEvent.change(modelSelect, { target: { value: 'claude-sonnet' } });
+
+        // Select skill
+        fireEvent.change(screen.getByTestId('skill-select'), { target: { value: 'impl' } });
+
+        fireEvent.click(screen.getByText('Enqueue'));
+        await waitFor(() => {
+            expect(postBody).toBeTruthy();
+        });
+        expect(postBody.config).toEqual({ model: 'claude-sonnet' });
     });
 });

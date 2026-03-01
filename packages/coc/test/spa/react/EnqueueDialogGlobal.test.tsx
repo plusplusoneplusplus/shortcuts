@@ -33,10 +33,10 @@ function Wrap({ children }: { children: ReactNode }) {
     );
 }
 
-function DialogOpener({ folderPath }: { folderPath?: string | null }) {
+function DialogOpener({ folderPath, workspaceId }: { folderPath?: string | null; workspaceId?: string | null }) {
     const { dispatch } = useQueue();
     useEffect(() => {
-        dispatch({ type: 'OPEN_DIALOG', folderPath });
+        dispatch({ type: 'OPEN_DIALOG', folderPath, workspaceId });
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
     return null;
 }

@@ -26,6 +26,7 @@ export interface QueueContextState {
     repoQueueMap: Record<string, { queued: any[]; running: any[]; history: any[]; stats: QueueStats }>;
     showDialog: boolean;
     dialogInitialFolderPath: string | null;
+    dialogInitialWorkspaceId: string | null;
     showHistory: boolean;
     isFollowUpStreaming: boolean;
     currentStreamingTurnIndex: number | null;
@@ -65,6 +66,7 @@ const initialState: QueueContextState = {
     repoQueueMap: {},
     showDialog: false,
     dialogInitialFolderPath: null,
+    dialogInitialWorkspaceId: null,
     showHistory: false,
     isFollowUpStreaming: false,
     currentStreamingTurnIndex: null,
@@ -88,7 +90,7 @@ export type QueueAction =
     | { type: 'DRAIN_COMPLETE' }
     | { type: 'DRAIN_TIMEOUT' }
     | { type: 'TOGGLE_DIALOG' }
-    | { type: 'OPEN_DIALOG'; folderPath?: string | null }
+    | { type: 'OPEN_DIALOG'; folderPath?: string | null; workspaceId?: string | null }
     | { type: 'CLOSE_DIALOG' }
     | { type: 'TOGGLE_HISTORY' }
     | { type: 'SET_FOLLOW_UP_STREAMING'; value: boolean; turnIndex: number | null }
@@ -165,9 +167,9 @@ export function queueReducer(state: QueueContextState, action: QueueAction): Que
         case 'TOGGLE_DIALOG':
             return { ...state, showDialog: !state.showDialog };
         case 'OPEN_DIALOG':
-            return { ...state, showDialog: true, dialogInitialFolderPath: action.folderPath ?? null };
+            return { ...state, showDialog: true, dialogInitialFolderPath: action.folderPath ?? null, dialogInitialWorkspaceId: action.workspaceId ?? null };
         case 'CLOSE_DIALOG':
-            return { ...state, showDialog: false, dialogInitialFolderPath: null };
+            return { ...state, showDialog: false, dialogInitialFolderPath: null, dialogInitialWorkspaceId: null };
         case 'TOGGLE_HISTORY':
             return { ...state, showHistory: !state.showHistory };
         case 'SET_FOLLOW_UP_STREAMING':

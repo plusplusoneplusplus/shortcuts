@@ -290,6 +290,44 @@ describe('RepoQueueTab', () => {
         });
     });
 
+    it('empty state shows "+ Queue Task" button that dispatches OPEN_DIALOG with workspaceId', async () => {
+        setupFetch({
+            queue: makeQueueResponse(),
+            history: makeHistoryResponse([]),
+        });
+
+        render(
+            <Wrap>
+                <RepoQueueTab workspaceId="ws1" />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByTestId('repo-queue-task-btn-empty')).toBeTruthy();
+        });
+
+        expect(screen.getByTestId('repo-queue-task-btn-empty').textContent).toContain('Queue Task');
+    });
+
+    it('header shows "+ Queue Task" button when tasks exist', async () => {
+        setupFetch({
+            queue: makeQueueResponse({ running: [makeRunningTask()] }),
+            history: makeHistoryResponse([]),
+        });
+
+        render(
+            <Wrap>
+                <RepoQueueTab workspaceId="ws1" />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByTestId('repo-queue-task-btn')).toBeTruthy();
+        });
+
+        expect(screen.getByTestId('repo-queue-task-btn').textContent).toContain('Queue Task');
+    });
+
     it('preserves deep-link selectedTaskId through the loading phase', async () => {
         const deepLinkTaskId = 'deep-linked-task';
 
