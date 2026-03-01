@@ -100,6 +100,16 @@ function delay(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+function removeDirSafe(dir: string): void {
+    try {
+        fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    } catch (error: any) {
+        if (error?.code !== 'ENOENT') {
+            throw error;
+        }
+    }
+}
+
 // ============================================================================
 // Type Guard Tests
 // ============================================================================
@@ -229,7 +239,7 @@ describe('CLITaskExecutor — task-generation', () => {
             expect(result.success).toBe(true);
             expect(mockSendMessage).toHaveBeenCalledTimes(1);
         } finally {
-            fs.rmSync(workDir, { recursive: true, force: true });
+            removeDirSafe(workDir);
         }
     });
 
@@ -251,7 +261,7 @@ describe('CLITaskExecutor — task-generation', () => {
             expect(result.success).toBe(true);
             expect(mockSendMessage).toHaveBeenCalledTimes(1);
         } finally {
-            fs.rmSync(workDir, { recursive: true, force: true });
+            removeDirSafe(workDir);
         }
     });
 
@@ -266,7 +276,7 @@ describe('CLITaskExecutor — task-generation', () => {
             const callArgs = mockSendMessage.mock.calls[0][0];
             expect(callArgs.workingDirectory).toBe(workDir);
         } finally {
-            fs.rmSync(workDir, { recursive: true, force: true });
+            removeDirSafe(workDir);
         }
     });
 });
@@ -291,8 +301,8 @@ describe('POST /api/workspaces/:id/queue/generate', () => {
             await server.close();
             server = undefined;
         }
-        fs.rmSync(dataDir, { recursive: true, force: true });
-        fs.rmSync(workspaceDir, { recursive: true, force: true });
+        removeDirSafe(dataDir);
+        removeDirSafe(workspaceDir);
     });
 
     async function startServer(): Promise<ExecutionServer> {

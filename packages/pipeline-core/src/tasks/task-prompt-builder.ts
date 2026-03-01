@@ -85,7 +85,7 @@ function buildImportantSection(
     const extraPart = extraLines && extraLines.length > 0
         ? '\n' + extraLines.map((line, i) => `${i + 2}. ${line}`).join('\n')
         : '';
-    return `**IMPORTANT:**
+    return `**IMPORTANT: Output Location Requirement**
 1. You MUST save the file to this EXACT directory: ${targetPath}${filenamePart}
 - Do NOT save to any other location
 - Do NOT use your session state or any other directory${extraPart}`;

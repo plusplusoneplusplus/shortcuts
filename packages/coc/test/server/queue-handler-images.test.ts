@@ -76,6 +76,16 @@ function makeTask(overrides: Record<string, any> = {}) {
     };
 }
 
+function removeDirSafe(dir: string): void {
+    try {
+        fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    } catch (error: any) {
+        if (error?.code !== 'ENOENT') {
+            throw error;
+        }
+    }
+}
+
 /** Write a persistence file so the server loads a pre-existing task on startup. */
 function seedPersistence(dataDir: string, task: Record<string, unknown>): void {
     const repoId = crypto.createHash('sha256')
@@ -117,7 +127,7 @@ describe('Queue Handler — image promotion', () => {
             await server.close();
             server = undefined;
         }
-        fs.rmSync(dataDir, { recursive: true, force: true });
+        removeDirSafe(dataDir);
     });
 
     async function startServer(): Promise<ExecutionServer> {
@@ -213,7 +223,7 @@ describe('GET /api/queue/:id/images', () => {
             await server.close();
             server = undefined;
         }
-        fs.rmSync(dataDir, { recursive: true, force: true });
+        removeDirSafe(dataDir);
     });
 
     async function startServer(): Promise<ExecutionServer> {
@@ -314,7 +324,7 @@ describe('Queue Handler — legacy enqueue image forwarding', () => {
             await server.close();
             server = undefined;
         }
-        fs.rmSync(dataDir, { recursive: true, force: true });
+        removeDirSafe(dataDir);
     });
 
     async function startServer(): Promise<ExecutionServer> {
@@ -382,7 +392,7 @@ describe('serializeTask — image stripping', () => {
             await server.close();
             server = undefined;
         }
-        fs.rmSync(dataDir, { recursive: true, force: true });
+        removeDirSafe(dataDir);
     });
 
     async function startServer(): Promise<ExecutionServer> {
