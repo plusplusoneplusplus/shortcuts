@@ -241,11 +241,11 @@ describe('RepoGitTab', () => {
         });
 
         it('has responsive breakpoint for stacked/split layout', () => {
-            expect(source).toContain('md-split:');
+            expect(source).toContain('lg:');
         });
 
         it('sets fixed width on left panel at breakpoint', () => {
-            expect(source).toContain('md-split:w-[320px]');
+            expect(source).toContain('lg:w-[320px]');
         });
 
         it('has empty state when no commit is selected', () => {

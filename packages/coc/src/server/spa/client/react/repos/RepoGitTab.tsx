@@ -5,7 +5,7 @@
  * (UNPUSHED + HISTORY sections).
  * Right panel: detail view for the selected commit (metadata, files, diff).
  * Auto-selects the most recent commit on load.
- * Falls back to stacked vertical layout on narrow viewports (<900px).
+ * Falls back to stacked vertical layout on narrow viewports (<1024px).
  *
  * Branch-range data is fetched here and passed down to BranchChanges and
  * GitPanelHeader so both can display branch/ahead/behind information.
@@ -238,10 +238,10 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     );
 
     return (
-        <div className="repo-git-tab flex flex-col md-split:flex-row h-full overflow-hidden" data-testid="repo-git-tab">
+        <div className="repo-git-tab flex flex-col lg:flex-row h-full overflow-hidden" data-testid="repo-git-tab">
             {/* Left panel — commit list */}
             <aside
-                className="w-full md-split:w-[320px] md-split:shrink-0 overflow-y-auto border-b md-split:border-b-0 md-split:border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]"
+                className="w-full lg:w-[320px] lg:shrink-0 overflow-y-auto border-b lg:border-b-0 lg:border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]"
                 data-testid="git-commit-list-panel"
                 onKeyDown={handlePanelKeyDown}
             >

@@ -5,7 +5,9 @@ export default {
   theme: {
     extend: {
       screens: {
-        'md-split': '900px',
+        'sm': '640px',
+        'md': '768px',
+        'lg': '1024px',
       },
       keyframes: {
         'toast-in': {
