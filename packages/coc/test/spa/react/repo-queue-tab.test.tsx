@@ -641,6 +641,125 @@ describe('RepoQueueTab', () => {
         });
     });
 
+    it('displays prompt preview on queued task items', async () => {
+        setupFetch({
+            queue: makeQueueResponse({
+                queued: [makeQueuedTask({
+                    displayName: 'Skill: impl',
+                    payload: { promptContent: 'change the title of Coc SPA to CoC' },
+                })],
+            }),
+            history: makeHistoryResponse([]),
+        });
+
+        render(
+            <Wrap>
+                <RepoQueueTab workspaceId="ws1" />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText(/Skill: impl/)).toBeTruthy();
+        });
+
+        expect(screen.getByText(/change the title of Coc SPA to CoC/)).toBeTruthy();
+    });
+
+    it('displays prompt preview on running task items', async () => {
+        setupFetch({
+            queue: makeQueueResponse({
+                running: [makeRunningTask({
+                    displayName: 'Skill: impl',
+                    payload: { promptContent: 'fix the broken CSS layout' },
+                })],
+            }),
+            history: makeHistoryResponse([]),
+        });
+
+        render(
+            <Wrap>
+                <RepoQueueTab workspaceId="ws1" />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText(/fix the broken CSS layout/)).toBeTruthy();
+        });
+    });
+
+    it('displays prompt preview on completed history items', async () => {
+        setupFetch({
+            queue: makeQueueResponse({ running: [makeRunningTask()] }),
+            history: makeHistoryResponse([
+                makeCompletedTask({
+                    displayName: 'Skill: impl',
+                    payload: { promptContent: 'add retry logic to the API client' },
+                }),
+            ]),
+        });
+
+        render(
+            <Wrap>
+                <RepoQueueTab workspaceId="ws1" />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText(/add retry logic to the API client/)).toBeTruthy();
+        });
+    });
+
+    it('hides default "Use the X skill." prompt from preview', async () => {
+        setupFetch({
+            queue: makeQueueResponse({
+                queued: [makeQueuedTask({
+                    displayName: 'Skill: impl',
+                    payload: { promptContent: 'Use the impl skill.' },
+                })],
+            }),
+            history: makeHistoryResponse([]),
+        });
+
+        render(
+            <Wrap>
+                <RepoQueueTab workspaceId="ws1" />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText(/Skill: impl/)).toBeTruthy();
+        });
+
+        expect(screen.queryByText(/Use the impl skill\./)).toBeNull();
+    });
+
+    it('truncates long prompt previews', async () => {
+        const longPrompt = 'this is a very long prompt that exceeds the sixty character limit and should be truncated';
+        setupFetch({
+            queue: makeQueueResponse({
+                queued: [makeQueuedTask({
+                    displayName: 'Skill: impl',
+                    payload: { promptContent: longPrompt },
+                })],
+            }),
+            history: makeHistoryResponse([]),
+        });
+
+        render(
+            <Wrap>
+                <RepoQueueTab workspaceId="ws1" />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText(/Skill: impl/)).toBeTruthy();
+        });
+
+        // Full text should not be in the DOM; truncated version should
+        expect(screen.queryByText(longPrompt)).toBeNull();
+        expect(screen.getByText(/this is a very long prompt/)).toBeTruthy();
+    });
+
     it('renders chat tasks in history list with 💬 icon', async () => {
         setupFetch({
             queue: makeQueueResponse({ running: [makeRunningTask()] }),

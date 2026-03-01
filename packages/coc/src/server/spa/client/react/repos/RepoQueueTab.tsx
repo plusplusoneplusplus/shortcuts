@@ -423,7 +423,8 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
                                                     {task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : ''}
                                                 </span>
                                             </div>
-                                            {task.error && (
+                                            {(() => { const p = getTaskPromptPreview(task); return p ? <div className="text-[10px] text-[#848484] mt-0.5 truncate">{p}</div> : null; })()}
+                                        {task.error && (
                                                 <div className="text-[10px] text-red-500 mt-0.5 truncate">
                                                     {task.error.length > 80 ? task.error.substring(0, 77) + '...' : task.error}
                                                 </div>
@@ -462,6 +463,13 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
     );
 }
 
+/** Extract a short preview of the user prompt from the task payload. */
+function getTaskPromptPreview(task: any): string {
+    const text = task.prompt || task.payload?.promptContent || task.payload?.prompt || '';
+    if (!text || /^Use the \S+ skill\.$/.test(text)) return '';
+    return text.length > 60 ? text.substring(0, 57) + '…' : text;
+}
+
 function QueueTaskItem({ task, status, now, selected, onClick, onContextMenu }: {
     task: any;
     status: 'running' | 'queued';
@@ -472,6 +480,7 @@ function QueueTaskItem({ task, status, now, selected, onClick, onContextMenu }: 
 }) {
     const name = (task.displayName || task.type || 'Task').substring(0, 35);
     const icon = task.type === 'chat' ? '💬' : status === 'running' ? '🔄' : task.frozen ? '❄️' : '⏳';
+    const promptPreview = getTaskPromptPreview(task);
     let elapsed = '';
     if (status === 'running' && task.startedAt) {
         elapsed = formatDuration(now - new Date(task.startedAt).getTime());
@@ -488,6 +497,9 @@ function QueueTaskItem({ task, status, now, selected, onClick, onContextMenu }: 
                     {elapsed && <span className="text-[10px] text-[#848484]">{elapsed}</span>}
                 </div>
             </div>
+            {promptPreview && (
+                <div className="text-[10px] text-[#848484] mt-0.5 truncate">{promptPreview}</div>
+            )}
         </Card>
     );
 }
