@@ -1218,3 +1218,18 @@ body {
 }
 .git-branches-pagination-info { color: var(--content-muted); }
 .loading-inline { color: var(--content-muted); font-size: 13px; }
+
+/* Branch action buttons & modals */
+.admin-btn-danger {
+    background: #c0392b; color: #fff; border: 1px solid #922b21;
+}
+.admin-btn-danger:hover { background: #922b21; }
+.modal-title { margin: 0 0 16px; font-size: 1.1em; }
+.admin-input {
+    display: block; width: 100%; margin: 6px 0 12px; padding: 6px 8px;
+    background: var(--search-bg, #3c3c3c); color: var(--search-text, #ccc);
+    border: 1px solid var(--content-border, #555); border-radius: 3px;
+    font-size: 13px; box-sizing: border-box;
+}
+.branch-row-actions { white-space: nowrap; }
+.branch-row-actions .admin-btn { padding: 2px 8px; font-size: 12px; margin-right: 4px; }

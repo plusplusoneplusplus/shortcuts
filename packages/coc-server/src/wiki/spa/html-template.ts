@@ -257,6 +257,15 @@ ${enableSearch ? `            <div class="search-box">
                     </div>
                 </div>
                 <div class="git-branch-status-banner" id="git-branch-status-banner"></div>
+                <div id="git-branch-actions" class="admin-actions" style="flex-wrap:wrap;gap:8px;margin:12px 24px;">
+                    <button id="git-branch-btn-create" class="admin-btn admin-btn-save">Create Branch</button>
+                    <button id="git-branch-btn-push" class="admin-btn admin-btn-reset">Push</button>
+                    <button id="git-branch-btn-pull" class="admin-btn admin-btn-reset">Pull</button>
+                    <button id="git-branch-btn-fetch" class="admin-btn admin-btn-reset">Fetch</button>
+                    <button id="git-branch-btn-stash" class="admin-btn admin-btn-reset">Stash</button>
+                    <button id="git-branch-btn-pop" class="admin-btn admin-btn-reset">Pop Stash</button>
+                    <button id="git-branch-btn-merge" class="admin-btn admin-btn-reset">Merge\u2026</button>
+                </div>
                 <div class="admin-tabs" id="git-branches-tabs">
                     <button class="admin-tab active" data-tab="local" id="git-branches-tab-local">Local</button>
                     <button class="admin-tab" data-tab="remote" id="git-branches-tab-remote">Remote</button>
@@ -268,7 +277,56 @@ ${enableSearch ? `            <div class="search-box">
                     <div id="git-branches-table-container"></div>
                     <div id="git-branches-pagination"></div>
                 </div>
+
+                <!-- Modal overlay -->
+                <div id="git-branch-modal-overlay" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;display:flex;align-items:center;justify-content:center;">
+                    <div id="git-branch-modal-container" style="background:var(--vscode-editor-background,#1e1e1e);border:1px solid var(--content-border,#555);border-radius:6px;padding:24px;min-width:320px;max-width:480px;width:100%;"></div>
+                </div>
+
+                <!-- Dialog templates -->
+                <div id="git-branch-dialog-create" class="hidden">
+                    <h3 class="modal-title">Create Branch</h3>
+                    <label>Branch name<input id="git-branch-create-name" type="text" class="admin-input" placeholder="feature/my-branch" /></label>
+                    <label><input id="git-branch-create-checkout" type="checkbox" checked /> Switch to branch after creating</label>
+                    <div class="admin-actions">
+                        <button id="git-branch-create-submit" class="admin-btn admin-btn-save">Create</button>
+                        <button id="git-branch-create-cancel" class="admin-btn admin-btn-reset">Cancel</button>
+                    </div>
+                    <div id="git-branch-create-status" class="admin-file-status"></div>
+                </div>
+                <div id="git-branch-dialog-rename" class="hidden">
+                    <h3 class="modal-title">Rename Branch</h3>
+                    <p>Renaming: <strong id="git-branch-rename-old"></strong></p>
+                    <label>New name<input id="git-branch-rename-new" type="text" class="admin-input" /></label>
+                    <div class="admin-actions">
+                        <button id="git-branch-rename-submit" class="admin-btn admin-btn-save">Rename</button>
+                        <button id="git-branch-rename-cancel" class="admin-btn admin-btn-reset">Cancel</button>
+                    </div>
+                    <div id="git-branch-rename-status" class="admin-file-status"></div>
+                </div>
+                <div id="git-branch-dialog-delete" class="hidden">
+                    <h3 class="modal-title">Delete Branch</h3>
+                    <p>Delete branch <strong id="git-branch-delete-name"></strong>?</p>
+                    <label><input id="git-branch-delete-force" type="checkbox" /> Force delete (even if unmerged)</label>
+                    <div class="admin-actions">
+                        <button id="git-branch-delete-confirm" class="admin-btn admin-btn-danger">Delete</button>
+                        <button id="git-branch-delete-cancel" class="admin-btn admin-btn-reset">Cancel</button>
+                    </div>
+                    <div id="git-branch-delete-status" class="admin-file-status"></div>
+                </div>
+                <div id="git-branch-dialog-merge" class="hidden">
+                    <h3 class="modal-title">Merge Branch into Current</h3>
+                    <label>Branch to merge<input id="git-branch-merge-source" type="text" class="admin-input" placeholder="feature/branch-name" /></label>
+                    <div class="admin-actions">
+                        <button id="git-branch-merge-submit" class="admin-btn admin-btn-save">Merge</button>
+                        <button id="git-branch-merge-cancel" class="admin-btn admin-btn-reset">Cancel</button>
+                    </div>
+                    <div id="git-branch-merge-status" class="admin-file-status"></div>
+                </div>
             </div>
+
+            <!-- Toast notification container -->
+            <div id="git-toast-container" style="position:fixed;top:16px;right:16px;z-index:2000;display:flex;flex-direction:column;gap:8px;"></div>
         </main>
     </div>
 
