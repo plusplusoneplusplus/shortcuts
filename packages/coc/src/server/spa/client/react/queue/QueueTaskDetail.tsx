@@ -15,6 +15,7 @@ import { ConversationMetadataPopover, getSessionIdFromProcess } from '../process
 import { formatDuration, statusIcon, statusLabel } from '../utils/format';
 import { useImagePaste } from '../hooks/useImagePaste';
 import { ImagePreviews } from '../shared/ImagePreviews';
+import { toForwardSlashes } from '@plusplusoneplusplus/pipeline-core/utils/path-utils';
 import type { ClientConversationTurn } from '../types/dashboard';
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
@@ -722,7 +723,7 @@ function PendingTaskInfoPanel({ task, onCancel, onMoveToTop }: {
                 <MetaRow label="Priority" value={`${priorityIcons[priorityLabel] || ''} ${priorityLabel}`} />
                 {created && <MetaRow label="Created" value={created} />}
                 {model && <MetaRow label="Model" value={model} />}
-                {workingDir && <MetaRow label="Working Directory" value={workingDir} breakAll />}
+                {workingDir && <FilePathValue label="Working Directory" value={workingDir} />}
                 {repoId && <MetaRow label="Repo ID" value={repoId} breakAll />}
             </div>
 
@@ -775,6 +776,29 @@ function MetaRow({ label, value, breakAll }: { label: string; value: string; bre
     );
 }
 
+function shortenFilePath(p: string): string {
+    if (!p) return '';
+    return p
+        .replace(/^\/Users\/[^/]+\/Documents\/Projects\//, '')
+        .replace(/^\/Users\/[^/]+\//, '~/')
+        .replace(/^\/home\/[^/]+\//, '~/')
+        .replace(/^[A-Za-z]:\/Users\/[^/]+\/Documents\/Projects\//, '')
+        .replace(/^[A-Za-z]:\/Users\/[^/]+\//, '~/');
+}
+
+function FilePathValue({ label, value }: { label: string; value: string }) {
+    const normalized = toForwardSlashes(value);
+    const shortened = shortenFilePath(normalized);
+    return (
+        <>
+            <span className="text-[#848484]">{label}</span>
+            <span className="file-path-link break-all" data-full-path={normalized} title={normalized}>
+                {shortened}
+            </span>
+        </>
+    );
+}
+
 function PendingTaskPayload({ task }: { task: any }) {
     const payload = task.payload || {};
     const type = task.type || '';
@@ -808,8 +832,8 @@ function PendingTaskPayload({ task }: { task: any }) {
                 {hasFollowMeta && (
                     <div className="grid grid-cols-[140px_1fr] gap-x-4 gap-y-2 text-sm mb-3">
                         {payload.skillName && <MetaRow label="Skill Name" value={payload.skillName} />}
-                        {payload.promptFilePath && <MetaRow label="Prompt File" value={payload.promptFilePath} breakAll />}
-                        {payload.planFilePath && <MetaRow label="Plan File" value={payload.planFilePath} breakAll />}
+                        {payload.promptFilePath && <FilePathValue label="Prompt File" value={payload.promptFilePath} />}
+                        {payload.planFilePath && <FilePathValue label="Plan File" value={payload.planFilePath} />}
                     </div>
                 )}
                 {payload.promptContent && (
