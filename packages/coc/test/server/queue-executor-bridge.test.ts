@@ -35,7 +35,7 @@ import {
     TaskExecutionResult,
 } from '@plusplusoneplusplus/pipeline-core';
 import type { ProcessStore, AIProcess } from '@plusplusoneplusplus/pipeline-core';
-import { CLITaskExecutor, createQueueExecutorBridge, defaultIsExclusive } from '../../src/server/queue-executor-bridge';
+import { CLITaskExecutor, createQueueExecutorBridge, defaultIsExclusive, READONLY_PROMPT_PREFIX } from '../../src/server/queue-executor-bridge';
 import { createMockSDKService } from '../helpers/mock-sdk-service';
 import { createMockProcessStore, createCompletedProcessWithSession } from '../helpers/mock-process-store';
 
@@ -279,6 +279,80 @@ describe('CLITaskExecutor', () => {
 
             expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
                 prompt: expect.stringContaining('Chat message'),
+            }));
+        });
+    });
+
+    // ========================================================================
+    // Read-Only Chat Tasks
+    // ========================================================================
+
+    describe('readonly-chat tasks', () => {
+        it('should prepend read-only prompt prefix for readonly-chat tasks', async () => {
+            const executor = new CLITaskExecutor(store);
+
+            const task: QueuedTask = {
+                id: 'readonly-chat-1',
+                type: 'readonly-chat',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: { kind: 'chat' as const, prompt: 'Explain the architecture' },
+                config: {},
+                displayName: 'Read-Only Chat',
+            };
+
+            await executor.execute(task);
+
+            expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+                prompt: expect.stringContaining(READONLY_PROMPT_PREFIX),
+            }));
+            expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+                prompt: expect.stringContaining('Explain the architecture'),
+            }));
+        });
+
+        it('should not prepend read-only prefix for regular chat tasks', async () => {
+            const executor = new CLITaskExecutor(store);
+
+            const task: QueuedTask = {
+                id: 'chat-noprefix',
+                type: 'chat',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: { kind: 'chat' as const, prompt: 'Explain the architecture' },
+                config: {},
+                displayName: 'Chat',
+            };
+
+            await executor.execute(task);
+
+            expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+                prompt: expect.not.stringContaining(READONLY_PROMPT_PREFIX),
+            }));
+        });
+
+        it('should include suggest_follow_ups tool for readonly-chat tasks', async () => {
+            const executor = new CLITaskExecutor(store);
+
+            const task: QueuedTask = {
+                id: 'readonly-chat-tools',
+                type: 'readonly-chat',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: { kind: 'chat' as const, prompt: 'What is this?' },
+                config: {},
+                displayName: 'Read-Only Chat',
+            };
+
+            await executor.execute(task);
+
+            expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+                tools: expect.arrayContaining([
+                    expect.objectContaining({ name: 'suggest_follow_ups' }),
+                ]),
             }));
         });
     });
@@ -5201,6 +5275,7 @@ describe('defaultIsExclusive', () => {
         { type: 'task-generation', expected: false },
         { type: 'ai-clarification', expected: false },
         { type: 'code-review', expected: false },
+        { type: 'readonly-chat', expected: false },
     ])('should classify "$type" as exclusive=$expected', ({ type, expected }) => {
         const task = { type } as QueuedTask;
         expect(defaultIsExclusive(task)).toBe(expected);

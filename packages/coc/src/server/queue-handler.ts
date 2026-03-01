@@ -25,7 +25,7 @@ import * as fs from 'fs';
 // ============================================================================
 
 const VALID_PRIORITIES: Set<string> = new Set(['high', 'normal', 'low']);
-const VALID_TASK_TYPES: Set<string> = new Set(['follow-prompt', 'resolve-comments', 'code-review', 'ai-clarification', 'custom', 'chat', 'run-pipeline']);
+const VALID_TASK_TYPES: Set<string> = new Set(['follow-prompt', 'resolve-comments', 'code-review', 'ai-clarification', 'custom', 'chat', 'readonly-chat', 'run-pipeline']);
 
 /** Human-readable labels for task types, used when auto-generating display names. */
 const TYPE_LABELS: Record<string, string> = {
@@ -35,6 +35,7 @@ const TYPE_LABELS: Record<string, string> = {
     'ai-clarification': 'AI Clarification',
     'custom': 'Task',
     'chat': 'Chat',
+    'readonly-chat': 'Read-Only Chat',
     'run-pipeline': 'Run Pipeline',
 };
 
@@ -265,7 +266,7 @@ async function enrichChatTasks(
 ): Promise<void> {
     if (!store) return;
     for (const task of tasks) {
-        if (task.type !== 'chat' || !task.processId) continue;
+        if (task.type !== 'chat' && task.type !== 'readonly-chat' || !task.processId) continue;
         try {
             const process = await store.getProcess(task.processId as string);
             if (!process) continue;
@@ -730,7 +731,8 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
             }
 
             if (typeFilter) {
-                history = history.filter(t => t.type === typeFilter);
+                history = history.filter(t => t.type === typeFilter
+                    || (typeFilter === 'chat' && t.type === 'readonly-chat'));
             }
 
             // For chat type, include running and queued tasks so the chat
@@ -739,7 +741,7 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
                 const seenIds = new Set(history.map(t => t.id as string));
                 const collectActive = (mgr: TaskQueueManager) => {
                     for (const task of [...mgr.getRunning(), ...mgr.getQueued()]) {
-                        if ((task.type as string) === 'chat' && !seenIds.has(task.id)) {
+                        if (((task.type as string) === 'chat' || (task.type as string) === 'readonly-chat') && !seenIds.has(task.id)) {
                             seenIds.add(task.id);
                             history.push(serializeTask(task));
                         }

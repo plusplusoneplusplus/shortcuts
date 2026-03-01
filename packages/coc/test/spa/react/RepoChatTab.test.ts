@@ -202,7 +202,8 @@ describe('RepoChatTab', () => {
         });
 
         it('sends type chat in the request body', () => {
-            expect(source).toContain("type: 'chat'");
+            expect(source).toContain("'chat'");
+            expect(source).toContain("'readonly-chat'");
         });
 
         it('sends workspaceId in the request body', () => {
@@ -1371,6 +1372,37 @@ describe('RepoChatTab', () => {
                 source.indexOf('const renderConversation')
             );
             expect(startScreen).toContain('slashCommands.handleKeyDown');
+        });
+    });
+
+    describe('read-only toggle', () => {
+        it('renders a read-only checkbox in start screen', () => {
+            const startScreen = source.substring(
+                source.indexOf('const renderStartScreen'),
+                source.indexOf('const renderConversation')
+            );
+            expect(startScreen).toContain('data-testid="chat-readonly-toggle"');
+        });
+
+        it('has readOnly state', () => {
+            expect(source).toContain('readOnly');
+            expect(source).toContain('setReadOnly');
+        });
+
+        it('sends readonly-chat type when readOnly is true', () => {
+            expect(source).toContain("readOnly ? 'readonly-chat' : 'chat'");
+        });
+
+        it('shows read-only badge in conversation header', () => {
+            const convSection = source.substring(
+                source.indexOf('const renderConversation'),
+            );
+            expect(convSection).toContain('data-testid="chat-readonly-badge"');
+            expect(convSection).toContain('Read-only');
+        });
+
+        it('badge checks task type for readonly-chat', () => {
+            expect(source).toContain("task?.type === 'readonly-chat'");
         });
     });
 });

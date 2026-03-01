@@ -55,6 +55,14 @@ import type { TaskGenerationPayload, RunPipelinePayload, ResolveCommentsPayload 
 import { ImageBlobStore } from './image-blob-store';
 
 // ============================================================================
+// Constants
+// ============================================================================
+
+/** Prompt prefix prepended to read-only chat messages to instruct the AI not to modify files. */
+export const READONLY_PROMPT_PREFIX =
+    'IMPORTANT: You are in read-only mode. You MUST NOT create, edit, delete, or modify any files or source code. Only use read-only tools (grep, glob, view, cat, find, ls). If the user asks you to make changes, explain what changes would be needed but do not execute them.\n\n';
+
+// ============================================================================
 // Types
 // ============================================================================
 
@@ -551,7 +559,11 @@ export class CLITaskExecutor implements TaskExecutor {
         }
 
         if (isChatPayload(task.payload)) {
-            return task.payload.prompt || task.displayName || 'Chat message';
+            const prompt = task.payload.prompt || task.displayName || 'Chat message';
+            if (task.type === 'readonly-chat') {
+                return READONLY_PROMPT_PREFIX + prompt;
+            }
+            return prompt;
         }
 
         if (isAIClarificationPayload(task.payload)) {
@@ -666,7 +678,7 @@ export class CLITaskExecutor implements TaskExecutor {
             isCustomTaskPayload(task.payload) ||
             isFollowPromptPayload(task.payload)
         ) {
-            const isChatTask = task.type === 'chat';
+            const isChatTask = task.type === 'chat' || task.type === 'readonly-chat';
             const tools = (isChatTask && this.followUpSuggestions.enabled) ? [createSuggestFollowUpsTool()] : undefined;
             const countSuffix = (isChatTask && this.followUpSuggestions.enabled)
                 ? `\n\nWhen suggesting follow-ups, provide exactly ${this.followUpSuggestions.count} suggestions.`
@@ -1179,6 +1191,7 @@ const SHARED_TASK_TYPES: ReadonlySet<string> = new Set([
     'ai-clarification',
     'code-review',
     'resolve-comments',
+    'readonly-chat',
 ]);
 
 /**

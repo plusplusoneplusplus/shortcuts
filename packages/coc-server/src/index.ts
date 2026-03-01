@@ -120,6 +120,7 @@ export {
     isResolveCommentsPayload,
     isAIClarificationPayload,
     isChatPayload,
+    isReadOnlyChatPayload,
     isCustomTaskPayload,
     isTaskGenerationPayload,
     isRunPipelinePayload,

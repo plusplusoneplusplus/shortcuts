@@ -19,6 +19,7 @@ export type TaskType =
     | 'code-review'
     | 'ai-clarification'
     | 'chat'
+    | 'readonly-chat'
     | 'task-generation'
     | 'run-pipeline'
     | 'custom';
@@ -135,6 +136,10 @@ export function isAIClarificationPayload(payload: Record<string, unknown>): payl
 }
 
 export function isChatPayload(payload: Record<string, unknown>): payload is Record<string, unknown> & ChatPayload {
+    return (payload as any).kind === 'chat';
+}
+
+export function isReadOnlyChatPayload(payload: Record<string, unknown>): payload is Record<string, unknown> & ChatPayload {
     return (payload as any).kind === 'chat';
 }
 

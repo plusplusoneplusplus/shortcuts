@@ -79,6 +79,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
     const [resuming, setResuming] = useState(false);
     const [model, setModel] = useState('');
     const [models, setModels] = useState<string[]>([]);
+    const [readOnly, setReadOnly] = useState(false);
     const [skills, setSkills] = useState<SkillItem[]>([]);
 
     const initialImagePaste = useImagePaste();
@@ -305,7 +306,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
     useEffect(() => {
         if (!repoQueue || eventSourceRef.current) return;
         const hasChatTask = [...(repoQueue.running ?? []), ...(repoQueue.queued ?? []), ...(repoQueue.history ?? [])]
-            .some(t => t.type === 'chat');
+            .some(t => t.type === 'chat' || t.type === 'readonly-chat');
         if (hasChatTask) sessionsHook.refresh();
     }, [repoQueueKey]);
 
@@ -449,7 +450,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    type: 'chat',
+                    type: readOnly ? 'readonly-chat' : 'chat',
                     workspaceId,
                     workingDirectory: workspacePath,
                     prompt,
@@ -650,6 +651,15 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
             <ImagePreviews images={initialImagePaste.images} onRemove={initialImagePaste.removeImage} />
             {error && <div className="text-xs text-red-500">{error}</div>}
             <div className="flex items-center gap-2">
+                <label className="flex items-center gap-1 text-xs text-[#848484] cursor-pointer" data-testid="chat-readonly-toggle">
+                    <input
+                        type="checkbox"
+                        checked={readOnly}
+                        onChange={e => setReadOnly(e.target.checked)}
+                        className="accent-blue-500"
+                    />
+                    Read-only
+                </label>
                 <select
                     value={model}
                     onChange={e => handleModelChange(e.target.value)}
@@ -672,7 +682,18 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
         <div className="flex flex-col min-h-0 flex-1">
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
-                <span className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]">Chat</span>
+                <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]">Chat</span>
+                    {task?.type === 'readonly-chat' && (
+                        <span
+                            className="text-xs px-2 py-0.5 rounded bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300 whitespace-nowrap"
+                            data-testid="chat-readonly-badge"
+                            title="This chat session is read-only — the AI will not modify files"
+                        >
+                            Read-only
+                        </span>
+                    )}
+                </div>
                 <div className="flex gap-2">
                     {isStreaming && <Button size="sm" variant="secondary" onClick={stopStreaming}>Stop</Button>}
                     {task?.status === 'queued' && (

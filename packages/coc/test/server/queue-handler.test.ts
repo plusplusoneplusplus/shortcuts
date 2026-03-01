@@ -224,6 +224,18 @@ describe('Queue Handler', () => {
             expect(body.task.type).toBe('chat');
         });
 
+        it('should enqueue readonly-chat type', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(`${srv.url}/api/queue`, makeTask({
+                type: 'readonly-chat',
+                payload: { kind: 'chat', prompt: 'Explain the architecture' },
+            }));
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.type).toBe('readonly-chat');
+        });
+
         it('should promote top-level workingDirectory into payload', async () => {
             const srv = await startServer();
 
