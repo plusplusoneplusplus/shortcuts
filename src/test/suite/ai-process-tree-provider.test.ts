@@ -722,7 +722,7 @@ import { QueuedTask, TaskPriority } from '@plusplusoneplusplus/pipeline-core';
  * Type guard to check if a tree item is a QueuedTasksSectionItem
  */
 function isQueuedTasksSectionItem(item: AIProcessTreeItem): item is QueuedTasksSectionItem {
-    return item.contextValue === 'queuedTasksSection';
+    return item.contextValue?.startsWith('queuedTasksSection_') ?? false;
 }
 
 /**

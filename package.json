@@ -3209,18 +3209,28 @@
         },
         {
           "command": "shortcuts.queue.clearQueue",
-          "when": "view == clarificationProcessesView && viewItem == queuedTasksSection",
+          "when": "view == clarificationProcessesView && viewItem =~ /^queuedTasksSection_/",
           "group": "queueSection@1"
         },
         {
           "command": "shortcuts.queue.pauseQueue",
-          "when": "view == clarificationProcessesView && viewItem == queuedTasksSection",
+          "when": "view == clarificationProcessesView && viewItem == queuedTasksSection_active",
           "group": "queueSection@2"
         },
         {
           "command": "shortcuts.queue.resumeQueue",
-          "when": "view == clarificationProcessesView && viewItem == queuedTasksSection",
+          "when": "view == clarificationProcessesView && viewItem == queuedTasksSection_paused",
           "group": "queueSection@3"
+        },
+        {
+          "command": "shortcuts.queue.pauseQueue",
+          "when": "view == clarificationProcessesView && viewItem == queuedTasksSection_active",
+          "group": "inline"
+        },
+        {
+          "command": "shortcuts.queue.resumeQueue",
+          "when": "view == clarificationProcessesView && viewItem == queuedTasksSection_paused",
+          "group": "inline"
         }
       ],
       "explorer/context": [

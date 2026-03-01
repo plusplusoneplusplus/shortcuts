@@ -143,9 +143,11 @@ export class QueuedTaskItem extends vscode.TreeItem {
  * Section header item for "Queued Tasks" group
  */
 export class QueuedTasksSectionItem extends vscode.TreeItem {
-    public readonly contextValue = 'queuedTasksSection';
+    public readonly contextValue: string;
 
     constructor(count: number, isPaused: boolean) {
+        // Encode paused state in contextValue so VS Code can conditionally show pause/resume buttons
+        
         let label: string;
         if (isPaused) {
             label = count > 0 ? `Queued Tasks (${count}, paused)` : 'Queued Tasks (paused)';
@@ -154,6 +156,8 @@ export class QueuedTasksSectionItem extends vscode.TreeItem {
         }
 
         super(label, vscode.TreeItemCollapsibleState.Expanded);
+
+        this.contextValue = isPaused ? 'queuedTasksSection_paused' : 'queuedTasksSection_active';
 
         // Icon changes when paused
         this.iconPath = isPaused

@@ -62,7 +62,7 @@ class MockExtensionContext {
 }
 
 function isQueuedTasksSectionItem(item: AIProcessTreeItem): item is QueuedTasksSectionItem {
-    return item.contextValue === 'queuedTasksSection';
+    return item.contextValue?.startsWith('queuedTasksSection_') ?? false;
 }
 
 function isQueuedTaskItem(item: AIProcessTreeItem): item is QueuedTaskItem {

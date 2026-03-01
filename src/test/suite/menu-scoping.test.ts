@@ -363,7 +363,7 @@ suite('Menu Scoping Tests', () => {
             'interactiveSession_',
             'interactiveSessionSection',
             'queuedTask_',
-            'queuedTasksSection',
+            'queuedTasksSection_',
         ];
 
         /**

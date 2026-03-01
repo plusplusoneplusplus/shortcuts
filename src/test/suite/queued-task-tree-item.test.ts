@@ -228,10 +228,16 @@ suite('QueuedTasksSectionItem Tests', () => {
             assert.strictEqual(item.collapsibleState, vscode.TreeItemCollapsibleState.Expanded);
         });
 
-        test('should have correct context value', () => {
+        test('should have active context value when not paused', () => {
             const item = new QueuedTasksSectionItem(3, false);
 
-            assert.strictEqual(item.contextValue, 'queuedTasksSection');
+            assert.strictEqual(item.contextValue, 'queuedTasksSection_active');
+        });
+
+        test('should have paused context value when paused', () => {
+            const item = new QueuedTasksSectionItem(3, true);
+
+            assert.strictEqual(item.contextValue, 'queuedTasksSection_paused');
         });
     });
 
