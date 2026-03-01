@@ -3,18 +3,17 @@
  *
  * Surfaces commit count, additions/deletions, and changed files for the
  * current feature branch vs the default branch. Hidden when on the default
- * branch or on any range-fetch error.
+ * branch or when no range data is provided.
+ *
+ * Branch-range data is lifted to the parent (RepoGitTab) so it can be
+ * shared with GitPanelHeader. This component receives the data as a prop.
  */
 
 import { useState, useEffect } from 'react';
 import { fetchApi } from '../hooks/useApi';
 import { Spinner } from '../shared';
 
-interface BranchChangesProps {
-    workspaceId: string;
-}
-
-interface BranchRangeInfo {
+export interface BranchRangeInfo {
     baseRef: string;
     headRef: string;
     commitCount: number;
@@ -23,6 +22,12 @@ interface BranchRangeInfo {
     mergeBase: string;
     branchName?: string;
     fileCount: number;
+}
+
+interface BranchChangesProps {
+    workspaceId: string;
+    branchRangeData?: BranchRangeInfo | null;
+    onDefaultBranch?: boolean;
 }
 
 interface BranchRangeFile {
@@ -59,13 +64,11 @@ const STATUS_LABELS: Record<string, string> = {
 
 const DIFF_LINE_LIMIT = 500;
 
-export function BranchChanges({ workspaceId }: BranchChangesProps) {
-    const [rangeInfo, setRangeInfo] = useState<BranchRangeInfo | null>(null);
+export function BranchChanges({ workspaceId, branchRangeData, onDefaultBranch }: BranchChangesProps) {
+    const rangeInfo = branchRangeData ?? null;
     const [files, setFiles] = useState<BranchRangeFile[]>([]);
-    const [loading, setLoading] = useState(true);
     const [filesLoading, setFilesLoading] = useState(false);
     const [expanded, setExpanded] = useState(false);
-    const [hidden, setHidden] = useState(false);
     const [filesError, setFilesError] = useState<string | null>(null);
     const [expandedFile, setExpandedFile] = useState<string | null>(null);
     const [fileDiff, setFileDiff] = useState<string | null>(null);
@@ -73,10 +76,8 @@ export function BranchChanges({ workspaceId }: BranchChangesProps) {
     const [fileDiffError, setFileDiffError] = useState<string | null>(null);
     const [showFullDiff, setShowFullDiff] = useState(false);
 
+    // Reset file-level state when workspace or range data changes
     useEffect(() => {
-        setLoading(true);
-        setHidden(false);
-        setRangeInfo(null);
         setFiles([]);
         setExpanded(false);
         setFilesError(null);
@@ -84,28 +85,7 @@ export function BranchChanges({ workspaceId }: BranchChangesProps) {
         setFileDiff(null);
         setFileDiffError(null);
         setShowFullDiff(false);
-        fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/branch-range`)
-            .then(data => {
-                if (data.onDefaultBranch) {
-                    setHidden(true);
-                } else {
-                    setRangeInfo({
-                        baseRef: data.baseRef,
-                        headRef: data.headRef,
-                        commitCount: data.commitCount,
-                        additions: data.additions,
-                        deletions: data.deletions,
-                        mergeBase: data.mergeBase,
-                        branchName: data.branchName,
-                        fileCount: Array.isArray(data.files) ? data.files.length : 0,
-                    });
-                }
-            })
-            .catch(() => {
-                setHidden(true);
-            })
-            .finally(() => setLoading(false));
-    }, [workspaceId]);
+    }, [workspaceId, branchRangeData]);
 
     useEffect(() => {
         if (!expanded || files.length > 0 || !rangeInfo) return;
@@ -174,7 +154,7 @@ export function BranchChanges({ workspaceId }: BranchChangesProps) {
         );
     };
 
-    if (loading || hidden || !rangeInfo) return null;
+    if (onDefaultBranch || !rangeInfo) return null;
 
     const baseShort = rangeInfo.baseRef.replace(/^origin\//, '');
     const branchLabel = rangeInfo.branchName || rangeInfo.headRef;

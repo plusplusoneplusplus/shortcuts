@@ -1,8 +1,9 @@
 /**
  * Tests for BranchChanges component source structure.
  *
- * Validates exports, props, API usage, state management, rendering,
- * status mappings, error handling, and data-testid attributes.
+ * Validates exports, props (including lifted branchRangeData), API usage
+ * for file fetches, state management, rendering, status mappings,
+ * error handling, and data-testid attributes.
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -38,11 +39,23 @@ describe('BranchChanges', () => {
         it('exports BranchChanges as a named export', () => {
             expect(source).toContain('export function BranchChanges');
         });
+
+        it('exports BranchRangeInfo interface', () => {
+            expect(source).toContain('export interface BranchRangeInfo');
+        });
     });
 
     describe('component signature', () => {
         it('accepts workspaceId prop', () => {
             expect(source).toContain('workspaceId: string');
+        });
+
+        it('accepts optional branchRangeData prop', () => {
+            expect(source).toContain('branchRangeData?: BranchRangeInfo | null');
+        });
+
+        it('accepts optional onDefaultBranch prop', () => {
+            expect(source).toContain('onDefaultBranch?: boolean');
         });
 
         it('defines BranchChangesProps interface', () => {
@@ -51,11 +64,8 @@ describe('BranchChanges', () => {
     });
 
     describe('internal types', () => {
-        it('defines BranchRangeInfo interface', () => {
+        it('defines BranchRangeInfo interface with required fields', () => {
             expect(source).toContain('interface BranchRangeInfo');
-        });
-
-        it('BranchRangeInfo has baseRef, headRef, commitCount, additions, deletions', () => {
             expect(source).toContain('baseRef: string');
             expect(source).toContain('headRef: string');
             expect(source).toContain('commitCount: number');
@@ -79,8 +89,8 @@ describe('BranchChanges', () => {
             expect(source).toContain("import { fetchApi } from '../hooks/useApi'");
         });
 
-        it('fetches from /git/branch-range endpoint on mount', () => {
-            expect(source).toContain('/git/branch-range');
+        it('derives rangeInfo from branchRangeData prop (lifted to parent)', () => {
+            expect(source).toContain('const rangeInfo = branchRangeData ?? null');
         });
 
         it('fetches from /git/branch-range/files endpoint for file list', () => {
@@ -93,16 +103,12 @@ describe('BranchChanges', () => {
     });
 
     describe('state management', () => {
-        it('tracks rangeInfo state', () => {
-            expect(source).toContain('setRangeInfo');
+        it('derives rangeInfo from branchRangeData prop', () => {
+            expect(source).toContain('const rangeInfo = branchRangeData ?? null');
         });
 
         it('tracks files state', () => {
             expect(source).toContain('setFiles');
-        });
-
-        it('tracks loading state', () => {
-            expect(source).toContain('setLoading');
         });
 
         it('tracks filesLoading state', () => {
@@ -113,35 +119,26 @@ describe('BranchChanges', () => {
             expect(source).toContain('setExpanded');
         });
 
-        it('tracks hidden state', () => {
-            expect(source).toContain('setHidden');
-        });
-
         it('tracks filesError state', () => {
             expect(source).toContain('setFilesError');
+        });
+
+        it('resets file-level state when workspace or range data changes', () => {
+            expect(source).toContain('[workspaceId, branchRangeData]');
         });
     });
 
     describe('default branch handling', () => {
-        it('checks for onDefaultBranch in response', () => {
+        it('checks for onDefaultBranch prop', () => {
             expect(source).toContain('onDefaultBranch');
         });
 
-        it('sets hidden to true when on default branch', () => {
-            expect(source).toContain('setHidden(true)');
-        });
-
-        it('returns null when hidden', () => {
-            expect(source).toContain('if (loading || hidden || !rangeInfo) return null');
+        it('returns null when on default branch or no range info', () => {
+            expect(source).toContain('if (onDefaultBranch || !rangeInfo) return null');
         });
     });
 
     describe('error handling', () => {
-        it('hides section silently on range fetch error', () => {
-            // The catch handler for the range fetch sets hidden=true
-            expect(source).toMatch(/\.catch\(\s*\(\)\s*=>\s*\{[\s\S]*?setHidden\(true\)/);
-        });
-
         it('shows inline error when file fetch fails', () => {
             expect(source).toContain('filesError');
             expect(source).toContain('data-testid="branch-changes-files-error"');
@@ -300,13 +297,12 @@ describe('BranchChanges', () => {
                 expect(source).toContain('setShowFullDiff');
             });
 
-            it('resets diff state on workspace change', () => {
-                // The first useEffect resets all diff-related state
-                const firstEffect = source.slice(0, source.indexOf('}, [workspaceId]'));
-                expect(firstEffect).toContain('setExpandedFile(null)');
-                expect(firstEffect).toContain('setFileDiff(null)');
-                expect(firstEffect).toContain('setFileDiffError(null)');
-                expect(firstEffect).toContain('setShowFullDiff(false)');
+            it('resets diff state when workspace or range data changes', () => {
+                const resetEffect = source.slice(0, source.indexOf('[workspaceId, branchRangeData]'));
+                expect(resetEffect).toContain('setExpandedFile(null)');
+                expect(resetEffect).toContain('setFileDiff(null)');
+                expect(resetEffect).toContain('setFileDiffError(null)');
+                expect(resetEffect).toContain('setShowFullDiff(false)');
             });
         });
 
@@ -489,6 +485,26 @@ describe('BranchChanges', () => {
 
         it('RepoGitTab passes workspaceId to BranchChanges', () => {
             expect(gitTabSource).toContain('workspaceId={workspaceId}');
+        });
+
+        it('RepoGitTab passes branchRangeData to BranchChanges', () => {
+            expect(gitTabSource).toContain('branchRangeData={branchRangeData}');
+        });
+
+        it('RepoGitTab passes onDefaultBranch to BranchChanges', () => {
+            expect(gitTabSource).toContain('onDefaultBranch={onDefaultBranch}');
+        });
+
+        it('RepoGitTab imports BranchRangeInfo type from BranchChanges', () => {
+            expect(gitTabSource).toContain("import type { BranchRangeInfo } from './BranchChanges'");
+        });
+
+        it('BranchChanges appears after GitPanelHeader in left panel', () => {
+            const headerIdx = gitTabSource.indexOf('<GitPanelHeader');
+            const branchIdx = gitTabSource.indexOf('<BranchChanges');
+            expect(headerIdx).toBeGreaterThan(-1);
+            expect(branchIdx).toBeGreaterThan(-1);
+            expect(headerIdx).toBeLessThan(branchIdx);
         });
 
         it('BranchChanges appears before CommitList in the commit list panel', () => {

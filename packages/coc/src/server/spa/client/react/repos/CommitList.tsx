@@ -6,7 +6,7 @@
  * Supports keyboard navigation with ↑/↓ and Enter.
  */
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { formatRelativeTime } from '../utils/format';
 
 export interface GitCommitItem {
@@ -24,9 +24,13 @@ interface CommitListProps {
     selectedHash?: string | null;
     onSelect?: (commit: GitCommitItem) => void;
     loading?: boolean;
+    defaultCollapsed?: boolean;
+    showEmpty?: boolean;
+    emptyMessage?: string;
 }
 
-export function CommitList({ title, commits, selectedHash, onSelect, loading }: CommitListProps) {
+export function CommitList({ title, commits, selectedHash, onSelect, loading, defaultCollapsed = false, showEmpty = false, emptyMessage }: CommitListProps) {
+    const [collapsed, setCollapsed] = useState(defaultCollapsed);
     const listRef = useRef<HTMLDivElement>(null);
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -50,16 +54,37 @@ export function CommitList({ title, commits, selectedHash, onSelect, loading }: 
         if (el) el.scrollIntoView({ block: 'nearest' });
     }, [selectedHash]);
 
+    const isEmpty = !loading && commits.length === 0;
+    const isDimmed = isEmpty;
+    const titleTestId = `commit-list-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+
     return (
-        <div className="commit-list" data-testid={`commit-list-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}>
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-[#616161] dark:text-[#999] px-4 py-2 bg-[#f5f5f5] dark:bg-[#252526] border-b border-[#e0e0e0] dark:border-[#3c3c3c] sticky top-0 z-10">
-                {title} {!loading && `(${commits.length})`}
-            </h3>
-            {loading ? (
-                <div className="px-4 py-3 text-xs text-[#848484]" data-testid="commit-list-loading">Loading commits...</div>
-            ) : commits.length === 0 ? (
-                <div className="px-4 py-3 text-xs text-[#848484]" data-testid="commit-list-empty">No commits</div>
-            ) : (
+        <div className="commit-list" data-testid={titleTestId}>
+            <button
+                className="w-full text-left flex items-center gap-1 text-xs font-semibold uppercase tracking-wide px-4 py-2 bg-[#f5f5f5] dark:bg-[#252526] border-b border-[#e0e0e0] dark:border-[#3c3c3c] sticky top-0 z-10 cursor-pointer hover:bg-[#ececec] dark:hover:bg-[#2a2d2e] transition-colors"
+                onClick={() => setCollapsed(prev => !prev)}
+                data-testid={`${titleTestId}-toggle`}
+            >
+                <span className="text-[10px] text-[#848484] flex-shrink-0">
+                    {collapsed ? '▶' : '▼'}
+                </span>
+                <span className={isDimmed ? 'text-[#848484]' : 'text-[#616161] dark:text-[#999]'}>
+                    {title} {!loading && `(${commits.length})`}
+                </span>
+            </button>
+            {!collapsed && (
+                <>
+                    {loading ? (
+                        <div className="px-4 py-3 text-xs text-[#848484]" data-testid="commit-list-loading">Loading commits...</div>
+                    ) : isEmpty ? (
+                        showEmpty ? (
+                            <div className="px-4 py-3 text-xs text-[#848484] italic" data-testid="commit-list-empty">
+                                {emptyMessage || 'No commits'}
+                            </div>
+                        ) : (
+                            <div className="px-4 py-3 text-xs text-[#848484]" data-testid="commit-list-empty">No commits</div>
+                        )
+                    ) : (
                 <div ref={listRef} role="listbox" tabIndex={0} onKeyDown={handleKeyDown} className="outline-none">
                     {commits.map(commit => {
                         const isSelected = commit.hash === selectedHash;
@@ -87,6 +112,8 @@ export function CommitList({ title, commits, selectedHash, onSelect, loading }: 
                         );
                     })}
                 </div>
+                    )}
+                </>
             )}
         </div>
     );

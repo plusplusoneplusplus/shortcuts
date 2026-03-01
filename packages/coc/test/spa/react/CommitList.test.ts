@@ -60,6 +60,18 @@ describe('CommitList', () => {
         it('accepts optional loading prop', () => {
             expect(source).toContain('loading?: boolean');
         });
+
+        it('accepts optional defaultCollapsed prop', () => {
+            expect(source).toContain('defaultCollapsed?: boolean');
+        });
+
+        it('accepts optional showEmpty prop', () => {
+            expect(source).toContain('showEmpty?: boolean');
+        });
+
+        it('accepts optional emptyMessage prop', () => {
+            expect(source).toContain('emptyMessage?: string');
+        });
     });
 
     describe('GitCommitItem interface', () => {
@@ -113,8 +125,6 @@ describe('CommitList', () => {
         it('does not use accordion expand/collapse', () => {
             expect(source).not.toContain('expandedHash');
             expect(source).not.toContain('toggleExpand');
-            expect(source).not.toContain('▼');
-            expect(source).not.toContain('▶');
         });
 
         it('does not render CommitDetail inline', () => {
@@ -185,6 +195,52 @@ describe('CommitList', () => {
 
         it('scrolls selected row into view', () => {
             expect(source).toContain('scrollIntoView');
+        });
+    });
+
+    describe('collapse behavior', () => {
+        it('tracks collapsed state', () => {
+            expect(source).toContain('const [collapsed, setCollapsed] = useState(defaultCollapsed)');
+        });
+
+        it('uses defaultCollapsed prop for initial state', () => {
+            expect(source).toContain('defaultCollapsed = false');
+        });
+
+        it('renders header as a clickable button', () => {
+            expect(source).toContain('<button');
+            expect(source).toContain('onClick={() => setCollapsed(prev => !prev)');
+        });
+
+        it('shows expand/collapse chevron indicators', () => {
+            expect(source).toContain('▶');
+            expect(source).toContain('▼');
+        });
+
+        it('has toggle data-testid', () => {
+            expect(source).toContain('-toggle');
+        });
+
+        it('hides content when collapsed', () => {
+            expect(source).toContain('!collapsed &&');
+        });
+    });
+
+    describe('empty state with showEmpty', () => {
+        it('renders custom emptyMessage when showEmpty is true', () => {
+            expect(source).toContain('showEmpty ?');
+        });
+
+        it('falls back to default message when emptyMessage is not provided', () => {
+            expect(source).toContain("emptyMessage || 'No commits'");
+        });
+
+        it('uses italic styling for custom empty state', () => {
+            expect(source).toContain('italic');
+        });
+
+        it('uses dimmed text styling when empty', () => {
+            expect(source).toContain("isDimmed ? 'text-[#848484]'");
         });
     });
 });
