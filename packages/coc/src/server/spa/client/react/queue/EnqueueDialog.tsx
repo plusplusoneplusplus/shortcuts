@@ -1,6 +1,6 @@
 /**
  * EnqueueDialog — form to enqueue a new AI task.
- * Posts to POST /api/queue/enqueue (freeform) or POST /api/queue/tasks (skill-based).
+ * Posts to POST /api/queue/tasks with type 'follow-prompt' for both freeform and skill-based tasks.
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -123,17 +123,22 @@ export function EnqueueDialog() {
                     body: JSON.stringify(body),
                 });
             } else {
-                // Freeform prompt: POST to /api/queue/enqueue (existing behavior)
-                await fetch('/api/queue/enqueue', {
+                // Freeform prompt: POST to /api/queue/tasks with follow-prompt type
+                const ws = appState.workspaces.find((w: any) => w.id === workspaceId);
+                const body: any = {
+                    type: 'follow-prompt',
+                    priority: 'normal',
+                    payload: {
+                        promptContent: prompt.trim(),
+                        workingDirectory: ws?.rootPath || folderPath || undefined,
+                    },
+                    images: images.length > 0 ? images : undefined,
+                };
+                if (model) body.config = { model };
+                await fetch(getApiBase() + '/queue/tasks', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        prompt: prompt.trim(),
-                        model: model || undefined,
-                        workspaceId: workspaceId || undefined,
-                        folderPath: folderPath || undefined,
-                        images: images.length > 0 ? images : undefined,
-                    }),
+                    body: JSON.stringify(body),
                 });
             }
             setPrompt('');

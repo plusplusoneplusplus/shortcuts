@@ -228,9 +228,11 @@ describe('EnqueueDialog', () => {
 
     it('includes folderPath in POST body when folder is selected', async () => {
         let postBody: any = null;
+        let postUrl: string = '';
         fetchSpy.mockImplementation((url: string, opts?: any) => {
-            if (typeof url === 'string' && url.includes('/queue/enqueue')) {
+            if (typeof url === 'string' && url.includes('/queue/tasks') && opts?.method === 'POST') {
                 postBody = JSON.parse(opts?.body || '{}');
+                postUrl = url;
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
             if (typeof url === 'string' && url.includes('/queue/models')) {
@@ -252,7 +254,7 @@ describe('EnqueueDialog', () => {
         });
 
         render(
-            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS' }]}>
+            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS', rootPath: '/home/user/project' }]}>
                 <DialogOpener folderPath="feature1" />
                 <EnqueueDialog />
             </Wrap>
@@ -283,15 +285,19 @@ describe('EnqueueDialog', () => {
         await waitFor(() => {
             expect(postBody).toBeTruthy();
         });
-        expect(postBody.folderPath).toBe('feature1');
-        expect(postBody.prompt).toBe('Test prompt');
+        expect(postUrl).toContain('/queue/tasks');
+        expect(postBody.type).toBe('follow-prompt');
+        expect(postBody.payload.promptContent).toBe('Test prompt');
+        expect(postBody.payload.workingDirectory).toBe('/home/user/project');
     });
 
     it('omits folderPath from POST body when no folder is selected', async () => {
         let postBody: any = null;
+        let postUrl: string = '';
         fetchSpy.mockImplementation((url: string, opts?: any) => {
-            if (typeof url === 'string' && url.includes('/queue/enqueue')) {
+            if (typeof url === 'string' && url.includes('/queue/tasks') && opts?.method === 'POST') {
                 postBody = JSON.parse(opts?.body || '{}');
+                postUrl = url;
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
             if (typeof url === 'string' && url.includes('/queue/models')) {
@@ -317,7 +323,10 @@ describe('EnqueueDialog', () => {
         await waitFor(() => {
             expect(postBody).toBeTruthy();
         });
-        expect(postBody.folderPath).toBeUndefined();
+        expect(postUrl).toContain('/queue/tasks');
+        expect(postBody.type).toBe('follow-prompt');
+        expect(postBody.payload.promptContent).toBe('Test prompt');
+        expect(postBody.payload.workingDirectory).toBeUndefined();
     });
 
     it('fetches skills when workspace is selected and shows skill selector', async () => {
@@ -607,7 +616,7 @@ describe('EnqueueDialog', () => {
     it('includes images in freeform POST body when present', async () => {
         let postBody: any = null;
         fetchSpy.mockImplementation((url: string, opts?: any) => {
-            if (typeof url === 'string' && url.includes('/queue/enqueue')) {
+            if (typeof url === 'string' && url.includes('/queue/tasks') && opts?.method === 'POST') {
                 postBody = JSON.parse(opts?.body || '{}');
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
@@ -655,7 +664,8 @@ describe('EnqueueDialog', () => {
         await waitFor(() => {
             expect(postBody).toBeTruthy();
         });
-        expect(postBody.prompt).toBe('Test with images');
+        expect(postBody.type).toBe('follow-prompt');
+        expect(postBody.payload.promptContent).toBe('Test with images');
         // images should be undefined when no images were successfully added
         expect(postBody.images).toBeUndefined();
     });
@@ -769,5 +779,129 @@ describe('EnqueueDialog', () => {
             expect(postBody).toBeTruthy();
         });
         expect(postBody.config).toEqual({ model: 'claude-sonnet' });
+    });
+
+    it('freeform submit sends follow-prompt type, never chat (regression)', async () => {
+        let postBody: any = null;
+        let postUrl: string = '';
+        fetchSpy.mockImplementation((url: string, opts?: any) => {
+            if (typeof url === 'string' && url.includes('/queue/tasks') && opts?.method === 'POST') {
+                postBody = JSON.parse(opts?.body || '{}');
+                postUrl = url;
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            if (typeof url === 'string' && url.includes('/queue/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        render(
+            <Wrap>
+                <DialogOpener />
+                <EnqueueDialog />
+            </Wrap>
+        );
+        await waitFor(() => {
+            expect(screen.getByText('Enqueue AI Task')).toBeTruthy();
+        });
+
+        const textarea = screen.getByPlaceholderText('Enter your prompt...');
+        fireEvent.change(textarea, { target: { value: 'My freeform task' } });
+        fireEvent.click(screen.getByText('Enqueue'));
+        await waitFor(() => {
+            expect(postBody).toBeTruthy();
+        });
+
+        // Must use /queue/tasks endpoint, NOT /queue/enqueue
+        expect(postUrl).toContain('/queue/tasks');
+        expect(postUrl).not.toContain('/queue/enqueue');
+        // Must be follow-prompt, NOT chat
+        expect(postBody.type).toBe('follow-prompt');
+        expect(postBody.type).not.toBe('chat');
+        expect(postBody.payload.promptContent).toBe('My freeform task');
+    });
+
+    it('freeform submit includes model in config when set', async () => {
+        let postBody: any = null;
+        fetchSpy.mockImplementation((url: string, opts?: any) => {
+            if (typeof url === 'string' && url.includes('/queue/tasks') && opts?.method === 'POST') {
+                postBody = JSON.parse(opts?.body || '{}');
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            if (typeof url === 'string' && url.includes('/queue/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ models: ['gpt-4', 'claude-sonnet'] }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        render(
+            <Wrap>
+                <DialogOpener />
+                <EnqueueDialog />
+            </Wrap>
+        );
+        await waitFor(() => {
+            expect(screen.getByText('Enqueue AI Task')).toBeTruthy();
+        });
+
+        // Select model
+        const modelSelect = screen.getAllByRole('combobox')[0];
+        fireEvent.change(modelSelect, { target: { value: 'gpt-4' } });
+
+        const textarea = screen.getByPlaceholderText('Enter your prompt...');
+        fireEvent.change(textarea, { target: { value: 'Prompt with model' } });
+
+        fireEvent.click(screen.getByText('Enqueue'));
+        await waitFor(() => {
+            expect(postBody).toBeTruthy();
+        });
+        expect(postBody.type).toBe('follow-prompt');
+        expect(postBody.config).toEqual({ model: 'gpt-4' });
+    });
+
+    it('freeform submit uses workspace rootPath as workingDirectory', async () => {
+        let postBody: any = null;
+        fetchSpy.mockImplementation((url: string, opts?: any) => {
+            if (typeof url === 'string' && url.includes('/queue/tasks') && opts?.method === 'POST') {
+                postBody = JSON.parse(opts?.body || '{}');
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            if (typeof url === 'string' && url.includes('/queue/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            }
+            if (typeof url === 'string' && url.includes('/tasks')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        name: 'tasks', relativePath: '', children: [],
+                    }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        render(
+            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS', rootPath: '/my/project' }]}>
+                <DialogOpener />
+                <EnqueueDialog />
+            </Wrap>
+        );
+        await waitFor(() => {
+            expect(screen.getByText('Enqueue AI Task')).toBeTruthy();
+        });
+
+        // Select workspace
+        const wsSelect = screen.getAllByRole('combobox')[1];
+        fireEvent.change(wsSelect, { target: { value: 'ws1' } });
+
+        const textarea = screen.getByPlaceholderText('Enter your prompt...');
+        fireEvent.change(textarea, { target: { value: 'Task in workspace' } });
+
+        fireEvent.click(screen.getByText('Enqueue'));
+        await waitFor(() => {
+            expect(postBody).toBeTruthy();
+        });
+        expect(postBody.payload.workingDirectory).toBe('/my/project');
     });
 });
