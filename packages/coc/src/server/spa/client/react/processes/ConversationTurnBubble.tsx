@@ -522,6 +522,9 @@ export function ConversationTurnBubble({ turn, taskId }: ConversationTurnBubbleP
             );
         }
 
+        // Hide suggest_follow_ups — its output is rendered as suggestion chips, not as a tool call.
+        if (toolCall.toolName === 'suggest_follow_ups') return null;
+
         const childChunks = assistantRender!.chunksByParent.get(toolId) ?? [];
         const hasSubtools = childChunks.length > 0;
         const isCollapsed = collapsedTaskIds[toolId] ?? true;

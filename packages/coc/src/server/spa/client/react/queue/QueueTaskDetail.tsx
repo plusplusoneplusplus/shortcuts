@@ -9,7 +9,7 @@ import { useQueue } from '../context/QueueContext';
 import { useApp } from '../context/AppContext';
 import { fetchApi } from '../hooks/useApi';
 import { getApiBase } from '../utils/config';
-import { Badge, Spinner, Button, cn, ImageGallery } from '../shared';
+import { Badge, Spinner, Button, cn, ImageGallery, SuggestionChips } from '../shared';
 import { ConversationTurnBubble } from '../processes/ConversationTurnBubble';
 import { ConversationMetadataPopover, getSessionIdFromProcess } from '../processes/ConversationMetadataPopover';
 import { formatDuration, statusIcon, statusLabel } from '../utils/format';
@@ -89,6 +89,7 @@ export function QueueTaskDetail() {
     const [isScrolledUp, setIsScrolledUp] = useState(false);
     const [resumeLaunching, setResumeLaunching] = useState(false);
     const [resumeFeedback, setResumeFeedback] = useState<{ type: 'success' | 'error'; message: string; command?: string } | null>(null);
+    const [suggestions, setSuggestions] = useState<string[]>([]);
 
     const { images, addFromPaste, removeImage, clearImages } = useImagePaste();
 
@@ -180,6 +181,12 @@ export function QueueTaskDetail() {
                 }
             });
             es.onerror = () => finishAndClearTimeout();
+            es.addEventListener('suggestions', (event: Event) => {
+                try {
+                    const data = JSON.parse((event as MessageEvent).data);
+                    if (Array.isArray(data.suggestions)) setSuggestions(data.suggestions);
+                } catch { /* ignore */ }
+            });
         });
     };
 
@@ -187,6 +194,7 @@ export function QueueTaskDetail() {
         const content = (overrideContent ?? followUpInput).trim();
         if (!content || !selectedProcessId || followUpInputDisabled) return;
 
+        setSuggestions([]);
         lastFailedMessageRef.current = content;
         setFollowUpInput('');
         setFollowUpError(null);
@@ -338,6 +346,7 @@ export function QueueTaskDetail() {
         setResumeLaunching(false);
         setResumeFeedback(null);
         setProcessDetails(null);
+        setSuggestions([]);
         clearImages();
         closeFollowUpStream();
         queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
@@ -446,6 +455,13 @@ export function QueueTaskDetail() {
             es.close();
             eventSourceRef.current = null;
         };
+
+        es.addEventListener('suggestions', (event: Event) => {
+            try {
+                const data = JSON.parse((event as MessageEvent).data);
+                if (Array.isArray(data.suggestions)) setSuggestions(data.suggestions);
+            } catch { /* ignore */ }
+        });
 
         return () => {
             es.close();
@@ -643,6 +659,13 @@ export function QueueTaskDetail() {
                             Retry
                         </button>
                     )}
+                    {suggestions.length > 0 && !followUpSending && task?.status !== 'running' && (
+                        <SuggestionChips
+                            suggestions={suggestions}
+                            onSelect={(text) => { setSuggestions([]); void sendFollowUp(text); }}
+                            disabled={followUpInputDisabled}
+                        />
+                    )}
                     <ImagePreviews images={images} onRemove={removeImage} />
                     <div className="flex items-end gap-2">
                         <textarea
@@ -652,7 +675,10 @@ export function QueueTaskDetail() {
                             disabled={followUpInputDisabled}
                             placeholder={followUpPlaceholder}
                             className="flex-1 min-h-[34px] max-h-28 resize-y rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] px-2 py-1.5 text-sm text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 focus:ring-[#0078d4]/50 disabled:opacity-60"
-                            onChange={(event) => setFollowUpInput(event.target.value)}
+                            onChange={(event) => {
+                                setFollowUpInput(event.target.value);
+                                if (suggestions.length > 0) setSuggestions([]);
+                            }}
                             onKeyDown={(event) => {
                                 if (event.key === 'Enter' && !event.shiftKey) {
                                     event.preventDefault();

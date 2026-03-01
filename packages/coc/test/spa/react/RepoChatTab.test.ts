@@ -416,7 +416,7 @@ describe('RepoChatTab', () => {
         });
 
         it('imports Button and Spinner from shared', () => {
-            expect(source).toContain("import { Button, Spinner } from '../shared'");
+            expect(source).toContain("import { Button, Spinner, SuggestionChips } from '../shared'");
         });
 
         it('imports ConversationTurnBubble', () => {

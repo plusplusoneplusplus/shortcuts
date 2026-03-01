@@ -10,7 +10,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { fetchApi } from '../hooks/useApi';
 import { getApiBase } from '../utils/config';
-import { Button, Spinner } from '../shared';
+import { Button, Spinner, SuggestionChips } from '../shared';
 import { ConversationTurnBubble } from '../processes/ConversationTurnBubble';
 import { useImagePaste } from '../hooks/useImagePaste';
 import { ImagePreviews } from '../shared/ImagePreviews';
@@ -70,6 +70,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId }: Re
     const [error, setError] = useState<string | null>(null);
     const [sessionExpired, setSessionExpired] = useState(false);
     const [isStreaming, setIsStreaming] = useState(false);
+    const [suggestions, setSuggestions] = useState<string[]>([]);
     const [resuming, setResuming] = useState(false);
     const [model, setModel] = useState('');
     const [models, setModels] = useState<string[]>([]);
@@ -183,6 +184,12 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId }: Re
                 } catch { /* ignore */ }
             });
             es.onerror = () => { clearTimeout(timeout); finish(); };
+            es.addEventListener('suggestions', (event: Event) => {
+                try {
+                    const data = JSON.parse((event as MessageEvent).data);
+                    if (Array.isArray(data.suggestions)) setSuggestions(data.suggestions);
+                } catch { /* ignore */ }
+            });
         });
 
     // --- load a session by task ID ---
@@ -316,6 +323,12 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId }: Re
             } catch { /* ignore */ }
         });
         es.onerror = finish;
+        es.addEventListener('suggestions', (event: Event) => {
+            try {
+                const data = JSON.parse((event as MessageEvent).data);
+                if (Array.isArray(data.suggestions)) setSuggestions(data.suggestions);
+            } catch { /* ignore */ }
+        });
 
         return () => {
             es.close();
@@ -358,6 +371,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId }: Re
         setTurnsAndCache([]);
         setError(null);
         setSessionExpired(false);
+        setSuggestions([]);
         loadSession(taskId);
         location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/chat/' + encodeURIComponent(taskId);
     }, [isStreaming, loadSession, workspaceId]);
@@ -371,6 +385,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId }: Re
         setTurnsAndCache([]);
         setError(null);
         setSessionExpired(false);
+        setSuggestions([]);
         setInputValue('');
         initialImagePaste.clearImages();
         followUpImagePaste.clearImages();
@@ -455,9 +470,10 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId }: Re
         }
     };
 
-    const sendFollowUp = async () => {
-        const content = inputValue.trim();
+    const sendFollowUp = async (overrideContent?: string) => {
+        const content = (overrideContent ?? inputValue).trim();
         if (!content || !processId || sending || sessionExpired) return;
+        setSuggestions([]);
         setInputValue('');
         setSending(true);
         setError(null);
@@ -665,6 +681,13 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId }: Re
                     </div>
                 ) : (
                     <>
+                        {suggestions.length > 0 && !isStreaming && (
+                            <SuggestionChips
+                                suggestions={suggestions}
+                                onSelect={(text) => { setSuggestions([]); void sendFollowUp(text); }}
+                                disabled={sending || sessionExpired}
+                            />
+                        )}
                         <ImagePreviews images={followUpImagePaste.images} onRemove={followUpImagePaste.removeImage} />
                         <div className="flex items-end gap-2">
                             <textarea
@@ -672,7 +695,10 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId }: Re
                                 value={inputValue}
                                 disabled={sending}
                                 placeholder="Follow up…"
-                                onChange={e => setInputValue(e.target.value)}
+                                onChange={e => {
+                                    setInputValue(e.target.value);
+                                    if (suggestions.length > 0) setSuggestions([]);
+                                }}
                                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendFollowUp(); } }}
                                 onPaste={followUpImagePaste.addFromPaste}
                                 className="flex-1 border rounded p-2 text-sm resize-none bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] border-[#e0e0e0] dark:border-[#3c3c3c]"

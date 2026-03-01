@@ -19,3 +19,5 @@ export { ImageGallery } from './ImageGallery';
 export type { ImageGalleryProps } from './ImageGallery';
 export { ImageLightbox } from './ImageLightbox';
 export type { ImageLightboxProps } from './ImageLightbox';
+export { SuggestionChips } from './SuggestionChips';
+export type { SuggestionChipsProps } from './SuggestionChips';

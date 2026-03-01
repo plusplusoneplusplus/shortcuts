@@ -418,3 +418,66 @@ describe('ConversationTurnBubble — timeline content merging', () => {
         expect(toolCard).toBeTruthy();
     });
 });
+
+describe('ConversationTurnBubble — suggest_follow_ups hidden', () => {
+    it('does not render suggest_follow_ups tool call in tool tree', () => {
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn({
+                    role: 'assistant',
+                    content: 'Here is my answer.',
+                    timeline: [
+                        { type: 'content', content: 'Here is my answer.' },
+                        {
+                            type: 'tool-start',
+                            toolCall: {
+                                id: 'suggest-1',
+                                toolName: 'suggest_follow_ups',
+                                args: {},
+                                status: 'running',
+                            },
+                        },
+                        {
+                            type: 'tool-complete',
+                            toolCall: {
+                                id: 'suggest-1',
+                                toolName: 'suggest_follow_ups',
+                                args: {},
+                                status: 'completed',
+                                result: JSON.stringify({ suggestions: ['Q1', 'Q2'] }),
+                            },
+                        },
+                    ],
+                })}
+            />
+        );
+        expect(container.querySelector('[data-tool-id="suggest-1"]')).toBeNull();
+    });
+
+    it('still renders other tool calls alongside suggest_follow_ups', () => {
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn({
+                    role: 'assistant',
+                    content: '',
+                    timeline: [
+                        {
+                            type: 'tool-start',
+                            toolCall: { id: 'grep-1', toolName: 'grep', args: {}, status: 'completed' },
+                        },
+                        {
+                            type: 'tool-start',
+                            toolCall: { id: 'suggest-1', toolName: 'suggest_follow_ups', args: {}, status: 'completed' },
+                        },
+                        {
+                            type: 'tool-complete',
+                            toolCall: { id: 'suggest-1', toolName: 'suggest_follow_ups', args: {}, status: 'completed' },
+                        },
+                    ],
+                })}
+            />
+        );
+        expect(container.querySelector('[data-tool-id="grep-1"]')).toBeTruthy();
+        expect(container.querySelector('[data-tool-id="suggest-1"]')).toBeNull();
+    });
+});
