@@ -806,6 +806,8 @@ function PendingTaskPayload({ task }: { task: any }) {
     const [payloadImagesLoading, setPayloadImagesLoading] = useState(false);
 
     useEffect(() => {
+        setPayloadImages([]);
+        setPayloadImagesLoading(false);
         if (!task?.id || !payload.hasImages || (payload.images && payload.images.length > 0)) return;
         setPayloadImagesLoading(true);
         fetchApi(`/queue/${encodeURIComponent(task.id)}/images`)

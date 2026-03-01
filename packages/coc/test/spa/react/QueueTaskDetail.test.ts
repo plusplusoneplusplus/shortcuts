@@ -214,6 +214,22 @@ describe('QueueTaskDetail', () => {
         it('ConversationTurnBubble receives taskId prop', () => {
             expect(source).toContain('taskId={selectedTaskId}');
         });
+
+        it('clears payloadImages and loading state before the early-return guard', () => {
+            // The useEffect in PendingTaskPayload must reset state before the guard
+            const pendingPayloadSection = source.substring(source.indexOf('function PendingTaskPayload'));
+            const effectStart = pendingPayloadSection.indexOf('useEffect(() => {');
+            const effectBody = pendingPayloadSection.substring(effectStart, effectStart + 500);
+            const clearImagesIdx = effectBody.indexOf('setPayloadImages([])');
+            const clearLoadingIdx = effectBody.indexOf('setPayloadImagesLoading(false)');
+            const guardIdx = effectBody.indexOf('if (!task?.id || !payload.hasImages');
+            expect(clearImagesIdx).toBeGreaterThan(-1);
+            expect(clearLoadingIdx).toBeGreaterThan(-1);
+            expect(guardIdx).toBeGreaterThan(-1);
+            // Both resets must come before the early-return guard
+            expect(clearImagesIdx).toBeLessThan(guardIdx);
+            expect(clearLoadingIdx).toBeLessThan(guardIdx);
+        });
     });
 
     describe('hoverable file paths', () => {
