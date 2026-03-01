@@ -252,68 +252,164 @@ export class FileMemoryStore implements MemoryStore {
         return deleted;
     }
 
-    // --- Consolidated memory (stub — implemented in 003) ---
+    // --- Atomic write helper ---
+
+    private async atomicWrite(filePath: string, content: string): Promise<void> {
+        await fs.mkdir(path.dirname(filePath), { recursive: true });
+        const tmpPath = filePath + '.tmp';
+        await fs.writeFile(tmpPath, content, 'utf-8');
+        await fs.rename(tmpPath, filePath);
+    }
+
+    // --- Consolidated memory ---
 
     async readConsolidated(
-        _level: MemoryLevel,
-        _repoHash?: string,
+        level: MemoryLevel,
+        repoHash?: string,
     ): Promise<string | null> {
-        throw new Error('Not implemented — see task 003');
+        const dir = level === 'system' ? this.getSystemDir() : this.getRepoDir(repoHash!);
+        const filePath = path.join(dir, 'consolidated.md');
+        try {
+            return await fs.readFile(filePath, 'utf-8');
+        } catch {
+            return null;
+        }
     }
 
     async writeConsolidated(
-        _level: MemoryLevel,
-        _content: string,
-        _repoHash?: string,
+        level: MemoryLevel,
+        content: string,
+        repoHash?: string,
     ): Promise<void> {
-        throw new Error('Not implemented — see task 003');
+        return this.enqueueWrite(async () => {
+            const dir = level === 'system' ? this.getSystemDir() : this.getRepoDir(repoHash!);
+            const filePath = path.join(dir, 'consolidated.md');
+            await this.atomicWrite(filePath, content);
+        });
     }
 
-    // --- Index (stub — implemented in 003) ---
+    // --- Index ---
 
     async readIndex(
-        _level: MemoryLevel,
-        _repoHash: string | undefined,
+        level: MemoryLevel,
+        repoHash: string | undefined,
     ): Promise<MemoryIndex> {
-        throw new Error('Not implemented — see task 003');
+        const dir = level === 'system' ? this.getSystemDir() : this.getRepoDir(repoHash!);
+        const filePath = path.join(dir, 'index.json');
+        try {
+            const data = await fs.readFile(filePath, 'utf-8');
+            return JSON.parse(data) as MemoryIndex;
+        } catch {
+            return { lastAggregation: null, rawCount: 0, factCount: 0, categories: [] };
+        }
     }
 
     async updateIndex(
-        _level: MemoryLevel,
-        _repoHash: string | undefined,
-        _updates: Partial<MemoryIndex>,
+        level: MemoryLevel,
+        repoHash: string | undefined,
+        updates: Partial<MemoryIndex>,
     ): Promise<void> {
-        throw new Error('Not implemented — see task 003');
+        return this.enqueueWrite(async () => {
+            const existing = await this.readIndex(level, repoHash);
+            const merged: MemoryIndex = { ...existing, ...updates };
+            const dir = level === 'system' ? this.getSystemDir() : this.getRepoDir(repoHash!);
+            const filePath = path.join(dir, 'index.json');
+            await this.atomicWrite(filePath, JSON.stringify(merged, null, 2));
+        });
     }
 
-    // --- Repo info (stub — implemented in 003) ---
+    // --- Repo info ---
 
-    async getRepoInfo(_repoHash: string): Promise<RepoInfo | null> {
-        throw new Error('Not implemented — see task 003');
+    async getRepoInfo(repoHash: string): Promise<RepoInfo | null> {
+        const dir = this.getRepoDir(repoHash);
+        const filePath = path.join(dir, 'repo-info.json');
+        try {
+            const data = await fs.readFile(filePath, 'utf-8');
+            return JSON.parse(data) as RepoInfo;
+        } catch {
+            return null;
+        }
     }
 
-    async updateRepoInfo(_repoHash: string, _info: Partial<RepoInfo>): Promise<void> {
-        throw new Error('Not implemented — see task 003');
+    async updateRepoInfo(repoHash: string, info: Partial<RepoInfo>): Promise<void> {
+        return this.enqueueWrite(async () => {
+            const existing = await this.getRepoInfo(repoHash);
+            const merged: RepoInfo = {
+                path: '', name: '', lastAccessed: new Date().toISOString(),
+                ...existing, ...info,
+            };
+            const dir = this.getRepoDir(repoHash);
+            const filePath = path.join(dir, 'repo-info.json');
+            await this.atomicWrite(filePath, JSON.stringify(merged, null, 2));
+        });
     }
 
-    // --- Management (stub — implemented in 003) ---
+    // --- Management ---
 
     async clear(
-        _level: MemoryLevel,
-        _repoHash?: string,
-        _rawOnly?: boolean,
+        level: MemoryLevel,
+        repoHash?: string,
+        rawOnly?: boolean,
     ): Promise<void> {
-        throw new Error('Not implemented — see task 003');
+        return this.enqueueWrite(async () => {
+            const dir = level === 'system' ? this.getSystemDir() : this.getRepoDir(repoHash!);
+            if (rawOnly) {
+                const rawDir = path.join(dir, 'raw');
+                try {
+                    await fs.rm(rawDir, { recursive: true, force: true });
+                    await fs.mkdir(rawDir, { recursive: true });
+                } catch {
+                    // raw dir may not exist
+                }
+            } else {
+                try {
+                    await fs.rm(dir, { recursive: true, force: true });
+                } catch {
+                    // dir may not exist
+                }
+            }
+        });
     }
 
     async getStats(
-        _level: MemoryLevel,
-        _repoHash?: string,
+        level: MemoryLevel,
+        repoHash?: string,
     ): Promise<MemoryStats> {
-        throw new Error('Not implemented — see task 003');
+        const dir = level === 'system' ? this.getSystemDir() : this.getRepoDir(repoHash!);
+        const rawDir = path.join(dir, 'raw');
+
+        let rawCount = 0;
+        try {
+            const entries = await fs.readdir(rawDir);
+            rawCount = entries.filter(e => e.endsWith('.md')).length;
+        } catch {
+            // raw dir may not exist
+        }
+
+        let consolidatedExists = false;
+        try {
+            await fs.access(path.join(dir, 'consolidated.md'));
+            consolidatedExists = true;
+        } catch {
+            // doesn't exist
+        }
+
+        const index = await this.readIndex(level, repoHash);
+
+        return {
+            rawCount,
+            consolidatedExists,
+            lastAggregation: index.lastAggregation,
+            factCount: index.factCount,
+        };
     }
 
     async listRepos(): Promise<string[]> {
-        throw new Error('Not implemented — see task 003');
+        try {
+            const entries = await fs.readdir(this.reposDir, { withFileTypes: true });
+            return entries.filter(e => e.isDirectory()).map(e => e.name);
+        } catch {
+            return [];
+        }
     }
 }
