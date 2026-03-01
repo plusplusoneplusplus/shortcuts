@@ -43,9 +43,14 @@ describe('ConversationTurnBubble — raw view toggle', () => {
         expect(btn).toBeTruthy();
     });
 
-    it('does not render .bubble-raw-btn for user messages', () => {
+    it('renders .bubble-raw-btn for user messages', () => {
         const { container } = render(<ConversationTurnBubble turn={makeTurn({ role: 'user' })} />);
-        expect(container.querySelector('.bubble-raw-btn')).toBeNull();
+        expect(container.querySelector('.bubble-raw-btn')).toBeTruthy();
+    });
+
+    it('renders .bubble-copy-btn for user messages', () => {
+        const { container } = render(<ConversationTurnBubble turn={makeTurn({ role: 'user' })} />);
+        expect(container.querySelector('.bubble-copy-btn')).toBeTruthy();
     });
 
     it('raw button has title "View raw content" by default', () => {
@@ -272,6 +277,68 @@ describe('ConversationTurnBubble — raw view toggle', () => {
         fireEvent.click(copyBtn);
 
         expect(writeText).toHaveBeenCalledWith('Just content');
+    });
+
+    // --- User message raw view ---
+
+    it('user message: clicking raw button shows raw content instead of markdown', () => {
+        const { container } = render(
+            <ConversationTurnBubble turn={makeTurn({ role: 'user', content: 'Hello **bold**' })} />
+        );
+        // Initially shows markdown, not raw
+        expect(container.querySelector('[data-testid="markdown-view"]')).toBeTruthy();
+        expect(container.querySelector('.raw-content-view')).toBeNull();
+
+        const btn = container.querySelector('.bubble-raw-btn') as HTMLButtonElement;
+        fireEvent.click(btn);
+
+        // Now shows raw content, not markdown
+        expect(container.querySelector('.raw-content-view')).toBeTruthy();
+        expect(container.querySelector('[data-testid="markdown-view"]')).toBeNull();
+    });
+
+    it('user message: raw view shows turn.content verbatim', () => {
+        const rawText = '[Skill Guidance: impl]\n# Some heading\n**bold** text';
+        const { container } = render(
+            <ConversationTurnBubble turn={makeTurn({ role: 'user', content: rawText })} />
+        );
+        const btn = container.querySelector('.bubble-raw-btn') as HTMLButtonElement;
+        fireEvent.click(btn);
+        const rawView = container.querySelector('.raw-content-view');
+        expect(rawView?.textContent).toBe(rawText);
+    });
+
+    it('user message: toggling back shows markdown view again', () => {
+        const { container } = render(
+            <ConversationTurnBubble turn={makeTurn({ role: 'user', content: 'Hello' })} />
+        );
+        const btn = container.querySelector('.bubble-raw-btn') as HTMLButtonElement;
+        fireEvent.click(btn); // ON
+        expect(container.querySelector('.raw-content-view')).toBeTruthy();
+        fireEvent.click(btn); // OFF
+        expect(container.querySelector('.raw-content-view')).toBeNull();
+        expect(container.querySelector('[data-testid="markdown-view"]')).toBeTruthy();
+    });
+
+    it('user message: copy button copies raw text when in raw mode', () => {
+        const writeText = vi.fn().mockResolvedValue(undefined);
+        Object.defineProperty(navigator, 'clipboard', {
+            value: { writeText },
+            writable: true,
+            configurable: true,
+        });
+
+        const { container } = render(
+            <ConversationTurnBubble turn={makeTurn({ role: 'user', content: 'User raw text' })} />
+        );
+        const rawBtn = container.querySelector('.bubble-raw-btn') as HTMLButtonElement;
+        fireEvent.click(rawBtn);
+
+        const copyBtn = container.querySelector('.bubble-copy-btn') as HTMLButtonElement;
+        fireEvent.click(copyBtn);
+
+        expect(writeText).toHaveBeenCalledTimes(1);
+        expect(writeText.mock.calls[0][0]).toContain('User raw text');
     });
 
     // --- Visual indicator ---

@@ -132,9 +132,9 @@ describe('ConversationTurnBubble — semantic hooks', () => {
         expect(btn).toBeTruthy();
     });
 
-    it('does not render .bubble-copy-btn for user messages', () => {
+    it('renders .bubble-copy-btn for user messages', () => {
         const { container } = render(<ConversationTurnBubble turn={makeTurn({ role: 'user' })} />);
-        expect(container.querySelector('.bubble-copy-btn')).toBeNull();
+        expect(container.querySelector('.bubble-copy-btn')).toBeTruthy();
     });
 
     it('copies turn.content to clipboard when .bubble-copy-btn is clicked', () => {

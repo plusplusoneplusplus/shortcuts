@@ -580,32 +580,35 @@ export function ConversationTurnBubble({ turn, taskId }: ConversationTurnBubbleP
                     {turn.streaming && (
                         <span className="text-[#f14c4c] streaming-indicator">Live</span>
                     )}
-                    {!isUser && (
-                        <button
-                            className="bubble-raw-btn ml-auto text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] opacity-0 group-hover:opacity-100 transition-opacity text-[10px]"
-                            title={showRaw ? 'View rendered content' : 'View raw content'}
-                            onClick={() => setShowRaw((v) => !v)}
-                            style={showRaw ? { opacity: 1, color: '#0078d4' } : undefined}
-                        >
-                            &lt;/&gt;
-                        </button>
-                    )}
-                    {!isUser && (
-                        <button
-                            className="bubble-copy-btn text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] opacity-0 group-hover:opacity-100 transition-opacity text-[10px]"
-                            title="Copy to clipboard"
-                            onClick={() => {
-                                const text = showRaw ? buildRawContent(turn) : (turn.content || '');
-                                navigator.clipboard?.writeText(text).catch(() => {});
-                            }}
-                        >
-                            📋
-                        </button>
-                    )}
+                    <button
+                        className="bubble-raw-btn ml-auto text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] opacity-0 group-hover:opacity-100 transition-opacity text-[10px]"
+                        title={showRaw ? 'View rendered content' : 'View raw content'}
+                        onClick={() => setShowRaw((v) => !v)}
+                        style={showRaw ? { opacity: 1, color: '#0078d4' } : undefined}
+                    >
+                        &lt;/&gt;
+                    </button>
+                    <button
+                        className="bubble-copy-btn text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] opacity-0 group-hover:opacity-100 transition-opacity text-[10px]"
+                        title="Copy to clipboard"
+                        onClick={() => {
+                            const text = showRaw ? buildRawContent(turn) : (turn.content || '');
+                            navigator.clipboard?.writeText(text).catch(() => {});
+                        }}
+                    >
+                        📋
+                    </button>
                 </div>
 
                 <div className="space-y-2 chat-message-content">
-                    {isUser && userContentHtml && <MarkdownView html={userContentHtml} />}
+                    {isUser && !showRaw && userContentHtml && <MarkdownView html={userContentHtml} />}
+                    {isUser && showRaw && (
+                        <div className="raw-content-view rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#ffffff] dark:bg-[#1e1e1e] overflow-auto max-h-[600px]">
+                            <pre className="p-3 font-mono text-xs whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc]">
+                                <code>{turn.content || ''}</code>
+                            </pre>
+                        </div>
+                    )}
                     {isUser && turn.images && turn.images.length > 0 && (
                         <ImageGallery images={turn.images} />
                     )}
