@@ -293,9 +293,7 @@ export const SCHEDULE_TEMPLATES: ScheduleTemplate[] = [
         intervalValue: '1',
         intervalUnit: 'days',
         mode: 'cron',
-        params: [
-            { key: 'pipeline', placeholder: 'pipelines/my-pipeline/pipeline.yaml', type: 'pipeline-select' },
-        ],
+        params: [],
         hint: 'Ensure the pipeline YAML file exists at the specified target path',
     },
     {
@@ -386,7 +384,7 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel }: {
         setSelectedTemplate(templateId);
         setManualPipeline(false);
         setName(tpl.name);
-        setTarget(tpl.target);
+        setTarget(templateId === 'run-pipeline' ? '' : tpl.target);
         setMode(tpl.mode);
         setCron(tpl.cronExpr);
         setIntervalValue(tpl.intervalValue);
@@ -476,12 +474,63 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel }: {
                     onChange={e => setName(e.target.value)}
                 />
 
-                <input
-                    className="text-xs px-2 py-1.5 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc]"
-                    placeholder="Target (e.g., pipelines/daily-report/pipeline.yaml)"
-                    value={target}
-                    onChange={e => setTarget(e.target.value)}
-                />
+                {/* Target field — pipeline selector for run-pipeline, plain input otherwise */}
+                {selectedTemplate === 'run-pipeline' && !manualPipeline ? (
+                    pipelinesLoading ? (
+                        <span className="text-xs px-2 py-1.5 text-[#848484] italic" data-testid="pipeline-loading">Loading pipelines…</span>
+                    ) : pipelines.length > 0 ? (
+                        <select
+                            className="text-xs px-2 py-1.5 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc]"
+                            value={target}
+                            onChange={e => {
+                                if (e.target.value === '__manual__') {
+                                    setManualPipeline(true);
+                                    setTarget('');
+                                    setParams(prev => ({ ...prev, pipeline: '' }));
+                                    return;
+                                }
+                                setTarget(e.target.value);
+                                setParams(prev => ({ ...prev, pipeline: e.target.value }));
+                            }}
+                            data-testid="target-pipeline-select"
+                        >
+                            <option value="" disabled>Select a pipeline…</option>
+                            {pipelines.map(pl => (
+                                <option key={pl.path} value={pl.path}>{pl.name}</option>
+                            ))}
+                            <option value="__manual__">Other (manual path)…</option>
+                        </select>
+                    ) : (
+                        <input
+                            className="text-xs px-2 py-1.5 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc]"
+                            placeholder="Target (e.g., pipelines/daily-report/pipeline.yaml)"
+                            value={target}
+                            onChange={e => {
+                                setTarget(e.target.value);
+                                setParams(prev => ({ ...prev, pipeline: e.target.value }));
+                            }}
+                            data-testid="target-pipeline-input"
+                        />
+                    )
+                ) : selectedTemplate === 'run-pipeline' && manualPipeline ? (
+                    <input
+                        className="text-xs px-2 py-1.5 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc]"
+                        placeholder="Target (e.g., pipelines/daily-report/pipeline.yaml)"
+                        value={target}
+                        onChange={e => {
+                            setTarget(e.target.value);
+                            setParams(prev => ({ ...prev, pipeline: e.target.value }));
+                        }}
+                        data-testid="target-pipeline-input"
+                    />
+                ) : (
+                    <input
+                        className="text-xs px-2 py-1.5 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc]"
+                        placeholder="Target (e.g., pipelines/daily-report/pipeline.yaml)"
+                        value={target}
+                        onChange={e => setTarget(e.target.value)}
+                    />
+                )}
 
                 {/* Schedule mode toggle */}
                 <div className="flex items-center gap-2">

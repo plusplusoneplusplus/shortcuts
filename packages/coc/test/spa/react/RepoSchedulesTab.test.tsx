@@ -158,6 +158,18 @@ describe('CreateScheduleForm template UI', () => {
         expect(targetInput.value).toBe(tpl.target);
     });
 
+    it('run-pipeline template starts with empty target for dropdown selection', async () => {
+        await renderSchedulesTab();
+        fireEvent.click(screen.getByText('+ New'));
+
+        fireEvent.click(screen.getByTestId('template-run-pipeline'));
+
+        const nameInput = screen.getByPlaceholderText('Name (e.g., Daily Report)') as HTMLInputElement;
+        expect(nameInput.value).toBe('Run Pipeline');
+        // Target should start empty (prompting dropdown selection)
+        // No plain target input should exist — it's replaced by a dropdown/loading
+    });
+
     it('clicking a template shows dynamic params fields', async () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
@@ -212,12 +224,12 @@ describe('CreateScheduleForm template UI', () => {
         const nameInput = screen.getByPlaceholderText('Name (e.g., Daily Report)') as HTMLInputElement;
         expect(nameInput.value).toBe('Auto-commit');
 
-        // Switch to run-pipeline
-        fireEvent.click(screen.getByTestId('template-run-pipeline'));
-        expect(nameInput.value).toBe('Run Pipeline');
+        // Switch to pull-sync (another non-pipeline template)
+        fireEvent.click(screen.getByTestId('template-pull-sync'));
+        expect(nameInput.value).toBe('Pull & Sync');
 
         // Hint should update
-        const tpl = SCHEDULE_TEMPLATES.find(t => t.id === 'run-pipeline')!;
+        const tpl = SCHEDULE_TEMPLATES.find(t => t.id === 'pull-sync')!;
         expect(screen.getByTestId('template-hint').textContent).toBe(tpl.hint);
     });
 
@@ -294,7 +306,7 @@ describe('CreateScheduleForm template UI', () => {
 // Pipeline dropdown selector tests
 // ============================================================================
 
-describe('Pipeline dropdown selector', () => {
+describe('Pipeline dropdown selector (target field)', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockFetch.mockResolvedValue({
@@ -324,12 +336,12 @@ describe('Pipeline dropdown selector', () => {
         fireEvent.click(screen.getByTestId('template-run-pipeline'));
     }
 
-    it('renders a <select> dropdown when pipelines are available', async () => {
+    it('renders a <select> dropdown in the target position when pipelines are available', async () => {
         await openRunPipelineTemplate();
 
         await waitFor(() => {
-            const paramEl = screen.getByTestId('param-pipeline');
-            expect(paramEl.tagName).toBe('SELECT');
+            const selectEl = screen.getByTestId('target-pipeline-select');
+            expect(selectEl.tagName).toBe('SELECT');
         });
     });
 
@@ -337,10 +349,10 @@ describe('Pipeline dropdown selector', () => {
         await openRunPipelineTemplate();
 
         await waitFor(() => {
-            expect(screen.getByTestId('param-pipeline').tagName).toBe('SELECT');
+            expect(screen.getByTestId('target-pipeline-select').tagName).toBe('SELECT');
         });
 
-        const select = screen.getByTestId('param-pipeline') as HTMLSelectElement;
+        const select = screen.getByTestId('target-pipeline-select') as HTMLSelectElement;
         const options = Array.from(select.options).map(o => o.textContent);
         expect(options).toContain('daily-report');
         expect(options).toContain('data-sync');
@@ -350,10 +362,10 @@ describe('Pipeline dropdown selector', () => {
         await openRunPipelineTemplate();
 
         await waitFor(() => {
-            expect(screen.getByTestId('param-pipeline').tagName).toBe('SELECT');
+            expect(screen.getByTestId('target-pipeline-select').tagName).toBe('SELECT');
         });
 
-        const select = screen.getByTestId('param-pipeline') as HTMLSelectElement;
+        const select = screen.getByTestId('target-pipeline-select') as HTMLSelectElement;
         const placeholder = Array.from(select.options).find(o => o.disabled);
         expect(placeholder).toBeTruthy();
         expect(placeholder!.textContent).toContain('Select a pipeline');
@@ -363,43 +375,42 @@ describe('Pipeline dropdown selector', () => {
         await openRunPipelineTemplate();
 
         await waitFor(() => {
-            expect(screen.getByTestId('param-pipeline').tagName).toBe('SELECT');
+            expect(screen.getByTestId('target-pipeline-select').tagName).toBe('SELECT');
         });
 
-        const select = screen.getByTestId('param-pipeline') as HTMLSelectElement;
+        const select = screen.getByTestId('target-pipeline-select') as HTMLSelectElement;
         const manualOpt = Array.from(select.options).find(o => o.value === '__manual__');
         expect(manualOpt).toBeTruthy();
         expect(manualOpt!.textContent).toContain('Other');
     });
 
-    it('selecting a pipeline updates target field', async () => {
+    it('selecting a pipeline sets the target value', async () => {
         await openRunPipelineTemplate();
 
         await waitFor(() => {
-            expect(screen.getByTestId('param-pipeline').tagName).toBe('SELECT');
+            expect(screen.getByTestId('target-pipeline-select').tagName).toBe('SELECT');
         });
 
-        const select = screen.getByTestId('param-pipeline') as HTMLSelectElement;
+        const select = screen.getByTestId('target-pipeline-select') as HTMLSelectElement;
         fireEvent.change(select, { target: { value: 'pipelines/daily-report/pipeline.yaml' } });
 
-        const targetInput = screen.getByPlaceholderText(/Target/) as HTMLInputElement;
-        expect(targetInput.value).toBe('pipelines/daily-report/pipeline.yaml');
+        expect(select.value).toBe('pipelines/daily-report/pipeline.yaml');
     });
 
-    it('selecting "Other" switches to manual text input', async () => {
+    it('selecting "Other" switches to manual text input for target', async () => {
         await openRunPipelineTemplate();
 
         await waitFor(() => {
-            expect(screen.getByTestId('param-pipeline').tagName).toBe('SELECT');
+            expect(screen.getByTestId('target-pipeline-select').tagName).toBe('SELECT');
         });
 
-        const select = screen.getByTestId('param-pipeline') as HTMLSelectElement;
+        const select = screen.getByTestId('target-pipeline-select') as HTMLSelectElement;
         fireEvent.change(select, { target: { value: '__manual__' } });
 
         // Should now be an input, not a select
         await waitFor(() => {
-            const paramEl = screen.getByTestId('param-pipeline');
-            expect(paramEl.tagName).toBe('INPUT');
+            const inputEl = screen.getByTestId('target-pipeline-input');
+            expect(inputEl.tagName).toBe('INPUT');
         });
     });
 
@@ -418,8 +429,8 @@ describe('Pipeline dropdown selector', () => {
         fireEvent.click(screen.getByTestId('template-run-pipeline'));
 
         await waitFor(() => {
-            const paramEl = screen.getByTestId('param-pipeline');
-            expect(paramEl.tagName).toBe('INPUT');
+            const inputEl = screen.getByTestId('target-pipeline-input');
+            expect(inputEl.tagName).toBe('INPUT');
         });
     });
 
@@ -437,8 +448,8 @@ describe('Pipeline dropdown selector', () => {
         fireEvent.click(screen.getByTestId('template-run-pipeline'));
 
         await waitFor(() => {
-            const paramEl = screen.getByTestId('param-pipeline');
-            expect(paramEl.tagName).toBe('INPUT');
+            const inputEl = screen.getByTestId('target-pipeline-input');
+            expect(inputEl.tagName).toBe('INPUT');
         });
     });
 
@@ -465,15 +476,15 @@ describe('Pipeline dropdown selector', () => {
         await openRunPipelineTemplate();
 
         await waitFor(() => {
-            expect(screen.getByTestId('param-pipeline').tagName).toBe('SELECT');
+            expect(screen.getByTestId('target-pipeline-select').tagName).toBe('SELECT');
         });
 
         // Switch to manual
-        const select = screen.getByTestId('param-pipeline') as HTMLSelectElement;
+        const select = screen.getByTestId('target-pipeline-select') as HTMLSelectElement;
         fireEvent.change(select, { target: { value: '__manual__' } });
 
         await waitFor(() => {
-            expect(screen.getByTestId('param-pipeline').tagName).toBe('INPUT');
+            expect(screen.getByTestId('target-pipeline-input').tagName).toBe('INPUT');
         });
 
         // Deselect template
@@ -496,7 +507,72 @@ describe('Pipeline dropdown selector', () => {
         fireEvent.click(screen.getByTestId('template-run-pipeline'));
 
         await waitFor(() => {
-            expect(screen.getByTestId('param-pipeline').tagName).toBe('SELECT');
+            expect(screen.getByTestId('target-pipeline-select').tagName).toBe('SELECT');
         });
+    });
+
+    it('no PARAMETERS section is shown for run-pipeline template', async () => {
+        await openRunPipelineTemplate();
+
+        await waitFor(() => {
+            expect(screen.getByTestId('target-pipeline-select').tagName).toBe('SELECT');
+        });
+
+        // The template-params section should not exist since params is empty
+        expect(screen.queryByTestId('template-params')).toBeNull();
+    });
+
+    it('params.pipeline is set when a pipeline is selected from dropdown', async () => {
+        mockFetch.mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({ schedules: [] }),
+        });
+
+        await renderSchedulesTab();
+        fireEvent.click(screen.getByText('+ New'));
+
+        mockFetch.mockImplementation(async (url: string) => {
+            if (typeof url === 'string' && url.includes('/pipelines')) {
+                return {
+                    ok: true,
+                    json: () => Promise.resolve({
+                        pipelines: [
+                            { name: 'daily-report', path: 'pipelines/daily-report/pipeline.yaml' },
+                        ],
+                    }),
+                };
+            }
+            // Accept POST for schedule creation
+            return { ok: true, json: () => Promise.resolve({}) };
+        });
+
+        fireEvent.click(screen.getByTestId('template-run-pipeline'));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('target-pipeline-select').tagName).toBe('SELECT');
+        });
+
+        // Select a pipeline
+        const select = screen.getByTestId('target-pipeline-select') as HTMLSelectElement;
+        fireEvent.change(select, { target: { value: 'pipelines/daily-report/pipeline.yaml' } });
+
+        // Submit the form
+        const form = screen.getByTestId('template-picker').closest('form')!;
+        fireEvent.submit(form);
+
+        // Verify POST body contains params.pipeline
+        await waitFor(() => {
+            const postCalls = mockFetch.mock.calls.filter(
+                (c: any[]) => c[1]?.method === 'POST' && (c[0] as string).includes('/schedules'),
+            );
+            expect(postCalls.length).toBeGreaterThan(0);
+        });
+
+        const postCall = mockFetch.mock.calls.find(
+            (c: any[]) => c[1]?.method === 'POST' && (c[0] as string).includes('/schedules'),
+        );
+        const body = JSON.parse(postCall![1].body);
+        expect(body.params.pipeline).toBe('pipelines/daily-report/pipeline.yaml');
+        expect(body.target).toBe('pipelines/daily-report/pipeline.yaml');
     });
 });
