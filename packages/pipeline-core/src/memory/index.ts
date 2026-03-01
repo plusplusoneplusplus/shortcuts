@@ -1,7 +1,7 @@
 /**
  * Memory System
  *
- * Re-exports all memory types and interfaces.
+ * Re-exports all memory types, interfaces, and the FileMemoryStore implementation.
  */
 export type {
     RawObservation,
@@ -15,3 +15,5 @@ export type {
     MemoryStats,
     MemoryStore,
 } from './types';
+
+export { FileMemoryStore, computeRepoHash } from './memory-store';
