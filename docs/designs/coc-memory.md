@@ -103,28 +103,58 @@ Before an AI call, the caller retrieves memory context:
 
 **Retrieval strategy (v1):** Full dump of consolidated memory. The aggregation step keeps memory concise enough (<100 facts) that this is practical. Future versions can add keyword/TF-IDF/embedding-based selective retrieval.
 
-### 2. Capture (Post-Call)
+### 2. Capture (Tool-Based)
 
-After an AI call, the caller issues a lightweight follow-up prompt via `MemoryCapture`:
+Instead of a follow-up prompt, the AI session receives a `write_memory` tool. The AI decides organically when to call it — no extra messages, no session history pollution.
 
+**Tool definition:**
+
+```typescript
+const tool = defineTool<WriteMemoryArgs>('write_memory', {
+  description: 'Store a fact worth remembering for future tasks on this codebase. '
+    + 'Call this when you notice coding conventions, architecture decisions, '
+    + 'common gotchas, or tool/library usage patterns.',
+  parameters: {
+    type: 'object',
+    properties: {
+      fact: { type: 'string', description: 'A concise fact to remember (one sentence)' },
+      category: {
+        type: 'string',
+        enum: ['conventions', 'architecture', 'gotchas', 'tools', 'patterns'],
+        description: 'Topic category for the fact',
+      },
+    },
+    required: ['fact'],
+  },
+  handler: (args) => {
+    // Write raw observation to MemoryStore
+    // (handler closure has access to store, repoHash, source metadata)
+    return { stored: true };
+  },
+});
 ```
-Given the task you just completed and the context you operated in, list 2-5 concise
-facts worth remembering for future tasks on this codebase. Focus on:
-- Coding conventions and patterns
-- Architecture decisions and structure
-- Common gotchas or pitfalls
-- Tool/library usage patterns
 
-Output as a markdown bullet list. If nothing notable, output "No new observations."
+**How it's provided to AI sessions:**
+
+```typescript
+// Tool is passed via the existing tools mechanism
+const invoker = createCLIAIInvoker({ tools: [writeMemoryTool] });
+// Or via SendMessageOptions:
+await sendMessage(prompt, { tools: [writeMemoryTool] });
 ```
 
-The response is written as a raw observation file with metadata header. This is a fast, small AI call (short prompt, short output).
+The tool handler writes a raw observation file (same format as before) with the fact as content. Multiple `write_memory` calls in a single session produce multiple raw observation files.
 
-**Classification:** Each observation is tagged as repo-level or system-level based on a simple heuristic — facts referencing specific files, directories, or project names → repo; facts about general patterns, user preferences, or tool behavior → system. The capture prompt can include guidance for this, or it can be determined during aggregation.
+**Advantages over follow-up prompt:**
+- **No session pollution** — no extra assistant messages in history
+- **No extra AI calls** — the original session does the work
+- **AI decides relevance** — only writes when it genuinely notices something worth remembering
+- **Transparent** — tool calls are visible to the user
+- **Works with any AI backend** that supports function calling
 
 ### 3. Aggregate (Background, Batched)
 
-After each AI interaction where capture occurred:
+Aggregation is checked after a memory-enabled AI session completes:
 
 ```
 count = number of raw/*.md files since last aggregation
@@ -164,11 +194,9 @@ Produce an updated memory document following these rules:
 
 ## Integration Pattern
 
-Memory is an **opt-in, caller-side concern**. The AI invoker (`createCLIAIInvoker`) is never modified. Instead, each feature that wants memory explicitly composes `MemoryRetriever` and `MemoryCapture` around its own AI calls.
+Memory is an **opt-in, caller-side concern**. The AI invoker (`createCLIAIInvoker`) is never modified. Instead, each feature that wants memory: (1) prepends retrieved context to the prompt, and (2) provides the `write_memory` tool to the AI session.
 
 ### Core services (pipeline-core)
-
-`MemoryRetriever` and `MemoryCapture` are standalone, stateless services. They have no knowledge of the AI invoker — they just read/write memory and format prompts.
 
 ```typescript
 // MemoryRetriever — load and format consolidated memory
@@ -176,10 +204,11 @@ const retriever = new MemoryRetriever(store);
 const context: string | null = await retriever.retrieve(repoHash, level);
 // Returns formatted markdown block, or null if no memory exists
 
-// MemoryCapture — extract observations from an AI response
-const capturer = new MemoryCapture(store);
-await capturer.capture(aiInvoker, response, { source: 'code-review', repoHash, level });
-// Issues follow-up prompt, writes raw observation file
+// createWriteMemoryTool — tool factory for AI-driven capture
+const { tool, getWrittenFacts } = createWriteMemoryTool(store, {
+  source: 'code-review', repoHash, level
+});
+// Returns a Tool instance + accessor for facts written during the session
 
 // MemoryAggregator — check threshold and consolidate
 const aggregator = new MemoryAggregator(store);
@@ -201,38 +230,37 @@ const result = await withMemory(aiInvoker, {
 
 // Equivalent to:
 //   1. retriever.retrieve() → prepend to prompt
-//   2. aiInvoker(enrichedPrompt, opts)
-//   3. capturer.capture()
+//   2. createWriteMemoryTool() → inject into tools
+//   3. aiInvoker(enrichedPrompt, { ...opts, tools: [...existingTools, memoryTool] })
 //   4. aggregator.aggregateIfNeeded()
 //   5. return original AI result
 ```
 
-`withMemory` is a pure function — it doesn't wrap or replace the invoker. It's a convenience that orchestrates the three services around a single AI call.
+`withMemory` is a pure function — it doesn't wrap or replace the invoker. It's a convenience that orchestrates retrieval, tool injection, and aggregation around a single AI call.
 
 ### Caller-side composition (for complex cases)
 
-When a feature needs finer control (e.g., retrieve once before a batch, capture once after reduce), it calls the services directly:
+When a feature needs finer control (e.g., retrieve once before a batch, share one tool instance across a session), it calls the services directly:
 
 ```typescript
-// Pipeline executor — retrieve once, capture once (not per-item)
+// Pipeline executor — retrieve once, tool available throughout
 const context = await retriever.retrieve(repoHash, level);
 const enrichedMapPrompt = context ? context + '\n\n' + mapPrompt : mapPrompt;
+const { tool } = createWriteMemoryTool(store, { source: pipeline.name, repoHash, level });
 
-// ... execute map phase with enrichedMapPrompt ...
-// ... execute reduce phase ...
+// ... execute map/reduce phases with enrichedMapPrompt and tool in session ...
 
-await capturer.capture(aiInvoker, reduceResult, { source: pipeline.name, repoHash, level });
 await aggregator.aggregateIfNeeded(aiInvoker, repoHash, level);
 ```
 
 ```typescript
-// Wiki Ask handler — retrieve with TF-IDF context, capture at session end
+// Wiki Ask handler — retrieve with TF-IDF context, tool in conversation session
 const memoryContext = await retriever.retrieve(repoHash, level);
 const tfidfContext = await contextBuilder.buildContext(question);
 const fullContext = [tfidfContext, memoryContext].filter(Boolean).join('\n\n');
+const { tool } = createWriteMemoryTool(store, { source: 'wiki-ask', repoHash, level });
 
-const result = await sendMessage(fullContext + '\n\n' + question, opts);
-// Capture deferred to session end or every N turns
+const result = await sendMessage(fullContext + '\n\n' + question, { tools: [tool] });
 ```
 
 ### Where each pattern is used
@@ -240,9 +268,9 @@ const result = await sendMessage(fullContext + '\n\n' + question, opts);
 | Call Site | Pattern | Notes |
 |-----------|---------|-------|
 | Pipeline job mode | `withMemory()` | Single AI call — helper is ideal |
-| Pipeline map-reduce | Caller-side | Retrieve once before map, capture once after reduce |
+| Pipeline map-reduce | Caller-side | Retrieve once, share tool across phases |
 | Workflow nodes | `withMemory()` per node, or caller-side per workflow | Depends on workflow complexity |
-| `coc serve` wiki Ask | Caller-side | Combines memory with TF-IDF context |
+| `coc serve` wiki Ask | Caller-side | Combines memory with TF-IDF context; tool in conversation session |
 | `coc serve` wiki Explore | Caller-side | Combines memory with component graph context |
 | Task comment resolution | `withMemory()` | Single AI call per comment |
 | Queue executor tasks | `withMemory()` | Chat, custom, follow-prompt |
@@ -385,9 +413,9 @@ POST   /api/memory/add                # add a fact manually
 |--------|---------|---------------|
 | `MemoryStore` | `pipeline-core` | CRUD for raw + consolidated files, atomic writes, repo hashing, path resolution. Import via `@plusplusoneplusplus/pipeline-core/memory` |
 | `MemoryRetriever` | `pipeline-core` | Load consolidated memory, format as prompt context block |
-| `MemoryCapture` | `pipeline-core` | Post-AI-call observation extraction prompt, raw file writing |
+| `createWriteMemoryTool` | `pipeline-core` | Tool factory: creates a `write_memory` tool that the AI can call to store facts. Uses `defineTool` pattern from copilot-sdk-wrapper |
 | `MemoryAggregator` | `pipeline-core` | Batch threshold check, AI consolidation prompt, prune/archive raw files |
-| `withMemory()` helper | `pipeline-core` | Composable utility that orchestrates retrieve → invoke → capture → aggregate for simple call sites |
+| `withMemory()` helper | `pipeline-core` | Composable utility that orchestrates retrieve → tool injection → invoke → aggregate for simple call sites |
 | `PipelineConfig.memory` | `pipeline-core` | Schema addition for `memory` field in pipeline YAML |
 | `executePipeline` hooks | `pipeline-core` | Caller-side memory composition in pipeline execution flow (retrieve before map, capture after reduce) |
 | Repo context detection | `pipeline-core` | Auto-detect repo root from working directory via git or `.git/` walk |
@@ -404,7 +432,7 @@ POST   /api/memory/add                # add a fact manually
 |--------|--------|-------|
 | `MemoryStore` | ✅ Done | `pipeline-core/src/memory/` — FileMemoryStore with raw CRUD, consolidated r/w, index, repo-info, clear, stats. Exported via `@plusplusoneplusplus/pipeline-core/memory` |
 | `MemoryRetriever` | ⬚ Not started | |
-| `MemoryCapture` | ⬚ Not started | |
+| `createWriteMemoryTool` | ⬚ Not started | |
 | `MemoryAggregator` | ⬚ Not started | |
 | `withMemory()` helper | ⬚ Not started | |
 | `PipelineConfig.memory` | ⬚ Not started | |
@@ -476,7 +504,7 @@ POST   /api/memory/add                # add a fact manually
 | Integration pattern | Caller-side composition + `withMemory()` helper | AI invoker stays untouched; each feature explicitly opts in; no implicit global behavior |
 | Aggregation trigger | Post-call batched (threshold ≥ 5) | Balances freshness vs. AI call cost |
 | Global default | Disabled | Safe default; users opt in via config or pipeline YAML |
-| Observation extraction | AI self-reports via follow-up prompt | Higher quality than regex; lightweight single-turn call |
+| Observation capture | `write_memory` tool provided to AI session | AI decides when to write; no follow-up prompts; no session history pollution; follows existing `defineTool` pattern |
 | Retrieval strategy (v1) | Full dump of consolidated.md | Simple, effective for <100 facts; upgrade path to selective retrieval |
 | Write pattern | Atomic tmp → rename | Consistent with FileProcessStore and deep-wiki cache patterns |
 | Repo identity | SHA-256 hash of resolved repo root path | Simple, local-only; git remote URL stored as secondary signal in repo-info.json |
