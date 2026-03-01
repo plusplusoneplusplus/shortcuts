@@ -108,6 +108,7 @@ export {
 // Path utilities
 export {
     toForwardSlashes,
+    toNativePath,
 } from './path-utils';
 
 export {

@@ -174,6 +174,7 @@ export {
     DEFAULT_POLL_INTERVAL_MS,
     // Path utilities
     toForwardSlashes,
+    toNativePath,
     isWithinDirectory,
     // Template engine
     TEMPLATE_VARIABLE_REGEX,

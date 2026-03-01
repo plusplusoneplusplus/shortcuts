@@ -683,9 +683,10 @@ describe('BulkFollowPromptDialog', () => {
             );
             expect(postCalls.length).toBe(1);
             const body = JSON.parse(postCalls[0][1].body);
-            expect(body.payload.planFilePath).not.toContain('\\');
-            expect(body.payload.planFilePath).toBe('D:/projects/shortcuts/.vscode/tasks/feature1/task.md');
-            expect(body.payload.promptFilePath).not.toContain('\\');
+            // Windows drive-letter paths should use backslashes (native style)
+            expect(body.payload.planFilePath).not.toContain('/');
+            expect(body.payload.planFilePath).toBe('D:\\projects\\shortcuts\\.vscode\\tasks\\feature1\\task.md');
+            expect(body.payload.promptFilePath).not.toContain('/');
         });
     });
 });

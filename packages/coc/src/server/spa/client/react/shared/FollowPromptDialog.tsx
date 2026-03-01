@@ -10,7 +10,7 @@ import { useRecentPrompts } from '../hooks/useRecentPrompts';
 import { useApp } from '../context/AppContext';
 import { useGlobalToast } from '../context/ToastContext';
 import { getApiBase } from '../utils/config';
-import { toForwardSlashes } from '@plusplusoneplusplus/pipeline-core/utils/path-utils';
+import { toNativePath } from '@plusplusoneplusplus/pipeline-core/utils/path-utils';
 
 interface PromptItem {
     name: string;
@@ -87,13 +87,13 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
             const workingDirectory = ws?.rootPath || '';
             const tasksFolder = await getTasksFolderPath(selectedWsId);
             const planFilePath = workingDirectory
-                ? toForwardSlashes(workingDirectory + '/' + tasksFolder + '/' + taskPath)
+                ? toNativePath(workingDirectory + '/' + tasksFolder + '/' + taskPath)
                 : taskPath;
 
             let payload: Record<string, string>;
             if (type === 'prompt') {
                 const promptFilePath = workingDirectory
-                    ? toForwardSlashes(workingDirectory + '/' + (path || ''))
+                    ? toNativePath(workingDirectory + '/' + (path || ''))
                     : path || '';
                 payload = { promptFilePath, planFilePath, workingDirectory };
             } else {

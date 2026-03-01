@@ -500,12 +500,12 @@ describe('FollowPromptDialog', () => {
             );
             expect(postCalls.length).toBe(1);
             const body = JSON.parse(postCalls[0][1].body);
-            // planFilePath should have no backslashes
-            expect(body.payload.planFilePath).not.toContain('\\');
-            expect(body.payload.planFilePath).toBe('D:/projects/shortcuts/.vscode/tasks/test/task.md');
-            // promptFilePath should also have no backslashes
-            expect(body.payload.promptFilePath).not.toContain('\\');
-            expect(body.payload.promptFilePath).toBe('D:/projects/shortcuts/.vscode/impl.prompt.md');
+            // Windows drive-letter paths should use backslashes (native style)
+            expect(body.payload.planFilePath).not.toContain('/');
+            expect(body.payload.planFilePath).toBe('D:\\projects\\shortcuts\\.vscode\\tasks\\test\\task.md');
+            // promptFilePath should also use backslashes for Windows paths
+            expect(body.payload.promptFilePath).not.toContain('/');
+            expect(body.payload.promptFilePath).toBe('D:\\projects\\shortcuts\\.vscode\\impl.prompt.md');
         });
     });
 });

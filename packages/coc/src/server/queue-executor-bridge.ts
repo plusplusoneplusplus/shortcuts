@@ -39,7 +39,7 @@ import {
     gatherFeatureContext,
     parsePipelineYAMLSync,
     executePipeline,
-    toForwardSlashes,
+    toNativePath,
     mergeConsecutiveContentItems,
 } from '@plusplusoneplusplus/pipeline-core';
 import type { ProcessStore, AIProcess, ConversationTurn, ToolEvent, TimelineItem, CopilotSDKService, SelectedContext, Attachment } from '@plusplusoneplusplus/pipeline-core';
@@ -953,7 +953,7 @@ export class CLITaskExecutor implements TaskExecutor {
             const contextPath = path.join(dir, 'CONTEXT.md');
             if (fs.existsSync(contextPath)) {
                 // Use forward slashes in prompt for cross-platform consistency (Unix-style paths in context references)
-                const normalizedPath = toForwardSlashes(contextPath);
+                const normalizedPath = toNativePath(contextPath);
                 return `See context details in ${normalizedPath}`;
             }
         } catch {
