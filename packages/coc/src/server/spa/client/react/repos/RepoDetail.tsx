@@ -98,7 +98,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                 />
                 <h1 className="text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc] flex-1">{ws.name}</h1>
                 <Button variant="primary" size="sm" id="repo-generate-btn" data-testid="repo-generate-btn" onClick={() => handleOpenGenerateDialog()} className="relative">
-                    ✨ Generate
+                    ✨ Generate Plan
                     {generateDialog.open && generateDialog.minimized && (
                         <span data-testid="generate-minimized-badge" className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-[#0078d4] border-2 border-white dark:border-[#252526]" />
                     )}
