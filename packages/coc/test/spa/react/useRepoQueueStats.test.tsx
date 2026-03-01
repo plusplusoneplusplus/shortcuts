@@ -21,7 +21,7 @@ function Wrap({ children }: { children: ReactNode }) {
 describe('useRepoQueueStats', () => {
     it('returns zeros when no queue data exists for workspace', () => {
         const { result } = renderHook(() => useRepoQueueStats('nonexistent'), { wrapper: Wrap });
-        expect(result.current).toEqual({ running: 0, queued: 0, chatRunning: 0, chatQueued: 0 });
+        expect(result.current).toEqual({ running: 0, queued: 0, chatRunning: 0, chatQueued: 0, chatTotal: 0 });
     });
 
     it('returns non-chat counts for running/queued and chat counts separately', () => {
@@ -45,7 +45,7 @@ describe('useRepoQueueStats', () => {
         }
 
         render(<Wrap><Inner /></Wrap>);
-        expect(hookResult).toEqual({ running: 1, queued: 1, chatRunning: 1, chatQueued: 0 });
+        expect(hookResult).toEqual({ running: 1, queued: 1, chatRunning: 1, chatQueued: 0, chatTotal: 1 });
     });
 
     it('excludes chat tasks from running/queued counts', () => {
@@ -75,7 +75,7 @@ describe('useRepoQueueStats', () => {
         }
 
         render(<Wrap><Inner /></Wrap>);
-        expect(hookResult).toEqual({ running: 1, queued: 1, chatRunning: 1, chatQueued: 2 });
+        expect(hookResult).toEqual({ running: 1, queued: 1, chatRunning: 1, chatQueued: 2, chatTotal: 3 });
     });
 
     it('returns all zeros when only empty arrays are provided', () => {
@@ -98,7 +98,7 @@ describe('useRepoQueueStats', () => {
         }
 
         render(<Wrap><Inner /></Wrap>);
-        expect(hookResult).toEqual({ running: 0, queued: 0, chatRunning: 0, chatQueued: 0 });
+        expect(hookResult).toEqual({ running: 0, queued: 0, chatRunning: 0, chatQueued: 0, chatTotal: 0 });
     });
 
     it('returns zeros for different workspace id', () => {
@@ -122,7 +122,7 @@ describe('useRepoQueueStats', () => {
         }
 
         render(<Wrap><Inner /></Wrap>);
-        expect(hookResult).toEqual({ running: 0, queued: 0, chatRunning: 0, chatQueued: 0 });
+        expect(hookResult).toEqual({ running: 0, queued: 0, chatRunning: 0, chatQueued: 0, chatTotal: 0 });
     });
 
     it('counts tasks without type as non-chat', () => {
@@ -145,6 +145,58 @@ describe('useRepoQueueStats', () => {
         }
 
         render(<Wrap><Inner /></Wrap>);
-        expect(hookResult).toEqual({ running: 1, queued: 1, chatRunning: 0, chatQueued: 0 });
+        expect(hookResult).toEqual({ running: 1, queued: 1, chatRunning: 0, chatQueued: 0, chatTotal: 0 });
+    });
+
+    it('includes history chat items in chatTotal', () => {
+        let hookResult: ReturnType<typeof useRepoQueueStats> | null = null;
+
+        function Inner() {
+            const { dispatch } = useQueue();
+            hookResult = useRepoQueueStats('ws-history');
+            useEffect(() => {
+                dispatch({
+                    type: 'REPO_QUEUE_UPDATED',
+                    repoId: 'ws-history',
+                    queue: {
+                        queued: [{ id: 'q1', type: 'chat' }],
+                        running: [{ id: 'r1', type: 'chat' }],
+                        history: [
+                            { id: 'h1', type: 'chat' },
+                            { id: 'h2', type: 'chat' },
+                            { id: 'h3', type: 'run-pipeline' },
+                        ],
+                    },
+                });
+            }, [dispatch]);
+            return null;
+        }
+
+        render(<Wrap><Inner /></Wrap>);
+        expect(hookResult).toEqual({ running: 0, queued: 0, chatRunning: 1, chatQueued: 1, chatTotal: 4 });
+    });
+
+    it('returns chatTotal 0 when no chat tasks exist in any array', () => {
+        let hookResult: ReturnType<typeof useRepoQueueStats> | null = null;
+
+        function Inner() {
+            const { dispatch } = useQueue();
+            hookResult = useRepoQueueStats('ws-nochat');
+            useEffect(() => {
+                dispatch({
+                    type: 'REPO_QUEUE_UPDATED',
+                    repoId: 'ws-nochat',
+                    queue: {
+                        queued: [{ id: 'q1', type: 'run-pipeline' }],
+                        running: [{ id: 'r1', type: 'follow-prompt' }],
+                        history: [{ id: 'h1', type: 'run-pipeline' }],
+                    },
+                });
+            }, [dispatch]);
+            return null;
+        }
+
+        render(<Wrap><Inner /></Wrap>);
+        expect(hookResult).toEqual({ running: 1, queued: 1, chatRunning: 0, chatQueued: 0, chatTotal: 0 });
     });
 });
