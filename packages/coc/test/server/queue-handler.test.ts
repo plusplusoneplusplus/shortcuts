@@ -236,6 +236,47 @@ describe('Queue Handler', () => {
             expect(body.task.type).toBe('readonly-chat');
         });
 
+        it('should auto-set payload.kind to chat for readonly-chat without explicit kind', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(`${srv.url}/api/queue`, {
+                type: 'readonly-chat',
+                prompt: 'Explain the architecture',
+                workingDirectory: '/tmp/repo',
+                displayName: 'Chat',
+            });
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.type).toBe('readonly-chat');
+            expect(body.task.payload.kind).toBe('chat');
+        });
+
+        it('should auto-set payload.kind to chat for chat type without explicit kind', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(`${srv.url}/api/queue`, {
+                type: 'chat',
+                prompt: 'Hello',
+                workingDirectory: '/tmp/repo',
+                displayName: 'Chat',
+            });
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.payload.kind).toBe('chat');
+        });
+
+        it('should not overwrite existing payload.kind for chat types', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(`${srv.url}/api/queue`, makeTask({
+                type: 'readonly-chat',
+                payload: { kind: 'chat', prompt: 'Test' },
+            }));
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.payload.kind).toBe('chat');
+        });
+
         it('should promote top-level workingDirectory into payload', async () => {
             const srv = await startServer();
 

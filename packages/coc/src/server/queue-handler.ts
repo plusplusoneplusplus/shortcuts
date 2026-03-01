@@ -151,6 +151,12 @@ function validateAndParseTask(taskSpec: any): TaskValidationResult {
 
     const payload = taskSpec.payload || {};
 
+    // Ensure chat/readonly-chat payloads carry kind:'chat' so downstream
+    // isChatPayload() guards match (e.g. extractPrompt applies READONLY_PROMPT_PREFIX).
+    if ((taskSpec.type === 'chat' || taskSpec.type === 'readonly-chat') && !payload.kind) {
+        payload.kind = 'chat';
+    }
+
     // Promote top-level prompt into payload when not already present
     if (typeof taskSpec.prompt === 'string' && taskSpec.prompt.trim()
         && !payload.prompt) {
