@@ -462,7 +462,13 @@ export function MarkdownReviewEditor({
         try {
             const result = await resolveWithAI(rawContent, filePath);
             setRawContent(result.revisedContent);
-            addToast(`${result.resolvedCount} comments resolved. Document updated.`, 'success');
+            if (result.resolvedCount === result.totalCount) {
+                addToast(`All ${result.resolvedCount} comments resolved. Document updated.`, 'success');
+            } else if (result.resolvedCount === 0) {
+                addToast(`AI could not resolve any of the ${result.totalCount} comments. Document may still have been updated.`, 'warning');
+            } else {
+                addToast(`${result.resolvedCount} of ${result.totalCount} comments resolved. Document updated.`, 'success');
+            }
         } catch (err) {
             addToast(`Batch resolve failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
         }
@@ -472,7 +478,11 @@ export function MarkdownReviewEditor({
         try {
             const result = await fixWithAI(id, rawContent, filePath);
             setRawContent(result.revisedContent);
-            addToast('Comment fixed. Document updated.', 'success');
+            if (result.resolved) {
+                addToast('Comment fixed and resolved. Document updated.', 'success');
+            } else {
+                addToast('AI updated the document but did not resolve the comment (it may need clarification).', 'info');
+            }
         } catch (err) {
             addToast(`Fix failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
         }

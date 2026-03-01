@@ -44,10 +44,12 @@ export interface DocumentContext {
 export interface ResolveWithAIResult {
     revisedContent: string;
     resolvedCount: number;
+    totalCount: number;
 }
 
 export interface FixWithAIResult {
     revisedContent: string;
+    resolved: boolean;
 }
 
 export interface AskAIOptions {
@@ -266,6 +268,7 @@ export function useTaskComments(wsId: string, taskPath: string): UseTaskComments
     const resolveWithAI = useCallback(
         async (documentContent: string, filePath: string): Promise<ResolveWithAIResult> => {
             if (mountedRef.current) setResolving(true);
+            const totalCount = comments.filter(c => c.status === 'open').length;
             try {
                 // Step 1 — call batch resolve endpoint
                 const aiRes = await fetch(commentsUrl(wsId, taskPath) + '/batch-resolve', {
@@ -311,12 +314,12 @@ export function useTaskComments(wsId: string, taskPath: string): UseTaskComments
 
                 await refresh();
 
-                return { revisedContent: revisedContent ?? '', resolvedCount: commentIds.length };
+                return { revisedContent: revisedContent ?? '', resolvedCount: commentIds.length, totalCount };
             } finally {
                 if (mountedRef.current) setResolving(false);
             }
         },
-        [wsId, taskPath, resolveComment, refresh]
+        [wsId, taskPath, comments, resolveComment, refresh]
     );
 
     const fixWithAI = useCallback(
@@ -332,16 +335,19 @@ export function useTaskComments(wsId: string, taskPath: string): UseTaskComments
                 if (!aiRes.ok) throw new Error('AI resolve failed');
 
                 let revisedContent: string;
+                let commentIds: string[] = [];
 
                 if (aiRes.status === 202) {
                     // Async queue path: poll for result
                     const { taskId } = await aiRes.json();
                     const result = await pollTaskResult<{ revisedContent: string; commentIds: string[] }>(taskId);
                     revisedContent = result.revisedContent;
+                    commentIds = result.commentIds ?? [];
                 } else {
                     // Sync fallback path
                     const data = await aiRes.json();
                     revisedContent = data.revisedContent;
+                    commentIds = data.commentIds ?? [];
                 }
 
                 // Step 2 — write revised file only if content was returned
@@ -357,11 +363,14 @@ export function useTaskComments(wsId: string, taskPath: string): UseTaskComments
                     if (!patchRes.ok) throw new Error('Failed to write revised content');
                 }
 
-                // Step 3 — resolve the single comment
-                await resolveComment(id);
+                // Step 3 — resolve only if AI actually resolved it
+                const wasResolved = commentIds.includes(id);
+                if (wasResolved) {
+                    await resolveComment(id);
+                }
                 await refresh();
 
-                return { revisedContent };
+                return { revisedContent, resolved: wasResolved };
             } finally {
                 if (mountedRef.current) setResolvingCommentId(null);
             }

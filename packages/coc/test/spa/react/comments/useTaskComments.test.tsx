@@ -530,6 +530,7 @@ describe('useTaskComments', () => {
 
         expect(resolveResult.revisedContent).toBe('revised doc');
         expect(resolveResult.resolvedCount).toBe(2);
+        expect(resolveResult.totalCount).toBe(2);
         // resolveComment should have been called for each comment id
         expect(patchCallCount).toBe(2);
     });
@@ -697,7 +698,7 @@ describe('useTaskComments', () => {
                 capturedBody = JSON.parse(opts.body);
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ revisedContent: 'fixed doc', commentId: 'c1' }),
+                    json: () => Promise.resolve({ revisedContent: 'fixed doc', commentIds: ['c1'] }),
                 });
             }
             if (opts?.method === 'PATCH' && url.includes('/tasks/content')) {
@@ -718,6 +719,7 @@ describe('useTaskComments', () => {
         });
 
         expect(fixResult.revisedContent).toBe('fixed doc');
+        expect(fixResult.resolved).toBe(true);
         expect(capturedBody.commandId).toBe('resolve');
         expect(capturedBody.documentContent).toBe('original content');
     });
@@ -756,7 +758,7 @@ describe('useTaskComments', () => {
         await act(async () => {
             resolveAiEndpoint({
                 ok: true,
-                json: () => Promise.resolve({ revisedContent: 'new', commentId: 'c1' }),
+                json: () => Promise.resolve({ revisedContent: 'new', commentIds: ['c1'] }),
             });
             await promise!;
         });
@@ -806,7 +808,7 @@ describe('useTaskComments', () => {
                 // Queue path: no revisedContent returned (AI edited file via tools)
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ commentId: 'c1' }),
+                    json: () => Promise.resolve({ commentIds: ['c1'] }),
                 });
             }
             if (opts?.method === 'PATCH' && url.includes('/tasks/content')) {
@@ -830,7 +832,166 @@ describe('useTaskComments', () => {
         // PATCH should NOT have been called since AI already edited the file
         expect(patchContentCalled).toBe(false);
         expect(fixResult.revisedContent).toBeFalsy();
+        expect(fixResult.resolved).toBe(true);
         expect(result.current.resolvingCommentId).toBeNull();
+    });
+
+    // ======================================================================
+    // Partial resolution
+    // ======================================================================
+
+    it('fixWithAI — partial resolution: does NOT call resolveComment when commentIds is empty', async () => {
+        const comment = makeComment({ id: 'c1', status: 'open' });
+        let resolveCommentCalled = false;
+
+        fetchSpy.mockImplementation((url: string, opts?: any) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ counts: {} }) });
+            }
+            if (opts?.method === 'POST' && url.includes('ask-ai')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ revisedContent: 'revised doc', commentIds: [] }),
+                });
+            }
+            if (opts?.method === 'PATCH' && url.includes('/tasks/content')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            if (opts?.method === 'PATCH') {
+                resolveCommentCalled = true;
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ comment: { ...comment, status: 'resolved' } }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ comments: [comment] }) });
+        });
+
+        const { result } = renderHook(() => useTaskComments('ws1', 'task1.md'));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        let fixResult: any;
+        await act(async () => {
+            fixResult = await result.current.fixWithAI('c1', 'doc', 'task1.md');
+        });
+
+        expect(resolveCommentCalled).toBe(false);
+        expect(fixResult.resolved).toBe(false);
+        expect(fixResult.revisedContent).toBe('revised doc');
+    });
+
+    it('fixWithAI — full resolution: calls resolveComment when comment ID is in commentIds', async () => {
+        const comment = makeComment({ id: 'c1', status: 'open' });
+        let resolveCommentCalled = false;
+
+        fetchSpy.mockImplementation((url: string, opts?: any) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ counts: {} }) });
+            }
+            if (opts?.method === 'POST' && url.includes('ask-ai')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ revisedContent: 'revised doc', commentIds: ['c1'] }),
+                });
+            }
+            if (opts?.method === 'PATCH' && url.includes('/tasks/content')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            if (opts?.method === 'PATCH') {
+                resolveCommentCalled = true;
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ comment: { ...comment, status: 'resolved' } }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ comments: [comment] }) });
+        });
+
+        const { result } = renderHook(() => useTaskComments('ws1', 'task1.md'));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        let fixResult: any;
+        await act(async () => {
+            fixResult = await result.current.fixWithAI('c1', 'doc', 'task1.md');
+        });
+
+        expect(resolveCommentCalled).toBe(true);
+        expect(fixResult.resolved).toBe(true);
+    });
+
+    it('resolveWithAI — partial resolution: only resolves returned commentIds, returns totalCount', async () => {
+        const c1 = makeComment({ id: 'c1', status: 'open' });
+        const c2 = makeComment({ id: 'c2', status: 'open', comment: 'second' });
+        const c3 = makeComment({ id: 'c3', status: 'open', comment: 'third' });
+        const c4 = makeComment({ id: 'c4', status: 'open', comment: 'fourth' });
+        const c5 = makeComment({ id: 'c5', status: 'open', comment: 'fifth' });
+        let resolvedIds: string[] = [];
+
+        fetchSpy.mockImplementation((url: string, opts?: any) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ counts: {} }) });
+            }
+            if (opts?.method === 'POST' && url.includes('batch-resolve')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ revisedContent: 'revised', commentIds: ['c1', 'c3', 'c5'] }),
+                });
+            }
+            if (opts?.method === 'PATCH' && url.includes('/tasks/content')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            if (opts?.method === 'PATCH') {
+                const id = ['c1', 'c2', 'c3', 'c4', 'c5'].find(cid => url.includes(cid));
+                if (id) resolvedIds.push(id);
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ comment: makeComment({ id, status: 'resolved' }) }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ comments: [c1, c2, c3, c4, c5] }) });
+        });
+
+        const { result } = renderHook(() => useTaskComments('ws1', 'task1.md'));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        let resolveResult: any;
+        await act(async () => {
+            resolveResult = await result.current.resolveWithAI('doc', 'task1.md');
+        });
+
+        expect(resolveResult.resolvedCount).toBe(3);
+        expect(resolveResult.totalCount).toBe(5);
+        expect(resolvedIds).toEqual(['c1', 'c3', 'c5']);
+    });
+
+    it('resolveWithAI — full resolution: resolvedCount equals totalCount', async () => {
+        const c1 = makeComment({ id: 'c1', status: 'open' });
+        const c2 = makeComment({ id: 'c2', status: 'open', comment: 'second' });
+        let patchCallCount = 0;
+
+        fetchSpy.mockImplementation((url: string, opts?: any) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ counts: {} }) });
+            }
+            if (opts?.method === 'POST' && url.includes('batch-resolve')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ revisedContent: 'revised', commentIds: ['c1', 'c2'] }),
+                });
+            }
+            if (opts?.method === 'PATCH' && url.includes('/tasks/content')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            if (opts?.method === 'PATCH') {
+                patchCallCount++;
+                const id = url.includes('c1') ? 'c1' : 'c2';
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ comment: makeComment({ id, status: 'resolved' }) }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ comments: [c1, c2] }) });
+        });
+
+        const { result } = renderHook(() => useTaskComments('ws1', 'task1.md'));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        let resolveResult: any;
+        await act(async () => {
+            resolveResult = await result.current.resolveWithAI('doc', 'task1.md');
+        });
+
+        expect(resolveResult.resolvedCount).toBe(2);
+        expect(resolveResult.totalCount).toBe(2);
+        expect(patchCallCount).toBe(2);
     });
 
     // ======================================================================
@@ -956,7 +1117,7 @@ describe('useTaskComments', () => {
             if (opts?.method === 'POST' && url.includes('ask-ai')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ revisedContent: 'new', commentId: 'c1' }),
+                    json: () => Promise.resolve({ revisedContent: 'new', commentIds: ['c1'] }),
                 });
             }
             if (opts?.method === 'PATCH' && url.includes('/tasks/content')) {
