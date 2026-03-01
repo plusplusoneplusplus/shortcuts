@@ -105,6 +105,52 @@ export function countMarkdownFilesInFolder(folder: TaskFolder): number {
     return directSingles + groupedDocs + childDocs;
 }
 
+// ── Search utilities ───────────────────────────────────────────────────
+
+export function flattenTaskTree(folder: TaskFolder): (TaskDocument | TaskDocumentGroup)[] {
+    const result: (TaskDocument | TaskDocumentGroup)[] = [];
+    const contextDocs: TaskDocument[] = (folder as any).contextDocuments ?? [];
+
+    result.push(...folder.singleDocuments);
+    result.push(...folder.documentGroups);
+    result.push(...contextDocs);
+
+    for (const child of folder.children) {
+        result.push(...flattenTaskTree(child));
+    }
+
+    return result;
+}
+
+export function filterTaskItems(
+    items: (TaskDocument | TaskDocumentGroup)[],
+    query: string,
+): (TaskDocument | TaskDocumentGroup)[] {
+    if (!query) return items.slice().sort((a, b) => a.baseName.localeCompare(b.baseName));
+
+    const q = query.toLowerCase();
+
+    return items
+        .filter((item) => {
+            const haystack: string[] = [item.baseName];
+
+            if (isTaskDocument(item)) {
+                haystack.push(item.fileName);
+                if (item.relativePath) haystack.push(item.relativePath);
+            }
+
+            if (isTaskDocumentGroup(item)) {
+                for (const doc of item.documents) {
+                    haystack.push(doc.fileName);
+                    if (doc.relativePath) haystack.push(doc.relativePath);
+                }
+            }
+
+            return haystack.some((field) => field.toLowerCase().includes(q));
+        })
+        .sort((a, b) => a.baseName.localeCompare(b.baseName));
+}
+
 // ── Hook ───────────────────────────────────────────────────────────────
 
 export interface UseTaskTreeResult {
