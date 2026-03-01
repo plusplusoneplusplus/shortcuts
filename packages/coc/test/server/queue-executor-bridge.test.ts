@@ -5195,7 +5195,7 @@ job:
 describe('defaultIsExclusive', () => {
     it.each([
         { type: 'follow-prompt', expected: true },
-        { type: 'resolve-comments', expected: true },
+        { type: 'resolve-comments', expected: false },
         { type: 'run-pipeline', expected: true },
         { type: 'custom', expected: true },
         { type: 'task-generation', expected: false },
@@ -5304,7 +5304,6 @@ describe('createQueueExecutorBridge dual-limiter options', () => {
 
         // Enqueue shared task
         const sharedCompleted = new Promise<void>(resolve => {
-            const origListener = executor.listenerCount('taskCompleted');
             executor.on('taskCompleted', (task: QueuedTask) => {
                 if (task.type === 'ai-clarification') { resolve(); }
             });
@@ -5324,6 +5323,65 @@ describe('createQueueExecutorBridge dual-limiter options', () => {
         expect(queueManager.getRunning().some(t => t.type === 'follow-prompt')).toBe(true);
 
         // Now let the exclusive task finish
+        exclusiveResolve!();
+        await delay(200);
+
+        executor.dispose();
+    });
+
+    it('should allow a resolve-comments task to start while an exclusive task is running', async () => {
+        const queueManager = new TaskQueueManager();
+
+        // Block the first sendMessage (exclusive task) while allowing shared task to proceed
+        let exclusiveResolve: () => void;
+        const exclusivePromise = new Promise<void>(resolve => { exclusiveResolve = resolve; });
+        let callCount = 0;
+        mockSendMessage.mockImplementation(async () => {
+            callCount++;
+            if (callCount === 1) {
+                await exclusivePromise;
+            }
+            return { success: true, response: 'done', sessionId: `sess-${callCount}` };
+        });
+
+        const { executor } = createQueueExecutorBridge(queueManager, store, {
+            sharedConcurrency: 5,
+            exclusiveConcurrency: 1,
+        });
+
+        queueManager.enqueue({
+            type: 'follow-prompt',
+            priority: 'normal',
+            payload: { prompt: 'exclusive task' },
+            config: {},
+            displayName: 'Exclusive',
+        });
+
+        await delay(50);
+
+        const sharedCompleted = new Promise<void>(resolve => {
+            executor.on('taskCompleted', (task: QueuedTask) => {
+                if (task.type === 'resolve-comments') { resolve(); }
+            });
+        });
+        queueManager.enqueue({
+            type: 'resolve-comments',
+            priority: 'normal',
+            payload: {
+                documentUri: 'task.md',
+                commentIds: ['c1'],
+                promptTemplate: 'resolve prompt',
+                documentContent: 'doc',
+                filePath: 'task.md',
+            },
+            config: {},
+            displayName: 'Resolve',
+        });
+
+        await sharedCompleted;
+
+        expect(queueManager.getRunning().some(t => t.type === 'follow-prompt')).toBe(true);
+
         exclusiveResolve!();
         await delay(200);
 

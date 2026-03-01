@@ -1173,11 +1173,12 @@ export class CLITaskExecutor implements TaskExecutor {
 // Default Task Classification Policy
 // ============================================================================
 
-/** Task types that are safe to run concurrently (read-only, stateless, short-lived). */
+/** Task types that are safe to run concurrently (typically stateless or operating on independent inputs). */
 const SHARED_TASK_TYPES: ReadonlySet<string> = new Set([
     'task-generation',
     'ai-clarification',
     'code-review',
+    'resolve-comments',
 ]);
 
 /**
