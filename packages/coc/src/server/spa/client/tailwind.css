@@ -37,6 +37,7 @@
     box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
     width: min(80vw, 960px);
     max-height: min(75vh, 560px);
+    min-height: 80px;
     overflow: hidden;
     display: flex;
     flex-direction: column;

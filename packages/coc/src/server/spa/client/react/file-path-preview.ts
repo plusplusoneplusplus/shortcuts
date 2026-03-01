@@ -237,6 +237,10 @@ function positionTooltip(target: HTMLElement): void {
         if (top < TOOLTIP_EDGE_MARGIN_PX) top = TOOLTIP_EDGE_MARGIN_PX;
     }
 
+    // Clamp max-height to available viewport space so content scrolls instead of overflowing
+    const availableHeight = window.innerHeight - top - TOOLTIP_VIEWPORT_PADDING_PX;
+    tip.style.maxHeight = `${Math.max(Math.min(availableHeight, TOOLTIP_DEFAULT_MAX_HEIGHT_PX), 80)}px`;
+
     tip.style.left = `${left}px`;
     tip.style.top = `${top}px`;
 }
@@ -261,6 +265,25 @@ function hideTooltip(): void {
     activeTarget = null;
 }
 
+/** Attach scroll-tracking guard directly to the tooltip body element.
+ *  The `scroll` event does not bubble, so a capture listener on the outer
+ *  tooltip cannot reliably detect scrolling inside the body. */
+function attachBodyScrollGuard(): void {
+    if (!tooltipEl) return;
+    const body = tooltipEl.querySelector('.file-preview-tooltip-body');
+    if (!body) return;
+    body.addEventListener('scroll', () => {
+        isScrollingTooltip = true;
+        if (scrollEndTimer) clearTimeout(scrollEndTimer);
+        scrollEndTimer = setTimeout(() => {
+            isScrollingTooltip = false;
+            if (tooltipEl && !tooltipEl.matches(':hover')) {
+                scheduleHide();
+            }
+        }, 150);
+    });
+}
+
 function renderLoading(path: string): void {
     const tip = createTooltip();
     const fileName = path.split('/').pop() || path;
@@ -268,6 +291,7 @@ function renderLoading(path: string): void {
         `<div class="file-preview-tooltip-header">${escapeHtml(fileName)}</div>` +
         '<div class="file-preview-tooltip-body file-preview-tooltip-loading">Loading…</div>';
     tip.style.display = 'block';
+    attachBodyScrollGuard();
 }
 
 function renderError(message: string): void {
@@ -276,6 +300,7 @@ function renderError(message: string): void {
         '<div class="file-preview-tooltip-header">Preview Error</div>' +
         `<div class="file-preview-tooltip-body file-preview-tooltip-error">${escapeHtml(message)}</div>`;
     tip.style.display = 'block';
+    attachBodyScrollGuard();
 }
 
 function renderPreview(data: FilePreviewResponse): void {
@@ -298,6 +323,7 @@ function renderPreview(data: FilePreviewResponse): void {
         `<div class="file-preview-lines">${rows}</div>` +
         '</div>';
     tip.style.display = 'block';
+    attachBodyScrollGuard();
 }
 
 function renderDirectoryPreview(data: DirectoryPreviewResponse): void {
@@ -324,6 +350,7 @@ function renderDirectoryPreview(data: DirectoryPreviewResponse): void {
         `<div class="file-preview-dir-listing">${rows}</div>` +
         '</div>';
     tip.style.display = 'block';
+    attachBodyScrollGuard();
 }
 
 function renderResponse(data: PreviewResponse): void {

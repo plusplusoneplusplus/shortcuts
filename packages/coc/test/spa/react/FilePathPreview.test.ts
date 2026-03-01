@@ -544,6 +544,176 @@ describe('tooltip scroll behavior', () => {
         await vi.advanceTimersByTimeAsync(200);
         expect(tooltip.style.display).toBe('none');
     });
+
+    it('body scroll guard handles non-bubbling scroll events (real browser behavior)', async () => {
+        const fullPath = '/Users/test/Documents/Projects/shortcuts/src';
+        document.body.innerHTML = `
+            <div>
+                <span class="file-path-link" data-full-path="${fullPath}">src</span>
+            </div>
+        `;
+
+        const fetchMock = vi.fn();
+        mockWorkspaceAndDirectoryPreview(fetchMock, {
+            entries: Array.from({ length: 20 }, (_, i) => ({
+                name: `file${i}.ts`,
+                isDirectory: false,
+            })),
+            totalEntries: 20,
+        });
+        vi.stubGlobal('fetch', fetchMock as any);
+
+        await import('../../../src/server/spa/client/react/file-path-preview');
+        await hoverAndWaitForDirectory(document.querySelector('.file-path-link') as HTMLElement);
+
+        const tooltip = document.querySelector('.file-preview-tooltip') as HTMLElement;
+        expect(tooltip.style.display).toBe('block');
+
+        // Dispatch non-bubbling scroll (matches real browser behavior)
+        const body = tooltip.querySelector('.file-preview-tooltip-body') as HTMLElement;
+        body.dispatchEvent(new Event('scroll', { bubbles: false }));
+
+        // mouseleave should not dismiss while scrolling
+        tooltip.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }));
+        await vi.advanceTimersByTimeAsync(250);
+        expect(tooltip.style.display).toBe('block');
+
+        // After scroll-end timer, tooltip hides
+        await vi.advanceTimersByTimeAsync(200);
+        expect(tooltip.style.display).toBe('none');
+    });
+});
+
+describe('tooltip dynamic max-height clamping', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+        vi.resetModules();
+        document.body.innerHTML = '';
+        delete (window as any).__COC_FILE_PATH_PREVIEW_DELEGATION__;
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+        vi.restoreAllMocks();
+        document.body.innerHTML = '';
+    });
+
+    it('sets maxHeight based on available viewport space below trigger', async () => {
+        const fullPath = '/Users/test/Documents/Projects/shortcuts/src/app.ts';
+        document.body.innerHTML = `
+            <div>
+                <span class="file-path-link" data-full-path="${fullPath}">app.ts</span>
+            </div>
+        `;
+
+        const fetchMock = vi.fn();
+        mockWorkspaceAndPreview(fetchMock);
+        vi.stubGlobal('fetch', fetchMock as any);
+
+        Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1200 });
+        Object.defineProperty(window, 'innerHeight', { configurable: true, value: 800 });
+
+        try {
+            vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function(this: HTMLElement): DOMRect {
+                if (this.classList?.contains('file-path-link')) {
+                    // Trigger near top: plenty of space below
+                    return makeRect(100, 50, 200, 20);
+                }
+                if (this.classList?.contains('file-preview-tooltip')) {
+                    return makeRect(0, 0, 600, 300);
+                }
+                return makeRect(0, 0, 0, 0);
+            });
+
+            await import('../../../src/server/spa/client/react/file-path-preview');
+            await hoverAndWait(document.querySelector('.file-path-link') as HTMLElement);
+
+            const tooltip = document.querySelector('.file-preview-tooltip') as HTMLElement;
+            // top = 50 + 20 + 6 = 76; available = 800 - 76 - 16 = 708; clamped to 560
+            expect(tooltip.style.maxHeight).toBe('560px');
+        } finally {
+            Object.defineProperty(window, 'innerWidth', { configurable: true, value: 0 });
+            Object.defineProperty(window, 'innerHeight', { configurable: true, value: 0 });
+        }
+    });
+
+    it('clamps maxHeight to remaining space when trigger is near bottom', async () => {
+        const fullPath = '/Users/test/Documents/Projects/shortcuts/src/app.ts';
+        document.body.innerHTML = `
+            <div>
+                <span class="file-path-link" data-full-path="${fullPath}">app.ts</span>
+            </div>
+        `;
+
+        const fetchMock = vi.fn();
+        mockWorkspaceAndPreview(fetchMock);
+        vi.stubGlobal('fetch', fetchMock as any);
+
+        Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1200 });
+        Object.defineProperty(window, 'innerHeight', { configurable: true, value: 600 });
+
+        try {
+            vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function(this: HTMLElement): DOMRect {
+                if (this.classList?.contains('file-path-link')) {
+                    // Trigger near bottom: limited space below, tooltip repositions above
+                    return makeRect(100, 500, 200, 20);
+                }
+                if (this.classList?.contains('file-preview-tooltip')) {
+                    return makeRect(0, 0, 600, 400);
+                }
+                return makeRect(0, 0, 0, 0);
+            });
+
+            await import('../../../src/server/spa/client/react/file-path-preview');
+            await hoverAndWait(document.querySelector('.file-path-link') as HTMLElement);
+
+            const tooltip = document.querySelector('.file-preview-tooltip') as HTMLElement;
+            const maxH = parseInt(tooltip.style.maxHeight, 10);
+            // Should be clamped, not the full 560px default
+            expect(maxH).toBeGreaterThanOrEqual(80);
+            expect(maxH).toBeLessThanOrEqual(560);
+        } finally {
+            Object.defineProperty(window, 'innerWidth', { configurable: true, value: 0 });
+            Object.defineProperty(window, 'innerHeight', { configurable: true, value: 0 });
+        }
+    });
+
+    it('enforces minimum maxHeight of 80px even in tight viewport', async () => {
+        const fullPath = '/Users/test/Documents/Projects/shortcuts/src/app.ts';
+        document.body.innerHTML = `
+            <div>
+                <span class="file-path-link" data-full-path="${fullPath}">app.ts</span>
+            </div>
+        `;
+
+        const fetchMock = vi.fn();
+        mockWorkspaceAndPreview(fetchMock);
+        vi.stubGlobal('fetch', fetchMock as any);
+
+        Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1200 });
+        Object.defineProperty(window, 'innerHeight', { configurable: true, value: 100 });
+
+        try {
+            vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function(this: HTMLElement): DOMRect {
+                if (this.classList?.contains('file-path-link')) {
+                    return makeRect(100, 50, 200, 20);
+                }
+                if (this.classList?.contains('file-preview-tooltip')) {
+                    return makeRect(0, 0, 600, 80);
+                }
+                return makeRect(0, 0, 0, 0);
+            });
+
+            await import('../../../src/server/spa/client/react/file-path-preview');
+            await hoverAndWait(document.querySelector('.file-path-link') as HTMLElement);
+
+            const tooltip = document.querySelector('.file-preview-tooltip') as HTMLElement;
+            expect(parseInt(tooltip.style.maxHeight, 10)).toBeGreaterThanOrEqual(80);
+        } finally {
+            Object.defineProperty(window, 'innerWidth', { configurable: true, value: 0 });
+            Object.defineProperty(window, 'innerHeight', { configurable: true, value: 0 });
+        }
+    });
 });
 
 describe('file-preview-tooltip CSS rules', () => {
@@ -570,5 +740,10 @@ describe('file-preview-tooltip CSS rules', () => {
     it('tooltip body has min-height: 0 for flex scroll containment', () => {
         const block = extractBlock('.file-preview-tooltip-body');
         expect(block).toContain('min-height: 0');
+    });
+
+    it('tooltip has min-height for small directories', () => {
+        const block = extractBlock('.file-preview-tooltip');
+        expect(block).toContain('min-height: 80px');
     });
 });
