@@ -21,3 +21,5 @@ export { ImageLightbox } from './ImageLightbox';
 export type { ImageLightboxProps } from './ImageLightbox';
 export { SuggestionChips } from './SuggestionChips';
 export type { SuggestionChipsProps } from './SuggestionChips';
+export { ResponsiveSidebar } from './ResponsiveSidebar';
+export type { ResponsiveSidebarProps } from './ResponsiveSidebar';
