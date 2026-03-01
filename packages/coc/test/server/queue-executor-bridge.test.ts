@@ -66,6 +66,16 @@ vi.mock('../../src/ai-invoker', () => ({
     createCLIAIInvoker: (...args: any[]) => mockCreateCLIAIInvoker(...args),
 }));
 
+const mockLoadImages = vi.fn().mockResolvedValue([]);
+vi.mock('../../src/server/image-blob-store', () => ({
+    ImageBlobStore: {
+        loadImages: (...args: any[]) => mockLoadImages(...args),
+        saveImages: vi.fn(),
+        deleteImages: vi.fn(),
+        getBlobsDir: vi.fn(),
+    },
+}));
+
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -86,6 +96,8 @@ describe('CLITaskExecutor', () => {
         mockSendMessage.mockReset();
         mockIsAvailable.mockReset();
         mockResolveSkillSync.mockReset();
+        mockLoadImages.mockReset();
+        mockLoadImages.mockResolvedValue([]);
         mockIsAvailable.mockResolvedValue({ available: true });
         mockSendMessage.mockResolvedValue({
             success: true,
@@ -478,6 +490,125 @@ describe('CLITaskExecutor', () => {
                 'data:image/png;base64,ok',
                 'data:image/jpeg;base64,fine',
             ]);
+        });
+    });
+
+    // ========================================================================
+    // Image Rehydration from Blob Store
+    // ========================================================================
+
+    describe('image rehydration from blob store', () => {
+        it('should rehydrate images from imagesFilePath when payload.images is empty', async () => {
+            const executor = new CLITaskExecutor(store);
+            const rehydratedImages = ['data:image/png;base64,rehydrated1', 'data:image/jpeg;base64,rehydrated2'];
+            mockLoadImages.mockResolvedValue(rehydratedImages);
+
+            const task: QueuedTask = {
+                id: 'chat-rehydrate-1',
+                type: 'chat',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: { prompt: 'Describe the image', images: [], imagesFilePath: '/blobs/chat-rehydrate-1.images.json' },
+                config: {},
+                displayName: 'Chat',
+            };
+
+            await executor.execute(task);
+
+            expect(mockLoadImages).toHaveBeenCalledWith('/blobs/chat-rehydrate-1.images.json');
+            const addedProcess = (store.addProcess as any).mock.calls[0][0];
+            expect(addedProcess.conversationTurns).toHaveLength(1);
+            expect(addedProcess.conversationTurns[0].images).toEqual(rehydratedImages);
+        });
+
+        it('should rehydrate images when payload.images is not set', async () => {
+            const executor = new CLITaskExecutor(store);
+            const rehydratedImages = ['data:image/png;base64,abc'];
+            mockLoadImages.mockResolvedValue(rehydratedImages);
+
+            const task: QueuedTask = {
+                id: 'chat-rehydrate-2',
+                type: 'chat',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: { prompt: 'Check image', imagesFilePath: '/blobs/chat-rehydrate-2.images.json' },
+                config: {},
+                displayName: 'Chat',
+            };
+
+            await executor.execute(task);
+
+            expect(mockLoadImages).toHaveBeenCalledWith('/blobs/chat-rehydrate-2.images.json');
+            const addedProcess = (store.addProcess as any).mock.calls[0][0];
+            expect(addedProcess.conversationTurns[0].images).toEqual(rehydratedImages);
+        });
+
+        it('should not rehydrate when payload already has images', async () => {
+            const executor = new CLITaskExecutor(store);
+            const existingImages = ['data:image/png;base64,existing'];
+
+            const task: QueuedTask = {
+                id: 'chat-rehydrate-3',
+                type: 'chat',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: { prompt: 'Already has images', images: existingImages, imagesFilePath: '/blobs/chat-rehydrate-3.images.json' },
+                config: {},
+                displayName: 'Chat',
+            };
+
+            await executor.execute(task);
+
+            expect(mockLoadImages).not.toHaveBeenCalled();
+            const addedProcess = (store.addProcess as any).mock.calls[0][0];
+            expect(addedProcess.conversationTurns[0].images).toEqual(existingImages);
+        });
+
+        it('should not call loadImages when no imagesFilePath is set', async () => {
+            const executor = new CLITaskExecutor(store);
+
+            const task: QueuedTask = {
+                id: 'chat-rehydrate-4',
+                type: 'chat',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: { prompt: 'No images at all' },
+                config: {},
+                displayName: 'Chat',
+            };
+
+            await executor.execute(task);
+
+            expect(mockLoadImages).not.toHaveBeenCalled();
+            const addedProcess = (store.addProcess as any).mock.calls[0][0];
+            expect(addedProcess.conversationTurns[0].images).toBeUndefined();
+        });
+
+        it('should handle empty result from loadImages gracefully', async () => {
+            const executor = new CLITaskExecutor(store);
+            mockLoadImages.mockResolvedValue([]);
+
+            const task: QueuedTask = {
+                id: 'chat-rehydrate-5',
+                type: 'chat',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: { prompt: 'Blob file missing', images: [], imagesFilePath: '/blobs/chat-rehydrate-5.images.json' },
+                config: {},
+                displayName: 'Chat',
+            };
+
+            await executor.execute(task);
+
+            expect(mockLoadImages).toHaveBeenCalled();
+            const addedProcess = (store.addProcess as any).mock.calls[0][0];
+            // Empty array from loadImages → no images on the turn
+            expect(addedProcess.conversationTurns[0].images).toBeUndefined();
         });
     });
 

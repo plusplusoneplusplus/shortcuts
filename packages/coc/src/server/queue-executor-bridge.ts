@@ -176,9 +176,15 @@ export class CLITaskExecutor implements TaskExecutor {
             },
         };
 
+        // Rehydrate externalized images from blob store before building conversation turn
+        const payload = task.payload as any;
+        if (payload?.imagesFilePath && (!Array.isArray(payload.images) || payload.images.length === 0)) {
+            payload.images = await ImageBlobStore.loadImages(payload.imagesFilePath);
+        }
+
         // Store initial user turn immediately so it survives page refresh
-        const payloadImages = Array.isArray((task.payload as any)?.images)
-            ? (task.payload as any).images.filter((img: unknown) => typeof img === 'string')
+        const payloadImages = Array.isArray(payload?.images)
+            ? payload.images.filter((img: unknown) => typeof img === 'string')
             : undefined;
         const initialTurns: ConversationTurn[] = [
             {
