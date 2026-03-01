@@ -56,6 +56,8 @@ let hoverTimer: ReturnType<typeof setTimeout> | null = null;
 let hideTimer: ReturnType<typeof setTimeout> | null = null;
 let activeTarget: HTMLElement | null = null;
 let activeRequestId = 0;
+let isScrollingTooltip = false;
+let scrollEndTimer: ReturnType<typeof setTimeout> | null = null;
 
 let workspacesCache: WorkspaceInfo[] | null = null;
 let workspacesFetchedAt = 0;
@@ -84,8 +86,26 @@ function createTooltip(): HTMLDivElement {
         }
     });
     el.addEventListener('mouseleave', () => {
-        scheduleHide();
+        if (!isScrollingTooltip) scheduleHide();
     });
+
+    // Prevent wheel events from scrolling the underlying page
+    el.addEventListener('wheel', (event) => {
+        event.stopPropagation();
+    }, { passive: true });
+
+    // Track scroll activity so mouseleave during scroll doesn't dismiss
+    el.addEventListener('scroll', () => {
+        isScrollingTooltip = true;
+        if (scrollEndTimer) clearTimeout(scrollEndTimer);
+        scrollEndTimer = setTimeout(() => {
+            isScrollingTooltip = false;
+            // If mouse already left while scrolling, hide now
+            if (tooltipEl && !tooltipEl.matches(':hover')) {
+                scheduleHide();
+            }
+        }, 150);
+    }, true);
 
     tooltipEl = el;
     return el;

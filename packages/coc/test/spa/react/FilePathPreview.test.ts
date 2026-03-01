@@ -460,6 +460,92 @@ describe('directory hover preview', () => {
     });
 });
 
+describe('tooltip scroll behavior', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+        vi.resetModules();
+        document.body.innerHTML = '';
+        delete (window as any).__COC_FILE_PATH_PREVIEW_DELEGATION__;
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+        vi.restoreAllMocks();
+        document.body.innerHTML = '';
+    });
+
+    it('stops wheel event propagation on tooltip', async () => {
+        const fullPath = '/Users/test/Documents/Projects/shortcuts/src';
+        document.body.innerHTML = `
+            <div>
+                <span class="file-path-link" data-full-path="${fullPath}">src</span>
+            </div>
+        `;
+
+        const fetchMock = vi.fn();
+        mockWorkspaceAndDirectoryPreview(fetchMock, {
+            entries: Array.from({ length: 20 }, (_, i) => ({
+                name: `file${i}.ts`,
+                isDirectory: false,
+            })),
+            totalEntries: 20,
+        });
+        vi.stubGlobal('fetch', fetchMock as any);
+
+        await import('../../../src/server/spa/client/react/file-path-preview');
+        await hoverAndWaitForDirectory(document.querySelector('.file-path-link') as HTMLElement);
+
+        const tooltip = document.querySelector('.file-preview-tooltip') as HTMLElement;
+        expect(tooltip).not.toBeNull();
+
+        const wheelEvent = new WheelEvent('wheel', { bubbles: true, cancelable: true });
+        const stopSpy = vi.spyOn(wheelEvent, 'stopPropagation');
+        tooltip.dispatchEvent(wheelEvent);
+
+        expect(stopSpy).toHaveBeenCalled();
+    });
+
+    it('keeps tooltip visible while scroll activity is ongoing', async () => {
+        const fullPath = '/Users/test/Documents/Projects/shortcuts/src';
+        document.body.innerHTML = `
+            <div>
+                <span class="file-path-link" data-full-path="${fullPath}">src</span>
+            </div>
+        `;
+
+        const fetchMock = vi.fn();
+        mockWorkspaceAndDirectoryPreview(fetchMock, {
+            entries: Array.from({ length: 20 }, (_, i) => ({
+                name: `file${i}.ts`,
+                isDirectory: false,
+            })),
+            totalEntries: 20,
+        });
+        vi.stubGlobal('fetch', fetchMock as any);
+
+        await import('../../../src/server/spa/client/react/file-path-preview');
+        await hoverAndWaitForDirectory(document.querySelector('.file-path-link') as HTMLElement);
+
+        const tooltip = document.querySelector('.file-preview-tooltip') as HTMLElement;
+        expect(tooltip.style.display).toBe('block');
+
+        // Simulate scroll on tooltip body (capture phase listener)
+        const body = tooltip.querySelector('.file-preview-tooltip-body') as HTMLElement;
+        body.dispatchEvent(new Event('scroll', { bubbles: true }));
+
+        // Now fire mouseleave — tooltip should remain visible because isScrollingTooltip is true
+        tooltip.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }));
+
+        // Advance past the hide delay (200ms) — tooltip should still be visible
+        await vi.advanceTimersByTimeAsync(250);
+        expect(tooltip.style.display).toBe('block');
+
+        // Advance past the scrollEnd timer (150ms) — then the deferred hide kicks in
+        await vi.advanceTimersByTimeAsync(200);
+        expect(tooltip.style.display).toBe('none');
+    });
+});
+
 describe('file-preview-tooltip CSS rules', () => {
     const cssPath = resolve(__dirname, '../../../src/server/spa/client/tailwind.css');
     const css = readFileSync(cssPath, 'utf-8');
@@ -479,5 +565,10 @@ describe('file-preview-tooltip CSS rules', () => {
     it('uses responsive max height to avoid viewport overflow', () => {
         const block = extractBlock('.file-preview-tooltip');
         expect(block).toContain('max-height: min(75vh, 560px)');
+    });
+
+    it('tooltip body has min-height: 0 for flex scroll containment', () => {
+        const block = extractBlock('.file-preview-tooltip-body');
+        expect(block).toContain('min-height: 0');
     });
 });
