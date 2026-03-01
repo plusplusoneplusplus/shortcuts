@@ -7,6 +7,7 @@ import { Button, Badge, Dialog, Spinner } from '../shared';
 import { useGlobalToast } from '../context/ToastContext';
 import { fetchPipelineContent, savePipelineContent, deletePipeline, runPipeline } from './pipeline-api';
 import { PipelineRunHistory } from './PipelineRunHistory';
+import { PipelineDAGPreview } from './PipelineDAGPreview';
 import type { PipelineInfo } from './repoGrouping';
 
 export interface PipelineDetailProps {
@@ -163,6 +164,11 @@ export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRu
                         />
                         {error && <p className="text-xs text-red-500">{error}</p>}
                     </div>
+                )}
+
+                {/* DAG Preview */}
+                {mode === 'view' && content && (
+                    <PipelineDAGPreview yamlContent={content} />
                 )}
 
                 {/* Run History */}
