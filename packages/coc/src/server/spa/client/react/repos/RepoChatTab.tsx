@@ -91,6 +91,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
     const autoSelectedRef = useRef(false);
     const currentChatTaskIdRef = useRef<string | null>(null);
     const loadSessionCounterRef = useRef(0);
+    const conversationContainerRef = useRef<HTMLDivElement>(null);
 
     const processId = task?.processId ?? (chatTaskId ? `queue_${chatTaskId}` : null);
     const taskFinished = task?.status === 'completed' || task?.status === 'failed';
@@ -115,6 +116,13 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
             }
         };
     }, [workspaceId, queueDispatch]);
+
+    // Scroll to bottom when turns load or update
+    useEffect(() => {
+        if (!loading && turns.length > 0 && conversationContainerRef.current) {
+            conversationContainerRef.current.scrollTop = conversationContainerRef.current.scrollHeight;
+        }
+    }, [turns, loading]);
 
     // Fetch available models on mount
     useEffect(() => {
@@ -715,7 +723,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
             </div>
 
             {/* Conversation area */}
-            <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
+            <div ref={conversationContainerRef} className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
                 {loading ? <Spinner /> : turns.map((turn, i) => {
                     const prevTurn = i > 0 ? turns[i - 1] : null;
                     const showSeparator = prevTurn?.historical && !turn.historical;
