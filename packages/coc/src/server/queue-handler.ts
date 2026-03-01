@@ -1290,4 +1290,40 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
             sendJSON(res, 200, { moved: true, position: finalPos });
         },
     });
+
+    // ------------------------------------------------------------------
+    // POST /api/queue/:id/freeze — Freeze a queued task
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/queue\/([^/]+)\/freeze$/,
+        handler: async (_req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const frozen = findTaskManager(bridge, id)?.freezeTask(id) ?? false;
+            if (!frozen) {
+                return sendError(res, 404, 'Task not found in queue');
+            }
+            process.stderr.write(`[Queue] freeze task=${id}\n`);
+            const task = findTaskManager(bridge, id)?.getTask(id);
+            sendJSON(res, 200, { frozen: true, task });
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // POST /api/queue/:id/unfreeze — Unfreeze a frozen queued task
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/queue\/([^/]+)\/unfreeze$/,
+        handler: async (_req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const unfrozen = findTaskManager(bridge, id)?.unfreezeTask(id) ?? false;
+            if (!unfrozen) {
+                return sendError(res, 404, 'Task not found in queue or not frozen');
+            }
+            process.stderr.write(`[Queue] unfreeze task=${id}\n`);
+            const task = findTaskManager(bridge, id)?.getTask(id);
+            sendJSON(res, 200, { unfrozen: true, task });
+        },
+    });
 }

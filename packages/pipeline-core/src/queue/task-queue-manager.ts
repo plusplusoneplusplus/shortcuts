@@ -101,29 +101,35 @@ export class TaskQueueManager extends EventEmitter {
             return undefined;
         }
 
-        // If a repo ID extractor is configured, skip tasks from paused repos
-        if (this.getTaskRepoId && this.pausedRepos.size > 0) {
-            for (let i = 0; i < this.queue.length; i++) {
-                const task = this.queue[i];
+        // Skip frozen tasks and (when configured) tasks from paused repos
+        for (let i = 0; i < this.queue.length; i++) {
+            const task = this.queue[i];
+            if (task.frozen) continue;
+            if (this.getTaskRepoId && this.pausedRepos.size > 0) {
                 const repoId = this.getTaskRepoId(task);
-                if (!repoId || !this.pausedRepos.has(repoId)) {
-                    this.queue.splice(i, 1);
-                    return task;
-                }
+                if (repoId && this.pausedRepos.has(repoId)) continue;
             }
-            // All tasks are from paused repos
-            return undefined;
+            this.queue.splice(i, 1);
+            return task;
         }
-
-        return this.queue.shift()!;
+        return undefined;
     }
 
     /**
-     * Get the next task without removing it
-     * @returns The next task, or undefined if queue is empty
+     * Get the next eligible task without removing it.
+     * Skips frozen tasks and (when configured) tasks from paused repos.
+     * @returns The next eligible task, or undefined if none available
      */
     peek(): QueuedTask | undefined {
-        return this.queue[0];
+        for (const task of this.queue) {
+            if (task.frozen) continue;
+            if (this.getTaskRepoId && this.pausedRepos.size > 0) {
+                const repoId = this.getTaskRepoId(task);
+                if (repoId && this.pausedRepos.has(repoId)) continue;
+            }
+            return task;
+        }
+        return undefined;
     }
 
     // ========================================================================
@@ -416,6 +422,37 @@ export class TaskQueueManager extends EventEmitter {
         }
 
         return task;
+    }
+
+    // ========================================================================
+    // Freeze / Unfreeze
+    // ========================================================================
+
+    /**
+     * Freeze a queued task so the executor skips it.
+     * The task remains in its queue position with status 'queued'.
+     * @param id Task ID
+     * @returns true if the task was found in the queue and frozen
+     */
+    freezeTask(id: string): boolean {
+        const task = this.queue.find(t => t.id === id);
+        if (!task) return false;
+        task.frozen = true;
+        this.emitChange('frozen', task);
+        return true;
+    }
+
+    /**
+     * Unfreeze a previously frozen task, making it eligible for execution again.
+     * @param id Task ID
+     * @returns true if the task was found in the queue and unfrozen
+     */
+    unfreezeTask(id: string): boolean {
+        const task = this.queue.find(t => t.id === id);
+        if (!task || !task.frozen) return false;
+        task.frozen = false;
+        this.emitChange('unfrozen', task);
+        return true;
     }
 
     // ========================================================================

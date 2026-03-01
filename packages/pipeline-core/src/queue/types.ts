@@ -113,6 +113,9 @@ export interface QueuedTask {
 
     /** Concurrency mode: 'shared' tasks run in the shared pool, 'exclusive' tasks in the exclusive pool */
     concurrencyMode?: 'shared' | 'exclusive';
+
+    /** Whether this task is frozen (skipped by the executor but stays in queue) */
+    frozen?: boolean;
 }
 
 /**
@@ -151,7 +154,9 @@ export type QueueChangeType =
     | 'repo-paused'
     | 'repo-resumed'
     | 'drain-started'
-    | 'drain-cancelled';
+    | 'drain-cancelled'
+    | 'frozen'
+    | 'unfrozen';
 
 /**
  * Event emitted when the queue changes

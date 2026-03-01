@@ -182,6 +182,16 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
         fetchQueue();
     };
 
+    const handleFreeze = async (taskId: string) => {
+        await fetch(getApiBase() + '/queue/' + encodeURIComponent(taskId) + '/freeze', { method: 'POST' });
+        fetchQueue();
+    };
+
+    const handleUnfreeze = async (taskId: string) => {
+        await fetch(getApiBase() + '/queue/' + encodeURIComponent(taskId) + '/unfreeze', { method: 'POST' });
+        fetchQueue();
+    };
+
     const {
         draggedTaskId,
         dropTargetIndex,
@@ -220,10 +230,15 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
             return [{ label: 'Cancel', icon: '✕', onClick: () => handleCancel(taskId) }];
         }
         const queuedIndex = queued.findIndex(t => t.id === taskId);
+        const task = queued[queuedIndex];
+        const isFrozen = task?.frozen;
         return [
             ...(queuedIndex > 0 ? [{ label: 'Move Up', icon: '▲', onClick: () => handleMoveUp(taskId) }] : []),
             { label: 'Move to Top', icon: '⏬', onClick: () => handleMoveToTop(taskId) },
             { label: '', icon: '', separator: true, onClick: () => {} },
+            isFrozen
+                ? { label: 'Unfreeze', icon: '▶', onClick: () => handleUnfreeze(taskId) }
+                : { label: 'Freeze', icon: '❄', onClick: () => handleFreeze(taskId) },
             { label: 'Cancel', icon: '✕', onClick: () => handleCancel(taskId) },
         ];
     }, [contextMenu, queued]);
@@ -448,7 +463,7 @@ function QueueTaskItem({ task, status, now, selected, onClick, onContextMenu }: 
     onContextMenu?: (e: React.MouseEvent) => void;
 }) {
     const name = (task.displayName || task.type || 'Task').substring(0, 35);
-    const icon = status === 'running' ? '🔄' : '⏳';
+    const icon = status === 'running' ? '🔄' : task.frozen ? '❄️' : '⏳';
     let elapsed = '';
     if (status === 'running' && task.startedAt) {
         elapsed = formatDuration(now - new Date(task.startedAt).getTime());
@@ -457,7 +472,7 @@ function QueueTaskItem({ task, status, now, selected, onClick, onContextMenu }: 
     }
 
     return (
-        <Card className={cn("p-2 cursor-pointer", selected && "ring-2 ring-[#0078d4]")} onClick={onClick} onContextMenu={onContextMenu} data-task-id={task.id}>
+        <Card className={cn("p-2 cursor-pointer", selected && "ring-2 ring-[#0078d4]", task.frozen && "opacity-60 italic")} onClick={onClick} onContextMenu={onContextMenu} data-task-id={task.id}>
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc]">
                     <span>{icon}</span>

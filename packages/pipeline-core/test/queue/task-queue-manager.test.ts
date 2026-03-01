@@ -1656,6 +1656,142 @@ describe('TaskQueueManager', () => {
             expect(undefinedRepoManager.dequeue()).toBeUndefined();
         });
     });
+
+    // ========================================================================
+    // Freeze / Unfreeze
+    // ========================================================================
+
+    describe('freezeTask', () => {
+        it('freezes a queued task', () => {
+            const id = manager.enqueue(createTestTask());
+            expect(manager.freezeTask(id)).toBe(true);
+            expect(manager.getTask(id)!.frozen).toBe(true);
+        });
+
+        it('returns false for non-existent task', () => {
+            expect(manager.freezeTask('no-such-id')).toBe(false);
+        });
+
+        it('returns false for running task', () => {
+            const id = manager.enqueue(createTestTask());
+            manager.markStarted(id);
+            expect(manager.freezeTask(id)).toBe(false);
+        });
+
+        it('emits frozen change event', () => {
+            const listener = vi.fn();
+            manager.on('change', listener);
+            const id = manager.enqueue(createTestTask());
+            listener.mockClear();
+
+            manager.freezeTask(id);
+
+            expect(listener).toHaveBeenCalledTimes(1);
+            expect(listener.mock.calls[0][0].type).toBe('frozen');
+            expect(listener.mock.calls[0][0].taskId).toBe(id);
+        });
+
+        it('task stays in queued status after freeze', () => {
+            const id = manager.enqueue(createTestTask());
+            manager.freezeTask(id);
+            expect(manager.getTask(id)!.status).toBe('queued');
+        });
+    });
+
+    describe('unfreezeTask', () => {
+        it('unfreezes a frozen task', () => {
+            const id = manager.enqueue(createTestTask());
+            manager.freezeTask(id);
+            expect(manager.unfreezeTask(id)).toBe(true);
+            expect(manager.getTask(id)!.frozen).toBe(false);
+        });
+
+        it('returns false for non-frozen task', () => {
+            const id = manager.enqueue(createTestTask());
+            expect(manager.unfreezeTask(id)).toBe(false);
+        });
+
+        it('returns false for non-existent task', () => {
+            expect(manager.unfreezeTask('no-such-id')).toBe(false);
+        });
+
+        it('emits unfrozen change event', () => {
+            const listener = vi.fn();
+            manager.on('change', listener);
+            const id = manager.enqueue(createTestTask());
+            manager.freezeTask(id);
+            listener.mockClear();
+
+            manager.unfreezeTask(id);
+
+            expect(listener).toHaveBeenCalledTimes(1);
+            expect(listener.mock.calls[0][0].type).toBe('unfrozen');
+            expect(listener.mock.calls[0][0].taskId).toBe(id);
+        });
+    });
+
+    describe('peek with frozen tasks', () => {
+        it('skips frozen tasks', () => {
+            const id1 = manager.enqueue(createTestTask({ displayName: 'T1' }));
+            const id2 = manager.enqueue(createTestTask({ displayName: 'T2' }));
+            manager.freezeTask(id1);
+
+            const next = manager.peek();
+            expect(next).toBeDefined();
+            expect(next!.id).toBe(id2);
+        });
+
+        it('returns undefined when all tasks frozen', () => {
+            const id1 = manager.enqueue(createTestTask());
+            const id2 = manager.enqueue(createTestTask());
+            manager.freezeTask(id1);
+            manager.freezeTask(id2);
+
+            expect(manager.peek()).toBeUndefined();
+        });
+
+        it('returns first non-frozen task', () => {
+            const id1 = manager.enqueue(createTestTask({ displayName: 'T1' }));
+            const id2 = manager.enqueue(createTestTask({ displayName: 'T2' }));
+            const id3 = manager.enqueue(createTestTask({ displayName: 'T3' }));
+            manager.freezeTask(id1);
+
+            expect(manager.peek()!.id).toBe(id2);
+        });
+    });
+
+    describe('dequeue with frozen tasks', () => {
+        it('skips frozen tasks', () => {
+            const id1 = manager.enqueue(createTestTask({ displayName: 'T1' }));
+            const id2 = manager.enqueue(createTestTask({ displayName: 'T2' }));
+            manager.freezeTask(id1);
+
+            const next = manager.dequeue();
+            expect(next).toBeDefined();
+            expect(next!.id).toBe(id2);
+            // Frozen task stays in queue
+            expect(manager.size()).toBe(1);
+            expect(manager.getTask(id1)).toBeDefined();
+        });
+
+        it('returns undefined when all tasks frozen', () => {
+            const id1 = manager.enqueue(createTestTask());
+            manager.freezeTask(id1);
+
+            expect(manager.dequeue()).toBeUndefined();
+            expect(manager.size()).toBe(1);
+        });
+
+        it('frozen task stays at its position after unfreezing', () => {
+            const id1 = manager.enqueue(createTestTask({ displayName: 'T1' }));
+            const id2 = manager.enqueue(createTestTask({ displayName: 'T2' }));
+            manager.freezeTask(id1);
+            manager.unfreezeTask(id1);
+
+            const next = manager.dequeue();
+            expect(next!.id).toBe(id1);
+        });
+    });
 });
 
 // ============================================================================
