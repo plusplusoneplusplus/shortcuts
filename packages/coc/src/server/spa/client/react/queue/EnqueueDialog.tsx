@@ -9,6 +9,8 @@ import { useApp } from '../context/AppContext';
 import { Dialog, Button } from '../shared';
 import { fetchApi } from '../hooks/useApi';
 import { usePreferences } from '../hooks/usePreferences';
+import { useImagePaste } from '../hooks/useImagePaste';
+import { ImagePreviews } from '../shared/ImagePreviews';
 import { filterGitMetadataFolders } from '../hooks/useTaskTree';
 import { getApiBase } from '../utils/config';
 
@@ -41,6 +43,7 @@ export function EnqueueDialog() {
     const [skills, setSkills] = useState<SkillOption[]>([]);
     const [selectedSkill, setSelectedSkill] = useState<string>('');
     const [submitting, setSubmitting] = useState(false);
+    const { images, addFromPaste, removeImage, clearImages } = useImagePaste();
 
     // Sync model from preferences when loaded
     useEffect(() => {
@@ -111,6 +114,7 @@ export function EnqueueDialog() {
                         promptContent: prompt.trim() || `Use the ${selectedSkill} skill.`,
                         workingDirectory,
                     },
+                    images: images.length > 0 ? images : undefined,
                 };
                 if (model) body.config = { model };
                 await fetch(getApiBase() + '/queue/tasks', {
@@ -128,15 +132,17 @@ export function EnqueueDialog() {
                         model: model || undefined,
                         workspaceId: workspaceId || undefined,
                         folderPath: folderPath || undefined,
+                        images: images.length > 0 ? images : undefined,
                     }),
                 });
             }
             setPrompt('');
             setSelectedSkill('');
+            clearImages();
             queueDispatch({ type: 'CLOSE_DIALOG' });
         } catch { /* ignore */ }
         finally { setSubmitting(false); }
-    }, [prompt, model, workspaceId, folderPath, selectedSkill, appState.workspaces, queueDispatch]);
+    }, [prompt, model, workspaceId, folderPath, selectedSkill, images, appState.workspaces, queueDispatch, clearImages]);
 
     return (
         <Dialog
@@ -165,10 +171,12 @@ export function EnqueueDialog() {
                     <textarea
                         value={prompt}
                         onChange={e => setPrompt(e.target.value)}
+                        onPaste={submitting ? undefined : addFromPaste}
                         placeholder={selectedSkill ? `Additional context for ${selectedSkill} skill (optional)` : 'Enter your prompt...'}
                         rows={4}
                         className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc] focus:outline-none focus:border-[#0078d4] resize-y"
                     />
+                    <ImagePreviews images={images} onRemove={removeImage} showHint />
                 </div>
                 {workspaceId && skills.length > 0 && (
                     <div>

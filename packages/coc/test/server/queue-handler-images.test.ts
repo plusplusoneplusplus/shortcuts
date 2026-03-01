@@ -301,6 +301,74 @@ describe('GET /api/queue/:id/images', () => {
     });
 });
 
+describe('Queue Handler — legacy enqueue image forwarding', () => {
+    let server: ExecutionServer | undefined;
+    let dataDir: string;
+
+    beforeEach(() => {
+        dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'queue-handler-legacy-images-'));
+    });
+
+    afterEach(async () => {
+        if (server) {
+            await server.close();
+            server = undefined;
+        }
+        fs.rmSync(dataDir, { recursive: true, force: true });
+    });
+
+    async function startServer(): Promise<ExecutionServer> {
+        const store = new FileProcessStore({ dataDir });
+        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+        return server;
+    }
+
+    it('should forward images from legacy enqueue body to the task', async () => {
+        const srv = await startServer();
+
+        // Legacy enqueue path: POST /api/queue/enqueue with { prompt, images }
+        const res = await request(`${srv.url}/api/queue/enqueue`, {
+            method: 'POST',
+            body: JSON.stringify({
+                prompt: 'Describe this screenshot',
+                images: [PNG_DATA_URL],
+            }),
+            headers: { 'Content-Type': 'application/json' },
+        });
+
+        expect(res.status).toBe(201);
+        // Verify the task was queued and images were promoted
+        const listRes = await request(`${srv.url}/api/queue`);
+        const listBody = JSON.parse(listRes.body);
+        const task = listBody.queued[0];
+        expect(task).toBeDefined();
+        // serializeTask strips inline images; verify metadata
+        expect(task.payload.imagesCount).toBe(1);
+        expect(task.payload.hasImages).toBe(true);
+    });
+
+    it('should not include images in legacy enqueue when images is empty', async () => {
+        const srv = await startServer();
+
+        const res = await request(`${srv.url}/api/queue/enqueue`, {
+            method: 'POST',
+            body: JSON.stringify({
+                prompt: 'No images here',
+                images: [],
+            }),
+            headers: { 'Content-Type': 'application/json' },
+        });
+
+        expect(res.status).toBe(201);
+        const listRes = await request(`${srv.url}/api/queue`);
+        const listBody = JSON.parse(listRes.body);
+        const task = listBody.queued[0];
+        expect(task).toBeDefined();
+        expect(task.payload.imagesCount).toBe(0);
+        expect(task.payload.hasImages).toBe(false);
+    });
+});
+
 describe('serializeTask — image stripping', () => {
     let server: ExecutionServer | undefined;
     let dataDir: string;

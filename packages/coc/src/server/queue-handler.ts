@@ -449,6 +449,9 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
                     ...(typeof body?.displayName === 'string' && body.displayName.trim()
                         ? { displayName: body.displayName.trim() }
                         : {}),
+                    ...(Array.isArray(body?.images) && body.images.length > 0
+                        ? { images: body.images }
+                        : {}),
                 };
 
             const validation = validateAndParseTask(taskSpec);
