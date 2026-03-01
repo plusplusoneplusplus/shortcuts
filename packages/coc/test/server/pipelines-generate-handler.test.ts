@@ -326,6 +326,73 @@ describe('Pipelines Generate Handler', () => {
             expect(callArgs.prompt).toContain('pipeline YAML generator');
             expect(callArgs.prompt).toContain('classify bugs');
         });
+
+        it('should return suggestedName extracted from generated YAML name field', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            const yamlResponse = 'name: "Bug Classifier"\ninput:\n  type: csv\n  path: "bugs.csv"\nmap:\n  prompt: "Classify: {{title}}"\n  output:\n    - category\nreduce:\n  type: json';
+            configureMockAI({ response: yamlResponse });
+
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines/generate`, {
+                description: 'classify bugs by category',
+            });
+            expect(res.status).toBe(200);
+
+            const data = JSON.parse(res.body);
+            expect(data.suggestedName).toBe('bug-classifier');
+        });
+
+        it('should return suggestedName as kebab-case slug', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            const yamlResponse = 'name: "My Cool Pipeline!"\ninput:\n  type: csv\n  path: "in.csv"\nmap:\n  prompt: "Go"\n  output:\n    - r\nreduce:\n  type: json';
+            configureMockAI({ response: yamlResponse });
+
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines/generate`, {
+                description: 'test pipeline',
+            });
+            const data = JSON.parse(res.body);
+            expect(data.suggestedName).toBe('my-cool-pipeline');
+        });
+
+        it('should return suggestedName undefined when YAML has no name field', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            configureMockAI({ response: 'input:\n  type: csv\n  path: "in.csv"' });
+
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines/generate`, {
+                description: 'test pipeline',
+            });
+            const data = JSON.parse(res.body);
+            expect(data.suggestedName).toBeUndefined();
+        });
+
+        it('should succeed without name in request body', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            configureMockAI({});
+
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines/generate`, {
+                description: 'classify bugs by category',
+            });
+            expect(res.status).toBe(200);
+            const data = JSON.parse(res.body);
+            expect(data.yaml).toBeDefined();
+            expect(data.suggestedName).toBeDefined();
+        });
+
+        it('should include name instruction in system prompt', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            const mockService = configureMockAI({});
+
+            await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines/generate`, {
+                description: 'classify bugs',
+            });
+
+            const callArgs = mockService.sendMessage.mock.calls[0][0];
+            expect(callArgs.prompt).toContain('must include a top-level "name" field');
+        });
     });
 
     // ========================================================================

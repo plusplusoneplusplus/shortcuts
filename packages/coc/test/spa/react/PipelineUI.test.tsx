@@ -868,6 +868,146 @@ describe('AddPipelineDialog', () => {
         // Still in preview phase
         expect(document.querySelector('pre')).not.toBeNull();
     });
+
+    it('AI mode allows empty name — no error on generate', async () => {
+        const genSpy = vi.spyOn(pipelineApi, 'generatePipeline').mockResolvedValue({
+            yaml: 'name: suggested-name\ninput:\n  type: csv',
+            valid: true,
+            suggestedName: 'suggested-name',
+        });
+        render(
+            <Wrap>
+                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+            </Wrap>
+        );
+        const select = document.querySelector('select')!;
+        fireEvent.change(select, { target: { value: 'ai-generated' } });
+        const textarea = document.querySelector('textarea')!;
+        fireEvent.change(textarea, { target: { value: 'classify tickets by urgency' } });
+        await act(async () => {
+            fireEvent.click(screen.getByText('Generate Pipeline ✨'));
+        });
+        // Should succeed and transition to preview
+        expect(screen.getByText('Review Generated Pipeline')).toBeDefined();
+        expect(genSpy).toHaveBeenCalledWith('ws-1', undefined, 'classify tickets by urgency', expect.any(Object));
+    });
+
+    it('AI mode with empty name uses suggestedName in preview', async () => {
+        vi.spyOn(pipelineApi, 'generatePipeline').mockResolvedValue({
+            yaml: 'name: bug-classifier\ninput:\n  type: csv',
+            valid: true,
+            suggestedName: 'bug-classifier',
+        });
+        render(
+            <Wrap>
+                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+            </Wrap>
+        );
+        const select = document.querySelector('select')!;
+        fireEvent.change(select, { target: { value: 'ai-generated' } });
+        const textarea = document.querySelector('textarea')!;
+        fireEvent.change(textarea, { target: { value: 'classify bugs by category' } });
+        await act(async () => {
+            fireEvent.click(screen.getByText('Generate Pipeline ✨'));
+        });
+        // Preview should show editable name input pre-filled with suggestedName
+        const nameInput = document.querySelector('input[type="text"]') as HTMLInputElement;
+        expect(nameInput).not.toBeNull();
+        expect(nameInput.value).toBe('bug-classifier');
+    });
+
+    it('AI mode with user-provided name preserves it (not overridden by suggestedName)', async () => {
+        vi.spyOn(pipelineApi, 'generatePipeline').mockResolvedValue({
+            yaml: 'name: ai-suggested\ninput:\n  type: csv',
+            valid: true,
+            suggestedName: 'ai-suggested',
+        });
+        render(
+            <Wrap>
+                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+            </Wrap>
+        );
+        const input = document.querySelector('input[type="text"]')!;
+        fireEvent.change(input, { target: { value: 'user-chosen-name' } });
+        const select = document.querySelector('select')!;
+        fireEvent.change(select, { target: { value: 'ai-generated' } });
+        const textarea = document.querySelector('textarea')!;
+        fireEvent.change(textarea, { target: { value: 'classify tickets by urgency' } });
+        await act(async () => {
+            fireEvent.click(screen.getByText('Generate Pipeline ✨'));
+        });
+        // Preview name should still be the user-provided name
+        const nameInput = document.querySelector('input[type="text"]') as HTMLInputElement;
+        expect(nameInput.value).toBe('user-chosen-name');
+    });
+
+    it('preview phase name input is editable and used by Save', async () => {
+        vi.spyOn(pipelineApi, 'generatePipeline').mockResolvedValue({
+            yaml: 'name: generated-yaml',
+            valid: true,
+            suggestedName: 'generated-yaml',
+        });
+        const createSpy = vi.spyOn(pipelineApi, 'createPipeline').mockResolvedValue();
+        const onCreated = vi.fn();
+        const onClose = vi.fn();
+        render(
+            <Wrap>
+                <AddPipelineDialog workspaceId="ws-1" onCreated={onCreated} onClose={onClose} />
+            </Wrap>
+        );
+        const select = document.querySelector('select')!;
+        fireEvent.change(select, { target: { value: 'ai-generated' } });
+        const textarea = document.querySelector('textarea')!;
+        fireEvent.change(textarea, { target: { value: 'classify tickets by urgency' } });
+        await act(async () => {
+            fireEvent.click(screen.getByText('Generate Pipeline ✨'));
+        });
+        // Edit the name in preview
+        const nameInput = document.querySelector('input[type="text"]') as HTMLInputElement;
+        fireEvent.change(nameInput, { target: { value: 'edited-name' } });
+        await act(async () => {
+            fireEvent.click(screen.getByText('Save Pipeline ✓'));
+        });
+        expect(createSpy).toHaveBeenCalledWith('ws-1', 'edited-name', undefined, 'name: generated-yaml');
+        expect(onCreated).toHaveBeenCalledWith('edited-name');
+    });
+
+    it('save in preview requires a name — shows error when empty', async () => {
+        vi.spyOn(pipelineApi, 'generatePipeline').mockResolvedValue({
+            yaml: 'name: test', valid: true,
+        });
+        const createSpy = vi.spyOn(pipelineApi, 'createPipeline');
+        render(
+            <Wrap>
+                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+            </Wrap>
+        );
+        const select = document.querySelector('select')!;
+        fireEvent.change(select, { target: { value: 'ai-generated' } });
+        const textarea = document.querySelector('textarea')!;
+        fireEvent.change(textarea, { target: { value: 'classify tickets by urgency' } });
+        await act(async () => {
+            fireEvent.click(screen.getByText('Generate Pipeline ✨'));
+        });
+        // Name is empty (no suggestedName returned), try to save
+        await act(async () => {
+            fireEvent.click(screen.getByText('Save Pipeline ✓'));
+        });
+        expect(screen.getByText('Name is required')).toBeDefined();
+        expect(createSpy).not.toHaveBeenCalled();
+    });
+
+    it('AI mode name input shows placeholder hint', () => {
+        render(
+            <Wrap>
+                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+            </Wrap>
+        );
+        const select = document.querySelector('select')!;
+        fireEvent.change(select, { target: { value: 'ai-generated' } });
+        const input = document.querySelector('input[type="text"]') as HTMLInputElement;
+        expect(input.placeholder).toBe('Leave blank for AI suggestion');
+    });
 });
 
 // ============================================================================

@@ -404,6 +404,7 @@ export function registerPipelineWriteRoutes(
 
             const systemPrompt = `You are a pipeline YAML generator. You produce valid pipeline YAML configurations and nothing else.
 Output ONLY the raw YAML content. Do NOT wrap it in markdown code fences. Do NOT include any explanation before or after the YAML.
+The YAML must include a top-level "name" field. Choose a short, descriptive kebab-case name based on the user's requirement.
 
 ${PIPELINE_SCHEMA_REFERENCE}`;
 
@@ -443,7 +444,21 @@ ${PIPELINE_SCHEMA_REFERENCE}`;
                     validationError = err.message || 'YAML parse error';
                 }
 
-                sendJSON(res, 200, { yaml: extractedYaml, raw, valid, validationError });
+                // Extract suggested name from the generated YAML
+                let suggestedName: string | undefined;
+                try {
+                    const parsed = yaml.load(extractedYaml) as any;
+                    if (parsed && typeof parsed === 'object' && typeof parsed.name === 'string' && parsed.name.trim()) {
+                        suggestedName = parsed.name.trim()
+                            .toLowerCase()
+                            .replace(/[^a-z0-9]+/g, '-')
+                            .replace(/^-|-$/g, '');
+                    }
+                } catch {
+                    // YAML parse already handled above — suggestedName stays undefined
+                }
+
+                sendJSON(res, 200, { yaml: extractedYaml, raw, valid, validationError, suggestedName });
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
                 if (message.toLowerCase().includes('timeout')) {

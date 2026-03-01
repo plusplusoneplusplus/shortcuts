@@ -57,18 +57,23 @@ export interface GenerateResult {
     yaml: string;
     valid: boolean;
     errors?: string[];
+    suggestedName?: string;
 }
 
 export async function generatePipeline(
     workspaceId: string,
-    name: string,
+    name: string | undefined,
     description: string,
     signal?: AbortSignal
 ): Promise<GenerateResult> {
+    const body: Record<string, string> = { description };
+    if (name) {
+        body.name = name;
+    }
     const res = await fetch(`${pipelinesUrl(workspaceId)}/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, description }),
+        body: JSON.stringify(body),
         signal,
     });
     if (!res.ok) {

@@ -67,8 +67,8 @@ export function AddPipelineDialog({ workspaceId, onCreated, onClose }: AddPipeli
 
     async function handleGenerate() {
         const trimmed = name.trim();
-        if (!trimmed) { setError('Name is required'); return; }
-        if (!NAME_PATTERN.test(trimmed)) {
+        if (!isAiMode && !trimmed) { setError('Name is required'); return; }
+        if (trimmed && !NAME_PATTERN.test(trimmed)) {
             setError('Name must start with a letter or number and contain only letters, numbers, and hyphens');
             return;
         }
@@ -82,10 +82,14 @@ export function AddPipelineDialog({ workspaceId, onCreated, onClose }: AddPipeli
         setError(null);
 
         try {
-            const result = await generatePipeline(workspaceId, trimmed, description.trim(), controller.signal);
+            const result = await generatePipeline(workspaceId, trimmed || undefined, description.trim(), controller.signal);
             setGeneratedYaml(result.yaml);
             setGeneratedValid(result.valid);
             setGenerationErrors(result.errors || []);
+            // If user didn't provide a name, use the AI-suggested name
+            if (!trimmed && result.suggestedName) {
+                setName(result.suggestedName);
+            }
             setPhase('preview');
         } catch (err: any) {
             if (err.name === 'AbortError') {
@@ -99,6 +103,14 @@ export function AddPipelineDialog({ workspaceId, onCreated, onClose }: AddPipeli
 
     async function handleSave() {
         const trimmed = name.trim();
+        if (!trimmed) {
+            setError('Name is required');
+            return;
+        }
+        if (!NAME_PATTERN.test(trimmed)) {
+            setError('Name must start with a letter or number and contain only letters, numbers, and hyphens');
+            return;
+        }
         setSubmitting(true);
         setError(null);
         try {
@@ -179,6 +191,17 @@ export function AddPipelineDialog({ workspaceId, onCreated, onClose }: AddPipeli
 
             {phase === 'preview' && (
                 <div className="flex flex-col gap-3">
+                    <div>
+                        <label className="block text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc] mb-1">Name</label>
+                        <input
+                            type="text"
+                            value={name}
+                            onChange={e => { setName(e.target.value); setError(null); }}
+                            placeholder="my-pipeline"
+                            className="w-full px-2 py-1.5 text-sm border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] rounded"
+                        />
+                    </div>
+
                     <pre className="font-mono text-xs overflow-auto whitespace-pre-wrap bg-[#f5f5f5] dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded p-3 max-h-[300px]">
                         {generatedYaml}
                     </pre>
@@ -216,7 +239,7 @@ export function AddPipelineDialog({ workspaceId, onCreated, onClose }: AddPipeli
                             type="text"
                             value={name}
                             onChange={e => { setName(e.target.value); setError(null); }}
-                            placeholder="my-pipeline"
+                            placeholder={isAiMode ? 'Leave blank for AI suggestion' : 'my-pipeline'}
                             className="w-full px-2 py-1.5 text-sm border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] rounded"
                         />
                     </div>

@@ -215,14 +215,34 @@ describe('generatePipeline', () => {
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: 'my-pipe', description: 'classify tickets' }),
+                body: JSON.stringify({ description: 'classify tickets', name: 'my-pipe' }),
                 signal: undefined,
             }
         );
     });
 
-    it('returns parsed { yaml, valid, errors } response', async () => {
-        const response = { yaml: 'name: test\ninput:\n  type: csv', valid: true, errors: [] };
+    it('omits name from body when undefined', async () => {
+        mockFetch.mockReturnValue(okJson({ yaml: 'name: test', valid: true }));
+        await generatePipeline('ws1', undefined, 'classify tickets');
+
+        const call = mockFetch.mock.calls[0];
+        const body = JSON.parse(call[1].body);
+        expect(body).toEqual({ description: 'classify tickets' });
+        expect('name' in body).toBe(false);
+    });
+
+    it('omits name from body when empty string', async () => {
+        mockFetch.mockReturnValue(okJson({ yaml: 'name: test', valid: true }));
+        await generatePipeline('ws1', '', 'classify tickets');
+
+        const call = mockFetch.mock.calls[0];
+        const body = JSON.parse(call[1].body);
+        expect(body).toEqual({ description: 'classify tickets' });
+        expect('name' in body).toBe(false);
+    });
+
+    it('returns parsed { yaml, valid, errors, suggestedName } response', async () => {
+        const response = { yaml: 'name: test\ninput:\n  type: csv', valid: true, errors: [], suggestedName: 'test' };
         mockFetch.mockReturnValue(okJson(response));
         const result = await generatePipeline('ws1', 'pipe', 'do stuff');
         expect(result).toEqual(response);
