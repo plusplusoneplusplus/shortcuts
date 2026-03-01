@@ -197,9 +197,19 @@ describe('PipelineDAGChart — hover tooltip', () => {
         // Note: getBoundingClientRect returns zeros in jsdom, so anchor computes to (0,0),
         // but the tooltip should still render.
         render(<PipelineDAGChart data={makeData()} isDark={false} pipelineConfig={makePipelineConfig()} />);
-        fireEvent.mouseEnter(screen.getByTestId('dag-node-map'));
+        fireEvent.mouseEnter(screen.getByTestId('dag-node-map'), { clientX: 200, clientY: 50 });
         expect(screen.getByTestId('dag-hover-tooltip')).toBeDefined();
         expect(screen.getByTestId('dag-hover-tooltip').textContent).toContain('Map Phase');
+    });
+
+    it('tooltip anchor is derived from mouse clientX/clientY relative to container', () => {
+        // getBoundingClientRect returns zeros in jsdom, so container offset is (0,0).
+        // The anchor should equal (clientX, clientY).
+        render(<PipelineDAGChart data={makeData()} isDark={false} pipelineConfig={makePipelineConfig()} />);
+        fireEvent.mouseEnter(screen.getByTestId('dag-node-input'), { clientX: 150, clientY: 40 });
+        const tooltip = screen.getByTestId('dag-hover-tooltip');
+        expect(tooltip.style.left).toBe('150px');
+        expect(tooltip.style.top).toBe('40px');
     });
 
     it('hover tooltip disappears when selectedPhase is set (click takes precedence)', () => {

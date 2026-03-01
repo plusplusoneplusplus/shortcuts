@@ -12,7 +12,7 @@ export interface DAGNodeProps {
     y: number;
     isDark: boolean;
     onClick?: (phase: PipelinePhase) => void;
-    onMouseEnter?: (phase: PipelinePhase) => void;
+    onMouseEnter?: (phase: PipelinePhase, e: React.MouseEvent) => void;
     onMouseLeave?: (phase: PipelinePhase) => void;
     elapsedMs?: number;
     selected?: boolean;
@@ -57,7 +57,7 @@ export function DAGNode({ node, x, y, isDark, onClick, onMouseEnter, onMouseLeav
         <g
             data-testid={`dag-node-${node.phase}`}
             onClick={hasClick ? () => onClick(node.phase) : undefined}
-            onMouseEnter={onMouseEnter ? () => onMouseEnter(node.phase) : undefined}
+            onMouseEnter={onMouseEnter ? (e: React.MouseEvent) => onMouseEnter(node.phase, e) : undefined}
             onMouseLeave={onMouseLeave ? () => onMouseLeave(node.phase) : undefined}
             style={hasClick ? { cursor: 'pointer' } : undefined}
         >

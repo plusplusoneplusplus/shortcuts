@@ -190,13 +190,13 @@ describe('DAGNode', () => {
     });
 
     describe('mouse event callbacks', () => {
-        it('fires onMouseEnter with correct phase on mouseenter', () => {
+        it('fires onMouseEnter with correct phase and event on mouseenter', () => {
             const onMouseEnter = vi.fn();
             const { container } = renderNode({ phase: 'map', label: 'Map' }, { onMouseEnter });
             const g = container.querySelector('[data-testid="dag-node-map"]');
             expect(g).toBeDefined();
             fireEvent.mouseEnter(g!);
-            expect(onMouseEnter).toHaveBeenCalledWith('map');
+            expect(onMouseEnter).toHaveBeenCalledWith('map', expect.objectContaining({ type: 'mouseenter' }));
         });
 
         it('fires onMouseLeave with correct phase on mouseleave', () => {

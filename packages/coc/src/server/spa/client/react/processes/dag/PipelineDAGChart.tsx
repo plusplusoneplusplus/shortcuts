@@ -97,22 +97,14 @@ export function PipelineDAGChart({ data, isDark, onNodeClick, now, phaseDetails,
         };
     }, []);
 
-    const handleNodeMouseEnter = (phase: PipelinePhase) => {
+    const handleNodeMouseEnter = (phase: PipelinePhase, e: React.MouseEvent) => {
         if (leaveTimerRef.current) { clearTimeout(leaveTimerRef.current); leaveTimerRef.current = null; }
         setHoveredPhase(phase);
-        const idx = data.nodes.findIndex(n => n.phase === phase);
-        if (idx >= 0 && svgRef.current && containerRef.current) {
-            const svgRect = svgRef.current.getBoundingClientRect();
+        if (containerRef.current) {
             const containerRect = containerRef.current.getBoundingClientRect();
-            const scaleX = svgRect.width / totalWidth;
-            const scaleY = svgRect.height / totalHeight;
-            const offsetX = svgRect.left - containerRect.left;
-            const offsetY = svgRect.top - containerRect.top;
-            const nodeX = positions[idx].x;
-            const nodeY = positions[idx].y;
             setHoverAnchor({
-                x: offsetX + (nodeX + NODE_W / 2) * scaleX,
-                y: offsetY + nodeY * scaleY,
+                x: e.clientX - containerRect.left,
+                y: e.clientY - containerRect.top,
             });
         }
     };
