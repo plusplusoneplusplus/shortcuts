@@ -7,7 +7,7 @@ A two-level memory system for CoC that enables all AI interactions — pipelines
 ### Design Principles
 
 - **Non-blocking hot path** — AI calls only write raw observations; aggregation happens asynchronously
-- **Cross-cutting via middleware** — memory integrates at the AI invoker layer, not per-feature
+- **Cross-cutting via opt-in composition** — standalone memory services (`MemoryRetriever`, `MemoryCapture`) that callers compose around AI calls; the AI invoker is never modified
 - **Two isolation levels** — repo-level (project-specific) and system-level (cross-project) memory
 - **Batched aggregation** — AI consolidation runs only when enough raw observations accumulate, amortizing cost
 - **Global + per-pipeline control** — `~/.coc/config.yaml` for system-wide defaults; `memory:` in pipeline YAML for per-pipeline overrides
@@ -85,7 +85,7 @@ model: gpt-4
 
 ### 1. Retrieve (Pre-Call)
 
-Before an AI call, the memory middleware:
+Before an AI call, the caller retrieves memory context:
 
 1. Loads `consolidated.md` from repo-level memory (if a repo context is available)
 2. Loads `consolidated.md` from system-level memory
@@ -105,7 +105,7 @@ Before an AI call, the memory middleware:
 
 ### 2. Capture (Post-Call)
 
-After an AI call, the memory middleware issues a lightweight follow-up prompt:
+After an AI call, the caller issues a lightweight follow-up prompt via `MemoryCapture`:
 
 ```
 Given the task you just completed and the context you operated in, list 2-5 concise
@@ -124,7 +124,7 @@ The response is written as a raw observation file with metadata header. This is 
 
 ### 3. Aggregate (Background, Batched)
 
-After each AI interaction completes:
+After each AI interaction where capture occurred:
 
 ```
 count = number of raw/*.md files since last aggregation
@@ -162,69 +162,97 @@ Produce an updated memory document following these rules:
 
 **Aggregation runs at both levels independently** — repo-level raw files consolidate into repo-level memory, system-level into system-level.
 
-## Memory Middleware
+## Integration Pattern
 
-The core integration mechanism. `MemoryMiddleware` wraps any `AIInvoker` function with retrieve-before and capture-after logic, making memory available to all AI call sites without modifying each one.
+Memory is an **opt-in, caller-side concern**. The AI invoker (`createCLIAIInvoker`) is never modified. Instead, each feature that wants memory explicitly composes `MemoryRetriever` and `MemoryCapture` around its own AI calls.
 
-```typescript
-function createMemoryAwareInvoker(
-  innerInvoker: AIInvoker,
-  options: MemoryMiddlewareOptions
-): AIInvoker
-```
+### Core services (pipeline-core)
 
-### How it works
-
-```
-Caller → memoryAwareInvoker(prompt, opts)
-           │
-           ├─ 1. Retrieve: load consolidated memory, prepend to prompt
-           ├─ 2. Invoke: call innerInvoker(enrichedPrompt, opts)
-           ├─ 3. Capture: issue follow-up prompt, write raw observation
-           └─ 4. Aggregate check: if raw count ≥ threshold, trigger background aggregation
-           │
-           └─ Return original result (unchanged)
-```
-
-### Where it's wired in
-
-Every AI call in CoC flows through `createCLIAIInvoker()` in `packages/coc/src/ai-invoker.ts`. This is the single integration point:
+`MemoryRetriever` and `MemoryCapture` are standalone, stateless services. They have no knowledge of the AI invoker — they just read/write memory and format prompts.
 
 ```typescript
-// In createCLIAIInvoker():
-let invoker = buildBaseInvoker(sdkService, options);
-if (memoryConfig.enabled) {
-  invoker = createMemoryAwareInvoker(invoker, {
-    store: memoryStore,
-    retriever: memoryRetriever,
-    capturer: memoryCapturer,
-    repoHash: resolvedRepoHash,
-    level: memoryConfig.level,
-  });
-}
-return invoker;
+// MemoryRetriever — load and format consolidated memory
+const retriever = new MemoryRetriever(store);
+const context: string | null = await retriever.retrieve(repoHash, level);
+// Returns formatted markdown block, or null if no memory exists
+
+// MemoryCapture — extract observations from an AI response
+const capturer = new MemoryCapture(store);
+await capturer.capture(aiInvoker, response, { source: 'code-review', repoHash, level });
+// Issues follow-up prompt, writes raw observation file
+
+// MemoryAggregator — check threshold and consolidate
+const aggregator = new MemoryAggregator(store);
+await aggregator.aggregateIfNeeded(aiInvoker, repoHash, level);
+// Checks raw count >= threshold, runs consolidation if needed
 ```
 
-This gives memory to **all** call sites that use the shared invoker:
+### `withMemory()` helper (pipeline-core)
 
-| Call Site | Package | Notes |
+For simple call sites, a composable utility function reduces boilerplate while keeping opt-in explicit:
+
+```typescript
+// With memory (explicit opt-in at the call site)
+const result = await withMemory(aiInvoker, {
+  store, repoHash, level,
+  source: 'code-review',
+  prompt, opts,
+});
+
+// Equivalent to:
+//   1. retriever.retrieve() → prepend to prompt
+//   2. aiInvoker(enrichedPrompt, opts)
+//   3. capturer.capture()
+//   4. aggregator.aggregateIfNeeded()
+//   5. return original AI result
+```
+
+`withMemory` is a pure function — it doesn't wrap or replace the invoker. It's a convenience that orchestrates the three services around a single AI call.
+
+### Caller-side composition (for complex cases)
+
+When a feature needs finer control (e.g., retrieve once before a batch, capture once after reduce), it calls the services directly:
+
+```typescript
+// Pipeline executor — retrieve once, capture once (not per-item)
+const context = await retriever.retrieve(repoHash, level);
+const enrichedMapPrompt = context ? context + '\n\n' + mapPrompt : mapPrompt;
+
+// ... execute map phase with enrichedMapPrompt ...
+// ... execute reduce phase ...
+
+await capturer.capture(aiInvoker, reduceResult, { source: pipeline.name, repoHash, level });
+await aggregator.aggregateIfNeeded(aiInvoker, repoHash, level);
+```
+
+```typescript
+// Wiki Ask handler — retrieve with TF-IDF context, capture at session end
+const memoryContext = await retriever.retrieve(repoHash, level);
+const tfidfContext = await contextBuilder.buildContext(question);
+const fullContext = [tfidfContext, memoryContext].filter(Boolean).join('\n\n');
+
+const result = await sendMessage(fullContext + '\n\n' + question, opts);
+// Capture deferred to session end or every N turns
+```
+
+### Where each pattern is used
+
+| Call Site | Pattern | Notes |
 |-----------|---------|-------|
-| Pipeline map/reduce/filter phases | `pipeline-core` | Via `executePipeline({ aiInvoker })` |
-| Pipeline job mode | `pipeline-core` | Single AI call |
-| Workflow AI/map/reduce/filter/load nodes | `pipeline-core` | DAG-based execution |
-| Map-reduce jobs (code-review, prompt-map, template) | `pipeline-core` | All job types |
-| Task comment resolution | `coc-server` | AI-powered comment resolve |
-| Queue executor (chat, custom, follow-prompt, task-gen) | `coc-server` | Various task types |
+| Pipeline job mode | `withMemory()` | Single AI call — helper is ideal |
+| Pipeline map-reduce | Caller-side | Retrieve once before map, capture once after reduce |
+| Workflow nodes | `withMemory()` per node, or caller-side per workflow | Depends on workflow complexity |
+| `coc serve` wiki Ask | Caller-side | Combines memory with TF-IDF context |
+| `coc serve` wiki Explore | Caller-side | Combines memory with component graph context |
+| Task comment resolution | `withMemory()` | Single AI call per comment |
+| Queue executor tasks | `withMemory()` | Chat, custom, follow-prompt |
 
-### Call sites with their own AI path
+### What stays untouched
 
-These features use their own `sendMessage` path (not `createCLIAIInvoker`) and need separate integration:
-
-| Call Site | Package | Integration Approach |
-|-----------|---------|---------------------|
-| Wiki Ask Q&A | `coc-server` | Inject memory context into ContextBuilder alongside TF-IDF results |
-| Wiki Explore | `coc-server` | Inject memory context into exploration prompt |
-| Conversation sessions | `coc-server` | Capture observations when session ends or every N turns |
+- **`createCLIAIInvoker()`** — no changes, no memory awareness
+- **`AIInvoker` type** — unchanged function signature
+- **CopilotSDKService** — unchanged
+- **Any call site that doesn't opt in** — zero overhead, zero behavior change
 
 ## Repo Context Detection
 
@@ -359,14 +387,14 @@ POST   /api/memory/add                # add a fact manually
 | `MemoryRetriever` | `pipeline-core` | Load consolidated memory, format as prompt context block |
 | `MemoryCapture` | `pipeline-core` | Post-AI-call observation extraction prompt, raw file writing |
 | `MemoryAggregator` | `pipeline-core` | Batch threshold check, AI consolidation prompt, prune/archive raw files |
-| `MemoryMiddleware` | `pipeline-core` | Wraps any `AIInvoker` with retrieve + capture + aggregate-check |
+| `withMemory()` helper | `pipeline-core` | Composable utility that orchestrates retrieve → invoke → capture → aggregate for simple call sites |
 | `PipelineConfig.memory` | `pipeline-core` | Schema addition for `memory` field in pipeline YAML |
-| `executePipeline` hooks | `pipeline-core` | Wire memory middleware into pipeline execution flow |
+| `executePipeline` hooks | `pipeline-core` | Caller-side memory composition in pipeline execution flow (retrieve before map, capture after reduce) |
 | Repo context detection | `pipeline-core` | Auto-detect repo root from working directory via git or `.git/` walk |
 | Global memory config | `coc` | `memory:` section in `~/.coc/config.yaml`, `--memory`/`--no-memory` CLI flags |
-| AI invoker integration | `coc` | Wire `createMemoryAwareInvoker` into `createCLIAIInvoker()` |
+| `coc run` memory wiring | `coc` | Wire memory services into pipeline execution in `run` command when enabled |
 | `coc memory` command | `coc` | CLI subcommands for show/aggregate/clear/add |
-| Wiki memory context | `coc-server` | Inject memory into wiki Ask/Explore handlers alongside TF-IDF context |
+| Wiki memory context | `coc-server` | Caller-side memory composition in wiki Ask/Explore handlers alongside TF-IDF context |
 | Memory API endpoints | `coc-server` | REST endpoints for dashboard memory management |
 | Background aggregation | `coc-server` | Timer-based aggregation when running `coc serve` |
 
@@ -378,12 +406,12 @@ POST   /api/memory/add                # add a fact manually
 | `MemoryRetriever` | ⬚ Not started | |
 | `MemoryCapture` | ⬚ Not started | |
 | `MemoryAggregator` | ⬚ Not started | |
-| `MemoryMiddleware` | ⬚ Not started | |
+| `withMemory()` helper | ⬚ Not started | |
 | `PipelineConfig.memory` | ⬚ Not started | |
 | `executePipeline` hooks | ⬚ Not started | |
 | Repo context detection | ⬚ Not started | |
 | Global memory config | ⬚ Not started | |
-| AI invoker integration | ⬚ Not started | |
+| `coc run` memory wiring | ⬚ Not started | |
 | `coc memory` command | ⬚ Not started | |
 | Wiki memory context | ⬚ Not started | |
 | Memory API endpoints | ⬚ Not started | |
@@ -396,25 +424,30 @@ POST   /api/memory/add                # add a fact manually
 │                         CoC Memory System                            │
 │                                                                      │
 │  ┌─────────────────────────────────────────────────────────────┐     │
-│  │                    AI Invoker Layer                          │     │
+│  │                  Memory Services (pipeline-core)             │     │
 │  │                                                             │     │
-│  │  createCLIAIInvoker()                                       │     │
-│  │    └─ createMemoryAwareInvoker(innerInvoker, memoryOpts)    │     │
-│  │         ├─ retrieve: prepend consolidated memory to prompt  │     │
-│  │         ├─ invoke: call inner AI invoker                    │     │
-│  │         ├─ capture: extract observations → raw/*.md         │     │
-│  │         └─ check: raw count ≥ threshold? → aggregate        │     │
+│  │  MemoryRetriever     MemoryCapture     MemoryAggregator     │     │
+│  │  (read consolidated) (extract & write)  (batch consolidate) │     │
+│  │                                                             │     │
+│  │  withMemory() — convenience: retrieve → invoke → capture    │     │
 │  └─────────────────────────┬───────────────────────────────────┘     │
-│                            │ used by                                 │
+│                            │ used by (opt-in)                        │
 │            ┌───────────────┼───────────────────┐                     │
 │            ▼               ▼                   ▼                     │
 │     ┌────────────┐  ┌────────────┐  ┌───────────────────┐           │
 │     │  coc run   │  │ coc serve  │  │  coc-server tasks │           │
 │     │ (pipeline) │  │  (wiki AI) │  │ (chat, comments)  │           │
+│     │            │  │            │  │                   │           │
+│     │ caller-    │  │ caller-    │  │ withMemory()      │           │
+│     │ side comp. │  │ side comp. │  │ for simple calls  │           │
 │     └────────────┘  └────────────┘  └───────────────────┘           │
 │                                                                      │
 │  ┌─────────────────────────────────────────────────────────────┐     │
-│  │                    Storage Layer                             │     │
+│  │  AI Invoker (createCLIAIInvoker) — UNCHANGED, not wrapped   │     │
+│  └─────────────────────────────────────────────────────────────┘     │
+│                                                                      │
+│  ┌─────────────────────────────────────────────────────────────┐     │
+│  │                    Storage Layer (MemoryStore)               │     │
 │  │                                                             │     │
 │  │  ~/.coc/memory/                                             │     │
 │  │    system/                    repos/<hash>/                  │     │
@@ -440,7 +473,7 @@ POST   /api/memory/add                # add a fact manually
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
 | Memory location | `~/.coc/memory/` (not in repo) | Avoids polluting repos; consistent with existing `~/.coc/` patterns |
-| Integration point | AI invoker middleware | Single integration point gives memory to all call sites; no per-feature wiring |
+| Integration pattern | Caller-side composition + `withMemory()` helper | AI invoker stays untouched; each feature explicitly opts in; no implicit global behavior |
 | Aggregation trigger | Post-call batched (threshold ≥ 5) | Balances freshness vs. AI call cost |
 | Global default | Disabled | Safe default; users opt in via config or pipeline YAML |
 | Observation extraction | AI self-reports via follow-up prompt | Higher quality than regex; lightweight single-turn call |
