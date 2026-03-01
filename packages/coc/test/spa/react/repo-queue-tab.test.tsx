@@ -599,4 +599,68 @@ describe('RepoQueueTab', () => {
             expect(moveUpCalls.length).toBeGreaterThanOrEqual(1);
         });
     });
+
+    it('renders chat tasks in running list with 💬 icon', async () => {
+        setupFetch({
+            queue: makeQueueResponse({
+                running: [makeRunningTask({ id: 'chat-1', type: 'chat', displayName: 'Chat Session' })],
+            }),
+            history: makeHistoryResponse([]),
+        });
+
+        render(
+            <Wrap>
+                <RepoQueueTab workspaceId="ws1" />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText(/Chat Session/)).toBeTruthy();
+        });
+
+        // The 💬 icon should be present
+        expect(screen.getByText('💬')).toBeTruthy();
+    });
+
+    it('renders chat tasks in queued list', async () => {
+        setupFetch({
+            queue: makeQueueResponse({
+                queued: [makeQueuedTask({ id: 'chat-q1', type: 'chat', displayName: 'Queued Chat' })],
+            }),
+            history: makeHistoryResponse([]),
+        });
+
+        render(
+            <Wrap>
+                <RepoQueueTab workspaceId="ws1" />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText(/Queued Chat/)).toBeTruthy();
+        });
+    });
+
+    it('renders chat tasks in history list with 💬 icon', async () => {
+        setupFetch({
+            queue: makeQueueResponse({ running: [makeRunningTask()] }),
+            history: makeHistoryResponse([
+                makeCompletedTask({ id: 'chat-h1', type: 'chat', displayName: 'Done Chat' }),
+            ]),
+        });
+
+        render(
+            <Wrap>
+                <RepoQueueTab workspaceId="ws1" />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText(/Done Chat/)).toBeTruthy();
+        });
+
+        // Chat tasks in history use 💬 instead of ✅
+        const chatHistoryItem = screen.getByText(/Done Chat/).closest('[data-task-id]');
+        expect(chatHistoryItem?.textContent).toContain('💬');
+    });
 });

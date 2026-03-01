@@ -32,6 +32,7 @@ describe('RepoQueueTab filter dropdown', () => {
             expect(source).toContain("'follow-prompt'");
             expect(source).toContain("'run-pipeline'");
             expect(source).toContain("'code-review'");
+            expect(source).toContain("'chat'");
             expect(source).toContain("'custom'");
         });
 

@@ -90,7 +90,7 @@ describe('RepoQueueTab split-panel layout', () => {
         it('history Card has onClick handler for selection', () => {
             // The history Card should have onClick to select the task
             const historySection = source.slice(source.indexOf('Completed Tasks'));
-            expect(historySection).toContain('onClick={() => selectTask(task.id)}');
+            expect(historySection).toContain('onClick={() => selectTask(task.id, task)');
         });
 
         it('history Card has cursor-pointer class', () => {
@@ -129,9 +129,9 @@ describe('RepoQueueTab split-panel layout', () => {
             expect(source).toContain('const selectTask = useCallback');
         });
 
-        it('dispatches SELECT_QUEUE_TASK through selectTask', () => {
+        it('dispatches SELECT_QUEUE_TASK for non-chat tasks', () => {
             const callbackIdx = source.indexOf('const selectTask = useCallback');
-            const callbackBlock = source.slice(callbackIdx, callbackIdx + 200);
+            const callbackBlock = source.slice(callbackIdx, callbackIdx + 600);
             expect(callbackBlock).toContain('SELECT_QUEUE_TASK');
         });
     });
@@ -232,7 +232,7 @@ describe('RepoQueueTab URL deep-link support', () => {
     describe('hash update on task selection', () => {
         it('selectTask sets location.hash with task ID', () => {
             const callbackIdx = source.indexOf('const selectTask = useCallback');
-            const callbackBlock = source.slice(callbackIdx, callbackIdx + 300);
+            const callbackBlock = source.slice(callbackIdx, callbackIdx + 800);
             expect(callbackBlock).toContain('location.hash');
             expect(callbackBlock).toContain("'#repos/'");
             expect(callbackBlock).toContain("'/queue/'");
@@ -240,19 +240,19 @@ describe('RepoQueueTab URL deep-link support', () => {
 
         it('encodes workspaceId in the hash', () => {
             const callbackIdx = source.indexOf('const selectTask = useCallback');
-            const callbackBlock = source.slice(callbackIdx, callbackIdx + 300);
+            const callbackBlock = source.slice(callbackIdx, callbackIdx + 800);
             expect(callbackBlock).toContain('encodeURIComponent(workspaceId)');
         });
 
         it('encodes task ID in the hash', () => {
             const callbackIdx = source.indexOf('const selectTask = useCallback');
-            const callbackBlock = source.slice(callbackIdx, callbackIdx + 300);
+            const callbackBlock = source.slice(callbackIdx, callbackIdx + 800);
             expect(callbackBlock).toContain('encodeURIComponent(id)');
         });
 
         it('includes workspaceId in useCallback dependency array', () => {
             const callbackIdx = source.indexOf('const selectTask = useCallback');
-            const callbackBlock = source.slice(callbackIdx, callbackIdx + 300);
+            const callbackBlock = source.slice(callbackIdx, callbackIdx + 800);
             expect(callbackBlock).toContain('workspaceId');
         });
     });

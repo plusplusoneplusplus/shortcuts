@@ -8,6 +8,7 @@ import { Badge, Card, Button, cn } from '../shared';
 import { fetchApi } from '../hooks/useApi';
 import { getApiBase } from '../utils/config';
 import { useQueue } from '../context/QueueContext';
+import { useApp } from '../context/AppContext';
 import { QueueTaskDetail } from '../queue/QueueTaskDetail';
 import { formatDuration, statusIcon, formatRelativeTime } from '../utils/format';
 import { useQueueDragDrop } from '../hooks/useQueueDragDrop';
@@ -22,14 +23,12 @@ const TASK_TYPE_LABELS: Record<string, string> = {
     'follow-prompt': 'Follow Prompt',
     'run-pipeline': 'Run Pipeline',
     'code-review': 'Code Review',
+    'chat': 'Chat',
     'custom': 'Custom',
 };
 
 /** Types grouped under the "Other" filter bucket. */
 const OTHER_TYPES = new Set(['resolve-comments', 'ai-clarification', 'task-generation']);
-
-/** Exclude chat-type tasks from the Queue tab (shown in dedicated Chat tab). */
-const isNonChat = (t: { type?: string }) => t.type !== 'chat';
 
 function taskMatchesFilter(task: any, filter: string): boolean {
     if (filter === 'all') return true;
@@ -50,6 +49,7 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; taskId: string; taskStatus: 'running' | 'queued' } | null>(null);
 
     const { state: queueState, dispatch: queueDispatch } = useQueue();
+    const { dispatch: appDispatch } = useApp();
     const selectedTaskId = queueState.selectedTaskId;
 
     // Live-update from per-repo WebSocket events via repoQueueMap
@@ -58,14 +58,14 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
     const fetchQueue = async () => {
         try {
             const data = await fetchApi('/queue?repoId=' + encodeURIComponent(workspaceId));
-            const nextRunning = (data?.running || []).filter(isNonChat);
-            const nextQueued = (data?.queued || []).filter(isNonChat);
+            const nextRunning = data?.running || [];
+            const nextQueued = data?.queued || [];
             const nextStats = data?.stats || undefined;
             setRunning(nextRunning);
             setQueued(nextQueued);
             setIsPaused(!!nextStats?.isPaused);
             const historyData = await fetchApi('/queue/history?repoId=' + encodeURIComponent(workspaceId)).catch(() => null);
-            const nextHistory = (historyData?.history || []).filter(isNonChat);
+            const nextHistory = historyData?.history || [];
             setHistory(nextHistory);
 
             // Keep repoQueueMap aligned with authoritative HTTP data so later WS/stats updates
@@ -115,9 +115,9 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
     // Apply per-repo WS updates directly without HTTP round-trip
     useEffect(() => {
         if (!repoQueue) return;
-        setRunning(repoQueue.running.filter(isNonChat));
-        setQueued(repoQueue.queued.filter(isNonChat));
-        setHistory(repoQueue.history.filter(isNonChat));
+        setRunning(repoQueue.running);
+        setQueued(repoQueue.queued);
+        setHistory(repoQueue.history);
         if (repoQueue?.stats?.isPaused !== undefined) {
             setIsPaused(repoQueue.stats.isPaused);
         }
@@ -139,10 +139,18 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
         }
     }, [selectedTaskId, running, queued, history, loading, queueDispatch, workspaceId]);
 
-    const selectTask = useCallback((id: string) => {
+    const selectTask = useCallback((id: string, task?: any) => {
+        if (task?.type === 'chat') {
+            // Navigate to Chat tab and select the session
+            const sessionId = task.processId || task.id;
+            appDispatch({ type: 'SET_SELECTED_CHAT_SESSION', id: sessionId });
+            appDispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chat' as any });
+            location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/chat/' + encodeURIComponent(sessionId);
+            return;
+        }
         queueDispatch({ type: 'SELECT_QUEUE_TASK', id });
         location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/queue/' + encodeURIComponent(id);
-    }, [queueDispatch, workspaceId]);
+    }, [queueDispatch, appDispatch, workspaceId]);
 
     // Scroll selected task card into view (e.g. after deep-link navigation)
     useEffect(() => {
@@ -339,7 +347,7 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
                                         status="running"
                                         now={now}
                                         selected={selectedTaskId === task.id}
-                                        onClick={() => selectTask(task.id)}
+                                        onClick={() => selectTask(task.id, task)}
                                         onContextMenu={e => handleTaskContextMenu(e, task.id, 'running')}
                                     />
                                 ))}
@@ -376,7 +384,7 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
                                             status="queued"
                                             now={now}
                                             selected={selectedTaskId === task.id}
-                                            onClick={() => selectTask(task.id)}
+                                            onClick={() => selectTask(task.id, task)}
                                             onContextMenu={e => handleTaskContextMenu(e, task.id, 'queued')}
                                         />
                                     </div>
@@ -403,12 +411,12 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
                                                 "p-2 cursor-pointer",
                                                 selectedTaskId === task.id && "ring-2 ring-[#0078d4]"
                                             )}
-                                            onClick={() => selectTask(task.id)}
+                                            onClick={() => selectTask(task.id, task)}
                                             data-task-id={task.id}
                                         >
                                             <div className="flex items-center justify-between text-xs">
                                                 <span>
-                                                    {task.status === 'completed' ? '✅' : task.status === 'failed' ? '❌' : '🚫'}{' '}
+                                                    {task.type === 'chat' ? '💬' : task.status === 'completed' ? '✅' : task.status === 'failed' ? '❌' : '🚫'}{' '}
                                                     {(task.displayName || task.type || 'Task').substring(0, 35)}
                                                 </span>
                                                 <span className="text-[10px] text-[#848484]">
@@ -463,7 +471,7 @@ function QueueTaskItem({ task, status, now, selected, onClick, onContextMenu }: 
     onContextMenu?: (e: React.MouseEvent) => void;
 }) {
     const name = (task.displayName || task.type || 'Task').substring(0, 35);
-    const icon = status === 'running' ? '🔄' : task.frozen ? '❄️' : '⏳';
+    const icon = task.type === 'chat' ? '💬' : status === 'running' ? '🔄' : task.frozen ? '❄️' : '⏳';
     let elapsed = '';
     if (status === 'running' && task.startedAt) {
         elapsed = formatDuration(now - new Date(task.startedAt).getTime());

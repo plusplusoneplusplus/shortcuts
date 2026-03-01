@@ -1,8 +1,8 @@
 /**
- * Tests for Queue tab chat-type task filtering.
+ * Tests for Queue tab chat-type task inclusion.
  *
- * Verifies that RepoQueueTab excludes tasks with `type === 'chat'` from
- * running, queued, and history lists — both in HTTP fetch and WebSocket paths.
+ * Verifies that RepoQueueTab includes tasks with `type === 'chat'` in
+ * running, queued, and history lists — with a 💬 icon and Chat filter option.
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -13,105 +13,111 @@ const REPO_QUEUE_TAB_PATH = path.join(
     __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoQueueTab.tsx'
 );
 
-describe('RepoQueueTab chat-type task filtering', () => {
+describe('RepoQueueTab chat-type task inclusion', () => {
     let source: string;
 
     beforeAll(() => {
         source = fs.readFileSync(REPO_QUEUE_TAB_PATH, 'utf-8');
     });
 
-    describe('isNonChat filter predicate', () => {
-        it('defines isNonChat at module scope', () => {
-            expect(source).toContain('const isNonChat');
+    describe('no isNonChat filter', () => {
+        it('does not define isNonChat filter predicate', () => {
+            expect(source).not.toContain('const isNonChat');
         });
 
-        it('filters by type !== chat', () => {
-            expect(source).toMatch(/isNonChat.*=.*t\.type\s*!==\s*'chat'/);
-        });
-
-        it('accepts objects with optional type field', () => {
-            expect(source).toContain('type?: string');
+        it('does not call .filter(isNonChat) anywhere', () => {
+            expect(source).not.toContain('.filter(isNonChat)');
         });
     });
 
-    describe('HTTP fetch filters chat tasks', () => {
-        it('filters running tasks from HTTP response', () => {
+    describe('HTTP fetch includes chat tasks', () => {
+        it('sets running tasks from HTTP response without filtering', () => {
             const fetchIdx = source.indexOf('const fetchQueue');
             const fetchBlock = source.slice(fetchIdx, source.indexOf('setLoading(false)', fetchIdx) + 50);
-            expect(fetchBlock).toContain("(data?.running || []).filter(isNonChat)");
+            expect(fetchBlock).toContain("data?.running || []");
+            expect(fetchBlock).not.toContain("filter(isNonChat)");
         });
 
-        it('filters queued tasks from HTTP response', () => {
+        it('sets queued tasks from HTTP response without filtering', () => {
             const fetchIdx = source.indexOf('const fetchQueue');
             const fetchBlock = source.slice(fetchIdx, source.indexOf('setLoading(false)', fetchIdx) + 50);
-            expect(fetchBlock).toContain("(data?.queued || []).filter(isNonChat)");
+            expect(fetchBlock).toContain("data?.queued || []");
+            expect(fetchBlock).not.toContain("filter(isNonChat)");
         });
 
-        it('filters history tasks from HTTP response', () => {
+        it('sets history tasks from HTTP response without filtering', () => {
             const fetchIdx = source.indexOf('const fetchQueue');
             const fetchBlock = source.slice(fetchIdx, source.indexOf('setLoading(false)', fetchIdx) + 50);
-            expect(fetchBlock).toContain("(historyData?.history || []).filter(isNonChat)");
+            expect(fetchBlock).toContain("historyData?.history || []");
+            expect(fetchBlock).not.toContain("filter(isNonChat)");
         });
     });
 
-    describe('WebSocket updates filter chat tasks', () => {
-        it('filters running tasks from repoQueue WS updates', () => {
+    describe('WebSocket updates include chat tasks', () => {
+        it('sets running tasks from repoQueue WS updates without filtering', () => {
             const wsIdx = source.indexOf('Apply per-repo WS updates');
             const wsBlock = source.slice(wsIdx, wsIdx + 400);
-            expect(wsBlock).toContain('repoQueue.running.filter(isNonChat)');
+            expect(wsBlock).toContain('setRunning(repoQueue.running)');
+            expect(wsBlock).not.toContain('filter(isNonChat)');
         });
 
-        it('filters queued tasks from repoQueue WS updates', () => {
+        it('sets queued tasks from repoQueue WS updates without filtering', () => {
             const wsIdx = source.indexOf('Apply per-repo WS updates');
             const wsBlock = source.slice(wsIdx, wsIdx + 400);
-            expect(wsBlock).toContain('repoQueue.queued.filter(isNonChat)');
+            expect(wsBlock).toContain('setQueued(repoQueue.queued)');
+            expect(wsBlock).not.toContain('filter(isNonChat)');
         });
 
-        it('filters history tasks from repoQueue WS updates', () => {
+        it('sets history tasks from repoQueue WS updates without filtering', () => {
             const wsIdx = source.indexOf('Apply per-repo WS updates');
             const wsBlock = source.slice(wsIdx, wsIdx + 400);
-            expect(wsBlock).toContain('repoQueue.history.filter(isNonChat)');
+            expect(wsBlock).toContain('setHistory(repoQueue.history)');
+            expect(wsBlock).not.toContain('filter(isNonChat)');
         });
     });
 
-    describe('empty state reflects filtered data', () => {
-        it('empty state check uses running/queued/history state (already filtered)', () => {
-            // The empty state check uses the state variables which have been
-            // set with filtered data — no chat tasks will be in them.
-            expect(source).toContain('running.length === 0 && queued.length === 0 && history.length === 0');
-        });
-
-        it('shows "No tasks in queue" placeholder when lists are empty', () => {
-            expect(source).toContain('No tasks in queue');
-        });
-    });
-
-    describe('QueueContext stores unfiltered data', () => {
-        it('dispatches REPO_QUEUE_UPDATED with already-filtered nextQueued/nextRunning/nextHistory', () => {
-            // The dispatch sends filtered data to repoQueueMap so other consumers
-            // see the same filtered view from Queue tab's HTTP fetch.
-            // The QueueContext reducer itself is NOT modified — it stores whatever it receives.
-            const dispatchIdx = source.indexOf("type: 'REPO_QUEUE_UPDATED'");
-            const dispatchBlock = source.slice(dispatchIdx, dispatchIdx + 400);
-            expect(dispatchBlock).toContain('queued: nextQueued');
-            expect(dispatchBlock).toContain('running: nextRunning');
-            expect(dispatchBlock).toContain('history: nextHistory');
-        });
-    });
-
-    describe('chat type not in TASK_TYPE_LABELS', () => {
-        it('does not include chat as a primary filter option', () => {
+    describe('chat type in TASK_TYPE_LABELS', () => {
+        it('includes chat as a primary filter option', () => {
             const labelsIdx = source.indexOf('TASK_TYPE_LABELS');
             const labelsBlock = source.slice(labelsIdx, source.indexOf('};', labelsIdx) + 2);
-            expect(labelsBlock).not.toContain("'chat'");
+            expect(labelsBlock).toContain("'chat'");
+            expect(labelsBlock).toContain("'Chat'");
         });
     });
 
-    describe('filter applies consistently to both data paths', () => {
-        it('uses isNonChat in exactly two locations (HTTP fetch and WS effect)', () => {
-            const matches = source.match(/\.filter\(isNonChat\)/g);
-            // 3 in HTTP fetch (running, queued, history) + 3 in WS effect = 6 total
-            expect(matches).toHaveLength(6);
+    describe('chat icon in QueueTaskItem', () => {
+        it('uses 💬 icon for chat-type tasks in QueueTaskItem', () => {
+            const itemIdx = source.indexOf('function QueueTaskItem');
+            const itemBlock = source.slice(itemIdx, itemIdx + 500);
+            expect(itemBlock).toContain("task.type === 'chat' ? '💬'");
+        });
+    });
+
+    describe('chat icon in history section', () => {
+        it('uses 💬 icon for chat-type completed tasks in history list', () => {
+            const historyIdx = source.indexOf('Completed Tasks');
+            const historyBlock = source.slice(historyIdx, historyIdx + 1200);
+            expect(historyBlock).toContain("task.type === 'chat' ? '💬'");
+        });
+    });
+
+    describe('chat task click navigates to Chat tab', () => {
+        it('imports useApp from AppContext', () => {
+            expect(source).toContain("import { useApp } from '../context/AppContext'");
+        });
+
+        it('dispatches SET_SELECTED_CHAT_SESSION for chat tasks', () => {
+            expect(source).toContain("type: 'SET_SELECTED_CHAT_SESSION'");
+        });
+
+        it('dispatches SET_REPO_SUB_TAB to switch to chat tab', () => {
+            expect(source).toContain("type: 'SET_REPO_SUB_TAB'");
+        });
+
+        it('navigates to chat hash route for chat tasks', () => {
+            const selectIdx = source.indexOf('const selectTask');
+            const selectBlock = source.slice(selectIdx, selectIdx + 600);
+            expect(selectBlock).toContain("/chat/");
         });
     });
 });
