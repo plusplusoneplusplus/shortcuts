@@ -278,6 +278,200 @@ describe('BranchChanges', () => {
         });
     });
 
+    describe('per-file diff viewing', () => {
+        describe('state management', () => {
+            it('tracks expandedFile state', () => {
+                expect(source).toContain('setExpandedFile');
+            });
+
+            it('tracks fileDiff state', () => {
+                expect(source).toContain('setFileDiff');
+            });
+
+            it('tracks fileDiffLoading state', () => {
+                expect(source).toContain('setFileDiffLoading');
+            });
+
+            it('tracks fileDiffError state', () => {
+                expect(source).toContain('setFileDiffError');
+            });
+
+            it('tracks showFullDiff state', () => {
+                expect(source).toContain('setShowFullDiff');
+            });
+
+            it('resets diff state on workspace change', () => {
+                // The first useEffect resets all diff-related state
+                const firstEffect = source.slice(0, source.indexOf('}, [workspaceId]'));
+                expect(firstEffect).toContain('setExpandedFile(null)');
+                expect(firstEffect).toContain('setFileDiff(null)');
+                expect(firstEffect).toContain('setFileDiffError(null)');
+                expect(firstEffect).toContain('setShowFullDiff(false)');
+            });
+        });
+
+        describe('toggle handler', () => {
+            it('defines toggleFileDiff function', () => {
+                expect(source).toContain('const toggleFileDiff');
+            });
+
+            it('collapses when clicking the same file (accordion toggle)', () => {
+                expect(source).toMatch(/if\s*\(expandedFile\s*===\s*filePath\)/);
+            });
+
+            it('fetches per-file diff from correct API endpoint', () => {
+                expect(source).toContain('/git/branch-range/files/');
+                expect(source).toContain('/diff');
+                expect(source).toContain('encodeURIComponent(filePath)');
+            });
+
+            it('resets fileDiff to null when switching files', () => {
+                // Between the "expand new file" block and the fetch call
+                const toggleFn = source.slice(
+                    source.indexOf('const toggleFileDiff'),
+                    source.indexOf('const renderDiffContent')
+                );
+                // After setExpandedFile(filePath), fileDiff is set to null
+                const expandBlock = toggleFn.slice(toggleFn.indexOf('setExpandedFile(filePath)'));
+                expect(expandBlock).toContain('setFileDiff(null)');
+            });
+
+            it('sets fileDiffLoading true before fetch', () => {
+                const toggleFn = source.slice(
+                    source.indexOf('const toggleFileDiff'),
+                    source.indexOf('const renderDiffContent')
+                );
+                expect(toggleFn).toContain('setFileDiffLoading(true)');
+            });
+
+            it('resets showFullDiff on file change', () => {
+                const toggleFn = source.slice(
+                    source.indexOf('const toggleFileDiff'),
+                    source.indexOf('const renderDiffContent')
+                );
+                // showFullDiff is reset in both collapse and expand paths
+                const occurrences = toggleFn.split('setShowFullDiff(false)').length - 1;
+                expect(occurrences).toBeGreaterThanOrEqual(2);
+            });
+
+            it('sets fileDiff from API response data.diff', () => {
+                expect(source).toContain("data.diff ?? ''");
+            });
+
+            it('captures error message on fetch failure', () => {
+                expect(source).toContain("err.message || 'Failed to load diff'");
+            });
+        });
+
+        describe('file rows — clickable buttons', () => {
+            it('renders file rows as <button> elements', () => {
+                // The file row is a <button> with onClick calling toggleFileDiff
+                expect(source).toContain('onClick={() => toggleFileDiff(file.path)');
+            });
+
+            it('has data-testid on each file row button', () => {
+                expect(source).toContain('data-testid={`branch-file-row-${file.path}`}');
+            });
+
+            it('shows expand/collapse chevron per file row', () => {
+                // The file row has a chevron that changes based on expandedFile
+                expect(source).toContain('expandedFile === file.path');
+            });
+
+            it('uses text-left for proper button text alignment', () => {
+                expect(source).toContain('text-left');
+            });
+        });
+
+        describe('inline diff panel', () => {
+            it('renders diff panel when file is expanded', () => {
+                expect(source).toContain('expandedFile === file.path && (');
+            });
+
+            it('has data-testid on each diff panel', () => {
+                expect(source).toContain('data-testid={`branch-file-diff-${file.path}`}');
+            });
+
+            it('shows loading spinner while diff is fetching', () => {
+                // Within the diff panel, fileDiffLoading triggers spinner
+                expect(source).toContain('fileDiffLoading ?');
+                expect(source).toContain('Loading diff...');
+            });
+
+            it('shows error message on diff fetch failure', () => {
+                expect(source).toContain('fileDiffError ?');
+                expect(source).toContain('Failed to load diff');
+            });
+
+            it('calls renderDiffContent for successful diff', () => {
+                expect(source).toContain('renderDiffContent()');
+            });
+        });
+
+        describe('diff rendering with truncation', () => {
+            it('defines DIFF_LINE_LIMIT constant at 500', () => {
+                expect(source).toContain('const DIFF_LINE_LIMIT = 500');
+            });
+
+            it('defines renderDiffContent function', () => {
+                expect(source).toContain('const renderDiffContent');
+            });
+
+            it('shows "(empty diff)" for empty diff string', () => {
+                expect(source).toContain('(empty diff)');
+            });
+
+            it('has data-testid for empty diff state', () => {
+                expect(source).toContain('data-testid="branch-file-diff-empty"');
+            });
+
+            it('splits diff by newlines for truncation logic', () => {
+                expect(source).toContain("fileDiff.split('\\n')");
+            });
+
+            it('truncates when lines exceed DIFF_LINE_LIMIT and showFullDiff is false', () => {
+                expect(source).toContain('lines.length > DIFF_LINE_LIMIT && !showFullDiff');
+            });
+
+            it('slices to DIFF_LINE_LIMIT lines when truncated', () => {
+                expect(source).toContain('lines.slice(0, DIFF_LINE_LIMIT)');
+            });
+
+            it('renders diff content in a <pre> element', () => {
+                expect(source).toContain('<pre');
+                expect(source).toContain("displayLines.join('\\n')");
+            });
+
+            it('has data-testid on diff content pre element', () => {
+                expect(source).toContain('data-testid="branch-file-diff-content"');
+            });
+
+            it('uses CommitDetail-matching styling on pre element', () => {
+                expect(source).toContain('p-3 text-xs font-mono bg-[#f5f5f5] dark:bg-[#2d2d2d]');
+                expect(source).toContain('max-h-[500px]');
+                expect(source).toContain('whitespace-pre');
+            });
+
+            it('renders "Show All" button when truncated', () => {
+                expect(source).toContain('data-testid="branch-file-diff-show-all"');
+                expect(source).toContain('Diff too large');
+                expect(source).toContain('Show All');
+            });
+
+            it('Show All button calls setShowFullDiff(true)', () => {
+                expect(source).toContain('setShowFullDiff(true)');
+            });
+
+            it('Show All button stops event propagation', () => {
+                expect(source).toContain('e.stopPropagation()');
+            });
+
+            it('shows line limit count in truncation message', () => {
+                expect(source).toContain('{DIFF_LINE_LIMIT}');
+            });
+        });
+    });
+
     describe('integration with RepoGitTab', () => {
         let gitTabSource: string;
 

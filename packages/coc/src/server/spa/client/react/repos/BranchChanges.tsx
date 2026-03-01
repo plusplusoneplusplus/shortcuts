@@ -57,6 +57,8 @@ const STATUS_LABELS: Record<string, string> = {
     copied: 'Copied',
 };
 
+const DIFF_LINE_LIMIT = 500;
+
 export function BranchChanges({ workspaceId }: BranchChangesProps) {
     const [rangeInfo, setRangeInfo] = useState<BranchRangeInfo | null>(null);
     const [files, setFiles] = useState<BranchRangeFile[]>([]);
@@ -65,6 +67,11 @@ export function BranchChanges({ workspaceId }: BranchChangesProps) {
     const [expanded, setExpanded] = useState(false);
     const [hidden, setHidden] = useState(false);
     const [filesError, setFilesError] = useState<string | null>(null);
+    const [expandedFile, setExpandedFile] = useState<string | null>(null);
+    const [fileDiff, setFileDiff] = useState<string | null>(null);
+    const [fileDiffLoading, setFileDiffLoading] = useState(false);
+    const [fileDiffError, setFileDiffError] = useState<string | null>(null);
+    const [showFullDiff, setShowFullDiff] = useState(false);
 
     useEffect(() => {
         setLoading(true);
@@ -73,6 +80,10 @@ export function BranchChanges({ workspaceId }: BranchChangesProps) {
         setFiles([]);
         setExpanded(false);
         setFilesError(null);
+        setExpandedFile(null);
+        setFileDiff(null);
+        setFileDiffError(null);
+        setShowFullDiff(false);
         fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/branch-range`)
             .then(data => {
                 if (data.onDefaultBranch) {
@@ -109,6 +120,59 @@ export function BranchChanges({ workspaceId }: BranchChangesProps) {
             })
             .finally(() => setFilesLoading(false));
     }, [expanded, files.length, rangeInfo, workspaceId]);
+
+    const toggleFileDiff = (filePath: string) => {
+        if (expandedFile === filePath) {
+            setExpandedFile(null);
+            setFileDiff(null);
+            setFileDiffError(null);
+            setShowFullDiff(false);
+            return;
+        }
+        setExpandedFile(filePath);
+        setFileDiff(null);
+        setFileDiffError(null);
+        setFileDiffLoading(true);
+        setShowFullDiff(false);
+
+        fetchApi(
+            `/workspaces/${encodeURIComponent(workspaceId)}/git/branch-range/files/${encodeURIComponent(filePath)}/diff`
+        )
+            .then(data => setFileDiff(data.diff ?? ''))
+            .catch(err => setFileDiffError(err.message || 'Failed to load diff'))
+            .finally(() => setFileDiffLoading(false));
+    };
+
+    const renderDiffContent = () => {
+        if (fileDiff === null) return null;
+        if (fileDiff === '') {
+            return <div className="text-xs text-[#848484] italic" data-testid="branch-file-diff-empty">(empty diff)</div>;
+        }
+
+        const lines = fileDiff.split('\n');
+        const isTruncated = lines.length > DIFF_LINE_LIMIT && !showFullDiff;
+        const displayLines = isTruncated ? lines.slice(0, DIFF_LINE_LIMIT) : lines;
+
+        return (
+            <>
+                <pre
+                    className="p-3 text-xs font-mono bg-[#f5f5f5] dark:bg-[#2d2d2d] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded overflow-x-auto max-h-[500px] overflow-y-auto whitespace-pre"
+                    data-testid="branch-file-diff-content"
+                >
+                    {displayLines.join('\n')}
+                </pre>
+                {isTruncated && (
+                    <button
+                        className="mt-1 text-xs text-[#0078d4] dark:text-[#3794ff] hover:underline"
+                        onClick={(e) => { e.stopPropagation(); setShowFullDiff(true); }}
+                        data-testid="branch-file-diff-show-all"
+                    >
+                        Diff too large — showing first {DIFF_LINE_LIMIT} lines. Show All
+                    </button>
+                )}
+            </>
+        );
+    };
 
     if (loading || hidden || !rangeInfo) return null;
 
@@ -154,18 +218,43 @@ export function BranchChanges({ workspaceId }: BranchChangesProps) {
                     ) : (
                         <div className="flex flex-col gap-0.5">
                             {files.map((file, i) => (
-                                <div key={i} className="flex items-center gap-2 text-xs py-0.5">
-                                    <span
-                                        className={`font-mono font-bold w-4 text-center ${STATUS_COLORS[file.status] || 'text-[#848484]'}`}
-                                        title={STATUS_LABELS[file.status] || file.status}
+                                <div key={i}>
+                                    <button
+                                        className="w-full flex items-center gap-2 text-xs py-1 px-1 rounded hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e] transition-colors text-left"
+                                        onClick={() => toggleFileDiff(file.path)}
+                                        data-testid={`branch-file-row-${file.path}`}
                                     >
-                                        {STATUS_CHARS[file.status] || '?'}
-                                    </span>
-                                    <span className="font-mono text-[#1e1e1e] dark:text-[#ccc] break-all flex-1">
-                                        {file.oldPath ? `${file.oldPath} → ${file.path}` : file.path}
-                                    </span>
-                                    <span className="text-[#16825d] text-xs flex-shrink-0">+{file.additions}</span>
-                                    <span className="text-[#d32f2f] text-xs flex-shrink-0">−{file.deletions}</span>
+                                        <span className="text-[10px] text-[#848484]">
+                                            {expandedFile === file.path ? '▼' : '▶'}
+                                        </span>
+                                        <span
+                                            className={`font-mono font-bold w-4 text-center ${STATUS_COLORS[file.status] || 'text-[#848484]'}`}
+                                            title={STATUS_LABELS[file.status] || file.status}
+                                        >
+                                            {STATUS_CHARS[file.status] || '?'}
+                                        </span>
+                                        <span className="font-mono text-[#1e1e1e] dark:text-[#ccc] flex-1 truncate">
+                                            {file.oldPath ? `${file.oldPath} → ${file.path}` : file.path}
+                                        </span>
+                                        <span className="text-[#16825d] text-xs flex-shrink-0">+{file.additions}</span>
+                                        <span className="text-[#d32f2f] text-xs flex-shrink-0">−{file.deletions}</span>
+                                    </button>
+
+                                    {expandedFile === file.path && (
+                                        <div className="pl-6 pr-2 py-2" data-testid={`branch-file-diff-${file.path}`}>
+                                            {fileDiffLoading ? (
+                                                <div className="flex items-center gap-2 text-xs text-[#848484]">
+                                                    <Spinner size="sm" /> Loading diff...
+                                                </div>
+                                            ) : fileDiffError ? (
+                                                <div className="text-xs text-[#d32f2f] dark:text-[#f48771]">
+                                                    Failed to load diff
+                                                </div>
+                                            ) : (
+                                                renderDiffContent()
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             ))}
                         </div>
