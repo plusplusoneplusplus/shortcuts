@@ -129,7 +129,7 @@ export function PipelineDAGChart({ data, isDark, onNodeClick, now, phaseDetails,
     };
 
     const totalWidth= 2 * PADDING + nodeCount * NODE_W + (nodeCount - 1) * GAP_X;
-    const totalHeight = 2 * PADDING + NODE_H + 20; // extra for progress bar
+    const totalHeight = 2 * PADDING + NODE_H + 34; // extra for progress bar + duration overlay
 
     const positions = data.nodes.map((_, i) => ({
         x: PADDING + i * (NODE_W + GAP_X),
@@ -172,6 +172,9 @@ export function PipelineDAGChart({ data, isDark, onNodeClick, now, phaseDetails,
                 const toPos = positions[i];
                 const badgeText = getEdgeBadgeText(prev.phase, node.phase, pipelineConfig);
                 const tooltipText = getEdgeSchemaText(prev.phase, node.phase, pipelineConfig);
+                const prevElapsedMs = now != null && prev.state === 'running' && prev.startedAt != null
+                    ? now - prev.startedAt
+                    : prev.durationMs;
                 return (
                     <DAGEdge
                         key={`edge-${prev.phase}-${node.phase}`}
@@ -183,6 +186,8 @@ export function PipelineDAGChart({ data, isDark, onNodeClick, now, phaseDetails,
                         isDark={isDark}
                         badgeText={badgeText}
                         tooltipText={tooltipText}
+                        completedItems={prev.itemCount ?? prev.totalItems}
+                        elapsedMs={prevElapsedMs}
                     />
                 );
             })}
@@ -206,6 +211,7 @@ export function PipelineDAGChart({ data, isDark, onNodeClick, now, phaseDetails,
                         selected={node.phase === selectedPhase}
                         parallelCount={node.phase === 'map' ? parallelCount : undefined}
                         validationErrors={phaseErrors ? getNodeErrors(phaseErrors, node.phase) : undefined}
+                        totalDurationMs={data.totalDurationMs}
                     />
                 );
             })}

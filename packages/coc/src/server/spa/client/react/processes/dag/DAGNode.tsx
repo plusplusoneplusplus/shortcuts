@@ -4,6 +4,7 @@ import { getNodeColors, getNodeIcon } from './dag-colors';
 import { formatDuration } from '../../utils/format';
 import { cn } from '../../shared/cn';
 import { DAGErrorPin } from './DAGErrorPin';
+import { durationRatio, ratioToStrokeWidth, ratioToBorderColor, formatPreciseDuration } from './duration-utils';
 
 export interface DAGNodeProps {
     node: DAGNodeData;
@@ -18,9 +19,11 @@ export interface DAGNodeProps {
     parallelCount?: number;
     /** Validation errors mapped to this node's phase */
     validationErrors?: string[];
+    /** Pipeline total duration, for computing proportional border */
+    totalDurationMs?: number;
 }
 
-export function DAGNode({ node, x, y, isDark, onClick, onMouseEnter, onMouseLeave, elapsedMs, selected, parallelCount, validationErrors }: DAGNodeProps) {
+export function DAGNode({ node, x, y, isDark, onClick, onMouseEnter, onMouseLeave, elapsedMs, selected, parallelCount, validationErrors, totalDurationMs }: DAGNodeProps) {
     const colors = getNodeColors(node.state, isDark);
     const icon = getNodeIcon(node.state);
     const hasClick = typeof onClick === 'function';
@@ -40,6 +43,15 @@ export function DAGNode({ node, x, y, isDark, onClick, onMouseEnter, onMouseLeav
     const strokeColor = selected
         ? (isDark ? '#3794ff' : '#0078d4')
         : colors.border;
+
+    const ratio = node.state === 'completed' && node.durationMs != null
+        ? durationRatio(node.durationMs, totalDurationMs)
+        : 0;
+    const baseStrokeWidth = selected ? 2.5 : 1.5;
+    const effectiveStrokeWidth = ratio > 0
+        ? (selected ? Math.max(ratioToStrokeWidth(ratio), 2.5) : ratioToStrokeWidth(ratio))
+        : baseStrokeWidth;
+    const effectiveBorderColor = ratio > 0 ? ratioToBorderColor(ratio, isDark) : strokeColor;
 
     return (
         <g
@@ -83,8 +95,8 @@ export function DAGNode({ node, x, y, isDark, onClick, onMouseEnter, onMouseLeav
                 height={70}
                 rx={6}
                 fill={colors.fill}
-                stroke={strokeColor}
-                strokeWidth={selected ? 2.5 : 1.5}
+                stroke={effectiveBorderColor}
+                strokeWidth={effectiveStrokeWidth}
                 className={cn(node.state === 'running' && 'animate-pulse')}
                 style={{
                     transition: 'fill 300ms ease, stroke 300ms ease',
@@ -167,6 +179,20 @@ export function DAGNode({ node, x, y, isDark, onClick, onMouseEnter, onMouseLeav
                     errors={validationErrors}
                     isDark={isDark}
                 />
+            )}
+            {node.state === 'completed' && node.durationMs != null && (
+                <text
+                    data-testid={`dag-duration-overlay-${node.phase}`}
+                    x={x + 60}
+                    y={y + 70 + 14}
+                    textAnchor="middle"
+                    fill={effectiveBorderColor}
+                    fontSize={11}
+                    fontWeight={600}
+                    fontFamily="system-ui, sans-serif"
+                >
+                    {formatPreciseDuration(node.durationMs)}
+                </text>
             )}
         </g>
     );

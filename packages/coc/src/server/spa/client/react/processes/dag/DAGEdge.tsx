@@ -1,6 +1,8 @@
 import { getEdgeColor } from './dag-colors';
 import type { EdgeState } from './dag-colors';
 import { DAGEdgeLabel } from './DAGEdgeLabel';
+import { DAGEdgeParticles } from './DAGEdgeParticles';
+import { deriveParticleParams } from './duration-utils';
 
 export interface DAGEdgeProps {
     fromX: number;
@@ -13,9 +15,13 @@ export interface DAGEdgeProps {
     badgeText?: string | null;
     /** Full schema text for hover tooltip */
     tooltipText?: string | null;
+    /** Number of completed items on the source node (for throughput calc). */
+    completedItems?: number;
+    /** Elapsed ms since the source node started (for throughput calc). */
+    elapsedMs?: number;
 }
 
-export function DAGEdge({ fromX, fromY, toX, toY, state, isDark, badgeText, tooltipText }: DAGEdgeProps) {
+export function DAGEdge({ fromX, fromY, toX, toY, state, isDark, badgeText, tooltipText, completedItems, elapsedMs }: DAGEdgeProps) {
     const color = getEdgeColor(state, isDark);
     const markerId = `arrowhead-${state}`;
     const dashed = state === 'waiting' || state === 'active' || state === 'error';
@@ -44,6 +50,18 @@ export function DAGEdge({ fromX, fromY, toX, toY, state, isDark, badgeText, tool
                 strokeDasharray={dashed ? '6 4' : undefined}
                 style={animated ? { animation: 'dag-edge-dash 1s linear infinite' } : undefined}
             />
+            {animated && (() => {
+                const { particleCount, durationMs: dur } = deriveParticleParams(completedItems, elapsedMs);
+                const pathD = `M ${fromX} ${fromY} L ${toX} ${toY}`;
+                return (
+                    <DAGEdgeParticles
+                        pathD={pathD}
+                        color={color}
+                        particleCount={particleCount}
+                        durationMs={dur}
+                    />
+                );
+            })()}
             {badgeText && (
                 <DAGEdgeLabel
                     x={(fromX + toX) / 2}
