@@ -970,3 +970,22 @@ export {
     needsRelocationCheck,
     batchRelocateAnchors
 } from './editor';
+
+// ============================================================================
+// Memory
+// ============================================================================
+
+export type {
+    RawObservation,
+    RawObservationMetadata,
+    ConsolidatedMemory,
+    MemoryIndex,
+    RepoInfo,
+    MemoryLevel,
+    MemoryConfig,
+    MemoryStoreOptions,
+    MemoryStats,
+    MemoryStore,
+} from './memory';
+
+export { FileMemoryStore, computeRepoHash } from './memory';
