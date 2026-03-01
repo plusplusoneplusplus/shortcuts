@@ -60,7 +60,7 @@ export function escapeMermaidLabel(text: string): string {
 /**
  * Truncate text to a maximum length with ellipsis
  */
-export function truncateText(text: string, maxLength: number = 20): string {
+export function truncateText(text: string, maxLength: number = 30): string {
     if (text.length <= maxLength) {
         return text;
     }
@@ -101,13 +101,13 @@ export function generatePipelineMermaid(
     }
 
     if (!config.input || !config.map || !config.reduce) {
-        return 'graph TB\n    INPUT["No valid config"]';
+        return 'graph LR\n    INPUT["No valid config"]';
     }
     const opts = { ...DEFAULT_OPTIONS, ...options };
     const lines: string[] = [];
 
     // Start with flowchart definition
-    lines.push('graph TB');
+    lines.push('graph LR');
 
     // Check if this is a generate pipeline
     const hasGenerateConfig = config.input.generate && 
@@ -214,7 +214,7 @@ function generateJobMermaid(
     const job = config.job!;
     const lines: string[] = [];
 
-    lines.push('graph TB');
+    lines.push('graph LR');
 
     // Parameters node (if pipeline has parameters)
     const hasParams = config.parameters && config.parameters.length > 0;

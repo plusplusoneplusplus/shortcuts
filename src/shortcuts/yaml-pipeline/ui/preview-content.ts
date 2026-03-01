@@ -1209,15 +1209,17 @@ function getStyles(isDark: boolean): string {
         }
 
         .diagram-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
             background: var(--code-bg);
             border: 1px solid var(--border-color);
             border-radius: 8px;
             padding: 20px;
-            text-align: center;
             overflow: hidden;
             position: relative;
             cursor: grab;
-            min-height: 200px;
+            min-height: 280px;
         }
 
         .diagram-container:active {
@@ -1230,6 +1232,7 @@ function getStyles(isDark: boolean): string {
 
         .diagram-wrapper {
             display: inline-block;
+            margin: 0 auto;
             transform-origin: center center;
             transition: transform 0.1s ease-out;
         }
@@ -1681,10 +1684,12 @@ function getScript(data: PipelinePreviewData | undefined, isDark: boolean): stri
             theme: '${isDark ? 'dark' : 'default'}',
             securityLevel: 'loose',
             flowchart: {
-                useMaxWidth: true,
+                useMaxWidth: false,
                 htmlLabels: true,
                 curve: 'basis',
-                padding: 15
+                padding: 20,
+                nodeSpacing: 60,
+                rankSpacing: 50
             }
         });
 

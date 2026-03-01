@@ -105,14 +105,25 @@ suite('Pipeline Preview Mermaid Tests', () => {
             assert.strictEqual(result.length, 20);
         });
 
-        test('should use default max length of 20', () => {
-            const result = truncateText('This is a very long text');
-            assert.strictEqual(result.length, 20);
+        test('should use default max length of 30', () => {
+            const result = truncateText('This is a very long text that exceeds thirty');
+            assert.strictEqual(result.length, 30);
         });
 
         test('should handle text exactly at max length', () => {
             const result = truncateText('12345678901234567890', 20);
             assert.strictEqual(result, '12345678901234567890');
+        });
+
+        test('should not truncate text within default 30-char limit', () => {
+            const result = truncateText('category, summary, score');
+            assert.strictEqual(result, 'category, summary, score');
+        });
+
+        test('should truncate text exceeding default 30-char limit', () => {
+            const result = truncateText('category, summary, score, extra field');
+            assert.strictEqual(result.length, 30);
+            assert.ok(result.endsWith('...'));
         });
     });
 
@@ -223,10 +234,17 @@ suite('Pipeline Preview Mermaid Tests', () => {
         test('should generate basic flowchart structure', () => {
             const result = generatePipelineMermaid(sampleConfig);
             
-            assert.ok(result.includes('graph TB'), 'Should start with graph TB');
+            assert.ok(result.includes('graph LR'), 'Should start with graph LR');
             assert.ok(result.includes('INPUT['), 'Should have INPUT node');
             assert.ok(result.includes('MAP['), 'Should have MAP node');
             assert.ok(result.includes('REDUCE['), 'Should have REDUCE node');
+        });
+
+        test('should use left-to-right graph direction', () => {
+            const result = generatePipelineMermaid(sampleConfig);
+            
+            assert.ok(result.startsWith('graph LR'), 'Should use LR direction for left-to-right flow');
+            assert.ok(!result.includes('graph TB'), 'Should not use TB direction');
         });
 
         test('should include node connections', () => {
@@ -408,7 +426,7 @@ suite('Pipeline Preview Mermaid Tests', () => {
             });
 
             // Verify structure
-            assert.ok(result.includes('graph TB'));
+            assert.ok(result.includes('graph LR'));
             assert.ok(result.includes('100 rows'));
             assert.ok(result.includes('2 columns'));
             assert.ok(result.includes('3 fields'));
@@ -581,7 +599,7 @@ suite('Pipeline Preview Mermaid Tests', () => {
         test('should generate JOB node for job mode pipeline', () => {
             const result = generatePipelineMermaid(jobConfig);
             
-            assert.ok(result.includes('graph TB'), 'Should start with graph TB');
+            assert.ok(result.includes('graph LR'), 'Should start with graph LR');
             assert.ok(result.includes('JOB['), 'Should have JOB node');
             assert.ok(result.includes('🤖'), 'Should have robot emoji');
         });
