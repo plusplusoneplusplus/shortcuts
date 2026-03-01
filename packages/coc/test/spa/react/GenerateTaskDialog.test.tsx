@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { AppProvider, useApp } from '../../../src/server/spa/client/react/context/AppContext';
 import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
-import { GenerateTaskDialog } from '../../../src/server/spa/client/react/tasks/GenerateTaskDialog';
+import { GenerateTaskDialog, EFFORT_PRESETS } from '../../../src/server/spa/client/react/tasks/GenerateTaskDialog';
 import { useQueueTaskGeneration } from '../../../src/server/spa/client/react/hooks/useQueueTaskGeneration';
 import { usePreferences } from '../../../src/server/spa/client/react/hooks/usePreferences';
 
@@ -119,6 +119,10 @@ function renderDialog(props: Partial<React.ComponentProps<typeof GenerateTaskDia
         ),
         props: defaultProps,
     };
+}
+
+function switchToAdvanced() {
+    fireEvent.click(screen.getByTestId('tab-advanced'));
 }
 
 // ── tests ───────────────────────────────────────────────────────────────────
@@ -268,6 +272,7 @@ describe('GenerateTaskDialog', () => {
 
     it('renders priority selector with default Normal', async () => {
         await act(async () => { renderDialog(); });
+        switchToAdvanced();
 
         const select = document.getElementById('gen-task-priority') as HTMLSelectElement;
         expect(select).toBeDefined();
@@ -281,6 +286,7 @@ describe('GenerateTaskDialog', () => {
         mockUseQueueTaskGeneration.mockReturnValue(makeHookReturn({ enqueue: enqueueSpy }));
 
         await act(async () => { renderDialog(); });
+        switchToAdvanced();
 
         const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
         fireEvent.change(textarea, { target: { value: 'test' } });
@@ -322,6 +328,7 @@ describe('GenerateTaskDialog', () => {
         });
 
         await act(async () => { renderDialog(); });
+        switchToAdvanced();
 
         await waitFor(() => {
             const select = document.getElementById('gen-task-model') as HTMLSelectElement;
@@ -473,6 +480,7 @@ describe('GenerateTaskDialog', () => {
         });
 
         await act(async () => { renderDialog(); });
+        switchToAdvanced();
 
         await waitFor(() => {
             const select = document.getElementById('gen-task-model') as HTMLSelectElement;
@@ -505,6 +513,7 @@ describe('GenerateTaskDialog', () => {
         });
 
         await act(async () => { renderDialog(); });
+        switchToAdvanced();
 
         await waitFor(() => {
             const select = document.getElementById('gen-task-model') as HTMLSelectElement;
@@ -551,6 +560,7 @@ describe('GenerateTaskDialog', () => {
         });
 
         await act(async () => { renderDialog(); });
+        switchToAdvanced();
 
         await waitFor(() => {
             const select = document.getElementById('gen-task-model') as HTMLSelectElement;
@@ -599,6 +609,7 @@ describe('GenerateTaskDialog', () => {
         });
 
         await act(async () => { renderDialog(); });
+        switchToAdvanced();
 
         await waitFor(() => {
             const select = document.getElementById('gen-task-model') as HTMLSelectElement;
@@ -652,6 +663,7 @@ describe('GenerateTaskDialog', () => {
         const { rerender } = await act(async () =>
             renderDialog(),
         );
+        switchToAdvanced();
 
         await waitFor(() => {
             const select = document.getElementById('gen-task-model') as HTMLSelectElement;
@@ -690,6 +702,7 @@ describe('GenerateTaskDialog', () => {
 
     it('renders depth selector with default Deep', async () => {
         await act(async () => { renderDialog(); });
+        switchToAdvanced();
         const select = document.getElementById('gen-task-depth') as HTMLSelectElement;
         expect(select).toBeDefined();
         expect(select).not.toBeNull();
@@ -701,6 +714,7 @@ describe('GenerateTaskDialog', () => {
         mockUseQueueTaskGeneration.mockReturnValue(makeHookReturn({ enqueue: enqueueSpy }));
 
         await act(async () => { renderDialog(); });
+        switchToAdvanced();
 
         const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
         fireEvent.change(textarea, { target: { value: 'hello' } });
@@ -747,6 +761,7 @@ describe('GenerateTaskDialog', () => {
         });
 
         await act(async () => { renderDialog(); });
+        switchToAdvanced();
 
         await waitFor(() => {
             const select = document.getElementById('gen-task-depth') as HTMLSelectElement;
@@ -756,6 +771,7 @@ describe('GenerateTaskDialog', () => {
 
     it('persists depth selection when user changes depth', async () => {
         await act(async () => { renderDialog(); });
+        switchToAdvanced();
 
         const depthSelect = document.getElementById('gen-task-depth') as HTMLSelectElement;
         fireEvent.change(depthSelect, { target: { value: 'normal' } });
@@ -775,6 +791,7 @@ describe('GenerateTaskDialog', () => {
         });
 
         await act(async () => { renderDialog(); });
+        switchToAdvanced();
 
         const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
         fireEvent.change(textarea, { target: { value: 'test' } });
@@ -786,6 +803,260 @@ describe('GenerateTaskDialog', () => {
         expect(enqueueSpy).toHaveBeenCalledWith(
             expect.objectContaining({ depth: 'normal' }),
         );
+    });
+
+    // ── effort/advanced tab tests ────────────────────────────────────────────
+
+    it('renders Effort tab as default with High selected', async () => {
+        await act(async () => { renderDialog(); });
+
+        expect(screen.getByTestId('tab-effort')).toBeDefined();
+        expect(screen.getByTestId('tab-advanced')).toBeDefined();
+        expect(screen.getByTestId('effort-panel')).toBeDefined();
+        expect(screen.queryByTestId('advanced-panel')).toBeNull();
+
+        // High is selected by default
+        const highBtn = screen.getByTestId('effort-high');
+        expect(highBtn.className).toContain('bg-[#0078d4]/10');
+    });
+
+    it('switching to Advanced tab shows model/priority/depth selectors', async () => {
+        await act(async () => { renderDialog(); });
+        switchToAdvanced();
+
+        expect(screen.queryByTestId('effort-panel')).toBeNull();
+        expect(screen.getByTestId('advanced-panel')).toBeDefined();
+        expect(document.getElementById('gen-task-model')).not.toBeNull();
+        expect(document.getElementById('gen-task-priority')).not.toBeNull();
+        expect(document.getElementById('gen-task-depth')).not.toBeNull();
+    });
+
+    it('switching back to Effort tab hides advanced selectors', async () => {
+        await act(async () => { renderDialog(); });
+        switchToAdvanced();
+        expect(screen.getByTestId('advanced-panel')).toBeDefined();
+
+        fireEvent.click(screen.getByTestId('tab-effort'));
+        expect(screen.getByTestId('effort-panel')).toBeDefined();
+        expect(screen.queryByTestId('advanced-panel')).toBeNull();
+    });
+
+    it('clicking effort level buttons updates selection', async () => {
+        await act(async () => { renderDialog(); });
+
+        const lowBtn = screen.getByTestId('effort-low');
+        fireEvent.click(lowBtn);
+        expect(lowBtn.className).toContain('bg-[#0078d4]/10');
+
+        const highBtn = screen.getByTestId('effort-high');
+        expect(highBtn.className).not.toContain('bg-[#0078d4]/10');
+    });
+
+    it('submit with effort=low sends low priority and normal depth', async () => {
+        const enqueueSpy = vi.fn();
+        mockUseQueueTaskGeneration.mockReturnValue(makeHookReturn({ enqueue: enqueueSpy }));
+
+        await act(async () => { renderDialog(); });
+
+        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
+        fireEvent.change(textarea, { target: { value: 'test' } });
+
+        fireEvent.click(screen.getByTestId('effort-low'));
+
+        await act(async () => {
+            fireEvent.click(screen.getByText('Generate'));
+        });
+
+        expect(enqueueSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ priority: 'low', depth: 'normal' }),
+        );
+    });
+
+    it('submit with effort=medium sends normal priority and normal depth', async () => {
+        const enqueueSpy = vi.fn();
+        mockUseQueueTaskGeneration.mockReturnValue(makeHookReturn({ enqueue: enqueueSpy }));
+
+        await act(async () => { renderDialog(); });
+
+        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
+        fireEvent.change(textarea, { target: { value: 'test' } });
+
+        fireEvent.click(screen.getByTestId('effort-medium'));
+
+        await act(async () => {
+            fireEvent.click(screen.getByText('Generate'));
+        });
+
+        expect(enqueueSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ priority: 'normal', depth: 'normal' }),
+        );
+    });
+
+    it('submit with effort=high sends normal priority and deep depth', async () => {
+        const enqueueSpy = vi.fn();
+        mockUseQueueTaskGeneration.mockReturnValue(makeHookReturn({ enqueue: enqueueSpy }));
+
+        await act(async () => { renderDialog(); });
+
+        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
+        fireEvent.change(textarea, { target: { value: 'test' } });
+
+        // high is default, just submit
+        await act(async () => {
+            fireEvent.click(screen.getByText('Generate'));
+        });
+
+        expect(enqueueSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ priority: 'normal', depth: 'deep' }),
+        );
+    });
+
+    it('effort preset picks matching model from available models', async () => {
+        const enqueueSpy = vi.fn();
+        mockUseQueueTaskGeneration.mockReturnValue(makeHookReturn({ enqueue: enqueueSpy }));
+
+        mockFetch.mockImplementation((url: string) => {
+            if (url.includes('/queue/models')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ models: ['claude-haiku-4.5', 'claude-sonnet-4', 'claude-opus-4'] }),
+                });
+            }
+            if (url.includes('/tasks')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () =>
+                        Promise.resolve({
+                            name: 'root',
+                            relativePath: '',
+                            children: [],
+                            documentGroups: [],
+                            singleDocuments: [],
+                        }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        await act(async () => { renderDialog(); });
+        // wait for models to load
+        await waitFor(() => {
+            switchToAdvanced();
+            const select = document.getElementById('gen-task-model') as HTMLSelectElement;
+            expect(Array.from(select.options).map(o => o.value)).toContain('claude-haiku-4.5');
+        });
+
+        // switch back to effort and select low
+        fireEvent.click(screen.getByTestId('tab-effort'));
+        fireEvent.click(screen.getByTestId('effort-low'));
+
+        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
+        fireEvent.change(textarea, { target: { value: 'test' } });
+
+        await act(async () => {
+            fireEvent.click(screen.getByText('Generate'));
+        });
+
+        expect(enqueueSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ model: 'claude-haiku-4.5' }),
+        );
+    });
+
+    it('effort preset falls back to undefined model when no match', async () => {
+        const enqueueSpy = vi.fn();
+        mockUseQueueTaskGeneration.mockReturnValue(makeHookReturn({ enqueue: enqueueSpy }));
+
+        await act(async () => { renderDialog(); });
+
+        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
+        fireEvent.change(textarea, { target: { value: 'test' } });
+        fireEvent.click(screen.getByTestId('effort-low'));
+
+        await act(async () => {
+            fireEvent.click(screen.getByText('Generate'));
+        });
+
+        // No models loaded, so model should be undefined
+        expect(enqueueSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ model: undefined }),
+        );
+    });
+
+    it('advanced tab submit uses manual selections, not effort presets', async () => {
+        const enqueueSpy = vi.fn();
+        mockUseQueueTaskGeneration.mockReturnValue(makeHookReturn({ enqueue: enqueueSpy }));
+
+        mockFetch.mockImplementation((url: string) => {
+            if (url.includes('/queue/models')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ models: ['gpt-4', 'claude-3'] }),
+                });
+            }
+            if (url.includes('/tasks')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () =>
+                        Promise.resolve({
+                            name: 'root',
+                            relativePath: '',
+                            children: [],
+                            documentGroups: [],
+                            singleDocuments: [],
+                        }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        await act(async () => { renderDialog(); });
+        switchToAdvanced();
+
+        await waitFor(() => {
+            const select = document.getElementById('gen-task-model') as HTMLSelectElement;
+            expect(Array.from(select.options).map(o => o.value)).toContain('gpt-4');
+        });
+
+        const modelSelect = document.getElementById('gen-task-model') as HTMLSelectElement;
+        fireEvent.change(modelSelect, { target: { value: 'gpt-4' } });
+
+        const prioritySelect = document.getElementById('gen-task-priority') as HTMLSelectElement;
+        fireEvent.change(prioritySelect, { target: { value: 'high' } });
+
+        const depthSelect = document.getElementById('gen-task-depth') as HTMLSelectElement;
+        fireEvent.change(depthSelect, { target: { value: 'normal' } });
+
+        const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
+        fireEvent.change(textarea, { target: { value: 'test' } });
+
+        await act(async () => {
+            fireEvent.click(screen.getByText('Generate'));
+        });
+
+        expect(enqueueSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ model: 'gpt-4', priority: 'high', depth: 'normal' }),
+        );
+    });
+
+    it('EFFORT_PRESETS exports are correctly shaped', () => {
+        expect(EFFORT_PRESETS.low.priority).toBe('low');
+        expect(EFFORT_PRESETS.low.depth).toBe('normal');
+        expect(EFFORT_PRESETS.medium.priority).toBe('normal');
+        expect(EFFORT_PRESETS.medium.depth).toBe('normal');
+        expect(EFFORT_PRESETS.high.priority).toBe('normal');
+        expect(EFFORT_PRESETS.high.depth).toBe('deep');
+    });
+
+    it('effort model picker selects correct model for each level', () => {
+        const models = ['claude-haiku-4.5', 'claude-sonnet-4', 'claude-opus-4'];
+        expect(EFFORT_PRESETS.low.modelPicker(models)).toBe('claude-haiku-4.5');
+        expect(EFFORT_PRESETS.medium.modelPicker(models)).toBe('claude-sonnet-4');
+        expect(EFFORT_PRESETS.high.modelPicker(models)).toBe('claude-opus-4');
+    });
+
+    it('effort model picker returns empty string when no match', () => {
+        expect(EFFORT_PRESETS.low.modelPicker([])).toBe('');
+        expect(EFFORT_PRESETS.low.modelPicker(['unknown-model'])).toBe('');
     });
 
     // ── image paste tests ────────────────────────────────────────────────────

@@ -23,6 +23,43 @@ function flattenFolders(folder: TaskFolder, acc: string[] = []): string[] {
     return acc;
 }
 
+// ── effort presets ──────────────────────────────────────────────────────────
+
+export type EffortLevel = 'low' | 'medium' | 'high';
+export type ConfigTab = 'effort' | 'advanced';
+
+interface EffortPreset {
+    modelPicker: (models: string[]) => string;
+    priority: 'high' | 'normal' | 'low';
+    depth: 'deep' | 'normal';
+}
+
+function pickModel(models: string[], keywords: string[]): string {
+    for (const kw of keywords) {
+        const found = models.find(m => m.toLowerCase().includes(kw));
+        if (found) return found;
+    }
+    return '';
+}
+
+export const EFFORT_PRESETS: Record<EffortLevel, EffortPreset> = {
+    low: {
+        modelPicker: (models) => pickModel(models, ['haiku', 'mini', 'flash', 'fast']),
+        priority: 'low',
+        depth: 'normal',
+    },
+    medium: {
+        modelPicker: (models) => pickModel(models, ['sonnet', 'gpt-4', 'pro']),
+        priority: 'normal',
+        depth: 'normal',
+    },
+    high: {
+        modelPicker: (models) => pickModel(models, ['opus', 'o3', 'o1', 'premium']),
+        priority: 'normal',
+        depth: 'deep',
+    },
+};
+
 // ── props ────────────────────────────────────────────────────────────────────
 
 export interface GenerateTaskDialogProps {
@@ -65,6 +102,8 @@ export function GenerateTaskDialog({
     const [priority, setPriority] = useState<'high' | 'normal' | 'low'>('normal');
     const [depth, setDepth] = useState<'deep' | 'normal'>('deep');
     const [includeContext, setIncludeContext] = useState(false);
+    const [configTab, setConfigTab] = useState<ConfigTab>('effort');
+    const [effortLevel, setEffortLevel] = useState<EffortLevel>('high');
 
     useEffect(() => {
         if (savedModel && !model) setModel(savedModel);
@@ -126,17 +165,26 @@ export function GenerateTaskDialog({
     }, [status, taskId, addToast, clearImages, onSuccess]);
 
     const handleGenerate = useCallback(() => {
+        let finalModel = model;
+        let finalPriority = priority;
+        let finalDepth = depth;
+        if (configTab === 'effort') {
+            const preset = EFFORT_PRESETS[effortLevel];
+            finalModel = preset.modelPicker(models);
+            finalPriority = preset.priority;
+            finalDepth = preset.depth;
+        }
         enqueue({
             prompt: prompt.trim(),
             name: name.trim() || undefined,
             targetFolder: targetFolder || undefined,
-            model: model || undefined,
+            model: finalModel || undefined,
             mode: includeContext ? 'from-feature' : undefined,
-            depth,
-            priority,
+            depth: finalDepth,
+            priority: finalPriority,
             images: images.length > 0 ? images : undefined,
         });
-    }, [prompt, name, targetFolder, model, includeContext, depth, priority, images, enqueue]);
+    }, [prompt, name, targetFolder, model, includeContext, depth, priority, images, enqueue, configTab, effortLevel, models]);
 
     const isSubmitting = status === 'submitting';
     const isQueued = status === 'queued';
@@ -299,66 +347,126 @@ export function GenerateTaskDialog({
                     </span>
                 </label>
 
-                {/* Model (optional) */}
-                <div className="flex flex-col gap-1">
-                    <label className="text-xs text-[#616161] dark:text-[#999]">
-                        Model <span className="text-[#848484]">(optional)</span>
-                    </label>
-                    <select
-                        id="gen-task-model"
-                        className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
-                        value={model}
-                        onChange={e => {
-                            setModel(e.target.value);
-                            persistModel(e.target.value);
-                        }}
-                        disabled={isSubmitting || isQueued}
-                    >
-                        <option value="">Default</option>
-                        {models.map(m => (
-                            <option key={m} value={m}>
-                                {m}
-                            </option>
-                        ))}
-                    </select>
-                </div>
+                {/* ── Configuration tabs ─────────────────────────────────── */}
+                <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] pt-3 mt-1">
+                    <div className="flex gap-1 mb-3" role="tablist" data-testid="config-tabs">
+                        <button
+                            role="tab"
+                            data-testid="tab-effort"
+                            aria-selected={configTab === 'effort'}
+                            className={`px-3 py-1 text-xs rounded-md font-medium transition-colors ${
+                                configTab === 'effort'
+                                    ? 'bg-[#0078d4] text-white'
+                                    : 'bg-[#f0f0f0] dark:bg-[#3c3c3c] text-[#616161] dark:text-[#999] hover:bg-[#e0e0e0] dark:hover:bg-[#4c4c4c]'
+                            }`}
+                            onClick={() => setConfigTab('effort')}
+                            disabled={isSubmitting || isQueued}
+                        >
+                            Effort
+                        </button>
+                        <button
+                            role="tab"
+                            data-testid="tab-advanced"
+                            aria-selected={configTab === 'advanced'}
+                            className={`px-3 py-1 text-xs rounded-md font-medium transition-colors ${
+                                configTab === 'advanced'
+                                    ? 'bg-[#0078d4] text-white'
+                                    : 'bg-[#f0f0f0] dark:bg-[#3c3c3c] text-[#616161] dark:text-[#999] hover:bg-[#e0e0e0] dark:hover:bg-[#4c4c4c]'
+                            }`}
+                            onClick={() => setConfigTab('advanced')}
+                            disabled={isSubmitting || isQueued}
+                        >
+                            Advanced
+                        </button>
+                    </div>
 
-                {/* Priority (optional) */}
-                <div className="flex flex-col gap-1">
-                    <label className="text-xs text-[#616161] dark:text-[#999]">
-                        Priority <span className="text-[#848484]">(optional)</span>
-                    </label>
-                    <select
-                        id="gen-task-priority"
-                        className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
-                        value={priority}
-                        onChange={e => setPriority(e.target.value as 'high' | 'normal' | 'low')}
-                        disabled={isSubmitting || isQueued}
-                    >
-                        <option value="high">High</option>
-                        <option value="normal">Normal</option>
-                        <option value="low">Low</option>
-                    </select>
-                </div>
+                    {/* Effort tab */}
+                    {configTab === 'effort' && (
+                        <div data-testid="effort-panel" className="flex gap-2">
+                            {(['low', 'medium', 'high'] as EffortLevel[]).map(level => (
+                                <button
+                                    key={level}
+                                    data-testid={`effort-${level}`}
+                                    className={`flex-1 px-3 py-2 text-xs rounded-md font-medium border transition-colors ${
+                                        effortLevel === level
+                                            ? 'border-[#0078d4] bg-[#0078d4]/10 text-[#0078d4] dark:text-[#3794ff]'
+                                            : 'border-[#e0e0e0] dark:border-[#3c3c3c] text-[#616161] dark:text-[#999] hover:border-[#0078d4]/50'
+                                    }`}
+                                    onClick={() => setEffortLevel(level)}
+                                    disabled={isSubmitting || isQueued}
+                                >
+                                    {level.charAt(0).toUpperCase() + level.slice(1)}
+                                </button>
+                            ))}
+                        </div>
+                    )}
 
-                {/* Depth (optional) */}
-                <div className="flex flex-col gap-1">
-                    <label className="text-xs text-[#616161] dark:text-[#999]">
-                        Depth <span className="text-[#848484]">(optional)</span>
-                    </label>
-                    <select
-                        id="gen-task-depth"
-                        className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
-                        value={depth}
-                        onChange={e => {
-                            setDepth(e.target.value as 'deep' | 'normal');
-                            persistDepth(e.target.value);
-                        }}
-                        disabled={isSubmitting || isQueued}
-                    >
-                        <option value="deep">Deep (uses go-deep skill)</option>
-                        <option value="normal">Normal</option>
-                    </select>
+                    {/* Advanced tab */}
+                    {configTab === 'advanced' && (
+                        <div data-testid="advanced-panel" className="flex flex-col gap-4">
+                            {/* Model (optional) */}
+                            <div className="flex flex-col gap-1">
+                                <label className="text-xs text-[#616161] dark:text-[#999]">
+                                    Model <span className="text-[#848484]">(optional)</span>
+                                </label>
+                                <select
+                                    id="gen-task-model"
+                                    className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
+                                    value={model}
+                                    onChange={e => {
+                                        setModel(e.target.value);
+                                        persistModel(e.target.value);
+                                    }}
+                                    disabled={isSubmitting || isQueued}
+                                >
+                                    <option value="">Default</option>
+                                    {models.map(m => (
+                                        <option key={m} value={m}>
+                                            {m}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Priority (optional) */}
+                            <div className="flex flex-col gap-1">
+                                <label className="text-xs text-[#616161] dark:text-[#999]">
+                                    Priority <span className="text-[#848484]">(optional)</span>
+                                </label>
+                                <select
+                                    id="gen-task-priority"
+                                    className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
+                                    value={priority}
+                                    onChange={e => setPriority(e.target.value as 'high' | 'normal' | 'low')}
+                                    disabled={isSubmitting || isQueued}
+                                >
+                                    <option value="high">High</option>
+                                    <option value="normal">Normal</option>
+                                    <option value="low">Low</option>
+                                </select>
+                            </div>
+
+                            {/* Depth (optional) */}
+                            <div className="flex flex-col gap-1">
+                                <label className="text-xs text-[#616161] dark:text-[#999]">
+                                    Depth <span className="text-[#848484]">(optional)</span>
+                                </label>
+                                <select
+                                    id="gen-task-depth"
+                                    className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
+                                    value={depth}
+                                    onChange={e => {
+                                        setDepth(e.target.value as 'deep' | 'normal');
+                                        persistDepth(e.target.value);
+                                    }}
+                                    disabled={isSubmitting || isQueued}
+                                >
+                                    <option value="deep">Deep (uses go-deep skill)</option>
+                                    <option value="normal">Normal</option>
+                                </select>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {/* Image lightbox */}
