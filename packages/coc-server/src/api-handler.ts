@@ -600,6 +600,111 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         },
     });
 
+    // POST /api/workspaces/:id/git/branches — Create a new branch
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/branches$/,
+        handler: async (req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const workspaces = await store.getWorkspaces();
+            const ws = workspaces.find(w => w.id === id);
+            if (!ws) {
+                return handleAPIError(res, notFound('Workspace'));
+            }
+
+            let body: any;
+            try {
+                body = await parseBody(req);
+            } catch {
+                return handleAPIError(res, invalidJSON());
+            }
+
+            if (!body.name) {
+                return handleAPIError(res, missingFields(['name']));
+            }
+
+            const checkout = body.checkout ?? false;
+            const result = await branchService.createBranch(ws.rootPath, body.name, checkout);
+            sendJSON(res, 200, result);
+        },
+    });
+
+    // POST /api/workspaces/:id/git/branches/switch — Switch to a branch
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/branches\/switch$/,
+        handler: async (req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const workspaces = await store.getWorkspaces();
+            const ws = workspaces.find(w => w.id === id);
+            if (!ws) {
+                return handleAPIError(res, notFound('Workspace'));
+            }
+
+            let body: any;
+            try {
+                body = await parseBody(req);
+            } catch {
+                return handleAPIError(res, invalidJSON());
+            }
+
+            if (!body.name) {
+                return handleAPIError(res, missingFields(['name']));
+            }
+
+            const result = await branchService.switchBranch(ws.rootPath, body.name, { force: body.force ?? false });
+            sendJSON(res, 200, result);
+        },
+    });
+
+    // POST /api/workspaces/:id/git/branches/rename — Rename a branch
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/branches\/rename$/,
+        handler: async (req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const workspaces = await store.getWorkspaces();
+            const ws = workspaces.find(w => w.id === id);
+            if (!ws) {
+                return handleAPIError(res, notFound('Workspace'));
+            }
+
+            let body: any;
+            try {
+                body = await parseBody(req);
+            } catch {
+                return handleAPIError(res, invalidJSON());
+            }
+
+            if (!body.oldName || !body.newName) {
+                return handleAPIError(res, missingFields(['oldName', 'newName']));
+            }
+
+            const result = await branchService.renameBranch(ws.rootPath, body.oldName, body.newName);
+            sendJSON(res, 200, result);
+        },
+    });
+
+    // DELETE /api/workspaces/:id/git/branches/:name — Delete a branch
+    routes.push({
+        method: 'DELETE',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/branches\/(.+)$/,
+        handler: async (req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const workspaces = await store.getWorkspaces();
+            const ws = workspaces.find(w => w.id === id);
+            if (!ws) {
+                return handleAPIError(res, notFound('Workspace'));
+            }
+
+            const branchName = decodeURIComponent(match![2]);
+            const parsed = url.parse(req.url!, true).query;
+            const force = parsed.force === 'true';
+            const result = await branchService.deleteBranch(ws.rootPath, branchName, force);
+            sendJSON(res, 200, result);
+        },
+    });
+
     // ------------------------------------------------------------------
     // Filesystem browse endpoint
     // ------------------------------------------------------------------

@@ -4,6 +4,10 @@
  * Tests for the branch management API routes:
  * - GET /api/workspaces/:id/git/branches
  * - GET /api/workspaces/:id/git/branch-status
+ * - POST /api/workspaces/:id/git/branches (create)
+ * - POST /api/workspaces/:id/git/branches/switch
+ * - POST /api/workspaces/:id/git/branches/rename
+ * - DELETE /api/workspaces/:id/git/branches/:name
  *
  * Uses mocked BranchService via vi.mock to avoid actual git calls.
  * Cross-platform compatible (Linux/Mac/Windows).
@@ -25,6 +29,10 @@ const mockGetLocalBranchesPaginated = vi.fn();
 const mockGetRemoteBranchesPaginated = vi.fn();
 const mockGetBranchStatus = vi.fn();
 const mockHasUncommittedChanges = vi.fn();
+const mockCreateBranch = vi.fn();
+const mockSwitchBranch = vi.fn();
+const mockDeleteBranch = vi.fn();
+const mockRenameBranch = vi.fn();
 
 vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
@@ -35,6 +43,10 @@ vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
             getRemoteBranchesPaginated: mockGetRemoteBranchesPaginated,
             getBranchStatus: mockGetBranchStatus,
             hasUncommittedChanges: mockHasUncommittedChanges,
+            createBranch: mockCreateBranch,
+            switchBranch: mockSwitchBranch,
+            deleteBranch: mockDeleteBranch,
+            renameBranch: mockRenameBranch,
         })),
     };
 });
@@ -145,6 +157,10 @@ describe('Git Branches API endpoints', () => {
         mockGetRemoteBranchesPaginated.mockReset();
         mockGetBranchStatus.mockReset();
         mockHasUncommittedChanges.mockReset();
+        mockCreateBranch.mockReset();
+        mockSwitchBranch.mockReset();
+        mockDeleteBranch.mockReset();
+        mockRenameBranch.mockReset();
     });
 
     // -----------------------------------------------------------------------
@@ -234,6 +250,246 @@ describe('Git Branches API endpoints', () => {
 
             expect(res.status).toBe(500);
             expect(res.json().error).toBeDefined();
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // POST /api/workspaces/:id/git/branches — createBranch
+    // -----------------------------------------------------------------------
+
+    describe('POST /api/workspaces/:id/git/branches (create)', () => {
+        it('should create a branch with valid name (no checkout)', async () => {
+            mockCreateBranch.mockResolvedValue({ success: true });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branches`, {
+                method: 'POST',
+                body: JSON.stringify({ name: 'new-branch' }),
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.json()).toEqual({ success: true });
+            expect(mockCreateBranch).toHaveBeenCalledWith(WORKSPACE_ROOT, 'new-branch', false);
+        });
+
+        it('should return 400 when name is missing', async () => {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branches`, {
+                method: 'POST',
+                body: JSON.stringify({}),
+            });
+
+            expect(res.status).toBe(400);
+        });
+
+        it('should return 400 when name is empty string', async () => {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branches`, {
+                method: 'POST',
+                body: JSON.stringify({ name: '' }),
+            });
+
+            expect(res.status).toBe(400);
+        });
+
+        it('should pass checkout=true when specified', async () => {
+            mockCreateBranch.mockResolvedValue({ success: true });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branches`, {
+                method: 'POST',
+                body: JSON.stringify({ name: 'feat', checkout: true }),
+            });
+
+            expect(res.status).toBe(200);
+            expect(mockCreateBranch).toHaveBeenCalledWith(WORKSPACE_ROOT, 'feat', true);
+        });
+
+        it('should default checkout to false', async () => {
+            mockCreateBranch.mockResolvedValue({ success: true });
+
+            await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branches`, {
+                method: 'POST',
+                body: JSON.stringify({ name: 'feat' }),
+            });
+
+            expect(mockCreateBranch).toHaveBeenCalledWith(WORKSPACE_ROOT, 'feat', false);
+        });
+
+        it('should return git failure result on error', async () => {
+            mockCreateBranch.mockResolvedValue({ success: false, error: 'branch already exists' });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branches`, {
+                method: 'POST',
+                body: JSON.stringify({ name: 'existing' }),
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.json()).toEqual({ success: false, error: 'branch already exists' });
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // POST /api/workspaces/:id/git/branches/switch — switchBranch
+    // -----------------------------------------------------------------------
+
+    describe('POST /api/workspaces/:id/git/branches/switch', () => {
+        it('should switch to a branch', async () => {
+            mockSwitchBranch.mockResolvedValue({ success: true });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branches/switch`, {
+                method: 'POST',
+                body: JSON.stringify({ name: 'main' }),
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.json()).toEqual({ success: true });
+            expect(mockSwitchBranch).toHaveBeenCalledWith(WORKSPACE_ROOT, 'main', { force: false });
+        });
+
+        it('should return 400 when name is missing', async () => {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branches/switch`, {
+                method: 'POST',
+                body: JSON.stringify({}),
+            });
+
+            expect(res.status).toBe(400);
+        });
+
+        it('should pass force=true when specified', async () => {
+            mockSwitchBranch.mockResolvedValue({ success: true });
+
+            await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branches/switch`, {
+                method: 'POST',
+                body: JSON.stringify({ name: 'main', force: true }),
+            });
+
+            expect(mockSwitchBranch).toHaveBeenCalledWith(WORKSPACE_ROOT, 'main', { force: true });
+        });
+
+        it('should return git failure result on error', async () => {
+            mockSwitchBranch.mockResolvedValue({ success: false, error: 'checkout failed' });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branches/switch`, {
+                method: 'POST',
+                body: JSON.stringify({ name: 'nonexistent' }),
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.json()).toEqual({ success: false, error: 'checkout failed' });
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // DELETE /api/workspaces/:id/git/branches/:name — deleteBranch
+    // -----------------------------------------------------------------------
+
+    describe('DELETE /api/workspaces/:id/git/branches/:name', () => {
+        it('should delete a branch', async () => {
+            mockDeleteBranch.mockResolvedValue({ success: true });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branches/old-branch`, {
+                method: 'DELETE',
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.json()).toEqual({ success: true });
+            expect(mockDeleteBranch).toHaveBeenCalledWith(WORKSPACE_ROOT, 'old-branch', false);
+        });
+
+        it('should pass force=true from query param', async () => {
+            mockDeleteBranch.mockResolvedValue({ success: true });
+
+            await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branches/old-branch?force=true`, {
+                method: 'DELETE',
+            });
+
+            expect(mockDeleteBranch).toHaveBeenCalledWith(WORKSPACE_ROOT, 'old-branch', true);
+        });
+
+        it('should use force=false when query param absent', async () => {
+            mockDeleteBranch.mockResolvedValue({ success: true });
+
+            await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branches/old-branch`, {
+                method: 'DELETE',
+            });
+
+            expect(mockDeleteBranch).toHaveBeenCalledWith(WORKSPACE_ROOT, 'old-branch', false);
+        });
+
+        it('should handle slash-containing branch names', async () => {
+            mockDeleteBranch.mockResolvedValue({ success: true });
+
+            await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branches/feature%2Ffoo`, {
+                method: 'DELETE',
+            });
+
+            expect(mockDeleteBranch).toHaveBeenCalledWith(WORKSPACE_ROOT, 'feature/foo', false);
+        });
+
+        it('should return 404 for unknown workspace', async () => {
+            const res = await request(`${base()}/api/workspaces/nonexistent/git/branches/any`, {
+                method: 'DELETE',
+            });
+
+            expect(res.status).toBe(404);
+            expect(res.json().error).toMatch(/not found/i);
+        });
+
+        it('should return git failure result on error', async () => {
+            mockDeleteBranch.mockResolvedValue({ success: false, error: 'branch not fully merged' });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branches/unmerged`, {
+                method: 'DELETE',
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.json()).toEqual({ success: false, error: 'branch not fully merged' });
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // POST /api/workspaces/:id/git/branches/rename — renameBranch
+    // -----------------------------------------------------------------------
+
+    describe('POST /api/workspaces/:id/git/branches/rename', () => {
+        it('should rename a branch', async () => {
+            mockRenameBranch.mockResolvedValue({ success: true });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branches/rename`, {
+                method: 'POST',
+                body: JSON.stringify({ oldName: 'old', newName: 'new' }),
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.json()).toEqual({ success: true });
+            expect(mockRenameBranch).toHaveBeenCalledWith(WORKSPACE_ROOT, 'old', 'new');
+        });
+
+        it('should return 400 when oldName is missing', async () => {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branches/rename`, {
+                method: 'POST',
+                body: JSON.stringify({ newName: 'new' }),
+            });
+
+            expect(res.status).toBe(400);
+        });
+
+        it('should return 400 when newName is missing', async () => {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branches/rename`, {
+                method: 'POST',
+                body: JSON.stringify({ oldName: 'old' }),
+            });
+
+            expect(res.status).toBe(400);
+        });
+
+        it('should return git failure result on error', async () => {
+            mockRenameBranch.mockResolvedValue({ success: false, error: 'rename failed' });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branches/rename`, {
+                method: 'POST',
+                body: JSON.stringify({ oldName: 'old', newName: 'new' }),
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.json()).toEqual({ success: false, error: 'rename failed' });
         });
     });
 
