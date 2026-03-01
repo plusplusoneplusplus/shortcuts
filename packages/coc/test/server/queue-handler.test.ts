@@ -1402,6 +1402,64 @@ describe('Queue Handler', () => {
             // If the task doesn't have a processId set at the queue level, chatMeta won't be added
         });
 
+        it('should sync process running status back to task status during follow-ups', async () => {
+            const store = new FileProcessStore({ dataDir });
+
+            // Add a process that is currently running (simulates a follow-up message in progress)
+            await store.addProcess({
+                id: 'proc-running-1',
+                type: 'clarification',
+                promptPreview: 'test',
+                fullPrompt: 'test prompt',
+                status: 'running',
+                startTime: new Date(),
+                conversationTurns: [
+                    { role: 'user', content: 'First question', timestamp: new Date(), turnIndex: 0 },
+                    { role: 'assistant', content: 'First answer', timestamp: new Date(), turnIndex: 1 },
+                    { role: 'user', content: 'Follow-up question', timestamp: new Date(), turnIndex: 2 },
+                ],
+            } as any);
+
+            // Pre-populate queue state file with a history task that has processId set
+            const repoRoot = path.resolve('/test/chat-status-sync');
+            const crypto = require('crypto');
+            const repoId = crypto.createHash('sha256').update(repoRoot).digest('hex').substring(0, 16);
+            const queuesDir = path.join(dataDir, 'queues');
+            fs.mkdirSync(queuesDir, { recursive: true });
+            fs.writeFileSync(path.join(queuesDir, `repo-${repoId}.json`), JSON.stringify({
+                version: 3,
+                savedAt: new Date().toISOString(),
+                repoRootPath: repoRoot,
+                repoId,
+                isPaused: false,
+                pending: [],
+                history: [{
+                    id: 'task-chat-running',
+                    type: 'chat',
+                    priority: 'normal',
+                    status: 'completed',
+                    createdAt: Date.now() - 10000,
+                    completedAt: Date.now() - 5000,
+                    payload: { prompt: 'Hello' },
+                    displayName: 'Running chat',
+                    processId: 'proc-running-1',
+                    repoId,
+                }],
+            }));
+
+            // Start server after pre-populating — it restores the history with processId
+            const srv = await startServer();
+
+            const res = await request(`${srv.url}/api/queue/history?type=chat`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            const chatTask = body.history.find((t: any) => t.id === 'task-chat-running');
+            expect(chatTask).toBeDefined();
+            expect(chatTask.processId).toBe('proc-running-1');
+            // The task status should be synced to 'running' from the process store
+            expect(chatTask.status).toBe('running');
+        });
+
         it('should be resilient when processId has no matching process', async () => {
             const srv = await startServer();
             await postJSON(`${srv.url}/api/queue/pause`, {});

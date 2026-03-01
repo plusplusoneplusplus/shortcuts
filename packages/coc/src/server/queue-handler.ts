@@ -279,6 +279,11 @@ async function enrichChatTasks(
                         : firstUserTurn.content)
                     : undefined,
             };
+            // Sync process status back to the task so follow-up messages
+            // that set the process to 'running' are reflected in the history endpoint.
+            if (process.status === 'running') {
+                task.status = 'running';
+            }
         } catch {
             // Non-fatal: process may not exist
         }
