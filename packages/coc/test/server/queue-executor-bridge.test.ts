@@ -1323,6 +1323,84 @@ describe('CLITaskExecutor', () => {
             expect(addedProcess.fullPrompt).toContain('Use impl skill when available');
             expect(addedProcess.fullPrompt).toContain('[Task]\nDo the thing.');
         });
+
+        it('should support multiple skillNames array', async () => {
+            const executor = new CLITaskExecutor(store);
+
+            const task: QueuedTask = {
+                id: 'task-skill-multi',
+                type: 'chat',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: {
+                    kind: 'chat',
+                    prompt: 'analyze the auth module',
+                    skillNames: ['go-deep', 'impl'],
+                },
+                config: {},
+                displayName: 'Chat',
+            };
+
+            await executor.execute(task);
+
+            const sentPrompt = mockSendMessage.mock.calls[0][0].prompt;
+            expect(sentPrompt).toContain('Use go-deep skill when available');
+            expect(sentPrompt).toContain('Use impl skill when available');
+            expect(sentPrompt).toContain('[Task]\nanalyze the auth module');
+        });
+
+        it('should prefer skillNames over skillName when both present', async () => {
+            const executor = new CLITaskExecutor(store);
+
+            const task: QueuedTask = {
+                id: 'task-skill-precedence',
+                type: 'follow-prompt',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: {
+                    promptContent: 'Do something.',
+                    skillName: 'old-skill',
+                    skillNames: ['new-skill-a', 'new-skill-b'],
+                    workingDirectory: '/my/workspace',
+                },
+                config: {},
+                displayName: 'Skill test',
+            };
+
+            await executor.execute(task);
+
+            const sentPrompt = mockSendMessage.mock.calls[0][0].prompt;
+            expect(sentPrompt).toContain('Use new-skill-a skill when available');
+            expect(sentPrompt).toContain('Use new-skill-b skill when available');
+            expect(sentPrompt).not.toContain('Use old-skill skill when available');
+        });
+
+        it('should fall back to skillName when skillNames is empty', async () => {
+            const executor = new CLITaskExecutor(store);
+
+            const task: QueuedTask = {
+                id: 'task-skill-fallback',
+                type: 'follow-prompt',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: {
+                    promptContent: 'Do something.',
+                    skillName: 'fallback-skill',
+                    skillNames: [],
+                    workingDirectory: '/my/workspace',
+                },
+                config: {},
+                displayName: 'Skill test',
+            };
+
+            await executor.execute(task);
+
+            const sentPrompt = mockSendMessage.mock.calls[0][0].prompt;
+            expect(sentPrompt).toContain('Use fallback-skill skill when available');
+        });
     });
 
     // ========================================================================

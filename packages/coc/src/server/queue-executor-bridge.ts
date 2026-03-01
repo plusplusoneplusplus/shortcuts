@@ -627,17 +627,21 @@ export class CLITaskExecutor implements TaskExecutor {
     }
 
     /**
-     * If the task payload includes a skillName, emit a short skill reference
-     * directive instead of resolving and embedding the full skill content.
+     * If the task payload includes skill directives (skillNames array or legacy
+     * skillName string), emit short skill reference directives.
      * The AI agent already has access to skills via the skill tool.
      */
     private applySkillContent(prompt: string, task: QueuedTask): string {
-        const payload = task.payload as { skillName?: string };
-        if (!payload.skillName) {
-            return prompt;
-        }
+        const payload = task.payload as { skillName?: string; skillNames?: string[] };
+        const names = payload.skillNames?.length
+            ? payload.skillNames
+            : payload.skillName
+                ? [payload.skillName]
+                : [];
+        if (names.length === 0) return prompt;
 
-        return `Use ${payload.skillName} skill when available\n\n[Task]\n${prompt}`;
+        const directives = names.map(n => `Use ${n} skill when available`).join('\n');
+        return `${directives}\n\n[Task]\n${prompt}`;
     }
 
     // ========================================================================

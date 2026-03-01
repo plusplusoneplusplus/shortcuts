@@ -99,6 +99,11 @@ describe('isChatPayload', () => {
         expect(isChatPayload(payload)).toBe(true);
     });
 
+    it('returns true for payload with kind: chat and skillNames', () => {
+        const payload: Record<string, unknown> = { kind: 'chat', prompt: 'hello', skillNames: ['impl'] };
+        expect(isChatPayload(payload)).toBe(true);
+    });
+
     it('returns false for different kind', () => {
         const payload: Record<string, unknown> = { kind: 'task-generation', prompt: 'x' };
         expect(isChatPayload(payload)).toBe(false);

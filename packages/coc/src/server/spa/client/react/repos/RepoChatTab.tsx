@@ -18,6 +18,9 @@ import { ChatSessionSidebar } from '../chat/ChatSessionSidebar';
 import { useChatSessions } from '../chat/useChatSessions';
 import { useQueue } from '../context/QueueContext';
 import { usePreferences } from '../hooks/usePreferences';
+import { SlashCommandMenu } from './SlashCommandMenu';
+import { useSlashCommands } from './useSlashCommands';
+import type { SkillItem } from './SlashCommandMenu';
 import type { ClientConversationTurn } from '../types/dashboard';
 
 interface RepoChatTabProps {
@@ -76,9 +79,11 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
     const [resuming, setResuming] = useState(false);
     const [model, setModel] = useState('');
     const [models, setModels] = useState<string[]>([]);
+    const [skills, setSkills] = useState<SkillItem[]>([]);
 
     const initialImagePaste = useImagePaste();
     const followUpImagePaste = useImagePaste();
+    const slashCommands = useSlashCommands(skills);
 
     const turnsRef = useRef<ClientConversationTurn[]>([]);
     const eventSourceRef = useRef<EventSource | null>(null);
@@ -119,6 +124,16 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
             })
             .catch(() => { /* ignore */ });
     }, []);
+
+    // Fetch available skills when workspaceId changes
+    useEffect(() => {
+        if (!workspaceId) return;
+        fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/skills`)
+            .then((data: any) => {
+                if (Array.isArray(data?.skills)) setSkills(data.skills);
+            })
+            .catch(() => { /* ignore */ });
+    }, [workspaceId]);
 
     // Rehydrate model from saved preferences
     useEffect(() => {
@@ -421,9 +436,12 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
     }, [chatTaskId, handleNewChat, sessionsHook]);
 
     const handleStartChat = async () => {
-        const prompt = inputValue.trim();
+        const raw = inputValue.trim();
+        if (!raw) return;
+        const { skills: parsedSkills, prompt } = slashCommands.parseAndExtract(raw);
         if (!prompt) return;
         setInputValue('');
+        slashCommands.dismissMenu();
         setSending(true);
         setError(null);
         try {
@@ -439,6 +457,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
                     images: initialImagePaste.images.length > 0
                         ? initialImagePaste.images
                         : undefined,
+                    ...(parsedSkills.length > 0 ? { skillNames: parsedSkills } : {}),
                     ...(model ? { config: { model } } : {}),
                 }),
             });
@@ -483,10 +502,13 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
     };
 
     const sendFollowUp = async (overrideContent?: string) => {
-        const content = (overrideContent ?? inputValue).trim();
-        if (!content || !processId || sending || sessionExpired) return;
+        const raw = (overrideContent ?? inputValue).trim();
+        if (!raw || !processId || sending || sessionExpired) return;
+        const { skills: parsedSkills, prompt: cleanedContent } = slashCommands.parseAndExtract(raw);
+        const content = cleanedContent || raw;
         setSuggestions([]);
         setInputValue('');
+        slashCommands.dismissMenu();
         setSending(true);
         setError(null);
 
@@ -509,6 +531,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
                     images: followUpImagePaste.images.length > 0
                         ? followUpImagePaste.images
                         : undefined,
+                    ...(parsedSkills.length > 0 ? { skillNames: parsedSkills } : {}),
                 }),
             });
             if (response.status === 410) {
@@ -593,15 +616,37 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
     const renderStartScreen = () => (
         <div className="flex flex-col items-center justify-center h-full p-8 gap-4">
             <div className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]">Chat with this repository</div>
-            <textarea
-                className="w-full max-w-md border rounded p-2 text-sm resize-none bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] border-[#e0e0e0] dark:border-[#3c3c3c]"
-                rows={3}
-                placeholder="Ask anything about this repository…"
-                value={inputValue}
-                onChange={e => setInputValue(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleStartChat(); } }}
-                onPaste={initialImagePaste.addFromPaste}
-            />
+            <div className="w-full max-w-md relative">
+                <textarea
+                    className="w-full border rounded p-2 text-sm resize-none bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] border-[#e0e0e0] dark:border-[#3c3c3c]"
+                    rows={3}
+                    placeholder="Ask anything… Type / for skills"
+                    value={inputValue}
+                    onChange={e => {
+                        setInputValue(e.target.value);
+                        slashCommands.handleInputChange(e.target.value, e.target.selectionStart ?? e.target.value.length);
+                    }}
+                    onKeyDown={e => {
+                        if (slashCommands.handleKeyDown(e)) {
+                            if (e.key === 'Enter' || e.key === 'Tab') {
+                                const selected = slashCommands.filteredSkills[slashCommands.highlightIndex];
+                                if (selected) slashCommands.selectSkill(selected.name, inputValue, setInputValue);
+                            }
+                            return;
+                        }
+                        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleStartChat(); }
+                    }}
+                    onPaste={initialImagePaste.addFromPaste}
+                />
+                <SlashCommandMenu
+                    skills={skills}
+                    filter={slashCommands.menuFilter}
+                    onSelect={name => slashCommands.selectSkill(name, inputValue, setInputValue)}
+                    onDismiss={slashCommands.dismissMenu}
+                    visible={slashCommands.menuVisible}
+                    highlightIndex={slashCommands.highlightIndex}
+                />
+            </div>
             <ImagePreviews images={initialImagePaste.images} onRemove={initialImagePaste.removeImage} />
             {error && <div className="text-xs text-red-500">{error}</div>}
             <div className="flex items-center gap-2">
@@ -701,20 +746,40 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
                             />
                         )}
                         <ImagePreviews images={followUpImagePaste.images} onRemove={followUpImagePaste.removeImage} />
-                        <div className="flex items-end gap-2">
-                            <textarea
-                                rows={1}
-                                value={inputValue}
-                                disabled={sending}
-                                placeholder="Follow up…"
-                                onChange={e => {
-                                    setInputValue(e.target.value);
-                                    if (suggestions.length > 0) setSuggestions([]);
-                                }}
-                                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendFollowUp(); } }}
-                                onPaste={followUpImagePaste.addFromPaste}
-                                className="flex-1 border rounded p-2 text-sm resize-none bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] border-[#e0e0e0] dark:border-[#3c3c3c]"
-                            />
+                        <div className="flex items-end gap-2 relative">
+                            <div className="flex-1 relative">
+                                <textarea
+                                    rows={1}
+                                    value={inputValue}
+                                    disabled={sending}
+                                    placeholder="Follow up… Type / for skills"
+                                    onChange={e => {
+                                        setInputValue(e.target.value);
+                                        slashCommands.handleInputChange(e.target.value, e.target.selectionStart ?? e.target.value.length);
+                                        if (suggestions.length > 0) setSuggestions([]);
+                                    }}
+                                    onKeyDown={e => {
+                                        if (slashCommands.handleKeyDown(e)) {
+                                            if (e.key === 'Enter' || e.key === 'Tab') {
+                                                const selected = slashCommands.filteredSkills[slashCommands.highlightIndex];
+                                                if (selected) slashCommands.selectSkill(selected.name, inputValue, setInputValue);
+                                            }
+                                            return;
+                                        }
+                                        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendFollowUp(); }
+                                    }}
+                                    onPaste={followUpImagePaste.addFromPaste}
+                                    className="w-full border rounded p-2 text-sm resize-none bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] border-[#e0e0e0] dark:border-[#3c3c3c]"
+                                />
+                                <SlashCommandMenu
+                                    skills={skills}
+                                    filter={slashCommands.menuFilter}
+                                    onSelect={name => slashCommands.selectSkill(name, inputValue, setInputValue)}
+                                    onDismiss={slashCommands.dismissMenu}
+                                    visible={slashCommands.menuVisible}
+                                    highlightIndex={slashCommands.highlightIndex}
+                                />
+                            </div>
                             {(task?.config?.model || task?.metadata?.model) && (
                                 <span
                                     className="text-xs px-2 py-1 rounded bg-[#e8e8e8] dark:bg-[#2d2d2d] text-[#848484] whitespace-nowrap"

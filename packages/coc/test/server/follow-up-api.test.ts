@@ -180,6 +180,104 @@ describe('POST /api/processes/:id/message', () => {
             const updated = await store.getProcess('proc-3');
             expect(updated?.status).toBe('running');
         });
+
+        it('should prepend skill directives when skillNames is provided', async () => {
+            const proc: AIProcess = {
+                id: 'proc-skill',
+                type: 'clarification',
+                promptPreview: 'test',
+                fullPrompt: 'test prompt',
+                status: 'completed',
+                startTime: new Date(),
+                sdkSessionId: 'sess-skill',
+                conversationTurns: [],
+            };
+            await store.addProcess(proc);
+
+            const res = await postJSON(`${baseUrl}/api/processes/proc-skill/message`, {
+                content: 'analyze auth module',
+                skillNames: ['go-deep', 'impl'],
+            });
+
+            expect(res.status).toBe(202);
+            // Verify the bridge received the message with skill directives prepended
+            const bridgeFn = mockBridge.executeFollowUp as ReturnType<typeof vi.fn>;
+            expect(bridgeFn).toHaveBeenCalledTimes(1);
+            const sentMessage = bridgeFn.mock.calls[0][1];
+            expect(sentMessage).toContain('Use go-deep skill when available');
+            expect(sentMessage).toContain('Use impl skill when available');
+            expect(sentMessage).toContain('[Task]\nanalyze auth module');
+        });
+
+        it('should not prepend directives when skillNames is empty', async () => {
+            const proc: AIProcess = {
+                id: 'proc-noskill',
+                type: 'clarification',
+                promptPreview: 'test',
+                fullPrompt: 'test prompt',
+                status: 'completed',
+                startTime: new Date(),
+                sdkSessionId: 'sess-noskill',
+                conversationTurns: [],
+            };
+            await store.addProcess(proc);
+
+            await postJSON(`${baseUrl}/api/processes/proc-noskill/message`, {
+                content: 'plain question',
+                skillNames: [],
+            });
+
+            const bridgeFn = mockBridge.executeFollowUp as ReturnType<typeof vi.fn>;
+            const sentMessage = bridgeFn.mock.calls[0][1];
+            expect(sentMessage).toBe('plain question');
+        });
+
+        it('should not prepend directives when skillNames is not provided', async () => {
+            const proc: AIProcess = {
+                id: 'proc-nofield',
+                type: 'clarification',
+                promptPreview: 'test',
+                fullPrompt: 'test prompt',
+                status: 'completed',
+                startTime: new Date(),
+                sdkSessionId: 'sess-nofield',
+                conversationTurns: [],
+            };
+            await store.addProcess(proc);
+
+            await postJSON(`${baseUrl}/api/processes/proc-nofield/message`, {
+                content: 'another question',
+            });
+
+            const bridgeFn = mockBridge.executeFollowUp as ReturnType<typeof vi.fn>;
+            const sentMessage = bridgeFn.mock.calls[0][1];
+            expect(sentMessage).toBe('another question');
+        });
+
+        it('should filter out non-string skillNames', async () => {
+            const proc: AIProcess = {
+                id: 'proc-badskill',
+                type: 'clarification',
+                promptPreview: 'test',
+                fullPrompt: 'test prompt',
+                status: 'completed',
+                startTime: new Date(),
+                sdkSessionId: 'sess-badskill',
+                conversationTurns: [],
+            };
+            await store.addProcess(proc);
+
+            await postJSON(`${baseUrl}/api/processes/proc-badskill/message`, {
+                content: 'question',
+                skillNames: ['impl', '', 123, null, 'draft'],
+            });
+
+            const bridgeFn = mockBridge.executeFollowUp as ReturnType<typeof vi.fn>;
+            const sentMessage = bridgeFn.mock.calls[0][1];
+            expect(sentMessage).toContain('Use impl skill when available');
+            expect(sentMessage).toContain('Use draft skill when available');
+            expect(sentMessage).toContain('[Task]\nquestion');
+        });
     });
 
     // ========================================================================

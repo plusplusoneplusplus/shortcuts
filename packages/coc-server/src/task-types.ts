@@ -33,6 +33,7 @@ export interface FollowPromptPayload {
     promptContent?: string;
     planFilePath?: string;
     skillName?: string;
+    skillNames?: string[];
     additionalContext?: string;
     workingDirectory?: string;
     folderPath?: string;
@@ -68,6 +69,7 @@ export interface AIClarificationPayload {
 export interface ChatPayload {
     readonly kind: 'chat';
     prompt: string;
+    skillNames?: string[];
     workspaceId?: string;
     folderPath?: string;
 }

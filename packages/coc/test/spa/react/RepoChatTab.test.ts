@@ -183,7 +183,7 @@ describe('RepoChatTab', () => {
         });
 
         it('renders textarea with placeholder', () => {
-            expect(source).toContain('Ask anything about this repository');
+            expect(source).toContain('Ask anything');
         });
 
         it('renders Start Chat button', () => {
@@ -1256,6 +1256,121 @@ describe('RepoChatTab', () => {
                 source.indexOf('prevTriggerRef') + 400
             );
             expect(triggerEffect).toContain('newChatTrigger &&');
+        });
+    });
+
+    // ========================================================================
+    // Slash-command skill integration
+    // ========================================================================
+
+    describe('slash-command skill integration', () => {
+        it('imports SlashCommandMenu component', () => {
+            expect(source).toContain("import { SlashCommandMenu }");
+            expect(source).toContain("from './SlashCommandMenu'");
+        });
+
+        it('imports useSlashCommands hook', () => {
+            expect(source).toContain("import { useSlashCommands }");
+            expect(source).toContain("from './useSlashCommands'");
+        });
+
+        it('imports SkillItem type', () => {
+            expect(source).toContain("import type { SkillItem }");
+        });
+
+        it('declares skills state', () => {
+            expect(source).toContain('useState<SkillItem[]>([])');
+        });
+
+        it('initializes useSlashCommands with skills', () => {
+            expect(source).toContain('useSlashCommands(skills)');
+        });
+
+        it('fetches skills from API when workspaceId changes', () => {
+            expect(source).toContain('/workspaces/');
+            expect(source).toContain('/skills');
+            expect(source).toContain('setSkills(data.skills)');
+        });
+
+        it('renders SlashCommandMenu in start screen', () => {
+            const startScreen = source.substring(
+                source.indexOf('const renderStartScreen'),
+                source.indexOf('const renderConversation')
+            );
+            expect(startScreen).toContain('<SlashCommandMenu');
+        });
+
+        it('renders SlashCommandMenu in follow-up area', () => {
+            const convSection = source.substring(
+                source.indexOf('const renderConversation'),
+                source.indexOf('// --- render ---')
+            );
+            expect(convSection).toContain('<SlashCommandMenu');
+        });
+
+        it('handleStartChat extracts skills via parseAndExtract', () => {
+            const fn = source.substring(
+                source.indexOf('const handleStartChat'),
+                source.indexOf('const sendFollowUp')
+            );
+            expect(fn).toContain('slashCommands.parseAndExtract');
+            expect(fn).toContain('parsedSkills');
+        });
+
+        it('handleStartChat sends skillNames in queue body', () => {
+            const fn = source.substring(
+                source.indexOf('const handleStartChat'),
+                source.indexOf('const sendFollowUp')
+            );
+            expect(fn).toContain('skillNames: parsedSkills');
+        });
+
+        it('sendFollowUp extracts skills via parseAndExtract', () => {
+            const fn = source.substring(
+                source.indexOf('const sendFollowUp'),
+                source.indexOf('const handleResumeChat')
+            );
+            expect(fn).toContain('slashCommands.parseAndExtract');
+        });
+
+        it('sendFollowUp sends skillNames in message body', () => {
+            const fn = source.substring(
+                source.indexOf('const sendFollowUp'),
+                source.indexOf('const handleResumeChat')
+            );
+            expect(fn).toContain('skillNames: parsedSkills');
+        });
+
+        it('start screen textarea placeholder mentions skills', () => {
+            const startScreen = source.substring(
+                source.indexOf('const renderStartScreen'),
+                source.indexOf('const renderConversation')
+            );
+            expect(startScreen).toContain('Type / for skills');
+        });
+
+        it('follow-up textarea placeholder mentions skills', () => {
+            const convSection = source.substring(
+                source.indexOf('const renderConversation'),
+                source.indexOf('// --- render ---')
+            );
+            expect(convSection).toContain('Type / for skills');
+        });
+
+        it('start screen textarea calls slashCommands.handleInputChange on change', () => {
+            const startScreen = source.substring(
+                source.indexOf('const renderStartScreen'),
+                source.indexOf('const renderConversation')
+            );
+            expect(startScreen).toContain('slashCommands.handleInputChange');
+        });
+
+        it('start screen textarea calls slashCommands.handleKeyDown on keyDown', () => {
+            const startScreen = source.substring(
+                source.indexOf('const renderStartScreen'),
+                source.indexOf('const renderConversation')
+            );
+            expect(startScreen).toContain('slashCommands.handleKeyDown');
         });
     });
 });

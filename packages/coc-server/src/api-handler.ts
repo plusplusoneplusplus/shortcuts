@@ -1226,7 +1226,16 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             });
 
             // Delegate AI execution to the queue executor bridge (fire-and-forget)
-            bridge.executeFollowUp(id, body.content, attachments).catch(() => {
+            // Prepend skill directives if skillNames are provided
+            let messageContent = body.content as string;
+            if (Array.isArray(body.skillNames) && body.skillNames.length > 0) {
+                const validSkills = body.skillNames.filter((s: unknown): s is string => typeof s === 'string' && s.length > 0);
+                if (validSkills.length > 0) {
+                    const directives = validSkills.map((n: string) => `Use ${n} skill when available`).join('\n');
+                    messageContent = `${directives}\n\n[Task]\n${messageContent}`;
+                }
+            }
+            bridge.executeFollowUp(id, messageContent, attachments).catch(() => {
                 // Error handling is done inside executeFollowUp
             }).finally(() => {
                 if (imageTempDir) { cleanupTempDir(imageTempDir); }
