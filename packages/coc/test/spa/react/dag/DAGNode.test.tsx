@@ -220,4 +220,21 @@ describe('DAGNode', () => {
             expect(() => fireEvent.mouseLeave(g!)).not.toThrow();
         });
     });
+
+    describe('validation error pin', () => {
+        it('renders error pin when validationErrors provided', () => {
+            const { container } = renderNode({}, { validationErrors: ['Bad input'] });
+            expect(container.querySelector('[data-testid="dag-error-pin"]')).not.toBeNull();
+        });
+
+        it('does not render error pin when validationErrors is undefined', () => {
+            const { container } = renderNode();
+            expect(container.querySelector('[data-testid="dag-error-pin"]')).toBeNull();
+        });
+
+        it('does not render error pin for empty array', () => {
+            const { container } = renderNode({}, { validationErrors: [] });
+            expect(container.querySelector('[data-testid="dag-error-pin"]')).toBeNull();
+        });
+    });
 });

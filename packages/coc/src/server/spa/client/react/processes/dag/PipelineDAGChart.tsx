@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import type { PipelinePhase, PipelineConfig } from '@plusplusoneplusplus/pipeline-core';
 import type { DAGChartData } from './types';
 import { DAGNode } from './DAGNode';
@@ -9,6 +9,7 @@ import { DAGLegend } from './DAGLegend';
 import { DAGBreadcrumb } from './DAGBreadcrumb';
 import { PipelinePhasePopover } from './PipelinePhasePopover';
 import { DAGHoverTooltip } from './DAGHoverTooltip';
+import { mapErrorsToPhases, getNodeErrors } from './errorMapping';
 import type { PhaseDetail } from './PipelinePhasePopover';
 import type { EdgeState } from './dag-colors';
 
@@ -26,6 +27,8 @@ export interface PipelineDAGChartProps {
     parallelCount?: number;
     /** Pipeline config from YAML for hover tooltips. */
     pipelineConfig?: PipelineConfig;
+    /** Validation errors mapped to phases, for rendering error pins on nodes */
+    validationErrors?: string[];
 }
 
 const NODE_W = 120;
@@ -40,7 +43,7 @@ function deriveEdgeState(fromState: string, toState: string): EdgeState {
     return 'waiting';
 }
 
-export function PipelineDAGChart({ data, isDark, onNodeClick, now, phaseDetails, onScrollToConversation, parallelCount, pipelineConfig }: PipelineDAGChartProps) {
+export function PipelineDAGChart({ data, isDark, onNodeClick, now, phaseDetails, onScrollToConversation, parallelCount, pipelineConfig, validationErrors }: PipelineDAGChartProps) {
     const [selectedPhase, setSelectedPhase] = useState<string | null>(null);
     const [hoveredPhase, setHoveredPhase] = useState<PipelinePhase | null>(null);
     const [hoverAnchor, setHoverAnchor] = useState<{ x: number; y: number } | null>(null);
@@ -135,6 +138,11 @@ export function PipelineDAGChart({ data, isDark, onNodeClick, now, phaseDetails,
 
     const mapNode = data.nodes.find(n => n.phase === 'map');
 
+    const phaseErrors = useMemo(
+        () => validationErrors?.length ? mapErrorsToPhases(validationErrors) : null,
+        [validationErrors]
+    );
+
     const selectedDetail = selectedPhase && phaseDetails?.[selectedPhase] ? phaseDetails[selectedPhase] : null;
 
     return (
@@ -197,6 +205,7 @@ export function PipelineDAGChart({ data, isDark, onNodeClick, now, phaseDetails,
                         elapsedMs={elapsedMs}
                         selected={node.phase === selectedPhase}
                         parallelCount={node.phase === 'map' ? parallelCount : undefined}
+                        validationErrors={phaseErrors ? getNodeErrors(phaseErrors, node.phase) : undefined}
                     />
                 );
             })}

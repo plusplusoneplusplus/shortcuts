@@ -280,3 +280,51 @@ describe('PipelineDAGChart — edge annotations', () => {
         expect(edgeLabels.some(el => el.textContent?.includes('filtered'))).toBe(true);
     });
 });
+
+describe('PipelineDAGChart — validation error pins', () => {
+    it('distributes errors to correct nodes', () => {
+        const data: DAGChartData = {
+            nodes: [
+                { phase: 'input', state: 'completed', label: 'Input' },
+                { phase: 'filter', state: 'completed', label: 'Filter' },
+                { phase: 'map', state: 'completed', label: 'Map' },
+            ],
+            totalDurationMs: 0,
+        };
+        render(
+            <PipelineDAGChart
+                data={data}
+                isDark={false}
+                validationErrors={['Missing input path', 'Invalid filter expression']}
+            />
+        );
+        const inputNode = screen.getByTestId('dag-node-input');
+        const filterNode = screen.getByTestId('dag-node-filter');
+        const mapNode = screen.getByTestId('dag-node-map');
+        expect(inputNode.querySelector('[data-testid="dag-error-pin"]')).not.toBeNull();
+        expect(filterNode.querySelector('[data-testid="dag-error-pin"]')).not.toBeNull();
+        expect(mapNode.querySelector('[data-testid="dag-error-pin"]')).toBeNull();
+    });
+
+    it('unmapped errors appear on all nodes', () => {
+        render(
+            <PipelineDAGChart
+                data={makeData()}
+                isDark={false}
+                validationErrors={['Unknown error']}
+            />
+        );
+        const pins = screen.getAllByTestId('dag-error-pin');
+        expect(pins.length).toBe(3); // input, map, reduce all get the unmapped error
+    });
+
+    it('no error pins when validationErrors is undefined', () => {
+        render(<PipelineDAGChart data={makeData()} isDark={false} />);
+        expect(screen.queryAllByTestId('dag-error-pin')).toHaveLength(0);
+    });
+
+    it('no error pins when validationErrors is empty array', () => {
+        render(<PipelineDAGChart data={makeData()} isDark={false} validationErrors={[]} />);
+        expect(screen.queryAllByTestId('dag-error-pin')).toHaveLength(0);
+    });
+});

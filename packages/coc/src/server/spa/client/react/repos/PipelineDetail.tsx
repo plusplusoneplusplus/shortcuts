@@ -168,7 +168,7 @@ export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRu
 
                 {/* DAG Preview */}
                 {mode === 'view' && content && (
-                    <PipelineDAGPreview yamlContent={content} />
+                    <PipelineDAGPreview yamlContent={content} validationErrors={pipeline.validationErrors} />
                 )}
 
                 {/* Run History */}

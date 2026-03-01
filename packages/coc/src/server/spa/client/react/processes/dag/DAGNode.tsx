@@ -3,6 +3,7 @@ import type { DAGNodeData } from './types';
 import { getNodeColors, getNodeIcon } from './dag-colors';
 import { formatDuration } from '../../utils/format';
 import { cn } from '../../shared/cn';
+import { DAGErrorPin } from './DAGErrorPin';
 
 export interface DAGNodeProps {
     node: DAGNodeData;
@@ -15,9 +16,11 @@ export interface DAGNodeProps {
     elapsedMs?: number;
     selected?: boolean;
     parallelCount?: number;
+    /** Validation errors mapped to this node's phase */
+    validationErrors?: string[];
 }
 
-export function DAGNode({ node, x, y, isDark, onClick, onMouseEnter, onMouseLeave, elapsedMs, selected, parallelCount }: DAGNodeProps) {
+export function DAGNode({ node, x, y, isDark, onClick, onMouseEnter, onMouseLeave, elapsedMs, selected, parallelCount, validationErrors }: DAGNodeProps) {
     const colors = getNodeColors(node.state, isDark);
     const icon = getNodeIcon(node.state);
     const hasClick = typeof onClick === 'function';
@@ -156,6 +159,14 @@ export function DAGNode({ node, x, y, isDark, onClick, onMouseEnter, onMouseLeav
                         ×{parallelCount}
                     </text>
                 </>
+            )}
+            {validationErrors && validationErrors.length > 0 && (
+                <DAGErrorPin
+                    x={x + 120}
+                    y={y}
+                    errors={validationErrors}
+                    isDark={isDark}
+                />
             )}
         </g>
     );

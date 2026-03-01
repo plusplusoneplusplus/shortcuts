@@ -10,6 +10,8 @@ import { buildPreviewDAG } from './buildPreviewDAG';
 
 export interface PipelineDAGPreviewProps {
     yamlContent: string;
+    /** Pipeline validation errors to display as pins on DAG nodes */
+    validationErrors?: string[];
 }
 
 function detectDarkMode(): boolean {
@@ -19,7 +21,7 @@ function detectDarkMode(): boolean {
     return false;
 }
 
-export function PipelineDAGPreview({ yamlContent }: PipelineDAGPreviewProps) {
+export function PipelineDAGPreview({ yamlContent, validationErrors }: PipelineDAGPreviewProps) {
     const [expanded, setExpanded] = useState(true);
     const isDark = detectDarkMode();
 
@@ -39,7 +41,7 @@ export function PipelineDAGPreview({ yamlContent }: PipelineDAGPreviewProps) {
             {expanded && (
                 <div className="py-2">
                     {result.type === 'linear' ? (
-                        <PipelineDAGChart data={result.data} isDark={isDark} pipelineConfig={result.config} />
+                        <PipelineDAGChart data={result.data} isDark={isDark} pipelineConfig={result.config} validationErrors={validationErrors} />
                     ) : (
                         <WorkflowDAGChart data={result.data} isDark={isDark} />
                     )}

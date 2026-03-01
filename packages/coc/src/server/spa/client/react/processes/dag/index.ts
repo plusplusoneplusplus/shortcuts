@@ -9,3 +9,6 @@ export { DAGLegend } from './DAGLegend';
 export { DAGBreadcrumb } from './DAGBreadcrumb';
 export { DAGEdgeLabel } from './DAGEdgeLabel';
 export { getEdgeBadgeText, getEdgeSchemaText } from './edgeAnnotations';
+export { DAGErrorPin } from './DAGErrorPin';
+export { mapErrorsToPhases, getNodeErrors } from './errorMapping';
+export type { PhaseErrors } from './errorMapping';
