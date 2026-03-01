@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import type { PipelinePhase, PipelineConfig } from '@plusplusoneplusplus/pipeline-core';
 import type { DAGChartData } from './types';
 import { DAGNode } from './DAGNode';
@@ -10,6 +10,8 @@ import { DAGBreadcrumb } from './DAGBreadcrumb';
 import { PipelinePhasePopover } from './PipelinePhasePopover';
 import { DAGHoverTooltip } from './DAGHoverTooltip';
 import { mapErrorsToPhases, getNodeErrors } from './errorMapping';
+import { useZoomPan } from '../../hooks/useZoomPan';
+import { ZoomControls } from './ZoomControls';
 import type { PhaseDetail } from './PipelinePhasePopover';
 import type { EdgeState } from './dag-colors';
 
@@ -143,16 +145,28 @@ export function PipelineDAGChart({ data, isDark, onNodeClick, now, phaseDetails,
         [validationErrors]
     );
 
+    const {
+        containerRef: zoomContainerRef,
+        svgTransform,
+        zoomIn, zoomOut, reset: zoomReset, fitToView,
+        zoomLabel,
+        state: zoomState,
+    } = useZoomPan({ contentWidth: totalWidth, contentHeight: totalHeight });
+
+    const mergedRef = useCallback((node: HTMLDivElement | null) => {
+        (containerRef as React.MutableRefObject<HTMLDivElement | null>).current = node;
+        (zoomContainerRef as React.MutableRefObject<HTMLDivElement | null>).current = node;
+    }, [zoomContainerRef]);
+
     const selectedDetail = selectedPhase && phaseDetails?.[selectedPhase] ? phaseDetails[selectedPhase] : null;
 
     return (
-        <div ref={containerRef} data-testid="dag-chart-container" className="relative">
+        <div ref={mergedRef} data-testid="dag-chart-container" className="relative" style={{ overflow: 'hidden', maxHeight: 200, cursor: zoomState.isDragging ? 'grabbing' : 'grab' }}>
         <DAGBreadcrumb nodes={data.nodes} isDark={isDark} />
         <svg
             ref={svgRef}
             data-testid="dag-chart"
             className="w-full"
-            style={{ maxHeight: 200 }}
             viewBox={`0 0 ${totalWidth} ${totalHeight}`}
             preserveAspectRatio="xMidYMid meet"
         >
@@ -164,6 +178,7 @@ export function PipelineDAGChart({ data, isDark, onNodeClick, now, phaseDetails,
                 `}</style>
             </defs>
 
+            <g transform={svgTransform}>
             {/* Edges */}
             {data.nodes.map((node, i) => {
                 if (i === 0) return null;
@@ -233,7 +248,15 @@ export function PipelineDAGChart({ data, isDark, onNodeClick, now, phaseDetails,
                     </g>
                 );
             })()}
+            </g>
         </svg>
+        <ZoomControls
+            zoomLabel={zoomLabel}
+            onZoomIn={zoomIn}
+            onZoomOut={zoomOut}
+            onReset={zoomReset}
+            onFitToView={fitToView}
+        />
         {hoveredPhase && hoverAnchor && pipelineConfig && !selectedPhase && (
             <DAGHoverTooltip
                 phase={hoveredPhase}

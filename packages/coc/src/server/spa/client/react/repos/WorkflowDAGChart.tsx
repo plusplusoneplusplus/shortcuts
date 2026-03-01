@@ -3,8 +3,11 @@
  * Renders nodes in layers (left-to-right) with edges showing data flow.
  */
 
+import { useCallback } from 'react';
 import { DAGEdge } from '../processes/dag/DAGEdge';
 import { getNodeColors } from '../processes/dag/dag-colors';
+import { useZoomPan } from '../hooks/useZoomPan';
+import { ZoomControls } from '../processes/dag/ZoomControls';
 import type { WorkflowPreviewData } from './buildPreviewDAG';
 
 export interface WorkflowDAGChartProps {
@@ -65,14 +68,32 @@ export function WorkflowDAGChart({ data, isDark }: WorkflowDAGChartProps) {
     const nodeMap = new Map(nodes.map(n => [n.id, n]));
     const colors = getNodeColors('waiting', isDark);
 
+    const {
+        containerRef,
+        svgTransform,
+        zoomIn, zoomOut, reset, fitToView,
+        zoomLabel,
+        state: zoomState,
+    } = useZoomPan({ contentWidth: totalWidth, contentHeight: totalHeight });
+
     return (
+        <div
+            ref={containerRef}
+            data-testid="workflow-dag-container"
+            style={{
+                position: 'relative',
+                overflow: 'hidden',
+                maxHeight: 300,
+                cursor: zoomState.isDragging ? 'grabbing' : 'grab',
+            }}
+        >
         <svg
             data-testid="workflow-dag-chart"
             className="w-full"
-            style={{ maxHeight: 300 }}
             viewBox={`0 0 ${totalWidth} ${totalHeight}`}
             preserveAspectRatio="xMidYMid meet"
         >
+            <g transform={svgTransform}>
             {/* Edges */}
             {edges.map((edge, i) => {
                 const fromPos = positions.get(edge.from);
@@ -132,6 +153,15 @@ export function WorkflowDAGChart({ data, isDark }: WorkflowDAGChartProps) {
                     </g>
                 );
             })}
+            </g>
         </svg>
+        <ZoomControls
+            zoomLabel={zoomLabel}
+            onZoomIn={zoomIn}
+            onZoomOut={zoomOut}
+            onReset={reset}
+            onFitToView={fitToView}
+        />
+        </div>
     );
 }

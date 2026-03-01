@@ -12,3 +12,4 @@ export { getEdgeBadgeText, getEdgeSchemaText } from './edgeAnnotations';
 export { DAGErrorPin } from './DAGErrorPin';
 export { mapErrorsToPhases, getNodeErrors } from './errorMapping';
 export type { PhaseErrors } from './errorMapping';
+export { ZoomControls } from './ZoomControls';

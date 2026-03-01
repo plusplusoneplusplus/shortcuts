@@ -328,3 +328,45 @@ describe('PipelineDAGChart — validation error pins', () => {
         expect(screen.queryAllByTestId('dag-error-pin')).toHaveLength(0);
     });
 });
+
+describe('PipelineDAGChart — zoom and pan', () => {
+    it('renders zoom controls', () => {
+        render(<PipelineDAGChart data={makeData()} isDark={false} />);
+        expect(screen.getByTestId('zoom-controls')).toBeDefined();
+    });
+
+    it('SVG has transform group wrapping content', () => {
+        render(<PipelineDAGChart data={makeData()} isDark={false} />);
+        const svg = screen.getByTestId('dag-chart');
+        const g = svg.querySelector('g[transform]');
+        expect(g).not.toBeNull();
+    });
+
+    it('initial transform contains scale(1)', () => {
+        render(<PipelineDAGChart data={makeData()} isDark={false} />);
+        const svg = screen.getByTestId('dag-chart');
+        const g = svg.querySelector('g[transform]');
+        expect(g?.getAttribute('transform')).toContain('scale(1)');
+        expect(g?.getAttribute('transform')).toContain('translate(0, 0)');
+    });
+
+    it('zoom in button updates transform', () => {
+        render(<PipelineDAGChart data={makeData()} isDark={false} />);
+        const zoomInBtn = screen.getByTitle('Zoom in');
+        fireEvent.click(zoomInBtn);
+        const svg = screen.getByTestId('dag-chart');
+        const g = svg.querySelector('g[transform]');
+        expect(g?.getAttribute('transform')).toContain('scale(1.25)');
+    });
+
+    it('zoom label shows current percentage', () => {
+        render(<PipelineDAGChart data={makeData()} isDark={false} />);
+        expect(screen.getByTestId('zoom-label').textContent).toBe('100%');
+    });
+
+    it('container has overflow hidden', () => {
+        render(<PipelineDAGChart data={makeData()} isDark={false} />);
+        const container = screen.getByTestId('dag-chart-container');
+        expect(container.style.overflow).toBe('hidden');
+    });
+});
