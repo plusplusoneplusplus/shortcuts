@@ -152,14 +152,14 @@ export function ReposView() {
 
     if (loading && repos.length === 0) {
         return (
-            <div id="view-repos" className="flex items-center justify-center h-[calc(100vh-48px)] text-sm text-[#848484]">
+            <div id="view-repos" className="flex items-center justify-center h-[calc(100vh-48px-56px)] md:h-[calc(100vh-48px)] text-sm text-[#848484]">
                 Loading repositories...
             </div>
         );
     }
 
     return (
-        <div id="view-repos" className="flex h-[calc(100vh-48px)] overflow-hidden">
+        <div id="view-repos" className="flex h-[calc(100vh-48px-56px)] md:h-[calc(100vh-48px)] overflow-hidden">
             {/* Left: sidebar */}
             <aside
                 id="repos-sidebar"

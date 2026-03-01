@@ -9,6 +9,7 @@ import { QueueProvider, useQueue } from './context/QueueContext';
 import { ToastProvider } from './context/ToastContext';
 import { ThemeProvider } from './layout/ThemeProvider';
 import { TopBar } from './layout/TopBar';
+import { BottomNav } from './layout/BottomNav';
 import { Router } from './layout/Router';
 import { useWebSocket } from './hooks/useWebSocket';
 import { fetchApi } from './hooks/useApi';
@@ -303,6 +304,7 @@ function AppInner() {
         <ToastProvider value={{ addToast, removeToast, toasts }}>
             <TopBar />
             <Router />
+            <BottomNav />
             <ToastContainer toasts={toasts} removeToast={removeToast} />
             <EnqueueDialog />
             <MarkdownReviewDialog

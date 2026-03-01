@@ -13,7 +13,7 @@ export function ProcessesView() {
     const { state: queueState } = useQueue();
 
     return (
-        <div id="view-processes" className="flex h-[calc(100vh-48px)] overflow-hidden">
+        <div id="view-processes" className="flex h-[calc(100vh-48px-56px)] md:h-[calc(100vh-48px)] overflow-hidden">
             {/* Left panel: filters + list */}
             <aside className="w-[320px] min-w-[320px] max-w-[320px] shrink-0 min-h-0 flex flex-col border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]">
                 <ProcessFilters />

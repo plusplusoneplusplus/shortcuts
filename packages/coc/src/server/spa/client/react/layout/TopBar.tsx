@@ -56,8 +56,9 @@ export function TopBar() {
                 >
                     &#9776;
                 </button>
-                <span className="text-sm font-semibold whitespace-nowrap">CoC (Copilot Of Copilot)</span>
-                <nav className="flex items-center gap-1 min-w-0" id="tab-bar">
+                <span className="text-sm font-semibold whitespace-nowrap md:hidden">CoC</span>
+                <span className="text-sm font-semibold whitespace-nowrap hidden md:inline">CoC (Copilot Of Copilot)</span>
+                <nav className="hidden md:flex items-center gap-1 min-w-0" id="tab-bar">
                     {TABS.map(({ label, tab }) => (
                         <button
                             key={tab}

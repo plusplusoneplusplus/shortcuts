@@ -184,7 +184,7 @@ export function WikiDetail({ wikiId }: WikiDetailProps) {
     };
 
     return (
-        <div className="flex flex-col h-[calc(100vh-48px)] overflow-hidden" id="view-wiki">
+        <div className="flex flex-col h-[calc(100vh-48px-56px)] md:h-[calc(100vh-48px)] overflow-hidden" id="view-wiki">
             {/* Top bar */}
             <div className="flex items-center gap-2 px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
                 <button
