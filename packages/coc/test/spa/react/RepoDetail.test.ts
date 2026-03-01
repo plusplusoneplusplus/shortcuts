@@ -236,6 +236,38 @@ describe('RepoDetail Chat badge wiring', () => {
     });
 });
 
+describe('RepoDetail Queue Task button in header', () => {
+    it('renders + Queue Task button conditionally for queue sub-tab', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-queue-task-btn"');
+    });
+
+    it('only shows button when activeSubTab is queue', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'queue'");
+        // The queue-task-btn should be inside a conditional block checking for queue tab
+        const lines = REPO_DETAIL_SOURCE.split('\n');
+        const conditionLine = lines.findIndex(l => l.includes("activeSubTab === 'queue'") && l.includes('&&'));
+        const btnLine = lines.findIndex(l => l.includes('repo-queue-task-btn'));
+        expect(conditionLine).toBeGreaterThan(-1);
+        expect(btnLine).toBeGreaterThan(conditionLine);
+    });
+
+    it('dispatches OPEN_DIALOG with workspaceId on click', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id })");
+    });
+
+    it('button appears before generate button in the header', () => {
+        const queueBtnIdx = REPO_DETAIL_SOURCE.indexOf('repo-queue-task-btn');
+        const genBtnIdx = REPO_DETAIL_SOURCE.indexOf('repo-generate-btn');
+        expect(queueBtnIdx).toBeLessThan(genBtnIdx);
+    });
+
+    it('uses ghost variant', () => {
+        const idx = REPO_DETAIL_SOURCE.indexOf('repo-queue-task-btn');
+        const block = REPO_DETAIL_SOURCE.substring(Math.max(0, idx - 300), idx);
+        expect(block).toContain('variant="ghost"');
+    });
+});
+
 describe('RepoDetail Git tab wiring', () => {
     it('imports RepoGitTab', () => {
         expect(REPO_DETAIL_SOURCE).toContain("import { RepoGitTab } from './RepoGitTab'");

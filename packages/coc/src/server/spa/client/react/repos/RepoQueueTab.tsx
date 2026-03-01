@@ -302,15 +302,6 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
                             </select>
                         )}
                         <div className="flex-1" />
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId })}
-                            title="Queue a new task"
-                            data-testid="repo-queue-task-btn"
-                        >
-                            + Queue Task
-                        </Button>
                         {(isPaused || running.length > 0 || queued.length > 0) && (
                             <Button
                                 variant="ghost"

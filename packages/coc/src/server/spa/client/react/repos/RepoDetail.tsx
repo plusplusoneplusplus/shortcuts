@@ -98,6 +98,17 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                     style={{ background: color }}
                 />
                 <h1 className="text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc] flex-1">{ws.name}</h1>
+                {activeSubTab === 'queue' && (
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id })}
+                        title="Queue a new task"
+                        data-testid="repo-queue-task-btn"
+                    >
+                        + Queue Task
+                    </Button>
+                )}
                 <Button variant="primary" size="sm" id="repo-generate-btn" data-testid="repo-generate-btn" onClick={() => handleOpenGenerateDialog()} className="relative">
                     ✨ Generate Plan
                     {generateDialog.open && generateDialog.minimized && (

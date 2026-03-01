@@ -309,7 +309,7 @@ describe('RepoQueueTab', () => {
         expect(screen.getByTestId('repo-queue-task-btn-empty').textContent).toContain('Queue Task');
     });
 
-    it('header shows "+ Queue Task" button when tasks exist', async () => {
+    it('toolbar does not contain "+ Queue Task" button (moved to RepoDetail header)', async () => {
         setupFetch({
             queue: makeQueueResponse({ running: [makeRunningTask()] }),
             history: makeHistoryResponse([]),
@@ -322,10 +322,10 @@ describe('RepoQueueTab', () => {
         );
 
         await waitFor(() => {
-            expect(screen.getByTestId('repo-queue-task-btn')).toBeTruthy();
+            expect(screen.getAllByText(/Running Task/).length).toBeGreaterThan(0);
         });
 
-        expect(screen.getByTestId('repo-queue-task-btn').textContent).toContain('Queue Task');
+        expect(screen.queryByTestId('repo-queue-task-btn')).toBeNull();
     });
 
     it('preserves deep-link selectedTaskId through the loading phase', async () => {
