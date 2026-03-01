@@ -3,9 +3,9 @@
  * Renders a two-zone flex layout: left = TaskTree, right = TaskPreview.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TaskProvider, useTaskPanel } from '../context/TaskContext';
-import { useTaskTree, countMarkdownFilesInFolder, isTaskDocument, isTaskDocumentGroup } from '../hooks/useTaskTree';
+import { useTaskTree, countMarkdownFilesInFolder, isTaskDocument, isTaskDocumentGroup, flattenTaskTree, filterTaskItems } from '../hooks/useTaskTree';
 import type { TaskFolder, TaskDocument, TaskDocumentGroup } from '../hooks/useTaskTree';
 import { useFolderActions } from '../hooks/useFolderActions';
 import { useFileActions } from '../hooks/useFileActions';
@@ -15,6 +15,7 @@ import { useQueue } from '../context/QueueContext';
 import { useGlobalToast } from '../context/ToastContext';
 import { TaskTree } from './TaskTree';
 import { TaskPreview } from './TaskPreview';
+import { TaskSearchResults } from './TaskSearchResults';
 import { TaskActions } from './TaskActions';
 import { ContextMenu } from './comments/ContextMenu';
 import type { ContextMenuItem } from './comments/ContextMenu';
@@ -72,7 +73,7 @@ function scrollToEnd(el: HTMLElement | null) {
 
 function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps) {
     const { tree, commentCounts, loading, error, refresh } = useTaskTree(wsId);
-    const { openFilePath, selectedFilePaths, clearSelection, selectedFolderPath } = useTaskPanel();
+    const { openFilePath, setOpenFilePath, selectedFilePaths, clearSelection, selectedFolderPath } = useTaskPanel();
     const [initialParams] = useState(() => parseTaskHashParams(location.hash, wsId));
     const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -98,6 +99,10 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
         setSearchQuery('');
         if (debounceRef.current) clearTimeout(debounceRef.current);
     }, []);
+
+    // ── Search results (derived) ────────────────────────────────────────
+    const allItems = useMemo(() => tree ? flattenTaskTree(tree) : [], [tree]);
+    const searchResults = useMemo(() => filterTaskItems(allItems, searchQuery), [allItems, searchQuery]);
 
     const { state: appState } = useApp();
     const { dispatch: queueDispatch } = useQueue();
@@ -698,18 +703,28 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
             >
                 <div className="flex h-full min-h-0 min-w-full">
                     <div className="flex-shrink-0 h-full min-h-0">
-                        <TaskTree
-                            tree={tree}
-                            commentCounts={commentCounts}
-                            wsId={wsId}
-                            initialFolderPath={initialParams.initialFolderPath}
-                            initialFilePath={initialParams.initialFilePath}
-                            onColumnsChange={handleColumnsChange}
-                            onFolderContextMenu={handleFolderContextMenu}
-                            onFolderEmptySpaceContextMenu={handleFolderEmptySpaceContextMenu}
-                            onFileContextMenu={handleFileContextMenu}
-                            onDrop={handleDragDrop}
-                        />
+                        {searchQuery ? (
+                            <TaskSearchResults
+                                results={searchResults}
+                                query={searchQuery}
+                                commentCounts={commentCounts}
+                                wsId={wsId}
+                                onFileClick={(path) => setOpenFilePath(path)}
+                            />
+                        ) : (
+                            <TaskTree
+                                tree={tree}
+                                commentCounts={commentCounts}
+                                wsId={wsId}
+                                initialFolderPath={initialParams.initialFolderPath}
+                                initialFilePath={initialParams.initialFilePath}
+                                onColumnsChange={handleColumnsChange}
+                                onFolderContextMenu={handleFolderContextMenu}
+                                onFolderEmptySpaceContextMenu={handleFolderEmptySpaceContextMenu}
+                                onFileContextMenu={handleFileContextMenu}
+                                onDrop={handleDragDrop}
+                            />
+                        )}
                     </div>
 
                     {openFilePath && (

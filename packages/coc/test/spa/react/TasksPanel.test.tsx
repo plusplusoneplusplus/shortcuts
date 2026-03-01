@@ -1568,3 +1568,96 @@ describe('TasksPanel — search debounce', () => {
         unmount();
     });
 });
+
+// ============================================================================
+// TasksPanel — search results toggling
+// ============================================================================
+
+describe('TasksPanel — search results', () => {
+    let fetchSpy: ReturnType<typeof vi.fn>;
+
+    function setupFetch() {
+        fetchSpy.mockImplementation((url: string) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ 'task1.plan.md': 3 }) });
+            }
+            if (url.includes('queue/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ models: [] }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
+        });
+    }
+
+    beforeEach(() => {
+        fetchSpy = vi.fn();
+        global.fetch = fetchSpy;
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('shows TaskTree when searchQuery is empty', async () => {
+        setupFetch();
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree')).toBeTruthy();
+        });
+        expect(screen.queryByTestId('search-results-list')).toBeNull();
+        expect(screen.queryByTestId('search-empty-state')).toBeNull();
+    });
+
+    it('shows TaskSearchResults when searchQuery is non-empty', async () => {
+        setupFetch();
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree')).toBeTruthy();
+        });
+
+        const input = screen.getByTestId('task-search-input') as HTMLInputElement;
+        fireEvent.change(input, { target: { value: 'task1' } });
+
+        // Wait for 150ms debounce to fire and state to update
+        await waitFor(() => {
+            expect(screen.queryByTestId('task-tree')).toBeNull();
+        });
+        expect(screen.getByTestId('search-results-list')).toBeTruthy();
+    });
+
+    it('shows empty state when search has no matches', async () => {
+        setupFetch();
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree')).toBeTruthy();
+        });
+
+        const input = screen.getByTestId('task-search-input') as HTMLInputElement;
+        fireEvent.change(input, { target: { value: 'zzzznonexistent' } });
+
+        await waitFor(() => {
+            expect(screen.queryByTestId('task-tree')).toBeNull();
+        });
+        expect(screen.getByTestId('search-empty-state')).toBeTruthy();
+    });
+
+    it('restores TaskTree when search is cleared', async () => {
+        setupFetch();
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree')).toBeTruthy();
+        });
+
+        const input = screen.getByTestId('task-search-input') as HTMLInputElement;
+        fireEvent.change(input, { target: { value: 'task1' } });
+        await waitFor(() => {
+            expect(screen.queryByTestId('task-tree')).toBeNull();
+        });
+
+        // Clear the search
+        fireEvent.click(screen.getByTestId('task-search-clear'));
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree')).toBeTruthy();
+        });
+        expect(screen.queryByTestId('search-results-list')).toBeNull();
+    });
+});
