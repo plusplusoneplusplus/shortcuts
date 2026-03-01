@@ -3,6 +3,7 @@ import type { PipelinePhase, PipelineConfig } from '@plusplusoneplusplus/pipelin
 import type { DAGChartData } from './types';
 import { DAGNode } from './DAGNode';
 import { DAGEdge } from './DAGEdge';
+import { getEdgeBadgeText, getEdgeSchemaText } from './edgeAnnotations';
 import { DAGProgressBar } from './DAGProgressBar';
 import { DAGLegend } from './DAGLegend';
 import { DAGBreadcrumb } from './DAGBreadcrumb';
@@ -161,6 +162,8 @@ export function PipelineDAGChart({ data, isDark, onNodeClick, now, phaseDetails,
                 const prev = data.nodes[i - 1];
                 const fromPos = positions[i - 1];
                 const toPos = positions[i];
+                const badgeText = getEdgeBadgeText(prev.phase, node.phase, pipelineConfig);
+                const tooltipText = getEdgeSchemaText(prev.phase, node.phase, pipelineConfig);
                 return (
                     <DAGEdge
                         key={`edge-${prev.phase}-${node.phase}`}
@@ -170,6 +173,8 @@ export function PipelineDAGChart({ data, isDark, onNodeClick, now, phaseDetails,
                         toY={toPos.y + NODE_H / 2}
                         state={deriveEdgeState(prev.state, node.state)}
                         isDark={isDark}
+                        badgeText={badgeText}
+                        tooltipText={tooltipText}
                     />
                 );
             })}

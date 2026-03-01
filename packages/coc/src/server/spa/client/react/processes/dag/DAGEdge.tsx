@@ -1,5 +1,6 @@
 import { getEdgeColor } from './dag-colors';
 import type { EdgeState } from './dag-colors';
+import { DAGEdgeLabel } from './DAGEdgeLabel';
 
 export interface DAGEdgeProps {
     fromX: number;
@@ -8,9 +9,13 @@ export interface DAGEdgeProps {
     toY: number;
     state: EdgeState;
     isDark: boolean;
+    /** Short label to display as a badge on the edge */
+    badgeText?: string | null;
+    /** Full schema text for hover tooltip */
+    tooltipText?: string | null;
 }
 
-export function DAGEdge({ fromX, fromY, toX, toY, state, isDark }: DAGEdgeProps) {
+export function DAGEdge({ fromX, fromY, toX, toY, state, isDark, badgeText, tooltipText }: DAGEdgeProps) {
     const color = getEdgeColor(state, isDark);
     const markerId = `arrowhead-${state}`;
     const dashed = state === 'waiting' || state === 'active' || state === 'error';
@@ -39,6 +44,15 @@ export function DAGEdge({ fromX, fromY, toX, toY, state, isDark }: DAGEdgeProps)
                 strokeDasharray={dashed ? '6 4' : undefined}
                 style={animated ? { animation: 'dag-edge-dash 1s linear infinite' } : undefined}
             />
+            {badgeText && (
+                <DAGEdgeLabel
+                    x={(fromX + toX) / 2}
+                    y={(fromY + toY) / 2}
+                    badgeText={badgeText}
+                    tooltipText={tooltipText ?? undefined}
+                    isDark={isDark}
+                />
+            )}
         </g>
     );
 }

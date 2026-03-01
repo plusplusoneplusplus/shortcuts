@@ -214,3 +214,69 @@ describe('PipelineDAGChart — hover tooltip', () => {
         expect(screen.getByTestId('phase-popover')).toBeDefined();
     });
 });
+
+describe('PipelineDAGChart — edge annotations', () => {
+    it('renders edge labels when pipelineConfig is provided with input data', () => {
+        const config: PipelineConfig = {
+            name: 'test',
+            input: { items: [{ name: 'a' }, { name: 'b' }] },
+            map: { prompt: 'Analyze {{name}}', model: 'gpt-4', output: ['result', 'score'] },
+            reduce: { type: 'ai', prompt: 'Summarize', model: 'gpt-4' },
+        };
+        render(<PipelineDAGChart data={makeData()} isDark={false} pipelineConfig={config} />);
+        const edgeLabels = screen.getAllByTestId('dag-edge-label');
+        expect(edgeLabels.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('renders "2 items" badge on input→map edge', () => {
+        const config: PipelineConfig = {
+            name: 'test',
+            input: { items: [{ name: 'a' }, { name: 'b' }] },
+            map: { prompt: 'Analyze {{name}}', model: 'gpt-4' },
+            reduce: { type: 'ai', prompt: 'Summarize', model: 'gpt-4' },
+        };
+        render(<PipelineDAGChart data={makeData()} isDark={false} pipelineConfig={config} />);
+        const edgeLabels = screen.getAllByTestId('dag-edge-label');
+        // textContent includes badge text + <title>; check that badge text is present
+        expect(edgeLabels.some(el => el.textContent?.includes('2 items'))).toBe(true);
+    });
+
+    it('renders output fields badge on map→reduce edge', () => {
+        const config: PipelineConfig = {
+            name: 'test',
+            input: { items: [{ name: 'a' }] },
+            map: { prompt: 'test', model: 'gpt-4', output: ['category', 'summary'] },
+            reduce: { type: 'ai', prompt: 'Summarize', model: 'gpt-4' },
+        };
+        render(<PipelineDAGChart data={makeData()} isDark={false} pipelineConfig={config} />);
+        const edgeLabels = screen.getAllByTestId('dag-edge-label');
+        expect(edgeLabels.some(el => el.textContent?.includes('[category, summary]'))).toBe(true);
+    });
+
+    it('does not render edge labels when pipelineConfig is not provided', () => {
+        render(<PipelineDAGChart data={makeData()} isDark={false} />);
+        expect(screen.queryAllByTestId('dag-edge-label')).toHaveLength(0);
+    });
+
+    it('renders "filtered" badge when filter phase is present', () => {
+        const config: PipelineConfig = {
+            name: 'test',
+            input: { items: [{ name: 'a' }] },
+            filter: { type: 'rule' },
+            map: { prompt: 'test', model: 'gpt-4' },
+            reduce: { type: 'ai', prompt: 'Summarize', model: 'gpt-4' },
+        };
+        const data: DAGChartData = {
+            nodes: [
+                { phase: 'input', state: 'completed', label: 'Input' },
+                { phase: 'filter', state: 'completed', label: 'Filter' },
+                { phase: 'map', state: 'completed', label: 'Map' },
+                { phase: 'reduce', state: 'completed', label: 'Reduce' },
+            ],
+            totalDurationMs: 5000,
+        };
+        render(<PipelineDAGChart data={data} isDark={false} pipelineConfig={config} />);
+        const edgeLabels = screen.getAllByTestId('dag-edge-label');
+        expect(edgeLabels.some(el => el.textContent?.includes('filtered'))).toBe(true);
+    });
+});

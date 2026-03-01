@@ -165,6 +165,7 @@ export function PipelineDAGSection({ process, eventSourceRef, onScrollToConversa
                         phaseDetails={phaseDetails}
                         onScrollToConversation={handleScrollToConversation}
                         parallelCount={parallelCount}
+                        pipelineConfig={config}
                     />
                     <div className="text-xs text-[#848484] text-center mt-2">
                         {caption}
