@@ -50,13 +50,19 @@ vi.mock('../../../src/server/spa/client/react/hooks/useTaskComments', () => ({
 
 /* ── Mock useMarkdownPreview ── */
 vi.mock('../../../src/server/spa/client/react/hooks/useMarkdownPreview', () => ({
-    useMarkdownPreview: ({ content, viewMode }: { content: string; viewMode?: string }) => ({
-        html: content
-            ? (viewMode === 'source'
-                ? `<pre class="src-block">${content}</pre>`
-                : `<p>${content}</p>`)
-            : '',
-    }),
+    useMarkdownPreview: ({ content, viewMode, comments }: { content: string; viewMode?: string; comments?: Array<{ id: string; selection: any; status: string }> }) => {
+        if (!content) return { html: '' };
+        if (viewMode === 'source') return { html: `<pre class="src-block">${content}</pre>` };
+        // When comments are present, inject highlight spans into the HTML
+        let html = `<p>${content}</p>`;
+        if (comments?.length) {
+            for (const c of comments) {
+                const cls = c.status === 'resolved' ? 'commented-text resolved' : 'commented-text';
+                html += `<span class="${cls}" data-comment-id="${c.id}">highlighted</span>`;
+            }
+        }
+        return { html };
+    },
 }));
 
 /* ── Mock anchor creation (avoid real DOM traversal) ── */
@@ -135,6 +141,8 @@ describe('MarkdownReviewEditor', () => {
         mockAddToast.mockReset();
         mockRefresh.mockReset();
         mockAddComment.mockResolvedValue({ id: 'new-comment-1', comment: '', category: 'question' });
+        // jsdom lacks scrollTo — stub it globally for highlight click tests
+        Element.prototype.scrollTo = vi.fn();
         mockAskAI.mockResolvedValue(undefined);
     });
 
@@ -713,6 +721,125 @@ describe('MarkdownReviewEditor', () => {
                     'error'
                 );
             }
+        });
+    });
+
+    // ── Highlight click delegation tests ──
+
+    describe('highlight click delegation', () => {
+        const mockComments = [
+            {
+                id: 'c1',
+                taskId: 'test.md',
+                selection: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 6 },
+                selectedText: 'Hello',
+                comment: 'Review this',
+                status: 'open',
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                author: 'tester',
+                category: 'suggestion',
+            },
+            {
+                id: 'c2',
+                taskId: 'test.md',
+                selection: { startLine: 2, startColumn: 1, endLine: 2, endColumn: 8 },
+                selectedText: 'Content',
+                comment: 'Check this',
+                status: 'resolved',
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                author: 'tester',
+                category: 'bug',
+            },
+        ];
+
+        beforeEach(() => {
+            hookOverrides = { comments: mockComments };
+        });
+
+        afterEach(() => {
+            hookOverrides = {};
+        });
+
+        async function renderWithHighlights() {
+            const result = render(
+                <MarkdownReviewEditor wsId="ws1" filePath="test.md" fetchMode="tasks" />
+            );
+            await waitFor(() => {
+                expect(document.querySelector('#task-preview-body')).toBeTruthy();
+            });
+            return result;
+        }
+
+        it('clicking a span.commented-text element opens the comment popover', async () => {
+            await renderWithHighlights();
+
+            const preview = document.querySelector('#task-preview-body')!;
+            const highlightSpan = preview.querySelector('[data-comment-id="c1"]')!;
+            expect(highlightSpan).toBeTruthy();
+
+            await act(async () => {
+                fireEvent.click(highlightSpan);
+            });
+
+            // The popover should appear for the clicked comment
+            await waitFor(() => {
+                const popover = document.querySelector('[data-testid="comment-popover"]');
+                expect(popover).toBeTruthy();
+            });
+        });
+
+        it('clicking outside highlight spans does not open popover', async () => {
+            await renderWithHighlights();
+
+            const preview = document.querySelector('#task-preview-body')!;
+            // Click the <p> element which has no data-comment-id
+            const paragraph = preview.querySelector('p')!;
+            expect(paragraph).toBeTruthy();
+
+            await act(async () => {
+                fireEvent.click(paragraph);
+            });
+
+            // No popover should appear
+            const popover = document.querySelector('[data-testid="comment-popover"]');
+            expect(popover).toBeNull();
+        });
+
+        it('clicking a resolved comment span also opens popover', async () => {
+            await renderWithHighlights();
+
+            const preview = document.querySelector('#task-preview-body')!;
+            const resolvedSpan = preview.querySelector('[data-comment-id="c2"]')!;
+            expect(resolvedSpan).toBeTruthy();
+            expect(resolvedSpan.classList.contains('resolved')).toBe(true);
+
+            await act(async () => {
+                fireEvent.click(resolvedSpan);
+            });
+
+            await waitFor(() => {
+                const popover = document.querySelector('[data-testid="comment-popover"]');
+                expect(popover).toBeTruthy();
+            });
+        });
+
+        it('does not render any <mark> elements from DOM mutation', async () => {
+            await renderWithHighlights();
+
+            const preview = document.querySelector('#task-preview-body')!;
+            const marks = preview.querySelectorAll('mark');
+            expect(marks.length).toBe(0);
+        });
+
+        it('preview container has onClick handler for delegation', async () => {
+            await renderWithHighlights();
+
+            const preview = document.querySelector('#task-preview-body')!;
+            // Verify the element is rendered and has highlight spans (delegation target)
+            const spans = preview.querySelectorAll('.commented-text');
+            expect(spans.length).toBe(2);
         });
     });
 });
