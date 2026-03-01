@@ -7,11 +7,12 @@
  * follow-up responses via SSE.
  */
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { fetchApi } from '../hooks/useApi';
 import { getApiBase } from '../utils/config';
 import { Button, Spinner, SuggestionChips } from '../shared';
 import { ConversationTurnBubble } from '../processes/ConversationTurnBubble';
+import { ConversationMetadataPopover } from '../processes/ConversationMetadataPopover';
 import { useImagePaste } from '../hooks/useImagePaste';
 import { ImagePreviews } from '../shared/ImagePreviews';
 import { ChatSessionSidebar } from '../chat/ChatSessionSidebar';
@@ -95,6 +96,21 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
 
     const processId = task?.processId ?? (chatTaskId ? `queue_${chatTaskId}` : null);
     const taskFinished = task?.status === 'completed' || task?.status === 'failed';
+
+    // Build a process-like object for ConversationMetadataPopover from the queue task
+    const metadataProcess = useMemo(() => {
+        if (!task) return null;
+        return {
+            ...task,
+            id: processId ?? task.id,
+            metadata: {
+                queueTaskId: task.id,
+                model: task.config?.model,
+                workspaceId,
+                ...task.metadata,
+            },
+        };
+    }, [task, processId, workspaceId]);
 
     // Sync streaming state to QueueContext for badge counts
     const streamingDispatchedRef = useRef(false);
@@ -702,7 +718,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
                         </span>
                     )}
                 </div>
-                <div className="flex gap-2">
+                <div className="flex items-center gap-2">
                     {isStreaming && <Button size="sm" variant="secondary" onClick={stopStreaming}>Stop</Button>}
                     {task?.status === 'queued' && (
                         <Button size="sm" variant="secondary" onClick={() => void handleCancelChat()} data-testid="cancel-chat-header-btn">
@@ -719,6 +735,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
                             </Button>
                         </>
                     )}
+                    {metadataProcess && <ConversationMetadataPopover process={metadataProcess} turnsCount={turns.length} />}
                 </div>
             </div>
 

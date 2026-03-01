@@ -1405,4 +1405,83 @@ describe('RepoChatTab', () => {
             expect(source).toContain("task?.type === 'readonly-chat'");
         });
     });
+
+    describe('conversation metadata popover (info icon)', () => {
+        it('imports ConversationMetadataPopover from processes', () => {
+            expect(source).toContain("import { ConversationMetadataPopover } from '../processes/ConversationMetadataPopover'");
+        });
+
+        it('imports useMemo from react', () => {
+            expect(source).toContain('useMemo');
+            const reactImport = source.substring(source.indexOf("from 'react'") - 100, source.indexOf("from 'react'"));
+            expect(reactImport).toContain('useMemo');
+        });
+
+        it('builds metadataProcess with useMemo from task object', () => {
+            expect(source).toContain('const metadataProcess = useMemo(');
+        });
+
+        it('metadataProcess returns null when task is null', () => {
+            const memo = source.substring(source.indexOf('const metadataProcess = useMemo'), source.indexOf('}, [task, processId'));
+            expect(memo).toContain('if (!task) return null');
+        });
+
+        it('metadataProcess uses processId for the id field', () => {
+            const memo = source.substring(source.indexOf('const metadataProcess = useMemo'), source.indexOf('}, [task, processId'));
+            expect(memo).toContain('id: processId ?? task.id');
+        });
+
+        it('metadataProcess includes queueTaskId in metadata', () => {
+            const memo = source.substring(source.indexOf('const metadataProcess = useMemo'), source.indexOf('}, [task, processId'));
+            expect(memo).toContain('queueTaskId: task.id');
+        });
+
+        it('metadataProcess includes model from task config in metadata', () => {
+            const memo = source.substring(source.indexOf('const metadataProcess = useMemo'), source.indexOf('}, [task, processId'));
+            expect(memo).toContain('task.config?.model');
+        });
+
+        it('metadataProcess includes workspaceId in metadata', () => {
+            const memo = source.substring(source.indexOf('const metadataProcess = useMemo'), source.indexOf('}, [task, processId'));
+            expect(memo).toContain('workspaceId');
+        });
+
+        it('metadataProcess depends on task, processId, and workspaceId', () => {
+            expect(source).toContain('[task, processId, workspaceId]');
+        });
+
+        it('renders ConversationMetadataPopover in the chat header', () => {
+            const headerSection = source.substring(source.indexOf('{/* Header */}'), source.indexOf('{/* Conversation area */}'));
+            expect(headerSection).toContain('<ConversationMetadataPopover');
+        });
+
+        it('passes metadataProcess as the process prop', () => {
+            const headerSection = source.substring(source.indexOf('{/* Header */}'), source.indexOf('{/* Conversation area */}'));
+            expect(headerSection).toContain('process={metadataProcess}');
+        });
+
+        it('passes turns.length as the turnsCount prop', () => {
+            const headerSection = source.substring(source.indexOf('{/* Header */}'), source.indexOf('{/* Conversation area */}'));
+            expect(headerSection).toContain('turnsCount={turns.length}');
+        });
+
+        it('conditionally renders popover only when metadataProcess is defined', () => {
+            const headerSection = source.substring(source.indexOf('{/* Header */}'), source.indexOf('{/* Conversation area */}'));
+            expect(headerSection).toContain('metadataProcess && <ConversationMetadataPopover');
+        });
+
+        it('popover is placed inside the header button group', () => {
+            const headerSection = source.substring(source.indexOf('{/* Header */}'), source.indexOf('{/* Conversation area */}'));
+            // The popover should be after the resume buttons and before closing the button group div
+            const popoverIdx = headerSection.indexOf('<ConversationMetadataPopover');
+            const stopIdx = headerSection.indexOf('>Stop<');
+            expect(popoverIdx).toBeGreaterThan(stopIdx);
+        });
+
+        it('header button group uses items-center alignment for info icon', () => {
+            const headerSection = source.substring(source.indexOf('{/* Header */}'), source.indexOf('{/* Conversation area */}'));
+            // The div containing buttons should use items-center for vertical alignment
+            expect(headerSection).toContain('"flex items-center gap-2"');
+        });
+    });
 });
