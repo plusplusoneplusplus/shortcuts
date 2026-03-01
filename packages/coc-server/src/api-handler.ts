@@ -705,6 +705,151 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         },
     });
 
+    // POST /api/workspaces/:id/git/push — Push to remote
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/push$/,
+        handler: async (req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const workspaces = await store.getWorkspaces();
+            const ws = workspaces.find(w => w.id === id);
+            if (!ws) {
+                return handleAPIError(res, notFound('Workspace'));
+            }
+
+            let body: any = {};
+            try {
+                body = await parseBody(req);
+            } catch {
+                return handleAPIError(res, invalidJSON());
+            }
+
+            const setUpstream = body.setUpstream === true;
+            const result = await branchService.push(ws.rootPath, setUpstream);
+            sendJSON(res, 200, result);
+        },
+    });
+
+    // POST /api/workspaces/:id/git/pull — Pull from remote
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/pull$/,
+        handler: async (req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const workspaces = await store.getWorkspaces();
+            const ws = workspaces.find(w => w.id === id);
+            if (!ws) {
+                return handleAPIError(res, notFound('Workspace'));
+            }
+
+            let body: any = {};
+            try {
+                body = await parseBody(req);
+            } catch {
+                return handleAPIError(res, invalidJSON());
+            }
+
+            const rebase = body.rebase === true;
+            const result = await branchService.pull(ws.rootPath, rebase);
+            sendJSON(res, 200, result);
+        },
+    });
+
+    // POST /api/workspaces/:id/git/fetch — Fetch from remote(s)
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/fetch$/,
+        handler: async (req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const workspaces = await store.getWorkspaces();
+            const ws = workspaces.find(w => w.id === id);
+            if (!ws) {
+                return handleAPIError(res, notFound('Workspace'));
+            }
+
+            let body: any = {};
+            try {
+                body = await parseBody(req);
+            } catch {
+                return handleAPIError(res, invalidJSON());
+            }
+
+            const remote: string | undefined = typeof body.remote === 'string' ? body.remote : undefined;
+            const result = await branchService.fetch(ws.rootPath, remote);
+            sendJSON(res, 200, result);
+        },
+    });
+
+    // POST /api/workspaces/:id/git/merge — Merge a branch
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/merge$/,
+        handler: async (req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const workspaces = await store.getWorkspaces();
+            const ws = workspaces.find(w => w.id === id);
+            if (!ws) {
+                return handleAPIError(res, notFound('Workspace'));
+            }
+
+            let body: any;
+            try {
+                body = await parseBody(req);
+            } catch {
+                return handleAPIError(res, invalidJSON());
+            }
+
+            if (!body.branch || typeof body.branch !== 'string') {
+                return handleAPIError(res, missingFields(['branch']));
+            }
+
+            const result = await branchService.mergeBranch(ws.rootPath, body.branch);
+            sendJSON(res, 200, result);
+        },
+    });
+
+    // POST /api/workspaces/:id/git/stash — Stash changes
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/stash$/,
+        handler: async (req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const workspaces = await store.getWorkspaces();
+            const ws = workspaces.find(w => w.id === id);
+            if (!ws) {
+                return handleAPIError(res, notFound('Workspace'));
+            }
+
+            let body: any = {};
+            try {
+                body = await parseBody(req);
+            } catch {
+                return handleAPIError(res, invalidJSON());
+            }
+
+            const message: string | undefined = typeof body.message === 'string' ? body.message : undefined;
+            const result = await branchService.stashChanges(ws.rootPath, message);
+            sendJSON(res, 200, result);
+        },
+    });
+
+    // POST /api/workspaces/:id/git/stash/pop — Pop stash
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/stash\/pop$/,
+        handler: async (req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const workspaces = await store.getWorkspaces();
+            const ws = workspaces.find(w => w.id === id);
+            if (!ws) {
+                return handleAPIError(res, notFound('Workspace'));
+            }
+
+            const result = await branchService.popStash(ws.rootPath);
+            sendJSON(res, 200, result);
+        },
+    });
+
     // ------------------------------------------------------------------
     // Filesystem browse endpoint
     // ------------------------------------------------------------------

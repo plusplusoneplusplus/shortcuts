@@ -8,6 +8,12 @@
  * - POST /api/workspaces/:id/git/branches/switch
  * - POST /api/workspaces/:id/git/branches/rename
  * - DELETE /api/workspaces/:id/git/branches/:name
+ * - POST /api/workspaces/:id/git/push
+ * - POST /api/workspaces/:id/git/pull
+ * - POST /api/workspaces/:id/git/fetch
+ * - POST /api/workspaces/:id/git/merge
+ * - POST /api/workspaces/:id/git/stash
+ * - POST /api/workspaces/:id/git/stash/pop
  *
  * Uses mocked BranchService via vi.mock to avoid actual git calls.
  * Cross-platform compatible (Linux/Mac/Windows).
@@ -33,6 +39,12 @@ const mockCreateBranch = vi.fn();
 const mockSwitchBranch = vi.fn();
 const mockDeleteBranch = vi.fn();
 const mockRenameBranch = vi.fn();
+const mockPush = vi.fn();
+const mockPull = vi.fn();
+const mockFetch = vi.fn();
+const mockMergeBranch = vi.fn();
+const mockStashChanges = vi.fn();
+const mockPopStash = vi.fn();
 
 vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
@@ -47,6 +59,12 @@ vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
             switchBranch: mockSwitchBranch,
             deleteBranch: mockDeleteBranch,
             renameBranch: mockRenameBranch,
+            push: mockPush,
+            pull: mockPull,
+            fetch: mockFetch,
+            mergeBranch: mockMergeBranch,
+            stashChanges: mockStashChanges,
+            popStash: mockPopStash,
         })),
     };
 });
@@ -161,6 +179,12 @@ describe('Git Branches API endpoints', () => {
         mockSwitchBranch.mockReset();
         mockDeleteBranch.mockReset();
         mockRenameBranch.mockReset();
+        mockPush.mockReset();
+        mockPull.mockReset();
+        mockFetch.mockReset();
+        mockMergeBranch.mockReset();
+        mockStashChanges.mockReset();
+        mockPopStash.mockReset();
     });
 
     // -----------------------------------------------------------------------
@@ -525,6 +549,209 @@ describe('Git Branches API endpoints', () => {
 
             expect(res.status).toBe(500);
             expect(res.json().error).toBeDefined();
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // POST /api/workspaces/:id/git/push — Push
+    // -----------------------------------------------------------------------
+
+    describe('POST /api/workspaces/:id/git/push', () => {
+        it('should push with default options (no body)', async () => {
+            mockPush.mockResolvedValue({ success: true });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/push`, {
+                method: 'POST',
+                body: JSON.stringify({}),
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.json()).toEqual({ success: true });
+            expect(mockPush).toHaveBeenCalledWith(WORKSPACE_ROOT, false);
+        });
+
+        it('should pass setUpstream=true when specified', async () => {
+            mockPush.mockResolvedValue({ success: true });
+
+            await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/push`, {
+                method: 'POST',
+                body: JSON.stringify({ setUpstream: true }),
+            });
+
+            expect(mockPush).toHaveBeenCalledWith(WORKSPACE_ROOT, true);
+        });
+
+        it('should return failure result when push fails', async () => {
+            mockPush.mockResolvedValue({ success: false, error: 'no remote' });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/push`, {
+                method: 'POST',
+                body: JSON.stringify({}),
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.json()).toEqual({ success: false, error: 'no remote' });
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // POST /api/workspaces/:id/git/pull — Pull
+    // -----------------------------------------------------------------------
+
+    describe('POST /api/workspaces/:id/git/pull', () => {
+        it('should pull with default options', async () => {
+            mockPull.mockResolvedValue({ success: true });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/pull`, {
+                method: 'POST',
+                body: JSON.stringify({}),
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.json()).toEqual({ success: true });
+            expect(mockPull).toHaveBeenCalledWith(WORKSPACE_ROOT, false);
+        });
+
+        it('should pass rebase=true when specified', async () => {
+            mockPull.mockResolvedValue({ success: true });
+
+            await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/pull`, {
+                method: 'POST',
+                body: JSON.stringify({ rebase: true }),
+            });
+
+            expect(mockPull).toHaveBeenCalledWith(WORKSPACE_ROOT, true);
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // POST /api/workspaces/:id/git/fetch — Fetch
+    // -----------------------------------------------------------------------
+
+    describe('POST /api/workspaces/:id/git/fetch', () => {
+        it('should fetch all when no remote specified', async () => {
+            mockFetch.mockResolvedValue({ success: true });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/fetch`, {
+                method: 'POST',
+                body: JSON.stringify({}),
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.json()).toEqual({ success: true });
+            expect(mockFetch).toHaveBeenCalledWith(WORKSPACE_ROOT, undefined);
+        });
+
+        it('should pass remote name when specified', async () => {
+            mockFetch.mockResolvedValue({ success: true });
+
+            await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/fetch`, {
+                method: 'POST',
+                body: JSON.stringify({ remote: 'upstream' }),
+            });
+
+            expect(mockFetch).toHaveBeenCalledWith(WORKSPACE_ROOT, 'upstream');
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // POST /api/workspaces/:id/git/merge — Merge
+    // -----------------------------------------------------------------------
+
+    describe('POST /api/workspaces/:id/git/merge', () => {
+        it('should merge a valid branch', async () => {
+            mockMergeBranch.mockResolvedValue({ success: true });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/merge`, {
+                method: 'POST',
+                body: JSON.stringify({ branch: 'feature-x' }),
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.json()).toEqual({ success: true });
+            expect(mockMergeBranch).toHaveBeenCalledWith(WORKSPACE_ROOT, 'feature-x');
+        });
+
+        it('should return 400 when branch is missing', async () => {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/merge`, {
+                method: 'POST',
+                body: JSON.stringify({}),
+            });
+
+            expect(res.status).toBe(400);
+        });
+
+        it('should return conflict result with HTTP 200', async () => {
+            mockMergeBranch.mockResolvedValue({ success: false, error: 'CONFLICT' });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/merge`, {
+                method: 'POST',
+                body: JSON.stringify({ branch: 'conflicting' }),
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.json()).toEqual({ success: false, error: 'CONFLICT' });
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // POST /api/workspaces/:id/git/stash — Stash
+    // -----------------------------------------------------------------------
+
+    describe('POST /api/workspaces/:id/git/stash', () => {
+        it('should stash with message', async () => {
+            mockStashChanges.mockResolvedValue({ success: true });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/stash`, {
+                method: 'POST',
+                body: JSON.stringify({ message: 'WIP: my message' }),
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.json()).toEqual({ success: true });
+            expect(mockStashChanges).toHaveBeenCalledWith(WORKSPACE_ROOT, 'WIP: my message');
+        });
+
+        it('should stash without message', async () => {
+            mockStashChanges.mockResolvedValue({ success: true });
+
+            await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/stash`, {
+                method: 'POST',
+                body: JSON.stringify({}),
+            });
+
+            expect(mockStashChanges).toHaveBeenCalledWith(WORKSPACE_ROOT, undefined);
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // POST /api/workspaces/:id/git/stash/pop — Pop stash
+    // -----------------------------------------------------------------------
+
+    describe('POST /api/workspaces/:id/git/stash/pop', () => {
+        it('should pop stash successfully', async () => {
+            mockPopStash.mockResolvedValue({ success: true });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/stash/pop`, {
+                method: 'POST',
+                body: JSON.stringify({}),
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.json()).toEqual({ success: true });
+            expect(mockPopStash).toHaveBeenCalledWith(WORKSPACE_ROOT);
+        });
+
+        it('should return failure when no stash entries', async () => {
+            mockPopStash.mockResolvedValue({ success: false, error: 'No stash entries found.' });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/stash/pop`, {
+                method: 'POST',
+                body: JSON.stringify({}),
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.json()).toEqual({ success: false, error: 'No stash entries found.' });
         });
     });
 });
