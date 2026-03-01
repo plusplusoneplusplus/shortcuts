@@ -15,7 +15,7 @@ import * as childProcess from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import type { ProcessStore, ProcessFilter, AIProcess, AIProcessStatus, AIProcessType, WorkspaceInfo, ConversationTurn } from '@plusplusoneplusplus/pipeline-core';
-import { deserializeProcess, GitRangeService } from '@plusplusoneplusplus/pipeline-core';
+import { deserializeProcess, GitRangeService, BranchService } from '@plusplusoneplusplus/pipeline-core';
 import type { Attachment } from '@plusplusoneplusplus/pipeline-core';
 import type { Route } from './types';
 import { handleProcessStream } from './sse-handler';
@@ -530,6 +530,72 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                 sendJSON(res, 200, { diff, path: filePath });
             } catch {
                 sendJSON(res, 200, { diff: '', path: filePath });
+            }
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // Branch management endpoints (via BranchService)
+    // ------------------------------------------------------------------
+
+    const branchService = new BranchService();
+
+    // GET /api/workspaces/:id/git/branches — List branches with pagination
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/branches$/,
+        handler: async (req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const workspaces = await store.getWorkspaces();
+            const ws = workspaces.find(w => w.id === id);
+            if (!ws) {
+                return handleAPIError(res, notFound('Workspace'));
+            }
+
+            try {
+                const parsed = url.parse(req.url!, true).query;
+                const type = (parsed.type as string) || 'all';
+                const limit = Math.min(parseInt(parsed.limit as string) || 100, 500);
+                const offset = parseInt(parsed.offset as string) || 0;
+                const searchPattern = (parsed.search as string) || undefined;
+                const options = { limit, offset, searchPattern };
+
+                let result: Record<string, unknown> = {};
+                if (type === 'local') {
+                    result = { local: branchService.getLocalBranchesPaginated(ws.rootPath, options) };
+                } else if (type === 'remote') {
+                    result = { remote: branchService.getRemoteBranchesPaginated(ws.rootPath, options) };
+                } else {
+                    result = {
+                        local: branchService.getLocalBranchesPaginated(ws.rootPath, options),
+                        remote: branchService.getRemoteBranchesPaginated(ws.rootPath, options),
+                    };
+                }
+                sendJSON(res, 200, result);
+            } catch (err) {
+                return handleAPIError(res, err);
+            }
+        },
+    });
+
+    // GET /api/workspaces/:id/git/branch-status — Current branch status
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/branch-status$/,
+        handler: async (_req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const workspaces = await store.getWorkspaces();
+            const ws = workspaces.find(w => w.id === id);
+            if (!ws) {
+                return handleAPIError(res, notFound('Workspace'));
+            }
+
+            try {
+                const uncommitted = branchService.hasUncommittedChanges(ws.rootPath);
+                const status = branchService.getBranchStatus(ws.rootPath, uncommitted);
+                sendJSON(res, 200, status);
+            } catch (err) {
+                return handleAPIError(res, err);
             }
         },
     });

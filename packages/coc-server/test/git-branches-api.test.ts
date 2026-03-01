@@ -1,0 +1,274 @@
+/**
+ * Git Branches API Endpoint Tests
+ *
+ * Tests for the branch management API routes:
+ * - GET /api/workspaces/:id/git/branches
+ * - GET /api/workspaces/:id/git/branch-status
+ *
+ * Uses mocked BranchService via vi.mock to avoid actual git calls.
+ * Cross-platform compatible (Linux/Mac/Windows).
+ */
+
+import { describe, it, expect, beforeAll, afterAll, vi, beforeEach } from 'vitest';
+import * as http from 'http';
+import { createRouter } from '../src/shared/router';
+import { registerApiRoutes } from '../src/api-handler';
+import type { Route } from '../src/types';
+import { createMockProcessStore } from './helpers/mock-process-store';
+import type { MockProcessStore } from './helpers/mock-process-store';
+
+// ============================================================================
+// Mock BranchService
+// ============================================================================
+
+const mockGetLocalBranchesPaginated = vi.fn();
+const mockGetRemoteBranchesPaginated = vi.fn();
+const mockGetBranchStatus = vi.fn();
+const mockHasUncommittedChanges = vi.fn();
+
+vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
+    const actual = await importOriginal<Record<string, unknown>>();
+    return {
+        ...actual,
+        BranchService: vi.fn().mockImplementation(() => ({
+            getLocalBranchesPaginated: mockGetLocalBranchesPaginated,
+            getRemoteBranchesPaginated: mockGetRemoteBranchesPaginated,
+            getBranchStatus: mockGetBranchStatus,
+            hasUncommittedChanges: mockHasUncommittedChanges,
+        })),
+    };
+});
+
+// Mock child_process to prevent real git calls from other routes
+const mockExecSync = vi.fn();
+vi.mock('child_process', () => ({
+    execSync: (...args: any[]) => mockExecSync(...args),
+}));
+
+// ============================================================================
+// Test Helpers
+// ============================================================================
+
+function request(
+    url: string,
+    options: { method?: string; body?: string; headers?: Record<string, string> } = {},
+): Promise<{ status: number; body: string; json: () => any }> {
+    return new Promise((resolve, reject) => {
+        const parsed = new URL(url);
+        const req = http.request(
+            {
+                hostname: parsed.hostname,
+                port: parsed.port,
+                path: parsed.pathname + parsed.search,
+                method: options.method || 'GET',
+                headers: { 'Content-Type': 'application/json', ...options.headers },
+            },
+            (res) => {
+                const chunks: Buffer[] = [];
+                res.on('data', (chunk) => chunks.push(chunk));
+                res.on('end', () => {
+                    const bodyStr = Buffer.concat(chunks).toString('utf-8');
+                    resolve({
+                        status: res.statusCode || 0,
+                        body: bodyStr,
+                        json: () => JSON.parse(bodyStr),
+                    });
+                });
+            },
+        );
+        req.on('error', reject);
+        if (options.body) { req.write(options.body); }
+        req.end();
+    });
+}
+
+// ============================================================================
+// Test Suite
+// ============================================================================
+
+describe('Git Branches API endpoints', () => {
+    let server: http.Server;
+    let port: number;
+    let store: MockProcessStore;
+
+    const WORKSPACE_ID = 'ws-branch-test';
+    const WORKSPACE_ROOT = '/test/repo';
+
+    const base = () => `http://127.0.0.1:${port}`;
+
+    const MOCK_LOCAL_RESULT = {
+        branches: [
+            { name: 'main', isCurrent: true, isRemote: false, lastCommitSubject: 'init', lastCommitDate: '2025-01-01' },
+            { name: 'feature/x', isCurrent: false, isRemote: false, lastCommitSubject: 'add x', lastCommitDate: '2025-01-02' },
+        ],
+        totalCount: 2,
+        hasMore: false,
+    };
+
+    const MOCK_REMOTE_RESULT = {
+        branches: [
+            { name: 'origin/main', isCurrent: false, isRemote: true, remoteName: 'origin', lastCommitSubject: 'init', lastCommitDate: '2025-01-01' },
+        ],
+        totalCount: 1,
+        hasMore: false,
+    };
+
+    const MOCK_BRANCH_STATUS = {
+        name: 'main',
+        isDetached: false,
+        ahead: 1,
+        behind: 0,
+        trackingBranch: 'origin/main',
+        hasUncommittedChanges: true,
+    };
+
+    beforeAll(async () => {
+        store = createMockProcessStore();
+        (store.getWorkspaces as any).mockResolvedValue([
+            { id: WORKSPACE_ID, name: 'Test Repo', rootPath: WORKSPACE_ROOT },
+        ]);
+
+        const routes: Route[] = [];
+        registerApiRoutes(routes, store);
+        const handleRequest = createRouter({ routes, spaHtml: '<html></html>' });
+        server = http.createServer(handleRequest);
+        await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+        port = (server.address() as any).port;
+    });
+
+    afterAll(async () => {
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+    });
+
+    beforeEach(() => {
+        mockGetLocalBranchesPaginated.mockReset();
+        mockGetRemoteBranchesPaginated.mockReset();
+        mockGetBranchStatus.mockReset();
+        mockHasUncommittedChanges.mockReset();
+    });
+
+    // -----------------------------------------------------------------------
+    // GET /api/workspaces/:id/git/branches
+    // -----------------------------------------------------------------------
+
+    describe('GET /api/workspaces/:id/git/branches', () => {
+        it('should list local branches when type=local', async () => {
+            mockGetLocalBranchesPaginated.mockReturnValue(MOCK_LOCAL_RESULT);
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branches?type=local`);
+            const json = res.json();
+
+            expect(res.status).toBe(200);
+            expect(json.local).toEqual(MOCK_LOCAL_RESULT);
+            expect(json.remote).toBeUndefined();
+        });
+
+        it('should list remote branches when type=remote', async () => {
+            mockGetRemoteBranchesPaginated.mockReturnValue(MOCK_REMOTE_RESULT);
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branches?type=remote`);
+            const json = res.json();
+
+            expect(res.status).toBe(200);
+            expect(json.remote).toEqual(MOCK_REMOTE_RESULT);
+            expect(json.local).toBeUndefined();
+        });
+
+        it('should list all branches by default', async () => {
+            mockGetLocalBranchesPaginated.mockReturnValue(MOCK_LOCAL_RESULT);
+            mockGetRemoteBranchesPaginated.mockReturnValue(MOCK_REMOTE_RESULT);
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branches`);
+            const json = res.json();
+
+            expect(res.status).toBe(200);
+            expect(json.local).toEqual(MOCK_LOCAL_RESULT);
+            expect(json.remote).toEqual(MOCK_REMOTE_RESULT);
+        });
+
+        it('should forward pagination params to service', async () => {
+            mockGetLocalBranchesPaginated.mockReturnValue(MOCK_LOCAL_RESULT);
+
+            await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branches?type=local&limit=25&offset=10`);
+
+            expect(mockGetLocalBranchesPaginated).toHaveBeenCalledWith(
+                WORKSPACE_ROOT,
+                { limit: 25, offset: 10, searchPattern: undefined },
+            );
+        });
+
+        it('should forward search param to service', async () => {
+            mockGetLocalBranchesPaginated.mockReturnValue(MOCK_LOCAL_RESULT);
+
+            await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branches?type=local&search=feat`);
+
+            expect(mockGetLocalBranchesPaginated).toHaveBeenCalledWith(
+                WORKSPACE_ROOT,
+                { limit: 100, offset: 0, searchPattern: 'feat' },
+            );
+        });
+
+        it('should cap limit at 500', async () => {
+            mockGetLocalBranchesPaginated.mockReturnValue(MOCK_LOCAL_RESULT);
+
+            await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branches?type=local&limit=9999`);
+
+            expect(mockGetLocalBranchesPaginated).toHaveBeenCalledWith(
+                WORKSPACE_ROOT,
+                expect.objectContaining({ limit: 500 }),
+            );
+        });
+
+        it('should return 404 for unknown workspace', async () => {
+            const res = await request(`${base()}/api/workspaces/nonexistent/git/branches`);
+
+            expect(res.status).toBe(404);
+            expect(res.json().error).toMatch(/not found/i);
+        });
+
+        it('should return 500 on git error', async () => {
+            mockGetLocalBranchesPaginated.mockImplementation(() => { throw new Error('not a git repo'); });
+            mockGetRemoteBranchesPaginated.mockImplementation(() => { throw new Error('not a git repo'); });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branches`);
+
+            expect(res.status).toBe(500);
+            expect(res.json().error).toBeDefined();
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // GET /api/workspaces/:id/git/branch-status
+    // -----------------------------------------------------------------------
+
+    describe('GET /api/workspaces/:id/git/branch-status', () => {
+        it('should return branch status', async () => {
+            mockHasUncommittedChanges.mockReturnValue(true);
+            mockGetBranchStatus.mockReturnValue(MOCK_BRANCH_STATUS);
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branch-status`);
+            const json = res.json();
+
+            expect(res.status).toBe(200);
+            expect(json).toEqual(MOCK_BRANCH_STATUS);
+            expect(mockHasUncommittedChanges).toHaveBeenCalledWith(WORKSPACE_ROOT);
+            expect(mockGetBranchStatus).toHaveBeenCalledWith(WORKSPACE_ROOT, true);
+        });
+
+        it('should return 404 for unknown workspace', async () => {
+            const res = await request(`${base()}/api/workspaces/nonexistent/git/branch-status`);
+
+            expect(res.status).toBe(404);
+            expect(res.json().error).toMatch(/not found/i);
+        });
+
+        it('should return 500 on git error', async () => {
+            mockHasUncommittedChanges.mockImplementation(() => { throw new Error('git failed'); });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branch-status`);
+
+            expect(res.status).toBe(500);
+            expect(res.json().error).toBeDefined();
+        });
+    });
+});
