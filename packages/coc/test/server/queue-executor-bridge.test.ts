@@ -3963,6 +3963,96 @@ describe('tool event emission via onToolEvent', () => {
 
         expect(store.emitProcessEvent).toHaveBeenCalledTimes(4);
     });
+
+    it('should persist assistant turn with timeline during tool-only execution (no text chunks)', async () => {
+        // Simulate a task that only emits tool events (no onStreamingChunk calls)
+        mockSendMessage.mockImplementation(async (opts: any) => {
+            if (opts.onToolEvent) {
+                // Emit enough tool events to trigger a throttled flush (first call triggers due to lastFlushTime=0)
+                opts.onToolEvent({ type: 'tool-start', toolCallId: 'tc-read-1', toolName: 'view', parameters: { path: '/a.ts' } });
+                opts.onToolEvent({ type: 'tool-complete', toolCallId: 'tc-read-1', toolName: 'view', result: 'file contents' });
+                opts.onToolEvent({ type: 'tool-start', toolCallId: 'tc-edit-1', toolName: 'edit', parameters: { path: '/a.ts' } });
+                opts.onToolEvent({ type: 'tool-complete', toolCallId: 'tc-edit-1', toolName: 'edit', result: 'ok' });
+            }
+            // No onStreamingChunk called — pure tool execution
+            return { success: true, response: '', sessionId: 'sess-tool-only' };
+        });
+
+        const executor = new CLITaskExecutor(store);
+        const task: QueuedTask = {
+            id: 'task-tool-only-flush',
+            type: 'ai-clarification',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { prompt: 'refactor this file' },
+            config: {},
+        };
+
+        await executor.execute(task);
+
+        // The intermediate flush should have persisted an assistant turn with timeline
+        const updateCalls = (store.updateProcess as any).mock.calls;
+        const streamingFlushCalls = updateCalls.filter((call: any[]) => {
+            const updates = call[1];
+            return updates.conversationTurns?.some(
+                (t: any) => t.role === 'assistant' && t.streaming === true
+            );
+        });
+        // At least one streaming flush should have occurred from tool events
+        expect(streamingFlushCalls.length).toBeGreaterThanOrEqual(1);
+
+        // The flushed assistant turn should have timeline items even with empty content
+        const firstFlush = streamingFlushCalls[0][1].conversationTurns.find(
+            (t: any) => t.role === 'assistant' && t.streaming
+        );
+        expect(firstFlush).toBeDefined();
+        expect(firstFlush.content).toBe('');
+        expect(firstFlush.timeline.length).toBeGreaterThan(0);
+        expect(firstFlush.timeline.some((item: any) => item.type === 'tool-start' || item.type === 'tool-complete')).toBe(true);
+
+        // Final completion should also have timeline
+        const finalProcess = await store.getProcess('queue_task-tool-only-flush');
+        expect(finalProcess).toBeDefined();
+        const assistantTurn = finalProcess!.conversationTurns?.find((t: any) => t.role === 'assistant' && !t.streaming);
+        expect(assistantTurn).toBeDefined();
+        expect(assistantTurn!.timeline!.length).toBeGreaterThan(0);
+    });
+
+    it('should flush conversation turn when buffer is empty string but timeline has items', async () => {
+        // Test follow-up path: only tool events, no streaming chunks
+        const process = createCompletedProcessWithSession('proc-tool-flush', 'sess-tool-flush');
+        await store.addProcess(process);
+
+        mockSendFollowUp.mockImplementation(async (_sid: string, _prompt: string, options?: any) => {
+            if (options?.onToolEvent) {
+                options.onToolEvent({ type: 'tool-start', toolCallId: 'tc-f1', toolName: 'bash', parameters: { cmd: 'npm test' } });
+                options.onToolEvent({ type: 'tool-complete', toolCallId: 'tc-f1', toolName: 'bash', result: 'all passed' });
+            }
+            // No onStreamingChunk — pure tool execution
+            return { success: true, response: '' };
+        });
+
+        const executor = new CLITaskExecutor(store);
+        await executor.executeFollowUp('proc-tool-flush', 'run tests');
+
+        // Verify intermediate streaming flush happened with timeline
+        const updateCalls = (store.updateProcess as any).mock.calls;
+        const streamingFlushCalls = updateCalls.filter((call: any[]) => {
+            const updates = call[1];
+            return updates.conversationTurns?.some(
+                (t: any) => t.role === 'assistant' && t.streaming === true
+            );
+        });
+        expect(streamingFlushCalls.length).toBeGreaterThanOrEqual(1);
+
+        // The flushed turn should have timeline items
+        const flushedTurn = streamingFlushCalls[0][1].conversationTurns.find(
+            (t: any) => t.role === 'assistant' && t.streaming
+        );
+        expect(flushedTurn).toBeDefined();
+        expect(flushedTurn.timeline.length).toBeGreaterThan(0);
+    });
 });
 
 // ============================================================================

@@ -415,6 +415,8 @@ export class CLITaskExecutor implements TaskExecutor {
                     } catch {
                         // Non-fatal
                     }
+                    // Trigger throttled flush so tool-only sessions persist timeline
+                    this.checkThrottleAndFlush(processId);
                 },
             });
 
@@ -732,6 +734,8 @@ export class CLITaskExecutor implements TaskExecutor {
                 } catch {
                     // Non-fatal: store may be a stub
                 }
+                // Trigger throttled flush so tool-only sessions persist timeline
+                this.checkThrottleAndFlush(processId);
             },
         });
 
@@ -1041,7 +1045,8 @@ export class CLITaskExecutor implements TaskExecutor {
      */
     private async flushConversationTurn(processId: string, streaming: boolean): Promise<void> {
         const buffer = this.outputBuffers.get(processId);
-        if (!buffer) return;
+        const hasTimeline = (this.timelineBuffers.get(processId)?.length ?? 0) > 0;
+        if (buffer == null && !hasTimeline) return;
 
         // Snapshot current timeline for this flush, merging consecutive content items to reduce bloat
         const timelineSnapshot = mergeConsecutiveContentItems([...(this.timelineBuffers.get(processId) || [])]);
@@ -1058,7 +1063,7 @@ export class CLITaskExecutor implements TaskExecutor {
                 // Update existing streaming assistant turn
                 updatedTurns = existingTurns.map((turn, i) =>
                     i === existingTurns.length - 1
-                        ? { ...turn, content: buffer, streaming: streaming || undefined, timeline: timelineSnapshot }
+                        ? { ...turn, content: buffer ?? '', streaming: streaming || undefined, timeline: timelineSnapshot }
                         : turn
                 );
             } else {
@@ -1067,7 +1072,7 @@ export class CLITaskExecutor implements TaskExecutor {
                     ...existingTurns,
                     {
                         role: 'assistant' as const,
-                        content: buffer,
+                        content: buffer ?? '',
                         timestamp: new Date(),
                         turnIndex: existingTurns.length,
                         streaming: streaming || undefined,
