@@ -1,5 +1,5 @@
 /**
- * usePreferences — fetches and persists the user's last-selected AI model and depth.
+ * usePreferences — fetches and persists the user's last-selected AI model, depth, and effort.
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -10,12 +10,15 @@ export interface UsePreferencesResult {
     setModel: (m: string) => void;
     depth: string;
     setDepth: (d: string) => void;
+    effort: string;
+    setEffort: (e: string) => void;
     loaded: boolean;
 }
 
 export function usePreferences(): UsePreferencesResult {
     const [model, setModelState] = useState('');
     const [depth, setDepthState] = useState('');
+    const [effort, setEffortState] = useState('');
     const [loaded, setLoaded] = useState(false);
 
     useEffect(() => {
@@ -31,6 +34,9 @@ export function usePreferences(): UsePreferencesResult {
                     }
                     if (typeof prefs.lastDepth === 'string') {
                         setDepthState(prefs.lastDepth);
+                    }
+                    if (typeof prefs.lastEffort === 'string') {
+                        setEffortState(prefs.lastEffort);
                     }
                 }
             } catch {
@@ -62,5 +68,15 @@ export function usePreferences(): UsePreferencesResult {
         }).catch(() => {});
     }, []);
 
-    return { model, setModel, depth, setDepth, loaded };
+    const setEffort = useCallback((e: string) => {
+        setEffortState(e);
+        // Fire-and-forget persistence
+        fetch(getApiBase() + '/preferences', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lastEffort: e }),
+        }).catch(() => {});
+    }, []);
+
+    return { model, setModel, depth, setDepth, effort, setEffort, loaded };
 }

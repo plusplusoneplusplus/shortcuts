@@ -96,8 +96,8 @@ export function GenerateTaskDialog({
     onSuccess,
     onClose,
 }: GenerateTaskDialogProps) {
-    // --- preferences (persisted model + depth) ---
-    const { model: savedModel, setModel: persistModel, depth: savedDepth, setDepth: persistDepth } = usePreferences();
+    // --- preferences (persisted model + depth + effort) ---
+    const { model: savedModel, setModel: persistModel, depth: savedDepth, setDepth: persistDepth, effort: savedEffort, setEffort: persistEffort } = usePreferences();
     const { addToast } = useGlobalToast();
 
     // --- form state ---
@@ -118,6 +118,10 @@ export function GenerateTaskDialog({
     useEffect(() => {
         if (savedDepth === 'deep' || savedDepth === 'normal') setDepth(savedDepth);
     }, [savedDepth]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    useEffect(() => {
+        if (savedEffort === 'low' || savedEffort === 'medium' || savedEffort === 'high') setEffortLevel(savedEffort);
+    }, [savedEffort]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // --- data ---
     const [models, setModels] = useState<string[]>([]);
@@ -398,7 +402,7 @@ export function GenerateTaskDialog({
                                             ? 'border-[#0078d4] bg-[#0078d4]/10 text-[#0078d4] dark:text-[#3794ff]'
                                             : 'border-[#e0e0e0] dark:border-[#3c3c3c] text-[#616161] dark:text-[#999] hover:border-[#0078d4]/50'
                                     }`}
-                                    onClick={() => setEffortLevel(level)}
+                                    onClick={() => { setEffortLevel(level); persistEffort(level); }}
                                     disabled={isSubmitting || isQueued}
                                 >
                                     <span>{level.charAt(0).toUpperCase() + level.slice(1)}</span>

@@ -52,12 +52,14 @@ const mockFetch = vi.fn();
 
 const mockPersistModel = vi.fn();
 const mockPersistDepth = vi.fn();
+const mockPersistEffort = vi.fn();
 
 beforeEach(() => {
     vi.restoreAllMocks();
     mockFetch.mockReset();
     mockPersistModel.mockReset();
     mockPersistDepth.mockReset();
+    mockPersistEffort.mockReset();
     mockClearImages.mockReset();
     mockAddFromPaste.mockReset();
     mockRemoveImage.mockReset();
@@ -68,6 +70,8 @@ beforeEach(() => {
         setModel: mockPersistModel,
         depth: '',
         setDepth: mockPersistDepth,
+        effort: '',
+        setEffort: mockPersistEffort,
         loaded: true,
     });
     mockUseImagePaste.mockReturnValue({
@@ -1066,6 +1070,77 @@ describe('GenerateTaskDialog', () => {
         expect(screen.getByText('Sonnet-class model, normal analysis')).toBeDefined();
         expect(screen.getByText('Opus-class model, normal analysis')).toBeDefined();
         expect(screen.getByText('Opus-class model, deep analysis')).toBeDefined();
+    });
+
+    // ── effort persistence tests ────────────────────────────────────────────
+
+    it('clicking effort button calls persistEffort', async () => {
+        await act(async () => { renderDialog(); });
+
+        fireEvent.click(screen.getByTestId('effort-low'));
+        expect(mockPersistEffort).toHaveBeenCalledWith('low');
+
+        fireEvent.click(screen.getByTestId('effort-high'));
+        expect(mockPersistEffort).toHaveBeenCalledWith('high');
+
+        fireEvent.click(screen.getByTestId('effort-medium'));
+        expect(mockPersistEffort).toHaveBeenCalledWith('medium');
+
+        expect(mockPersistEffort).toHaveBeenCalledTimes(3);
+    });
+
+    it('initializes effort level from saved preference', async () => {
+        mockUsePreferences.mockReturnValue({
+            model: '',
+            setModel: mockPersistModel,
+            depth: '',
+            setDepth: mockPersistDepth,
+            effort: 'high',
+            setEffort: mockPersistEffort,
+            loaded: true,
+        });
+
+        await act(async () => { renderDialog(); });
+
+        const highBtn = screen.getByTestId('effort-high');
+        expect(highBtn.className).toContain('bg-[#0078d4]/10');
+
+        const mediumBtn = screen.getByTestId('effort-medium');
+        expect(mediumBtn.className).not.toContain('bg-[#0078d4]/10');
+    });
+
+    it('defaults to medium when no saved effort preference', async () => {
+        mockUsePreferences.mockReturnValue({
+            model: '',
+            setModel: mockPersistModel,
+            depth: '',
+            setDepth: mockPersistDepth,
+            effort: '',
+            setEffort: mockPersistEffort,
+            loaded: true,
+        });
+
+        await act(async () => { renderDialog(); });
+
+        const mediumBtn = screen.getByTestId('effort-medium');
+        expect(mediumBtn.className).toContain('bg-[#0078d4]/10');
+    });
+
+    it('initializes effort level from low saved preference', async () => {
+        mockUsePreferences.mockReturnValue({
+            model: '',
+            setModel: mockPersistModel,
+            depth: '',
+            setDepth: mockPersistDepth,
+            effort: 'low',
+            setEffort: mockPersistEffort,
+            loaded: true,
+        });
+
+        await act(async () => { renderDialog(); });
+
+        const lowBtn = screen.getByTestId('effort-low');
+        expect(lowBtn.className).toContain('bg-[#0078d4]/10');
     });
 
     // ── image paste tests ────────────────────────────────────────────────────

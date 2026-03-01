@@ -23,6 +23,8 @@ export interface UserPreferences {
     lastModel?: string;
     /** Last-selected generation depth in the SPA ('deep' | 'normal'). */
     lastDepth?: 'deep' | 'normal';
+    /** Last-selected effort level in the Generate Task dialog. */
+    lastEffort?: 'low' | 'medium' | 'high';
     /** Persisted dashboard theme ('light' | 'dark' | 'auto'). */
     theme?: 'light' | 'dark' | 'auto';
 }
@@ -85,6 +87,10 @@ export function validatePreferences(raw: unknown): UserPreferences {
 
     if (obj.lastDepth === 'deep' || obj.lastDepth === 'normal') {
         result.lastDepth = obj.lastDepth;
+    }
+
+    if (obj.lastEffort === 'low' || obj.lastEffort === 'medium' || obj.lastEffort === 'high') {
+        result.lastEffort = obj.lastEffort;
     }
 
     if (obj.theme === 'light' || obj.theme === 'dark' || obj.theme === 'auto') {

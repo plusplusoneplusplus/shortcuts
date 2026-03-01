@@ -198,6 +198,25 @@ describe('readPreferences / writePreferences', () => {
         expect(prefs.lastDepth).toBeUndefined();
     });
 
+    it('round-trips lastEffort through write and read', () => {
+        for (const level of ['low', 'medium', 'high'] as const) {
+            const original = { lastEffort: level };
+            writePreferences(tmpDir, original);
+            const loaded = readPreferences(tmpDir);
+            expect(loaded).toEqual(original);
+        }
+    });
+
+    it('strips invalid lastEffort on read', () => {
+        fs.writeFileSync(
+            path.join(tmpDir, PREFERENCES_FILE_NAME),
+            JSON.stringify({ lastEffort: 'extreme' }),
+            'utf-8'
+        );
+        const prefs = readPreferences(tmpDir);
+        expect(prefs.lastEffort).toBeUndefined();
+    });
+
     it('round-trips recentFollowPrompts through write and read', () => {
         const original = {
             recentFollowPrompts: [
@@ -301,6 +320,27 @@ describe('validatePreferences', () => {
     it('accepts lastDepth alongside lastModel and theme', () => {
         const result = validatePreferences({ lastModel: 'gpt-5.2', lastDepth: 'deep', theme: 'dark' });
         expect(result).toEqual({ lastModel: 'gpt-5.2', lastDepth: 'deep', theme: 'dark' });
+    });
+
+    // -- lastEffort field --
+
+    it('accepts valid lastEffort values', () => {
+        expect(validatePreferences({ lastEffort: 'low' })).toEqual({ lastEffort: 'low' });
+        expect(validatePreferences({ lastEffort: 'medium' })).toEqual({ lastEffort: 'medium' });
+        expect(validatePreferences({ lastEffort: 'high' })).toEqual({ lastEffort: 'high' });
+    });
+
+    it('rejects invalid lastEffort values', () => {
+        expect(validatePreferences({ lastEffort: 'extreme' })).toEqual({});
+        expect(validatePreferences({ lastEffort: 42 })).toEqual({});
+        expect(validatePreferences({ lastEffort: true })).toEqual({});
+        expect(validatePreferences({ lastEffort: null })).toEqual({});
+        expect(validatePreferences({ lastEffort: '' })).toEqual({});
+    });
+
+    it('accepts lastEffort alongside other fields', () => {
+        const result = validatePreferences({ lastModel: 'gpt-5.2', lastEffort: 'high', lastDepth: 'deep', theme: 'dark' });
+        expect(result).toEqual({ lastModel: 'gpt-5.2', lastDepth: 'deep', lastEffort: 'high', theme: 'dark' });
     });
 
     // -- recentFollowPrompts field --
@@ -631,6 +671,48 @@ describe('Preferences REST API', () => {
 
         const res = await getJSON(`${baseUrl}/api/preferences`);
         expect(JSON.parse(res.body)).toEqual({ lastModel: 'gpt-5.2', lastDepth: 'deep' });
+    });
+
+    // -- lastEffort persistence via API --
+
+    it('PUT persists lastEffort field', async () => {
+        const res = await putJSON(`${baseUrl}/api/preferences`, { lastEffort: 'high' });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body)).toEqual({ lastEffort: 'high' });
+
+        const get = await getJSON(`${baseUrl}/api/preferences`);
+        expect(JSON.parse(get.body)).toEqual({ lastEffort: 'high' });
+    });
+
+    it('PATCH merges lastEffort into existing preferences', async () => {
+        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'gpt-5.2' });
+        const res = await patchJSON(`${baseUrl}/api/preferences`, { lastEffort: 'low' });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body)).toEqual({ lastModel: 'gpt-5.2', lastEffort: 'low' });
+    });
+
+    it('PATCH updates lastEffort without affecting other fields', async () => {
+        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'claude-sonnet-4.6', lastEffort: 'medium', theme: 'dark' });
+        const res = await patchJSON(`${baseUrl}/api/preferences`, { lastEffort: 'high' });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body)).toEqual({ lastModel: 'claude-sonnet-4.6', lastEffort: 'high', theme: 'dark' });
+    });
+
+    it('PUT strips invalid lastEffort values', async () => {
+        const res = await putJSON(`${baseUrl}/api/preferences`, { lastEffort: 'extreme' });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body)).toEqual({});
+    });
+
+    it('lastEffort survives server restart', async () => {
+        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'gpt-5.2', lastEffort: 'high' });
+        await server.close();
+
+        server = await createExecutionServer({ port: 0, dataDir: tmpDir });
+        baseUrl = server.url;
+
+        const res = await getJSON(`${baseUrl}/api/preferences`);
+        expect(JSON.parse(res.body)).toEqual({ lastModel: 'gpt-5.2', lastEffort: 'high' });
     });
 
     // -- recentFollowPrompts persistence via API --
