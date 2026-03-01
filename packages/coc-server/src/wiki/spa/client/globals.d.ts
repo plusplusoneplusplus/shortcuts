@@ -14,6 +14,7 @@ interface WikiConfig {
     enableAI: boolean;
     enableGraph: boolean;
     enableWatch: boolean;
+    workspaceId: string | null;
 }
 
 interface Window {

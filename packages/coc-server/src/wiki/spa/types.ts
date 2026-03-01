@@ -13,4 +13,6 @@ export interface SpaTemplateOptions {
     enableGraph: boolean;
     /** Enable watch mode (WebSocket live reload) */
     enableWatch?: boolean;
+    /** Workspace ID for git branch API calls (optional) */
+    workspaceId?: string;
 }

@@ -27,6 +27,10 @@ export function initializeSidebar(): void {
             ? '<div class="nav-item" data-id="__graph" onclick="showGraph()">' +
               '<span class="nav-item-name">Dependency Graph</span></div>'
             : '') +
+        (config.workspaceId
+            ? '<div class="nav-item" data-id="__git-branches" onclick="showGitBranches()">' +
+              '<span class="nav-item-name">Git Branches</span></div>'
+            : '') +
         '';
     navContainer.appendChild(homeSection);
 
@@ -247,6 +251,8 @@ export function showWikiContent(): void {
     if (contentScroll) contentScroll.style.display = '';
     const adminPage = document.getElementById('admin-page');
     if (adminPage) adminPage.classList.add('hidden');
+    const gitBranchesPage = document.getElementById('git-branches-page');
+    if (gitBranchesPage) gitBranchesPage.classList.add('hidden');
     const sidebar = document.getElementById('sidebar');
     if (sidebar) sidebar.style.display = '';
     const askWidget = document.getElementById('ask-widget');
@@ -258,6 +264,21 @@ export function showAdminContent(): void {
     if (contentScroll) contentScroll.style.display = 'none';
     const adminPage = document.getElementById('admin-page');
     if (adminPage) adminPage.classList.remove('hidden');
+    const gitBranchesPage = document.getElementById('git-branches-page');
+    if (gitBranchesPage) gitBranchesPage.classList.add('hidden');
+    const sidebar = document.getElementById('sidebar');
+    if (sidebar) sidebar.style.display = 'none';
+    const askWidget = document.getElementById('ask-widget');
+    if (askWidget) askWidget.style.display = 'none';
+}
+
+export function showGitBranchesPageContent(): void {
+    const contentScroll = document.getElementById('content-scroll');
+    if (contentScroll) contentScroll.style.display = 'none';
+    const adminPage = document.getElementById('admin-page');
+    if (adminPage) adminPage.classList.add('hidden');
+    const gitBranchesPage = document.getElementById('git-branches-page');
+    if (gitBranchesPage) gitBranchesPage.classList.remove('hidden');
     const sidebar = document.getElementById('sidebar');
     if (sidebar) sidebar.style.display = 'none';
     const askWidget = document.getElementById('ask-widget');

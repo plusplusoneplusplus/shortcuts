@@ -25,7 +25,7 @@ const bundleJs = fs.readFileSync(
  * Generate the SPA HTML for server mode.
  */
 export function generateSpaHtml(options: SpaTemplateOptions): string {
-    const { theme, title, enableSearch, enableAI, enableGraph, enableWatch = false } = options;
+    const { theme, title, enableSearch, enableAI, enableGraph, enableWatch = false, workspaceId } = options;
 
     const themeClass = theme === 'auto' ? '' : `class="${theme}-theme"`;
     const themeMetaTag = theme === 'auto'
@@ -247,6 +247,28 @@ ${enableSearch ? `            <div class="search-box">
                     </div>
                 </div>
             </div>
+
+            <!-- Git Branches Page (hidden by default, shown as full page via SPA routing) -->
+            <div class="admin-page hidden" id="git-branches-page">
+                <div class="admin-page-header">
+                    <div class="admin-page-title-row">
+                        <h1 class="admin-page-title">Git Branches</h1>
+                        <button class="admin-btn admin-btn-back" id="git-branches-back">&larr; Back to Wiki</button>
+                    </div>
+                </div>
+                <div class="git-branch-status-banner" id="git-branch-status-banner"></div>
+                <div class="admin-tabs" id="git-branches-tabs">
+                    <button class="admin-tab active" data-tab="local" id="git-branches-tab-local">Local</button>
+                    <button class="admin-tab" data-tab="remote" id="git-branches-tab-remote">Remote</button>
+                </div>
+                <div class="git-branches-search-row">
+                    <input type="text" id="git-branches-search" placeholder="Search branches..." aria-label="Search branches">
+                </div>
+                <div class="admin-body" id="git-branches-body">
+                    <div id="git-branches-table-container"></div>
+                    <div id="git-branches-pagination"></div>
+                </div>
+            </div>
         </main>
     </div>
 
@@ -277,7 +299,8 @@ ${enableWatch ? `    <div class="live-reload-bar" id="live-reload-bar"></div>` :
         enableSearch: ${JSON.stringify(enableSearch)},
         enableAI: ${JSON.stringify(enableAI)},
         enableGraph: ${JSON.stringify(enableGraph)},
-        enableWatch: ${JSON.stringify(enableWatch)}
+        enableWatch: ${JSON.stringify(enableWatch)},
+        workspaceId: ${JSON.stringify(workspaceId ?? null)}
     };
     </script>
     <script>

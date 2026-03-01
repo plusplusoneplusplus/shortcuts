@@ -1181,3 +1181,40 @@ body {
     background: var(--code-bg); border-radius: 4px; margin: 4px 10px;
 }
 .phase-component-log.visible { display: block; }
+
+/* Git Branches page */
+.git-branch-status-banner {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    padding: 10px 24px; background: var(--stat-bg); border-bottom: 1px solid var(--content-border);
+    font-size: 14px; min-height: 20px;
+}
+.branch-status-current { font-weight: 600; color: var(--link-color); }
+.branch-status-tracking { color: var(--content-muted); }
+.branch-status-sync { color: var(--content-muted); font-size: 13px; }
+.branch-status-dirty { color: #d97706; font-weight: 600; }
+.git-branches-search-row { padding: 12px 24px 0; }
+.git-branches-search-row input {
+    width: 100%; max-width: 360px; padding: 6px 10px; font-size: 14px;
+    border: 1px solid var(--content-border); border-radius: 6px;
+    background: var(--search-bg); color: var(--search-text);
+}
+.git-branches-search-row input::placeholder { color: var(--search-placeholder); }
+.git-branches-table {
+    width: 100%; border-collapse: collapse; font-size: 14px;
+}
+.git-branches-table th {
+    text-align: left; padding: 8px 12px; border-bottom: 2px solid var(--content-border);
+    color: var(--content-muted); font-weight: 600; font-size: 12px; text-transform: uppercase;
+}
+.git-branches-table td { padding: 8px 12px; border-bottom: 1px solid var(--content-border); }
+.branch-row-current { background: var(--sidebar-active-bg); }
+.branch-remote-badge {
+    display: inline-block; padding: 1px 6px; font-size: 11px; border-radius: 10px;
+    background: var(--source-pill-bg); border: 1px solid var(--source-pill-border);
+    color: var(--source-pill-text); margin-right: 4px;
+}
+#git-branches-pagination {
+    padding: 12px 0; display: flex; align-items: center; gap: 8px; font-size: 13px;
+}
+.git-branches-pagination-info { color: var(--content-muted); }
+.loading-inline { color: var(--content-muted); font-size: 13px; }

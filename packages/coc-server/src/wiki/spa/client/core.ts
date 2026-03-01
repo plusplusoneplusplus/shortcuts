@@ -65,6 +65,7 @@ export function setupPopstateHandler(): void {
         else if (state.type === 'theme' && state.themeId && state.slug) (window as any).loadThemeArticle(state.themeId, state.slug, true);
         else if (state.type === 'graph') { if (typeof (window as any).showGraph === 'function') (window as any).showGraph(true); else (window as any).showHome(true); }
         else if (state.type === 'admin') (window as any).showAdmin(true);
+        else if (state.type === 'git-branches') { if (typeof (window as any).showGitBranches === 'function') (window as any).showGitBranches(true); else (window as any).showHome(true); }
         else (window as any).showHome(true);
     });
 }

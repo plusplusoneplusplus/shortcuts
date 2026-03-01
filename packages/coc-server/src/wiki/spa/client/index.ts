@@ -18,6 +18,7 @@ import { showGraph } from './graph';
 import { updateAskSubject, addDeepDiveButton, setupAskAiListeners } from './ask-ai';
 import { connectWebSocket } from './websocket';
 import { showAdmin, setupAdminListeners, runComponentRegenFromAdmin } from './admin';
+import { showGitBranches, setupGitBranchesListeners } from './git-branches';
 
 // Read config injected by server
 const config = (window as any).__WIKI_CONFIG__ as WikiConfig;
@@ -33,6 +34,7 @@ const config = (window as any).__WIKI_CONFIG__ as WikiConfig;
 (window as any).escapeHtml = escapeHtml;
 (window as any).regenerateComponent = regenerateComponent;
 (window as any).runComponentRegenFromAdmin = runComponentRegenFromAdmin;
+(window as any).showGitBranches = showGitBranches;
 
 // Expose init helpers called from core.ts via window
 (window as any).initTheme = initTheme;
@@ -50,6 +52,7 @@ setupPopstateHandler();
 setupThemeListeners();
 setupAskAiListeners();
 setupAdminListeners();
+setupGitBranchesListeners();
 
 // Initialize
 init();
