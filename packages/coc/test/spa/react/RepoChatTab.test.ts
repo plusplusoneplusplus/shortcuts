@@ -774,7 +774,7 @@ describe('RepoChatTab', () => {
 
     describe('initialSessionId prop', () => {
         it('destructures initialSessionId from props', () => {
-            expect(source).toContain('{ workspaceId, workspacePath, initialSessionId }');
+            expect(source).toContain('{ workspaceId, workspacePath, initialSessionId, newChatTrigger }');
         });
 
         it('prefers initialSessionId over auto-select when provided', () => {
@@ -1225,6 +1225,37 @@ describe('RepoChatTab', () => {
         it('model badge has a title attribute for accessibility', () => {
             const inputSection = source.substring(source.indexOf('{/* Input area */}'));
             expect(inputSection).toContain('title="Model used for this chat session"');
+        });
+    });
+
+    describe('newChatTrigger prop', () => {
+        it('accepts optional newChatTrigger prop', () => {
+            expect(source).toContain('newChatTrigger?: number');
+        });
+
+        it('destructures newChatTrigger from props', () => {
+            expect(source).toMatch(/\{\s*workspaceId.*newChatTrigger\s*\}/s);
+        });
+
+        it('tracks previous trigger value with a ref', () => {
+            expect(source).toContain('prevTriggerRef');
+            expect(source).toContain('useRef(newChatTrigger');
+        });
+
+        it('calls handleNewChat when newChatTrigger changes', () => {
+            const triggerEffect = source.substring(
+                source.indexOf('prevTriggerRef'),
+                source.indexOf('prevTriggerRef') + 400
+            );
+            expect(triggerEffect).toContain('handleNewChat()');
+        });
+
+        it('skips initial trigger value of 0', () => {
+            const triggerEffect = source.substring(
+                source.indexOf('prevTriggerRef'),
+                source.indexOf('prevTriggerRef') + 400
+            );
+            expect(triggerEffect).toContain('newChatTrigger &&');
         });
     });
 });

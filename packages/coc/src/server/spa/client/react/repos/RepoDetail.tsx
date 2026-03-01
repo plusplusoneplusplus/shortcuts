@@ -56,6 +56,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         return !!queueState.repoQueueMap[ws.id]?.stats?.isPaused;
     }, [queueState.repoQueueMap[ws.id]?.stats?.isPaused]);
     const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
+    const [newChatTrigger, setNewChatTrigger] = useState(0);
 
     async function handleResumeQueue() {
         setIsPauseResumeLoading(true);
@@ -95,6 +96,11 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         setGenerateDialog({ open: true, minimized: false, targetFolder });
     }, []);
 
+    const handleNewChatFromTopBar = useCallback(() => {
+        setNewChatTrigger(prev => prev + 1);
+        switchSubTab('chat');
+    }, []);
+
     const handleRemove = async () => {
         if (!confirm('Remove this repo from the dashboard? Processes will be preserved.')) return;
         await fetch(getApiBase() + '/workspaces/' + encodeURIComponent(ws.id), { method: 'DELETE' });
@@ -123,6 +129,15 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                         ▶ Resume Queue
                     </Button>
                 )}
+                <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={handleNewChatFromTopBar}
+                    title="Start a new chat"
+                    data-testid="repo-new-chat-btn"
+                >
+                    + New Chat
+                </Button>
                 <Button
                     variant="primary"
                     size="sm"
@@ -186,7 +201,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                         {activeSubTab === 'pipelines' && <PipelinesTab repo={repo} />}
                         {activeSubTab === 'queue' && <RepoQueueTab workspaceId={ws.id} />}
                         {activeSubTab === 'schedules' && <RepoSchedulesTab workspaceId={ws.id} />}
-                        {activeSubTab === 'chat' && <RepoChatTab workspaceId={ws.id} workspacePath={ws.rootPath} initialSessionId={state.selectedChatSessionId} />}
+                        {activeSubTab === 'chat' && <RepoChatTab workspaceId={ws.id} workspacePath={ws.rootPath} initialSessionId={state.selectedChatSessionId} newChatTrigger={newChatTrigger} />}
                         {activeSubTab === 'git' && <RepoGitTab workspaceId={ws.id} />}
                     </div>
                 )}

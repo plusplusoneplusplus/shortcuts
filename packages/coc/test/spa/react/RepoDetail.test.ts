@@ -348,3 +348,54 @@ describe('RepoDetail Git tab wiring', () => {
         expect(REPO_DETAIL_SOURCE).toContain('RepoGitTab workspaceId={ws.id}');
     });
 });
+
+describe('RepoDetail New Chat button in header', () => {
+    it('renders + New Chat button with data-testid', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-new-chat-btn"');
+    });
+
+    it('uses primary variant and sm size', () => {
+        const line = REPO_DETAIL_SOURCE.split('\n').find(l => l.includes('repo-new-chat-btn'));
+        expect(line).toBeDefined();
+        const idx = REPO_DETAIL_SOURCE.indexOf('repo-new-chat-btn');
+        const block = REPO_DETAIL_SOURCE.substring(Math.max(0, idx - 300), idx);
+        expect(block).toContain('variant="primary"');
+        expect(block).toContain('size="sm"');
+    });
+
+    it('button text is "+ New Chat"', () => {
+        const lines = REPO_DETAIL_SOURCE.split('\n');
+        const btnIdx = lines.findIndex(l => l.includes('repo-new-chat-btn'));
+        const nearbyBlock = lines.slice(btnIdx, btnIdx + 5).join('\n');
+        expect(nearbyBlock).toContain('+ New Chat');
+    });
+
+    it('button appears before Queue Task button', () => {
+        const newChatIdx = REPO_DETAIL_SOURCE.indexOf('repo-new-chat-btn');
+        const queueBtnIdx = REPO_DETAIL_SOURCE.indexOf('repo-queue-task-btn');
+        expect(newChatIdx).toBeGreaterThan(-1);
+        expect(newChatIdx).toBeLessThan(queueBtnIdx);
+    });
+
+    it('has handleNewChatFromTopBar handler that calls switchSubTab to chat', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('handleNewChatFromTopBar');
+        const fnStart = REPO_DETAIL_SOURCE.indexOf('handleNewChatFromTopBar');
+        const fnBody = REPO_DETAIL_SOURCE.slice(fnStart, fnStart + 300);
+        expect(fnBody).toContain("switchSubTab('chat')");
+    });
+
+    it('increments newChatTrigger state on click', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('setNewChatTrigger');
+        expect(REPO_DETAIL_SOURCE).toContain('prev => prev + 1');
+    });
+
+    it('passes newChatTrigger prop to RepoChatTab', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('newChatTrigger={newChatTrigger}');
+    });
+
+    it('button has a title attribute', () => {
+        const idx = REPO_DETAIL_SOURCE.indexOf('repo-new-chat-btn');
+        const block = REPO_DETAIL_SOURCE.substring(Math.max(0, idx - 300), idx);
+        expect(block).toContain('title=');
+    });
+});

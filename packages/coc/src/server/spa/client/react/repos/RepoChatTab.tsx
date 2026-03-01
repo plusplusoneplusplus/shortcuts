@@ -24,6 +24,7 @@ interface RepoChatTabProps {
     workspaceId: string;
     workspacePath?: string;
     initialSessionId?: string | null;
+    newChatTrigger?: number;
 }
 
 function getConversationTurns(data: any, task?: any): ClientConversationTurn[] {
@@ -55,7 +56,7 @@ function getConversationTurns(data: any, task?: any): ClientConversationTurn[] {
     return [];
 }
 
-export function RepoChatTab({ workspaceId, workspacePath, initialSessionId }: RepoChatTabProps) {
+export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newChatTrigger }: RepoChatTabProps) {
     const sessionsHook = useChatSessions(workspaceId);
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { model: savedModel, setModel: persistModel } = usePreferences();
@@ -391,6 +392,15 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId }: Re
         followUpImagePaste.clearImages();
         location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/chat';
     }, [isStreaming, initialImagePaste, followUpImagePaste, workspaceId]);
+
+    // Trigger new chat from external source (e.g. top-bar button)
+    const prevTriggerRef = useRef(newChatTrigger ?? 0);
+    useEffect(() => {
+        if (newChatTrigger && newChatTrigger !== prevTriggerRef.current) {
+            prevTriggerRef.current = newChatTrigger;
+            handleNewChat();
+        }
+    }, [newChatTrigger, handleNewChat]);
 
     const handleCancelChat = useCallback(async (taskId?: string) => {
         const targetId = taskId ?? chatTaskId;
