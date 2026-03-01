@@ -532,7 +532,33 @@ body {
     margin: 14px 0;
     color: var(--content-muted);
 }
-.markdown-body img { max-width: 100%; border-radius: 8px; }
+.markdown-body img { max-width: 100%; border-radius: 8px; cursor: zoom-in; }
+
+/* Image Lightbox */
+.img-lightbox-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: rgba(0, 0, 0, 0.85);
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+.img-lightbox-overlay.active {
+    display: flex;
+    opacity: 1;
+}
+.img-lightbox-overlay img {
+    max-width: 95vw;
+    max-height: 95vh;
+    object-fit: contain;
+    border-radius: 4px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+    cursor: default;
+}
 .markdown-body hr { border: none; border-top: 1px solid var(--content-border); margin: 24px 0; }
 
 .heading-anchor {

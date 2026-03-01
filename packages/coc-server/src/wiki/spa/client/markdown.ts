@@ -63,6 +63,7 @@ export function processMarkdownContent(): void {
     });
 
     initMermaid();
+    initImageLightbox(body as HTMLElement);
 
     // Intercept internal .md links and route through SPA navigation
     body.addEventListener('click', function (e: Event) {
@@ -136,6 +137,37 @@ export function addCopyButton(pre: HTMLPreElement): void {
         });
     };
     pre.appendChild(btn);
+}
+
+export function initImageLightbox(body: HTMLElement): void {
+    let overlay = document.getElementById('img-lightbox-overlay') as HTMLDivElement | null;
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'img-lightbox-overlay';
+        overlay.className = 'img-lightbox-overlay';
+        const img = document.createElement('img');
+        overlay.appendChild(img);
+        document.body.appendChild(overlay);
+
+        overlay.addEventListener('click', function (e: Event) {
+            if (e.target === overlay) {
+                overlay!.classList.remove('active');
+            }
+        });
+        document.addEventListener('keydown', function (e: KeyboardEvent) {
+            if (e.key === 'Escape') {
+                overlay!.classList.remove('active');
+            }
+        });
+    }
+
+    const lightboxImg = overlay.querySelector('img') as HTMLImageElement;
+    body.querySelectorAll('img').forEach(function (img) {
+        (img as HTMLImageElement).addEventListener('click', function () {
+            lightboxImg.src = (img as HTMLImageElement).src;
+            overlay!.classList.add('active');
+        });
+    });
 }
 
 export function initMermaid(): Promise<void> {
