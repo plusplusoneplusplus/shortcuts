@@ -8,6 +8,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { Button, Spinner } from '../shared';
 import { cn } from '../shared/cn';
 import { getApiBase } from '../utils/config';
+import { useBreakpoint } from '../hooks/useBreakpoint';
 
 declare const marked: { parse(md: string): string } | undefined;
 declare const hljs: { highlightElement(el: Element): void } | undefined;
@@ -31,6 +32,7 @@ export function WikiAsk({ wikiId, wikiName, currentComponentId }: WikiAskProps) 
     const [isExpanded, setIsExpanded] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const historyRef = useRef<Array<{ role: string; content: string }>>([]);
+    const { isMobile } = useBreakpoint();
 
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent) => {
@@ -280,7 +282,10 @@ export function WikiAsk({ wikiId, wikiName, currentComponentId }: WikiAskProps) 
             </div>
 
             {/* Input */}
-            <div className="flex items-end gap-2 p-3 border-t border-[#e0e0e0] dark:border-[#3c3c3c]">
+            <div className={cn(
+                'flex items-end gap-2 p-3 border-t border-[#e0e0e0] dark:border-[#3c3c3c]',
+                isMobile && 'pb-[calc(0.75rem+56px)]'
+            )} data-testid="wiki-ask-input-area">
                 <textarea
                     className="flex-1 resize-none px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4] max-h-[120px]"
                     id="wiki-ask-textarea"

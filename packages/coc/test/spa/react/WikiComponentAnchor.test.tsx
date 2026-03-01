@@ -26,6 +26,10 @@ vi.mock('../../../src/server/spa/client/react/hooks/useMermaid', () => ({
     useMermaid: vi.fn(),
 }));
 
+vi.mock('../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+    useBreakpoint: () => ({ isMobile: false, isTablet: false, isDesktop: true, breakpoint: 'desktop' }),
+}));
+
 import { WikiComponent } from '../../../src/server/spa/client/react/wiki/WikiComponent';
 import { fetchApi } from '../../../src/server/spa/client/react/hooks/useApi';
 

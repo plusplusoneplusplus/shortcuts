@@ -230,7 +230,7 @@ export function WikiGraph({ wikiId, graph, onSelectComponent }: WikiGraphProps) 
 
     return (
         <div ref={containerRef} className="relative h-full w-full" id="wiki-graph-container">
-            <svg ref={svgRef} className="w-full h-full" />
+            <svg ref={svgRef} className="w-full h-full" style={{ touchAction: 'none' }} />
             <div className="absolute top-2 right-2 bg-white/90 dark:bg-[#252526]/90 border border-[#e0e0e0] dark:border-[#3c3c3c] rounded p-2 text-xs max-h-60 overflow-y-auto" id="wiki-graph-legend">
                 <div className="font-medium mb-1 text-[#1e1e1e] dark:text-[#cccccc]">Categories</div>
                 {allCategories.current.map(cat => (

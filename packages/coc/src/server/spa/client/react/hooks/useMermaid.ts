@@ -119,6 +119,12 @@ function setupZoomPan(container: HTMLElement): void {
     const svgWrapper = container.querySelector('.task-mermaid-svg-wrapper') as HTMLElement | null;
     if (!viewport || !svgWrapper) return;
 
+    // Prevent browser default pinch-zoom on mermaid content
+    const mermaidContent = container.querySelector('.mermaid-content') as HTMLElement | null;
+    if (mermaidContent) {
+        mermaidContent.style.touchAction = 'none';
+    }
+
     const state: ZoomState = {
         scale: 1, translateX: 0, translateY: 0,
         isDragging: false, dragStartX: 0, dragStartY: 0, lastTX: 0, lastTY: 0,
@@ -185,6 +191,51 @@ function setupZoomPan(container: HTMLElement): void {
         if (!state.isDragging) return;
         state.isDragging = false;
         viewport.classList.remove('task-mermaid-dragging');
+    });
+
+    // Touch: single-finger pan, two-finger pinch-to-zoom
+    let touchStartDistance = 0;
+    let touchStartScale = 1;
+    let singleTouchStart: { x: number; y: number } | null = null;
+
+    function getTouchDistance(e: TouchEvent): number {
+        const t = e.touches;
+        return Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    }
+
+    viewport.addEventListener('touchstart', (e: TouchEvent) => {
+        if (e.touches.length === 2) {
+            e.preventDefault();
+            touchStartDistance = getTouchDistance(e);
+            touchStartScale = state.scale;
+            singleTouchStart = null;
+        } else if (e.touches.length === 1) {
+            singleTouchStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+            state.lastTX = state.translateX;
+            state.lastTY = state.translateY;
+        }
+    }, { passive: false });
+
+    viewport.addEventListener('touchmove', (e: TouchEvent) => {
+        if (e.touches.length === 2) {
+            e.preventDefault();
+            const dist = getTouchDistance(e);
+            const newScale = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, touchStartScale * (dist / touchStartDistance)));
+            if (newScale !== state.scale) {
+                state.scale = newScale;
+                applyTransform(svgWrapper, state, container);
+            }
+        } else if (e.touches.length === 1 && singleTouchStart) {
+            const dx = e.touches[0].clientX - singleTouchStart.x;
+            const dy = e.touches[0].clientY - singleTouchStart.y;
+            state.translateX = state.lastTX + dx;
+            state.translateY = state.lastTY + dy;
+            applyTransform(svgWrapper, state, container);
+        }
+    }, { passive: false });
+
+    viewport.addEventListener('touchend', () => {
+        singleTouchStart = null;
     });
 }
 

@@ -23,3 +23,5 @@ export { SuggestionChips } from './SuggestionChips';
 export type { SuggestionChipsProps } from './SuggestionChips';
 export { ResponsiveSidebar } from './ResponsiveSidebar';
 export type { ResponsiveSidebarProps } from './ResponsiveSidebar';
+export { BottomSheet } from './BottomSheet';
+export type { BottomSheetProps } from './BottomSheet';

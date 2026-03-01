@@ -113,7 +113,7 @@ export function WikiList() {
                     <Button size="sm" onClick={() => setAddOpen(true)}>+ Add Wiki</Button>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3" id="wiki-card-list">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 px-2 sm:px-0" id="wiki-card-list">
                     {wikis.map((wiki: WikiData) => {
                         const status = getWikiStatus(wiki);
                         const cfg = statusConfig[status];

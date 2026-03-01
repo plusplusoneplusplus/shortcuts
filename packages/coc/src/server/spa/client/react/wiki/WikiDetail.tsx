@@ -5,9 +5,10 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { Badge, Button, Spinner } from '../shared';
+import { Badge, Button, Spinner, ResponsiveSidebar } from '../shared';
 import { cn } from '../shared/cn';
 import { fetchApi } from '../hooks/useApi';
+import { useBreakpoint } from '../hooks/useBreakpoint';
 import { WikiComponentTree } from './WikiComponentTree';
 import { WikiComponent } from './WikiComponent';
 import { WikiGraph } from './WikiGraph';
@@ -51,10 +52,12 @@ function buildWikiHash(wikiId: string, tab: WikiProjectTab, componentId?: string
 
 export function WikiDetail({ wikiId }: WikiDetailProps) {
     const { state, dispatch } = useApp();
+    const { isMobile } = useBreakpoint();
     const [graph, setGraph] = useState<ComponentGraph | null>(null);
     const [loadingGraph, setLoadingGraph] = useState(true);
     const [activeTab, setActiveTab] = useState<WikiProjectTab>('browse');
     const [adminSubTab, setAdminSubTab] = useState<WikiAdminTab | null>(null);
+    const [sidebarOpen, setSidebarOpen] = useState(false);
 
     // Consume initial tab from context (e.g. from hash routing or "→ Setup" CTA)
     useEffect(() => {
@@ -205,12 +208,12 @@ export function WikiDetail({ wikiId }: WikiDetailProps) {
                 </Badge>
                 <div className="flex-1" />
                 {/* Tab bar */}
-                <div className="flex gap-0.5" id="wiki-project-tabs">
+                <div className="flex gap-0.5 overflow-x-auto flex-nowrap" id="wiki-project-tabs">
                     {WIKI_TABS.map(t => (
                         <button
                             key={t}
                             className={cn(
-                                'wiki-project-tab px-2.5 py-1 text-xs rounded transition-colors',
+                                'wiki-project-tab px-2.5 py-1 text-xs rounded transition-colors flex-shrink-0 whitespace-nowrap',
                                 activeTab === t
                                     ? 'bg-[#0078d4] text-white active'
                                     : 'text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]'
@@ -228,13 +231,30 @@ export function WikiDetail({ wikiId }: WikiDetailProps) {
             <div className="flex flex-1 min-h-0">
                 {/* Left sidebar — component tree */}
                 {graph && activeTab === 'browse' && (
-                    <div className="w-56 flex-shrink-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c] overflow-hidden">
-                        <WikiComponentTree
-                            graph={graph}
-                            selectedComponentId={selectedComponentId}
-                            onSelect={handleSelectComponent}
-                        />
-                    </div>
+                    <>
+                        {isMobile && (
+                            <button
+                                data-testid="wiki-sidebar-toggle"
+                                className="fixed bottom-36 right-4 z-[8000] lg:hidden w-10 h-10 rounded-full bg-[#0078d4] text-white shadow-lg flex items-center justify-center text-xs font-bold"
+                                onClick={() => setSidebarOpen(true)}
+                                aria-label="Open component tree"
+                            >
+                                ☰
+                            </button>
+                        )}
+                        <ResponsiveSidebar
+                            isOpen={sidebarOpen}
+                            onClose={() => setSidebarOpen(false)}
+                            width={224}
+                            tabletWidth={200}
+                        >
+                            <WikiComponentTree
+                                graph={graph}
+                                selectedComponentId={selectedComponentId}
+                                onSelect={(id) => { handleSelectComponent(id); setSidebarOpen(false); }}
+                            />
+                        </ResponsiveSidebar>
+                    </>
                 )}
 
                 {/* Right content */}

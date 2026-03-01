@@ -3,10 +3,11 @@
  */
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Spinner } from '../shared';
+import { Spinner, BottomSheet } from '../shared';
 import { cn } from '../shared/cn';
 import { fetchApi } from '../hooks/useApi';
 import { useMermaid } from '../hooks/useMermaid';
+import { useBreakpoint } from '../hooks/useBreakpoint';
 
 declare const marked: { parse(md: string): string } | undefined;
 declare const hljs: { highlightElement(el: Element): void } | undefined;
@@ -56,9 +57,14 @@ export function WikiComponent({ wikiId, componentId, graph, onSelectComponent }:
     const [toc, setToc] = useState<TocItem[]>([]);
     const [activeHeading, setActiveHeading] = useState<string | null>(null);
     const [sourceExpanded, setSourceExpanded] = useState(false);
+    const [tocSheetOpen, setTocSheetOpen] = useState(false);
+    const [rotateHintDismissed, setRotateHintDismissed] = useState(() => {
+        try { return sessionStorage.getItem('wiki-rotate-hint-dismissed') === '1'; } catch { return false; }
+    });
     const contentRef = useRef<HTMLDivElement>(null);
     const scrollRef = useRef<HTMLDivElement>(null);
     const cacheRef = useRef<Record<string, string>>({});
+    const { isMobile } = useBreakpoint();
 
     const comp = useMemo(
         () => graph.components.find(c => c.id === componentId),
@@ -134,6 +140,12 @@ export function WikiComponent({ wikiId, componentId, graph, onSelectComponent }:
             pre.parentNode!.replaceChild(wrapper, pre);
         });
 
+        // Make mermaid containers horizontally scrollable on mobile
+        container.querySelectorAll('.mermaid-container').forEach(el => {
+            (el as HTMLElement).style.overflowX = 'auto';
+            (el as HTMLElement).style.webkitOverflowScrolling = 'touch';
+        });
+
         // Scroll spy (article container scroll)
         const scrollContainer = scrollRef.current;
         if (!scrollContainer) return;
@@ -198,6 +210,11 @@ export function WikiComponent({ wikiId, componentId, graph, onSelectComponent }:
         if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, []);
 
+    const dismissRotateHint = useCallback(() => {
+        setRotateHintDismissed(true);
+        try { sessionStorage.setItem('wiki-rotate-hint-dismissed', '1'); } catch { /* ignore */ }
+    }, []);
+
     if (loading) {
         return (
             <div className="flex items-center justify-center h-full">
@@ -214,8 +231,15 @@ export function WikiComponent({ wikiId, componentId, graph, onSelectComponent }:
 
     return (
         <div className="h-full overflow-y-auto" ref={scrollRef} id="wiki-article-content">
+            {/* Rotate device hint for mobile */}
+            {isMobile && !rotateHintDismissed && toc.length > 3 && (
+                <div className="lg:hidden text-xs text-center text-[#848484] py-1" data-testid="wiki-rotate-hint">
+                    📱 Rotate device for better diagram viewing
+                    <button className="ml-2 underline" onClick={dismissRotateHint}>dismiss</button>
+                </div>
+            )}
             <div className="flex items-start" id="wiki-content-scroll">
-                <div className="flex-1 min-w-0 p-4 wiki-content-scroll">
+                <div className={cn('flex-1 min-w-0 wiki-content-scroll', isMobile ? 'p-2' : 'p-4')}>
                     {comp && (
                         <div className="mb-4 space-y-2">
                             <div className="flex items-center gap-2 flex-wrap">
@@ -316,6 +340,47 @@ export function WikiComponent({ wikiId, componentId, graph, onSelectComponent }:
                     </aside>
                 )}
             </div>
+
+            {/* Mobile TOC FAB + BottomSheet */}
+            {toc.length > 0 && (
+                <>
+                    <button
+                        className="fixed bottom-20 right-4 z-[8000] lg:hidden w-10 h-10 rounded-full bg-[#0078d4] text-white shadow-lg flex items-center justify-center text-xs font-bold"
+                        onClick={() => setTocSheetOpen(true)}
+                        aria-label="Table of contents"
+                        id="wiki-toc-fab"
+                    >
+                        TOC
+                    </button>
+                    <BottomSheet
+                        isOpen={tocSheetOpen}
+                        onClose={() => setTocSheetOpen(false)}
+                        title="On this page"
+                        height={60}
+                    >
+                        <nav className="space-y-1 p-3">
+                            {toc.map(h => (
+                                <a
+                                    key={h.id}
+                                    href={`#${h.id}`}
+                                    className={cn(
+                                        'block text-sm py-1 text-[#1e1e1e] dark:text-[#cccccc] hover:text-[#0078d4]',
+                                        activeHeading === h.id && 'text-[#0078d4] font-medium'
+                                    )}
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        scrollToHeading(h.id);
+                                        setTocSheetOpen(false);
+                                    }}
+                                    style={{ paddingLeft: `${(h.level - 2) * 12}px` }}
+                                >
+                                    {h.text}
+                                </a>
+                            ))}
+                        </nav>
+                    </BottomSheet>
+                </>
+            )}
         </div>
     );
 }
