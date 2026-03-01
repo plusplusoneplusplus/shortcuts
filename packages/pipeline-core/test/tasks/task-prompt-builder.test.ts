@@ -54,6 +54,12 @@ describe('buildCreateTaskPrompt', () => {
         const prompt = buildCreateTaskPrompt('task', '/tmp');
         expect(prompt).toContain('.plan.md');
     });
+
+    it('should normalize Windows backslash paths to forward slashes', () => {
+        const prompt = buildCreateTaskPrompt('task', 'D:\\projects\\shortcuts\\.vscode\\tasks\\coc\\chat');
+        expect(prompt).toContain('D:/projects/shortcuts/.vscode/tasks/coc/chat');
+        expect(prompt).not.toContain('shortcuts\\.vscode');
+    });
 });
 
 // ============================================================================
@@ -81,6 +87,12 @@ describe('buildCreateTaskPromptWithName', () => {
     it('should include description when provided', () => {
         const prompt = buildCreateTaskPromptWithName('n', 'Build a REST API', '/t');
         expect(prompt).toContain('Build a REST API');
+    });
+
+    it('should normalize Windows backslash paths to forward slashes', () => {
+        const prompt = buildCreateTaskPromptWithName('my-task', 'desc', 'C:\\Users\\dev\\.vscode\\tasks');
+        expect(prompt).toContain('C:/Users/dev/.vscode/tasks/my-task.plan.md');
+        expect(prompt).not.toContain('dev\\.vscode');
     });
 });
 
@@ -124,6 +136,13 @@ describe('buildCreateFromFeaturePrompt', () => {
         const context: SelectedContext = {};
         const prompt = buildCreateFromFeaturePrompt(context, 'focus', 'auth-impl', '/tasks');
         expect(prompt).toContain('/tasks/auth-impl.plan.md');
+    });
+
+    it('should normalize Windows backslash paths to forward slashes', () => {
+        const context: SelectedContext = { description: 'Feature' };
+        const prompt = buildCreateFromFeaturePrompt(context, 'focus', 'impl', 'D:\\projects\\shortcuts\\.vscode\\tasks');
+        expect(prompt).toContain('D:/projects/shortcuts/.vscode/tasks/impl.plan.md');
+        expect(prompt).not.toContain('shortcuts\\.vscode');
     });
 });
 

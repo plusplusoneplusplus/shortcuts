@@ -147,6 +147,14 @@ describe('chatMarkdownToHtml', () => {
         expect(html).toContain('data-full-path=');
     });
 
+    it('preserves .vscode segment in forward-slash paths (no markdown escaping issue)', () => {
+        const html = chatMarkdownToHtml('File: D:/projects/shortcuts/.vscode/tasks/coc/chat');
+        expect(html).toContain('class="file-path-link"');
+        // Forward-slash paths must keep the /.vscode/ segment intact
+        expect(html).toContain('shortcuts/.vscode');
+        expect(html).not.toContain('shortcuts.vscode');
+    });
+
     it('linkifies Unix file paths', () => {
         const html = chatMarkdownToHtml('Edit /Users/alice/projects/foo/bar.ts please');
         expect(html).toContain('class="file-path-link"');

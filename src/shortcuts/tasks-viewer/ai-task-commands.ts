@@ -19,7 +19,7 @@ import { AITaskDialogService } from './ai-task-dialog';
 import { createAIInvoker, IAIProcessManager, Attachment } from '../ai-service';
 import { getAIBackendSetting } from '../ai-service/ai-config-helpers';
 import { getExtensionLogger, LogCategory } from '../shared/extension-logger';
-import { skillExists } from '@plusplusoneplusplus/pipeline-core';
+import { skillExists, toForwardSlashes } from '@plusplusoneplusplus/pipeline-core';
 
 const logger = getExtensionLogger();
 
@@ -944,6 +944,7 @@ function parseCreatedFilePath(response: string | undefined, targetFolder: string
  * Build prompt for creating a task from scratch
  */
 function buildCreateTaskPrompt(description: string, targetPath: string): string {
+    targetPath = toForwardSlashes(targetPath);
     return `Can you draft a plan given User's ask: ${description}
 
 **IMPORTANT: Output Location Requirement**
@@ -959,6 +960,7 @@ You MUST save the file to this EXACT directory: ${targetPath}
  * If name is empty, prompt AI to also generate a filename
  */
 function buildCreateTaskPromptWithName(name: string | undefined, description: string, targetPath: string): string {
+    targetPath = toForwardSlashes(targetPath);
     const descriptionPart = description
         ? `\n\nDescription: ${description}`
         : '';
@@ -1009,6 +1011,7 @@ You MUST save the file to this EXACT directory: ${targetPath}
  * @param targetPath - Target directory path
  */
 function buildCreateFromFeaturePrompt(context: SelectedContext, focus: string, name: string | undefined, targetPath: string): string {
+    targetPath = toForwardSlashes(targetPath);
     let contextText = '';
 
     if (context.description) {

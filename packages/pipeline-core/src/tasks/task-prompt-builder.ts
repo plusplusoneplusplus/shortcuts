@@ -11,6 +11,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { loadRelatedItems } from './related-items-loader';
+import { toForwardSlashes } from '../utils/path-utils';
 
 // ============================================================================
 // Types
@@ -70,6 +71,7 @@ const MAX_CONTENT_LENGTH = 2000;
  * Build prompt for creating a task from scratch (no name provided).
  */
 export function buildCreateTaskPrompt(description: string, targetPath: string): string {
+    targetPath = toForwardSlashes(targetPath);
     return `Can you draft a plan given User's ask: ${description}
 
 **IMPORTANT: Output Location Requirement**
@@ -89,6 +91,7 @@ export function buildCreateTaskPromptWithName(
     description: string,
     targetPath: string
 ): string {
+    targetPath = toForwardSlashes(targetPath);
     const descriptionPart = description
         ? `\n\nDescription: ${description}`
         : '';
@@ -143,6 +146,7 @@ export function buildCreateFromFeaturePrompt(
     name: string | undefined,
     targetPath: string
 ): string {
+    targetPath = toForwardSlashes(targetPath);
     let contextText = '';
 
     if (context.description) {
