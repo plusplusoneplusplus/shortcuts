@@ -125,7 +125,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                 )}
                 {activeSubTab === 'queue' && (
                     <Button
-                        variant="ghost"
+                        variant="primary"
                         size="sm"
                         onClick={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id })}
                         title="Queue a new task"

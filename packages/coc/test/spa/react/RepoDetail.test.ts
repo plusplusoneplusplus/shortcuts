@@ -323,10 +323,10 @@ describe('RepoDetail Queue Task button in header', () => {
         expect(queueBtnIdx).toBeLessThan(genBtnIdx);
     });
 
-    it('uses ghost variant', () => {
+    it('uses primary variant', () => {
         const idx = REPO_DETAIL_SOURCE.indexOf('repo-queue-task-btn');
         const block = REPO_DETAIL_SOURCE.substring(Math.max(0, idx - 300), idx);
-        expect(block).toContain('variant="ghost"');
+        expect(block).toContain('variant="primary"');
     });
 });
 
