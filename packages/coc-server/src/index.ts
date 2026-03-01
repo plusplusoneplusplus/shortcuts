@@ -125,6 +125,10 @@ export {
     isRunPipelinePayload,
 } from './task-types';
 
+// Suggest follow-ups tool
+export { createSuggestFollowUpsTool } from './suggest-follow-ups-tool';
+export type { FollowUpSuggestion } from './suggest-follow-ups-tool';
+
 // Centralized error handling
 export {
     APIError,
