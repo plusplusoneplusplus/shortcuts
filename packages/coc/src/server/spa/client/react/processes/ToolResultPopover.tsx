@@ -16,6 +16,13 @@ const MAX_PREVIEW_LENGTH = 2000;
 
 const MARKDOWN_EXTENSIONS = new Set(['md', 'markdown', 'mdx']);
 
+// eslint-disable-next-line no-control-regex
+const ANSI_REGEX = /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g;
+
+function stripAnsi(s: string): string {
+    return s.replace(ANSI_REGEX, '');
+}
+
 function isImageDataUrl(s: string): boolean {
     return /^data:image\/(png|jpeg|jpg|gif|webp|svg\+xml);base64,/i.test(s.trim());
 }
@@ -68,8 +75,10 @@ export function ToolResultPopover({ result, toolName, args, anchorRect, onMouseE
     const visibleText = truncated ? result.slice(0, MAX_PREVIEW_LENGTH) + '\n… (truncated — click to see full)' : result;
 
     const isView = toolName === 'view';
+    const isBash = toolName === 'bash';
     const filePath = isView ? (args?.path || args?.filePath || '') : '';
     const isMd = isView && isMarkdownPath(filePath);
+    const bashCommand = isBash && args?.command ? String(args.command) : '';
 
     const markdownHtml = useMemo(() => {
         if (!isMd) return '';
@@ -161,6 +170,23 @@ export function ToolResultPopover({ result, toolName, args, anchorRect, onMouseE
             );
         }
 
+        if (isBash) {
+            const cleaned = stripAnsi(visibleText);
+            return (
+                <div data-testid="popover-terminal" className="rounded border border-[#2d2d2d] dark:border-[#3c3c3c] overflow-hidden font-mono text-[11px] leading-[1.55] bg-[#1e1e1e] text-[#cccccc] p-2">
+                    {bashCommand && (
+                        <div className="text-[#4ec9b0] mb-1 select-none">$ {bashCommand}</div>
+                    )}
+                    <pre className="whitespace-pre-wrap break-words m-0">
+                        <code>{cleaned}</code>
+                    </pre>
+                    {truncated && (
+                        <div className="text-[10px] text-[#848484] mt-1">… (truncated — click to see full)</div>
+                    )}
+                </div>
+            );
+        }
+
         // Default: raw text (task tool and fallback)
         return (
             <pre className="text-[11px] whitespace-pre-wrap break-words font-mono text-[#1e1e1e] dark:text-[#cccccc]">
@@ -179,7 +205,7 @@ export function ToolResultPopover({ result, toolName, args, anchorRect, onMouseE
             onMouseLeave={onMouseLeave}
         >
             <div className="text-[10px] uppercase text-[#848484] mb-1">
-                {isView ? 'File Preview' : 'Result Preview'}
+                {isView ? 'File Preview' : isBash ? 'Shell Output' : 'Result Preview'}
             </div>
             {renderBody()}
         </div>,

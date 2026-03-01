@@ -313,4 +313,78 @@ describe('ToolResultPopover', () => {
 
         expect(document.querySelector('[data-testid="popover-image"]')).toBeNull();
     });
+
+    // --- bash tool: terminal-style rendering ---
+
+    it('renders terminal-style popover for bash tool', () => {
+        render(
+            <ToolResultPopover
+                result="total 42\ndrwxr-xr-x  5 user staff  160 Jan  1 00:00 ."
+                toolName="bash"
+                args={{ command: 'ls -la' }}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        const popover = document.querySelector('[data-testid="tool-result-popover"]');
+        expect(popover).toBeTruthy();
+        expect(popover!.textContent).toContain('Shell Output');
+        expect(popover!.textContent).not.toContain('Result Preview');
+        const terminalEl = document.querySelector('[data-testid="popover-terminal"]');
+        expect(terminalEl).toBeTruthy();
+        expect(terminalEl!.textContent).toContain('$ ls -la');
+        expect(terminalEl!.textContent).toContain('total 42');
+    });
+
+    it('renders bash popover without command header when no command arg', () => {
+        render(
+            <ToolResultPopover
+                result="output text"
+                toolName="bash"
+                args={{}}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        const terminalEl = document.querySelector('[data-testid="popover-terminal"]');
+        expect(terminalEl).toBeTruthy();
+        expect(terminalEl!.textContent).not.toContain('$');
+        expect(terminalEl!.textContent).toContain('output text');
+    });
+
+    it('strips ANSI escape codes in bash popover', () => {
+        const ansiText = '\x1b[32mgreen\x1b[0m normal \x1b[1mbold\x1b[0m';
+        render(
+            <ToolResultPopover
+                result={ansiText}
+                toolName="bash"
+                args={{ command: 'echo test' }}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        const terminalEl = document.querySelector('[data-testid="popover-terminal"]');
+        expect(terminalEl).toBeTruthy();
+        expect(terminalEl!.textContent).toContain('green normal bold');
+        expect(terminalEl!.innerHTML).not.toContain('\x1b');
+    });
+
+    it('does not render markdown or code sub-testids for bash tool', () => {
+        render(
+            <ToolResultPopover
+                result="some output"
+                toolName="bash"
+                args={{ command: 'echo hello' }}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        expect(document.querySelector('[data-testid="popover-markdown"]')).toBeNull();
+        expect(document.querySelector('[data-testid="popover-code"]')).toBeNull();
+        expect(document.querySelector('[data-testid="popover-terminal"]')).toBeTruthy();
+    });
 });
