@@ -7,13 +7,6 @@ import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { TaskTreeItem, buildFileTooltip, type TaskTreeItemProps } from '../../../src/server/spa/client/react/tasks/TaskTreeItem';
 import type { TaskFolder, TaskDocument, TaskDocumentGroup, TaskNode } from '../../../src/server/spa/client/react/hooks/useTaskTree';
 
-// ── Mock AIActionsDropdown (uses portals + refs internally) ────────────
-vi.mock('../../../src/server/spa/client/react/shared/AIActionsDropdown', () => ({
-    AIActionsDropdown: ({ wsId, taskPath }: { wsId: string; taskPath: string }) => (
-        <span data-testid="ai-actions" data-ws={wsId} data-path={taskPath} />
-    ),
-}));
-
 // ── Fixtures ───────────────────────────────────────────────────────────
 
 function makeFolder(overrides?: Partial<TaskFolder>): TaskFolder {
@@ -102,7 +95,9 @@ describe('TaskTreeItem — folder rendering', () => {
 
     it('does not render AI actions dropdown for folders', () => {
         renderItem({ item: makeFolder() });
-        expect(screen.queryByTestId('ai-actions')).toBeNull();
+        // AIActionsDropdown was removed; file-level AI actions are now in the context menu
+        const li = screen.getByTestId('task-tree-item-feature1');
+        expect(li.textContent).not.toContain('✨');
     });
 
     it('folder click calls onFolderClick with the folder item', () => {
@@ -140,11 +135,10 @@ describe('TaskTreeItem — folder rendering', () => {
 describe('TaskTreeItem — file (TaskDocument) rendering', () => {
     afterEach(() => cleanup());
 
-    it('renders file with name, checkbox, and AI actions area', () => {
+    it('renders file with name and checkbox', () => {
         renderItem({ item: makeDocument({ baseName: 'task' }) });
         expect(screen.getByTestId('task-tree-item-task')).toBeTruthy();
         expect(screen.getByRole('checkbox')).toBeTruthy();
-        expect(screen.getByTestId('ai-actions')).toBeTruthy();
     });
 
     it('renders file icon 📝 for single documents', () => {

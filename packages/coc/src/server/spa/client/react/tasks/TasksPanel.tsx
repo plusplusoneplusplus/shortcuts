@@ -25,6 +25,7 @@ import { FileMoveDialog } from './FileMoveDialog';
 import { Dialog } from '../shared/Dialog';
 import { Button } from '../shared/Button';
 import { FollowPromptDialog } from '../shared/FollowPromptDialog';
+import { UpdateDocumentDialog } from '../shared/UpdateDocumentDialog';
 import { BulkFollowPromptDialog } from '../shared/BulkFollowPromptDialog';
 import { Spinner } from '../shared';
 import { normalizeRemoteUrl } from '../repos/repoGrouping';
@@ -163,6 +164,11 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
 
     const [fileMoveDialogOpen, setFileMoveDialogOpen] = useState(false);
     const [fileMoveCtxItem, setFileMoveCtxItem] = useState<FileCtxInfo | null>(null);
+
+    // ── File-level AI dialog state ─────────────────────────────────────
+    const [aiDialogTarget, setAiDialogTarget] = useState<{ path: string; name: string } | null>(null);
+    const [aiDialogType, setAiDialogType] = useState<'follow-prompt' | 'update-document' | null>(null);
+    const closeAiDialog = useCallback(() => { setAiDialogType(null); setAiDialogTarget(null); }, []);
 
     const closeFileDialog = useCallback(
         () => setFileDialog({ action: null, ctxItem: null, submitting: false }),
@@ -506,6 +512,26 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
                     },
                 ]
                 : []),
+            { separator: true, label: '', onClick: noop },
+            // ── AI Actions ──
+            {
+                label: '✨ Follow Prompt',
+                icon: '📝',
+                onClick: () => {
+                    setFileCtxMenu(null);
+                    setAiDialogTarget({ path: ctxItem.renamePath, name: ctxItem.displayName });
+                    setAiDialogType('follow-prompt');
+                },
+            },
+            {
+                label: '✨ Update Document',
+                icon: '✏️',
+                onClick: () => {
+                    setFileCtxMenu(null);
+                    setAiDialogTarget({ path: ctxItem.renamePath, name: ctxItem.displayName });
+                    setAiDialogType('update-document');
+                },
+            },
             { separator: true, label: '', onClick: noop },
             // ── Danger ──
             {
@@ -900,6 +926,24 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
                     wsId={wsId}
                     folder={folderDialog.folder}
                     onClose={closeFolderDialog}
+                />
+            )}
+
+            {/* File-level AI dialogs */}
+            {aiDialogType === 'follow-prompt' && aiDialogTarget && (
+                <FollowPromptDialog
+                    wsId={wsId}
+                    taskPath={aiDialogTarget.path}
+                    taskName={aiDialogTarget.name}
+                    onClose={closeAiDialog}
+                />
+            )}
+            {aiDialogType === 'update-document' && aiDialogTarget && (
+                <UpdateDocumentDialog
+                    wsId={wsId}
+                    taskPath={aiDialogTarget.path}
+                    taskName={aiDialogTarget.name}
+                    onClose={closeAiDialog}
                 />
             )}
 

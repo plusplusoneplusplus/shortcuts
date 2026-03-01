@@ -88,7 +88,7 @@ async function setupRepoWithAIActions(
 
 test.describe('AI Actions (007)', () => {
 
-    test('7.1 AI button appears on file rows', async ({ page, serverUrl }) => {
+    test('7.1 right-click file row shows AI actions in context menu', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-ai-'));
         try {
             await setupRepoWithAIActions(page, serverUrl, tmpDir);
@@ -96,85 +96,24 @@ test.describe('AI Actions (007)', () => {
             const fileRow = page.locator('.miller-file-row').first();
             await expect(fileRow).toBeVisible();
 
-            const aiButton = fileRow.locator('[data-action="ai-action"]');
-            await expect(aiButton).toBeVisible();
-            await expect(aiButton).toHaveAttribute('title', 'AI Actions');
+            await fileRow.click({ button: 'right' });
+
+            // Context menu should contain AI action items
+            await expect(page.locator('text=✨ Follow Prompt')).toBeVisible({ timeout: 5000 });
+            await expect(page.locator('text=✨ Update Document')).toBeVisible({ timeout: 5000 });
         } finally {
             safeRmSync(tmpDir);
         }
     });
 
-    test('7.2 click AI button shows dropdown menu', async ({ page, serverUrl }) => {
+    test('7.2 Follow Prompt via context menu opens submenu with prompts and skills', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-ai-'));
         try {
             await setupRepoWithAIActions(page, serverUrl, tmpDir);
 
             const fileRow = page.locator('.miller-file-row').first();
-            await fileRow.locator('[data-action="ai-action"]').click();
-
-            const dropdown = page.locator('.ai-action-dropdown');
-            await expect(dropdown).toBeVisible();
-
-            await expect(dropdown.locator('[data-ai-action="follow-prompt"]')).toBeVisible();
-            await expect(dropdown.locator('[data-ai-action="update-document"]')).toBeVisible();
-        } finally {
-            safeRmSync(tmpDir);
-        }
-    });
-
-    test('7.3 dropdown positioned near button', async ({ page, serverUrl }) => {
-        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-ai-'));
-        try {
-            await setupRepoWithAIActions(page, serverUrl, tmpDir);
-
-            const fileRow = page.locator('.miller-file-row').first();
-            const aiButton = fileRow.locator('[data-action="ai-action"]');
-            const buttonBox = await aiButton.boundingBox();
-
-            await aiButton.click();
-
-            const dropdown = page.locator('.ai-action-dropdown');
-            await expect(dropdown).toBeVisible();
-            const dropdownBox = await dropdown.boundingBox();
-
-            // Dropdown top should be near the button bottom (within 8px tolerance for gap)
-            expect(dropdownBox!.y).toBeGreaterThanOrEqual(buttonBox!.y);
-            // Dropdown should be within the viewport
-            const viewportSize = page.viewportSize()!;
-            expect(dropdownBox!.y + dropdownBox!.height).toBeLessThanOrEqual(viewportSize.height + 1);
-        } finally {
-            safeRmSync(tmpDir);
-        }
-    });
-
-    test('7.4 click outside closes dropdown', async ({ page, serverUrl }) => {
-        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-ai-'));
-        try {
-            await setupRepoWithAIActions(page, serverUrl, tmpDir);
-
-            const fileRow = page.locator('.miller-file-row').first();
-            await fileRow.locator('[data-action="ai-action"]').click();
-
-            const dropdown = page.locator('.ai-action-dropdown');
-            await expect(dropdown).toBeVisible();
-
-            // Click on body outside the dropdown
-            await page.locator('.miller-columns').click({ position: { x: 5, y: 5 } });
-
-            await expect(dropdown).toHaveCount(0, { timeout: 5000 });
-        } finally {
-            safeRmSync(tmpDir);
-        }
-    });
-
-    test('7.5 Follow Prompt action opens submenu with prompts and skills', async ({ page, serverUrl }) => {
-        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-ai-'));
-        try {
-            await setupRepoWithAIActions(page, serverUrl, tmpDir);
-
-            const fileRow = page.locator('.miller-file-row').first();
-            await fileRow.locator('[data-action="ai-action"]').click();
-            await page.locator('[data-ai-action="follow-prompt"]').click();
+            await fileRow.click({ button: 'right' });
+            await page.locator('text=✨ Follow Prompt').click();
 
             // Follow Prompt overlay should appear
             const overlay = page.locator('#follow-prompt-submenu');
@@ -196,7 +135,7 @@ test.describe('AI Actions (007)', () => {
         }
     });
 
-    test('7.6 Follow Prompt enqueues task when prompt item clicked', async ({ page, serverUrl, mockAI }) => {
+    test('7.3 Follow Prompt enqueues task when prompt item clicked', async ({ page, serverUrl, mockAI }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-ai-'));
         try {
             await setupRepoWithAIActions(page, serverUrl, tmpDir);
@@ -209,8 +148,8 @@ test.describe('AI Actions (007)', () => {
             );
 
             const fileRow = page.locator('.miller-file-row').first();
-            await fileRow.locator('[data-action="ai-action"]').click();
-            await page.locator('[data-ai-action="follow-prompt"]').click();
+            await fileRow.click({ button: 'right' });
+            await page.locator('text=✨ Follow Prompt').click();
 
             // Wait for prompts to load
             await expect(page.locator('.fp-item').first()).toBeVisible({ timeout: 10000 });
@@ -252,14 +191,14 @@ test.describe('AI Actions (007)', () => {
         }
     });
 
-    test('7.7 Update Document action opens modal with instruction textarea', async ({ page, serverUrl }) => {
+    test('7.4 Update Document via context menu opens modal with instruction textarea', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-ai-'));
         try {
             await setupRepoWithAIActions(page, serverUrl, tmpDir);
 
             const fileRow = page.locator('.miller-file-row').first();
-            await fileRow.locator('[data-action="ai-action"]').click();
-            await page.locator('[data-ai-action="update-document"]').click();
+            await fileRow.click({ button: 'right' });
+            await page.locator('text=✨ Update Document').click();
 
             // Update Document overlay should appear
             const overlay = page.locator('#update-doc-overlay');
@@ -279,7 +218,7 @@ test.describe('AI Actions (007)', () => {
         }
     });
 
-    test('7.8 Update Document submits instruction and enqueues task', async ({ page, serverUrl, mockAI }) => {
+    test('7.5 Update Document submits instruction and enqueues task', async ({ page, serverUrl, mockAI }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-ai-'));
         try {
             await setupRepoWithAIActions(page, serverUrl, tmpDir);
@@ -292,8 +231,8 @@ test.describe('AI Actions (007)', () => {
             );
 
             const fileRow = page.locator('.miller-file-row').first();
-            await fileRow.locator('[data-action="ai-action"]').click();
-            await page.locator('[data-ai-action="update-document"]').click();
+            await fileRow.click({ button: 'right' });
+            await page.locator('text=✨ Update Document').click();
 
             // Fill instruction
             await page.fill('#update-doc-instruction', 'Add error handling to all functions');
@@ -335,14 +274,14 @@ test.describe('AI Actions (007)', () => {
         }
     });
 
-    test('7.9 Update Document cancel closes modal without API call', async ({ page, serverUrl }) => {
+    test('7.6 Update Document cancel closes modal without API call', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-ai-'));
         try {
             await setupRepoWithAIActions(page, serverUrl, tmpDir);
 
             const fileRow = page.locator('.miller-file-row').first();
-            await fileRow.locator('[data-action="ai-action"]').click();
-            await page.locator('[data-ai-action="update-document"]').click();
+            await fileRow.click({ button: 'right' });
+            await page.locator('text=✨ Update Document').click();
 
             const overlay = page.locator('#update-doc-overlay');
             await expect(overlay).toBeVisible();
@@ -357,14 +296,14 @@ test.describe('AI Actions (007)', () => {
         }
     });
 
-    test('7.10 Update Document close button dismisses modal', async ({ page, serverUrl }) => {
+    test('7.7 Update Document close button dismisses modal', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-ai-'));
         try {
             await setupRepoWithAIActions(page, serverUrl, tmpDir);
 
             const fileRow = page.locator('.miller-file-row').first();
-            await fileRow.locator('[data-action="ai-action"]').click();
-            await page.locator('[data-ai-action="update-document"]').click();
+            await fileRow.click({ button: 'right' });
+            await page.locator('text=✨ Update Document').click();
 
             const overlay = page.locator('#update-doc-overlay');
             await expect(overlay).toBeVisible();
@@ -378,14 +317,14 @@ test.describe('AI Actions (007)', () => {
         }
     });
 
-    test('7.11 Follow Prompt close button dismisses submenu', async ({ page, serverUrl }) => {
+    test('7.8 Follow Prompt close button dismisses submenu', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-ai-'));
         try {
             await setupRepoWithAIActions(page, serverUrl, tmpDir);
 
             const fileRow = page.locator('.miller-file-row').first();
-            await fileRow.locator('[data-action="ai-action"]').click();
-            await page.locator('[data-ai-action="follow-prompt"]').click();
+            await fileRow.click({ button: 'right' });
+            await page.locator('text=✨ Follow Prompt').click();
 
             const overlay = page.locator('#follow-prompt-submenu');
             await expect(overlay).toBeVisible();
@@ -394,39 +333,6 @@ test.describe('AI Actions (007)', () => {
             await page.click('#fp-close');
 
             await expect(overlay).toHaveCount(0, { timeout: 5000 });
-        } finally {
-            safeRmSync(tmpDir);
-        }
-    });
-
-    test('7.12 only one dropdown open at a time', async ({ page, serverUrl }) => {
-        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-ai-'));
-        try {
-            await setupRepoWithAIActions(page, serverUrl, tmpDir);
-
-            const fileRows = page.locator('.miller-file-row');
-            const count = await fileRows.count();
-            // Need at least 2 file rows
-            if (count < 2) {
-                return;
-            }
-
-            // Click AI button on first file
-            await fileRows.first().locator('[data-action="ai-action"]').click();
-            await expect(page.locator('.ai-action-dropdown')).toHaveCount(1);
-
-            // Close the first dropdown by clicking outside so it doesn't block
-            await page.locator('.miller-columns').click({ position: { x: 5, y: 5 } });
-            await expect(page.locator('.ai-action-dropdown')).toHaveCount(0, { timeout: 5000 });
-
-            // Click AI button on second file
-            await fileRows.nth(1).locator('[data-action="ai-action"]').click();
-            await expect(page.locator('.ai-action-dropdown')).toHaveCount(1);
-
-            // Verify it belongs to the second file's path
-            const dropdown = page.locator('.ai-action-dropdown');
-            const secondFilePath = await fileRows.nth(1).getAttribute('data-file-path');
-            await expect(dropdown).toHaveAttribute('data-task-path', secondFilePath!);
         } finally {
             safeRmSync(tmpDir);
         }
