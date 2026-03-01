@@ -23,7 +23,10 @@ import {
     buildPromptFromContext,
     type PromptContext,
     type CreateTaskInput,
+    batchRelocateAnchors,
+    needsRelocationCheck,
 } from '@plusplusoneplusplus/pipeline-core';
+import type { BaseAnchorData } from '@plusplusoneplusplus/pipeline-core';
 import type { ResolveCommentsPayload } from '@plusplusoneplusplus/coc-server';
 import type { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
@@ -197,7 +200,7 @@ export class TaskCommentsManager {
     }
 
     /** Write comments to storage atomically (write to temp file then rename). */
-    private async writeComments(
+    async writeComments(
         workspaceId: string,
         taskPath: string,
         comments: TaskComment[]
@@ -450,6 +453,75 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
         return queueManager.enqueue(input);
     }
 
+    /**
+     * Relocate comment anchors if the file content has drifted.
+     * Returns the (possibly updated) comments array. Persists relocated positions.
+     */
+    async function relocateCommentsIfNeeded(
+        mgr: TaskCommentsManager,
+        wsId: string,
+        taskPath: string,
+        comments: TaskComment[],
+        rootPath: string
+    ): Promise<TaskComment[]> {
+        const absolutePath = path.join(rootPath, taskPath);
+        let content: string;
+        try {
+            content = await fs.promises.readFile(absolutePath, 'utf8');
+        } catch {
+            return comments;
+        }
+
+        // Filter comments that have anchors and need relocation
+        const anchorsMap = new Map<string, BaseAnchorData>();
+        for (const c of comments) {
+            if (!c.anchor) continue;
+            if (
+                needsRelocationCheck(
+                    content,
+                    c.anchor,
+                    c.selection.startLine,
+                    c.selection.endLine,
+                    c.selection.startColumn,
+                    c.selection.endColumn
+                )
+            ) {
+                anchorsMap.set(c.id, c.anchor);
+            }
+        }
+
+        if (anchorsMap.size === 0) {
+            return comments;
+        }
+
+        const results = batchRelocateAnchors(content, anchorsMap);
+
+        let changed = false;
+        for (const [id, result] of results) {
+            if (result.found && result.startLine != null && result.endLine != null) {
+                const comment = comments.find(c => c.id === id);
+                if (comment) {
+                    comment.selection = {
+                        startLine: result.startLine,
+                        endLine: result.endLine,
+                        startColumn: result.startColumn ?? comment.selection.startColumn,
+                        endColumn: result.endColumn ?? comment.selection.endColumn,
+                    };
+                    if (comment.anchor) {
+                        comment.anchor.originalLine = result.startLine;
+                    }
+                    changed = true;
+                }
+            }
+        }
+
+        if (changed) {
+            await mgr.writeComments(wsId, taskPath, comments);
+        }
+
+        return comments;
+    }
+
     // Pattern for comment counts endpoint: /api/comment-counts/{wsId}
     const countsPattern = /^\/api\/comment-counts\/([a-zA-Z0-9_-]+)$/;
 
@@ -526,7 +598,15 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
                 return sendError(res, 400, 'Invalid workspace ID');
             }
             try {
-                const comments = await manager.getComments(wsId, taskPath);
+                let comments = await manager.getComments(wsId, taskPath);
+                if (comments.length > 0) {
+                    const rootPath = await resolveWorkspacePath(wsId);
+                    if (rootPath) {
+                        comments = await relocateCommentsIfNeeded(
+                            manager, wsId, taskPath, comments, rootPath
+                        );
+                    }
+                }
                 sendJSON(res, 200, { comments });
             } catch {
                 sendError(res, 500, 'Failed to retrieve comments');
