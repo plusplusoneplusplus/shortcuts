@@ -163,8 +163,15 @@ describe('RepoDetail Queue badge wiring', () => {
         expect(REPO_DETAIL_SOURCE).toContain("type: 'REPO_QUEUE_UPDATED'");
     });
 
-    it('skips fetch if repoQueueMap already has data for the repo', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('if (queueState.repoQueueMap[ws.id]) return');
+    it('skips fetch if repoQueueMap already has task-level data for the repo', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('existing.running.length > 0 || existing.queued.length > 0 || existing.history.length > 0');
+    });
+
+    it('re-fetches when repoQueueMap has only stats-seeded (empty arrays) entry', () => {
+        // The guard should NOT skip fetch when only a stats-only entry exists
+        expect(REPO_DETAIL_SOURCE).toContain('existing.running.length > 0 || existing.queued.length > 0 || existing.history.length > 0');
+        // Verifies the entry is checked for actual task data, not mere existence
+        expect(REPO_DETAIL_SOURCE).not.toContain('if (queueState.repoQueueMap[ws.id]) return');
     });
 
     it('does not use combined queueCount variable', () => {

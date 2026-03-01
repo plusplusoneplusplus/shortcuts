@@ -199,4 +199,72 @@ describe('useRepoQueueStats', () => {
         render(<Wrap><Inner /></Wrap>);
         expect(hookResult).toEqual({ running: 1, queued: 1, chatRunning: 0, chatQueued: 0, chatPending: 0 });
     });
+
+    it('includes streaming chat count in chatPending when no queue chat tasks exist', () => {
+        let hookResult: ReturnType<typeof useRepoQueueStats> | null = null;
+
+        function Inner() {
+            const { dispatch } = useQueue();
+            hookResult = useRepoQueueStats('ws-stream');
+            useEffect(() => {
+                dispatch({ type: 'CHAT_STREAMING_STARTED', workspaceId: 'ws-stream' });
+            }, [dispatch]);
+            return null;
+        }
+
+        render(<Wrap><Inner /></Wrap>);
+        expect(hookResult!.chatPending).toBe(1);
+    });
+
+    it('uses max of queue count and streaming count for chatPending', () => {
+        let hookResult: ReturnType<typeof useRepoQueueStats> | null = null;
+
+        function Inner() {
+            const { dispatch } = useQueue();
+            hookResult = useRepoQueueStats('ws-both');
+            useEffect(() => {
+                dispatch({
+                    type: 'REPO_QUEUE_UPDATED',
+                    repoId: 'ws-both',
+                    queue: {
+                        queued: [{ id: 'q1', type: 'chat' }],
+                        running: [{ id: 'r1', type: 'chat' }],
+                    },
+                });
+                dispatch({ type: 'CHAT_STREAMING_STARTED', workspaceId: 'ws-both' });
+            }, [dispatch]);
+            return null;
+        }
+
+        render(<Wrap><Inner /></Wrap>);
+        // queue has 2 chat tasks, streaming has 1 → max(2, 1) = 2
+        expect(hookResult!.chatPending).toBe(2);
+    });
+
+    it('streaming count takes precedence when higher than queue count', () => {
+        let hookResult: ReturnType<typeof useRepoQueueStats> | null = null;
+
+        function Inner() {
+            const { dispatch } = useQueue();
+            hookResult = useRepoQueueStats('ws-stream-high');
+            useEffect(() => {
+                dispatch({
+                    type: 'REPO_QUEUE_UPDATED',
+                    repoId: 'ws-stream-high',
+                    queue: {
+                        queued: [],
+                        running: [],
+                        history: [{ id: 'h1', type: 'chat' }],
+                    },
+                });
+                dispatch({ type: 'CHAT_STREAMING_STARTED', workspaceId: 'ws-stream-high' });
+                dispatch({ type: 'CHAT_STREAMING_STARTED', workspaceId: 'ws-stream-high' });
+            }, [dispatch]);
+            return null;
+        }
+
+        render(<Wrap><Inner /></Wrap>);
+        // queue has 0 running/queued chats, streaming has 2 → max(0, 2) = 2
+        expect(hookResult!.chatPending).toBe(2);
+    });
 });

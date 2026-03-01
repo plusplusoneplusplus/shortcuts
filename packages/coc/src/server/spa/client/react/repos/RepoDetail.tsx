@@ -52,9 +52,10 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const taskCount = repo.taskCount || 0;
     const { running: queueRunningCount, queued: queueQueuedCount, chatPending: chatPendingCount } = useRepoQueueStats(ws.id);
 
-    // Seed repo queue map on first render if not yet populated
+    // Seed repo queue map on first render if not yet populated with task-level data
     useEffect(() => {
-        if (queueState.repoQueueMap[ws.id]) return;
+        const existing = queueState.repoQueueMap[ws.id];
+        if (existing && (existing.running.length > 0 || existing.queued.length > 0 || existing.history.length > 0)) return;
         fetchApi('/queue?repoId=' + encodeURIComponent(ws.id))
             .then(data => {
                 if (data) queueDispatch({ type: 'REPO_QUEUE_UPDATED', repoId: ws.id, queue: data });

@@ -24,7 +24,8 @@ export function useRepoQueueStats(workspaceId: string): RepoQueueStats {
     const { state } = useQueue();
     return useMemo(() => {
         const entry = state.repoQueueMap[workspaceId];
-        if (!entry) return { running: 0, queued: 0, chatRunning: 0, chatQueued: 0, chatPending: 0 };
+        const streamingCount = state.streamingChatWorkspaces[workspaceId] || 0;
+        if (!entry) return { running: 0, queued: 0, chatRunning: 0, chatQueued: 0, chatPending: streamingCount };
         const runningArr = entry.running ?? [];
         const queuedArr = entry.queued ?? [];
         const chatRunning = runningArr.filter(isChat).length;
@@ -34,7 +35,7 @@ export function useRepoQueueStats(workspaceId: string): RepoQueueStats {
             queued: queuedArr.filter(isNonChat).length,
             chatRunning,
             chatQueued,
-            chatPending: chatRunning + chatQueued,
+            chatPending: Math.max(chatRunning + chatQueued, streamingCount),
         };
-    }, [state.repoQueueMap, workspaceId]);
+    }, [state.repoQueueMap, state.streamingChatWorkspaces, workspaceId]);
 }

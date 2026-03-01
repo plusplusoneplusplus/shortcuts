@@ -56,7 +56,7 @@ function getConversationTurns(data: any, task?: any): ClientConversationTurn[] {
 
 export function RepoChatTab({ workspaceId, workspacePath, initialSessionId }: RepoChatTabProps) {
     const sessionsHook = useChatSessions(workspaceId);
-    const { state: queueState } = useQueue();
+    const { state: queueState, dispatch: queueDispatch } = useQueue();
 
     const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
     const [chatTaskId, setChatTaskId] = useState<string | null>(null);
@@ -81,6 +81,27 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId }: Re
 
     const processId = task?.processId ?? (chatTaskId ? `queue_${chatTaskId}` : null);
     const taskFinished = task?.status === 'completed' || task?.status === 'failed';
+
+    // Sync streaming state to QueueContext for badge counts
+    const streamingDispatchedRef = useRef(false);
+    useEffect(() => {
+        if (isStreaming && !streamingDispatchedRef.current) {
+            streamingDispatchedRef.current = true;
+            queueDispatch({ type: 'CHAT_STREAMING_STARTED', workspaceId });
+        } else if (!isStreaming && streamingDispatchedRef.current) {
+            streamingDispatchedRef.current = false;
+            queueDispatch({ type: 'CHAT_STREAMING_STOPPED', workspaceId });
+        }
+    }, [isStreaming, workspaceId, queueDispatch]);
+
+    // Cleanup on unmount: decrement if still streaming
+    useEffect(() => {
+        return () => {
+            if (streamingDispatchedRef.current) {
+                queueDispatch({ type: 'CHAT_STREAMING_STOPPED', workspaceId });
+            }
+        };
+    }, [workspaceId, queueDispatch]);
 
     // --- helpers ---
 

@@ -12,8 +12,10 @@ function makeState(overrides: Partial<QueueContextState> = {}): QueueContextStat
         history: [],
         stats: { queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0, total: 0, isPaused: false, isDraining: false },
         repoQueueMap: {},
+        streamingChatWorkspaces: {},
         showDialog: false,
         dialogInitialFolderPath: null,
+        dialogInitialWorkspaceId: null,
         showHistory: false,
         isFollowUpStreaming: false,
         currentStreamingTurnIndex: null,
@@ -477,6 +479,59 @@ describe('QueueContext reducer', () => {
             });
             expect(result.isFollowUpStreaming).toBe(true);
             expect(result.currentStreamingTurnIndex).toBe(3);
+        });
+    });
+
+    // ── CHAT_STREAMING_STARTED / CHAT_STREAMING_STOPPED ────────────
+    describe('CHAT_STREAMING_STARTED', () => {
+        it('increments count for a workspace', () => {
+            const result = queueReducer(makeState(), {
+                type: 'CHAT_STREAMING_STARTED',
+                workspaceId: 'ws-1',
+            });
+            expect(result.streamingChatWorkspaces['ws-1']).toBe(1);
+        });
+
+        it('increments count for multiple starts on the same workspace', () => {
+            let state = makeState();
+            state = queueReducer(state, { type: 'CHAT_STREAMING_STARTED', workspaceId: 'ws-1' });
+            state = queueReducer(state, { type: 'CHAT_STREAMING_STARTED', workspaceId: 'ws-1' });
+            expect(state.streamingChatWorkspaces['ws-1']).toBe(2);
+        });
+
+        it('tracks multiple workspaces independently', () => {
+            let state = makeState();
+            state = queueReducer(state, { type: 'CHAT_STREAMING_STARTED', workspaceId: 'ws-1' });
+            state = queueReducer(state, { type: 'CHAT_STREAMING_STARTED', workspaceId: 'ws-2' });
+            expect(state.streamingChatWorkspaces['ws-1']).toBe(1);
+            expect(state.streamingChatWorkspaces['ws-2']).toBe(1);
+        });
+    });
+
+    describe('CHAT_STREAMING_STOPPED', () => {
+        it('decrements count for a workspace', () => {
+            const state = makeState({ streamingChatWorkspaces: { 'ws-1': 2 } });
+            const result = queueReducer(state, { type: 'CHAT_STREAMING_STOPPED', workspaceId: 'ws-1' });
+            expect(result.streamingChatWorkspaces['ws-1']).toBe(1);
+        });
+
+        it('removes workspace key when count reaches zero', () => {
+            const state = makeState({ streamingChatWorkspaces: { 'ws-1': 1 } });
+            const result = queueReducer(state, { type: 'CHAT_STREAMING_STOPPED', workspaceId: 'ws-1' });
+            expect(result.streamingChatWorkspaces['ws-1']).toBeUndefined();
+        });
+
+        it('does not go negative for unknown workspace', () => {
+            const state = makeState();
+            const result = queueReducer(state, { type: 'CHAT_STREAMING_STOPPED', workspaceId: 'ws-unknown' });
+            expect(result.streamingChatWorkspaces['ws-unknown']).toBeUndefined();
+        });
+
+        it('does not affect other workspaces', () => {
+            const state = makeState({ streamingChatWorkspaces: { 'ws-1': 1, 'ws-2': 3 } });
+            const result = queueReducer(state, { type: 'CHAT_STREAMING_STOPPED', workspaceId: 'ws-1' });
+            expect(result.streamingChatWorkspaces['ws-1']).toBeUndefined();
+            expect(result.streamingChatWorkspaces['ws-2']).toBe(3);
         });
     });
 });

@@ -536,7 +536,7 @@ describe('RepoChatTab', () => {
 
     describe('real-time queue updates', () => {
         it('subscribes to queueState via useQueue', () => {
-            expect(source).toContain('const { state: queueState } = useQueue()');
+            expect(source).toContain('const { state: queueState, dispatch: queueDispatch } = useQueue()');
         });
 
         it('reads repoQueueMap for the workspace', () => {
@@ -1077,6 +1077,31 @@ describe('RepoChatTab', () => {
             const runningIdx = pollSection.indexOf("t.processId || t.status === 'running'");
             expect(cancelledIdx).toBeGreaterThan(-1);
             expect(runningIdx).toBeGreaterThan(cancelledIdx);
+        });
+    });
+
+    describe('streaming chat badge dispatch', () => {
+        it('dispatches queueDispatch from useQueue', () => {
+            expect(source).toContain('dispatch: queueDispatch } = useQueue()');
+        });
+
+        it('dispatches CHAT_STREAMING_STARTED when streaming begins', () => {
+            expect(source).toContain("queueDispatch({ type: 'CHAT_STREAMING_STARTED', workspaceId })");
+        });
+
+        it('dispatches CHAT_STREAMING_STOPPED when streaming ends', () => {
+            expect(source).toContain("queueDispatch({ type: 'CHAT_STREAMING_STOPPED', workspaceId })");
+        });
+
+        it('uses a ref to track dispatched state and avoid duplicate dispatches', () => {
+            expect(source).toContain('streamingDispatchedRef');
+            expect(source).toContain('const streamingDispatchedRef = useRef(false)');
+        });
+
+        it('cleans up streaming dispatch on unmount', () => {
+            // Unmount cleanup should stop streaming count if still active
+            const cleanupSection = source.substring(source.indexOf('Cleanup on unmount'));
+            expect(cleanupSection).toContain('CHAT_STREAMING_STOPPED');
         });
     });
 });

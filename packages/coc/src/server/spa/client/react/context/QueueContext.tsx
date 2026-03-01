@@ -24,6 +24,8 @@ export interface QueueContextState {
     history: any[];
     stats: QueueStats;
     repoQueueMap: Record<string, { queued: any[]; running: any[]; history: any[]; stats: QueueStats }>;
+    /** Per-workspace count of chats currently streaming (follow-up SSE). */
+    streamingChatWorkspaces: Record<string, number>;
     showDialog: boolean;
     dialogInitialFolderPath: string | null;
     dialogInitialWorkspaceId: string | null;
@@ -64,6 +66,7 @@ const initialState: QueueContextState = {
     history: [],
     stats: createEmptyQueueStats(),
     repoQueueMap: {},
+    streamingChatWorkspaces: {},
     showDialog: false,
     dialogInitialFolderPath: null,
     dialogInitialWorkspaceId: null,
@@ -94,7 +97,9 @@ export type QueueAction =
     | { type: 'CLOSE_DIALOG' }
     | { type: 'TOGGLE_HISTORY' }
     | { type: 'SET_FOLLOW_UP_STREAMING'; value: boolean; turnIndex: number | null }
-    | { type: 'SELECT_QUEUE_TASK'; id: string | null };
+    | { type: 'SELECT_QUEUE_TASK'; id: string | null }
+    | { type: 'CHAT_STREAMING_STARTED'; workspaceId: string }
+    | { type: 'CHAT_STREAMING_STOPPED'; workspaceId: string };
 
 // ── Reducer ────────────────────────────────────────────────────────────
 
@@ -176,6 +181,21 @@ export function queueReducer(state: QueueContextState, action: QueueAction): Que
             return { ...state, isFollowUpStreaming: action.value, currentStreamingTurnIndex: action.turnIndex };
         case 'SELECT_QUEUE_TASK':
             return { ...state, selectedTaskId: action.id };
+        case 'CHAT_STREAMING_STARTED': {
+            const prev = state.streamingChatWorkspaces[action.workspaceId] || 0;
+            return {
+                ...state,
+                streamingChatWorkspaces: { ...state.streamingChatWorkspaces, [action.workspaceId]: prev + 1 },
+            };
+        }
+        case 'CHAT_STREAMING_STOPPED': {
+            const prev = state.streamingChatWorkspaces[action.workspaceId] || 0;
+            const next = Math.max(0, prev - 1);
+            const updated = { ...state.streamingChatWorkspaces };
+            if (next === 0) delete updated[action.workspaceId];
+            else updated[action.workspaceId] = next;
+            return { ...state, streamingChatWorkspaces: updated };
+        }
         default:
             return state;
     }
