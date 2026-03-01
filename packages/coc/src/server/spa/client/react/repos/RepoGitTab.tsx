@@ -17,6 +17,7 @@ import { Spinner } from '../shared';
 import { CommitList } from './CommitList';
 import { CommitDetail } from './CommitDetail';
 import { BranchChanges } from './BranchChanges';
+import { BranchFileDiff } from './BranchFileDiff';
 import { GitPanelHeader } from './GitPanelHeader';
 import type { GitCommitItem } from './CommitList';
 import type { BranchRangeInfo } from './BranchChanges';
@@ -25,6 +26,10 @@ interface RepoGitTabProps {
     workspaceId: string;
 }
 
+type RightPanelView =
+    | { type: 'commit'; commit: GitCommitItem }
+    | { type: 'branch-file'; filePath: string };
+
 export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     const [commits, setCommits] = useState<GitCommitItem[]>([]);
     const [unpushedCount, setUnpushedCount] = useState(0);
@@ -32,7 +37,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     const [refreshing, setRefreshing] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [refreshError, setRefreshError] = useState<string | null>(null);
-    const [selectedCommit, setSelectedCommit] = useState<GitCommitItem | null>(null);
+    const [rightPanelView, setRightPanelView] = useState<RightPanelView | null>(null);
 
     // Branch-range state (lifted from BranchChanges)
     const [branchRangeData, setBranchRangeData] = useState<BranchRangeInfo | null>(null);
@@ -91,9 +96,9 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         Promise.all([fetchCommits(), fetchBranchRange()])
             .then(([loaded]) => {
                 if (loaded.length > 0) {
-                    setSelectedCommit(loaded[0]);
+                    setRightPanelView({ type: 'commit', commit: loaded[0] });
                 } else {
-                    setSelectedCommit(null);
+                    setRightPanelView(null);
                 }
             })
             .catch(err => setError(err.message || 'Failed to load commits'))
@@ -105,29 +110,35 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         if (refreshing) return;
         setRefreshing(true);
         setRefreshError(null);
-        const prevSelectedHash = selectedCommit?.hash;
+        const prevSelectedHash = rightPanelView?.type === 'commit' ? rightPanelView.commit.hash : null;
         Promise.all([fetchCommits(), fetchBranchRange()])
             .then(([loaded]) => {
                 // Retain selection if the commit still exists
                 if (prevSelectedHash) {
                     const found = loaded.find((c: GitCommitItem) => c.hash === prevSelectedHash);
                     if (found) {
-                        setSelectedCommit(found);
+                        setRightPanelView({ type: 'commit', commit: found });
                     } else if (loaded.length > 0) {
-                        setSelectedCommit(loaded[0]);
+                        setRightPanelView({ type: 'commit', commit: loaded[0] });
                     } else {
-                        setSelectedCommit(null);
+                        setRightPanelView(null);
                     }
+                } else if (rightPanelView?.type === 'branch-file') {
+                    // Keep the branch-file view as-is during refresh
                 } else if (loaded.length > 0) {
-                    setSelectedCommit(loaded[0]);
+                    setRightPanelView({ type: 'commit', commit: loaded[0] });
                 }
             })
             .catch(err => setRefreshError(err.message || 'Refresh failed'))
             .finally(() => setRefreshing(false));
-    }, [refreshing, selectedCommit?.hash, fetchCommits, fetchBranchRange]);
+    }, [refreshing, rightPanelView, fetchCommits, fetchBranchRange]);
 
     const handleSelect = useCallback((commit: GitCommitItem) => {
-        setSelectedCommit(commit);
+        setRightPanelView({ type: 'commit', commit });
+    }, []);
+
+    const handleFileSelect = useCallback((filePath: string) => {
+        setRightPanelView({ type: 'branch-file', filePath });
     }, []);
 
     // Keyboard shortcut: R to refresh when focused in left panel
@@ -158,6 +169,8 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
 
     const unpushed = commits.slice(0, unpushedCount);
     const history = commits.slice(unpushedCount);
+    const selectedCommit = rightPanelView?.type === 'commit' ? rightPanelView.commit : null;
+    const selectedBranchFile = rightPanelView?.type === 'branch-file' ? rightPanelView.filePath : null;
 
     // Scenario banner
     const scenarioBanner = (() => {
@@ -202,15 +215,21 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         </>
     );
 
-    const detailPanel = selectedCommit ? (
+    const detailPanel = rightPanelView?.type === 'commit' ? (
         <CommitDetail
-            key={selectedCommit.hash}
+            key={rightPanelView.commit.hash}
             workspaceId={workspaceId}
-            hash={selectedCommit.hash}
-            subject={selectedCommit.subject}
-            author={selectedCommit.author}
-            date={selectedCommit.date}
-            parentHashes={selectedCommit.parentHashes}
+            hash={rightPanelView.commit.hash}
+            subject={rightPanelView.commit.subject}
+            author={rightPanelView.commit.author}
+            date={rightPanelView.commit.date}
+            parentHashes={rightPanelView.commit.parentHashes}
+        />
+    ) : rightPanelView?.type === 'branch-file' ? (
+        <BranchFileDiff
+            key={rightPanelView.filePath}
+            workspaceId={workspaceId}
+            filePath={rightPanelView.filePath}
         />
     ) : (
         <div className="flex-1 flex items-center justify-center text-sm text-[#848484]" data-testid="git-detail-empty">
@@ -243,6 +262,8 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                     workspaceId={workspaceId}
                     branchRangeData={branchRangeData}
                     onDefaultBranch={onDefaultBranch}
+                    onFileSelect={handleFileSelect}
+                    selectedFile={selectedBranchFile}
                 />
                 {commitListPanel}
             </aside>

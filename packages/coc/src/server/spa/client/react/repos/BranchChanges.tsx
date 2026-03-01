@@ -28,6 +28,8 @@ interface BranchChangesProps {
     workspaceId: string;
     branchRangeData?: BranchRangeInfo | null;
     onDefaultBranch?: boolean;
+    onFileSelect?: (filePath: string) => void;
+    selectedFile?: string | null;
 }
 
 interface BranchRangeFile {
@@ -64,7 +66,7 @@ const STATUS_LABELS: Record<string, string> = {
 
 const DIFF_LINE_LIMIT = 500;
 
-export function BranchChanges({ workspaceId, branchRangeData, onDefaultBranch }: BranchChangesProps) {
+export function BranchChanges({ workspaceId, branchRangeData, onDefaultBranch, onFileSelect, selectedFile }: BranchChangesProps) {
     const rangeInfo = branchRangeData ?? null;
     const [files, setFiles] = useState<BranchRangeFile[]>([]);
     const [filesLoading, setFilesLoading] = useState(false);
@@ -154,6 +156,14 @@ export function BranchChanges({ workspaceId, branchRangeData, onDefaultBranch }:
         );
     };
 
+    const handleFileClick = (filePath: string) => {
+        if (onFileSelect) {
+            onFileSelect(filePath);
+        } else {
+            toggleFileDiff(filePath);
+        }
+    };
+
     if (onDefaultBranch || !rangeInfo) return null;
 
     const baseShort = rangeInfo.baseRef.replace(/^origin\//, '');
@@ -200,13 +210,17 @@ export function BranchChanges({ workspaceId, branchRangeData, onDefaultBranch }:
                             {files.map((file, i) => (
                                 <div key={i}>
                                     <button
-                                        className="w-full flex items-center gap-2 text-xs py-1 px-1 rounded hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e] transition-colors text-left"
-                                        onClick={() => toggleFileDiff(file.path)}
+                                        className={`w-full flex items-center gap-2 text-xs py-1 px-1 rounded hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e] transition-colors text-left ${
+                                            selectedFile === file.path ? 'bg-[#e8e8e8] dark:bg-[#37373d] ring-1 ring-[#0078d4] dark:ring-[#3794ff]' : ''
+                                        }`}
+                                        onClick={() => handleFileClick(file.path)}
                                         data-testid={`branch-file-row-${file.path}`}
                                     >
-                                        <span className="text-[10px] text-[#848484]">
-                                            {expandedFile === file.path ? '▼' : '▶'}
-                                        </span>
+                                        {!onFileSelect && (
+                                            <span className="text-[10px] text-[#848484]">
+                                                {expandedFile === file.path ? '▼' : '▶'}
+                                            </span>
+                                        )}
                                         <span
                                             className={`font-mono font-bold w-4 text-center ${STATUS_COLORS[file.status] || 'text-[#848484]'}`}
                                             title={STATUS_LABELS[file.status] || file.status}
@@ -220,7 +234,7 @@ export function BranchChanges({ workspaceId, branchRangeData, onDefaultBranch }:
                                         <span className="text-[#d32f2f] text-xs flex-shrink-0">−{file.deletions}</span>
                                     </button>
 
-                                    {expandedFile === file.path && (
+                                    {!onFileSelect && expandedFile === file.path && (
                                         <div className="pl-6 pr-2 py-2" data-testid={`branch-file-diff-${file.path}`}>
                                             {fileDiffLoading ? (
                                                 <div className="flex items-center gap-2 text-xs text-[#848484]">

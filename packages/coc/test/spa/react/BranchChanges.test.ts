@@ -58,6 +58,14 @@ describe('BranchChanges', () => {
             expect(source).toContain('onDefaultBranch?: boolean');
         });
 
+        it('accepts optional onFileSelect prop', () => {
+            expect(source).toContain('onFileSelect?: (filePath: string) => void');
+        });
+
+        it('accepts optional selectedFile prop', () => {
+            expect(source).toContain('selectedFile?: string | null');
+        });
+
         it('defines BranchChangesProps interface', () => {
             expect(source).toContain('interface BranchChangesProps');
         });
@@ -360,18 +368,28 @@ describe('BranchChanges', () => {
         });
 
         describe('file rows — clickable buttons', () => {
-            it('renders file rows as <button> elements', () => {
-                // The file row is a <button> with onClick calling toggleFileDiff
-                expect(source).toContain('onClick={() => toggleFileDiff(file.path)');
+            it('renders file rows as <button> elements that call handleFileClick', () => {
+                expect(source).toContain('onClick={() => handleFileClick(file.path)');
+            });
+
+            it('defines handleFileClick that delegates to onFileSelect or toggleFileDiff', () => {
+                expect(source).toContain('const handleFileClick');
+                expect(source).toContain('onFileSelect(filePath)');
+                expect(source).toContain('toggleFileDiff(filePath)');
             });
 
             it('has data-testid on each file row button', () => {
                 expect(source).toContain('data-testid={`branch-file-row-${file.path}`}');
             });
 
-            it('shows expand/collapse chevron per file row', () => {
-                // The file row has a chevron that changes based on expandedFile
+            it('shows expand/collapse chevron only when onFileSelect is absent', () => {
+                expect(source).toContain('!onFileSelect && (');
                 expect(source).toContain('expandedFile === file.path');
+            });
+
+            it('applies selected highlight when selectedFile matches', () => {
+                expect(source).toContain('selectedFile === file.path');
+                expect(source).toContain('ring-1 ring-[#0078d4]');
             });
 
             it('uses text-left for proper button text alignment', () => {
@@ -380,8 +398,8 @@ describe('BranchChanges', () => {
         });
 
         describe('inline diff panel', () => {
-            it('renders diff panel when file is expanded', () => {
-                expect(source).toContain('expandedFile === file.path && (');
+            it('renders diff panel only when onFileSelect is absent and file is expanded', () => {
+                expect(source).toContain('!onFileSelect && expandedFile === file.path && (');
             });
 
             it('has data-testid on each diff panel', () => {
@@ -493,6 +511,14 @@ describe('BranchChanges', () => {
 
         it('RepoGitTab passes onDefaultBranch to BranchChanges', () => {
             expect(gitTabSource).toContain('onDefaultBranch={onDefaultBranch}');
+        });
+
+        it('RepoGitTab passes onFileSelect to BranchChanges', () => {
+            expect(gitTabSource).toContain('onFileSelect={handleFileSelect}');
+        });
+
+        it('RepoGitTab passes selectedFile to BranchChanges', () => {
+            expect(gitTabSource).toContain('selectedFile={selectedBranchFile}');
         });
 
         it('RepoGitTab imports BranchRangeInfo type from BranchChanges', () => {

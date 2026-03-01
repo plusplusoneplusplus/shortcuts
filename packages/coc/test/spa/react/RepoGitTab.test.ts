@@ -90,9 +90,15 @@ describe('RepoGitTab', () => {
             expect(source).toContain('setError');
         });
 
-        it('tracks selectedCommit state', () => {
-            expect(source).toContain('selectedCommit');
-            expect(source).toContain('setSelectedCommit');
+        it('tracks rightPanelView state (discriminated union)', () => {
+            expect(source).toContain('rightPanelView');
+            expect(source).toContain('setRightPanelView');
+        });
+
+        it('defines RightPanelView type with commit and branch-file variants', () => {
+            expect(source).toContain("type RightPanelView");
+            expect(source).toContain("{ type: 'commit'; commit: GitCommitItem }");
+            expect(source).toContain("{ type: 'branch-file'; filePath: string }");
         });
 
         it('tracks refreshing state separately from loading', () => {
@@ -122,13 +128,13 @@ describe('RepoGitTab', () => {
     });
 
     describe('auto-selection', () => {
-        it('auto-selects the most recent commit on load', () => {
+        it('auto-selects the most recent commit on load via rightPanelView', () => {
             expect(source).toContain('loaded[0]');
-            expect(source).toContain('setSelectedCommit');
+            expect(source).toContain('setRightPanelView');
         });
 
         it('clears selection when no commits', () => {
-            expect(source).toContain('setSelectedCommit(null)');
+            expect(source).toContain('setRightPanelView(null)');
         });
     });
 
@@ -152,6 +158,10 @@ describe('RepoGitTab', () => {
         it('retains selected commit if hash still exists after refresh', () => {
             expect(source).toContain('prevSelectedHash');
             expect(source).toContain('loaded.find');
+        });
+
+        it('preserves branch-file view during refresh', () => {
+            expect(source).toContain("rightPanelView?.type === 'branch-file'");
         });
 
         it('handles refresh errors without blocking', () => {
@@ -253,12 +263,20 @@ describe('RepoGitTab', () => {
             expect(source).toContain('<CommitDetail');
         });
 
+        it('renders BranchFileDiff component', () => {
+            expect(source).toContain('<BranchFileDiff');
+        });
+
         it('imports CommitList', () => {
             expect(source).toContain("import { CommitList }");
         });
 
         it('imports CommitDetail', () => {
             expect(source).toContain("import { CommitDetail }");
+        });
+
+        it('imports BranchFileDiff', () => {
+            expect(source).toContain("import { BranchFileDiff } from './BranchFileDiff'");
         });
 
         it('imports GitPanelHeader', () => {
@@ -304,11 +322,11 @@ describe('RepoGitTab', () => {
         });
 
         it('passes subject to CommitDetail', () => {
-            expect(source).toContain('subject={selectedCommit.subject}');
+            expect(source).toContain('subject={rightPanelView.commit.subject}');
         });
 
         it('uses key prop on CommitDetail to force remount on hash change', () => {
-            expect(source).toContain('key={selectedCommit.hash}');
+            expect(source).toContain('key={rightPanelView.commit.hash}');
         });
 
         it('passes branchRangeData to BranchChanges', () => {
@@ -317,6 +335,34 @@ describe('RepoGitTab', () => {
 
         it('passes onDefaultBranch to BranchChanges', () => {
             expect(source).toContain('onDefaultBranch={onDefaultBranch}');
+        });
+
+        it('passes onFileSelect to BranchChanges', () => {
+            expect(source).toContain('onFileSelect={handleFileSelect}');
+        });
+
+        it('passes selectedFile to BranchChanges', () => {
+            expect(source).toContain('selectedFile={selectedBranchFile}');
+        });
+
+        it('derives selectedCommit from rightPanelView', () => {
+            expect(source).toContain("rightPanelView?.type === 'commit' ? rightPanelView.commit : null");
+        });
+
+        it('derives selectedBranchFile from rightPanelView', () => {
+            expect(source).toContain("rightPanelView?.type === 'branch-file' ? rightPanelView.filePath : null");
+        });
+
+        it('defines handleFileSelect callback', () => {
+            expect(source).toContain('const handleFileSelect = useCallback');
+        });
+
+        it('handleFileSelect sets right panel to branch-file view', () => {
+            expect(source).toContain("setRightPanelView({ type: 'branch-file', filePath })");
+        });
+
+        it('handleSelect sets right panel to commit view', () => {
+            expect(source).toContain("setRightPanelView({ type: 'commit', commit })");
         });
     });
 });

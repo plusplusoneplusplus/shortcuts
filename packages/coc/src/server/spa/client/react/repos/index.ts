@@ -4,5 +4,7 @@ export { RepoGitTab } from './RepoGitTab';
 export { CommitList } from './CommitList';
 export { CommitDetail } from './CommitDetail';
 export { BranchChanges } from './BranchChanges';
+export { BranchFileDiff } from './BranchFileDiff';
 export { GitPanelHeader } from './GitPanelHeader';
 export type { CommitDetailProps } from './CommitDetail';
+export type { BranchFileDiffProps } from './BranchFileDiff';
