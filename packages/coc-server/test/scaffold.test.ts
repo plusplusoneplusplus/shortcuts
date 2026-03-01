@@ -29,7 +29,7 @@ describe('coc-server package scaffold', () => {
         const pkg = JSON.parse(
             fs.readFileSync(path.join(packageRoot, 'package.json'), 'utf-8')
         );
-        expect(pkg.scripts.build).toBe('npm run build:client && tsc');
+        expect(pkg.scripts.build).toBe('tsc');
         expect(pkg.scripts.test).toBe('vitest');
         expect(pkg.scripts['test:run']).toBe('vitest run');
     });

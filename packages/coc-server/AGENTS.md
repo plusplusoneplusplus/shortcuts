@@ -26,8 +26,7 @@ packages/coc-server/
 │       ├── index.ts          # Barrel exports for wiki sub-module
 │       ├── types.ts          # Wiki domain types: ComponentGraph, ComponentAnalysis, ThemeMeta
 │       ├── dw-types.ts       # Deep-wiki pipeline types (ArticleType, GenerateOptions, etc.)
-│       ├── create-server.ts  # Standalone wiki HTTP server factory
-│       ├── router.ts         # Wiki-specific HTTP router
+│       ├── router.ts         # Wiki-specific HTTP router (API + static file serving)
 │       ├── wiki-routes.ts    # Register wiki REST endpoints on a parent router
 │       ├── wiki-manager.ts   # Per-wiki runtime lifecycle (WikiData, ContextBuilder, FileWatcher)
 │       ├── wiki-data.ts      # In-memory wiki data store (components, articles, themes)
@@ -40,13 +39,6 @@ packages/coc-server/
 │       ├── api-handlers.ts   # General wiki API: components, articles, search, stats
 │       ├── admin-handlers.ts # Wiki admin: register/unregister, cache clear
 │       ├── websocket.ts      # Wiki-specific WebSocket server (distinct from process WS)
-│       ├── spa-template.ts   # SPA HTML template generator for wiki viewer
-│       ├── spa/              # Wiki SPA client code
-│       │   ├── index.ts      # SPA entry
-│       │   ├── types.ts      # SPA client types
-│       │   ├── html-template.ts # HTML page template
-│       │   ├── helpers.ts    # Client-side helpers
-│       │   └── client/       # Compiled SPA assets
 │       ├── dw-ask-handler.ts       # Deep-wiki ask handler (delegates to wiki ask)
 │       ├── dw-explore-handler.ts   # Deep-wiki explore handler
 │       ├── dw-generate-handler.ts  # Deep-wiki generate handler (six-phase pipeline)
@@ -86,7 +78,6 @@ packages/coc-server/
 ### Wiki Serving Layer (`wiki/`)
 
 - **WikiManager** — Registry of active wikis. Each wiki gets a `WikiData`, `ContextBuilder`, `ConversationSessionManager`, and `FileWatcher`.
-- **create-server.ts** — Factory to create a standalone wiki HTTP server (used by `coc wiki serve`).
 - **ContextBuilder** — Builds RAG-style context from wiki articles. `tokenize()` splits text for relevance scoring.
 - **ConversationSessionManager** — Manages stateful AI sessions per wiki for multi-turn conversations.
 - **dw-\* handlers** — Deep-wiki-specific wrappers: `dw-generate-handler.ts` orchestrates the six-phase pipeline; `dw-config-loader.ts` reads `deep-wiki.config.yaml`; `dw-admin-handlers.ts` handles wiki registration and cache management.
@@ -103,7 +94,7 @@ The package exports from `src/index.ts`:
 - **Errors**: `APIError`, `handleAPIError`, `badRequest`, `notFound`, etc.
 - **Export/Import**: `EXPORT_SCHEMA_VERSION`, `validateExportPayload`
 - **Repo Utils**: `extractRepoId`, `findGitRoot`, `normalizeRepoPath`, `getWorkingDirectory`
-- **Wiki** (via `wiki/index.ts`): `WikiData`, `WikiManager`, `ContextBuilder`, `ConversationSessionManager`, `FileWatcher`, `createServer`, route handlers, SPA template, WebSocket
+- **Wiki** (via `wiki/index.ts`): `WikiData`, `WikiManager`, `ContextBuilder`, `ConversationSessionManager`, `FileWatcher`, route handlers, WebSocket
 
 ## Configuration
 
@@ -120,7 +111,7 @@ The package exports from `src/index.ts`:
 
 ## Testing
 
-14 Vitest test files plus helpers covering: error factories, export/import validation, repo utilities, server scaffold, SSE replay, WebSocket file subscriptions, shared router, git commit API endpoints, git branch range API endpoints, git branch listing/status/CRUD API endpoints.
+12 Vitest test files plus helpers covering: error factories, export/import validation, repo utilities, server scaffold, SSE replay, WebSocket file subscriptions, shared router, git commit API endpoints, git branch range API endpoints, git branch listing/status/CRUD API endpoints.
 
 Run with `npm run test:run` in `packages/coc-server/`.
 

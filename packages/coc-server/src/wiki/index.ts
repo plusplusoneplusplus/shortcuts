@@ -75,14 +75,6 @@ export type { ExploreRequest, WikiExploreHandlerOptions } from './explore-handle
 export { getGenerationState, resetGenerationState, resetAllGenerationStates } from './generate-handler';
 export type { GenerateRequest } from './generate-handler';
 
-// Standalone Wiki Server (createServer factory)
-export { createServer } from './create-server';
-export type { WikiServerOptions, WikiServer } from './create-server';
-
-// SPA Template
-export { generateSpaHtml } from './spa-template';
-export type { SpaTemplateOptions } from './spa-template';
-
 // WebSocket (standalone wiki WebSocket, distinct from process WebSocket)
 export { WebSocketServer as WikiWebSocketServer } from './websocket';
 export type { WSClient, WSMessage } from './websocket';

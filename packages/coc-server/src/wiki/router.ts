@@ -54,8 +54,6 @@ const DEFAULT_MIME = 'application/octet-stream';
 export interface RouterOptions {
     /** Wiki data layer */
     wikiData: WikiData;
-    /** SPA HTML content (served at / and for SPA fallback) */
-    spaHtml: string;
     /** Whether AI features are enabled */
     aiEnabled: boolean;
     /** Repo path (needed for AI features) */
@@ -86,7 +84,7 @@ export interface RouterOptions {
 export function createRequestHandler(
     options: RouterOptions
 ): (req: http.IncomingMessage, res: http.ServerResponse) => void {
-    const { wikiData, spaHtml, aiEnabled, repoPath, contextBuilder, aiSendMessage, aiModel, aiWorkingDirectory, sessionManager, wsServer } = options;
+    const { wikiData, aiEnabled, repoPath, contextBuilder, aiSendMessage, aiModel, aiWorkingDirectory, sessionManager, wsServer } = options;
 
     return (req: http.IncomingMessage, res: http.ServerResponse) => {
         const parsedUrl = url.parse(req.url || '/', true);
@@ -122,16 +120,13 @@ export function createRequestHandler(
         }
 
         // Static files from wiki directory (embedded-data.js, etc.)
-        if (pathname !== '/' && pathname !== '/index.html') {
-            const filePath = path.join(wikiData.dir, pathname);
-            if (serveStaticFile(filePath, res)) {
-                return;
-            }
+        const filePath = path.join(wikiData.dir, pathname);
+        if (serveStaticFile(filePath, res)) {
+            return;
         }
 
-        // SPA shell (index page or fallback for client-side routing)
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(spaHtml);
+        // No matching route or file
+        send404(res, `Not found: ${pathname}`);
     };
 }
 
