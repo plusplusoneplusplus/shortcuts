@@ -1092,8 +1092,7 @@ describe('CLITaskExecutor', () => {
     // ========================================================================
 
     describe('skill content injection', () => {
-        it('should wrap prompt with skill content for follow-prompt with skillName', async () => {
-            mockResolveSkillSync.mockReturnValue('# Skill Instructions\nDo this carefully.');
+        it('should emit skill reference for follow-prompt with skillName', async () => {
             const executor = new CLITaskExecutor(store);
 
             const task: QueuedTask = {
@@ -1113,15 +1112,13 @@ describe('CLITaskExecutor', () => {
 
             await executor.execute(task);
 
-            expect(mockResolveSkillSync).toHaveBeenCalledWith('impl', '/my/workspace');
+            expect(mockResolveSkillSync).not.toHaveBeenCalled();
             const sentPrompt = mockSendMessage.mock.calls[0][0].prompt;
-            expect(sentPrompt).toContain('[Skill Guidance: impl]');
-            expect(sentPrompt).toContain('# Skill Instructions\nDo this carefully.');
+            expect(sentPrompt).toContain('Use impl skill when available');
             expect(sentPrompt).toContain('[Task]\nUse the impl skill.');
         });
 
-        it('should wrap prompt with skill content for ai-clarification with skillName', async () => {
-            mockResolveSkillSync.mockReturnValue('# Review Guidance\nCheck for bugs.');
+        it('should emit skill reference for ai-clarification with skillName', async () => {
             const executor = new CLITaskExecutor(store);
 
             const task: QueuedTask = {
@@ -1141,37 +1138,10 @@ describe('CLITaskExecutor', () => {
 
             await executor.execute(task);
 
-            expect(mockResolveSkillSync).toHaveBeenCalledWith('review', '/my/workspace');
+            expect(mockResolveSkillSync).not.toHaveBeenCalled();
             const sentPrompt = mockSendMessage.mock.calls[0][0].prompt;
-            expect(sentPrompt).toContain('[Skill Guidance: review]');
-            expect(sentPrompt).toContain('# Review Guidance\nCheck for bugs.');
+            expect(sentPrompt).toContain('Use review skill when available');
             expect(sentPrompt).toContain('[Task]\nClarify this code');
-        });
-
-        it('should fall back to original prompt when skill resolution fails', async () => {
-            mockResolveSkillSync.mockImplementation(() => { throw new Error('Skill not found'); });
-            const executor = new CLITaskExecutor(store);
-
-            const task: QueuedTask = {
-                id: 'task-skill-3',
-                type: 'follow-prompt',
-                priority: 'normal',
-                status: 'running',
-                createdAt: Date.now(),
-                payload: {
-                    promptContent: 'Use the missing skill.',
-                    skillName: 'nonexistent',
-                    workingDirectory: '/my/workspace',
-                },
-                config: {},
-                displayName: 'Skill: nonexistent',
-            };
-
-            await executor.execute(task);
-
-            const sentPrompt = mockSendMessage.mock.calls[0][0].prompt;
-            expect(sentPrompt).toBe('Use the missing skill.');
-            expect(sentPrompt).not.toContain('[Skill Guidance');
         });
 
         it('should not apply skill wrapping when skillName is not set', async () => {
@@ -1198,8 +1168,7 @@ describe('CLITaskExecutor', () => {
             expect(sentPrompt).toBe('Normal prompt without skill.');
         });
 
-        it('should store skill-wrapped prompt as fullPrompt in process', async () => {
-            mockResolveSkillSync.mockReturnValue('# Skill Content');
+        it('should store skill reference as fullPrompt in process', async () => {
             const executor = new CLITaskExecutor(store);
 
             const task: QueuedTask = {
@@ -1220,7 +1189,7 @@ describe('CLITaskExecutor', () => {
             await executor.execute(task);
 
             const addedProcess = (store.addProcess as any).mock.calls[0][0];
-            expect(addedProcess.fullPrompt).toContain('[Skill Guidance: impl]');
+            expect(addedProcess.fullPrompt).toContain('Use impl skill when available');
             expect(addedProcess.fullPrompt).toContain('[Task]\nDo the thing.');
         });
     });

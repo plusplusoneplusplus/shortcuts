@@ -41,7 +41,6 @@ import {
     executePipeline,
     toNativePath,
     mergeConsecutiveContentItems,
-    resolveSkillSync,
 } from '@plusplusoneplusplus/pipeline-core';
 import type { ProcessStore, AIProcess, ConversationTurn, ToolEvent, TimelineItem, CopilotSDKService, SelectedContext, Attachment, Tool } from '@plusplusoneplusplus/pipeline-core';
 import { createCLIAIInvoker } from '../ai-invoker';
@@ -584,25 +583,17 @@ export class CLITaskExecutor implements TaskExecutor {
     }
 
     /**
-     * If the task payload includes a skillName, resolve the skill content
-     * and wrap the prompt with skill guidance. Falls back to the original
-     * prompt if resolution fails.
+     * If the task payload includes a skillName, emit a short skill reference
+     * directive instead of resolving and embedding the full skill content.
+     * The AI agent already has access to skills via the skill tool.
      */
     private applySkillContent(prompt: string, task: QueuedTask): string {
-        const payload = task.payload as { skillName?: string; workingDirectory?: string };
+        const payload = task.payload as { skillName?: string };
         if (!payload.skillName) {
             return prompt;
         }
 
-        const workspaceRoot = payload.workingDirectory || this.defaultWorkingDirectory || process.cwd();
-        try {
-            const skillContent = resolveSkillSync(payload.skillName, workspaceRoot);
-            return `[Skill Guidance: ${payload.skillName}]\n${skillContent}\n\n[Task]\n${prompt}`;
-        } catch (error) {
-            const logger = getLogger();
-            logger.warn(LogCategory.AI, `[QueueExecutor] Failed to resolve skill "${payload.skillName}": ${error instanceof Error ? error.message : String(error)}`);
-            return prompt;
-        }
+        return `Use ${payload.skillName} skill when available\n\n[Task]\n${prompt}`;
     }
 
     // ========================================================================
