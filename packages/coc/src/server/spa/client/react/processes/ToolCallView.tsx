@@ -356,8 +356,7 @@ export function ToolCallView({
         : null;
     const bashOptionsText = bashOptions && Object.keys(bashOptions).length > 0 ? JSON.stringify(bashOptions, null, 2) : '';
 
-    const isTaskTool = name === 'task';
-    const hasHoverResult = isTaskTool && !!resultText;
+    const hasHoverResult = (name === 'task' || name === 'view') && !!resultText;
 
     const clearTimers = useCallback(() => {
         if (hoverTimerRef.current) { clearTimeout(hoverTimerRef.current); hoverTimerRef.current = null; }
@@ -518,6 +517,8 @@ export function ToolCallView({
             {hoverVisible && anchorRect && hasHoverResult && (
                 <ToolResultPopover
                     result={resultText}
+                    toolName={name}
+                    args={argsObj ?? undefined}
                     anchorRect={anchorRect}
                     onMouseEnter={handlePopoverMouseEnter}
                     onMouseLeave={handlePopoverMouseLeave}

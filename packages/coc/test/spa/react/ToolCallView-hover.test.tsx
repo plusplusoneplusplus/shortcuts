@@ -1,11 +1,15 @@
 /**
- * Tests for ToolCallView — hover popover for task tool call results.
+ * Tests for ToolCallView — hover popover for task and view tool call results.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, fireEvent, act, screen } from '@testing-library/react';
 import React from 'react';
 import { ToolCallView } from '../../../src/server/spa/client/react/processes/ToolCallView';
+
+vi.mock('../../../src/server/spa/client/markdown-renderer', () => ({
+    renderMarkdownToHtml: (s: string) => `<p>${s}</p>`,
+}));
 
 function makeTaskToolCall(overrides: Record<string, any> = {}) {
     return {
@@ -16,6 +20,19 @@ function makeTaskToolCall(overrides: Record<string, any> = {}) {
         result: 'Found 3 files matching the pattern.',
         startTime: '2026-01-01T00:00:00Z',
         endTime: '2026-01-01T00:00:05Z',
+        ...overrides,
+    };
+}
+
+function makeViewToolCall(overrides: Record<string, any> = {}) {
+    return {
+        id: 'tc-view-1',
+        toolName: 'view',
+        args: { path: '/project/src/index.ts' },
+        status: 'completed',
+        result: '1. const x = 1;\n2. const y = 2;',
+        startTime: '2026-01-01T00:00:00Z',
+        endTime: '2026-01-01T00:00:01Z',
         ...overrides,
     };
 }
@@ -205,5 +222,102 @@ describe('ToolCallView — task result hover popover', () => {
 
         const popover = document.querySelector('[data-testid="tool-result-popover"]');
         expect(popover!.textContent).toContain('Result Preview');
+    });
+});
+
+describe('ToolCallView — view tool hover popover', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it('shows popover after 300ms hover on a view tool call header', () => {
+        const { container } = render(
+            <ToolCallView toolCall={makeViewToolCall()} />
+        );
+
+        const header = container.querySelector('.tool-call-header')!;
+        fireEvent.mouseEnter(header);
+        act(() => { vi.advanceTimersByTime(300); });
+
+        const popover = document.querySelector('[data-testid="tool-result-popover"]');
+        expect(popover).toBeTruthy();
+        expect(popover!.textContent).toContain('File Preview');
+    });
+
+    it('shows code preview popover for .ts view tool call', () => {
+        const { container } = render(
+            <ToolCallView toolCall={makeViewToolCall()} />
+        );
+
+        const header = container.querySelector('.tool-call-header')!;
+        fireEvent.mouseEnter(header);
+        act(() => { vi.advanceTimersByTime(300); });
+
+        const codeEl = document.querySelector('[data-testid="popover-code"]');
+        expect(codeEl).toBeTruthy();
+        expect(codeEl!.textContent).toContain('const x = 1;');
+    });
+
+    it('shows markdown popover for .md view tool call', () => {
+        const { container } = render(
+            <ToolCallView toolCall={makeViewToolCall({
+                args: { path: '/project/README.md' },
+                result: '1. # Hello World\n2. Some text',
+            })} />
+        );
+
+        const header = container.querySelector('.tool-call-header')!;
+        fireEvent.mouseEnter(header);
+        act(() => { vi.advanceTimersByTime(300); });
+
+        const mdEl = document.querySelector('[data-testid="popover-markdown"]');
+        expect(mdEl).toBeTruthy();
+        expect(mdEl!.classList.contains('markdown-body')).toBe(true);
+    });
+
+    it('does not show popover for view tool call with empty result', () => {
+        const { container } = render(
+            <ToolCallView toolCall={makeViewToolCall({ result: '' })} />
+        );
+
+        const header = container.querySelector('.tool-call-header')!;
+        fireEvent.mouseEnter(header);
+        act(() => { vi.advanceTimersByTime(500); });
+
+        expect(document.querySelector('[data-testid="tool-result-popover"]')).toBeNull();
+    });
+
+    it('does not show popover for edit tool calls', () => {
+        const { container } = render(
+            <ToolCallView toolCall={{
+                id: 'tc-edit-1',
+                toolName: 'edit',
+                args: { path: '/project/foo.ts', old_str: 'a', new_str: 'b' },
+                status: 'completed',
+                result: 'File edited',
+            }} />
+        );
+
+        const header = container.querySelector('.tool-call-header')!;
+        fireEvent.mouseEnter(header);
+        act(() => { vi.advanceTimersByTime(500); });
+
+        expect(document.querySelector('[data-testid="tool-result-popover"]')).toBeNull();
+    });
+
+    it('does not show popover for grep tool calls', () => {
+        const { container } = render(
+            <ToolCallView toolCall={makeNonTaskToolCall()} />
+        );
+
+        const header = container.querySelector('.tool-call-header')!;
+        fireEvent.mouseEnter(header);
+        act(() => { vi.advanceTimersByTime(500); });
+
+        expect(document.querySelector('[data-testid="tool-result-popover"]')).toBeNull();
     });
 });

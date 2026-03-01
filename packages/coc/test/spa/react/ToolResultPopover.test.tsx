@@ -2,10 +2,14 @@
  * Tests for ToolResultPopover component.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent } from '@testing-library/react';
 import React from 'react';
 import { ToolResultPopover } from '../../../src/server/spa/client/react/processes/ToolResultPopover';
+
+vi.mock('../../../src/server/spa/client/markdown-renderer', () => ({
+    renderMarkdownToHtml: (s: string) => `<p>${s}</p>`,
+}));
 
 function makeAnchorRect(overrides: Partial<DOMRect> = {}): DOMRect {
     return {
@@ -22,16 +26,15 @@ function makeAnchorRect(overrides: Partial<DOMRect> = {}): DOMRect {
     } as DOMRect;
 }
 
+const defaultHandlers = { onMouseEnter: () => {}, onMouseLeave: () => {} };
+
 describe('ToolResultPopover', () => {
     it('renders result text in a portal on document.body', () => {
-        const onMouseEnter = () => {};
-        const onMouseLeave = () => {};
         render(
             <ToolResultPopover
                 result="Hello from the task agent"
                 anchorRect={makeAnchorRect()}
-                onMouseEnter={onMouseEnter}
-                onMouseLeave={onMouseLeave}
+                {...defaultHandlers}
             />
         );
 
@@ -47,8 +50,7 @@ describe('ToolResultPopover', () => {
             <ToolResultPopover
                 result={longText}
                 anchorRect={makeAnchorRect()}
-                onMouseEnter={() => {}}
-                onMouseLeave={() => {}}
+                {...defaultHandlers}
             />
         );
 
@@ -63,8 +65,7 @@ describe('ToolResultPopover', () => {
             <ToolResultPopover
                 result={shortText}
                 anchorRect={makeAnchorRect()}
-                onMouseEnter={() => {}}
-                onMouseLeave={() => {}}
+                {...defaultHandlers}
             />
         );
 
@@ -103,5 +104,131 @@ describe('ToolResultPopover', () => {
         const popover = document.querySelector('[data-testid="tool-result-popover"]')!;
         fireEvent.mouseLeave(popover);
         expect(left).toBe(true);
+    });
+
+    // --- view tool: markdown files ---
+
+    it('renders markdown popover for view tool with .md file', () => {
+        render(
+            <ToolResultPopover
+                result="1. # Hello\n2. Some **bold** text"
+                toolName="view"
+                args={{ path: '/project/README.md' }}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        const popover = document.querySelector('[data-testid="tool-result-popover"]');
+        expect(popover).toBeTruthy();
+        expect(popover!.textContent).toContain('File Preview');
+        expect(popover!.textContent).not.toContain('Result Preview');
+        const mdEl = document.querySelector('[data-testid="popover-markdown"]');
+        expect(mdEl).toBeTruthy();
+        expect(mdEl!.classList.contains('markdown-body')).toBe(true);
+    });
+
+    it('renders markdown popover for .markdown extension', () => {
+        render(
+            <ToolResultPopover
+                result="1. # Title"
+                toolName="view"
+                args={{ path: '/project/notes.markdown' }}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        expect(document.querySelector('[data-testid="popover-markdown"]')).toBeTruthy();
+    });
+
+    it('renders markdown popover for .mdx extension', () => {
+        render(
+            <ToolResultPopover
+                result="1. # Title"
+                toolName="view"
+                args={{ path: '/project/page.mdx' }}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        expect(document.querySelector('[data-testid="popover-markdown"]')).toBeTruthy();
+    });
+
+    // --- view tool: code files ---
+
+    it('renders code preview with line numbers for view tool with .ts file', () => {
+        render(
+            <ToolResultPopover
+                result="1. const x = 1;\n2. const y = 2;"
+                toolName="view"
+                args={{ path: '/project/index.ts' }}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        const popover = document.querySelector('[data-testid="tool-result-popover"]');
+        expect(popover).toBeTruthy();
+        expect(popover!.textContent).toContain('File Preview');
+        const codeEl = document.querySelector('[data-testid="popover-code"]');
+        expect(codeEl).toBeTruthy();
+        expect(codeEl!.textContent).toContain('const x = 1;');
+        expect(codeEl!.textContent).toContain('1');
+        expect(codeEl!.textContent).toContain('2');
+    });
+
+    it('renders code preview for view tool with filePath arg', () => {
+        render(
+            <ToolResultPopover
+                result="1. line one"
+                toolName="view"
+                args={{ filePath: '/project/foo.py' }}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        expect(document.querySelector('[data-testid="popover-code"]')).toBeTruthy();
+    });
+
+    // --- task tool: raw text (regression) ---
+
+    it('renders raw text for task tool (regression)', () => {
+        render(
+            <ToolResultPopover
+                result="Task completed successfully."
+                toolName="task"
+                args={{ agent_type: 'explore' }}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        const popover = document.querySelector('[data-testid="tool-result-popover"]');
+        expect(popover).toBeTruthy();
+        expect(popover!.textContent).toContain('Result Preview');
+        expect(popover!.textContent).toContain('Task completed successfully.');
+        // Should NOT have markdown or code sub-testids
+        expect(document.querySelector('[data-testid="popover-markdown"]')).toBeNull();
+        expect(document.querySelector('[data-testid="popover-code"]')).toBeNull();
+    });
+
+    // --- no toolName: default behavior ---
+
+    it('renders raw text when no toolName is provided (backward compat)', () => {
+        render(
+            <ToolResultPopover
+                result="Some result"
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        const popover = document.querySelector('[data-testid="tool-result-popover"]');
+        expect(popover).toBeTruthy();
+        expect(popover!.textContent).toContain('Result Preview');
+        expect(popover!.textContent).toContain('Some result');
     });
 });
