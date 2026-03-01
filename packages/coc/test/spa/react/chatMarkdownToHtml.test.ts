@@ -139,6 +139,31 @@ describe('chatMarkdownToHtml', () => {
         expect(html).toContain('<hr');
     });
 
+    // --- File path linkification ---
+
+    it('linkifies Windows file paths in user messages', () => {
+        const html = chatMarkdownToHtml('Use the impl skill. D:\\projects\\shortcuts\\.vscode\\tasks\\coc\\tasks\\enqueue-dialog-paste-image.plan.md');
+        expect(html).toContain('class="file-path-link"');
+        expect(html).toContain('data-full-path=');
+    });
+
+    it('linkifies Unix file paths', () => {
+        const html = chatMarkdownToHtml('Edit /Users/alice/projects/foo/bar.ts please');
+        expect(html).toContain('class="file-path-link"');
+        expect(html).toContain('data-full-path="');
+        expect(html).toContain('/Users/alice/projects/foo/bar.ts');
+    });
+
+    it('does not linkify paths inside code blocks', () => {
+        const html = chatMarkdownToHtml('```\n/Users/alice/test.ts\n```');
+        expect(html).not.toContain('file-path-link');
+    });
+
+    it('does not linkify paths inside inline code', () => {
+        const html = chatMarkdownToHtml('Run `C:\\tools\\build.exe` to compile');
+        expect(html).not.toContain('file-path-link');
+    });
+
     // --- Complex AI response ---
 
     it('renders a complex AI response with mixed elements', () => {
