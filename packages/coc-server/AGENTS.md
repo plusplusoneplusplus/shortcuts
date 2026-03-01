@@ -94,7 +94,8 @@ packages/coc-server/
 ## Public API
 
 The package exports from `src/index.ts`:
-- **Types**: `ExecutionServerOptions`, `ExecutionServer`, `Route`, `BulkQueueRequest`, `BulkQueueResponse`, `ExportMetadata`, `UserPreferences`, etc.
+- **Types**: `ExecutionServerOptions`, `ExecutionServer`, `Route`, `BulkQueueRequest`, `BulkQueueResponse`, `ExportMetadata`, `UserPreferences`, `FollowUpSuggestion`, etc.
+- **Tools**: `createSuggestFollowUpsTool` — factory for a `suggest_follow_ups` custom tool (passthrough handler, 2–3 follow-up questions)
 - **Router**: `createRequestHandler`, `readJsonBody`, `sendJson`, `send404`, `send400`, `send500`; shared: `createRouter`, `serveStaticFile`, `readBody`
 - **API**: `registerApiRoutes`, `sendJSON`, `sendError`, `parseBody`, `QueueExecutorBridge`
 - **WebSocket**: `ProcessWebSocketServer`, `toProcessSummary`, `toCommentSummary`
@@ -113,7 +114,7 @@ The package exports from `src/index.ts`:
 
 ## Dependencies
 
-- `@plusplusoneplusplus/pipeline-core` — ProcessStore, CopilotSDKService, TaskQueueManager
+- `@plusplusoneplusplus/pipeline-core` — ProcessStore, CopilotSDKService, TaskQueueManager, defineTool
 - `ws` — WebSocket server
 - `js-yaml` — YAML config parsing
 
