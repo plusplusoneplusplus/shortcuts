@@ -20,6 +20,12 @@ export const CLIConfigSchema = z.object({
     persist: z.boolean().optional(),
     /** Show report_intent tool calls in conversation views (default: false) */
     showReportIntent: z.boolean().optional(),
+    chat: z.object({
+        followUpSuggestions: z.object({
+            enabled: z.boolean().optional(),
+            count: z.number().int().min(1).max(5).optional(),
+        }).strict().optional(),
+    }).strict().optional(),
     serve: z.object({
         port: z.number().int().positive().max(65535).optional(),
         host: z.string().optional(),

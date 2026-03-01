@@ -43,6 +43,11 @@ export function AdminPanel() {
     const [showReportIntent, setShowReportIntent] = useState(false);
     const [displaySaving, setDisplaySaving] = useState(false);
 
+    // Chat settings
+    const [chatFollowUpEnabled, setChatFollowUpEnabled] = useState(true);
+    const [chatFollowUpCount, setChatFollowUpCount] = useState('3');
+    const [chatSaving, setChatSaving] = useState(false);
+
     // Export
     const [exportStatus, setExportStatus] = useState<string>('');
 
@@ -92,6 +97,8 @@ export function AdminPanel() {
                 output: resolved.output ?? 'table',
             });
             setShowReportIntent(resolved.showReportIntent ?? false);
+            setChatFollowUpEnabled(resolved.chat?.followUpSuggestions?.enabled ?? true);
+            setChatFollowUpCount(String(resolved.chat?.followUpSuggestions?.count ?? 3));
         } catch (err: any) {
             setConfigError(err.message || 'Failed to load configuration');
         } finally {
@@ -172,6 +179,35 @@ export function AdminPanel() {
             setDisplaySaving(false);
         }
     }, [showReportIntent, addToast]);
+
+    const handleSaveChatSettings = useCallback(async () => {
+        const count = Number(chatFollowUpCount);
+        if (isNaN(count) || !Number.isInteger(count) || count < 1 || count > 5) {
+            addToast('Follow-up count must be an integer between 1 and 5', 'error');
+            return;
+        }
+        setChatSaving(true);
+        try {
+            const res = await fetch(getApiBase() + '/admin/config', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    'chat.followUpSuggestions.enabled': chatFollowUpEnabled,
+                    'chat.followUpSuggestions.count': count,
+                }),
+            });
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(body.error || 'Save failed');
+            }
+            addToast('Chat settings saved', 'success');
+            await loadConfig();
+        } catch (err: any) {
+            addToast(err.message || 'Save failed', 'error');
+        } finally {
+            setChatSaving(false);
+        }
+    }, [chatFollowUpEnabled, chatFollowUpCount, addToast, loadConfig]);
 
     const handleExport = useCallback(async () => {
         setExportStatus('Exporting…');
@@ -450,6 +486,50 @@ export function AdminPanel() {
                 <div className="mt-1">
                     <SourceBadge source={sources['showReportIntent']} />
                 </div>
+            </Card>
+
+            {/* Chat */}
+            <Card className="p-4">
+                <h3 className="text-sm font-semibold mb-1 text-[#1e1e1e] dark:text-[#cccccc]">Chat</h3>
+                <p className="text-xs text-[#616161] dark:text-[#999] mb-3">Follow-up suggestion settings</p>
+                <div className="space-y-2 mb-3">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <div className="text-sm text-[#1e1e1e] dark:text-[#cccccc]">Enable follow-up suggestions</div>
+                            <div className="text-xs text-[#616161] dark:text-[#999]">Generate clickable follow-up suggestions after each response.</div>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer ml-4">
+                            <input
+                                type="checkbox"
+                                className="sr-only peer"
+                                checked={chatFollowUpEnabled}
+                                disabled={chatSaving}
+                                onChange={e => setChatFollowUpEnabled(e.target.checked)}
+                                data-testid="toggle-chat-followup-enabled"
+                            />
+                            <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
+                        </label>
+                    </div>
+                    <div className="mt-1">
+                        <SourceBadge source={sources['chat.followUpSuggestions.enabled']} />
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <label className="text-xs w-24 text-[#616161] dark:text-[#999]">Count</label>
+                        <input
+                            type="number"
+                            min={1}
+                            max={5}
+                            className="flex-1 px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
+                            value={chatFollowUpCount}
+                            disabled={chatSaving}
+                            onChange={e => setChatFollowUpCount(e.target.value)}
+                            data-testid="input-chat-followup-count"
+                        />
+                        <SourceBadge source={sources['chat.followUpSuggestions.count']} />
+                    </div>
+                    <div className="text-[10px] text-[#848484] ml-[6.5rem]">Number of follow-up suggestions (1–5).</div>
+                </div>
+                <Button size="sm" onClick={handleSaveChatSettings} loading={chatSaving}>Save</Button>
             </Card>
 
             {/* Export Data */}

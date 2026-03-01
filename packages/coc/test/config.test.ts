@@ -52,6 +52,9 @@ describe('Config', () => {
             expect(DEFAULT_CONFIG.model).toBeUndefined();
             expect(DEFAULT_CONFIG.mcpConfig).toBeUndefined();
             expect(DEFAULT_CONFIG.timeout).toBeUndefined();
+            expect(DEFAULT_CONFIG.chat).toEqual({
+                followUpSuggestions: { enabled: true, count: 3 },
+            });
         });
     });
 
@@ -304,6 +307,7 @@ timeout: 300
                 approvePermissions: true,
                 persist: false,
                 showReportIntent: true,
+                chat: { followUpSuggestions: { enabled: true, count: 3 } },
             };
             const override: CLIConfig = {};
             const result = mergeConfig(base, override);
@@ -323,6 +327,27 @@ timeout: 300
             const override: CLIConfig = { model: 'test' };
             const result = mergeConfig(DEFAULT_CONFIG, override);
             expect(result.showReportIntent).toBe(false);
+        });
+
+        it('should override chat.followUpSuggestions.enabled from file', () => {
+            const override: CLIConfig = { chat: { followUpSuggestions: { enabled: false } } };
+            const result = mergeConfig(DEFAULT_CONFIG, override);
+            expect(result.chat.followUpSuggestions.enabled).toBe(false);
+            expect(result.chat.followUpSuggestions.count).toBe(3); // default preserved
+        });
+
+        it('should override chat.followUpSuggestions.count from file', () => {
+            const override: CLIConfig = { chat: { followUpSuggestions: { count: 5 } } };
+            const result = mergeConfig(DEFAULT_CONFIG, override);
+            expect(result.chat.followUpSuggestions.count).toBe(5);
+            expect(result.chat.followUpSuggestions.enabled).toBe(true); // default preserved
+        });
+
+        it('should preserve chat defaults when chat section is absent', () => {
+            const override: CLIConfig = { model: 'test' };
+            const result = mergeConfig(DEFAULT_CONFIG, override);
+            expect(result.chat.followUpSuggestions.enabled).toBe(true);
+            expect(result.chat.followUpSuggestions.count).toBe(3);
         });
     });
 
@@ -411,6 +436,24 @@ timeout: 300
             expect(result.sources['serve.dataDir']).toBe('default');
         });
 
+        it('should report file source for chat.followUpSuggestions.enabled when set', () => {
+            const configPath = path.join(tmpDir, 'chat.yaml');
+            fs.writeFileSync(configPath, 'chat:\n  followUpSuggestions:\n    enabled: false\n');
+            const result = getResolvedConfigWithSource(configPath);
+
+            expect(result.sources['chat.followUpSuggestions.enabled']).toBe('file');
+            expect(result.sources['chat.followUpSuggestions.count']).toBe('default');
+        });
+
+        it('should report default source for chat.followUpSuggestions.count when not set', () => {
+            const configPath = path.join(tmpDir, 'chat-default.yaml');
+            fs.writeFileSync(configPath, 'model: test\n');
+            const result = getResolvedConfigWithSource(configPath);
+
+            expect(result.sources['chat.followUpSuggestions.enabled']).toBe('default');
+            expect(result.sources['chat.followUpSuggestions.count']).toBe('default');
+        });
+
         it('should return resolved config with defaults applied', () => {
             const configPath = path.join(tmpDir, 'config.yaml');
             fs.writeFileSync(configPath, 'model: claude\n');
@@ -438,6 +481,10 @@ timeout: 300
                 'timeout: 600',
                 'persist: false',
                 'showReportIntent: true',
+                'chat:',
+                '  followUpSuggestions:',
+                '    enabled: false',
+                '    count: 2',
                 'serve:',
                 '  port: 9000',
                 '  host: 0.0.0.0',

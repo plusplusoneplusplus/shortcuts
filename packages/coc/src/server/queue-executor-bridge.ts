@@ -79,6 +79,8 @@ export interface QueueExecutorBridgeOptions {
     aiService?: CopilotSDKService;
     /** Default timeout in ms for tasks that don't specify their own timeoutMs */
     defaultTimeoutMs?: number;
+    /** Follow-up suggestions configuration */
+    followUpSuggestions?: { enabled: boolean; count: number };
 }
 
 /**
@@ -125,13 +127,17 @@ export class CLITaskExecutor implements TaskExecutor {
     /** Count-based throttle: flush every N chunks */
     private static readonly THROTTLE_CHUNK_COUNT = 50;
 
-    constructor(store: ProcessStore, options: { approvePermissions?: boolean; workingDirectory?: string; dataDir?: string; aiService?: CopilotSDKService; defaultTimeoutMs?: number } = {}) {
+    /** Follow-up suggestions configuration */
+    private readonly followUpSuggestions: { enabled: boolean; count: number };
+
+    constructor(store: ProcessStore, options: { approvePermissions?: boolean; workingDirectory?: string; dataDir?: string; aiService?: CopilotSDKService; defaultTimeoutMs?: number; followUpSuggestions?: { enabled: boolean; count: number } } = {}) {
         this.store = store;
         this.approvePermissions = options.approvePermissions !== false;
         this.defaultWorkingDirectory = options.workingDirectory;
         this.dataDir = options.dataDir;
         this.aiService = options.aiService ?? getCopilotSDKService();
         this.defaultTimeoutMs = options.defaultTimeoutMs ?? DEFAULT_AI_TIMEOUT_MS;
+        this.followUpSuggestions = options.followUpSuggestions ?? { enabled: true, count: 3 };
     }
 
     async execute(task: QueuedTask): Promise<TaskExecutionResult> {
@@ -366,12 +372,15 @@ export class CLITaskExecutor implements TaskExecutor {
         this.store.registerFlushHandler?.(processId, () => this.flushConversationTurn(processId, true));
 
         try {
-            const suggestTool = createSuggestFollowUpsTool();
-            const result = await this.aiService.sendFollowUp(process.sdkSessionId, message, {
+            const suggestTools = this.followUpSuggestions.enabled ? [createSuggestFollowUpsTool()] : [];
+            const followUpMessage = this.followUpSuggestions.enabled
+                ? `${message}\n\nWhen suggesting follow-ups, provide exactly ${this.followUpSuggestions.count} suggestions.`
+                : message;
+            const result = await this.aiService.sendFollowUp(process.sdkSessionId, followUpMessage, {
                 workingDirectory,
                 onPermissionRequest: this.approvePermissions ? approveAllPermissions : undefined,
                 attachments,
-                tools: [suggestTool],
+                tools: suggestTools.length > 0 ? suggestTools : undefined,
                 onStreamingChunk: (chunk: string) => {
                     // Accumulate for persistence
                     const existing = this.outputBuffers.get(processId) ?? '';
@@ -648,8 +657,11 @@ export class CLITaskExecutor implements TaskExecutor {
             isFollowPromptPayload(task.payload)
         ) {
             const isChatTask = task.type === 'chat';
-            const tools = isChatTask ? [createSuggestFollowUpsTool()] : undefined;
-            return this.executeWithAI(task, prompt, tools ? { tools } : undefined);
+            const tools = (isChatTask && this.followUpSuggestions.enabled) ? [createSuggestFollowUpsTool()] : undefined;
+            const countSuffix = (isChatTask && this.followUpSuggestions.enabled)
+                ? `\n\nWhen suggesting follow-ups, provide exactly ${this.followUpSuggestions.count} suggestions.`
+                : '';
+            return this.executeWithAI(task, prompt + countSuffix, tools ? { tools } : undefined);
         }
 
         // Resolve comments: build prompt from payload and execute with AI
@@ -1187,6 +1199,7 @@ export function createQueueExecutorBridge(
         dataDir: options.dataDir,
         aiService: options.aiService,
         defaultTimeoutMs: options.defaultTimeoutMs,
+        followUpSuggestions: options.followUpSuggestions,
     });
 
     const executor = createQueueExecutor(queueManager, taskExecutor, {

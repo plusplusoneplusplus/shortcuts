@@ -168,6 +168,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         dataDir,
         aiService: options.aiService,
         defaultTimeoutMs,
+        followUpSuggestions: resolvedConfig.chat.followUpSuggestions,
     });
 
     // Restore persisted queue state before executor starts processing

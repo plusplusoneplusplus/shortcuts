@@ -36,6 +36,13 @@ export interface CLIConfig {
     persist?: boolean;
     /** Show report_intent tool calls in conversation views (default: false) */
     showReportIntent?: boolean;
+    /** Chat settings */
+    chat?: {
+        followUpSuggestions?: {
+            enabled?: boolean;
+            count?: number;
+        };
+    };
     /** Serve command defaults */
     serve?: {
         port?: number;
@@ -57,6 +64,12 @@ export interface ResolvedCLIConfig {
     timeout?: number;
     persist: boolean;
     showReportIntent: boolean;
+    chat: {
+        followUpSuggestions: {
+            enabled: boolean;
+            count: number;
+        };
+    };
     serve?: {
         port: number;
         host: string;
@@ -82,6 +95,12 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     approvePermissions: false,
     persist: true,
     showReportIntent: false,
+    chat: {
+        followUpSuggestions: {
+            enabled: true,
+            count: 3,
+        },
+    },
     serve: {
         port: 4000,
         host: '0.0.0.0',
@@ -100,7 +119,9 @@ export type ConfigFieldSource = 'default' | 'file';
  */
 export const CONFIG_SOURCE_KEYS = [
     'model', 'parallel', 'output', 'approvePermissions', 'mcpConfig',
-    'timeout', 'persist', 'showReportIntent', 'serve.port', 'serve.host', 'serve.dataDir', 'serve.theme',
+    'timeout', 'persist', 'showReportIntent',
+    'chat.followUpSuggestions.enabled', 'chat.followUpSuggestions.count',
+    'serve.port', 'serve.host', 'serve.dataDir', 'serve.theme',
 ] as const;
 
 export type ConfigSourceKey = typeof CONFIG_SOURCE_KEYS[number];
@@ -211,6 +232,12 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
         timeout: override.timeout ?? base.timeout,
         persist: override.persist ?? base.persist,
         showReportIntent: override.showReportIntent ?? base.showReportIntent,
+        chat: {
+            followUpSuggestions: {
+                enabled: override.chat?.followUpSuggestions?.enabled ?? base.chat.followUpSuggestions.enabled,
+                count: override.chat?.followUpSuggestions?.count ?? base.chat.followUpSuggestions.count,
+            },
+        },
         serve: {
             port: override.serve?.port ?? base.serve?.port ?? 4000,
             host: override.serve?.host ?? base.serve?.host ?? '0.0.0.0',
@@ -246,6 +273,11 @@ export function getResolvedConfigWithSource(configPath?: string): AdminConfigWit
 function getFieldSource(key: ConfigSourceKey, fileConfig: CLIConfig | undefined): ConfigFieldSource {
     if (!fileConfig) {
         return 'default';
+    }
+
+    if (key.startsWith('chat.followUpSuggestions.')) {
+        const subKey = key.slice('chat.followUpSuggestions.'.length) as keyof NonNullable<NonNullable<CLIConfig['chat']>['followUpSuggestions']>;
+        return fileConfig.chat?.followUpSuggestions?.[subKey] !== undefined ? 'file' : 'default';
     }
 
     if (key.startsWith('serve.')) {

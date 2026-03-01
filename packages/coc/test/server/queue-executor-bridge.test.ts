@@ -244,9 +244,9 @@ describe('CLITaskExecutor', () => {
 
             await executor.execute(task);
 
-            // Prompt should fall back to displayName
+            // Prompt should fall back to displayName (with follow-up count suffix)
             expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
-                prompt: 'My chat message',
+                prompt: expect.stringContaining('My chat message'),
             }));
         });
 
@@ -266,7 +266,7 @@ describe('CLITaskExecutor', () => {
             await executor.execute(task);
 
             expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
-                prompt: 'Chat message',
+                prompt: expect.stringContaining('Chat message'),
             }));
         });
     });
@@ -342,7 +342,7 @@ describe('CLITaskExecutor', () => {
 
             expect(result.success).toBe(true);
             expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
-                prompt: 'What does this repo do?',
+                prompt: expect.stringContaining('What does this repo do?'),
             }));
 
             const addedProcess = (store.addProcess as any).mock.calls[0][0];
@@ -366,7 +366,7 @@ describe('CLITaskExecutor', () => {
             await executor.execute(task);
 
             expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
-                prompt: 'Explain the architecture',
+                prompt: expect.stringContaining('Explain the architecture'),
                 workingDirectory: '/my/repo',
             }));
         });
@@ -2009,7 +2009,7 @@ describe('CLITaskExecutor.executeFollowUp', () => {
         const executor = new CLITaskExecutor(store);
         await executor.executeFollowUp('proc-2', 'follow up');
 
-        expect(mockSendFollowUp).toHaveBeenCalledWith('sess-123', 'follow up', expect.objectContaining({
+        expect(mockSendFollowUp).toHaveBeenCalledWith('sess-123', expect.stringContaining('follow up'), expect.objectContaining({
             workingDirectory: '/workspace/shortcuts',
             onPermissionRequest: expect.any(Function),
             onStreamingChunk: expect.any(Function),
@@ -2253,7 +2253,7 @@ describe('executeFollowUp - chat conversation scenarios', () => {
         const longMsg = 'x'.repeat(100_000);
         await executor.executeFollowUp('proc-large', longMsg);
 
-        expect(mockSendFollowUp).toHaveBeenCalledWith('sess-large', longMsg, expect.any(Object));
+        expect(mockSendFollowUp).toHaveBeenCalledWith('sess-large', expect.stringContaining(longMsg), expect.any(Object));
         const updated = await store.getProcess('proc-large');
         expect(updated!.status).toBe('completed');
     });
@@ -5502,5 +5502,86 @@ describe('suggest_follow_ups tool wiring', () => {
             (call: any[]) => call[1].type === 'tool-start' && call[1].toolName === 'suggest_follow_ups',
         );
         expect(toolStartEvents).toHaveLength(1);
+    });
+
+    it('should exclude suggestion tool from sendMessage when followUpSuggestions.enabled is false', async () => {
+        const executor = new CLITaskExecutor(store, { followUpSuggestions: { enabled: false, count: 3 } });
+
+        const task: QueuedTask = {
+            id: 'suggest-disabled-1',
+            type: 'chat',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { kind: 'chat' as const, prompt: 'Hello' },
+            config: { timeoutMs: 30000 },
+            displayName: 'Chat',
+        };
+
+        await executor.execute(task);
+
+        expect(mockSendMessage).toHaveBeenCalledTimes(1);
+        const callOpts = mockSendMessage.mock.calls[0][0];
+        expect(callOpts.tools).toBeUndefined();
+    });
+
+    it('should not append count instruction to prompt when suggestions are disabled', async () => {
+        const executor = new CLITaskExecutor(store, { followUpSuggestions: { enabled: false, count: 3 } });
+
+        const task: QueuedTask = {
+            id: 'suggest-disabled-2',
+            type: 'chat',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { kind: 'chat' as const, prompt: 'Tell me about this' },
+            config: { timeoutMs: 30000 },
+            displayName: 'Chat',
+        };
+
+        await executor.execute(task);
+
+        const callOpts = mockSendMessage.mock.calls[0][0];
+        expect(callOpts.prompt).not.toContain('When suggesting follow-ups');
+    });
+
+    it('should append count instruction to prompt when suggestions are enabled', async () => {
+        const executor = new CLITaskExecutor(store, { followUpSuggestions: { enabled: true, count: 2 } });
+
+        const task: QueuedTask = {
+            id: 'suggest-count-1',
+            type: 'chat',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { kind: 'chat' as const, prompt: 'Hello' },
+            config: { timeoutMs: 30000 },
+            displayName: 'Chat',
+        };
+
+        await executor.execute(task);
+
+        const callOpts = mockSendMessage.mock.calls[0][0];
+        expect(callOpts.prompt).toContain('provide exactly 2 suggestions');
+    });
+
+    it('should exclude suggestion tool from sendFollowUp when disabled', async () => {
+        const process = createCompletedProcessWithSession('queue_suggest-fu-disabled', 'sess-fu-disabled');
+        store.processes.set(process.id, process);
+        mockSendFollowUp.mockResolvedValue({
+            success: true,
+            response: 'Follow-up response',
+            sessionId: 'sess-fu-disabled',
+        });
+
+        const executor = new CLITaskExecutor(store, { followUpSuggestions: { enabled: false, count: 3 } });
+        await executor.executeFollowUp('queue_suggest-fu-disabled', 'follow-up question');
+
+        expect(mockSendFollowUp).toHaveBeenCalledTimes(1);
+        const callOpts = mockSendFollowUp.mock.calls[0][2];
+        expect(callOpts.tools).toBeUndefined();
+        // Should NOT append count instruction when disabled
+        const sentMessage = mockSendFollowUp.mock.calls[0][1];
+        expect(sentMessage).not.toContain('When suggesting follow-ups');
     });
 });

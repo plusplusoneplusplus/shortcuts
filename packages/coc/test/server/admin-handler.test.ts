@@ -415,6 +415,21 @@ describe('Admin Handler', () => {
             expect(body.resolved.output).toBe('table');
             expect(body.sources.parallel).toBe('default');
         });
+
+        it('should return chat.followUpSuggestions with source indicators', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            fs.writeFileSync(configPath, 'chat:\n  followUpSuggestions:\n    enabled: false\n', 'utf-8');
+            const srv = await startServerWithConfig(configPath);
+
+            const res = await request(`${srv.url}/api/admin/config`);
+            expect(res.status).toBe(200);
+
+            const body = JSON.parse(res.body);
+            expect(body.resolved.chat.followUpSuggestions.enabled).toBe(false);
+            expect(body.resolved.chat.followUpSuggestions.count).toBe(3); // default
+            expect(body.sources['chat.followUpSuggestions.enabled']).toBe('file');
+            expect(body.sources['chat.followUpSuggestions.count']).toBe('default');
+        });
     });
 
     // ========================================================================
@@ -720,6 +735,68 @@ describe('Admin Handler', () => {
             expect(res.status).toBe(400);
             const body = JSON.parse(res.body);
             expect(body.error).toContain('timeout');
+        });
+
+        it('should save chat.followUpSuggestions.enabled=false to config file', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ 'chat.followUpSuggestions.enabled': false }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.chat.followUpSuggestions.enabled).toBe(false);
+            expect(body.sources['chat.followUpSuggestions.enabled']).toBe('file');
+        });
+
+        it('should save chat.followUpSuggestions.count=2 to config file', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ 'chat.followUpSuggestions.count': 2 }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.chat.followUpSuggestions.count).toBe(2);
+            expect(body.sources['chat.followUpSuggestions.count']).toBe('file');
+        });
+
+        it('should reject chat.followUpSuggestions.count=0 with validation error', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ 'chat.followUpSuggestions.count': 0 }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('chat.followUpSuggestions.count');
+        });
+
+        it('should reject chat.followUpSuggestions.count=6 with validation error', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ 'chat.followUpSuggestions.count': 6 }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('chat.followUpSuggestions.count');
         });
     });
 

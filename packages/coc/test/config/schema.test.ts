@@ -189,6 +189,47 @@ describe('CLIConfigSchema', () => {
         expect(() => CLIConfigSchema.parse({ showReportIntent: 1 }))
             .toThrow();
     });
+
+    // ========================================================================
+    // chat.followUpSuggestions
+    // ========================================================================
+
+    it('validates chat.followUpSuggestions.enabled as boolean', () => {
+        const result = CLIConfigSchema.parse({ chat: { followUpSuggestions: { enabled: false } } });
+        expect(result.chat?.followUpSuggestions?.enabled).toBe(false);
+    });
+
+    it('rejects chat.followUpSuggestions.enabled as string', () => {
+        expect(() => CLIConfigSchema.parse({ chat: { followUpSuggestions: { enabled: 'yes' } } }))
+            .toThrow();
+    });
+
+    it('validates chat.followUpSuggestions.count in range 1-5', () => {
+        for (const count of [1, 3, 5]) {
+            const result = CLIConfigSchema.parse({ chat: { followUpSuggestions: { count } } });
+            expect(result.chat?.followUpSuggestions?.count).toBe(count);
+        }
+    });
+
+    it('rejects chat.followUpSuggestions.count = 0', () => {
+        expect(() => CLIConfigSchema.parse({ chat: { followUpSuggestions: { count: 0 } } }))
+            .toThrow();
+    });
+
+    it('rejects chat.followUpSuggestions.count = 6', () => {
+        expect(() => CLIConfigSchema.parse({ chat: { followUpSuggestions: { count: 6 } } }))
+            .toThrow();
+    });
+
+    it('rejects unknown keys inside chat.followUpSuggestions (strict mode)', () => {
+        expect(() => CLIConfigSchema.parse({ chat: { followUpSuggestions: { unknown: true } } }))
+            .toThrow();
+    });
+
+    it('rejects unknown keys inside chat (strict mode)', () => {
+        expect(() => CLIConfigSchema.parse({ chat: { unknown: true } }))
+            .toThrow();
+    });
 });
 
 describe('validateConfigWithSchema', () => {

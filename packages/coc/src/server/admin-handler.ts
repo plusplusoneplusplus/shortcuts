@@ -207,6 +207,21 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
                 }
             }
 
+            // Validate nested chat.followUpSuggestions fields
+            const chatBody = body['chat.followUpSuggestions.enabled'] !== undefined || body['chat.followUpSuggestions.count'] !== undefined
+                ? body : null;
+            if (chatBody && 'chat.followUpSuggestions.enabled' in chatBody) {
+                if (typeof chatBody['chat.followUpSuggestions.enabled'] !== 'boolean') {
+                    errors.push('chat.followUpSuggestions.enabled must be a boolean');
+                }
+            }
+            if (chatBody && 'chat.followUpSuggestions.count' in chatBody) {
+                const count = chatBody['chat.followUpSuggestions.count'];
+                if (typeof count !== 'number' || !Number.isInteger(count) || count < 1 || count > 5) {
+                    errors.push('chat.followUpSuggestions.count must be an integer between 1 and 5');
+                }
+            }
+
             if (errors.length > 0) {
                 return handleAPIError(res, badRequest(errors.join('; ')));
             }
@@ -224,6 +239,18 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             }
             if ('output' in body) { existing.output = body.output as CLIConfig['output']; }
             if ('showReportIntent' in body) { existing.showReportIntent = body.showReportIntent as boolean; }
+
+            // Handle nested chat.followUpSuggestions fields
+            if ('chat.followUpSuggestions.enabled' in body) {
+                if (!existing.chat) { existing.chat = {}; }
+                if (!existing.chat.followUpSuggestions) { existing.chat.followUpSuggestions = {}; }
+                existing.chat.followUpSuggestions.enabled = body['chat.followUpSuggestions.enabled'] as boolean;
+            }
+            if ('chat.followUpSuggestions.count' in body) {
+                if (!existing.chat) { existing.chat = {}; }
+                if (!existing.chat.followUpSuggestions) { existing.chat.followUpSuggestions = {}; }
+                existing.chat.followUpSuggestions.count = body['chat.followUpSuggestions.count'] as number;
+            }
 
             writeConfigFile(resolvedConfigPath, existing);
 
