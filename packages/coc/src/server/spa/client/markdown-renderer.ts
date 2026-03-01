@@ -26,7 +26,12 @@ import {
     // Line-level rendering
     applyMarkdownHighlighting,
     applySourceModeHighlighting,
+    // Comment highlight helpers
+    getHighlightColumnsForLine,
+    applyCommentHighlightToRange,
 } from '@plusplusoneplusplus/pipeline-core/editor/rendering';
+
+import type { CommentSelection } from '@plusplusoneplusplus/pipeline-core/editor/types';
 
 // highlight.js is loaded via CDN; declared globally in the HTML template.
 declare const hljs: {
@@ -34,9 +39,17 @@ declare const hljs: {
     highlightAuto: (code: string, languages?: string[]) => { value: string; language: string };
 };
 
+export interface RenderCommentInfo {
+    id: string;
+    selection: CommentSelection;
+    status: 'open' | 'resolved';
+}
+
 export interface RenderOptions {
     /** Strip YAML frontmatter (```---\n...\n---```) from the beginning. */
     stripFrontmatter?: boolean;
+    /** Comments to inject as highlights into rendered lines. */
+    comments?: RenderCommentInfo[];
 }
 
 /**
@@ -108,6 +121,18 @@ export function renderMarkdownToHtml(content: string, options?: RenderOptions): 
     let inCodeBlock = false;
     let codeBlockLang: string | null = null;
 
+    // Pre-compute line → comments map for highlight injection
+    const commentsByLine = new Map<number, RenderCommentInfo[]>();
+    if (options?.comments) {
+        for (const c of options.comments) {
+            for (let ln = c.selection.startLine; ln <= c.selection.endLine; ln++) {
+                const arr = commentsByLine.get(ln) || [];
+                arr.push(c);
+                commentsByLine.set(ln, arr);
+            }
+        }
+    }
+
     for (let i = 0; i < lines.length; i++) {
         const lineNum = i + 1; // 1-based
 
@@ -146,12 +171,32 @@ export function renderMarkdownToHtml(content: string, options?: RenderOptions): 
         inCodeBlock = result.inCodeBlock;
         codeBlockLang = result.codeBlockLang;
 
+        // Apply comment highlights for this line
+        let lineContent = result.html;
+        const lineComments = commentsByLine.get(lineNum);
+        if (lineComments) {
+            const plainLine = lines[i];
+            // Apply in reverse column order so indices remain valid
+            const sorted = [...lineComments].sort(
+                (a, b) => b.selection.startColumn - a.selection.startColumn
+            );
+            for (const c of sorted) {
+                const { startCol, endCol } = getHighlightColumnsForLine(
+                    c.selection, lineNum, plainLine.length
+                );
+                const statusClass = c.status === 'resolved' ? 'resolved' : '';
+                lineContent = applyCommentHighlightToRange(
+                    lineContent, plainLine, startCol, endCol, c.id, statusClass
+                );
+            }
+        }
+
         // Wrap the line in a div for consistent structure
         let lineHtml = '<div class="md-line" data-line="' + lineNum + '"';
         if (result.anchorId) {
             lineHtml += ' id="' + result.anchorId + '"';
         }
-        lineHtml += '>' + result.html + '</div>';
+        lineHtml += '>' + lineContent + '</div>';
         htmlParts.push(lineHtml);
     }
 

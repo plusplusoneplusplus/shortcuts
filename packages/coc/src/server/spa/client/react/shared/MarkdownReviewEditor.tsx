@@ -5,16 +5,16 @@
  * so both surfaces share the same commenting and rendering behavior.
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { fetchApi } from '../hooks/useApi';
 import { useMarkdownPreview } from '../hooks/useMarkdownPreview';
+import type { RenderCommentInfo } from '../../markdown-renderer';
 import { useTaskComments } from '../hooks/useTaskComments';
 import { Spinner } from './Spinner';
 import { SourceEditor } from './SourceEditor';
 import { CommentSidebar } from '../tasks/comments/CommentSidebar';
 import { ContextMenu } from '../tasks/comments/ContextMenu';
 import { InlineCommentPopup } from '../tasks/comments/InlineCommentPopup';
-import { CommentHighlight } from '../tasks/comments/CommentHighlight';
 import { CommentPopover } from '../tasks/comments/CommentPopover';
 import type { TaskComment, TaskCommentCategory, CommentSelection } from '../../task-comments-types';
 import {
@@ -128,6 +128,16 @@ export function MarkdownReviewEditor({
         refresh,
     } = useTaskComments(wsId, filePath);
 
+    // Map TaskComment[] → RenderCommentInfo[] for build-time highlight injection
+    const renderComments: RenderCommentInfo[] = useMemo(
+        () => comments.map(c => ({
+            id: c.id,
+            selection: c.selection,
+            status: c.status,
+        })),
+        [comments]
+    );
+
     // Shared markdown rendering (render + hljs + mermaid)
     const { html } = useMarkdownPreview({
         content: rawContent,
@@ -135,6 +145,7 @@ export function MarkdownReviewEditor({
         loading,
         stripFrontmatter: true,
         viewMode,
+        comments: renderComments,
     });
 
     const { addToast } = useGlobalToast();
@@ -351,18 +362,18 @@ export function MarkdownReviewEditor({
     const handleCommentClick = useCallback((comment: TaskComment) => {
         if (!previewRef.current) return;
 
-        const mark = previewRef.current.querySelector(`mark[data-comment-id="${comment.id}"]`);
-        if (!mark) return;
+        const span = previewRef.current.querySelector(`[data-comment-id="${comment.id}"]`);
+        if (!span) return;
 
-        const scrollContainer = mark.closest('.overflow-y-auto') ?? previewRef.current.parentElement;
+        const scrollContainer = span.closest('.overflow-y-auto') ?? previewRef.current.parentElement;
         if (scrollContainer) {
             const containerRect = scrollContainer.getBoundingClientRect();
-            const markRect = mark.getBoundingClientRect();
-            const scrollTop = scrollContainer.scrollTop + (markRect.top - containerRect.top) - containerRect.height / 2 + markRect.height / 2;
+            const spanRect = span.getBoundingClientRect();
+            const scrollTop = scrollContainer.scrollTop + (spanRect.top - containerRect.top) - containerRect.height / 2 + spanRect.height / 2;
             scrollContainer.scrollTo({ top: Math.max(0, scrollTop), behavior: 'smooth' });
         }
 
-        const rect = mark.getBoundingClientRect();
+        const rect = span.getBoundingClientRect();
         setPopoverPos({ top: rect.bottom + 8, left: Math.max(8, rect.left) });
         setActivePopoverComment(comment);
     }, []);
@@ -480,6 +491,15 @@ export function MarkdownReviewEditor({
         setViewMode('review');
     }, [isDirty, rawContent, setViewMode]);
 
+    // Event delegation for build-time highlight click
+    const handleHighlightClick = useCallback((e: React.MouseEvent) => {
+        const span = (e.target as HTMLElement).closest('[data-comment-id]');
+        if (!span) return;
+        const id = span.getAttribute('data-comment-id');
+        const comment = comments.find(c => c.id === id);
+        if (comment) handleCommentClick(comment);
+    }, [comments, handleCommentClick]);
+
     if (loading) {
         return (
             <div className="flex items-center justify-center h-full">
@@ -533,11 +553,7 @@ export function MarkdownReviewEditor({
                                 data-source-file={filePath}
                                 dangerouslySetInnerHTML={{ __html: html }}
                                 onContextMenu={handleContextMenu}
-                            />
-                            <CommentHighlight
-                                comments={comments}
-                                containerRef={previewRef}
-                                onCommentClick={handleCommentClick}
+                                onClick={handleHighlightClick}
                             />
                         </div>
                     )}
