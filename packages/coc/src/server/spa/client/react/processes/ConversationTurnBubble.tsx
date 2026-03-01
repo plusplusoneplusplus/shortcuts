@@ -54,13 +54,23 @@ function linkifyFilePaths(html: string): string {
 }
 
 /**
+ * Pre-normalize Windows-style paths (backslash) to forward slashes before markdown
+ * parsing, so that `marked` does not treat `\.` as an escape sequence (GFM treats
+ * backslash-followed-by-ASCII-punctuation as an escape, silently dropping the `\`).
+ */
+function normalizeWindowsPathsInText(text: string): string {
+    return text.replace(/[A-Za-z]:[\\\/][\w.\\/@-]+/g, (match) => toForwardSlashes(match));
+}
+
+/**
  * Convert markdown to semantic HTML using `marked` for chat messages.
  * Produces proper `<h3>`, `<strong>`, `<ul>`, `<pre><code>`, etc.
  * File paths are linkified for hover previews.
  */
 export function chatMarkdownToHtml(content: string): string {
     if (!content || !content.trim()) return '';
-    return linkifyFilePaths(chatMarked.parse(content) as string);
+    const normalized = normalizeWindowsPathsInText(content);
+    return linkifyFilePaths(chatMarked.parse(normalized) as string);
 }
 
 interface ConversationTurnBubbleProps {

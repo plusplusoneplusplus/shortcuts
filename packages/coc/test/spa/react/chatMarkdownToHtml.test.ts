@@ -147,12 +147,39 @@ describe('chatMarkdownToHtml', () => {
         expect(html).toContain('data-full-path=');
     });
 
+    it('preserves .vscode segment in Windows backslash paths (markdown escape bug)', () => {
+        const html = chatMarkdownToHtml('D:\\projects\\shortcuts\\.vscode\\tasks\\coc\\misc\\hover-create-result.plan.md');
+        expect(html).toContain('class="file-path-link"');
+        // The \.vscode backslash-dot must NOT be eaten by markdown escaping
+        expect(html).toContain('shortcuts/.vscode');
+        expect(html).not.toContain('shortcuts.vscode');
+    });
+
+    it('preserves multiple dot-prefixed segments in Windows paths', () => {
+        const html = chatMarkdownToHtml('C:\\Users\\user\\.config\\.app\\file.json');
+        expect(html).toContain('class="file-path-link"');
+        expect(html).toContain('user/.config/.app');
+        expect(html).not.toContain('user.config');
+    });
+
     it('preserves .vscode segment in forward-slash paths (no markdown escaping issue)', () => {
         const html = chatMarkdownToHtml('File: D:/projects/shortcuts/.vscode/tasks/coc/chat');
         expect(html).toContain('class="file-path-link"');
         // Forward-slash paths must keep the /.vscode/ segment intact
         expect(html).toContain('shortcuts/.vscode');
         expect(html).not.toContain('shortcuts.vscode');
+    });
+
+    it('normalizes normal Windows paths without dot segments', () => {
+        const html = chatMarkdownToHtml('D:\\projects\\shortcuts\\src\\index.ts');
+        expect(html).toContain('class="file-path-link"');
+        expect(html).toContain('D:/projects/shortcuts/src/index.ts');
+    });
+
+    it('does not corrupt non-path content when normalizing Windows paths', () => {
+        const html = chatMarkdownToHtml('This is **bold** and D:\\projects\\.vscode\\foo.md is a file');
+        expect(html).toContain('<strong>bold</strong>');
+        expect(html).toContain('projects/.vscode/foo.md');
     });
 
     it('linkifies Unix file paths', () => {
