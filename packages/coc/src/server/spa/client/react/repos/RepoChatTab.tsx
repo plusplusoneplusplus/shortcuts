@@ -25,6 +25,7 @@ interface RepoChatTabProps {
     workspacePath?: string;
     initialSessionId?: string | null;
     newChatTrigger?: number;
+    newChatTriggerProcessedRef?: React.MutableRefObject<number>;
 }
 
 function getConversationTurns(data: any, task?: any): ClientConversationTurn[] {
@@ -56,7 +57,7 @@ function getConversationTurns(data: any, task?: any): ClientConversationTurn[] {
     return [];
 }
 
-export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newChatTrigger }: RepoChatTabProps) {
+export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newChatTrigger, newChatTriggerProcessedRef }: RepoChatTabProps) {
     const sessionsHook = useChatSessions(workspaceId);
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { model: savedModel, setModel: persistModel } = usePreferences();
@@ -394,7 +395,8 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
     }, [isStreaming, initialImagePaste, followUpImagePaste, workspaceId]);
 
     // Trigger new chat from external source (e.g. top-bar button)
-    const prevTriggerRef = useRef(newChatTrigger ?? 0);
+    const localTriggerRef = useRef(0);
+    const prevTriggerRef = newChatTriggerProcessedRef ?? localTriggerRef;
     useEffect(() => {
         if (newChatTrigger && newChatTrigger !== prevTriggerRef.current) {
             prevTriggerRef.current = newChatTrigger;

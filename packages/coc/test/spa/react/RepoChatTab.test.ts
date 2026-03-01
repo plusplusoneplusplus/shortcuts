@@ -774,7 +774,7 @@ describe('RepoChatTab', () => {
 
     describe('initialSessionId prop', () => {
         it('destructures initialSessionId from props', () => {
-            expect(source).toContain('{ workspaceId, workspacePath, initialSessionId, newChatTrigger }');
+            expect(source).toContain('{ workspaceId, workspacePath, initialSessionId, newChatTrigger, newChatTriggerProcessedRef }');
         });
 
         it('prefers initialSessionId over auto-select when provided', () => {
@@ -1234,12 +1234,12 @@ describe('RepoChatTab', () => {
         });
 
         it('destructures newChatTrigger from props', () => {
-            expect(source).toMatch(/\{\s*workspaceId.*newChatTrigger\s*\}/s);
+            expect(source).toMatch(/\{\s*workspaceId.*newChatTrigger.*newChatTriggerProcessedRef\s*\}/s);
         });
 
         it('tracks previous trigger value with a ref', () => {
             expect(source).toContain('prevTriggerRef');
-            expect(source).toContain('useRef(newChatTrigger');
+            expect(source).toContain('newChatTriggerProcessedRef ?? localTriggerRef');
         });
 
         it('calls handleNewChat when newChatTrigger changes', () => {

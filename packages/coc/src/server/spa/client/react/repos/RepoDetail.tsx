@@ -2,7 +2,7 @@
  * RepoDetail — right panel showing sub-tabs for the selected repo.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useQueue } from '../context/QueueContext';
 import { Button, cn } from '../shared';
@@ -57,6 +57,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     }, [queueState.repoQueueMap[ws.id]?.stats?.isPaused]);
     const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
     const [newChatTrigger, setNewChatTrigger] = useState(0);
+    const newChatTriggerProcessedRef = useRef(0);
 
     async function handleResumeQueue() {
         setIsPauseResumeLoading(true);
@@ -201,7 +202,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                         {activeSubTab === 'pipelines' && <PipelinesTab repo={repo} />}
                         {activeSubTab === 'queue' && <RepoQueueTab workspaceId={ws.id} />}
                         {activeSubTab === 'schedules' && <RepoSchedulesTab workspaceId={ws.id} />}
-                        {activeSubTab === 'chat' && <RepoChatTab workspaceId={ws.id} workspacePath={ws.rootPath} initialSessionId={state.selectedChatSessionId} newChatTrigger={newChatTrigger} />}
+                        {activeSubTab === 'chat' && <RepoChatTab workspaceId={ws.id} workspacePath={ws.rootPath} initialSessionId={state.selectedChatSessionId} newChatTrigger={newChatTrigger} newChatTriggerProcessedRef={newChatTriggerProcessedRef} />}
                         {activeSubTab === 'git' && <RepoGitTab workspaceId={ws.id} />}
                     </div>
                 )}
