@@ -12,6 +12,7 @@ import { fetchApi } from '../hooks/useApi';
 import { Spinner } from '../shared';
 import { CommitList } from './CommitList';
 import { CommitDetail } from './CommitDetail';
+import { BranchChanges } from './BranchChanges';
 import type { GitCommitItem } from './CommitList';
 
 interface RepoGitTabProps {
@@ -106,6 +107,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         <div className="repo-git-tab flex flex-col md-split:flex-row h-full overflow-hidden" data-testid="repo-git-tab">
             {/* Left panel — commit list */}
             <aside className="w-full md-split:w-[320px] md-split:shrink-0 overflow-y-auto border-b md-split:border-b-0 md-split:border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]" data-testid="git-commit-list-panel">
+                <BranchChanges workspaceId={workspaceId} />
                 {commitListPanel}
             </aside>
             {/* Right panel — commit detail */}
