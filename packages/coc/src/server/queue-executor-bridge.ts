@@ -41,6 +41,7 @@ import {
     executePipeline,
     toNativePath,
     mergeConsecutiveContentItems,
+    resolveSkillSync,
 } from '@plusplusoneplusplus/pipeline-core';
 import type { ProcessStore, AIProcess, ConversationTurn, ToolEvent, TimelineItem, CopilotSDKService, SelectedContext, Attachment } from '@plusplusoneplusplus/pipeline-core';
 import { createCLIAIInvoker } from '../ai-invoker';
@@ -146,7 +147,7 @@ export class CLITaskExecutor implements TaskExecutor {
         // Create a process in the store for tracking
         // Format: <type>_<uuid> e.g. queue_1771242852770-g94u3ig
         const processId = `queue_${task.id}`;
-        const prompt = this.extractPrompt(task);
+        const prompt = this.applySkillContent(this.extractPrompt(task), task);
         const workingDirectory = this.getWorkingDirectory(task);
         const process: AIProcess = {
             id: processId,
@@ -578,6 +579,28 @@ export class CLITaskExecutor implements TaskExecutor {
         }
 
         return task.displayName || `Queue task: ${task.type}`;
+    }
+
+    /**
+     * If the task payload includes a skillName, resolve the skill content
+     * and wrap the prompt with skill guidance. Falls back to the original
+     * prompt if resolution fails.
+     */
+    private applySkillContent(prompt: string, task: QueuedTask): string {
+        const payload = task.payload as { skillName?: string; workingDirectory?: string };
+        if (!payload.skillName) {
+            return prompt;
+        }
+
+        const workspaceRoot = payload.workingDirectory || this.defaultWorkingDirectory || process.cwd();
+        try {
+            const skillContent = resolveSkillSync(payload.skillName, workspaceRoot);
+            return `[Skill Guidance: ${payload.skillName}]\n${skillContent}\n\n[Task]\n${prompt}`;
+        } catch (error) {
+            const logger = getLogger();
+            logger.warn(LogCategory.AI, `[QueueExecutor] Failed to resolve skill "${payload.skillName}": ${error instanceof Error ? error.message : String(error)}`);
+            return prompt;
+        }
     }
 
     // ========================================================================
