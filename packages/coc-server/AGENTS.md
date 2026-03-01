@@ -72,7 +72,7 @@ packages/coc-server/
 
 ### Execution Server Layer
 
-- **api-handler.ts** — Process CRUD, queue management (`/api/processes`, `/api/queue/*`), git remote detection, pipeline discovery, directory browsing. Exports `QueueExecutorBridge` for connecting queue to pipeline execution.
+- **api-handler.ts** — Process CRUD, queue management (`/api/processes`, `/api/queue/*`), git remote detection, git commit history (`/api/workspaces/:id/git/commits`, `/git/commits/:hash/files`, `/git/commits/:hash/diff`), pipeline discovery, directory browsing. Exports `QueueExecutorBridge` for connecting queue to pipeline execution.
 - **admin-handler.ts** — Destructive operations (data wipe) guarded by time-limited crypto tokens.
 - **preferences-handler.ts** — JSON file persistence for UI preferences at `~/.coc/preferences.json`.
 - **websocket.ts** — `ProcessWebSocketServer` broadcasts process lifecycle, queue, and comment events. Supports workspace-scoped filtering and file subscriptions.
@@ -116,7 +116,7 @@ The package exports from `src/index.ts`:
 
 ## Testing
 
-7 Vitest test files plus helpers covering: error factories, export/import validation, repo utilities, server scaffold, SSE replay, WebSocket file subscriptions, shared router.
+7 Vitest test files plus helpers covering: error factories, export/import validation, repo utilities, server scaffold, SSE replay, WebSocket file subscriptions, shared router, git commit API endpoints.
 
 Run with `npm run test:run` in `packages/coc-server/`.
 

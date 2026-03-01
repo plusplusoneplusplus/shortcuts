@@ -316,6 +316,121 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         },
     });
 
+    // GET /api/workspaces/:id/git/commits — List commits with pagination
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/commits$/,
+        handler: async (req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const workspaces = await store.getWorkspaces();
+            const ws = workspaces.find(w => w.id === id);
+            if (!ws) {
+                return handleAPIError(res, notFound('Workspace'));
+            }
+
+            const parsed = url.parse(req.url || '/', true);
+            const limit = Math.min(Math.max(parseInt(String(parsed.query.limit || '50'), 10) || 50, 1), 200);
+            const skip = Math.max(parseInt(String(parsed.query.skip || '0'), 10) || 0, 0);
+
+            try {
+                const format = '%H%n%h%n%s%n%an%n%aI%n%P';
+                const raw = execGitSync(
+                    `log --format="${format}" --skip=${skip} --max-count=${limit} -z`,
+                    ws.rootPath
+                );
+
+                const commits: Array<{
+                    hash: string; shortHash: string; subject: string;
+                    author: string; date: string; parentHashes: string[];
+                }> = [];
+
+                if (raw.trim()) {
+                    const entries = raw.split('\0').filter(Boolean);
+                    for (const entry of entries) {
+                        const lines = entry.split('\n');
+                        if (lines.length >= 5) {
+                            commits.push({
+                                hash: lines[0],
+                                shortHash: lines[1],
+                                subject: lines[2],
+                                author: lines[3],
+                                date: lines[4],
+                                parentHashes: lines[5] ? lines[5].split(' ').filter(Boolean) : [],
+                            });
+                        }
+                    }
+                }
+
+                // Determine unpushed count
+                let unpushedCount = 0;
+                try {
+                    const counts = execGitSync('rev-list --left-right --count HEAD...@{u}', ws.rootPath);
+                    const parts = counts.trim().split(/\s+/);
+                    if (parts.length === 2) {
+                        unpushedCount = parseInt(parts[0], 10) || 0;
+                    }
+                } catch {
+                    // No upstream tracking branch
+                }
+
+                sendJSON(res, 200, { commits, unpushedCount });
+            } catch {
+                sendJSON(res, 200, { commits: [], unpushedCount: 0 });
+            }
+        },
+    });
+
+    // GET /api/workspaces/:id/git/commits/:hash/files — Files changed in a commit
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/commits\/([a-f0-9]{4,40})\/files$/,
+        handler: async (_req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const hash = match![2];
+            const workspaces = await store.getWorkspaces();
+            const ws = workspaces.find(w => w.id === id);
+            if (!ws) {
+                return handleAPIError(res, notFound('Workspace'));
+            }
+
+            try {
+                const raw = execGitSync(`diff-tree --no-commit-id -r --name-status ${hash}`, ws.rootPath);
+                const files: Array<{ status: string; path: string }> = [];
+                for (const line of raw.split('\n').filter(Boolean)) {
+                    const [status, ...pathParts] = line.split('\t');
+                    if (status && pathParts.length > 0) {
+                        files.push({ status: status.charAt(0), path: pathParts.join('\t') });
+                    }
+                }
+                sendJSON(res, 200, { files });
+            } catch (err: any) {
+                return handleAPIError(res, badRequest('Failed to get commit files: ' + (err.message || 'unknown error')));
+            }
+        },
+    });
+
+    // GET /api/workspaces/:id/git/commits/:hash/diff — Full diff for a commit
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/commits\/([a-f0-9]{4,40})\/diff$/,
+        handler: async (_req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const hash = match![2];
+            const workspaces = await store.getWorkspaces();
+            const ws = workspaces.find(w => w.id === id);
+            if (!ws) {
+                return handleAPIError(res, notFound('Workspace'));
+            }
+
+            try {
+                const diff = execGitSync(`show --format="" --patch ${hash}`, ws.rootPath);
+                sendJSON(res, 200, { diff });
+            } catch (err: any) {
+                return handleAPIError(res, badRequest('Failed to get commit diff: ' + (err.message || 'unknown error')));
+            }
+        },
+    });
+
     // ------------------------------------------------------------------
     // Filesystem browse endpoint
     // ------------------------------------------------------------------

@@ -19,18 +19,24 @@ describe('RepoDetail SUB_TABS', () => {
         expect(chatTab!.label).toBe('Chat');
     });
 
-    it('"chat" is the last entry', () => {
-        const last = SUB_TABS[SUB_TABS.length - 1];
-        expect(last.key).toBe('chat');
+    it('"chat" is followed by "git" entry', () => {
+        const chatIdx = SUB_TABS.findIndex(t => t.key === 'chat');
+        const gitIdx = SUB_TABS.findIndex(t => t.key === 'git');
+        expect(gitIdx).toBe(chatIdx + 1);
     });
 
-    it('has exactly 6 entries', () => {
-        expect(SUB_TABS).toHaveLength(6);
+    it('"git" is the last entry', () => {
+        const last = SUB_TABS[SUB_TABS.length - 1];
+        expect(last.key).toBe('git');
+    });
+
+    it('has exactly 7 entries', () => {
+        expect(SUB_TABS).toHaveLength(7);
     });
 
     it('contains all expected sub-tabs in order', () => {
         const keys = SUB_TABS.map(t => t.key);
-        expect(keys).toEqual(['info', 'pipelines', 'tasks', 'queue', 'schedules', 'chat']);
+        expect(keys).toEqual(['info', 'pipelines', 'tasks', 'queue', 'schedules', 'chat', 'git']);
     });
 });
 
@@ -200,5 +206,26 @@ describe('RepoDetail Chat badge wiring', () => {
     it('chat badge displays chatRunningCount', () => {
         const chatBadgeLine = REPO_DETAIL_SOURCE.split('\n').find(l => l.includes('chat-running-badge'));
         expect(chatBadgeLine).toContain('{chatRunningCount}');
+    });
+});
+
+describe('RepoDetail Git tab wiring', () => {
+    it('imports RepoGitTab', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("import { RepoGitTab } from './RepoGitTab'");
+    });
+
+    it('includes git entry in SUB_TABS', () => {
+        const gitTab = SUB_TABS.find(t => t.key === 'git');
+        expect(gitTab).toBeDefined();
+        expect(gitTab!.label).toBe('Git');
+    });
+
+    it('renders RepoGitTab when activeSubTab is git', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'git'");
+        expect(REPO_DETAIL_SOURCE).toContain('<RepoGitTab');
+    });
+
+    it('passes workspaceId to RepoGitTab', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('RepoGitTab workspaceId={ws.id}');
     });
 });

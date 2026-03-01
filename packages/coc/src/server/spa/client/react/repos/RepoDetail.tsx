@@ -12,6 +12,7 @@ import { TasksPanel } from '../tasks/TasksPanel';
 import { RepoQueueTab } from './RepoQueueTab';
 import { RepoSchedulesTab } from './RepoSchedulesTab';
 import { RepoChatTab } from './RepoChatTab';
+import { RepoGitTab } from './RepoGitTab';
 import { AddRepoDialog } from './AddRepoDialog';
 import { GenerateTaskDialog } from '../tasks/GenerateTaskDialog';
 import { getApiBase } from '../utils/config';
@@ -33,6 +34,7 @@ export const SUB_TABS: { key: RepoSubTab; label: string }[] = [
     { key: 'queue', label: 'Queue' },
     { key: 'schedules', label: 'Schedules' },
     { key: 'chat', label: 'Chat' },
+    { key: 'git', label: 'Git' },
 ];
 
 export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
@@ -150,6 +152,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                         {activeSubTab === 'queue' && <RepoQueueTab workspaceId={ws.id} />}
                         {activeSubTab === 'schedules' && <RepoSchedulesTab workspaceId={ws.id} />}
                         {activeSubTab === 'chat' && <RepoChatTab workspaceId={ws.id} workspacePath={ws.rootPath} initialSessionId={state.selectedChatSessionId} />}
+                        {activeSubTab === 'git' && <RepoGitTab workspaceId={ws.id} />}
                     </div>
                 )}
             </div>
