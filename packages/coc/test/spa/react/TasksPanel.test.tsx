@@ -1434,3 +1434,137 @@ describe('TaskTreeItem — hover tooltip', () => {
         expect(item.getAttribute('title')).toBe('misc/notes.md');
     });
 });
+
+// ============================================================================
+// TasksPanel — search input and state
+// ============================================================================
+
+describe('TasksPanel — search input', () => {
+    let fetchSpy: ReturnType<typeof vi.fn>;
+
+    function setupFetch() {
+        fetchSpy.mockImplementation((url: string) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            if (url.includes('queue/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ models: [] }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
+        });
+    }
+
+    beforeEach(() => {
+        fetchSpy = vi.fn();
+        global.fetch = fetchSpy;
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('renders the search input with correct placeholder', async () => {
+        setupFetch();
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree')).toBeTruthy();
+        });
+        const input = screen.getByTestId('task-search-input');
+        expect(input).toBeTruthy();
+        expect(input.getAttribute('placeholder')).toBe('Search tasks…');
+    });
+
+    it('updates input value on each keystroke', async () => {
+        setupFetch();
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree')).toBeTruthy();
+        });
+        const input = screen.getByTestId('task-search-input') as HTMLInputElement;
+        fireEvent.change(input, { target: { value: 'des' } });
+        expect(input.value).toBe('des');
+    });
+
+    it('clear button is absent when input is empty', async () => {
+        setupFetch();
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree')).toBeTruthy();
+        });
+        expect(screen.queryByTestId('task-search-clear')).toBeNull();
+    });
+
+    it('clear button appears when input has text', async () => {
+        setupFetch();
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree')).toBeTruthy();
+        });
+        const input = screen.getByTestId('task-search-input') as HTMLInputElement;
+        fireEvent.change(input, { target: { value: 'design' } });
+        expect(screen.getByTestId('task-search-clear')).toBeTruthy();
+    });
+
+    it('clear button resets input value', async () => {
+        setupFetch();
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree')).toBeTruthy();
+        });
+        const input = screen.getByTestId('task-search-input') as HTMLInputElement;
+        fireEvent.change(input, { target: { value: 'test' } });
+        expect(input.value).toBe('test');
+        fireEvent.click(screen.getByTestId('task-search-clear'));
+        expect(input.value).toBe('');
+        expect(screen.queryByTestId('task-search-clear')).toBeNull();
+    });
+
+    it('existing toolbar buttons remain present alongside search', async () => {
+        setupFetch();
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree')).toBeTruthy();
+        });
+        expect(screen.getByTestId('repo-tasks-new-btn')).toBeTruthy();
+        expect(screen.getByTestId('repo-tasks-folder-btn')).toBeTruthy();
+        expect(screen.getByTestId('task-search-input')).toBeTruthy();
+    });
+});
+
+describe('TasksPanel — search debounce', () => {
+    let fetchSpy: ReturnType<typeof vi.fn>;
+
+    function setupFetch() {
+        fetchSpy.mockImplementation((url: string) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            if (url.includes('queue/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ models: [] }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
+        });
+    }
+
+    beforeEach(() => {
+        fetchSpy = vi.fn();
+        global.fetch = fetchSpy;
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('does not cause errors when unmounting with pending debounce', async () => {
+        setupFetch();
+        const { unmount } = render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree')).toBeTruthy();
+        });
+        const input = screen.getByTestId('task-search-input') as HTMLInputElement;
+        // Type to start a debounce timer
+        fireEvent.change(input, { target: { value: 'hello' } });
+        // Unmount before debounce fires — cleanup should clear the timer
+        unmount();
+    });
+});

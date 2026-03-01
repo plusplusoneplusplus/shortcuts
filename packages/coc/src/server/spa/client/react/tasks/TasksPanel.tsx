@@ -76,6 +76,29 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
     const [initialParams] = useState(() => parseTaskHashParams(location.hash, wsId));
     const scrollRef = useRef<HTMLDivElement>(null);
 
+    // ── Search state ───────────────────────────────────────────────────
+    const [searchQuery, setSearchQuery] = useState('');
+    const [searchInput, setSearchInput] = useState('');
+    const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+
+    const onSearchChange = useCallback((value: string) => {
+        setSearchInput(value);
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        debounceRef.current = setTimeout(() => {
+            setSearchQuery(value);
+        }, 150);
+    }, []);
+
+    useEffect(() => {
+        return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+    }, []);
+
+    const onSearchClear = useCallback(() => {
+        setSearchInput('');
+        setSearchQuery('');
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+    }, []);
+
     const { state: appState } = useApp();
     const { dispatch: queueDispatch } = useQueue();
     const { addToast } = useGlobalToast();
@@ -632,6 +655,30 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
                 >
                     + New Folder
                 </Button>
+                <div className="relative flex items-center max-w-[14rem]">
+                    <span className="absolute left-2 text-[#999] dark:text-[#888] pointer-events-none text-sm" aria-hidden="true">
+                        🔍
+                    </span>
+                    <input
+                        type="text"
+                        placeholder="Search tasks…"
+                        value={searchInput}
+                        onChange={e => onSearchChange(e.target.value)}
+                        className="w-full pl-7 pr-7 py-1 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc] focus:outline-none focus:border-[#0078d4]"
+                        data-testid="task-search-input"
+                    />
+                    {searchInput && (
+                        <button
+                            type="button"
+                            onClick={onSearchClear}
+                            className="absolute right-1.5 text-[#999] hover:text-[#333] dark:hover:text-[#eee] text-sm leading-none"
+                            aria-label="Clear search"
+                            data-testid="task-search-clear"
+                        >
+                            ✕
+                        </button>
+                    )}
+                </div>
                 <div className="flex-1 min-w-0">
                     <TaskActions
                         wsId={wsId}
