@@ -1,5 +1,5 @@
 export interface DashboardOptions {
-    /** Page title (default: "AI Execution Dashboard") */
+    /** Page title (default: "CoC (Copilot Of Copilot)") */
     title?: string;
     /** Default theme: 'light' | 'dark' | 'auto' */
     theme?: 'light' | 'dark' | 'auto';

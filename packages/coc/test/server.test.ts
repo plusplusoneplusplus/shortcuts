@@ -125,7 +125,7 @@ describe('Server', () => {
 
         expect(res.status).toBe(200);
         expect(res.headers['content-type']).toContain('text/html');
-        expect(res.body).toContain('AI Execution Dashboard');
+        expect(res.body).toContain('CoC (Copilot Of Copilot)');
     });
 
     // ========================================================================

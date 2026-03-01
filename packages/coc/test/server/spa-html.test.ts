@@ -15,7 +15,7 @@ describe('generateDashboardHtml', () => {
 
     it('uses default title', () => {
         const html = generateDashboardHtml();
-        expect(html).toContain('<title>AI Execution Dashboard</title>');
+        expect(html).toContain('<title>CoC (Copilot Of Copilot)</title>');
     });
 
     it('uses custom title', () => {

@@ -71,7 +71,7 @@ describe('TopBar', () => {
 
     it('renders the dashboard title', () => {
         renderTopBar();
-        expect(screen.getByText('AI Execution Dashboard')).toBeDefined();
+        expect(screen.getByText('CoC (Copilot Of Copilot)')).toBeDefined();
     });
 
     it('renders hamburger button', () => {

@@ -1,7 +1,7 @@
 /**
  * SPA HTML Template
  *
- * Main HTML generator for the AI Execution Dashboard.
+ * Main HTML generator for the CoC (Copilot Of Copilot) dashboard.
  * Returns a complete <!DOCTYPE html> string with inlined <style> and <script>.
  * No external CDN dependencies — everything is inline.
  *
@@ -46,7 +46,7 @@ function getBundleJs(): string {
 
 export function generateDashboardHtml(options: DashboardOptions = {}): string {
     const {
-        title = 'AI Execution Dashboard',
+        title = 'CoC (Copilot Of Copilot)',
         theme = 'auto',
         wsPath = '/ws',
         apiBasePath = '/api',

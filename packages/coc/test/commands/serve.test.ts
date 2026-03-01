@@ -247,7 +247,7 @@ describe('Serve Command', () => {
             await runServeWithSigint({ dataDir: tmpDir, open: false });
 
             const output = stderrSpy.mock.calls.map(c => String(c[0])).join('');
-            expect(output).toContain('AI Execution Dashboard');
+            expect(output).toContain('CoC (Copilot Of Copilot)');
             expect(output).toContain('http://localhost:4000');
             expect(output).toContain('Ctrl+C');
         });

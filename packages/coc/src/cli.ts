@@ -114,7 +114,7 @@ export function createProgram(): Command {
 
     program
         .command('serve')
-        .description('Start the AI Execution Dashboard web server')
+        .description('Start the CoC (Copilot Of Copilot) web server')
         .option('-p, --port <number>', 'Port number', (v: string) => parseInt(v, 10))
         .option('-H, --host <string>', 'Bind address')
         .option('-d, --data-dir <path>', 'Data directory for process storage')
