@@ -9,6 +9,70 @@
 import { AIInvocationResult } from '../ai/types';
 import type { ToolCall } from '../ai/process-types';
 
+// ============================================================================
+// SDK Tool Types (re-exported from @github/copilot-sdk)
+// ============================================================================
+
+/**
+ * Result type for a tool invocation.
+ * Indicates whether the tool call succeeded, failed, was rejected, or denied.
+ */
+export type ToolResultType = 'success' | 'failure' | 'rejected' | 'denied';
+
+/**
+ * Structured tool result object with metadata.
+ */
+export interface ToolResultObject {
+    textResultForLlm: string;
+    binaryResultsForLlm?: Array<{ mimeType: string; base64Data: string }>;
+    resultType: ToolResultType;
+    error?: string;
+}
+
+/**
+ * Tool result — either a plain string or a structured result object.
+ */
+export type ToolResult = string | ToolResultObject;
+
+/**
+ * Context passed to a tool handler when invoked by the SDK.
+ */
+export interface ToolInvocation {
+    sessionId: string;
+    toolCallId: string;
+    toolName: string;
+    arguments: unknown;
+}
+
+/**
+ * Handler function for a custom tool.
+ */
+export type ToolHandler<TArgs = unknown> = (
+    args: TArgs,
+    invocation: ToolInvocation,
+) => Promise<unknown> | unknown;
+
+/**
+ * Zod-compatible schema interface for tool parameter validation.
+ */
+export interface ZodSchema<T = unknown> {
+    _output: T;
+    toJSONSchema(): Record<string, unknown>;
+}
+
+/**
+ * Definition of a custom tool that can be registered on an AI session.
+ *
+ * Consumers can construct `Tool` objects directly or use the SDK's `defineTool`
+ * helper (import `defineTool` from `@github/copilot-sdk`).
+ */
+export interface Tool<TArgs = unknown> {
+    name: string;
+    description?: string;
+    parameters?: ZodSchema<TArgs> | Record<string, unknown>;
+    handler: ToolHandler<TArgs>;
+}
+
 // Re-export model types for convenience
 export { AIModel, VALID_MODELS, DEFAULT_MODEL_ID, ModelDefinition, MODEL_REGISTRY,
     getModelLabel, getModelDescription, getModelDefinition, getAllModels,
@@ -242,6 +306,13 @@ export interface SendMessageOptions {
      * Receives events when tools start, complete, or fail.
      */
     onToolEvent?: (event: ToolEvent) => void;
+
+    /**
+     * Custom tools to register on the AI session.
+     * These are SDK-native tools (not MCP) — each tool has a name, optional
+     * description/parameters, and a handler function invoked by the AI.
+     */
+    tools?: Tool<any>[];
 
     /**
      * When true, the session is NOT destroyed after the first message completes.

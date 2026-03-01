@@ -107,6 +107,8 @@ export interface SendFollowUpOptions {
     onPermissionRequest?: PermissionHandler;
     /** File or directory attachments to include with the follow-up message */
     attachments?: Attachment[];
+    /** Custom tools to register on the resumed session */
+    tools?: any[];
 }
 
 /**
@@ -134,6 +136,8 @@ interface ISessionOptions {
     mcpServers?: Record<string, MCPServerConfig>;
     /** Handler for permission requests from the CLI */
     onPermissionRequest?: PermissionHandler;
+    /** Custom tools to register on the session */
+    tools?: any[];
 }
 
 /**
@@ -144,6 +148,7 @@ interface IResumeSessionOptions {
     streaming?: boolean;
     onPermissionRequest?: PermissionHandler;
     mcpServers?: Record<string, MCPServerConfig>;
+    tools?: any[];
 }
 
 /**
@@ -535,6 +540,9 @@ export class CopilotSDKService {
             if (options.streaming) {
                 sessionOptions.streaming = options.streaming;
             }
+            if (options.tools) {
+                sessionOptions.tools = options.tools;
+            }
 
             // MCP control options (tool filtering)
             if (options.availableTools) {
@@ -762,6 +770,9 @@ export class CopilotSDKService {
             }
             if (options?.onStreamingChunk || timeoutMs > 120000) {
                 resumeOptions.streaming = true;
+            }
+            if (options?.tools) {
+                resumeOptions.tools = options.tools;
             }
 
             const session = await client.resumeSession(sessionId, resumeOptions);
