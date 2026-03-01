@@ -7,6 +7,8 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import ReactDOM from 'react-dom';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
+import { BottomSheet } from '../../shared/BottomSheet';
 
 const VIEWPORT_MARGIN = 8;
 
@@ -152,6 +154,7 @@ function SubmenuItem({
 }
 
 export function ContextMenu({ position, items, onClose }: ContextMenuProps) {
+    const { isMobile } = useBreakpoint();
     const menuRef = useRef<HTMLDivElement>(null);
     const [clamped, setClamped] = useState(position);
 
@@ -184,6 +187,55 @@ export function ContextMenu({ position, items, onClose }: ContextMenuProps) {
             document.removeEventListener('mousedown', handler);
         };
     }, [onClose]);
+
+    if (isMobile) {
+        const flatItems: { item: ContextMenuItem; sectionHeader?: string }[] = [];
+        for (const item of items) {
+            if (item.separator) continue;
+            if (item.children && item.children.length > 0) {
+                flatItems.push({ item, sectionHeader: item.label });
+                for (const child of item.children) {
+                    if (!child.separator) flatItems.push({ item: child });
+                }
+            } else {
+                flatItems.push({ item });
+            }
+        }
+
+        return (
+            <BottomSheet isOpen={true} onClose={onClose} data-testid="context-menu-bottomsheet">
+                <div className="flex flex-col" role="menu" data-testid="context-menu-mobile">
+                    {flatItems.map((entry, i) => (
+                        <div key={i}>
+                            {entry.sectionHeader && (
+                                <div className="px-4 pt-3 pb-1 text-xs font-semibold text-[#848484]">{entry.sectionHeader}</div>
+                            )}
+                            {!entry.sectionHeader && (
+                                <button
+                                    className={`w-full text-left px-4 py-3 min-h-[44px] text-sm transition-colors flex items-center gap-2 ${
+                                        entry.item.disabled
+                                            ? 'text-[#a0a0a0] dark:text-[#5a5a5a] cursor-default'
+                                            : 'text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer'
+                                    }`}
+                                    onClick={() => {
+                                        if (!entry.item.disabled) {
+                                            entry.item.onClick();
+                                            onClose();
+                                        }
+                                    }}
+                                    disabled={entry.item.disabled}
+                                    role="menuitem"
+                                >
+                                    {entry.item.icon && <span>{entry.item.icon}</span>}
+                                    {entry.item.label}
+                                </button>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            </BottomSheet>
+        );
+    }
 
     let itemIndex = 0;
 

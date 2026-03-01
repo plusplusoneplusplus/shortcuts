@@ -12,6 +12,8 @@ import React, { useEffect, useRef, useState, useMemo } from 'react';
 import ReactDOM from 'react-dom';
 import { renderMarkdownToHtml } from '../../markdown-renderer';
 import { computeLineDiff, type DiffLine } from '../../diff-utils';
+import { useBreakpoint } from '../hooks/useBreakpoint';
+import { BottomSheet } from '../shared/BottomSheet';
 
 const MAX_PREVIEW_LENGTH = 2000;
 
@@ -126,6 +128,7 @@ export function ToolResultPopover({ result, toolName, args, anchorRect, onMouseE
     const popoverRef = useRef<HTMLDivElement | null>(null);
     const contentRef = useRef<HTMLDivElement | null>(null);
     const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+    const { isMobile } = useBreakpoint();
 
     const truncated = result.length > MAX_PREVIEW_LENGTH;
     const visibleText = truncated ? result.slice(0, MAX_PREVIEW_LENGTH) + '\n… (truncated — click to see full)' : result;
@@ -406,6 +409,19 @@ export function ToolResultPopover({ result, toolName, args, anchorRect, onMouseE
         );
     };
 
+    const headerLabel = isView ? 'File Preview' : isBash ? 'Shell Output' : isGlob ? `Glob Matches · ${globPaths.length} files` : isGrep ? `Grep Matches · ${grepTotalMatches} matches in ${grepGroups.size} files` : isCreate ? 'Created File' : isEdit ? 'Edit Preview' : 'Result Preview';
+
+    if (isMobile) {
+        return (
+            <BottomSheet isOpen={true} onClose={() => onMouseLeave()} height={70}>
+                <div className="p-3 max-h-[70vh] overflow-y-auto" data-testid="tool-result-popover">
+                    <div className="text-[10px] uppercase text-[#848484] mb-1">{headerLabel}</div>
+                    {renderBody()}
+                </div>
+            </BottomSheet>
+        );
+    }
+
     return ReactDOM.createPortal(
         <div
             ref={popoverRef}
@@ -415,9 +431,7 @@ export function ToolResultPopover({ result, toolName, args, anchorRect, onMouseE
             onMouseEnter={onMouseEnter}
             onMouseLeave={onMouseLeave}
         >
-            <div className="text-[10px] uppercase text-[#848484] mb-1">
-                {isView ? 'File Preview' : isBash ? 'Shell Output' : isGlob ? `Glob Matches · ${globPaths.length} files` : isGrep ? `Grep Matches · ${grepTotalMatches} matches in ${grepGroups.size} files` : isCreate ? 'Created File' : isEdit ? 'Edit Preview' : 'Result Preview'}
-            </div>
+            <div className="text-[10px] uppercase text-[#848484] mb-1">{headerLabel}</div>
             {renderBody()}
         </div>,
         document.body

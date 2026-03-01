@@ -7,6 +7,8 @@ import ReactDOM from 'react-dom';
 import { Button } from '../../shared';
 import type { TaskCommentCategory } from '../../../task-comments-types';
 import { CATEGORY_INFO, ALL_CATEGORIES } from '../../../task-comments-types';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
+import { BottomSheet } from '../../shared/BottomSheet';
 
 const VIEWPORT_MARGIN = 8;
 
@@ -53,6 +55,7 @@ export function InlineCommentPopup({ position, onSubmit, onCancel }: InlineComme
     const [clampedPos, setClampedPos] = useState(position);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const popupRef = useRef<HTMLDivElement>(null);
+    const { isMobile } = useBreakpoint();
 
     useEffect(() => {
         textareaRef.current?.focus();
@@ -99,13 +102,8 @@ export function InlineCommentPopup({ position, onSubmit, onCancel }: InlineComme
         onSubmit(trimmed, category);
     };
 
-    return ReactDOM.createPortal(
-        <div
-            ref={popupRef}
-            className="fixed z-[10003] w-[300px] rounded-lg bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] shadow-xl p-3 flex flex-col gap-2"
-            style={{ top: clampedPos.top, left: clampedPos.left }}
-            data-testid="inline-comment-popup"
-        >
+    const popupContent = (
+        <>
             {/* Category selector */}
             <div className="flex gap-1 flex-wrap">
                 {ALL_CATEGORIES.map(cat => {
@@ -118,7 +116,7 @@ export function InlineCommentPopup({ position, onSubmit, onCancel }: InlineComme
                                 category === cat
                                     ? 'bg-[#0078d4] text-white'
                                     : 'text-[#848484] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]'
-                            }`}
+                            } ${isMobile ? 'min-h-[44px] flex items-center' : ''}`}
                             title={info.label}
                             data-testid={`popup-category-${cat}`}
                         >
@@ -146,6 +144,27 @@ export function InlineCommentPopup({ position, onSubmit, onCancel }: InlineComme
                     Submit <kbd className="ml-1 text-[9px] opacity-60">Ctrl+Enter</kbd>
                 </Button>
             </div>
+        </>
+    );
+
+    if (isMobile) {
+        return (
+            <BottomSheet isOpen={true} onClose={onCancel}>
+                <div className="p-4 flex flex-col gap-2" data-testid="inline-comment-popup">
+                    {popupContent}
+                </div>
+            </BottomSheet>
+        );
+    }
+
+    return ReactDOM.createPortal(
+        <div
+            ref={popupRef}
+            className="fixed z-[10003] w-[300px] rounded-lg bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] shadow-xl p-3 flex flex-col gap-2"
+            style={{ top: clampedPos.top, left: clampedPos.left }}
+            data-testid="inline-comment-popup"
+        >
+            {popupContent}
         </div>,
         document.body
     );

@@ -1311,6 +1311,33 @@
     white-space: nowrap;
 }
 
+/* ── Responsive utilities ── */
+
+@layer utilities {
+    /* Mobile touch target — apply to any interactive element that needs 44px min */
+    .touch-target {
+        @apply min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0;
+    }
+}
+
+@layer base {
+    /* Responsive body text */
+    body {
+        @apply text-sm lg:text-base;
+    }
+
+    /* Responsive headings */
+    h1 { @apply text-xl lg:text-2xl; }
+    h2 { @apply text-lg lg:text-xl; }
+    h3 { @apply text-base lg:text-lg; }
+    h4 { @apply text-sm lg:text-base; }
+
+    /* Responsive container padding */
+    .responsive-container {
+        @apply p-3 md:p-4 lg:p-6;
+    }
+}
+
 /* Build-time comment highlights injected by renderMarkdownToHtml */
 .commented-text {
     background-color: rgba(255, 235, 59, 0.3);

@@ -24,9 +24,9 @@ const variantMap = {
 };
 
 const sizeMap = {
-    sm: 'px-2 py-1 text-xs rounded',
-    md: 'px-3 py-1.5 text-sm rounded-md',
-    lg: 'px-4 py-2 text-base rounded-md',
+    sm: 'px-2 py-1 text-xs rounded       min-h-[44px] md:min-h-0',
+    md: 'px-3 py-1.5 text-sm rounded-md  min-h-[44px] md:min-h-0',
+    lg: 'px-4 py-2 text-base rounded-md  min-h-[44px] md:min-h-0',
 };
 
 export function Button(props: ButtonProps) {

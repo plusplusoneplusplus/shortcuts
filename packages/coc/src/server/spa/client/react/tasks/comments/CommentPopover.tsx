@@ -12,6 +12,8 @@ import { MarkdownView } from '../../processes/MarkdownView';
 import { renderMarkdownToHtml } from '../../../markdown-renderer';
 import type { TaskComment, TaskCommentCategory } from '../../../task-comments-types';
 import { CATEGORY_INFO, getCommentCategory } from '../../../task-comments-types';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
+import { BottomSheet } from '../../shared/BottomSheet';
 
 const ACTION_BTN = 'inline-flex items-center justify-center w-6 h-6 rounded transition-colors text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/[0.06] dark:hover:bg-white/[0.08]';
 
@@ -50,6 +52,7 @@ export function CommentPopover({
     const [clampedPos, setClampedPos] = useState(position);
     const [editing, setEditing] = useState(false);
     const [editText, setEditText] = useState(comment.comment);
+    const { isMobile } = useBreakpoint();
 
     const category: TaskCommentCategory = getCommentCategory(comment);
     const info = CATEGORY_INFO[category];
@@ -93,13 +96,8 @@ export function CommentPopover({
         setEditing(false);
     };
 
-    return ReactDOM.createPortal(
-        <div
-            ref={popoverRef}
-            className="fixed z-[10003] w-[300px] rounded-lg bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] shadow-xl p-2.5 flex flex-col gap-1.5"
-            style={{ top: clampedPos.top, left: clampedPos.left }}
-            data-testid="comment-popover"
-        >
+    const popoverContent = (
+        <>
             {/* Header: status dot + category + author + time + close */}
             <div className="flex items-center gap-1.5">
                 <span className={cn('w-2 h-2 rounded-full shrink-0', isResolved ? 'bg-green-500' : 'bg-[#0078d4]')}
@@ -111,14 +109,16 @@ export function CommentPopover({
                         {new Date(comment.createdAt).toLocaleString()}
                     </span>
                 )}
-                <button
-                    className="shrink-0 w-5 h-5 inline-flex items-center justify-center rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/[0.06] dark:hover:bg-white/[0.08] text-sm leading-none"
-                    onClick={onClose}
-                    data-testid="popover-close"
-                    aria-label="Close"
-                >
-                    &times;
-                </button>
+                {!isMobile && (
+                    <button
+                        className="shrink-0 w-5 h-5 inline-flex items-center justify-center rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/[0.06] dark:hover:bg-white/[0.08] text-sm leading-none"
+                        onClick={onClose}
+                        data-testid="popover-close"
+                        aria-label="Close"
+                    >
+                        &times;
+                    </button>
+                )}
             </div>
 
             {/* Selected text blockquote */}
@@ -181,25 +181,25 @@ export function CommentPopover({
 
             {/* Compact icon-only action row */}
             {!editing && (
-                <div className="flex items-center gap-0.5 pt-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]">
+                <div className={cn('flex items-center gap-0.5 pt-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]', isMobile && 'flex-wrap gap-1')}>
                     {isResolved ? (
-                        <button className={ACTION_BTN} onClick={() => onUnresolve(comment.id)} title="Reopen" aria-label="Reopen">🔓</button>
+                        <button className={cn(ACTION_BTN, isMobile && 'touch-target')} onClick={() => onUnresolve(comment.id)} title="Reopen" aria-label="Reopen">🔓</button>
                     ) : (
-                        <button className={ACTION_BTN} onClick={() => onResolve(comment.id)} title="Resolve" aria-label="Resolve">✅</button>
+                        <button className={cn(ACTION_BTN, isMobile && 'touch-target')} onClick={() => onResolve(comment.id)} title="Resolve" aria-label="Resolve">✅</button>
                     )}
-                    <button className={ACTION_BTN} onClick={() => { setEditing(true); setEditText(comment.comment); }} title="Edit" aria-label="Edit">✏️</button>
-                    <button className={ACTION_BTN} onClick={() => { onDelete(comment.id); onClose(); }} title="Delete" aria-label="Delete">🗑️</button>
+                    <button className={cn(ACTION_BTN, isMobile && 'touch-target')} onClick={() => { setEditing(true); setEditText(comment.comment); }} title="Edit" aria-label="Edit">✏️</button>
+                    <button className={cn(ACTION_BTN, isMobile && 'touch-target')} onClick={() => { onDelete(comment.id); onClose(); }} title="Delete" aria-label="Delete">🗑️</button>
                     {onAskAI && (
                         <AICommandMenu
                             onCommand={(cmdId, q) => onAskAI(comment.id, cmdId, q)}
                             loading={aiLoading}
-                            triggerClassName={ACTION_BTN}
+                            triggerClassName={cn(ACTION_BTN, isMobile && 'touch-target')}
                             data-testid="popover-ai"
                         />
                     )}
                     {onFixWithAI && !isResolved && (
                         <button
-                            className={ACTION_BTN}
+                            className={cn(ACTION_BTN, isMobile && 'touch-target')}
                             onClick={() => onFixWithAI(comment.id)}
                             disabled={fixLoading}
                             title="Fix with AI"
@@ -211,6 +211,27 @@ export function CommentPopover({
                     )}
                 </div>
             )}
+        </>
+    );
+
+    if (isMobile) {
+        return (
+            <BottomSheet isOpen={true} onClose={onClose}>
+                <div className="p-4 flex flex-col gap-1.5" data-testid="comment-popover">
+                    {popoverContent}
+                </div>
+            </BottomSheet>
+        );
+    }
+
+    return ReactDOM.createPortal(
+        <div
+            ref={popoverRef}
+            className="fixed z-[10003] w-[300px] rounded-lg bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] shadow-xl p-2.5 flex flex-col gap-1.5"
+            style={{ top: clampedPos.top, left: clampedPos.left }}
+            data-testid="comment-popover"
+        >
+            {popoverContent}
         </div>,
         document.body,
     );

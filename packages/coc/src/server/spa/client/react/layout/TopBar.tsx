@@ -47,7 +47,7 @@ export function TopBar() {
         >
             <div className="flex items-center gap-3 min-w-0">
                 <button
-                    className="h-8 w-8 rounded border border-transparent hover:border-[#c8c8c8] dark:hover:border-[#3c3c3c] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-base leading-none"
+                    className="h-8 w-8 rounded border border-transparent hover:border-[#c8c8c8] dark:hover:border-[#3c3c3c] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-base leading-none touch-target"
                     id="hamburger-btn"
                     aria-label="Toggle sidebar"
                     aria-pressed={state.reposSidebarCollapsed}
@@ -89,7 +89,7 @@ export function TopBar() {
                 </span>
                 <a
                     id="admin-toggle"
-                    className="h-8 w-8 inline-flex items-center justify-center rounded hover:bg-black/[0.05] dark:hover:bg-white/[0.08]"
+                    className="h-8 w-8 inline-flex items-center justify-center rounded hover:bg-black/[0.05] dark:hover:bg-white/[0.08] touch-target"
                     href="#admin"
                     aria-label="Admin"
                     title="Admin"
@@ -98,7 +98,7 @@ export function TopBar() {
                 </a>
                 <button
                     id="theme-toggle"
-                    className="h-8 w-8 inline-flex items-center justify-center rounded hover:bg-black/[0.05] dark:hover:bg-white/[0.08]"
+                    className="h-8 w-8 inline-flex items-center justify-center rounded hover:bg-black/[0.05] dark:hover:bg-white/[0.08] touch-target"
                     aria-label="Toggle theme"
                     onClick={toggleTheme}
                 >

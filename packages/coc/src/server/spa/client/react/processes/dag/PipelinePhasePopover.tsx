@@ -1,6 +1,8 @@
 import type { PipelinePhase } from '@plusplusoneplusplus/pipeline-core';
 import type { DAGNodeState } from './types';
 import { cn } from '../../shared/cn';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
+import { BottomSheet } from '../../shared/BottomSheet';
 
 export interface PhaseDetail {
     phase: PipelinePhase;
@@ -180,6 +182,8 @@ function PhaseContent({ phase }: { phase: PhaseDetail }) {
 }
 
 export function PipelinePhasePopover({ phase, onClose, onScrollToConversation }: PipelinePhasePopoverProps) {
+    const { isMobile } = useBreakpoint();
+
     if (!phase) return null;
 
     const phaseLabels: Record<string, string> = {
@@ -190,23 +194,22 @@ export function PipelinePhasePopover({ phase, onClose, onScrollToConversation }:
         job: 'Job',
     };
 
-    return (
-        <div
-            data-testid="phase-popover"
-            className="bg-[#f8f8f8] dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded-md p-3 mt-2 transition-all duration-200 overflow-hidden max-h-[300px] overflow-y-auto"
-        >
+    const content = (
+        <>
             {/* Header */}
             <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc]">
                     {phaseLabels[phase.phase] ?? phase.phase} Phase
                 </span>
-                <button
-                    data-testid="phase-popover-close"
-                    className="text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] text-sm leading-none px-1"
-                    onClick={onClose}
-                >
-                    ×
-                </button>
+                {!isMobile && (
+                    <button
+                        data-testid="phase-popover-close"
+                        className="text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] text-sm leading-none px-1"
+                        onClick={onClose}
+                    >
+                        ×
+                    </button>
+                )}
             </div>
 
             {/* Phase-specific content */}
@@ -230,6 +233,25 @@ export function PipelinePhasePopover({ phase, onClose, onScrollToConversation }:
                     View in Conversation ↓
                 </button>
             )}
+        </>
+    );
+
+    if (isMobile) {
+        return (
+            <BottomSheet isOpen={true} onClose={onClose}>
+                <div className="p-4" data-testid="phase-popover">
+                    {content}
+                </div>
+            </BottomSheet>
+        );
+    }
+
+    return (
+        <div
+            data-testid="phase-popover"
+            className="bg-[#f8f8f8] dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded-md p-3 mt-2 transition-all duration-200 overflow-hidden max-h-[300px] overflow-y-auto"
+        >
+            {content}
         </div>
     );
 }

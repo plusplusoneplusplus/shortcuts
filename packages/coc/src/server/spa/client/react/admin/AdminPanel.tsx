@@ -352,7 +352,7 @@ export function AdminPanel() {
 
     return (
         <div id="view-admin">
-            <div id="admin-page-content" className="p-6 space-y-6">
+            <div id="admin-page-content" className="responsive-container space-y-6">
             <header>
                 <h1 className="text-xl font-semibold text-[#1e1e1e] dark:text-[#cccccc]">Admin</h1>
                 <p className="text-sm text-[#616161] dark:text-[#999]">Server management and data administration</p>
@@ -399,33 +399,33 @@ export function AdminPanel() {
                             </div>
                         )}
                         <div className="space-y-2 mb-3">
-                            <div className="flex items-center gap-2">
+                            <div className="flex flex-col md:flex-row items-start md:items-center gap-2">
                                 <label className="text-xs w-24 text-[#616161] dark:text-[#999]">Model</label>
                                 <input
-                                    className="flex-1 px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
+                                    className="flex-1 px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] min-h-[44px] md:min-h-0 w-full"
                                     value={configForm.model}
                                     onChange={e => setConfigForm(f => ({ ...f, model: e.target.value }))}
                                 />
                                 <SourceBadge source={sources['model']} />
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex flex-col md:flex-row items-start md:items-center gap-2">
                                 <label className="text-xs w-24 text-[#616161] dark:text-[#999]">Parallelism</label>
                                 <input
                                     type="number"
                                     min={1}
-                                    className="flex-1 px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
+                                    className="flex-1 px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] min-h-[44px] md:min-h-0 w-full"
                                     value={configForm.parallel}
                                     onChange={e => setConfigForm(f => ({ ...f, parallel: e.target.value }))}
                                 />
                                 <SourceBadge source={sources['parallel']} />
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex flex-col md:flex-row items-start md:items-center gap-2">
                                 <label className="text-xs w-24 text-[#616161] dark:text-[#999]">Timeout</label>
                                 <input
                                     type="number"
                                     min={1}
                                     placeholder="3600 (1 h default)"
-                                    className="flex-1 px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
+                                    className="flex-1 px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] min-h-[44px] md:min-h-0 w-full"
                                     value={configForm.timeout}
                                     onChange={e => setConfigForm(f => ({ ...f, timeout: e.target.value }))}
                                 />
@@ -433,10 +433,10 @@ export function AdminPanel() {
                                 <SourceBadge source={sources['timeout']} />
                             </div>
                             <div className="text-[10px] text-[#848484] ml-[6.5rem]">AI task execution timeout. Leave empty to use the system default (1 hour).</div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex flex-col md:flex-row items-start md:items-center gap-2">
                                 <label className="text-xs w-24 text-[#616161] dark:text-[#999]">Output</label>
                                 <select
-                                    className="flex-1 px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
+                                    className="flex-1 px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] min-h-[44px] md:min-h-0 w-full"
                                     value={configForm.output}
                                     onChange={e => setConfigForm(f => ({ ...f, output: e.target.value }))}
                                 >
@@ -513,13 +513,13 @@ export function AdminPanel() {
                     <div className="mt-1">
                         <SourceBadge source={sources['chat.followUpSuggestions.enabled']} />
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-col md:flex-row items-start md:items-center gap-2">
                         <label className="text-xs w-24 text-[#616161] dark:text-[#999]">Count</label>
                         <input
                             type="number"
                             min={1}
                             max={5}
-                            className="flex-1 px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
+                            className="flex-1 px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] min-h-[44px] md:min-h-0 w-full"
                             value={chatFollowUpCount}
                             disabled={chatSaving}
                             onChange={e => setChatFollowUpCount(e.target.value)}

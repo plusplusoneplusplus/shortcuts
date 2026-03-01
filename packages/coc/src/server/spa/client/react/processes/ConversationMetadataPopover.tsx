@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { formatDuration } from '../utils/format';
+import { useBreakpoint } from '../hooks/useBreakpoint';
+import { BottomSheet } from '../shared/BottomSheet';
 
 interface MetaRow {
     label: string;
@@ -94,6 +96,7 @@ export function ConversationMetadataPopover({ process, turnsCount }: { process: 
     const triggerRef = useRef<HTMLButtonElement | null>(null);
     const popoverRef = useRef<HTMLDivElement | null>(null);
     const rows = useMemo(() => buildRows(process, turnsCount), [process, turnsCount]);
+    const { isMobile } = useBreakpoint();
 
     const handleToggle = useCallback(() => {
         if (open) {
@@ -161,6 +164,30 @@ export function ConversationMetadataPopover({ process, turnsCount }: { process: 
 
     if (rows.length === 0) return null;
 
+    const popoverContent = (
+        <>
+            <div className="text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2">
+                Conversation metadata
+            </div>
+            <div className="grid grid-cols-[130px_1fr] gap-x-3 gap-y-1.5 text-xs">
+                {rows.map((row) => (
+                    <div key={row.label} className="contents">
+                        <span className="text-[#848484]">{row.label}</span>
+                        <span
+                            className={[
+                                'text-[#1e1e1e] dark:text-[#cccccc]',
+                                row.breakAll ? 'break-all' : 'break-words',
+                                row.mono ? 'font-mono' : '',
+                            ].join(' ')}
+                        >
+                            {row.value}
+                        </span>
+                    </div>
+                ))}
+            </div>
+        </>
+    );
+
     return (
         <>
             <button
@@ -174,31 +201,21 @@ export function ConversationMetadataPopover({ process, turnsCount }: { process: 
                 i
             </button>
 
-            {open && ReactDOM.createPortal(
+            {open && isMobile && (
+                <BottomSheet isOpen={true} onClose={() => setOpen(false)}>
+                    <div className="p-4">
+                        {popoverContent}
+                    </div>
+                </BottomSheet>
+            )}
+
+            {open && !isMobile && ReactDOM.createPortal(
                 <div
                     ref={popoverRef}
                     className="fixed z-50 w-[360px] max-w-[calc(100vw-16px)] rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#252526] p-3 shadow-lg"
                     style={{ top: menuPos.top, left: menuPos.left }}
                 >
-                    <div className="text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2">
-                        Conversation metadata
-                    </div>
-                    <div className="grid grid-cols-[130px_1fr] gap-x-3 gap-y-1.5 text-xs">
-                        {rows.map((row) => (
-                            <div key={row.label} className="contents">
-                                <span className="text-[#848484]">{row.label}</span>
-                                <span
-                                    className={[
-                                        'text-[#1e1e1e] dark:text-[#cccccc]',
-                                        row.breakAll ? 'break-all' : 'break-words',
-                                        row.mono ? 'font-mono' : '',
-                                    ].join(' ')}
-                                >
-                                    {row.value}
-                                </span>
-                            </div>
-                        ))}
-                    </div>
+                    {popoverContent}
                 </div>,
                 document.body
             )}

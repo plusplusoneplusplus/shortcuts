@@ -8,6 +8,8 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { Button, Spinner } from '../../shared';
 import { DASHBOARD_AI_COMMANDS } from '../../shared/ai-commands';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
+import { BottomSheet } from '../../shared/BottomSheet';
 
 export interface AICommandMenuProps {
     onCommand: (commandId: string, customQuestion?: string) => void;
@@ -31,6 +33,7 @@ export function AICommandMenu({
     const triggerRef = useRef<HTMLButtonElement>(null);
     const menuRef = useRef<HTMLDivElement>(null);
     const customInputRef = useRef<HTMLInputElement>(null);
+    const { isMobile } = useBreakpoint();
 
     const handleToggleMenu = useCallback((e: React.MouseEvent) => {
         e.stopPropagation();
@@ -111,7 +114,43 @@ export function AICommandMenu({
                     : '🤖'}
             </button>
 
-            {menuOpen && ReactDOM.createPortal(
+            {menuOpen && isMobile && (
+                <BottomSheet isOpen={true} onClose={() => setMenuOpen(false)}>
+                    <div className="flex flex-col" data-testid={`${testIdPrefix}-command-menu`}>
+                        {!customInputOpen
+                            ? DASHBOARD_AI_COMMANDS.map(cmd => (
+                                <button
+                                    key={cmd.id}
+                                    className="w-full text-left flex items-center gap-2 px-4 py-3 min-h-[44px] text-sm hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-[#1e1e1e] dark:text-[#cccccc]"
+                                    onClick={() => handleMenuCommand(cmd)}
+                                    data-testid={`${testIdPrefix}-cmd-${cmd.id}`}
+                                >
+                                    <span>{cmd.icon}</span>
+                                    <span>{cmd.label}</span>
+                                </button>
+                            ))
+                            : <div className="px-4 py-3 flex flex-col gap-2">
+                                <input
+                                    ref={customInputRef}
+                                    type="text"
+                                    className="w-full p-2 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] min-h-[44px]"
+                                    placeholder="Ask anything…"
+                                    value={customText}
+                                    onChange={e => setCustomText(e.target.value)}
+                                    onKeyDown={e => {
+                                        if (e.key === 'Enter' && customText.trim()) handleCustomSubmit();
+                                        if (e.key === 'Escape') setMenuOpen(false);
+                                    }}
+                                    data-testid={`${testIdPrefix}-custom-input`}
+                                />
+                                <Button size="sm" disabled={!customText.trim()} onClick={handleCustomSubmit}>Ask</Button>
+                            </div>
+                        }
+                    </div>
+                </BottomSheet>
+            )}
+
+            {menuOpen && !isMobile && ReactDOM.createPortal(
                 <div
                     ref={menuRef}
                     className="fixed z-[10004] min-w-[160px] rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#252526] shadow-lg py-1"
