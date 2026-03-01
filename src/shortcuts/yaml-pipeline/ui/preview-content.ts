@@ -376,6 +376,8 @@ function getDetailsPanel(
             default:
                 initialContent = getGenerateConfigDetails(config);
         }
+    } else if (config.job) {
+        initialContent = getJobDetails(config);
     } else {
         initialContent = getInputDetails(config, csvInfo, csvPreview, true, csvAllItems, showAllRows);
     }
@@ -681,6 +683,66 @@ function getCSVPreviewTable(
                     </tbody>
                 </table>
             </div>
+        </div>
+    `;
+}
+
+/**
+ * Generate JOB node details for job-mode pipelines
+ */
+export function getJobDetails(config: PipelineConfig): string {
+    if (!config.job) return '';
+    const job = config.job;
+    const promptContent = job.prompt || (job.promptFile ? `[From file: ${job.promptFile}]` : '');
+
+    return `
+        <div class="detail-section active">
+            <h4 class="detail-title">🤖 JOB Configuration</h4>
+            <div class="detail-grid">
+                <div class="detail-item">
+                    <span class="detail-label">Mode:</span>
+                    <span class="detail-value">Single AI Job</span>
+                </div>
+                ${job.model ? `
+                <div class="detail-item">
+                    <span class="detail-label">Model:</span>
+                    <span class="detail-value">${escapeHtml(job.model)}</span>
+                </div>` : ''}
+                ${job.promptFile ? `
+                <div class="detail-item">
+                    <span class="detail-label">Prompt File:</span>
+                    <span class="detail-value">${escapeHtml(job.promptFile)}</span>
+                </div>` : ''}
+                ${job.skill ? `
+                <div class="detail-item">
+                    <span class="detail-label">Skill:</span>
+                    <span class="detail-value">${escapeHtml(job.skill)}</span>
+                </div>` : ''}
+                ${job.timeoutMs ? `
+                <div class="detail-item">
+                    <span class="detail-label">Timeout:</span>
+                    <span class="detail-value">${job.timeoutMs / 1000}s</span>
+                </div>` : ''}
+                ${job.output && job.output.length > 0 ? `
+                <div class="detail-item">
+                    <span class="detail-label">Output Fields:</span>
+                    <span class="detail-value output-fields">
+                        ${job.output.map(f => `<span class="field-tag">${escapeHtml(f)}</span>`).join('')}
+                    </span>
+                </div>` : ''}
+            </div>
+            ${job.prompt ? `
+            <div class="prompt-section">
+                <h5 class="prompt-title">📝 Prompt</h5>
+                <pre class="prompt-template">${escapeHtml(promptContent)}</pre>
+            </div>` : ''}
+            ${config.parameters && config.parameters.length > 0 ? `
+            <div class="variables-section">
+                <h5 class="variables-title">⚙️ Parameters</h5>
+                <ul class="variables-list">
+                    ${config.parameters.map(p => `<li class="variable-found"><code>{{${escapeHtml(p.name)}}}</code><span class="variable-source">← ${escapeHtml(p.value)}</span></li>`).join('')}
+                </ul>
+            </div>` : ''}
         </div>
     `;
 }
@@ -1676,6 +1738,14 @@ function getScript(data: PipelinePreviewData | undefined, isDark: boolean): stri
                 if (filteredResources[idx]) {
                     html = generateResourceDetails(filteredResources[idx]);
                 }
+            } else if (nodeId === 'JOB') {
+                html = generateJobDetails(config);
+            } else if (nodeId === 'PARAMS') {
+                html = generateParamsDetails(config);
+            } else if (nodeId === 'SKILL') {
+                html = generateSkillDetails(config);
+            } else if (nodeId === 'OUTPUT' && config.job) {
+                html = generateJobOutputDetails(config);
             }
             
             if (html) {
@@ -2074,6 +2144,76 @@ function getScript(data: PipelinePreviewData | undefined, isDark: boolean): stri
                 html += '</tr>';
             });
             html += '</tbody></table></div></div>';
+            return html;
+        }
+
+        function generateJobDetails(config) {
+            const job = config.job;
+            if (!job) return '';
+            let html = '<div class="detail-section active">';
+            html += '<h4 class="detail-title">🤖 JOB Configuration</h4>';
+            html += '<div class="detail-grid">';
+            html += '<div class="detail-item"><span class="detail-label">Mode:</span><span class="detail-value">Single AI Job</span></div>';
+            if (job.model) {
+                html += '<div class="detail-item"><span class="detail-label">Model:</span><span class="detail-value">' + escapeHtml(job.model) + '</span></div>';
+            }
+            if (job.promptFile) {
+                html += '<div class="detail-item"><span class="detail-label">Prompt File:</span><span class="detail-value">' + escapeHtml(job.promptFile) + '</span></div>';
+            }
+            if (job.skill) {
+                html += '<div class="detail-item"><span class="detail-label">Skill:</span><span class="detail-value">' + escapeHtml(job.skill) + '</span></div>';
+            }
+            if (job.timeoutMs) {
+                html += '<div class="detail-item"><span class="detail-label">Timeout:</span><span class="detail-value">' + (job.timeoutMs / 1000) + 's</span></div>';
+            }
+            if (job.output && job.output.length > 0) {
+                html += '<div class="detail-item"><span class="detail-label">Output Fields:</span><span class="detail-value output-fields">';
+                job.output.forEach(function(f) { html += '<span class="field-tag">' + escapeHtml(f) + '</span>'; });
+                html += '</span></div>';
+            }
+            html += '</div>';
+            if (job.prompt) {
+                html += '<div class="prompt-section">';
+                html += '<h5 class="prompt-title">📝 Prompt</h5>';
+                html += '<pre class="prompt-template">' + escapeHtml(job.prompt) + '</pre>';
+                html += '</div>';
+            }
+            html += '</div>';
+            return html;
+        }
+
+        function generateParamsDetails(config) {
+            const params = config.parameters || [];
+            let html = '<div class="detail-section active">';
+            html += '<h4 class="detail-title">⚙️ Parameters</h4>';
+            html += '<div class="detail-grid">';
+            params.forEach(function(p) {
+                html += '<div class="detail-item"><span class="detail-label">' + escapeHtml(p.name) + ':</span><span class="detail-value">' + escapeHtml(p.value) + '</span></div>';
+            });
+            html += '</div></div>';
+            return html;
+        }
+
+        function generateSkillDetails(config) {
+            const skill = config.job?.skill || '';
+            let html = '<div class="detail-section active">';
+            html += '<h4 class="detail-title">📚 Skill</h4>';
+            html += '<div class="detail-grid">';
+            html += '<div class="detail-item"><span class="detail-label">Skill:</span><span class="detail-value">' + escapeHtml(skill) + '</span></div>';
+            html += '</div></div>';
+            return html;
+        }
+
+        function generateJobOutputDetails(config) {
+            const job = config.job;
+            if (!job || !job.output) return '';
+            let html = '<div class="detail-section active">';
+            html += '<h4 class="detail-title">📤 Output Fields</h4>';
+            html += '<div class="detail-grid">';
+            job.output.forEach(function(f) {
+                html += '<div class="detail-item"><span class="detail-label">Field:</span><span class="detail-value"><code>' + escapeHtml(f) + '</code></span></div>';
+            });
+            html += '</div></div>';
             return html;
         }
 

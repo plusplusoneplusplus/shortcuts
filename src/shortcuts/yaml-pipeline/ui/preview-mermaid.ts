@@ -10,10 +10,13 @@
 import { PipelineConfig, CSVParseResult, isCSVSource, PromptItem } from '@plusplusoneplusplus/pipeline-core';
 import { ResourceFileInfo } from './types';
 
+/** Job configuration type extracted from PipelineConfig */
+type JobConfig = NonNullable<PipelineConfig['job']>;
+
 /**
  * Node types in the pipeline diagram
  */
-export type PipelineNodeType = 'input' | 'map' | 'reduce' | 'resource';
+export type PipelineNodeType = 'input' | 'map' | 'reduce' | 'resource' | 'job';
 
 /**
  * Data associated with each node for detail display
@@ -92,6 +95,11 @@ export function generatePipelineMermaid(
     resources?: ResourceFileInfo[],
     options?: MermaidGenerationOptions
 ): string {
+    // Job mode pipeline
+    if (config.job) {
+        return generateJobMermaid(config, options);
+    }
+
     if (!config.input || !config.map || !config.reduce) {
         return 'graph TB\n    INPUT["No valid config"]';
     }
@@ -194,6 +202,131 @@ export function generatePipelineMermaid(
     lines.push('    style REDUCE fill:#FF9800,stroke:#E65100,color:#fff');
 
     return lines.join('\n');
+}
+
+/**
+ * Generate Mermaid flowchart for a job-mode pipeline
+ */
+function generateJobMermaid(
+    config: PipelineConfig,
+    options?: MermaidGenerationOptions
+): string {
+    const job = config.job!;
+    const lines: string[] = [];
+
+    lines.push('graph TB');
+
+    // Parameters node (if pipeline has parameters)
+    const hasParams = config.parameters && config.parameters.length > 0;
+    if (hasParams) {
+        const paramLabel = buildParametersNodeLabel(config.parameters!);
+        lines.push(`    PARAMS["${paramLabel}"]`);
+    }
+
+    // Skill node (if job uses a skill)
+    if (job.skill) {
+        const skillLabel = escapeMermaidLabel(`📚 Skill<br/>${truncateText(job.skill, 20)}`);
+        lines.push(`    SKILL["${skillLabel}"]`);
+    }
+
+    // Main JOB node
+    const jobLabel = buildJobNodeLabel(job);
+    lines.push(`    JOB["${jobLabel}"]`);
+
+    // Output node (if job has structured output)
+    if (job.output && job.output.length > 0) {
+        const outputLabel = buildJobOutputNodeLabel(job);
+        lines.push(`    OUTPUT["${outputLabel}"]`);
+    }
+
+    lines.push('');
+
+    // Links
+    if (hasParams) {
+        lines.push(`    PARAMS -->|"substituted"| JOB`);
+    }
+    if (job.skill) {
+        lines.push(`    SKILL -->|"context"| JOB`);
+    }
+    if (job.output && job.output.length > 0) {
+        lines.push(`    JOB -->|"${job.output.length} fields"| OUTPUT`);
+    }
+
+    lines.push('');
+
+    // Click handlers
+    if (hasParams) {
+        lines.push('    click PARAMS nodeClick');
+    }
+    if (job.skill) {
+        lines.push('    click SKILL nodeClick');
+    }
+    lines.push('    click JOB nodeClick');
+    if (job.output && job.output.length > 0) {
+        lines.push('    click OUTPUT nodeClick');
+    }
+
+    lines.push('');
+
+    // Styling
+    if (hasParams) {
+        lines.push('    style PARAMS fill:#9E9E9E,stroke:#616161,color:#fff');
+    }
+    if (job.skill) {
+        lines.push('    style SKILL fill:#9C27B0,stroke:#6A1B9A,color:#fff');
+    }
+    lines.push('    style JOB fill:#2196F3,stroke:#1565C0,color:#fff');
+    if (job.output && job.output.length > 0) {
+        lines.push('    style OUTPUT fill:#FF9800,stroke:#E65100,color:#fff');
+    }
+
+    return lines.join('\n');
+}
+
+/**
+ * Build the label for the JOB node
+ */
+function buildJobNodeLabel(job: JobConfig): string {
+    const parts: string[] = ['🤖 JOB'];
+
+    if (job.prompt) {
+        parts.push(truncateText(job.prompt, 30));
+    } else if (job.promptFile) {
+        parts.push(`📄 ${truncateText(job.promptFile, 25)}`);
+    }
+
+    if (job.model) {
+        parts.push(`Model: ${truncateText(job.model, 20)}`);
+    }
+
+    return escapeMermaidLabel(parts.join('<br/>'));
+}
+
+/**
+ * Build the label for the job output node
+ */
+function buildJobOutputNodeLabel(job: JobConfig): string {
+    const parts: string[] = ['📤 OUTPUT'];
+    const fields = job.output || [];
+    if (fields.length <= 3) {
+        parts.push(fields.join(', '));
+    } else {
+        parts.push(`${fields.length} fields`);
+    }
+    return escapeMermaidLabel(parts.join('<br/>'));
+}
+
+/**
+ * Build the label for the parameters node
+ */
+function buildParametersNodeLabel(params: { name: string; value: string }[]): string {
+    const parts: string[] = ['⚙️ Parameters'];
+    if (params.length <= 3) {
+        parts.push(params.map(p => p.name).join(', '));
+    } else {
+        parts.push(`${params.length} params`);
+    }
+    return escapeMermaidLabel(parts.join('<br/>'));
 }
 
 /**
@@ -396,6 +529,11 @@ export function generatePipelineTextDiagram(
     config: PipelineConfig,
     csvInfo?: CSVParseResult
 ): string {
+    // Job mode pipeline
+    if (config.job) {
+        return generateJobTextDiagram(config);
+    }
+
     if (!config.input || !config.map || !config.reduce) {
         return 'Pipeline Flow:\n\n  No valid config';
     }
@@ -464,6 +602,39 @@ export function generatePipelineTextDiagram(
     lines.push(`  │  📤 REDUCE      │`);
     lines.push(`  │  ${config.reduce.type.padEnd(13)} │`);
     lines.push(`  └─────────────────┘`);
+
+    return lines.join('\n');
+}
+
+/**
+ * Generate a text representation of a job-mode pipeline
+ */
+function generateJobTextDiagram(config: PipelineConfig): string {
+    const job = config.job!;
+    const lines: string[] = [];
+
+    lines.push('Pipeline Flow (Job Mode):');
+    lines.push('');
+    lines.push(`  ┌─────────────────┐`);
+    lines.push(`  │  🤖 JOB         │`);
+    if (job.prompt) {
+        lines.push(`  │  Inline prompt  │`);
+    } else if (job.promptFile) {
+        lines.push(`  │  ${truncateText(job.promptFile, 13).padEnd(13)} │`);
+    }
+    if (job.model) {
+        lines.push(`  │  ${truncateText(job.model, 13).padEnd(13)} │`);
+    }
+    lines.push(`  └─────────────────┘`);
+
+    if (job.output && job.output.length > 0) {
+        lines.push(`           │`);
+        lines.push(`           ▼`);
+        lines.push(`  ┌─────────────────┐`);
+        lines.push(`  │  📤 OUTPUT      │`);
+        lines.push(`  │  ${String(job.output.length).padEnd(2)} fields      │`);
+        lines.push(`  └─────────────────┘`);
+    }
 
     return lines.join('\n');
 }

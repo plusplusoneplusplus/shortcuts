@@ -548,4 +548,151 @@ suite('Pipeline Preview Mermaid Tests', () => {
             assert.ok(result.includes('3') && result.includes('fields'), 'Should show field count');
         });
     });
+
+    suite('Job Mode Diagram', () => {
+        const jobConfig: PipelineConfig = {
+            name: 'git-fetch',
+            job: {
+                prompt: 'Run the command `git fetch` and report the output.'
+            }
+        };
+
+        const jobConfigWithOutput: PipelineConfig = {
+            name: 'Analyze Code',
+            job: {
+                prompt: 'Analyze the codebase',
+                output: ['summary', 'issues', 'suggestions'],
+                model: 'gpt-4'
+            }
+        };
+
+        const jobConfigWithSkill: PipelineConfig = {
+            name: 'Review PR',
+            job: {
+                prompt: 'Review this PR',
+                skill: 'code-review'
+            },
+            parameters: [
+                { name: 'repo', value: 'my-repo' },
+                { name: 'pr', value: '42' }
+            ]
+        };
+
+        test('should generate JOB node for job mode pipeline', () => {
+            const result = generatePipelineMermaid(jobConfig);
+            
+            assert.ok(result.includes('graph TB'), 'Should start with graph TB');
+            assert.ok(result.includes('JOB['), 'Should have JOB node');
+            assert.ok(result.includes('🤖'), 'Should have robot emoji');
+        });
+
+        test('should include prompt preview in JOB node', () => {
+            const result = generatePipelineMermaid(jobConfig);
+            
+            assert.ok(result.includes('Run the command'), 'Should include truncated prompt');
+        });
+
+        test('should include OUTPUT node when output fields exist', () => {
+            const result = generatePipelineMermaid(jobConfigWithOutput);
+            
+            assert.ok(result.includes('OUTPUT['), 'Should have OUTPUT node');
+            assert.ok(result.includes('📤'), 'Should have output emoji');
+            assert.ok(result.includes('3 fields'), 'Should show field count in link');
+        });
+
+        test('should include model in JOB node when specified', () => {
+            const result = generatePipelineMermaid(jobConfigWithOutput);
+            
+            assert.ok(result.includes('gpt-4'), 'Should show model name');
+        });
+
+        test('should not include OUTPUT node when no output fields', () => {
+            const result = generatePipelineMermaid(jobConfig);
+            
+            assert.ok(!result.includes('OUTPUT['), 'Should not have OUTPUT node');
+        });
+
+        test('should include SKILL node when skill is specified', () => {
+            const result = generatePipelineMermaid(jobConfigWithSkill);
+            
+            assert.ok(result.includes('SKILL['), 'Should have SKILL node');
+            assert.ok(result.includes('📚'), 'Should have skill emoji');
+            assert.ok(result.includes('code-review'), 'Should show skill name');
+        });
+
+        test('should include PARAMS node when parameters exist', () => {
+            const result = generatePipelineMermaid(jobConfigWithSkill);
+            
+            assert.ok(result.includes('PARAMS['), 'Should have PARAMS node');
+            assert.ok(result.includes('⚙️'), 'Should have gear emoji');
+            assert.ok(result.includes('repo'), 'Should show param names');
+        });
+
+        test('should include click handlers for job nodes', () => {
+            const result = generatePipelineMermaid(jobConfigWithSkill);
+            
+            assert.ok(result.includes('click JOB'), 'Should have JOB click handler');
+            assert.ok(result.includes('click PARAMS'), 'Should have PARAMS click handler');
+            assert.ok(result.includes('click SKILL'), 'Should have SKILL click handler');
+        });
+
+        test('should include styling for job nodes', () => {
+            const result = generatePipelineMermaid(jobConfig);
+            
+            assert.ok(result.includes('style JOB fill:'), 'Should have JOB styling');
+        });
+
+        test('should not have INPUT/MAP/REDUCE nodes in job mode', () => {
+            const result = generatePipelineMermaid(jobConfig);
+            
+            assert.ok(!result.includes('INPUT['), 'Should not have INPUT node');
+            assert.ok(!result.includes('MAP['), 'Should not have MAP node');
+            assert.ok(!result.includes('REDUCE['), 'Should not have REDUCE node');
+        });
+    });
+
+    suite('Job Mode Text Diagram', () => {
+        const jobConfig: PipelineConfig = {
+            name: 'git-fetch',
+            job: {
+                prompt: 'Run git fetch'
+            }
+        };
+
+        const jobConfigWithOutput: PipelineConfig = {
+            name: 'Analyze',
+            job: {
+                prompt: 'Analyze code',
+                output: ['summary', 'issues'],
+                model: 'gpt-4'
+            }
+        };
+
+        test('should generate job mode text diagram', () => {
+            const result = generatePipelineTextDiagram(jobConfig);
+            
+            assert.ok(result.includes('Job Mode'), 'Should indicate job mode');
+            assert.ok(result.includes('JOB'), 'Should have JOB label');
+            assert.ok(result.includes('🤖'), 'Should have robot emoji');
+        });
+
+        test('should show inline prompt indicator', () => {
+            const result = generatePipelineTextDiagram(jobConfig);
+            
+            assert.ok(result.includes('Inline prompt'), 'Should show inline prompt');
+        });
+
+        test('should show output section when output fields exist', () => {
+            const result = generatePipelineTextDiagram(jobConfigWithOutput);
+            
+            assert.ok(result.includes('OUTPUT'), 'Should have OUTPUT');
+            assert.ok(result.includes('2'), 'Should show field count');
+        });
+
+        test('should show model when specified', () => {
+            const result = generatePipelineTextDiagram(jobConfigWithOutput);
+            
+            assert.ok(result.includes('gpt-4'), 'Should show model');
+        });
+    });
 });
