@@ -172,7 +172,7 @@ describe('GenerateTaskDialog', () => {
             targetFolder: undefined,
             model: undefined,
             mode: undefined,
-            depth: 'deep',
+            depth: 'normal',
             priority: 'normal',
         });
     });
@@ -731,7 +731,7 @@ describe('GenerateTaskDialog', () => {
         );
     });
 
-    it('submit sends deep depth by default', async () => {
+    it('submit sends normal depth by default (medium effort)', async () => {
         const enqueueSpy = vi.fn();
         mockUseQueueTaskGeneration.mockReturnValue(makeHookReturn({ enqueue: enqueueSpy }));
 
@@ -745,7 +745,7 @@ describe('GenerateTaskDialog', () => {
         });
 
         expect(enqueueSpy).toHaveBeenCalledWith(
-            expect.objectContaining({ depth: 'deep' }),
+            expect.objectContaining({ depth: 'normal' }),
         );
     });
 
@@ -807,7 +807,7 @@ describe('GenerateTaskDialog', () => {
 
     // ── effort/advanced tab tests ────────────────────────────────────────────
 
-    it('renders Effort tab as default with High selected', async () => {
+    it('renders Effort tab as default with Medium selected', async () => {
         await act(async () => { renderDialog(); });
 
         expect(screen.getByTestId('tab-effort')).toBeDefined();
@@ -815,9 +815,9 @@ describe('GenerateTaskDialog', () => {
         expect(screen.getByTestId('effort-panel')).toBeDefined();
         expect(screen.queryByTestId('advanced-panel')).toBeNull();
 
-        // High is selected by default
-        const highBtn = screen.getByTestId('effort-high');
-        expect(highBtn.className).toContain('bg-[#0078d4]/10');
+        // Medium is selected by default
+        const mediumBtn = screen.getByTestId('effort-medium');
+        expect(mediumBtn.className).toContain('bg-[#0078d4]/10');
     });
 
     it('switching to Advanced tab shows model/priority/depth selectors', async () => {
@@ -852,7 +852,7 @@ describe('GenerateTaskDialog', () => {
         expect(highBtn.className).not.toContain('bg-[#0078d4]/10');
     });
 
-    it('submit with effort=low sends low priority and normal depth', async () => {
+    it('submit with effort=low sends normal priority and normal depth', async () => {
         const enqueueSpy = vi.fn();
         mockUseQueueTaskGeneration.mockReturnValue(makeHookReturn({ enqueue: enqueueSpy }));
 
@@ -868,7 +868,7 @@ describe('GenerateTaskDialog', () => {
         });
 
         expect(enqueueSpy).toHaveBeenCalledWith(
-            expect.objectContaining({ priority: 'low', depth: 'normal' }),
+            expect.objectContaining({ priority: 'normal', depth: 'normal' }),
         );
     });
 
@@ -901,7 +901,8 @@ describe('GenerateTaskDialog', () => {
         const textarea = document.getElementById('gen-task-prompt') as HTMLTextAreaElement;
         fireEvent.change(textarea, { target: { value: 'test' } });
 
-        // high is default, just submit
+        fireEvent.click(screen.getByTestId('effort-high'));
+
         await act(async () => {
             fireEvent.click(screen.getByText('Generate'));
         });
@@ -958,7 +959,7 @@ describe('GenerateTaskDialog', () => {
         });
 
         expect(enqueueSpy).toHaveBeenCalledWith(
-            expect.objectContaining({ model: 'claude-haiku-4.5' }),
+            expect.objectContaining({ model: 'claude-sonnet-4' }),
         );
     });
 
@@ -1039,7 +1040,7 @@ describe('GenerateTaskDialog', () => {
     });
 
     it('EFFORT_PRESETS exports are correctly shaped', () => {
-        expect(EFFORT_PRESETS.low.priority).toBe('low');
+        expect(EFFORT_PRESETS.low.priority).toBe('normal');
         expect(EFFORT_PRESETS.low.depth).toBe('normal');
         expect(EFFORT_PRESETS.medium.priority).toBe('normal');
         expect(EFFORT_PRESETS.medium.depth).toBe('normal');
@@ -1049,14 +1050,22 @@ describe('GenerateTaskDialog', () => {
 
     it('effort model picker selects correct model for each level', () => {
         const models = ['claude-haiku-4.5', 'claude-sonnet-4', 'claude-opus-4'];
-        expect(EFFORT_PRESETS.low.modelPicker(models)).toBe('claude-haiku-4.5');
-        expect(EFFORT_PRESETS.medium.modelPicker(models)).toBe('claude-sonnet-4');
+        expect(EFFORT_PRESETS.low.modelPicker(models)).toBe('claude-sonnet-4');
+        expect(EFFORT_PRESETS.medium.modelPicker(models)).toBe('claude-opus-4');
         expect(EFFORT_PRESETS.high.modelPicker(models)).toBe('claude-opus-4');
     });
 
     it('effort model picker returns empty string when no match', () => {
         expect(EFFORT_PRESETS.low.modelPicker([])).toBe('');
         expect(EFFORT_PRESETS.low.modelPicker(['unknown-model'])).toBe('');
+    });
+
+    it('effort buttons show inline descriptions', async () => {
+        await act(async () => { renderDialog(); });
+
+        expect(screen.getByText('Sonnet-class model, normal analysis')).toBeDefined();
+        expect(screen.getByText('Opus-class model, normal analysis')).toBeDefined();
+        expect(screen.getByText('Opus-class model, deep analysis')).toBeDefined();
     });
 
     // ── image paste tests ────────────────────────────────────────────────────

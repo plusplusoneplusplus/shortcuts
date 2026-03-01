@@ -44,20 +44,26 @@ function pickModel(models: string[], keywords: string[]): string {
 
 export const EFFORT_PRESETS: Record<EffortLevel, EffortPreset> = {
     low: {
-        modelPicker: (models) => pickModel(models, ['haiku', 'mini', 'flash', 'fast']),
-        priority: 'low',
+        modelPicker: (models) => pickModel(models, ['sonnet', 'gpt-5.2', 'pro']),
+        priority: 'normal',
         depth: 'normal',
     },
     medium: {
-        modelPicker: (models) => pickModel(models, ['sonnet', 'gpt-4', 'pro']),
+        modelPicker: (models) => pickModel(models, ['opus', 'gpt-5.3', 'codex', 'premium']),
         priority: 'normal',
         depth: 'normal',
     },
     high: {
-        modelPicker: (models) => pickModel(models, ['opus', 'o3', 'o1', 'premium']),
+        modelPicker: (models) => pickModel(models, ['opus', 'gpt-5.3', 'codex', 'premium']),
         priority: 'normal',
         depth: 'deep',
     },
+};
+
+const EFFORT_DESCRIPTIONS: Record<EffortLevel, string> = {
+    low: 'Sonnet-class model, normal analysis',
+    medium: 'Opus-class model, normal analysis',
+    high: 'Opus-class model, deep analysis',
 };
 
 // ── props ────────────────────────────────────────────────────────────────────
@@ -103,7 +109,7 @@ export function GenerateTaskDialog({
     const [depth, setDepth] = useState<'deep' | 'normal'>('deep');
     const [includeContext, setIncludeContext] = useState(false);
     const [configTab, setConfigTab] = useState<ConfigTab>('effort');
-    const [effortLevel, setEffortLevel] = useState<EffortLevel>('high');
+    const [effortLevel, setEffortLevel] = useState<EffortLevel>('medium');
 
     useEffect(() => {
         if (savedModel && !model) setModel(savedModel);
@@ -395,7 +401,8 @@ export function GenerateTaskDialog({
                                     onClick={() => setEffortLevel(level)}
                                     disabled={isSubmitting || isQueued}
                                 >
-                                    {level.charAt(0).toUpperCase() + level.slice(1)}
+                                    <span>{level.charAt(0).toUpperCase() + level.slice(1)}</span>
+                                    <span className="block text-[10px] font-normal opacity-70 mt-0.5">{EFFORT_DESCRIPTIONS[level]}</span>
                                 </button>
                             ))}
                         </div>
