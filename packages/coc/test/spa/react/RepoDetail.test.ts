@@ -299,17 +299,15 @@ describe('RepoDetail Resume Queue button in header', () => {
 });
 
 describe('RepoDetail Queue Task button in header', () => {
-    it('renders + Queue Task button conditionally for queue sub-tab', () => {
+    it('renders + Queue Task button in header', () => {
         expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-queue-task-btn"');
     });
 
-    it('only shows button when activeSubTab is queue', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'queue'");
-        // The queue-task-btn should be inside a conditional block checking for queue tab
+    it('is not gated behind activeSubTab queue conditional', () => {
         const lines = REPO_DETAIL_SOURCE.split('\n');
-        const conditionLine = lines.findIndex(l => l.includes("activeSubTab === 'queue'") && l.includes('&&'));
+        const conditionLine = lines.findIndex(l => l.includes("activeSubTab === 'queue' && ("));
         const btnLine = lines.findIndex(l => l.includes('repo-queue-task-btn'));
-        expect(conditionLine).toBeGreaterThan(-1);
+        expect(conditionLine).toBe(-1);
         expect(btnLine).toBeGreaterThan(conditionLine);
     });
 

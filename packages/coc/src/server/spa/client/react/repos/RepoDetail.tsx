@@ -123,17 +123,15 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                         ▶ Resume Queue
                     </Button>
                 )}
-                {activeSubTab === 'queue' && (
-                    <Button
-                        variant="primary"
-                        size="sm"
-                        onClick={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id })}
-                        title="Queue a new task"
-                        data-testid="repo-queue-task-btn"
-                    >
-                        + Queue Task
-                    </Button>
-                )}
+                <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id })}
+                    title="Queue a new task"
+                    data-testid="repo-queue-task-btn"
+                >
+                    + Queue Task
+                </Button>
                 <Button variant="primary" size="sm" id="repo-generate-btn" data-testid="repo-generate-btn" onClick={() => handleOpenGenerateDialog()} className="relative">
                     ✨ Generate Plan
                     {generateDialog.open && generateDialog.minimized && (
