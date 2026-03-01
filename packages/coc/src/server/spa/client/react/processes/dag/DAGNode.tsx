@@ -10,12 +10,14 @@ export interface DAGNodeProps {
     y: number;
     isDark: boolean;
     onClick?: (phase: PipelinePhase) => void;
+    onMouseEnter?: (phase: PipelinePhase) => void;
+    onMouseLeave?: (phase: PipelinePhase) => void;
     elapsedMs?: number;
     selected?: boolean;
     parallelCount?: number;
 }
 
-export function DAGNode({ node, x, y, isDark, onClick, elapsedMs, selected, parallelCount }: DAGNodeProps) {
+export function DAGNode({ node, x, y, isDark, onClick, onMouseEnter, onMouseLeave, elapsedMs, selected, parallelCount }: DAGNodeProps) {
     const colors = getNodeColors(node.state, isDark);
     const icon = getNodeIcon(node.state);
     const hasClick = typeof onClick === 'function';
@@ -40,6 +42,8 @@ export function DAGNode({ node, x, y, isDark, onClick, elapsedMs, selected, para
         <g
             data-testid={`dag-node-${node.phase}`}
             onClick={hasClick ? () => onClick(node.phase) : undefined}
+            onMouseEnter={onMouseEnter ? () => onMouseEnter(node.phase) : undefined}
+            onMouseLeave={onMouseLeave ? () => onMouseLeave(node.phase) : undefined}
             style={hasClick ? { cursor: 'pointer' } : undefined}
         >
             <title>{tooltipText}</title>

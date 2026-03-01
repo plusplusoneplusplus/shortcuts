@@ -39,7 +39,7 @@ export function PipelineDAGPreview({ yamlContent }: PipelineDAGPreviewProps) {
             {expanded && (
                 <div className="py-2">
                     {result.type === 'linear' ? (
-                        <PipelineDAGChart data={result.data} isDark={isDark} />
+                        <PipelineDAGChart data={result.data} isDark={isDark} pipelineConfig={result.config} />
                     ) : (
                         <WorkflowDAGChart data={result.data} isDark={isDark} />
                     )}

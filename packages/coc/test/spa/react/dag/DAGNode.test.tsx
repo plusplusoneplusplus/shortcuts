@@ -188,4 +188,36 @@ describe('DAGNode', () => {
             expect(rects[1].getAttribute('opacity')).toBe('0.4');
         });
     });
+
+    describe('mouse event callbacks', () => {
+        it('fires onMouseEnter with correct phase on mouseenter', () => {
+            const onMouseEnter = vi.fn();
+            const { container } = renderNode({ phase: 'map', label: 'Map' }, { onMouseEnter });
+            const g = container.querySelector('[data-testid="dag-node-map"]');
+            expect(g).toBeDefined();
+            fireEvent.mouseEnter(g!);
+            expect(onMouseEnter).toHaveBeenCalledWith('map');
+        });
+
+        it('fires onMouseLeave with correct phase on mouseleave', () => {
+            const onMouseLeave = vi.fn();
+            const { container } = renderNode({ phase: 'reduce', label: 'Reduce' }, { onMouseLeave });
+            const g = container.querySelector('[data-testid="dag-node-reduce"]');
+            expect(g).toBeDefined();
+            fireEvent.mouseLeave(g!);
+            expect(onMouseLeave).toHaveBeenCalledWith('reduce');
+        });
+
+        it('does not error when onMouseEnter is not provided', () => {
+            const { container } = renderNode({ phase: 'map', label: 'Map' });
+            const g = container.querySelector('[data-testid="dag-node-map"]');
+            expect(() => fireEvent.mouseEnter(g!)).not.toThrow();
+        });
+
+        it('does not error when onMouseLeave is not provided', () => {
+            const { container } = renderNode({ phase: 'map', label: 'Map' });
+            const g = container.querySelector('[data-testid="dag-node-map"]');
+            expect(() => fireEvent.mouseLeave(g!)).not.toThrow();
+        });
+    });
 });

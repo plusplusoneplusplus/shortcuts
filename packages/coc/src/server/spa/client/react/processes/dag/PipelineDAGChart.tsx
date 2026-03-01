@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import type { PipelinePhase } from '@plusplusoneplusplus/pipeline-core';
+import type { PipelinePhase, PipelineConfig } from '@plusplusoneplusplus/pipeline-core';
 import type { DAGChartData } from './types';
 import { DAGNode } from './DAGNode';
 import { DAGEdge } from './DAGEdge';
@@ -7,6 +7,7 @@ import { DAGProgressBar } from './DAGProgressBar';
 import { DAGLegend } from './DAGLegend';
 import { DAGBreadcrumb } from './DAGBreadcrumb';
 import { PipelinePhasePopover } from './PipelinePhasePopover';
+import { DAGHoverTooltip } from './DAGHoverTooltip';
 import type { PhaseDetail } from './PipelinePhasePopover';
 import type { EdgeState } from './dag-colors';
 
@@ -22,6 +23,8 @@ export interface PipelineDAGChartProps {
     onScrollToConversation?: (phaseName: string) => void;
     /** Number of parallel workers for the map phase. */
     parallelCount?: number;
+    /** Pipeline config from YAML for hover tooltips. */
+    pipelineConfig?: PipelineConfig;
 }
 
 const NODE_W = 120;
@@ -36,15 +39,23 @@ function deriveEdgeState(fromState: string, toState: string): EdgeState {
     return 'waiting';
 }
 
-export function PipelineDAGChart({ data, isDark, onNodeClick, now, phaseDetails, onScrollToConversation, parallelCount }: PipelineDAGChartProps) {
+export function PipelineDAGChart({ data, isDark, onNodeClick, now, phaseDetails, onScrollToConversation, parallelCount, pipelineConfig }: PipelineDAGChartProps) {
     const [selectedPhase, setSelectedPhase] = useState<string | null>(null);
+    const [hoveredPhase, setHoveredPhase] = useState<PipelinePhase | null>(null);
+    const [hoverAnchor, setHoverAnchor] = useState<{ x: number; y: number } | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+    const svgRef = useRef<SVGSVGElement>(null);
+    const leaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const nodeCount = data.nodes.length;
     if (nodeCount === 0) return null;
 
     const handleNodeClick = (phase: PipelinePhase) => {
         setSelectedPhase(prev => prev === phase ? null : phase);
+        // Dismiss hover tooltip on click
+        setHoveredPhase(null);
+        setHoverAnchor(null);
+        if (leaveTimerRef.current) { clearTimeout(leaveTimerRef.current); leaveTimerRef.current = null; }
         onNodeClick?.(phase);
     };
 
@@ -71,7 +82,49 @@ export function PipelineDAGChart({ data, isDark, onNodeClick, now, phaseDetails,
         return () => document.removeEventListener('mousedown', handler);
     }, [selectedPhase]);
 
-    const totalWidth = 2 * PADDING + nodeCount * NODE_W + (nodeCount - 1) * GAP_X;
+    // Cleanup leave timer
+    useEffect(() => {
+        return () => {
+            if (leaveTimerRef.current) clearTimeout(leaveTimerRef.current);
+        };
+    }, []);
+
+    const handleNodeMouseEnter = (phase: PipelinePhase) => {
+        if (leaveTimerRef.current) { clearTimeout(leaveTimerRef.current); leaveTimerRef.current = null; }
+        setHoveredPhase(phase);
+        const idx = data.nodes.findIndex(n => n.phase === phase);
+        if (idx >= 0 && svgRef.current && containerRef.current) {
+            const svgRect = svgRef.current.getBoundingClientRect();
+            const containerRect = containerRef.current.getBoundingClientRect();
+            const scaleX = svgRect.width / totalWidth;
+            const scaleY = svgRect.height / totalHeight;
+            const offsetX = svgRect.left - containerRect.left;
+            const offsetY = svgRect.top - containerRect.top;
+            const nodeX = positions[idx].x;
+            const nodeY = positions[idx].y;
+            setHoverAnchor({
+                x: offsetX + (nodeX + NODE_W / 2) * scaleX,
+                y: offsetY + nodeY * scaleY,
+            });
+        }
+    };
+
+    const handleNodeMouseLeave = () => {
+        leaveTimerRef.current = setTimeout(() => {
+            setHoveredPhase(null);
+            setHoverAnchor(null);
+        }, 150);
+    };
+
+    const handleTooltipMouseEnter = () => {
+        if (leaveTimerRef.current) { clearTimeout(leaveTimerRef.current); leaveTimerRef.current = null; }
+    };
+
+    const handleTooltipMouseLeave = () => {
+        handleNodeMouseLeave();
+    };
+
+    const totalWidth= 2 * PADDING + nodeCount * NODE_W + (nodeCount - 1) * GAP_X;
     const totalHeight = 2 * PADDING + NODE_H + 20; // extra for progress bar
 
     const positions = data.nodes.map((_, i) => ({
@@ -84,9 +137,10 @@ export function PipelineDAGChart({ data, isDark, onNodeClick, now, phaseDetails,
     const selectedDetail = selectedPhase && phaseDetails?.[selectedPhase] ? phaseDetails[selectedPhase] : null;
 
     return (
-        <div ref={containerRef} data-testid="dag-chart-container">
+        <div ref={containerRef} data-testid="dag-chart-container" className="relative">
         <DAGBreadcrumb nodes={data.nodes} isDark={isDark} />
         <svg
+            ref={svgRef}
             data-testid="dag-chart"
             className="w-full"
             style={{ maxHeight: 200 }}
@@ -133,6 +187,8 @@ export function PipelineDAGChart({ data, isDark, onNodeClick, now, phaseDetails,
                         y={positions[i].y}
                         isDark={isDark}
                         onClick={handleNodeClick}
+                        onMouseEnter={pipelineConfig ? handleNodeMouseEnter : undefined}
+                        onMouseLeave={pipelineConfig ? handleNodeMouseLeave : undefined}
                         elapsedMs={elapsedMs}
                         selected={node.phase === selectedPhase}
                         parallelCount={node.phase === 'map' ? parallelCount : undefined}
@@ -158,6 +214,15 @@ export function PipelineDAGChart({ data, isDark, onNodeClick, now, phaseDetails,
                 );
             })()}
         </svg>
+        {hoveredPhase && hoverAnchor && pipelineConfig && !selectedPhase && (
+            <DAGHoverTooltip
+                phase={hoveredPhase}
+                config={pipelineConfig}
+                anchor={hoverAnchor}
+                onMouseEnter={handleTooltipMouseEnter}
+                onMouseLeave={handleTooltipMouseLeave}
+            />
+        )}
         {selectedPhase && selectedDetail && (
             <PipelinePhasePopover
                 phase={selectedDetail}

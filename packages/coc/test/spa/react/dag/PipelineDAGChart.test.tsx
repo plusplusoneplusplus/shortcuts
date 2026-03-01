@@ -3,6 +3,7 @@ import { render, screen, fireEvent, act } from '@testing-library/react';
 import { PipelineDAGChart } from '../../../../src/server/spa/client/react/processes/dag/PipelineDAGChart';
 import type { DAGChartData } from '../../../../src/server/spa/client/react/processes/dag/types';
 import type { PhaseDetail } from '../../../../src/server/spa/client/react/processes/dag/PipelinePhasePopover';
+import type { PipelineConfig } from '@plusplusoneplusplus/pipeline-core';
 
 function makeData(overrides: Partial<DAGChartData> = {}): DAGChartData {
     return {
@@ -173,5 +174,43 @@ describe('PipelineDAGChart — visual context layer', () => {
         expect(screen.getByTestId('dag-parallel-badge-map')).toBeDefined();
         expect(screen.queryByTestId('dag-parallel-badge-input')).toBeNull();
         expect(screen.queryByTestId('dag-parallel-badge-reduce')).toBeNull();
+    });
+});
+
+function makePipelineConfig(): PipelineConfig {
+    return {
+        name: 'test',
+        input: { items: [{ name: 'a' }] },
+        map: { prompt: 'Analyze {{name}}', model: 'gpt-4', parallel: 4 },
+        reduce: { type: 'ai', prompt: 'Summarize results', model: 'gpt-4' },
+    };
+}
+
+describe('PipelineDAGChart — hover tooltip', () => {
+    it('does not render hover tooltip when pipelineConfig is not provided', () => {
+        render(<PipelineDAGChart data={makeData()} isDark={false} />);
+        fireEvent.mouseEnter(screen.getByTestId('dag-node-input'));
+        expect(screen.queryByTestId('dag-hover-tooltip')).toBeNull();
+    });
+
+    it('renders hover tooltip when pipelineConfig is provided and a node is hovered', () => {
+        // Note: getBoundingClientRect returns zeros in jsdom, so anchor computes to (0,0),
+        // but the tooltip should still render.
+        render(<PipelineDAGChart data={makeData()} isDark={false} pipelineConfig={makePipelineConfig()} />);
+        fireEvent.mouseEnter(screen.getByTestId('dag-node-map'));
+        expect(screen.getByTestId('dag-hover-tooltip')).toBeDefined();
+        expect(screen.getByTestId('dag-hover-tooltip').textContent).toContain('Map Phase');
+    });
+
+    it('hover tooltip disappears when selectedPhase is set (click takes precedence)', () => {
+        render(<PipelineDAGChart data={makeData()} isDark={false} pipelineConfig={makePipelineConfig()} phaseDetails={makePhaseDetails()} />);
+        // Hover first
+        fireEvent.mouseEnter(screen.getByTestId('dag-node-map'));
+        expect(screen.getByTestId('dag-hover-tooltip')).toBeDefined();
+        // Click to select — tooltip should disappear
+        fireEvent.click(screen.getByTestId('dag-node-map'));
+        expect(screen.queryByTestId('dag-hover-tooltip')).toBeNull();
+        // Popover should be shown
+        expect(screen.getByTestId('phase-popover')).toBeDefined();
     });
 });

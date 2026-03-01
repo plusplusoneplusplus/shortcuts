@@ -5,6 +5,7 @@
  */
 
 import yaml from 'js-yaml';
+import type { PipelineConfig } from '@plusplusoneplusplus/pipeline-core';
 import type { DAGChartData, DAGNodeData, DAGNodeState } from '../processes/dag';
 
 // --- Types for workflow DAG preview (multi-node pipelines) ---
@@ -30,7 +31,7 @@ export interface WorkflowPreviewData {
 }
 
 export type PreviewDAGResult =
-    | { type: 'linear'; data: DAGChartData }
+    | { type: 'linear'; data: DAGChartData; config: PipelineConfig }
     | { type: 'workflow'; data: WorkflowPreviewData }
     | null;
 
@@ -80,7 +81,7 @@ function buildLinearPreview(config: any): PreviewDAGResult {
     }
 
     if (nodes.length === 0) return null;
-    return { type: 'linear', data: { nodes } };
+    return { type: 'linear', data: { nodes }, config: config as PipelineConfig };
 }
 
 function buildWorkflowPreview(config: any): PreviewDAGResult {
