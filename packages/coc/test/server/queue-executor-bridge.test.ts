@@ -1252,7 +1252,6 @@ describe('CLITaskExecutor', () => {
             expect(result.success).toBe(true);
             expect(mockSendMessage).toHaveBeenCalled();
             expect(result.result).toEqual({
-                revisedContent: 'AI response text',
                 commentIds: ['c1'],
             });
         });
@@ -1585,7 +1584,7 @@ describe('CLITaskExecutor', () => {
     // ========================================================================
 
     describe('resolve-comments tasks', () => {
-        it('should execute a resolve-comments task and return revisedContent + commentIds', async () => {
+        it('should execute a resolve-comments task and return commentIds without revisedContent', async () => {
             mockSendMessage.mockResolvedValue({
                 success: true,
                 response: '# Revised Document\n\nFixed content.',
@@ -1615,8 +1614,8 @@ describe('CLITaskExecutor', () => {
             const result = await executor.execute(task);
 
             expect(result.success).toBe(true);
+            // AI edits files via tools; the text response is NOT returned as revisedContent
             expect(result.result).toEqual({
-                revisedContent: '# Revised Document\n\nFixed content.',
                 commentIds: ['comment-a', 'comment-b'],
             });
         });

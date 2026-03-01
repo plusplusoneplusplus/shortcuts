@@ -876,11 +876,12 @@ export class CLITaskExecutor implements TaskExecutor {
             // Non-fatal: store may be a stub
         }
 
-        const result = await this.executeWithAI(task, aiPrompt);
-        const response = (result as { response?: string })?.response ?? '';
+        await this.executeWithAI(task, aiPrompt);
 
+        // The AI session edits the file directly via tools (view/edit).
+        // Do NOT return the AI's conversational summary as revisedContent —
+        // it would overwrite the surgical edits the AI already made.
         return {
-            revisedContent: response,
             commentIds: payload.commentIds,
         };
     }

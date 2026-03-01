@@ -640,6 +640,46 @@ describe('useTaskComments', () => {
         expect(result.current.resolving).toBe(false);
     });
 
+    it('resolveWithAI — skips PATCH when revisedContent is absent (queue path, AI edited via tools)', async () => {
+        const comment = makeComment({ id: 'c1', status: 'open' });
+        const resolved = makeComment({ id: 'c1', status: 'resolved' });
+        let patchContentCalled = false;
+
+        fetchSpy.mockImplementation((url: string, opts?: any) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ counts: {} }) });
+            }
+            if (opts?.method === 'POST' && url.includes('batch-resolve')) {
+                // Queue path: no revisedContent returned (AI edited file via tools)
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ commentIds: ['c1'] }),
+                });
+            }
+            if (opts?.method === 'PATCH' && url.includes('/tasks/content')) {
+                patchContentCalled = true;
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            if (opts?.method === 'PATCH') {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ comment: resolved }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ comments: [comment] }) });
+        });
+
+        const { result } = renderHook(() => useTaskComments('ws1', 'task1.md'));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        let resolveResult: any;
+        await act(async () => {
+            resolveResult = await result.current.resolveWithAI('doc', 'task1.md');
+        });
+
+        // PATCH should NOT have been called since AI already edited the file
+        expect(patchContentCalled).toBe(false);
+        expect(resolveResult.resolvedCount).toBe(1);
+        expect(result.current.resolving).toBe(false);
+    });
+
     // ======================================================================
     // fixWithAI
     // ======================================================================
@@ -750,6 +790,46 @@ describe('useTaskComments', () => {
         });
 
         expect(patchContentCalled).toBe(false);
+        expect(result.current.resolvingCommentId).toBeNull();
+    });
+
+    it('fixWithAI — skips PATCH when revisedContent is absent (queue path, AI edited via tools)', async () => {
+        const comment = makeComment({ id: 'c1', status: 'open' });
+        const resolved = makeComment({ id: 'c1', status: 'resolved' });
+        let patchContentCalled = false;
+
+        fetchSpy.mockImplementation((url: string, opts?: any) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ counts: {} }) });
+            }
+            if (opts?.method === 'POST' && url.includes('ask-ai')) {
+                // Queue path: no revisedContent returned (AI edited file via tools)
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ commentId: 'c1' }),
+                });
+            }
+            if (opts?.method === 'PATCH' && url.includes('/tasks/content')) {
+                patchContentCalled = true;
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            if (opts?.method === 'PATCH') {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ comment: resolved }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ comments: [comment] }) });
+        });
+
+        const { result } = renderHook(() => useTaskComments('ws1', 'task1.md'));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        let fixResult: any;
+        await act(async () => {
+            fixResult = await result.current.fixWithAI('c1', 'doc', 'task1.md');
+        });
+
+        // PATCH should NOT have been called since AI already edited the file
+        expect(patchContentCalled).toBe(false);
+        expect(fixResult.revisedContent).toBeFalsy();
         expect(result.current.resolvingCommentId).toBeNull();
     });
 

@@ -291,23 +291,27 @@ export function useTaskComments(wsId: string, taskPath: string): UseTaskComments
                     commentIds = data.commentIds;
                 }
 
-                // Step 2 — write revised file (abort if this fails)
-                const patchRes = await fetch(
-                    getApiBase() + '/workspaces/' + encodeURIComponent(wsId) + '/tasks/content',
-                    {
-                        method: 'PATCH',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ path: filePath, content: revisedContent }),
-                    }
-                );
-                if (!patchRes.ok) throw new Error('Failed to write revised content');
+                // Step 2 — write revised file only if the server returned content
+                // (the async queue path uses AI tools to edit the file directly,
+                //  so revisedContent is absent; the sync fallback returns actual content)
+                if (revisedContent) {
+                    const patchRes = await fetch(
+                        getApiBase() + '/workspaces/' + encodeURIComponent(wsId) + '/tasks/content',
+                        {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ path: filePath, content: revisedContent }),
+                        }
+                    );
+                    if (!patchRes.ok) throw new Error('Failed to write revised content');
+                }
 
-                // Step 3 — batch-resolve comments (best effort; file already saved)
+                // Step 3 — batch-resolve comments
                 await Promise.all(commentIds.map(id => resolveComment(id)));
 
                 await refresh();
 
-                return { revisedContent, resolvedCount: commentIds.length };
+                return { revisedContent: revisedContent ?? '', resolvedCount: commentIds.length };
             } finally {
                 if (mountedRef.current) setResolving(false);
             }
@@ -340,16 +344,18 @@ export function useTaskComments(wsId: string, taskPath: string): UseTaskComments
                     revisedContent = data.revisedContent;
                 }
 
-                // Step 2 — write revised file
-                const patchRes = await fetch(
-                    getApiBase() + '/workspaces/' + encodeURIComponent(wsId) + '/tasks/content',
-                    {
-                        method: 'PATCH',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ path: filePath, content: revisedContent }),
-                    }
-                );
-                if (!patchRes.ok) throw new Error('Failed to write revised content');
+                // Step 2 — write revised file only if content was returned
+                if (revisedContent) {
+                    const patchRes = await fetch(
+                        getApiBase() + '/workspaces/' + encodeURIComponent(wsId) + '/tasks/content',
+                        {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ path: filePath, content: revisedContent }),
+                        }
+                    );
+                    if (!patchRes.ok) throw new Error('Failed to write revised content');
+                }
 
                 // Step 3 — resolve the single comment
                 await resolveComment(id);
