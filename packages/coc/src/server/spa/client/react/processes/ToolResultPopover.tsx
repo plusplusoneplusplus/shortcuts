@@ -11,6 +11,7 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import ReactDOM from 'react-dom';
 import { renderMarkdownToHtml } from '../../markdown-renderer';
+import { computeLineDiff, type DiffLine } from '../../diff-utils';
 
 const MAX_PREVIEW_LENGTH = 2000;
 
@@ -134,7 +135,11 @@ export function ToolResultPopover({ result, toolName, args, anchorRect, onMouseE
     const isGlob = toolName === 'glob';
     const isGrep = toolName === 'grep';
     const isCreate = toolName === 'create';
+    const isEdit = toolName === 'edit';
     const filePath = isView ? (args?.path || args?.filePath || '') : '';
+    const editFilePath = isEdit ? (args?.path || args?.filePath || '') : '';
+    const editOldStr = isEdit && typeof args?.old_str === 'string' ? args.old_str : (isEdit && typeof args?.old_string === 'string' ? args.old_string : '');
+    const editNewStr = isEdit && typeof args?.new_str === 'string' ? args.new_str : (isEdit && typeof args?.new_string === 'string' ? args.new_string : '');
     const createFilePath = isCreate ? (args?.path || args?.filePath || '') : '';
     const createFileText = isCreate && typeof args?.file_text === 'string' ? args.file_text : '';
     const isMd = isView && isMarkdownPath(filePath);
@@ -168,6 +173,11 @@ export function ToolResultPopover({ result, toolName, args, anchorRect, onMouseE
         grepGroups.forEach(matches => { count += Math.max(matches.length, 1); });
         return count;
     }, [grepGroups]);
+
+    const editDiffLines = useMemo(() => {
+        if (!isEdit) return null;
+        return computeLineDiff(editOldStr, editNewStr);
+    }, [isEdit, editOldStr, editNewStr]);
 
     // hljs highlighting for markdown code blocks
     useEffect(() => {
@@ -312,6 +322,59 @@ export function ToolResultPopover({ result, toolName, args, anchorRect, onMouseE
             );
         }
 
+        if (isEdit) {
+            if (!editOldStr && !editNewStr) {
+                return (
+                    <div data-testid="popover-edit" className="text-[11px] text-[#848484] italic">No preview available</div>
+                );
+            }
+            return (
+                <div data-testid="popover-edit" className="space-y-1.5">
+                    {editFilePath && (
+                        <div className="flex items-center gap-1.5 text-[10px] text-[#848484]">
+                            <span className="shrink-0">📄</span>
+                            <span className="uppercase">{shortenPath(editFilePath)}</span>
+                        </div>
+                    )}
+                    {editDiffLines ? (
+                        <div className="diff-container rounded border border-[#e0e0e0] dark:border-[#3c3c3c] overflow-hidden font-mono text-[11px] leading-[1.55]">
+                            {editDiffLines.map((line, i) => (
+                                <div
+                                    key={i}
+                                    className={
+                                        'diff-line px-2 whitespace-pre-wrap break-words' +
+                                        (line.type === 'added' ? ' diff-line-added' : '') +
+                                        (line.type === 'removed' ? ' diff-line-removed' : '') +
+                                        (line.type === 'context' ? ' diff-line-context' : '')
+                                    }
+                                >
+                                    <span className="diff-line-prefix inline-block w-3 select-none text-right mr-1 opacity-70">
+                                        {line.type === 'added' ? '+' : line.type === 'removed' ? '−' : ' '}
+                                    </span>
+                                    {line.content}
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="rounded border border-[#e0e0e0] dark:border-[#3c3c3c] overflow-hidden font-mono text-[11px] leading-[1.55] p-2">
+                            {editOldStr && (
+                                <div>
+                                    <div className="text-[10px] uppercase text-[#848484] mb-0.5">Old</div>
+                                    <pre className="overflow-x-auto text-[11px] whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc] m-0"><code>{editOldStr}</code></pre>
+                                </div>
+                            )}
+                            {editNewStr && (
+                                <div>
+                                    <div className="text-[10px] uppercase text-[#848484] mb-0.5">New</div>
+                                    <pre className="overflow-x-auto text-[11px] whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc] m-0"><code>{editNewStr}</code></pre>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
         if (isCreate) {
             if (!createFileText) {
                 return (
@@ -353,7 +416,7 @@ export function ToolResultPopover({ result, toolName, args, anchorRect, onMouseE
             onMouseLeave={onMouseLeave}
         >
             <div className="text-[10px] uppercase text-[#848484] mb-1">
-                {isView ? 'File Preview' : isBash ? 'Shell Output' : isGlob ? `Glob Matches · ${globPaths.length} files` : isGrep ? `Grep Matches · ${grepTotalMatches} matches in ${grepGroups.size} files` : isCreate ? 'Created File' : 'Result Preview'}
+                {isView ? 'File Preview' : isBash ? 'Shell Output' : isGlob ? `Glob Matches · ${globPaths.length} files` : isGrep ? `Grep Matches · ${grepTotalMatches} matches in ${grepGroups.size} files` : isCreate ? 'Created File' : isEdit ? 'Edit Preview' : 'Result Preview'}
             </div>
             {renderBody()}
         </div>,

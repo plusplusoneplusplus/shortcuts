@@ -360,7 +360,7 @@ export function ToolCallView({
         : null;
     const bashOptionsText = bashOptions && Object.keys(bashOptions).length > 0 ? JSON.stringify(bashOptions, null, 2) : '';
 
-    const hasHoverResult = (name === 'task' || name === 'view' || isShellLike || name === 'glob' || name === 'grep' || name === 'create') && !!resultText;
+    const hasHoverResult = (name === 'task' || name === 'view' || isShellLike || name === 'glob' || name === 'grep' || name === 'create' || name === 'edit') && !!resultText;
 
     const clearTimers = useCallback(() => {
         if (hoverTimerRef.current) { clearTimeout(hoverTimerRef.current); hoverTimerRef.current = null; }

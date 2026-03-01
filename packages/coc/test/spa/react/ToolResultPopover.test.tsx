@@ -875,3 +875,136 @@ describe('ToolResultPopover — create tool', () => {
         expect(createEl!.textContent).toContain('const z = 3;');
     });
 });
+
+describe('ToolResultPopover — edit tool', () => {
+    it('renders edit preview label for edit tool', () => {
+        render(
+            <ToolResultPopover
+                result="File updated"
+                toolName="edit"
+                args={{ path: '/project/src/utils.ts', old_str: 'const a = 1;', new_str: 'const b = 2;' }}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        const popover = document.querySelector('[data-testid="tool-result-popover"]');
+        expect(popover).toBeTruthy();
+        expect(popover!.textContent).toContain('Edit Preview');
+        expect(popover!.textContent).not.toContain('Result Preview');
+    });
+
+    it('renders diff lines with added and removed classes', () => {
+        render(
+            <ToolResultPopover
+                result="File updated"
+                toolName="edit"
+                args={{ path: '/project/src/foo.ts', old_str: 'const x = 1;', new_str: 'const x = 2;' }}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        const editEl = document.querySelector('[data-testid="popover-edit"]');
+        expect(editEl).toBeTruthy();
+        const removedLines = editEl!.querySelectorAll('.diff-line-removed');
+        const addedLines = editEl!.querySelectorAll('.diff-line-added');
+        expect(removedLines.length).toBeGreaterThan(0);
+        expect(addedLines.length).toBeGreaterThan(0);
+        expect(removedLines[0].textContent).toContain('const x = 1;');
+        expect(addedLines[0].textContent).toContain('const x = 2;');
+    });
+
+    it('renders file path in edit popover', () => {
+        render(
+            <ToolResultPopover
+                result="File updated"
+                toolName="edit"
+                args={{ path: '/project/src/config.ts', old_str: 'a', new_str: 'b' }}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        const editEl = document.querySelector('[data-testid="popover-edit"]');
+        expect(editEl).toBeTruthy();
+        expect(editEl!.textContent).toContain('config.ts');
+    });
+
+    it('shows "No preview available" when old_str and new_str are missing', () => {
+        render(
+            <ToolResultPopover
+                result="File updated"
+                toolName="edit"
+                args={{ path: '/project/src/foo.ts' }}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        const editEl = document.querySelector('[data-testid="popover-edit"]');
+        expect(editEl).toBeTruthy();
+        expect(editEl!.textContent).toContain('No preview available');
+    });
+
+    it('supports old_string/new_string alternate arg names', () => {
+        render(
+            <ToolResultPopover
+                result="File updated"
+                toolName="edit"
+                args={{ path: '/project/src/foo.ts', old_string: 'x', new_string: 'y' }}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        const editEl = document.querySelector('[data-testid="popover-edit"]');
+        expect(editEl).toBeTruthy();
+        const removedLines = editEl!.querySelectorAll('.diff-line-removed');
+        const addedLines = editEl!.querySelectorAll('.diff-line-added');
+        expect(removedLines.length).toBeGreaterThan(0);
+        expect(addedLines.length).toBeGreaterThan(0);
+    });
+
+    it('does not render other sub-testids for edit tool', () => {
+        render(
+            <ToolResultPopover
+                result="File updated"
+                toolName="edit"
+                args={{ path: '/project/src/file.ts', old_str: 'a', new_str: 'b' }}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        expect(document.querySelector('[data-testid="popover-markdown"]')).toBeNull();
+        expect(document.querySelector('[data-testid="popover-code"]')).toBeNull();
+        expect(document.querySelector('[data-testid="popover-terminal"]')).toBeNull();
+        expect(document.querySelector('[data-testid="popover-glob"]')).toBeNull();
+        expect(document.querySelector('[data-testid="popover-grep"]')).toBeNull();
+        expect(document.querySelector('[data-testid="popover-create"]')).toBeNull();
+        expect(document.querySelector('[data-testid="popover-edit"]')).toBeTruthy();
+    });
+
+    it('renders context lines for multi-line diffs', () => {
+        render(
+            <ToolResultPopover
+                result="File updated"
+                toolName="edit"
+                args={{
+                    path: '/project/src/handler.ts',
+                    old_str: 'if (type !== \'chat\') continue;\nreturn result;',
+                    new_str: 'if (type !== \'chat\' && type !== \'readonly\') continue;\nreturn result;',
+                }}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        const editEl = document.querySelector('[data-testid="popover-edit"]');
+        expect(editEl).toBeTruthy();
+        const contextLines = editEl!.querySelectorAll('.diff-line-context');
+        expect(contextLines.length).toBeGreaterThan(0);
+        expect(contextLines[0].textContent).toContain('return result;');
+    });
+});

@@ -118,7 +118,7 @@ describe('ToolCallView — task result hover popover', () => {
         expect(document.querySelector('[data-testid="tool-result-popover"]')).toBeNull();
     });
 
-    it('does not show popover for non-task tool calls', () => {
+    it('shows popover for edit tool calls with result', () => {
         const { container } = render(
             <ToolCallView toolCall={{
                 id: 'tc-edit-1',
@@ -131,9 +131,11 @@ describe('ToolCallView — task result hover popover', () => {
 
         const header = container.querySelector('.tool-call-header')!;
         fireEvent.mouseEnter(header);
-        act(() => { vi.advanceTimersByTime(500); });
+        act(() => { vi.advanceTimersByTime(300); });
 
-        expect(document.querySelector('[data-testid="tool-result-popover"]')).toBeNull();
+        const popover = document.querySelector('[data-testid="tool-result-popover"]');
+        expect(popover).toBeTruthy();
+        expect(popover!.textContent).toContain('Edit Preview');
     });
 
     it('does not show popover for task tool calls with empty result', () => {
@@ -310,12 +312,12 @@ describe('ToolCallView — view tool hover popover', () => {
         expect(document.querySelector('[data-testid="tool-result-popover"]')).toBeNull();
     });
 
-    it('does not show popover for edit tool calls', () => {
+    it('shows popover for edit tool calls', () => {
         const { container } = render(
             <ToolCallView toolCall={{
                 id: 'tc-edit-1',
                 toolName: 'edit',
-                args: { path: '/project/foo.ts', old_str: 'a', new_str: 'b' },
+                args: { path: '/project/foo.ts', old_str: 'const a = 1;', new_str: 'const b = 2;' },
                 status: 'completed',
                 result: 'File edited',
             }} />
@@ -323,9 +325,11 @@ describe('ToolCallView — view tool hover popover', () => {
 
         const header = container.querySelector('.tool-call-header')!;
         fireEvent.mouseEnter(header);
-        act(() => { vi.advanceTimersByTime(500); });
+        act(() => { vi.advanceTimersByTime(300); });
 
-        expect(document.querySelector('[data-testid="tool-result-popover"]')).toBeNull();
+        const popover = document.querySelector('[data-testid="tool-result-popover"]');
+        expect(popover).toBeTruthy();
+        expect(popover!.textContent).toContain('Edit Preview');
     });
 
     it('shows popover for grep tool calls', () => {
@@ -762,5 +766,168 @@ describe('ToolCallView — create tool hover popover', () => {
         const createEl = document.querySelector('[data-testid="popover-create"]');
         expect(createEl).toBeTruthy();
         expect(createEl!.textContent).toContain('No preview available');
+    });
+});
+
+describe('ToolCallView — edit tool hover popover', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it('shows popover after 300ms hover on an edit tool call header', () => {
+        const { container } = render(
+            <ToolCallView toolCall={{
+                id: 'tc-edit-1',
+                toolName: 'edit',
+                args: { path: '/project/src/utils.ts', old_str: 'const a = 1;', new_str: 'const b = 2;' },
+                status: 'completed',
+                result: 'File updated',
+            }} />
+        );
+
+        const header = container.querySelector('.tool-call-header')!;
+        fireEvent.mouseEnter(header);
+        act(() => { vi.advanceTimersByTime(300); });
+
+        const popover = document.querySelector('[data-testid="tool-result-popover"]');
+        expect(popover).toBeTruthy();
+        expect(popover!.textContent).toContain('Edit Preview');
+    });
+
+    it('renders diff preview with added and removed lines', () => {
+        const { container } = render(
+            <ToolCallView toolCall={{
+                id: 'tc-edit-2',
+                toolName: 'edit',
+                args: { path: '/project/src/index.ts', old_str: 'const x = 1;', new_str: 'const x = 2;' },
+                status: 'completed',
+                result: 'File updated',
+            }} />
+        );
+
+        const header = container.querySelector('.tool-call-header')!;
+        fireEvent.mouseEnter(header);
+        act(() => { vi.advanceTimersByTime(300); });
+
+        const editEl = document.querySelector('[data-testid="popover-edit"]');
+        expect(editEl).toBeTruthy();
+        const removedLines = editEl!.querySelectorAll('.diff-line-removed');
+        const addedLines = editEl!.querySelectorAll('.diff-line-added');
+        expect(removedLines.length).toBeGreaterThan(0);
+        expect(addedLines.length).toBeGreaterThan(0);
+        expect(removedLines[0].textContent).toContain('const x = 1;');
+        expect(addedLines[0].textContent).toContain('const x = 2;');
+    });
+
+    it('shows file path in the popover', () => {
+        const { container } = render(
+            <ToolCallView toolCall={{
+                id: 'tc-edit-3',
+                toolName: 'edit',
+                args: { path: '/project/src/config.ts', old_str: 'a', new_str: 'b' },
+                status: 'completed',
+                result: 'File updated',
+            }} />
+        );
+
+        const header = container.querySelector('.tool-call-header')!;
+        fireEvent.mouseEnter(header);
+        act(() => { vi.advanceTimersByTime(300); });
+
+        const editEl = document.querySelector('[data-testid="popover-edit"]');
+        expect(editEl).toBeTruthy();
+        expect(editEl!.textContent).toContain('config.ts');
+    });
+
+    it('does not show popover for edit tool call with empty result', () => {
+        const { container } = render(
+            <ToolCallView toolCall={{
+                id: 'tc-edit-4',
+                toolName: 'edit',
+                args: { path: '/project/src/foo.ts', old_str: 'a', new_str: 'b' },
+                status: 'completed',
+                result: '',
+            }} />
+        );
+
+        const header = container.querySelector('.tool-call-header')!;
+        fireEvent.mouseEnter(header);
+        act(() => { vi.advanceTimersByTime(500); });
+
+        expect(document.querySelector('[data-testid="tool-result-popover"]')).toBeNull();
+    });
+
+    it('shows "No preview available" when old_str and new_str are both missing', () => {
+        const { container } = render(
+            <ToolCallView toolCall={{
+                id: 'tc-edit-5',
+                toolName: 'edit',
+                args: { path: '/project/src/foo.ts' },
+                status: 'completed',
+                result: 'File updated',
+            }} />
+        );
+
+        const header = container.querySelector('.tool-call-header')!;
+        fireEvent.mouseEnter(header);
+        act(() => { vi.advanceTimersByTime(300); });
+
+        const editEl = document.querySelector('[data-testid="popover-edit"]');
+        expect(editEl).toBeTruthy();
+        expect(editEl!.textContent).toContain('No preview available');
+    });
+
+    it('handles multi-line diffs in the popover', () => {
+        const { container } = render(
+            <ToolCallView toolCall={{
+                id: 'tc-edit-6',
+                toolName: 'edit',
+                args: {
+                    path: '/project/src/handler.ts',
+                    old_str: 'if (type !== \'chat\') continue;\nreturn result;',
+                    new_str: 'if (type !== \'chat\' && type !== \'readonly\') continue;\nreturn result;',
+                },
+                status: 'completed',
+                result: 'File updated with changes.',
+            }} />
+        );
+
+        const header = container.querySelector('.tool-call-header')!;
+        fireEvent.mouseEnter(header);
+        act(() => { vi.advanceTimersByTime(300); });
+
+        const editEl = document.querySelector('[data-testid="popover-edit"]');
+        expect(editEl).toBeTruthy();
+        // Context line should be present (shared line)
+        const contextLines = editEl!.querySelectorAll('.diff-line-context');
+        expect(contextLines.length).toBeGreaterThan(0);
+        expect(contextLines[0].textContent).toContain('return result;');
+    });
+
+    it('supports old_string/new_string alternate arg names', () => {
+        const { container } = render(
+            <ToolCallView toolCall={{
+                id: 'tc-edit-7',
+                toolName: 'edit',
+                args: { path: '/project/foo.ts', old_string: 'x', new_string: 'y' },
+                status: 'completed',
+                result: 'File updated',
+            }} />
+        );
+
+        const header = container.querySelector('.tool-call-header')!;
+        fireEvent.mouseEnter(header);
+        act(() => { vi.advanceTimersByTime(300); });
+
+        const editEl = document.querySelector('[data-testid="popover-edit"]');
+        expect(editEl).toBeTruthy();
+        const removedLines = editEl!.querySelectorAll('.diff-line-removed');
+        const addedLines = editEl!.querySelectorAll('.diff-line-added');
+        expect(removedLines.length).toBeGreaterThan(0);
+        expect(addedLines.length).toBeGreaterThan(0);
     });
 });
