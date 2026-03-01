@@ -10,8 +10,8 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { loadRelatedItems } from './related-items-loader';
 import { toForwardSlashes } from '../utils/path-utils';
+import { loadRelatedItems } from './related-items-loader';
 
 // ============================================================================
 // Types
@@ -72,14 +72,14 @@ const MAX_CONTENT_LENGTH = 2000;
  */
 export function buildCreateTaskPrompt(description: string, targetPath: string): string {
     targetPath = toForwardSlashes(targetPath);
-    return `Can you draft a plan given User's ask: ${description}
+    return `Can you draft a plan given user's ask: ${description}
 
-**IMPORTANT: Output Location Requirement**
-You MUST save the file to this EXACT directory: ${targetPath}
+**IMPORTANT:**
+1. You MUST save the file to this EXACT directory: ${targetPath}
 - Create a single .plan.md file
 - Do NOT save to any other location
 - Do NOT use your session state or any other directory
-- The file MUST be created directly under: ${targetPath}/`;
+2. You MUST NOT implement the task, you are only responsible for creating the plan file.`;
 }
 
 /**
