@@ -615,3 +615,130 @@ describe('ToolResultPopover — grep tool', () => {
         expect(document.querySelector('[data-testid="popover-grep"]')).toBeTruthy();
     });
 });
+
+// --- create tool: file content preview ---
+
+describe('ToolResultPopover — create tool', () => {
+    it('renders create preview with file content', () => {
+        render(
+            <ToolResultPopover
+                result="File created successfully"
+                toolName="create"
+                args={{ path: '/project/src/new-file.ts', file_text: 'export const x = 1;\nexport const y = 2;' }}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        const popover = document.querySelector('[data-testid="tool-result-popover"]');
+        expect(popover).toBeTruthy();
+        expect(popover!.textContent).toContain('Created File');
+        expect(popover!.textContent).not.toContain('Result Preview');
+
+        const createEl = document.querySelector('[data-testid="popover-create"]');
+        expect(createEl).toBeTruthy();
+        expect(createEl!.textContent).toContain('export const x = 1;');
+        expect(createEl!.textContent).toContain('export const y = 2;');
+    });
+
+    it('renders file path in create popover', () => {
+        render(
+            <ToolResultPopover
+                result="File created"
+                toolName="create"
+                args={{ path: '/project/src/utils.ts', file_text: 'const a = 1;' }}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        const createEl = document.querySelector('[data-testid="popover-create"]');
+        expect(createEl).toBeTruthy();
+        expect(createEl!.textContent).toContain('utils.ts');
+    });
+
+    it('shows "No preview available" when file_text is missing', () => {
+        render(
+            <ToolResultPopover
+                result="File created"
+                toolName="create"
+                args={{ path: '/project/src/binary.bin' }}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        const createEl = document.querySelector('[data-testid="popover-create"]');
+        expect(createEl).toBeTruthy();
+        expect(createEl!.textContent).toContain('No preview available');
+    });
+
+    it('shows "No preview available" when file_text is empty string', () => {
+        render(
+            <ToolResultPopover
+                result="File created"
+                toolName="create"
+                args={{ path: '/project/src/empty.ts', file_text: '' }}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        const createEl = document.querySelector('[data-testid="popover-create"]');
+        expect(createEl).toBeTruthy();
+        expect(createEl!.textContent).toContain('No preview available');
+    });
+
+    it('truncates long file_text in create popover', () => {
+        const longContent = 'x'.repeat(2500);
+        render(
+            <ToolResultPopover
+                result="File created"
+                toolName="create"
+                args={{ path: '/project/src/big.ts', file_text: longContent }}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        const createEl = document.querySelector('[data-testid="popover-create"]');
+        expect(createEl).toBeTruthy();
+        expect(createEl!.textContent).toContain('… (truncated — click to see full)');
+    });
+
+    it('does not render other sub-testids for create tool', () => {
+        render(
+            <ToolResultPopover
+                result="File created"
+                toolName="create"
+                args={{ path: '/project/src/file.ts', file_text: 'content' }}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        expect(document.querySelector('[data-testid="popover-markdown"]')).toBeNull();
+        expect(document.querySelector('[data-testid="popover-code"]')).toBeNull();
+        expect(document.querySelector('[data-testid="popover-terminal"]')).toBeNull();
+        expect(document.querySelector('[data-testid="popover-glob"]')).toBeNull();
+        expect(document.querySelector('[data-testid="popover-grep"]')).toBeNull();
+        expect(document.querySelector('[data-testid="popover-create"]')).toBeTruthy();
+    });
+
+    it('uses filePath arg as fallback', () => {
+        render(
+            <ToolResultPopover
+                result="File created"
+                toolName="create"
+                args={{ filePath: '/project/src/alt.ts', file_text: 'const z = 3;' }}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        const createEl = document.querySelector('[data-testid="popover-create"]');
+        expect(createEl).toBeTruthy();
+        expect(createEl!.textContent).toContain('alt.ts');
+        expect(createEl!.textContent).toContain('const z = 3;');
+    });
+});

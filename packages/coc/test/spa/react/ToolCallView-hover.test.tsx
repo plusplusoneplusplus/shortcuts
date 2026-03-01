@@ -506,3 +506,91 @@ describe('ToolCallView — grep tool hover popover', () => {
         expect(document.querySelector('[data-testid="tool-result-popover"]')).toBeNull();
     });
 });
+
+describe('ToolCallView — create tool hover popover', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it('shows popover after 300ms hover on a create tool call header', () => {
+        const { container } = render(
+            <ToolCallView toolCall={{
+                id: 'tc-create-1',
+                toolName: 'create',
+                args: { path: '/project/src/new-file.ts', file_text: 'export const x = 1;' },
+                status: 'completed',
+                result: 'File created successfully',
+            }} />
+        );
+
+        const header = container.querySelector('.tool-call-header')!;
+        fireEvent.mouseEnter(header);
+        act(() => { vi.advanceTimersByTime(300); });
+
+        const popover = document.querySelector('[data-testid="tool-result-popover"]');
+        expect(popover).toBeTruthy();
+        expect(popover!.textContent).toContain('Created File');
+    });
+
+    it('renders create preview with file content in popover', () => {
+        const { container } = render(
+            <ToolCallView toolCall={{
+                id: 'tc-create-2',
+                toolName: 'create',
+                args: { path: '/project/src/utils.ts', file_text: 'export function hello() {}' },
+                status: 'completed',
+                result: 'File created',
+            }} />
+        );
+
+        const header = container.querySelector('.tool-call-header')!;
+        fireEvent.mouseEnter(header);
+        act(() => { vi.advanceTimersByTime(300); });
+
+        const createEl = document.querySelector('[data-testid="popover-create"]');
+        expect(createEl).toBeTruthy();
+        expect(createEl!.textContent).toContain('export function hello() {}');
+    });
+
+    it('does not show popover for create tool call with empty result', () => {
+        const { container } = render(
+            <ToolCallView toolCall={{
+                id: 'tc-create-3',
+                toolName: 'create',
+                args: { path: '/project/src/new-file.ts', file_text: 'content' },
+                status: 'completed',
+                result: '',
+            }} />
+        );
+
+        const header = container.querySelector('.tool-call-header')!;
+        fireEvent.mouseEnter(header);
+        act(() => { vi.advanceTimersByTime(500); });
+
+        expect(document.querySelector('[data-testid="tool-result-popover"]')).toBeNull();
+    });
+
+    it('shows "No preview available" when file_text is missing', () => {
+        const { container } = render(
+            <ToolCallView toolCall={{
+                id: 'tc-create-4',
+                toolName: 'create',
+                args: { path: '/project/src/binary.bin' },
+                status: 'completed',
+                result: 'File created',
+            }} />
+        );
+
+        const header = container.querySelector('.tool-call-header')!;
+        fireEvent.mouseEnter(header);
+        act(() => { vi.advanceTimersByTime(300); });
+
+        const createEl = document.querySelector('[data-testid="popover-create"]');
+        expect(createEl).toBeTruthy();
+        expect(createEl!.textContent).toContain('No preview available');
+    });
+});

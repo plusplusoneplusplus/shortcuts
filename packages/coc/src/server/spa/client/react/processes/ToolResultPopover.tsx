@@ -133,7 +133,10 @@ export function ToolResultPopover({ result, toolName, args, anchorRect, onMouseE
     const isBash = toolName === 'bash';
     const isGlob = toolName === 'glob';
     const isGrep = toolName === 'grep';
+    const isCreate = toolName === 'create';
     const filePath = isView ? (args?.path || args?.filePath || '') : '';
+    const createFilePath = isCreate ? (args?.path || args?.filePath || '') : '';
+    const createFileText = isCreate && typeof args?.file_text === 'string' ? args.file_text : '';
     const isMd = isView && isMarkdownPath(filePath);
     const bashCommand = isBash && args?.command ? String(args.command) : '';
 
@@ -309,6 +312,29 @@ export function ToolResultPopover({ result, toolName, args, anchorRect, onMouseE
             );
         }
 
+        if (isCreate) {
+            if (!createFileText) {
+                return (
+                    <div data-testid="popover-create" className="text-[11px] text-[#848484] italic">No preview available</div>
+                );
+            }
+            return (
+                <div data-testid="popover-create" className="space-y-1.5">
+                    {createFilePath && (
+                        <div className="flex items-center gap-1.5 text-[10px] text-[#848484]">
+                            <span className="shrink-0">📄</span>
+                            <span className="uppercase">{shortenPath(createFilePath)}</span>
+                        </div>
+                    )}
+                    <div className="rounded border border-[#e0e0e0] dark:border-[#3c3c3c] overflow-hidden font-mono text-[11px] leading-[1.55] max-h-[400px] overflow-y-auto">
+                        <pre className="overflow-x-auto text-[11px] whitespace-pre-wrap break-words p-2 m-0 text-[#1e1e1e] dark:text-[#cccccc]">
+                            <code>{createFileText.length > MAX_PREVIEW_LENGTH ? createFileText.slice(0, MAX_PREVIEW_LENGTH) + '\n… (truncated — click to see full)' : createFileText}</code>
+                        </pre>
+                    </div>
+                </div>
+            );
+        }
+
         // Default: raw text (task tool and fallback)
         return (
             <pre className="text-[11px] whitespace-pre-wrap break-words font-mono text-[#1e1e1e] dark:text-[#cccccc]">
@@ -327,7 +353,7 @@ export function ToolResultPopover({ result, toolName, args, anchorRect, onMouseE
             onMouseLeave={onMouseLeave}
         >
             <div className="text-[10px] uppercase text-[#848484] mb-1">
-                {isView ? 'File Preview' : isBash ? 'Shell Output' : isGlob ? `Glob Matches · ${globPaths.length} files` : isGrep ? `Grep Matches · ${grepTotalMatches} matches in ${grepGroups.size} files` : 'Result Preview'}
+                {isView ? 'File Preview' : isBash ? 'Shell Output' : isGlob ? `Glob Matches · ${globPaths.length} files` : isGrep ? `Grep Matches · ${grepTotalMatches} matches in ${grepGroups.size} files` : isCreate ? 'Created File' : 'Result Preview'}
             </div>
             {renderBody()}
         </div>,

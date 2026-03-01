@@ -356,7 +356,7 @@ export function ToolCallView({
         : null;
     const bashOptionsText = bashOptions && Object.keys(bashOptions).length > 0 ? JSON.stringify(bashOptions, null, 2) : '';
 
-    const hasHoverResult = (name === 'task' || name === 'view' || name === 'bash' || name === 'glob' || name === 'grep') && !!resultText;
+    const hasHoverResult = (name === 'task' || name === 'view' || name === 'bash' || name === 'glob' || name === 'grep' || name === 'create') && !!resultText;
 
     const clearTimers = useCallback(() => {
         if (hoverTimerRef.current) { clearTimeout(hoverTimerRef.current); hoverTimerRef.current = null; }
