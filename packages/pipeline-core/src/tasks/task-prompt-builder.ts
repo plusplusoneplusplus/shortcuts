@@ -68,18 +68,42 @@ const MAX_CONTENT_LENGTH = 2000;
 // ============================================================================
 
 /**
+ * Returns the IMPORTANT block shared by all task-prompt functions.
+ *
+ * @param targetPath     - Forward-slash path already normalised by caller.
+ * @param filenameLines  - Zero or more bullet lines describing the expected filename.
+ * @param extraLines     - Additional numbered items appended after the location block.
+ */
+function buildImportantSection(
+    targetPath: string,
+    filenameLines: string[],
+    extraLines?: string[]
+): string {
+    const filenamePart = filenameLines.length > 0
+        ? '\n' + filenameLines.join('\n')
+        : '';
+    const extraPart = extraLines && extraLines.length > 0
+        ? '\n' + extraLines.map((line, i) => `${i + 2}. ${line}`).join('\n')
+        : '';
+    return `**IMPORTANT:**
+1. You MUST save the file to this EXACT directory: ${targetPath}${filenamePart}
+- Do NOT save to any other location
+- Do NOT use your session state or any other directory${extraPart}`;
+}
+
+/**
  * Build prompt for creating a task from scratch (no name provided).
  */
 export function buildCreateTaskPrompt(description: string, targetPath: string): string {
     targetPath = toForwardSlashes(targetPath);
+    const important = buildImportantSection(
+        targetPath,
+        ['- Create a single .plan.md file'],
+        ['You MUST NOT implement the task, you are only responsible for creating the plan file.']
+    );
     return `Can you draft a plan given user's ask: ${description}
 
-**IMPORTANT:**
-1. You MUST save the file to this EXACT directory: ${targetPath}
-- Create a single .plan.md file
-- Do NOT save to any other location
-- Do NOT use your session state or any other directory
-2. You MUST NOT implement the task, you are only responsible for creating the plan file.`;
+${important}`;
 }
 
 /**
@@ -97,6 +121,11 @@ export function buildCreateTaskPromptWithName(
         : '';
 
     if (name && name.trim()) {
+        const filenameLines = [
+            `- Full file path: ${targetPath}/${name}.plan.md`,
+            `- The file MUST be created at: ${targetPath}/${name}.plan.md`,
+        ];
+        const important = buildImportantSection(targetPath, filenameLines);
         return `Create a task document for: ${name}${descriptionPart}
 
 Generate a comprehensive markdown task document with:
@@ -105,13 +134,13 @@ Generate a comprehensive markdown task document with:
 - Subtasks (if applicable)
 - Notes section
 
-**IMPORTANT: Output Location Requirement**
-You MUST save the file to this EXACT directory: ${targetPath}
-- Full file path: ${targetPath}/${name}.plan.md
-- Do NOT save to any other location
-- Do NOT use your session state or any other directory
-- The file MUST be created at: ${targetPath}/${name}.plan.md`;
+${important}`;
     } else {
+        const filenameLines = [
+            `- Example: ${targetPath}/your-generated-name.plan.md`,
+            `- The file MUST be created directly under: ${targetPath}/`,
+        ];
+        const important = buildImportantSection(targetPath, filenameLines);
         return `Create a task document based on this description:${descriptionPart || '\n\n(General task)'}
 
 Generate a comprehensive markdown task document with:
@@ -123,12 +152,7 @@ Generate a comprehensive markdown task document with:
 Choose an appropriate filename based on the task content.
 The filename should be in kebab-case, descriptive, and end with .plan.md (e.g., "oauth2-authentication.plan.md").
 
-**IMPORTANT: Output Location Requirement**
-You MUST save the file to this EXACT directory: ${targetPath}
-- Example: ${targetPath}/your-generated-name.plan.md
-- Do NOT save to any other location
-- Do NOT use your session state or any other directory
-- The file MUST be created directly under: ${targetPath}/`;
+${important}`;
     }
 }
 
@@ -171,24 +195,26 @@ export function buildCreateFromFeaturePrompt(
         contextText += `Related Source Files:\n${context.relatedFiles.slice(0, 20).join('\n')}\n\n`;
     }
 
-    const filenameInstruction = name && name.trim()
-        ? `- Full file path: ${targetPath}/${name}.plan.md
-- The file MUST be created at: ${targetPath}/${name}.plan.md`
-        : `- The file should be a .plan.md file (e.g., "${targetPath}/feature-plan.plan.md")
-- Choose an appropriate filename based on the task content
-- The filename should be in kebab-case, descriptive, and end with .plan.md
-- The file MUST be created directly under: ${targetPath}/`;
+    const filenameLines = name && name.trim()
+        ? [
+            `- Full file path: ${targetPath}/${name}.plan.md`,
+            `- The file MUST be created at: ${targetPath}/${name}.plan.md`,
+        ]
+        : [
+            `- The file should be a .plan.md file (e.g., "${targetPath}/feature-plan.plan.md")`,
+            `- Choose an appropriate filename based on the task content`,
+            `- The filename should be in kebab-case, descriptive, and end with .plan.md`,
+            `- The file MUST be created directly under: ${targetPath}/`,
+        ];
+
+    const important = buildImportantSection(targetPath, filenameLines);
 
     return `Can you draft a plan given User's ask: ${focus || 'Create an implementation task'}
 
 Context:
 ${contextText}
 
-**IMPORTANT: Output Location Requirement**
-You MUST save the file to this EXACT directory: ${targetPath}
-${filenameInstruction}
-- Do NOT save to any other location
-- Do NOT use your session state or any other directory`;
+${important}`;
 }
 
 /**

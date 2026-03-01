@@ -147,6 +147,63 @@ describe('buildCreateFromFeaturePrompt', () => {
 });
 
 // ============================================================================
+// Shared IMPORTANT section assertions
+// ============================================================================
+
+describe('shared IMPORTANT section', () => {
+    const sharedLines = [
+        'You MUST save the file to this EXACT directory:',
+        'Do NOT save to any other location',
+        'Do NOT use your session state or any other directory',
+    ];
+
+    it('buildCreateTaskPrompt includes all shared location lines', () => {
+        const prompt = buildCreateTaskPrompt('task', '/target');
+        for (const line of sharedLines) {
+            expect(prompt).toContain(line);
+        }
+    });
+
+    it('buildCreateTaskPromptWithName (named) includes all shared location lines', () => {
+        const prompt = buildCreateTaskPromptWithName('my-task', 'desc', '/target');
+        for (const line of sharedLines) {
+            expect(prompt).toContain(line);
+        }
+    });
+
+    it('buildCreateTaskPromptWithName (unnamed) includes all shared location lines', () => {
+        const prompt = buildCreateTaskPromptWithName(undefined, 'desc', '/target');
+        for (const line of sharedLines) {
+            expect(prompt).toContain(line);
+        }
+    });
+
+    it('buildCreateFromFeaturePrompt (named) includes all shared location lines', () => {
+        const context: SelectedContext = {};
+        const prompt = buildCreateFromFeaturePrompt(context, 'focus', 'name', '/target');
+        for (const line of sharedLines) {
+            expect(prompt).toContain(line);
+        }
+    });
+
+    it('buildCreateFromFeaturePrompt (unnamed) includes all shared location lines', () => {
+        const context: SelectedContext = {};
+        const prompt = buildCreateFromFeaturePrompt(context, 'focus', undefined, '/target');
+        for (const line of sharedLines) {
+            expect(prompt).toContain(line);
+        }
+    });
+
+    it('buildDeepModePrompt includes all shared location lines', () => {
+        const context: SelectedContext = {};
+        const prompt = buildDeepModePrompt(context, 'focus', undefined, '/target', '/ws');
+        for (const line of sharedLines) {
+            expect(prompt).toContain(line);
+        }
+    });
+});
+
+// ============================================================================
 // buildDeepModePrompt
 // ============================================================================
 
