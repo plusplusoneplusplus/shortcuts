@@ -3,9 +3,25 @@
  * Replaces the Miller columns when the search query is non-empty.
  */
 
+import type { ReactNode } from 'react';
 import { cn } from '../shared';
 import { isTaskDocument, isTaskDocumentGroup } from '../hooks/useTaskTree';
 import type { TaskDocument, TaskDocumentGroup } from '../hooks/useTaskTree';
+
+export function highlightMatch(text: string, query: string): ReactNode {
+    if (!query) return text;
+    const idx = text.toLowerCase().indexOf(query.toLowerCase());
+    if (idx === -1) return text;
+    return (
+        <>
+            {text.slice(0, idx)}
+            <strong className="text-[#0078d4] dark:text-[#3794ff]">
+                {text.slice(idx, idx + query.length)}
+            </strong>
+            {text.slice(idx + query.length)}
+        </>
+    );
+}
 
 export interface TaskSearchResultsProps {
     results: (TaskDocument | TaskDocumentGroup)[];
@@ -73,6 +89,7 @@ export function TaskSearchResults({ results, query, commentCounts, onFileClick }
                             className={cn(
                                 'flex items-center gap-2 px-2 py-1.5 cursor-pointer text-xs transition-colors',
                                 'hover:bg-black/[0.04] dark:hover:bg-white/[0.04]',
+                                item.isArchived && 'opacity-60 italic',
                             )}
                             onClick={() => itemPath && onFileClick(itemPath)}
                             title={itemPath ?? undefined}
@@ -92,13 +109,13 @@ export function TaskSearchResults({ results, query, commentCounts, onFileClick }
 
                             {/* Display name */}
                             <span className="truncate text-[#1e1e1e] dark:text-[#cccccc]">
-                                {displayName}
+                                {highlightMatch(displayName, query)}
                             </span>
 
                             {/* Breadcrumb path */}
                             {relativePath && (
                                 <span className="truncate text-[10px] text-[#848484]">
-                                    {relativePath}
+                                    {highlightMatch(relativePath, query)}
                                 </span>
                             )}
 

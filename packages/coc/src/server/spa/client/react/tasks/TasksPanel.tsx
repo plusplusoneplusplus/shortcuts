@@ -76,6 +76,7 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
     const { openFilePath, setOpenFilePath, selectedFilePaths, clearSelection, selectedFolderPath } = useTaskPanel();
     const [initialParams] = useState(() => parseTaskHashParams(location.hash, wsId));
     const scrollRef = useRef<HTMLDivElement>(null);
+    const searchInputRef = useRef<HTMLInputElement>(null);
 
     // ── Search state ───────────────────────────────────────────────────
     const [searchQuery, setSearchQuery] = useState('');
@@ -99,6 +100,25 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
         setSearchQuery('');
         if (debounceRef.current) clearTimeout(debounceRef.current);
     }, []);
+
+    // ── Keyboard shortcuts (Ctrl+F / Cmd+F → focus, Escape → clear) ────
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => {
+            if (e.key === 'f' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                searchInputRef.current?.focus();
+            }
+            if (e.key === 'Escape') {
+                if (searchInput || searchQuery) {
+                    setSearchInput('');
+                    setSearchQuery('');
+                    searchInputRef.current?.blur();
+                }
+            }
+        };
+        document.addEventListener('keydown', handler);
+        return () => document.removeEventListener('keydown', handler);
+    }, [searchInput, searchQuery]);
 
     // ── Search results (derived) ────────────────────────────────────────
     const allItems = useMemo(() => tree ? flattenTaskTree(tree) : [], [tree]);
@@ -665,6 +685,7 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
                         🔍
                     </span>
                     <input
+                        ref={searchInputRef}
                         type="text"
                         placeholder="Search tasks…"
                         value={searchInput}

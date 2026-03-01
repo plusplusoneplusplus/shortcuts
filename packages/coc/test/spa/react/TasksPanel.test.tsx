@@ -13,6 +13,7 @@ import { taskReducer, type TaskContextState, type TaskAction } from '../../../sr
 import { TasksPanel, parseTaskHashParams } from '../../../src/server/spa/client/react/tasks/TasksPanel';
 import { getFolderKey } from '../../../src/server/spa/client/react/tasks/TaskTree';
 import { buildFileTooltip } from '../../../src/server/spa/client/react/tasks/TaskTreeItem';
+import { TaskSearchResults, highlightMatch } from '../../../src/server/spa/client/react/tasks/TaskSearchResults';
 import type { TaskFolder } from '../../../src/server/spa/client/react/hooks/useTaskTree';
 import { useTaskGeneration } from '../../../src/server/spa/client/react/hooks/useTaskGeneration';
 
@@ -1659,5 +1660,169 @@ describe('TasksPanel — search results', () => {
             expect(screen.getByTestId('task-tree')).toBeTruthy();
         });
         expect(screen.queryByTestId('search-results-list')).toBeNull();
+    });
+});
+
+// ============================================================================
+// highlightMatch
+// ============================================================================
+
+describe('highlightMatch', () => {
+    it('returns plain text when query is empty', () => {
+        expect(highlightMatch('hello', '')).toBe('hello');
+    });
+
+    it('wraps matched substring in <strong>', () => {
+        const { container } = render(<span>{highlightMatch('design.plan', 'plan')}</span>);
+        const strong = container.querySelector('strong');
+        expect(strong).toBeTruthy();
+        expect(strong!.textContent).toBe('plan');
+    });
+
+    it('is case-insensitive', () => {
+        const { container } = render(<span>{highlightMatch('TaskDesign', 'taskd')}</span>);
+        const strong = container.querySelector('strong');
+        expect(strong).toBeTruthy();
+        expect(strong!.textContent).toBe('TaskD');
+    });
+
+    it('returns plain text when no match', () => {
+        expect(highlightMatch('hello', 'xyz')).toBe('hello');
+    });
+});
+
+// ============================================================================
+// Keyboard shortcuts
+// ============================================================================
+
+describe('TasksPanel — keyboard shortcuts', () => {
+    let fetchSpy: ReturnType<typeof vi.fn>;
+
+    function setupFetch() {
+        fetchSpy.mockImplementation((url: string) => {
+            if (url.includes('comment-counts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            if (url.includes('queue/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ models: [] }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
+        });
+    }
+
+    beforeEach(() => {
+        fetchSpy = vi.fn();
+        global.fetch = fetchSpy;
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('Ctrl+F focuses the search input', async () => {
+        setupFetch();
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree')).toBeTruthy();
+        });
+        const input = screen.getByTestId('task-search-input') as HTMLInputElement;
+        expect(document.activeElement).not.toBe(input);
+        fireEvent.keyDown(document, { key: 'f', ctrlKey: true });
+        expect(document.activeElement).toBe(input);
+    });
+
+    it('Cmd+F focuses the search input', async () => {
+        setupFetch();
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree')).toBeTruthy();
+        });
+        const input = screen.getByTestId('task-search-input') as HTMLInputElement;
+        fireEvent.keyDown(document, { key: 'f', metaKey: true });
+        expect(document.activeElement).toBe(input);
+    });
+
+    it('Escape clears search input and blurs', async () => {
+        setupFetch();
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree')).toBeTruthy();
+        });
+        const input = screen.getByTestId('task-search-input') as HTMLInputElement;
+        fireEvent.change(input, { target: { value: 'task1' } });
+        await waitFor(() => {
+            expect(screen.queryByTestId('task-tree')).toBeNull();
+        });
+        input.focus();
+        expect(document.activeElement).toBe(input);
+        fireEvent.keyDown(document, { key: 'Escape' });
+        await waitFor(() => {
+            expect(input.value).toBe('');
+        });
+        expect(document.activeElement).not.toBe(input);
+    });
+
+    it('Escape does nothing when search is empty', async () => {
+        setupFetch();
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree')).toBeTruthy();
+        });
+        const input = screen.getByTestId('task-search-input') as HTMLInputElement;
+        expect(input.value).toBe('');
+        // Fire Escape — should not throw or change state
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(screen.getByTestId('task-tree')).toBeTruthy();
+        expect(input.value).toBe('');
+    });
+});
+
+// ============================================================================
+// Archived item styling in TaskSearchResults
+// ============================================================================
+
+describe('TaskSearchResults — archived styling', () => {
+    it('archived items render with opacity-60 italic', () => {
+        const archivedItem = {
+            baseName: 'old-task',
+            documents: [
+                { baseName: 'old-task', docType: 'plan', fileName: 'old-task.plan.md', relativePath: 'archive', isArchived: true, status: 'done' },
+            ],
+            isArchived: true,
+        };
+        render(
+            <TaskSearchResults
+                results={[archivedItem]}
+                query="old"
+                commentCounts={{}}
+                wsId="ws1"
+                onFileClick={() => {}}
+            />
+        );
+        const li = screen.getByTestId('search-result-old-task');
+        expect(li.className).toContain('opacity-60');
+        expect(li.className).toContain('italic');
+    });
+
+    it('non-archived items do not have opacity-60 italic', () => {
+        const normalItem = {
+            baseName: 'active-task',
+            fileName: 'active-task.md',
+            relativePath: 'feature1',
+            isArchived: false,
+            status: 'pending',
+        };
+        render(
+            <TaskSearchResults
+                results={[normalItem]}
+                query="active"
+                commentCounts={{}}
+                wsId="ws1"
+                onFileClick={() => {}}
+            />
+        );
+        const li = screen.getByTestId('search-result-active-task');
+        expect(li.className).not.toContain('opacity-60');
+        expect(li.className).not.toContain('italic');
     });
 });
