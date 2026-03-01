@@ -808,9 +808,10 @@ describe('ProcessesView', () => {
 
         expect(aside).not.toBeNull();
         expect(main).not.toBeNull();
-        expect(aside!.className).toContain('w-[320px]');
-        expect(aside!.className).toContain('min-w-[320px]');
-        expect(aside!.className).toContain('max-w-[320px]');
+        // ResponsiveSidebar uses inline styles for width on desktop
+        expect(aside!.style.width).toBe('320px');
+        expect(aside!.style.minWidth).toBe('320px');
+        expect(aside!.style.maxWidth).toBe('320px');
         expect(aside!.className).toContain('shrink-0');
         expect(main!.className).toContain('min-w-0');
     });
