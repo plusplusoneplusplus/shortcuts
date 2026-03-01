@@ -21,7 +21,7 @@ function Wrap({ children }: { children: ReactNode }) {
 describe('useRepoQueueStats', () => {
     it('returns zeros when no queue data exists for workspace', () => {
         const { result } = renderHook(() => useRepoQueueStats('nonexistent'), { wrapper: Wrap });
-        expect(result.current).toEqual({ running: 0, queued: 0, chatRunning: 0, chatQueued: 0, chatTotal: 0 });
+        expect(result.current).toEqual({ running: 0, queued: 0, chatRunning: 0, chatQueued: 0, chatPending: 0 });
     });
 
     it('returns non-chat counts for running/queued and chat counts separately', () => {
@@ -45,7 +45,7 @@ describe('useRepoQueueStats', () => {
         }
 
         render(<Wrap><Inner /></Wrap>);
-        expect(hookResult).toEqual({ running: 1, queued: 1, chatRunning: 1, chatQueued: 0, chatTotal: 1 });
+        expect(hookResult).toEqual({ running: 1, queued: 1, chatRunning: 1, chatQueued: 0, chatPending: 1 });
     });
 
     it('excludes chat tasks from running/queued counts', () => {
@@ -75,7 +75,7 @@ describe('useRepoQueueStats', () => {
         }
 
         render(<Wrap><Inner /></Wrap>);
-        expect(hookResult).toEqual({ running: 1, queued: 1, chatRunning: 1, chatQueued: 2, chatTotal: 3 });
+        expect(hookResult).toEqual({ running: 1, queued: 1, chatRunning: 1, chatQueued: 2, chatPending: 3 });
     });
 
     it('returns all zeros when only empty arrays are provided', () => {
@@ -98,7 +98,7 @@ describe('useRepoQueueStats', () => {
         }
 
         render(<Wrap><Inner /></Wrap>);
-        expect(hookResult).toEqual({ running: 0, queued: 0, chatRunning: 0, chatQueued: 0, chatTotal: 0 });
+        expect(hookResult).toEqual({ running: 0, queued: 0, chatRunning: 0, chatQueued: 0, chatPending: 0 });
     });
 
     it('returns zeros for different workspace id', () => {
@@ -122,7 +122,7 @@ describe('useRepoQueueStats', () => {
         }
 
         render(<Wrap><Inner /></Wrap>);
-        expect(hookResult).toEqual({ running: 0, queued: 0, chatRunning: 0, chatQueued: 0, chatTotal: 0 });
+        expect(hookResult).toEqual({ running: 0, queued: 0, chatRunning: 0, chatQueued: 0, chatPending: 0 });
     });
 
     it('counts tasks without type as non-chat', () => {
@@ -145,10 +145,10 @@ describe('useRepoQueueStats', () => {
         }
 
         render(<Wrap><Inner /></Wrap>);
-        expect(hookResult).toEqual({ running: 1, queued: 1, chatRunning: 0, chatQueued: 0, chatTotal: 0 });
+        expect(hookResult).toEqual({ running: 1, queued: 1, chatRunning: 0, chatQueued: 0, chatPending: 0 });
     });
 
-    it('includes history chat items in chatTotal', () => {
+    it('computes chatPending as chatRunning + chatQueued (excludes history)', () => {
         let hookResult: ReturnType<typeof useRepoQueueStats> | null = null;
 
         function Inner() {
@@ -173,10 +173,10 @@ describe('useRepoQueueStats', () => {
         }
 
         render(<Wrap><Inner /></Wrap>);
-        expect(hookResult).toEqual({ running: 0, queued: 0, chatRunning: 1, chatQueued: 1, chatTotal: 4 });
+        expect(hookResult).toEqual({ running: 0, queued: 0, chatRunning: 1, chatQueued: 1, chatPending: 2 });
     });
 
-    it('returns chatTotal 0 when no chat tasks exist in any array', () => {
+    it('returns chatPending 0 when no chat tasks exist in any array', () => {
         let hookResult: ReturnType<typeof useRepoQueueStats> | null = null;
 
         function Inner() {
@@ -197,6 +197,6 @@ describe('useRepoQueueStats', () => {
         }
 
         render(<Wrap><Inner /></Wrap>);
-        expect(hookResult).toEqual({ running: 1, queued: 1, chatRunning: 0, chatQueued: 0, chatTotal: 0 });
+        expect(hookResult).toEqual({ running: 1, queued: 1, chatRunning: 0, chatQueued: 0, chatPending: 0 });
     });
 });
