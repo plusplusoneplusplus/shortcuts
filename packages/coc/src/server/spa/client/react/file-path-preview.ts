@@ -85,8 +85,15 @@ function createTooltip(): HTMLDivElement {
             hideTimer = null;
         }
     });
-    el.addEventListener('mouseleave', () => {
-        if (!isScrollingTooltip) scheduleHide();
+    el.addEventListener('mouseleave', (event: MouseEvent) => {
+        if (!isScrollingTooltip && event.buttons === 0) scheduleHide();
+    });
+
+    // Set flag immediately on mousedown so mouseleave fired before scroll
+    // (e.g. when clicking a scrollbar) cannot dismiss the tooltip.
+    el.addEventListener('mousedown', () => {
+        isScrollingTooltip = true;
+        if (scrollEndTimer) clearTimeout(scrollEndTimer);
     });
 
     // Prevent wheel events from scrolling the underlying page
@@ -458,6 +465,19 @@ function initFilePathPreviewDelegation(): void {
         window.dispatchEvent(new CustomEvent('coc-reveal-in-panel', {
             detail: { filePath: taskPath },
         }));
+    });
+
+    // Clear the mousedown scroll-guard flag when the mouse button is released.
+    // If the pointer already left the tooltip, schedule a hide after a short delay.
+    document.addEventListener('mouseup', () => {
+        if (!isScrollingTooltip) return;
+        if (scrollEndTimer) clearTimeout(scrollEndTimer);
+        scrollEndTimer = setTimeout(() => {
+            isScrollingTooltip = false;
+            if (tooltipEl && !tooltipEl.matches(':hover')) {
+                scheduleHide();
+            }
+        }, 150);
     });
 
     // Click delegation for markdown link spans (.md-link) — open referenced files.

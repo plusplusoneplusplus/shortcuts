@@ -582,6 +582,102 @@ describe('tooltip scroll behavior', () => {
         await vi.advanceTimersByTimeAsync(200);
         expect(tooltip.style.display).toBe('none');
     });
+
+    it('mousedown on tooltip prevents mouseleave from dismissing (scrollbar click timing gap)', async () => {
+        const fullPath = '/Users/test/Documents/Projects/shortcuts/src';
+        document.body.innerHTML = `
+            <div>
+                <span class="file-path-link" data-full-path="${fullPath}">src</span>
+            </div>
+        `;
+
+        const fetchMock = vi.fn();
+        mockWorkspaceAndDirectoryPreview(fetchMock, {
+            entries: Array.from({ length: 20 }, (_, i) => ({ name: `file${i}.ts`, isDirectory: false })),
+            totalEntries: 20,
+        });
+        vi.stubGlobal('fetch', fetchMock as any);
+
+        await import('../../../src/server/spa/client/react/file-path-preview');
+        await hoverAndWaitForDirectory(document.querySelector('.file-path-link') as HTMLElement);
+
+        const tooltip = document.querySelector('.file-preview-tooltip') as HTMLElement;
+        expect(tooltip.style.display).toBe('block');
+
+        // Simulate pressing mouse button on the tooltip (e.g. clicking the scrollbar)
+        tooltip.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+
+        // mouseleave fires before scroll (the timing gap) — tooltip should remain visible
+        tooltip.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true, buttons: 0 }));
+        await vi.advanceTimersByTimeAsync(250);
+        expect(tooltip.style.display).toBe('block');
+
+        // mouseup on document clears the flag and schedules hide (mouse already left)
+        document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+        // 150ms (scrollEnd timer) + 200ms (hide timer) = 350ms total
+        await vi.advanceTimersByTimeAsync(400);
+        expect(tooltip.style.display).toBe('none');
+    });
+
+    it('mouseleave with buttons pressed does not dismiss tooltip', async () => {
+        const fullPath = '/Users/test/Documents/Projects/shortcuts/src';
+        document.body.innerHTML = `
+            <div>
+                <span class="file-path-link" data-full-path="${fullPath}">src</span>
+            </div>
+        `;
+
+        const fetchMock = vi.fn();
+        mockWorkspaceAndDirectoryPreview(fetchMock, {
+            entries: [{ name: 'a.ts', isDirectory: false }],
+            totalEntries: 1,
+        });
+        vi.stubGlobal('fetch', fetchMock as any);
+
+        await import('../../../src/server/spa/client/react/file-path-preview');
+        await hoverAndWaitForDirectory(document.querySelector('.file-path-link') as HTMLElement);
+
+        const tooltip = document.querySelector('.file-preview-tooltip') as HTMLElement;
+        expect(tooltip.style.display).toBe('block');
+
+        // Fire mouseleave while a mouse button is still held (buttons: 1)
+        tooltip.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true, buttons: 1 }));
+        await vi.advanceTimersByTimeAsync(250);
+        expect(tooltip.style.display).toBe('block');
+    });
+
+    it('mouseup on document clears flag and keeps tooltip if mouse is still inside', async () => {
+        const fullPath = '/Users/test/Documents/Projects/shortcuts/src';
+        document.body.innerHTML = `
+            <div>
+                <span class="file-path-link" data-full-path="${fullPath}">src</span>
+            </div>
+        `;
+
+        const fetchMock = vi.fn();
+        mockWorkspaceAndDirectoryPreview(fetchMock, {
+            entries: [{ name: 'a.ts', isDirectory: false }],
+            totalEntries: 1,
+        });
+        vi.stubGlobal('fetch', fetchMock as any);
+
+        await import('../../../src/server/spa/client/react/file-path-preview');
+        await hoverAndWaitForDirectory(document.querySelector('.file-path-link') as HTMLElement);
+
+        const tooltip = document.querySelector('.file-preview-tooltip') as HTMLElement;
+        expect(tooltip.style.display).toBe('block');
+
+        // Set scroll guard via mousedown
+        tooltip.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+
+        // mouseup fires — since mouse is still hovering the tooltip (:hover matches in jsdom),
+        // the tooltip should not be hidden.
+        document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+        // Advance past the 150ms scrollEnd timer
+        await vi.advanceTimersByTimeAsync(200);
+        // tooltip remains visible (mouse didn't leave)
+        expect(tooltip.style.display).toBe('block');
+    });
 });
 
 describe('tooltip dynamic max-height clamping', () => {
