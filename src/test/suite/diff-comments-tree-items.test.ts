@@ -193,6 +193,42 @@ suite('DiffCommentFileItem', () => {
         // TreeItemCollapsibleState.Expanded = 2
         assert.strictEqual(item.collapsibleState, 2);
     });
+
+    test('should have MarkdownString tooltip with full path', () => {
+        const item = new DiffCommentFileItem('/test/repo/src/parser.ts', 2, 1);
+        // Tooltip should be a MarkdownString containing the full path
+        const tooltip = item.tooltip as any;
+        assert.ok(tooltip.value, 'Tooltip should be a MarkdownString with value');
+        assert.ok(tooltip.value.includes('/test/repo/src/parser.ts'), 'Tooltip should include full path');
+        assert.ok(tooltip.value.includes('3 comment(s)'), 'Tooltip should include total comment count');
+    });
+
+    test('should show commit hash in MarkdownString tooltip', () => {
+        const gitContext: DiffGitContext = {
+            repositoryRoot: '/test/repo',
+            repositoryName: 'test-repo',
+            oldRef: 'abc123^',
+            newRef: 'abc123',
+            wasStaged: false,
+            commitHash: 'abc123def456'
+        };
+        const item = new DiffCommentFileItem('/test/repo/src/parser.ts', 2, 1, gitContext, 'committed', 'abc123def456');
+        const tooltip = item.tooltip as any;
+        assert.ok(tooltip.value.includes('abc123d'), 'Tooltip should include truncated commit hash');
+    });
+
+    test('should show staged status in MarkdownString tooltip', () => {
+        const gitContext: DiffGitContext = {
+            repositoryRoot: '/test/repo',
+            repositoryName: 'test-repo',
+            oldRef: 'HEAD',
+            newRef: 'WORKING',
+            wasStaged: true
+        };
+        const item = new DiffCommentFileItem('/test/repo/src/parser.ts', 1, 0, gitContext, 'pending');
+        const tooltip = item.tooltip as any;
+        assert.ok(tooltip.value.includes('Staged changes'), 'Tooltip should show Staged changes');
+    });
 });
 
 suite('DiffCommentItem', () => {

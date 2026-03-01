@@ -467,7 +467,7 @@ suite('DiffCommentsTreeDataProvider Grouping Tests', () => {
             const files = await treeProvider.getChildren(committedCategory);
             const fileItem = files[0] as DiffCommentFileItem;
             
-            const tooltip = fileItem.tooltip?.toString() || '';
+            const tooltip = (fileItem.tooltip as any)?.value || fileItem.tooltip?.toString() || '';
             assert.ok(tooltip.includes('abc123d'), 'Tooltip should include short commit hash');
         });
     });

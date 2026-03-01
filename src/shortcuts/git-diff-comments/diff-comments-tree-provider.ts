@@ -121,18 +121,24 @@ export class DiffCommentFileItem extends vscode.TreeItem {
         return `${this.openCount} open${this.resolvedCount > 0 ? `, ${this.resolvedCount} resolved` : ''}`;
     }
 
-    private createTooltip(): string {
+    private createTooltip(): vscode.MarkdownString {
         const totalCount = this.openCount + this.resolvedCount;
-        let tooltip = `${this.filePath}\n${totalCount} comment(s)`;
+        const md = new vscode.MarkdownString();
+        md.supportHtml = true;
+
+        md.appendCodeblock(this.filePath, '');
+        md.appendMarkdown(`${totalCount} comment(s)\n\n`);
+
         if (this.gitContext) {
             if (this.gitContext.commitHash) {
-                tooltip += `\nCommit: ${this.gitContext.commitHash.slice(0, 7)}`;
+                md.appendMarkdown(`Commit: ${this.gitContext.commitHash.slice(0, 7)}`);
             } else {
                 const staged = this.gitContext.wasStaged ? 'Staged' : 'Unstaged';
-                tooltip += `\n${staged} changes`;
+                md.appendMarkdown(`${staged} changes`);
             }
         }
-        return tooltip;
+
+        return md;
     }
 }
 

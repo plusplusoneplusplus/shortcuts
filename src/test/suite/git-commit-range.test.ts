@@ -299,12 +299,12 @@ suite('Git Commit Range Tests', () => {
             assert.ok(desc.includes('M'));
         });
 
-        test('should show directory path in description', () => {
+        test('should not show directory path in description', () => {
             const file = createTestFile({ path: 'src/components/Button.tsx' });
             const range = createTestRange();
             const item = new GitRangeFileItem(file, range);
             const desc = item.description as string;
-            assert.ok(desc.includes('src/components'));
+            assert.ok(!desc.includes('src/components'), 'Directory should not appear in description');
         });
 
         test('should show original path for renames', () => {
@@ -352,13 +352,13 @@ suite('Git Commit Range Tests', () => {
             assert.strictEqual(item.command?.command, 'gitDiffComments.openWithReview');
         });
 
-        test('should have markdown tooltip', () => {
+        test('should have markdown tooltip with full path as first element', () => {
             const file = createTestFile();
             const range = createTestRange();
             const item = new GitRangeFileItem(file, range);
             assert.ok(item.tooltip instanceof vscode.MarkdownString);
             const tooltip = item.tooltip as vscode.MarkdownString;
-            assert.ok(tooltip.value.includes('Button.tsx'));
+            assert.ok(tooltip.value.includes('src/components/Button.tsx'), 'Tooltip should include full path');
             assert.ok(tooltip.value.includes('modified'));
             assert.ok(tooltip.value.includes('+25'));
             assert.ok(tooltip.value.includes('-10'));
@@ -391,8 +391,29 @@ suite('Git Commit Range Tests', () => {
             const range = createTestRange();
             const item = new GitRangeFileItem(file, range);
             const desc = item.description as string;
-            // Should not include directory path separator
-            assert.ok(!desc.includes('\u2022 .'));
+            // Should not include directory path or bullet separator
+            assert.ok(!desc.includes('\u2022'));
+        });
+
+        test('should show full path as first element in tooltip code block', () => {
+            const file = createTestFile({ path: 'packages/coc/src/server/spa/components/App.tsx' });
+            const range = createTestRange();
+            const item = new GitRangeFileItem(file, range);
+            const tooltip = item.tooltip as vscode.MarkdownString;
+            // Full path should appear before status in the tooltip
+            const pathIndex = tooltip.value.indexOf('packages/coc/src/server/spa/components/App.tsx');
+            const statusIndex = tooltip.value.indexOf('**Status:**');
+            assert.ok(pathIndex >= 0, 'Full path should be in tooltip');
+            assert.ok(pathIndex < statusIndex, 'Full path should appear before status');
+        });
+
+        test('should not include directory in description for deeply nested files', () => {
+            const file = createTestFile({ path: 'packages/coc/src/server/spa/components/App.tsx' });
+            const range = createTestRange();
+            const item = new GitRangeFileItem(file, range);
+            const desc = item.description as string;
+            assert.ok(!desc.includes('packages'), 'Directory should not appear in description');
+            assert.ok(!desc.includes('spa'), 'Directory should not appear in description');
         });
 
         test('should handle all status types', () => {

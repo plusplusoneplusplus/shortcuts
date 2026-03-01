@@ -59,7 +59,8 @@ export class GitRangeFileItem extends vscode.TreeItem {
     }
 
     /**
-     * Create the description text (status + directory path + line changes)
+     * Create the description text (status + line changes)
+     * Directory path is omitted to prioritize filename visibility; full path is in the tooltip.
      */
     private createDescription(): string {
         const parts: string[] = [];
@@ -67,12 +68,6 @@ export class GitRangeFileItem extends vscode.TreeItem {
         // Add status indicator
         const statusShort = STATUS_SHORT[this.file.status];
         parts.push(statusShort);
-
-        // Add relative directory path if not in repo root
-        const dirPath = path.dirname(this.file.path);
-        if (dirPath && dirPath !== '.') {
-            parts.push(`\u2022 ${dirPath}`);  // bullet point separator
-        }
 
         // For renames, show the original path
         if (this.file.oldPath) {
@@ -104,15 +99,15 @@ export class GitRangeFileItem extends vscode.TreeItem {
     }
 
     /**
-     * Create detailed tooltip with markdown
+     * Create detailed tooltip with markdown — full path is shown first for discoverability
      */
     private createTooltip(): vscode.MarkdownString {
         const md = new vscode.MarkdownString();
         md.supportHtml = true;
 
-        md.appendMarkdown(`**${path.basename(this.file.path)}**\n\n`);
+        md.appendCodeblock(this.file.path, '');
+
         md.appendMarkdown(`**Status:** ${this.file.status}\n\n`);
-        md.appendMarkdown(`**Path:** \`${this.file.path}\`\n\n`);
 
         if (this.file.oldPath) {
             md.appendMarkdown(`**Original:** \`${this.file.oldPath}\`\n\n`);
