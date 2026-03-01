@@ -673,10 +673,37 @@ describe('RepoChatTab', () => {
             // The else branch after the running check sets turns without a placeholder
             const runningCheckIdx = fn.indexOf("loadedTask?.status === 'running'");
             expect(runningCheckIdx).toBeGreaterThan(-1);
-            const elseIdx = fn.indexOf('} else {', runningCheckIdx);
-            expect(elseIdx).toBeGreaterThan(-1);
-            const afterElse = fn.substring(elseIdx, elseIdx + 100);
+            // Find the outermost else (not-running branch) — skip inner else for assistant check
+            const innerElse = fn.indexOf('} else {', runningCheckIdx);
+            const outerElse = fn.indexOf('} else {', innerElse + 1);
+            expect(outerElse).toBeGreaterThan(-1);
+            const afterElse = fn.substring(outerElse, outerElse + 100);
             expect(afterElse).toContain('setTurnsAndCache(loadedTurns)');
+        });
+
+        it('checks last turn role before appending streaming placeholder to avoid duplicates', () => {
+            const fn = source.substring(source.indexOf('const loadSession'), source.indexOf('// --- auto-select'));
+            // Should inspect lastTurn to decide whether to append or reuse
+            expect(fn).toContain('const lastTurn = loadedTurns[loadedTurns.length - 1]');
+            expect(fn).toContain("lastTurn?.role === 'assistant'");
+        });
+
+        it('reuses existing assistant turn with streaming flag when last turn is assistant', () => {
+            const fn = source.substring(source.indexOf('const loadSession'), source.indexOf('// --- auto-select'));
+            // When last turn is already assistant, map over turns to set streaming: true
+            expect(fn).toContain('loadedTurns.map(');
+            expect(fn).toContain('streaming: true');
+        });
+
+        it('only appends new placeholder when last turn is not assistant', () => {
+            const fn = source.substring(source.indexOf('const loadSession'), source.indexOf('// --- auto-select'));
+            // The else branch inside the running check still creates a new placeholder
+            const lastTurnCheck = fn.indexOf("lastTurn?.role === 'assistant'");
+            expect(lastTurnCheck).toBeGreaterThan(-1);
+            const elseAfterCheck = fn.indexOf('} else {', lastTurnCheck);
+            expect(elseAfterCheck).toBeGreaterThan(-1);
+            const afterElse = fn.substring(elseAfterCheck, elseAfterCheck + 200);
+            expect(afterElse).toContain("...loadedTurns, { role: 'assistant'");
         });
     });
 

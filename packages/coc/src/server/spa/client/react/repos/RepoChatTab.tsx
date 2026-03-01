@@ -189,7 +189,14 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId }: Re
             if (loadSessionCounterRef.current !== loadId) return;
             const loadedTurns = getConversationTurns(procData, loadedTask);
             if (loadedTask?.status === 'running') {
-                setTurnsAndCache([...loadedTurns, { role: 'assistant', content: '', streaming: true, timeline: [] }]);
+                const lastTurn = loadedTurns[loadedTurns.length - 1];
+                if (lastTurn?.role === 'assistant') {
+                    setTurnsAndCache(loadedTurns.map((t, i) =>
+                        i === loadedTurns.length - 1 ? { ...t, streaming: true } : t
+                    ));
+                } else {
+                    setTurnsAndCache([...loadedTurns, { role: 'assistant', content: '', streaming: true, timeline: [] }]);
+                }
             } else {
                 setTurnsAndCache(loadedTurns);
             }
