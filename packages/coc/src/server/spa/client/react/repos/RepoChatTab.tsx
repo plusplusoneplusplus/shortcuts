@@ -25,7 +25,7 @@ interface RepoChatTabProps {
     initialSessionId?: string | null;
 }
 
-function getConversationTurns(data: any): ClientConversationTurn[] {
+function getConversationTurns(data: any, task?: any): ClientConversationTurn[] {
     const process = data?.process;
     if (process?.conversationTurns && Array.isArray(process.conversationTurns) && process.conversationTurns.length > 0) {
         return process.conversationTurns;
@@ -46,6 +46,10 @@ function getConversationTurns(data: any): ClientConversationTurn[] {
             synthetic.push({ role: 'assistant', content: process.result, timestamp: process.endTime || undefined, timeline: [] });
         }
         return synthetic;
+    }
+    // Fallback: construct from task payload when process has no turns
+    if (task?.payload?.prompt) {
+        return [{ role: 'user', content: task.payload.prompt, timeline: [] }];
     }
     return [];
 }
@@ -148,10 +152,20 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId }: Re
             const loadedTask = queueData?.task ?? null;
             setTask(loadedTask);
             setChatTaskId(taskId);
+            // If task is queued and has no processId, show user prompt as placeholder
+            if (!loadedTask?.processId && loadedTask?.status === 'queued') {
+                const prompt = loadedTask?.payload?.prompt ?? '';
+                if (prompt) {
+                    setTurnsAndCache([{ role: 'user', content: prompt, timeline: [] }]);
+                } else {
+                    setTurnsAndCache([]);
+                }
+                return;
+            }
             const pid = loadedTask?.processId ?? `queue_${taskId}`;
             const procData = await fetchApi(`/processes/${encodeURIComponent(pid)}`);
             if (loadSessionCounterRef.current !== loadId) return;
-            const loadedTurns = getConversationTurns(procData);
+            const loadedTurns = getConversationTurns(procData, loadedTask);
             if (loadedTask?.status === 'running') {
                 setTurnsAndCache([...loadedTurns, { role: 'assistant', content: '', streaming: true, timeline: [] }]);
             } else {
@@ -255,6 +269,25 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId }: Re
             eventSourceRef.current = null;
         };
     }, [chatTaskId, task?.status, processId]);
+
+    // --- poll for queued → running transition ---
+
+    useEffect(() => {
+        if (!chatTaskId || task?.status !== 'queued') return;
+        const interval = setInterval(async () => {
+            try {
+                const data = await fetchApi(`/queue/${encodeURIComponent(chatTaskId)}`);
+                const t = data?.task;
+                if (t && t.status !== 'queued') {
+                    setTask(t);
+                    if (t.processId || t.status === 'running') {
+                        loadSession(chatTaskId);
+                    }
+                }
+            } catch { /* ignore */ }
+        }, 2000);
+        return () => clearInterval(interval);
+    }, [chatTaskId, task?.status, loadSession]);
 
     // --- cleanup on unmount ---
 
@@ -509,6 +542,19 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId }: Re
                         </div>
                     );
                 })}
+                {!loading && task?.status === 'queued' && (
+                    <div className="flex items-center gap-2 text-sm text-[#848484] py-4">
+                        <Spinner /> Waiting to start…
+                    </div>
+                )}
+                {!loading && error && turns.length === 0 && (
+                    <div className="flex flex-col items-center justify-center h-full text-sm text-[#848484] gap-2">
+                        <span>⚠️ {error}</span>
+                        <Button size="sm" variant="secondary" onClick={() => loadSession(chatTaskId!)}>
+                            Retry
+                        </Button>
+                    </div>
+                )}
             </div>
 
             {/* Input area */}

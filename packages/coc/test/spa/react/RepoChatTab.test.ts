@@ -670,8 +670,10 @@ describe('RepoChatTab', () => {
 
         it('does not append placeholder when task is not running', () => {
             const fn = source.substring(source.indexOf('const loadSession'), source.indexOf('// --- auto-select'));
-            // The else branch sets turns without a placeholder
-            const elseIdx = fn.indexOf('} else {');
+            // The else branch after the running check sets turns without a placeholder
+            const runningCheckIdx = fn.indexOf("loadedTask?.status === 'running'");
+            expect(runningCheckIdx).toBeGreaterThan(-1);
+            const elseIdx = fn.indexOf('} else {', runningCheckIdx);
             expect(elseIdx).toBeGreaterThan(-1);
             const afterElse = fn.substring(elseIdx, elseIdx + 100);
             expect(afterElse).toContain('setTurnsAndCache(loadedTurns)');
@@ -783,6 +785,105 @@ describe('RepoChatTab', () => {
                 source.indexOf('if (sessionsHook.sessions.length === 0)')
             );
             expect(autoSelectEffect).toContain("location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/chat/' + encodeURIComponent(initialSessionId)");
+        });
+    });
+
+    describe('queued task handling', () => {
+        it('skips process fetch when task is queued with no processId', () => {
+            const fn = source.substring(source.indexOf('const loadSession'), source.indexOf('// --- auto-select'));
+            expect(fn).toContain("!loadedTask?.processId && loadedTask?.status === 'queued'");
+        });
+
+        it('shows user prompt from task payload for queued tasks', () => {
+            const fn = source.substring(source.indexOf('const loadSession'), source.indexOf('// --- auto-select'));
+            expect(fn).toContain("loadedTask?.payload?.prompt");
+        });
+
+        it('returns early for queued tasks without fetching process', () => {
+            const fn = source.substring(source.indexOf('const loadSession'), source.indexOf('// --- auto-select'));
+            // The queued early-return block should exist before the process fetch
+            const queuedBlock = fn.substring(
+                fn.indexOf("!loadedTask?.processId && loadedTask?.status === 'queued'"),
+                fn.indexOf("fetchApi(`/processes/")
+            );
+            expect(queuedBlock).toContain('return;');
+        });
+    });
+
+    describe('polling for queued → running transition', () => {
+        it('has a polling useEffect for queued tasks', () => {
+            expect(source).toContain("poll for queued");
+        });
+
+        it('polls only when task status is queued', () => {
+            const pollSection = source.substring(source.indexOf('poll for queued'));
+            expect(pollSection).toContain("task?.status !== 'queued'");
+        });
+
+        it('polls with 2-second interval', () => {
+            const pollSection = source.substring(source.indexOf('poll for queued'));
+            expect(pollSection).toContain('2000');
+        });
+
+        it('re-fetches queue data and transitions to loadSession on status change', () => {
+            const pollSection = source.substring(source.indexOf('poll for queued'), source.indexOf('// --- cleanup'));
+            expect(pollSection).toContain("t.status !== 'queued'");
+            expect(pollSection).toContain('loadSession(chatTaskId)');
+        });
+
+        it('checks for processId or running status before re-loading', () => {
+            const pollSection = source.substring(source.indexOf('poll for queued'), source.indexOf('// --- cleanup'));
+            expect(pollSection).toContain("t.processId || t.status === 'running'");
+        });
+
+        it('cleans up interval on unmount', () => {
+            const pollSection = source.substring(source.indexOf('poll for queued'), source.indexOf('// --- cleanup'));
+            expect(pollSection).toContain('clearInterval(interval)');
+        });
+
+        it('depends on chatTaskId, task status, and loadSession', () => {
+            const pollSection = source.substring(source.indexOf('poll for queued'), source.indexOf('// --- cleanup'));
+            expect(pollSection).toContain('[chatTaskId, task?.status, loadSession]');
+        });
+    });
+
+    describe('waiting state and error visibility', () => {
+        it('shows "Waiting to start…" indicator for queued tasks', () => {
+            expect(source).toContain("Waiting to start…");
+        });
+
+        it('queued indicator only shows when not loading and task is queued', () => {
+            expect(source).toContain("!loading && task?.status === 'queued'");
+        });
+
+        it('shows prominent error with retry in conversation area', () => {
+            const convArea = source.substring(source.indexOf('Conversation area'), source.indexOf('Input area'));
+            expect(convArea).toContain('⚠️ {error}');
+            expect(convArea).toContain('Retry');
+        });
+
+        it('error display only shows when not loading, has error, and no turns', () => {
+            expect(source).toContain('!loading && error && turns.length === 0');
+        });
+
+        it('retry button calls loadSession with chatTaskId', () => {
+            const convArea = source.substring(source.indexOf('Conversation area'), source.indexOf('Input area'));
+            expect(convArea).toContain('loadSession(chatTaskId!)');
+        });
+    });
+
+    describe('getConversationTurns task payload fallback', () => {
+        it('accepts optional task parameter', () => {
+            expect(source).toContain('function getConversationTurns(data: any, task?: any)');
+        });
+
+        it('falls back to task.payload.prompt when no process data', () => {
+            expect(source).toContain('task?.payload?.prompt');
+        });
+
+        it('passes loadedTask to getConversationTurns in loadSession', () => {
+            const fn = source.substring(source.indexOf('const loadSession'), source.indexOf('// --- auto-select'));
+            expect(fn).toContain('getConversationTurns(procData, loadedTask)');
         });
     });
 });
