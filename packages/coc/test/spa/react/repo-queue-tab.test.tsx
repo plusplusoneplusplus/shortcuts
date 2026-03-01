@@ -381,4 +381,222 @@ describe('RepoQueueTab', () => {
             expect(screen.getByText('Select a task to view details')).toBeTruthy();
         });
     });
+
+    it('does not render inline action buttons on queued tasks', async () => {
+        setupFetch({
+            queue: makeQueueResponse({
+                queued: [makeQueuedTask(), makeQueuedTask({ id: 'queued-2', displayName: 'Queued Task 2' })],
+            }),
+            history: makeHistoryResponse([]),
+        });
+
+        render(
+            <Wrap>
+                <RepoQueueTab workspaceId="ws1" />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getAllByText(/Queued Task/).length).toBeGreaterThan(0);
+        });
+
+        // The old inline buttons (▲, ⏬, ✕) should not be rendered as buttons
+        const buttons = screen.getAllByRole('button');
+        const inlineLabels = buttons.map(b => b.textContent?.trim());
+        expect(inlineLabels).not.toContain('▲');
+        expect(inlineLabels).not.toContain('⏬');
+        expect(inlineLabels).not.toContain('✕');
+    });
+
+    it('does not render inline action buttons on running tasks', async () => {
+        setupFetch({
+            queue: makeQueueResponse({
+                running: [makeRunningTask()],
+            }),
+            history: makeHistoryResponse([]),
+        });
+
+        render(
+            <Wrap>
+                <RepoQueueTab workspaceId="ws1" />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getAllByText(/Running Task/).length).toBeGreaterThan(0);
+        });
+
+        const buttons = screen.getAllByRole('button');
+        const inlineLabels = buttons.map(b => b.textContent?.trim());
+        expect(inlineLabels).not.toContain('✕');
+    });
+
+    it('right-click on a queued task shows context menu with Move Up, Move to Top, and Cancel', async () => {
+        setupFetch({
+            queue: makeQueueResponse({
+                queued: [
+                    makeQueuedTask({ id: 'q1', displayName: 'First' }),
+                    makeQueuedTask({ id: 'q2', displayName: 'Second' }),
+                ],
+            }),
+            history: makeHistoryResponse([]),
+        });
+
+        render(
+            <Wrap>
+                <RepoQueueTab workspaceId="ws1" />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText(/Second/)).toBeTruthy();
+        });
+
+        // Right-click on the second queued task (index > 0, so Move Up should appear)
+        const taskCards = screen.getAllByText(/Second/);
+        fireEvent.contextMenu(taskCards[0], { clientX: 100, clientY: 100 });
+
+        await waitFor(() => {
+            expect(screen.getByTestId('context-menu')).toBeTruthy();
+        });
+
+        expect(screen.getByText('Move Up')).toBeTruthy();
+        expect(screen.getByText('Move to Top')).toBeTruthy();
+        expect(screen.getByText('Cancel')).toBeTruthy();
+    });
+
+    it('right-click on the first queued task omits Move Up', async () => {
+        setupFetch({
+            queue: makeQueueResponse({
+                queued: [
+                    makeQueuedTask({ id: 'q1', displayName: 'Only Task' }),
+                ],
+            }),
+            history: makeHistoryResponse([]),
+        });
+
+        render(
+            <Wrap>
+                <RepoQueueTab workspaceId="ws1" />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText(/Only Task/)).toBeTruthy();
+        });
+
+        const taskCards = screen.getAllByText(/Only Task/);
+        fireEvent.contextMenu(taskCards[0], { clientX: 100, clientY: 100 });
+
+        await waitFor(() => {
+            expect(screen.getByTestId('context-menu')).toBeTruthy();
+        });
+
+        expect(screen.queryByText('Move Up')).toBeNull();
+        expect(screen.getByText('Move to Top')).toBeTruthy();
+        expect(screen.getByText('Cancel')).toBeTruthy();
+    });
+
+    it('right-click on a running task shows context menu with only Cancel', async () => {
+        setupFetch({
+            queue: makeQueueResponse({
+                running: [makeRunningTask({ id: 'r1', displayName: 'Running One' })],
+            }),
+            history: makeHistoryResponse([]),
+        });
+
+        render(
+            <Wrap>
+                <RepoQueueTab workspaceId="ws1" />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText(/Running One/)).toBeTruthy();
+        });
+
+        const taskCards = screen.getAllByText(/Running One/);
+        fireEvent.contextMenu(taskCards[0], { clientX: 200, clientY: 200 });
+
+        await waitFor(() => {
+            expect(screen.getByTestId('context-menu')).toBeTruthy();
+        });
+
+        expect(screen.queryByText('Move Up')).toBeNull();
+        expect(screen.queryByText('Move to Top')).toBeNull();
+        expect(screen.getByText('Cancel')).toBeTruthy();
+    });
+
+    it('clicking a context menu Cancel item calls DELETE on the task', async () => {
+        setupFetch({
+            queue: makeQueueResponse({
+                running: [makeRunningTask({ id: 'r1', displayName: 'Cancel Me' })],
+            }),
+            history: makeHistoryResponse([]),
+        });
+
+        render(
+            <Wrap>
+                <RepoQueueTab workspaceId="ws1" />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText(/Cancel Me/)).toBeTruthy();
+        });
+
+        const taskCards = screen.getAllByText(/Cancel Me/);
+        fireEvent.contextMenu(taskCards[0], { clientX: 100, clientY: 100 });
+
+        await waitFor(() => {
+            expect(screen.getByTestId('context-menu')).toBeTruthy();
+        });
+
+        fireEvent.click(screen.getByText('Cancel'));
+
+        await waitFor(() => {
+            const deleteCalls = fetchMock.mock.calls.filter(
+                ([url, opts]: [string, any]) => typeof url === 'string' && url.includes('/queue/r1') && opts?.method === 'DELETE'
+            );
+            expect(deleteCalls.length).toBeGreaterThanOrEqual(1);
+        });
+    });
+
+    it('clicking a context menu Move Up item calls move-up endpoint', async () => {
+        setupFetch({
+            queue: makeQueueResponse({
+                queued: [
+                    makeQueuedTask({ id: 'q1', displayName: 'First' }),
+                    makeQueuedTask({ id: 'q2', displayName: 'Second' }),
+                ],
+            }),
+            history: makeHistoryResponse([]),
+        });
+
+        render(
+            <Wrap>
+                <RepoQueueTab workspaceId="ws1" />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText(/Second/)).toBeTruthy();
+        });
+
+        const taskCards = screen.getAllByText(/Second/);
+        fireEvent.contextMenu(taskCards[0], { clientX: 100, clientY: 100 });
+
+        await waitFor(() => {
+            expect(screen.getByTestId('context-menu')).toBeTruthy();
+        });
+
+        fireEvent.click(screen.getByText('Move Up'));
+
+        await waitFor(() => {
+            const moveUpCalls = fetchMock.mock.calls.filter(
+                ([url, opts]: [string, any]) => typeof url === 'string' && url.includes('/queue/q2/move-up') && opts?.method === 'POST'
+            );
+            expect(moveUpCalls.length).toBeGreaterThanOrEqual(1);
+        });
+    });
 });

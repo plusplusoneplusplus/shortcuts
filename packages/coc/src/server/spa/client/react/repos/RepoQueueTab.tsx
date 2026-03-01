@@ -11,6 +11,7 @@ import { useQueue } from '../context/QueueContext';
 import { QueueTaskDetail } from '../queue/QueueTaskDetail';
 import { formatDuration, statusIcon, formatRelativeTime } from '../utils/format';
 import { useQueueDragDrop } from '../hooks/useQueueDragDrop';
+import { ContextMenu, type ContextMenuItem } from '../tasks/comments/ContextMenu';
 
 interface RepoQueueTabProps {
     workspaceId: string;
@@ -46,6 +47,7 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
     const [isPaused, setIsPaused] = useState(false);
     const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
     const [filterType, setFilterType] = useState<string>('all');
+    const [contextMenu, setContextMenu] = useState<{ x: number; y: number; taskId: string; taskStatus: 'running' | 'queued' } | null>(null);
 
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const selectedTaskId = queueState.selectedTaskId;
@@ -203,6 +205,29 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
         }
     }
 
+    const handleTaskContextMenu = useCallback((e: React.MouseEvent, taskId: string, taskStatus: 'running' | 'queued') => {
+        e.preventDefault();
+        e.stopPropagation();
+        setContextMenu({ x: e.clientX, y: e.clientY, taskId, taskStatus });
+    }, []);
+
+    const closeContextMenu = useCallback(() => setContextMenu(null), []);
+
+    const contextMenuItems = useMemo<ContextMenuItem[]>(() => {
+        if (!contextMenu) return [];
+        const { taskId, taskStatus } = contextMenu;
+        if (taskStatus === 'running') {
+            return [{ label: 'Cancel', icon: '✕', onClick: () => handleCancel(taskId) }];
+        }
+        const queuedIndex = queued.findIndex(t => t.id === taskId);
+        return [
+            ...(queuedIndex > 0 ? [{ label: 'Move Up', icon: '▲', onClick: () => handleMoveUp(taskId) }] : []),
+            { label: 'Move to Top', icon: '⏬', onClick: () => handleMoveToTop(taskId) },
+            { label: '', icon: '', separator: true, onClick: () => {} },
+            { label: 'Cancel', icon: '✕', onClick: () => handleCancel(taskId) },
+        ];
+    }, [contextMenu, queued]);
+
     if (loading) {
         return <div className="p-4 text-sm text-[#848484]">Loading queue...</div>;
     }
@@ -299,8 +324,8 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
                                         status="running"
                                         now={now}
                                         selected={selectedTaskId === task.id}
-                                        onCancel={() => handleCancel(task.id)}
                                         onClick={() => selectTask(task.id)}
+                                        onContextMenu={e => handleTaskContextMenu(e, task.id, 'running')}
                                     />
                                 ))}
                             </div>
@@ -336,10 +361,8 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
                                             status="queued"
                                             now={now}
                                             selected={selectedTaskId === task.id}
-                                            onCancel={() => handleCancel(task.id)}
-                                            onMoveUp={index > 0 ? () => handleMoveUp(task.id) : undefined}
-                                            onMoveToTop={() => handleMoveToTop(task.id)}
                                             onClick={() => selectTask(task.id)}
+                                            onContextMenu={e => handleTaskContextMenu(e, task.id, 'queued')}
                                         />
                                     </div>
                                 ))}
@@ -404,19 +427,25 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
                     </div>
                 )}
             </div>
+
+            {contextMenu && (
+                <ContextMenu
+                    position={{ x: contextMenu.x, y: contextMenu.y }}
+                    items={contextMenuItems}
+                    onClose={closeContextMenu}
+                />
+            )}
         </div>
     );
 }
 
-function QueueTaskItem({ task, status, now, selected, onCancel, onMoveUp, onMoveToTop, onClick }: {
+function QueueTaskItem({ task, status, now, selected, onClick, onContextMenu }: {
     task: any;
     status: 'running' | 'queued';
     now: number;
     selected?: boolean;
-    onCancel: () => void;
-    onMoveUp?: () => void;
-    onMoveToTop?: () => void;
     onClick?: () => void;
+    onContextMenu?: (e: React.MouseEvent) => void;
 }) {
     const name = (task.displayName || task.type || 'Task').substring(0, 35);
     const icon = status === 'running' ? '🔄' : '⏳';
@@ -428,21 +457,12 @@ function QueueTaskItem({ task, status, now, selected, onCancel, onMoveUp, onMove
     }
 
     return (
-        <Card className={cn("p-2 cursor-pointer", selected && "ring-2 ring-[#0078d4]")} onClick={onClick} data-task-id={task.id}>
+        <Card className={cn("p-2 cursor-pointer", selected && "ring-2 ring-[#0078d4]")} onClick={onClick} onContextMenu={onContextMenu} data-task-id={task.id}>
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc]">
                     <span>{icon}</span>
                     <span>{name}</span>
                     {elapsed && <span className="text-[10px] text-[#848484]">{elapsed}</span>}
-                </div>
-                <div className="flex items-center gap-1">
-                    {status === 'queued' && onMoveUp && (
-                        <button className="text-[10px] px-1 hover:text-[#0078d4]" onClick={e => { e.stopPropagation(); onMoveUp(); }} title="Move up">▲</button>
-                    )}
-                    {status === 'queued' && onMoveToTop && (
-                        <button className="text-[10px] px-1 hover:text-[#0078d4]" onClick={e => { e.stopPropagation(); onMoveToTop(); }} title="Move to top">⏬</button>
-                    )}
-                    <button className="text-[10px] px-1 text-red-500 hover:text-red-700" onClick={e => { e.stopPropagation(); onCancel(); }} title="Cancel">✕</button>
                 </div>
             </div>
         </Card>
