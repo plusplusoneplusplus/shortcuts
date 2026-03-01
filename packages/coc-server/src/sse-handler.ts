@@ -25,6 +25,7 @@ import type { AIProcess } from '@plusplusoneplusplus/pipeline-core';
  *   event: permission-request → { turnIndex, permissionId, kind, description }
  *   event: pipeline-phase    → { phase, status, timestamp, durationMs?, error?, itemCount? }
  *   event: pipeline-progress → { phase, totalItems, completedItems, failedItems, percentage, message? }
+ *   event: suggestions       → { suggestions: string[], turnIndex: number }
  *   event: status             → { status, result?, error?, duration? }
  *   event: done               → { processId }
  *   event: heartbeat          → {}
@@ -119,6 +120,11 @@ export async function handleProcessStream(
             sendEvent(res, 'pipeline-phase', event.pipelinePhase);
         } else if (event.type === 'pipeline-progress') {
             sendEvent(res, 'pipeline-progress', event.pipelineProgress);
+        } else if (event.type === 'suggestions') {
+            sendEvent(res, 'suggestions', {
+                suggestions: event.suggestions,
+                turnIndex: event.turnIndex,
+            });
         } else if (event.type === 'complete') {
             sendEvent(res, 'status', {
                 status: event.status,

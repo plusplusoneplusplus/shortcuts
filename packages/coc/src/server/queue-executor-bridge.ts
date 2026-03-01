@@ -49,6 +49,7 @@ import {
     isFollowPromptPayload, isAIClarificationPayload, isChatPayload,
     isCustomTaskPayload, isTaskGenerationPayload, isRunPipelinePayload,
     isResolveCommentsPayload,
+    createSuggestFollowUpsTool,
 } from '@plusplusoneplusplus/coc-server';
 import type { TaskGenerationPayload, RunPipelinePayload, ResolveCommentsPayload } from '@plusplusoneplusplus/coc-server';
 import { ImageBlobStore } from './image-blob-store';
@@ -117,6 +118,8 @@ export class CLITaskExecutor implements TaskExecutor {
         chunksSinceLastFlush: number;
         lastFlushTime: number;
     }> = new Map();
+    /** Per-process buffered follow-up suggestions from the suggest_follow_ups tool */
+    private readonly pendingSuggestions: Map<string, string[]> = new Map();
     /** Time-based throttle: flush every N milliseconds */
     private static readonly THROTTLE_TIME_MS = 5000;
     /** Count-based throttle: flush every N chunks */
@@ -223,8 +226,10 @@ export class CLITaskExecutor implements TaskExecutor {
                     turnIndex: 1,
                     toolCalls: (result as any)?.toolCalls || undefined,
                     timeline: finalTimeline,
+                    suggestions: this.pendingSuggestions.get(processId),
                 },
             ];
+            this.pendingSuggestions.delete(processId);
 
             // Cold resume: prepend historical turns from the original session
             const resumedFrom = (task.payload as any)?.resumedFrom;
@@ -361,10 +366,12 @@ export class CLITaskExecutor implements TaskExecutor {
         this.store.registerFlushHandler?.(processId, () => this.flushConversationTurn(processId, true));
 
         try {
+            const suggestTool = createSuggestFollowUpsTool();
             const result = await this.aiService.sendFollowUp(process.sdkSessionId, message, {
                 workingDirectory,
                 onPermissionRequest: this.approvePermissions ? approveAllPermissions : undefined,
                 attachments,
+                tools: [suggestTool],
                 onStreamingChunk: (chunk: string) => {
                     // Accumulate for persistence
                     const existing = this.outputBuffers.get(processId) ?? '';
@@ -380,6 +387,26 @@ export class CLITaskExecutor implements TaskExecutor {
                     this.checkThrottleAndFlush(processId);
                 },
                 onToolEvent: (event: ToolEvent) => {
+                    // Intercept suggestion tool completions — emit as dedicated SSE event
+                    if (event.type === 'tool-complete' && event.toolName === 'suggest_follow_ups') {
+                        try {
+                            const parsed = JSON.parse(event.result || '{}');
+                            const suggestions: string[] = Array.isArray(parsed?.suggestions) ? parsed.suggestions : [];
+                            if (suggestions.length > 0) {
+                                const currentTurnIndex = (process.conversationTurns?.length ?? 0);
+                                this.pendingSuggestions.set(processId, suggestions);
+                                this.store.emitProcessEvent(processId, {
+                                    type: 'suggestions',
+                                    suggestions,
+                                    turnIndex: currentTurnIndex,
+                                });
+                            }
+                        } catch {
+                            // Malformed suggestions — ignore silently
+                        }
+                        return;
+                    }
+
                     // Append tool timeline item
                     const timelineType = event.type === 'tool-start' ? 'tool-start'
                         : event.type === 'tool-complete' ? 'tool-complete'
@@ -446,7 +473,9 @@ export class CLITaskExecutor implements TaskExecutor {
                 turnIndex: cleanTurns.length,
                 toolCalls: result.toolCalls || undefined,
                 timeline: followUpTimeline,
+                suggestions: this.pendingSuggestions.get(processId),
             };
+            this.pendingSuggestions.delete(processId);
 
             await this.store.updateProcess(processId, {
                 conversationTurns: [...cleanTurns, assistantTurn],
@@ -618,7 +647,9 @@ export class CLITaskExecutor implements TaskExecutor {
             isCustomTaskPayload(task.payload) ||
             isFollowPromptPayload(task.payload)
         ) {
-            return this.executeWithAI(task, prompt);
+            const isChatTask = task.type === 'chat';
+            const tools = isChatTask ? [createSuggestFollowUpsTool()] : undefined;
+            return this.executeWithAI(task, prompt, tools ? { tools } : undefined);
         }
 
         // Resolve comments: build prompt from payload and execute with AI
@@ -691,6 +722,25 @@ export class CLITaskExecutor implements TaskExecutor {
             },
             // Emit tool lifecycle events for real-time tool card rendering in the SPA
             onToolEvent: (event: ToolEvent) => {
+                // Intercept suggestion tool completions — emit as dedicated SSE event
+                if (event.type === 'tool-complete' && event.toolName === 'suggest_follow_ups') {
+                    try {
+                        const parsed = JSON.parse(event.result || '{}');
+                        const suggestions: string[] = Array.isArray(parsed?.suggestions) ? parsed.suggestions : [];
+                        if (suggestions.length > 0) {
+                            this.pendingSuggestions.set(processId, suggestions);
+                            this.store.emitProcessEvent(processId, {
+                                type: 'suggestions',
+                                suggestions,
+                                turnIndex: 1,
+                            });
+                        }
+                    } catch {
+                        // Malformed suggestions — ignore silently
+                    }
+                    return;
+                }
+
                 // Append tool timeline item
                 const timelineType = event.type === 'tool-start' ? 'tool-start'
                     : event.type === 'tool-complete' ? 'tool-complete'

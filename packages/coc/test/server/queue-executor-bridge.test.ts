@@ -5170,3 +5170,337 @@ describe('createQueueExecutorBridge dual-limiter options', () => {
         executor.dispose();
     });
 });
+
+// ============================================================================
+// Follow-up Suggestions Tool Wiring
+// ============================================================================
+
+describe('suggest_follow_ups tool wiring', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+
+    beforeEach(() => {
+        store = createMockProcessStore();
+        mockSendMessage.mockReset();
+        mockIsAvailable.mockReset();
+        mockSendFollowUp.mockReset();
+        mockCanResumeSession.mockReset();
+        mockIsAvailable.mockResolvedValue({ available: true });
+        mockSendMessage.mockResolvedValue({
+            success: true,
+            response: 'AI response text',
+            sessionId: 'session-123',
+        });
+    });
+
+    it('should include suggest_follow_ups tool for chat tasks', async () => {
+        const executor = new CLITaskExecutor(store);
+
+        const task: QueuedTask = {
+            id: 'suggest-chat-1',
+            type: 'chat',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { kind: 'chat' as const, prompt: 'Explain this repo' },
+            config: { timeoutMs: 30000 },
+            displayName: 'Chat message',
+        };
+
+        await executor.execute(task);
+
+        expect(mockSendMessage).toHaveBeenCalledTimes(1);
+        const callOpts = mockSendMessage.mock.calls[0][0];
+        expect(callOpts.tools).toBeDefined();
+        expect(callOpts.tools).toHaveLength(1);
+    });
+
+    it('should NOT include suggest_follow_ups tool for ai-clarification tasks', async () => {
+        const executor = new CLITaskExecutor(store);
+
+        const task: QueuedTask = {
+            id: 'suggest-ai-1',
+            type: 'ai-clarification',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { prompt: 'Explain this code' },
+            config: { timeoutMs: 30000 },
+        };
+
+        await executor.execute(task);
+
+        expect(mockSendMessage).toHaveBeenCalledTimes(1);
+        const callOpts = mockSendMessage.mock.calls[0][0];
+        expect(callOpts.tools).toBeUndefined();
+    });
+
+    it('should NOT include suggest_follow_ups tool for follow-prompt tasks', async () => {
+        const executor = new CLITaskExecutor(store);
+
+        const task: QueuedTask = {
+            id: 'suggest-fp-1',
+            type: 'follow-prompt',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { promptContent: 'prompt content', workingDirectory: '/tmp' },
+            config: { timeoutMs: 30000 },
+        };
+
+        await executor.execute(task);
+
+        expect(mockSendMessage).toHaveBeenCalledTimes(1);
+        const callOpts = mockSendMessage.mock.calls[0][0];
+        expect(callOpts.tools).toBeUndefined();
+    });
+
+    it('should NOT include suggest_follow_ups tool for custom tasks', async () => {
+        const executor = new CLITaskExecutor(store);
+
+        const task: QueuedTask = {
+            id: 'suggest-custom-1',
+            type: 'custom',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { data: { prompt: 'Do something' } },
+            config: { timeoutMs: 30000 },
+        };
+
+        await executor.execute(task);
+
+        expect(mockSendMessage).toHaveBeenCalledTimes(1);
+        const callOpts = mockSendMessage.mock.calls[0][0];
+        expect(callOpts.tools).toBeUndefined();
+    });
+
+    it('should include suggest_follow_ups tool for follow-up messages', async () => {
+        const process = createCompletedProcessWithSession('queue_suggest-fu-1', 'sess-fu-1');
+        store.processes.set(process.id, process);
+        mockCanResumeSession.mockResolvedValue(true);
+        mockSendFollowUp.mockResolvedValue({
+            success: true,
+            response: 'Follow-up response',
+            sessionId: 'sess-fu-1',
+        });
+
+        const executor = new CLITaskExecutor(store);
+        await executor.executeFollowUp('queue_suggest-fu-1', 'follow-up question');
+
+        expect(mockSendFollowUp).toHaveBeenCalledTimes(1);
+        const callOpts = mockSendFollowUp.mock.calls[0][2];
+        expect(callOpts.tools).toBeDefined();
+        expect(callOpts.tools).toHaveLength(1);
+    });
+
+    it('should intercept suggest_follow_ups tool-complete and emit suggestions event', async () => {
+        mockSendMessage.mockImplementation(async (opts: any) => {
+            if (opts.onToolEvent) {
+                opts.onToolEvent({
+                    type: 'tool-complete',
+                    toolCallId: 'tc-suggest-1',
+                    toolName: 'suggest_follow_ups',
+                    result: JSON.stringify({ suggestions: ['Question 1?', 'Question 2?'] }),
+                });
+            }
+            return { success: true, response: 'AI response', sessionId: 'session-123' };
+        });
+
+        const executor = new CLITaskExecutor(store);
+
+        const task: QueuedTask = {
+            id: 'suggest-intercept-1',
+            type: 'chat',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { kind: 'chat' as const, prompt: 'Test' },
+            config: { timeoutMs: 30000 },
+        };
+
+        await executor.execute(task);
+
+        // Verify suggestions event was emitted
+        expect(store.emitProcessEvent).toHaveBeenCalledWith(
+            'queue_suggest-intercept-1',
+            expect.objectContaining({
+                type: 'suggestions',
+                suggestions: ['Question 1?', 'Question 2?'],
+                turnIndex: 1,
+            }),
+        );
+
+        // Verify it was NOT emitted as a regular tool-complete event
+        const toolCompleteEvents = (store.emitProcessEvent as any).mock.calls.filter(
+            (call: any[]) => call[1].type === 'tool-complete' && call[1].toolName === 'suggest_follow_ups',
+        );
+        expect(toolCompleteEvents).toHaveLength(0);
+    });
+
+    it('should store suggestions on the final ConversationTurn', async () => {
+        mockSendMessage.mockImplementation(async (opts: any) => {
+            if (opts.onToolEvent) {
+                opts.onToolEvent({
+                    type: 'tool-complete',
+                    toolCallId: 'tc-suggest-2',
+                    toolName: 'suggest_follow_ups',
+                    result: JSON.stringify({ suggestions: ['Follow up A', 'Follow up B', 'Follow up C'] }),
+                });
+            }
+            return { success: true, response: 'AI response with suggestions', sessionId: 'session-123' };
+        });
+
+        const executor = new CLITaskExecutor(store);
+
+        const task: QueuedTask = {
+            id: 'suggest-persist-1',
+            type: 'chat',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { kind: 'chat' as const, prompt: 'Test persist' },
+            config: { timeoutMs: 30000 },
+        };
+
+        await executor.execute(task);
+
+        const process = await store.getProcess('queue_suggest-persist-1');
+        const assistantTurn = process!.conversationTurns!.find(t => t.role === 'assistant');
+        expect(assistantTurn!.suggestions).toEqual(['Follow up A', 'Follow up B', 'Follow up C']);
+    });
+
+    it('should store suggestions on follow-up ConversationTurn', async () => {
+        const process = createCompletedProcessWithSession('queue_suggest-fu-persist', 'sess-persist');
+        store.processes.set(process.id, process);
+        mockCanResumeSession.mockResolvedValue(true);
+        mockSendFollowUp.mockImplementation(async (_sid: string, _msg: string, opts: any) => {
+            if (opts?.onToolEvent) {
+                opts.onToolEvent({
+                    type: 'tool-complete',
+                    toolCallId: 'tc-suggest-fu',
+                    toolName: 'suggest_follow_ups',
+                    result: JSON.stringify({ suggestions: ['Next Q1?', 'Next Q2?'] }),
+                });
+            }
+            return { success: true, response: 'Follow-up with suggestions', sessionId: 'sess-persist' };
+        });
+
+        const executor = new CLITaskExecutor(store);
+        await executor.executeFollowUp('queue_suggest-fu-persist', 'tell me more');
+
+        const updated = await store.getProcess('queue_suggest-fu-persist');
+        const lastTurn = updated!.conversationTurns![updated!.conversationTurns!.length - 1];
+        expect(lastTurn.role).toBe('assistant');
+        expect(lastTurn.suggestions).toEqual(['Next Q1?', 'Next Q2?']);
+    });
+
+    it('should silently ignore malformed suggestion results', async () => {
+        mockSendMessage.mockImplementation(async (opts: any) => {
+            if (opts.onToolEvent) {
+                opts.onToolEvent({
+                    type: 'tool-complete',
+                    toolCallId: 'tc-suggest-bad',
+                    toolName: 'suggest_follow_ups',
+                    result: 'not valid json',
+                });
+            }
+            return { success: true, response: 'AI response', sessionId: 'session-123' };
+        });
+
+        const executor = new CLITaskExecutor(store);
+
+        const task: QueuedTask = {
+            id: 'suggest-malformed-1',
+            type: 'chat',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { kind: 'chat' as const, prompt: 'Test malformed' },
+            config: { timeoutMs: 30000 },
+        };
+
+        // Should not throw
+        const result = await executor.execute(task);
+        expect(result.success).toBe(true);
+
+        // No suggestions event should have been emitted
+        const suggestionsEvents = (store.emitProcessEvent as any).mock.calls.filter(
+            (call: any[]) => call[1].type === 'suggestions',
+        );
+        expect(suggestionsEvents).toHaveLength(0);
+    });
+
+    it('should silently ignore empty suggestions array', async () => {
+        mockSendMessage.mockImplementation(async (opts: any) => {
+            if (opts.onToolEvent) {
+                opts.onToolEvent({
+                    type: 'tool-complete',
+                    toolCallId: 'tc-suggest-empty',
+                    toolName: 'suggest_follow_ups',
+                    result: JSON.stringify({ suggestions: [] }),
+                });
+            }
+            return { success: true, response: 'AI response', sessionId: 'session-123' };
+        });
+
+        const executor = new CLITaskExecutor(store);
+
+        const task: QueuedTask = {
+            id: 'suggest-empty-1',
+            type: 'chat',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { kind: 'chat' as const, prompt: 'Test empty' },
+            config: { timeoutMs: 30000 },
+        };
+
+        await executor.execute(task);
+
+        // No suggestions event should have been emitted for empty array
+        const suggestionsEvents = (store.emitProcessEvent as any).mock.calls.filter(
+            (call: any[]) => call[1].type === 'suggestions',
+        );
+        expect(suggestionsEvents).toHaveLength(0);
+    });
+
+    it('should not intercept tool-start events for suggest_follow_ups', async () => {
+        mockSendMessage.mockImplementation(async (opts: any) => {
+            if (opts.onToolEvent) {
+                opts.onToolEvent({
+                    type: 'tool-start',
+                    toolCallId: 'tc-suggest-start',
+                    toolName: 'suggest_follow_ups',
+                    parameters: { suggestions: ['Q1'] },
+                });
+                opts.onToolEvent({
+                    type: 'tool-complete',
+                    toolCallId: 'tc-suggest-start',
+                    toolName: 'suggest_follow_ups',
+                    result: JSON.stringify({ suggestions: ['Q1'] }),
+                });
+            }
+            return { success: true, response: 'AI response', sessionId: 'session-123' };
+        });
+
+        const executor = new CLITaskExecutor(store);
+
+        const task: QueuedTask = {
+            id: 'suggest-start-1',
+            type: 'chat',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { kind: 'chat' as const, prompt: 'Test start event' },
+            config: { timeoutMs: 30000 },
+        };
+
+        await executor.execute(task);
+
+        // tool-start for suggest_follow_ups should still be emitted as a regular event
+        const toolStartEvents = (store.emitProcessEvent as any).mock.calls.filter(
+            (call: any[]) => call[1].type === 'tool-start' && call[1].toolName === 'suggest_follow_ups',
+        );
+        expect(toolStartEvents).toHaveLength(1);
+    });
+});

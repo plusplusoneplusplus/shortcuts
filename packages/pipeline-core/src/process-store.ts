@@ -15,7 +15,7 @@ import type { PipelinePhaseEvent, PipelineProgressEvent } from './pipeline/types
  * Used by SSE streaming to push real-time output to clients.
  */
 export interface ProcessOutputEvent {
-    type: 'chunk' | 'complete' | 'tool-start' | 'tool-complete' | 'tool-failed' | 'permission-request' | 'pipeline-phase' | 'pipeline-progress';
+    type: 'chunk' | 'complete' | 'tool-start' | 'tool-complete' | 'tool-failed' | 'permission-request' | 'pipeline-phase' | 'pipeline-progress' | 'suggestions';
     /** Partial output text (for 'chunk' events). */
     content?: string;
     /** Final process status (for 'complete' events). */
@@ -46,6 +46,8 @@ export interface ProcessOutputEvent {
     pipelinePhase?: PipelinePhaseEvent;
     /** Pipeline progress event data (for 'pipeline-progress' events). */
     pipelineProgress?: PipelineProgressEvent;
+    /** Follow-up message suggestions (for 'suggestions' events). */
+    suggestions?: string[];
 }
 
 /**

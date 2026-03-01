@@ -134,6 +134,8 @@ export interface ConversationTurn {
     images?: string[];
     /** True for turns prepended from a prior session during cold resume */
     historical?: boolean;
+    /** Suggested follow-up messages the user can send (assistant turns only). */
+    suggestions?: string[];
 }
 
 /**
@@ -152,6 +154,8 @@ export interface SerializedConversationTurn {
     images?: string[];
     /** True for turns prepended from a prior session during cold resume */
     historical?: boolean;
+    /** Suggested follow-up messages the user can send (assistant turns only). */
+    suggestions?: string[];
 }
 
 /**

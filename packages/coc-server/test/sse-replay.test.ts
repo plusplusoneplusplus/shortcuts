@@ -386,4 +386,40 @@ describe('SSE replay', () => {
         // Last turn should still be streaming
         expect(snapshotTurns[5].streaming).toBe(true);
     });
+
+    // Test 10: Suggestions event is forwarded to SSE stream
+    it('forwards suggestions event to SSE stream', async () => {
+        let outputCallback: ((event: ProcessOutputEvent) => void) | undefined;
+        store.onProcessOutput = vi.fn((_id: string, cb: (event: ProcessOutputEvent) => void) => {
+            outputCallback = cb;
+            return () => { outputCallback = undefined; };
+        });
+
+        const proc = createProcessFixture({
+            id: 'p-suggest',
+            status: 'running',
+            conversationTurns: [makeTurn('user', 'Hello', 0)],
+        });
+        store.processes.set(proc.id, proc);
+
+        const req = createMockReq();
+        const res = createMockRes();
+        await handleProcessStream(req, res, 'p-suggest', store);
+
+        // Simulate a suggestions event from the process store
+        outputCallback!({
+            type: 'suggestions',
+            suggestions: ['What test coverage does this have?', 'Can you refactor the error handling?'],
+            turnIndex: 1,
+        });
+
+        const frames = parseSSEFrames(res._chunks);
+        const suggestionsFrames = frames.filter(f => f.event === 'suggestions');
+        expect(suggestionsFrames).toHaveLength(1);
+        expect((suggestionsFrames[0].data as any).suggestions).toEqual([
+            'What test coverage does this have?',
+            'Can you refactor the error handling?',
+        ]);
+        expect((suggestionsFrames[0].data as any).turnIndex).toBe(1);
+    });
 });
