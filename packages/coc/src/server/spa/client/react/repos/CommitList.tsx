@@ -67,6 +67,7 @@ export function CommitList({ title, commits, selectedHash, onSelect, onFileSelec
     const [hoveredCommit, setHoveredCommit] = useState<GitCommitItem | null>(null);
     const [tooltipAnchorRect, setTooltipAnchorRect] = useState<DOMRect | null>(null);
     const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
         if (!onSelect || commits.length === 0) return;
@@ -124,14 +125,30 @@ export function CommitList({ title, commits, selectedHash, onSelect, onFileSelec
             clearTimeout(hoverTimerRef.current);
             hoverTimerRef.current = null;
         }
+        // Delay hiding so mouse can move onto the tooltip without it disappearing
+        hideTimerRef.current = setTimeout(() => {
+            setHoveredCommit(null);
+            setTooltipAnchorRect(null);
+        }, 150);
+    }, []);
+
+    const handleTooltipMouseEnter = useCallback(() => {
+        if (hideTimerRef.current) {
+            clearTimeout(hideTimerRef.current);
+            hideTimerRef.current = null;
+        }
+    }, []);
+
+    const handleTooltipMouseLeave = useCallback(() => {
         setHoveredCommit(null);
         setTooltipAnchorRect(null);
     }, []);
 
-    // Clean up timer on unmount
+    // Clean up timers on unmount
     useEffect(() => {
         return () => {
             if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+            if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
         };
     }, []);
 
@@ -236,7 +253,7 @@ export function CommitList({ title, commits, selectedHash, onSelect, onFileSelec
             )}
             {/* Hover tooltip */}
             {hoveredCommit && tooltipAnchorRect && (
-                <CommitTooltip commit={hoveredCommit} anchorRect={tooltipAnchorRect} />
+                <CommitTooltip commit={hoveredCommit} anchorRect={tooltipAnchorRect} onMouseEnter={handleTooltipMouseEnter} onMouseLeave={handleTooltipMouseLeave} />
             )}
         </div>
     );

@@ -13,9 +13,11 @@ import type { GitCommitItem } from './CommitList';
 export interface CommitTooltipProps {
     commit: GitCommitItem;
     anchorRect: DOMRect | null;
+    onMouseEnter?: () => void;
+    onMouseLeave?: () => void;
 }
 
-export function CommitTooltip({ commit, anchorRect }: CommitTooltipProps) {
+export function CommitTooltip({ commit, anchorRect, onMouseEnter, onMouseLeave }: CommitTooltipProps) {
     const [copied, setCopied] = useState(false);
     const tooltipRef = useRef<HTMLDivElement>(null);
     const [position, setPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
@@ -56,9 +58,11 @@ export function CommitTooltip({ commit, anchorRect }: CommitTooltipProps) {
     return (
         <div
             ref={tooltipRef}
-            className="fixed z-50 w-[320px] max-h-[300px] overflow-y-auto bg-white dark:bg-[#2d2d2d] border border-[#e0e0e0] dark:border-[#555] rounded-lg shadow-lg p-3"
+            className="fixed z-50 w-[480px] max-w-[calc(100vw-32px)] max-h-[300px] overflow-y-auto bg-white dark:bg-[#2d2d2d] border border-[#e0e0e0] dark:border-[#555] rounded-lg shadow-lg p-3 select-text cursor-text"
             style={{ top: position.top, left: position.left }}
             data-testid="commit-tooltip"
+            onMouseEnter={onMouseEnter}
+            onMouseLeave={onMouseLeave}
         >
             {/* Full subject */}
             <div className="text-xs font-semibold text-[#1e1e1e] dark:text-[#ccc] mb-2 break-words" data-testid="tooltip-subject">
