@@ -17,3 +17,4 @@ export type {
 } from './types';
 
 export { FileMemoryStore, computeRepoHash } from './memory-store';
+export { MemoryRetriever } from './memory-retriever';
