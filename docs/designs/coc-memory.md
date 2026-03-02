@@ -431,10 +431,10 @@ POST   /api/memory/add                # add a fact manually
 | Module | Status | Notes |
 |--------|--------|-------|
 | `MemoryStore` | ✅ Done | `pipeline-core/src/memory/` — FileMemoryStore with raw CRUD, consolidated r/w, index, repo-info, clear, stats. Exported via `@plusplusoneplusplus/pipeline-core/memory` |
-| `MemoryRetriever` | ⬚ Not started | |
-| `createWriteMemoryTool` | ⬚ Not started | |
-| `MemoryAggregator` | ⬚ Not started | |
-| `withMemory()` helper | ⬚ Not started | |
+| `MemoryRetriever` | ✅ Done | `pipeline-core/src/memory/memory-retriever.ts` — loads consolidated.md, formats as context block |
+| `createWriteMemoryTool` | ✅ Done | `pipeline-core/src/memory/write-memory-tool.ts` — `write_memory` tool factory using `defineTool` pattern |
+| `MemoryAggregator` | ✅ Done | `pipeline-core/src/memory/memory-aggregator.ts` — batch threshold check, AI consolidation |
+| `withMemory()` helper | ✅ Done | `pipeline-core/src/memory/with-memory.ts` — orchestrates retrieve → tool inject → invoke → aggregate |
 | `PipelineConfig.memory` | ⬚ Not started | |
 | `executePipeline` hooks | ⬚ Not started | |
 | Repo context detection | ⬚ Not started | |
