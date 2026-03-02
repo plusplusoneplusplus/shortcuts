@@ -30,6 +30,29 @@ vi.mock('child_process', () => ({
 }));
 
 // ============================================================================
+// Mock BranchService and GitRangeService
+// ============================================================================
+
+const mockGetBranchStatus = vi.fn();
+const mockHasUncommittedChanges = vi.fn();
+const mockGetCurrentBranch = vi.fn();
+
+vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
+    const actual = await importOriginal<Record<string, unknown>>();
+    return {
+        ...actual,
+        BranchService: vi.fn().mockImplementation(() => ({
+            getBranchStatus: mockGetBranchStatus,
+            hasUncommittedChanges: mockHasUncommittedChanges,
+        })),
+        GitRangeService: vi.fn().mockImplementation(() => ({
+            getCurrentBranch: mockGetCurrentBranch,
+            detectCommitRange: vi.fn(),
+        })),
+    };
+});
+
+// ============================================================================
 // Test Helpers
 // ============================================================================
 
@@ -98,6 +121,13 @@ describe('Git API endpoints', () => {
 
     beforeEach(() => {
         mockExecSync.mockReset();
+        mockGetBranchStatus.mockReset();
+        mockHasUncommittedChanges.mockReset();
+        mockGetCurrentBranch.mockReset();
+        // Sensible defaults
+        mockHasUncommittedChanges.mockReturnValue(false);
+        mockGetCurrentBranch.mockReturnValue('main');
+        mockGetBranchStatus.mockReturnValue({ name: 'main', isDetached: false, ahead: 0, behind: 0, hasUncommittedChanges: false });
         gitCache.clear();
     });
 
@@ -116,9 +146,9 @@ describe('Git API endpoints', () => {
 
             mockExecSync.mockImplementation((cmd: string) => {
                 if (cmd.includes('log --format=')) return logOutput;
-                if (cmd.includes('rev-list --left-right --count')) return '1\t0';
                 return '';
             });
+            mockGetBranchStatus.mockReturnValue({ name: 'main', isDetached: false, ahead: 1, behind: 0, hasUncommittedChanges: false });
 
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits?limit=50`);
             expect(res.status).toBe(200);
@@ -137,7 +167,6 @@ describe('Git API endpoints', () => {
         it('returns empty list when no commits', async () => {
             mockExecSync.mockImplementation((cmd: string) => {
                 if (cmd.includes('log --format=')) return '';
-                if (cmd.includes('rev-list --left-right --count')) return '0\t0';
                 return '';
             });
 
@@ -165,12 +194,12 @@ describe('Git API endpoints', () => {
             expect(res.status).toBe(404);
         });
 
-        it('handles unpushedCount when no upstream', async () => {
+        it('handles unpushedCount when no upstream (getBranchStatus returns null)', async () => {
             mockExecSync.mockImplementation((cmd: string) => {
                 if (cmd.includes('log --format=')) return 'a1b2c3\na1b2\nCommit\nDev\n2026-01-01T00:00:00Z\n\n';
-                if (cmd.includes('rev-list --left-right --count')) throw new Error('no upstream');
                 return '';
             });
+            mockGetBranchStatus.mockReturnValue(null);
 
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits`);
             const data = res.json();
@@ -185,11 +214,61 @@ describe('Git API endpoints', () => {
                     expect(cmd).toContain('--max-count=10');
                     return '';
                 }
-                if (cmd.includes('rev-list')) return '0\t0';
                 return '';
             });
 
             await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits?limit=10&skip=5`);
+        });
+    });
+
+    // ========================================================================
+    // GET /api/workspaces/:id/git-info
+    // ========================================================================
+
+    describe('GET /api/workspaces/:id/git-info', () => {
+        it('returns branch, dirty, ahead, behind for a valid git repo', async () => {
+            mockGetCurrentBranch.mockReturnValue('feature/my-branch');
+            mockHasUncommittedChanges.mockReturnValue(true);
+            mockGetBranchStatus.mockReturnValue({ name: 'feature/my-branch', isDetached: false, ahead: 2, behind: 1, hasUncommittedChanges: true });
+            mockExecSync.mockReturnValue(''); // for detectRemoteUrl
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git-info`);
+            expect(res.status).toBe(200);
+            const data = res.json();
+            expect(data.isGitRepo).toBe(true);
+            expect(data.branch).toBe('feature/my-branch');
+            expect(data.dirty).toBe(true);
+            expect(data.ahead).toBe(2);
+            expect(data.behind).toBe(1);
+        });
+
+        it('returns isGitRepo false when getBranchStatus returns null', async () => {
+            mockGetBranchStatus.mockReturnValue(null);
+            mockHasUncommittedChanges.mockReturnValue(false);
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git-info`);
+            expect(res.status).toBe(200);
+            const data = res.json();
+            expect(data.isGitRepo).toBe(false);
+            expect(data.branch).toBeNull();
+        });
+
+        it('returns ahead=0 behind=0 when no upstream tracking branch', async () => {
+            mockGetCurrentBranch.mockReturnValue('main');
+            mockHasUncommittedChanges.mockReturnValue(false);
+            mockGetBranchStatus.mockReturnValue({ name: 'main', isDetached: false, ahead: 0, behind: 0, hasUncommittedChanges: false });
+            mockExecSync.mockReturnValue('');
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git-info`);
+            const data = res.json();
+            expect(data.ahead).toBe(0);
+            expect(data.behind).toBe(0);
+            expect(data.isGitRepo).toBe(true);
+        });
+
+        it('returns 404 for unknown workspace', async () => {
+            const res = await request(`${base()}/api/workspaces/unknown-ws/git-info`);
+            expect(res.status).toBe(404);
         });
     });
 

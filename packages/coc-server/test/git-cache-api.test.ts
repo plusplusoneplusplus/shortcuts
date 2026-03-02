@@ -26,10 +26,12 @@ vi.mock('child_process', () => ({
 }));
 
 // ============================================================================
-// Mock GitRangeService (used by branch-range endpoint)
+// Mock GitRangeService (used by branch-range endpoint) and BranchService
 // ============================================================================
 
 const mockDetectCommitRange = vi.fn();
+const mockGetBranchStatus = vi.fn();
+
 vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
     const actual = await importOriginal<any>();
     return {
@@ -37,6 +39,10 @@ vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
         GitRangeService: class {
             detectCommitRange = mockDetectCommitRange;
         },
+        BranchService: vi.fn().mockImplementation(() => ({
+            getBranchStatus: mockGetBranchStatus,
+            hasUncommittedChanges: vi.fn().mockReturnValue(false),
+        })),
     };
 });
 
@@ -110,6 +116,8 @@ describe('Git API caching', () => {
     beforeEach(() => {
         mockExecSync.mockReset();
         mockDetectCommitRange.mockReset();
+        mockGetBranchStatus.mockReset();
+        mockGetBranchStatus.mockReturnValue({ name: 'main', isDetached: false, ahead: 0, behind: 0, hasUncommittedChanges: false });
         gitCache.clear();
     });
 
@@ -125,7 +133,6 @@ describe('Git API caching', () => {
         function setupGitMock() {
             mockExecSync.mockImplementation((cmd: string) => {
                 if (cmd.includes('log --format=')) return COMMIT_LOG;
-                if (cmd.includes('rev-list --left-right --count')) return '0\t0';
                 return '';
             });
         }
@@ -310,7 +317,6 @@ describe('Git API caching', () => {
 
             mockExecSync.mockImplementation((cmd: string) => {
                 if (cmd.includes('log --format=')) return 'aaaa\naaaa\nFirst\nAlice\n2026-01-01T00:00:00Z\n\n';
-                if (cmd.includes('rev-list --left-right --count')) return '0\t0';
                 return '';
             });
 

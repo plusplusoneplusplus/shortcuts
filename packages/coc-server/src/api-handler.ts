@@ -285,35 +285,25 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                 return handleAPIError(res, notFound('Workspace'));
             }
 
-            try {
-                const branch = execGitSync('rev-parse --abbrev-ref HEAD', ws.rootPath);
-                const status = execGitSync('status --porcelain', ws.rootPath);
-                const dirty = status.trim().length > 0;
-                const remoteUrl = detectRemoteUrl(ws.rootPath);
+            const dirty = getBranchService().hasUncommittedChanges(ws.rootPath);
+            const branchStatus = getBranchService().getBranchStatus(ws.rootPath, dirty);
 
-                // Ahead/behind counts relative to the upstream tracking branch
-                let ahead = 0;
-                let behind = 0;
-                try {
-                    const counts = execGitSync('rev-list --left-right --count HEAD...@{u}', ws.rootPath);
-                    const parts = counts.trim().split(/\s+/);
-                    if (parts.length === 2) {
-                        ahead = parseInt(parts[0], 10) || 0;
-                        behind = parseInt(parts[1], 10) || 0;
-                    }
-                } catch {
-                    // No upstream tracking branch — leave both at 0
-                }
-
-                // Update workspace remoteUrl if it changed (or wasn't set)
-                if (remoteUrl && remoteUrl !== ws.remoteUrl) {
-                    await store.updateWorkspace(ws.id, { remoteUrl });
-                }
-
-                sendJSON(res, 200, { branch, dirty, ahead, behind, isGitRepo: true, remoteUrl: remoteUrl || null });
-            } catch {
+            if (!branchStatus) {
                 sendJSON(res, 200, { branch: null, dirty: false, isGitRepo: false, remoteUrl: null });
+                return;
             }
+
+            const branch = getGitRangeService().getCurrentBranch(ws.rootPath);
+            const remoteUrl = detectRemoteUrl(ws.rootPath);
+            const ahead = branchStatus.ahead;
+            const behind = branchStatus.behind;
+
+            // Update workspace remoteUrl if it changed (or wasn't set)
+            if (remoteUrl && remoteUrl !== ws.remoteUrl) {
+                await store.updateWorkspace(ws.id, { remoteUrl });
+            }
+
+            sendJSON(res, 200, { branch, dirty, ahead, behind, isGitRepo: true, remoteUrl: remoteUrl || null });
         },
     });
 
@@ -377,14 +367,9 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
 
                 // Determine unpushed count
                 let unpushedCount = 0;
-                try {
-                    const counts = execGitSync('rev-list --left-right --count HEAD...@{u}', ws.rootPath);
-                    const parts = counts.trim().split(/\s+/);
-                    if (parts.length === 2) {
-                        unpushedCount = parseInt(parts[0], 10) || 0;
-                    }
-                } catch {
-                    // No upstream tracking branch
+                const branchStatus = getBranchService().getBranchStatus(ws.rootPath, false);
+                if (branchStatus) {
+                    unpushedCount = branchStatus.ahead;
                 }
 
                 const result = { commits, unpushedCount };
@@ -1378,6 +1363,14 @@ function getGitRangeService(): GitRangeService {
         _gitRangeService = new GitRangeService();
     }
     return _gitRangeService;
+}
+
+let _branchService: BranchService | undefined;
+function getBranchService(): BranchService {
+    if (!_branchService) {
+        _branchService = new BranchService();
+    }
+    return _branchService;
 }
 
 /** Run a git command synchronously in the given directory. */
