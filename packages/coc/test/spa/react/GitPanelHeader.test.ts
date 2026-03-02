@@ -64,6 +64,30 @@ describe('GitPanelHeader', () => {
         it('accepts onRefresh prop', () => {
             expect(source).toContain('onRefresh: () => void');
         });
+
+        it('accepts optional onFetch prop', () => {
+            expect(source).toContain('onFetch?: () => void');
+        });
+
+        it('accepts optional onPull prop', () => {
+            expect(source).toContain('onPull?: () => void');
+        });
+
+        it('accepts optional onPush prop', () => {
+            expect(source).toContain('onPush?: () => void');
+        });
+
+        it('accepts optional fetching prop', () => {
+            expect(source).toContain('fetching?: boolean');
+        });
+
+        it('accepts optional pulling prop', () => {
+            expect(source).toContain('pulling?: boolean');
+        });
+
+        it('accepts optional pushing prop', () => {
+            expect(source).toContain('pushing?: boolean');
+        });
     });
 
     describe('branch pill', () => {
@@ -201,8 +225,112 @@ describe('GitPanelHeader', () => {
             expect(source).toContain('flex items-center');
         });
 
-        it('has a spacer div between badge and refresh button', () => {
+        it('has a spacer div between badge and action buttons', () => {
             expect(source).toContain('flex-1');
+        });
+    });
+
+    describe('git action buttons', () => {
+        it('renders fetch button conditionally when onFetch is provided', () => {
+            expect(source).toContain('{onFetch && (');
+        });
+
+        it('has fetch button data-testid', () => {
+            expect(source).toContain('data-testid="git-fetch-btn"');
+        });
+
+        it('fetch button calls onFetch on click', () => {
+            expect(source).toContain('onClick={onFetch}');
+        });
+
+        it('fetch button is disabled when fetching', () => {
+            expect(source).toContain('disabled={fetching}');
+        });
+
+        it('fetch button has descriptive title', () => {
+            expect(source).toContain('title="Fetch from remote"');
+        });
+
+        it('fetch button shows "Fetch" label', () => {
+            expect(source).toMatch(/data-testid="git-fetch-btn"[\s\S]*?Fetch/);
+        });
+
+        it('fetch button shows spinner when fetching', () => {
+            expect(source).toContain("fetching ? 'git-refresh-spin' : ''");
+        });
+
+        it('renders pull button conditionally when onPull is provided', () => {
+            expect(source).toContain('{onPull && (');
+        });
+
+        it('has pull button data-testid', () => {
+            expect(source).toContain('data-testid="git-pull-btn"');
+        });
+
+        it('pull button calls onPull on click', () => {
+            expect(source).toContain('onClick={onPull}');
+        });
+
+        it('pull button is disabled when pulling', () => {
+            expect(source).toContain('disabled={pulling}');
+        });
+
+        it('pull button has --rebase title', () => {
+            expect(source).toContain('title="Pull --rebase from remote"');
+        });
+
+        it('pull button shows "Pull" label', () => {
+            expect(source).toMatch(/data-testid="git-pull-btn"[\s\S]*?Pull/);
+        });
+
+        it('pull button shows spinner when pulling', () => {
+            expect(source).toContain("pulling ? 'git-refresh-spin' : ''");
+        });
+
+        it('renders push button conditionally when onPush is provided', () => {
+            expect(source).toContain('{onPush && (');
+        });
+
+        it('has push button data-testid', () => {
+            expect(source).toContain('data-testid="git-push-btn"');
+        });
+
+        it('push button calls onPush on click', () => {
+            expect(source).toContain('onClick={onPush}');
+        });
+
+        it('push button is disabled when pushing', () => {
+            expect(source).toContain('disabled={pushing}');
+        });
+
+        it('push button has descriptive title', () => {
+            expect(source).toContain('title="Push to remote"');
+        });
+
+        it('push button shows "Push" label', () => {
+            expect(source).toMatch(/data-testid="git-push-btn"[\s\S]*?Push/);
+        });
+
+        it('push button shows spinner when pushing', () => {
+            expect(source).toContain("pushing ? 'git-refresh-spin' : ''");
+        });
+
+        it('all action buttons use git-action-btn class', () => {
+            const matches = source.match(/git-action-btn/g);
+            expect(matches).toBeTruthy();
+            expect(matches!.length).toBe(3);
+        });
+
+        it('action buttons appear between spacer and refresh button', () => {
+            const spacerIdx = source.indexOf('flex-1');
+            const fetchBtnIdx = source.indexOf('git-fetch-btn');
+            const pullBtnIdx = source.indexOf('git-pull-btn');
+            const pushBtnIdx = source.indexOf('git-push-btn');
+            const refreshBtnIdx = source.indexOf('git-refresh-btn');
+            expect(fetchBtnIdx).toBeGreaterThan(spacerIdx);
+            expect(pullBtnIdx).toBeGreaterThan(fetchBtnIdx);
+            expect(pushBtnIdx).toBeGreaterThan(pullBtnIdx);
+            expect(refreshBtnIdx).toBeGreaterThan(pushBtnIdx);
         });
     });
 
@@ -239,6 +367,30 @@ describe('GitPanelHeader', () => {
 
         it('RepoGitTab passes onRefresh prop', () => {
             expect(gitTabSource).toContain('onRefresh={refreshAll}');
+        });
+
+        it('RepoGitTab passes onFetch prop', () => {
+            expect(gitTabSource).toContain('onFetch={handleFetch}');
+        });
+
+        it('RepoGitTab passes onPull prop', () => {
+            expect(gitTabSource).toContain('onPull={handlePull}');
+        });
+
+        it('RepoGitTab passes onPush prop', () => {
+            expect(gitTabSource).toContain('onPush={handlePush}');
+        });
+
+        it('RepoGitTab passes fetching prop', () => {
+            expect(gitTabSource).toContain('fetching={fetching}');
+        });
+
+        it('RepoGitTab passes pulling prop', () => {
+            expect(gitTabSource).toContain('pulling={pulling}');
+        });
+
+        it('RepoGitTab passes pushing prop', () => {
+            expect(gitTabSource).toContain('pushing={pushing}');
         });
 
         it('GitPanelHeader appears before BranchChanges in left panel', () => {

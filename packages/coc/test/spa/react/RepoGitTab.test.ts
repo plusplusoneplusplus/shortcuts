@@ -125,6 +125,22 @@ describe('RepoGitTab', () => {
             expect(source).toContain('setAhead');
             expect(source).toContain('setBehind');
         });
+
+        it('tracks actionError state', () => {
+            expect(source).toContain('setActionError');
+        });
+
+        it('tracks fetching state', () => {
+            expect(source).toContain('const [fetching, setFetching] = useState(false)');
+        });
+
+        it('tracks pulling state', () => {
+            expect(source).toContain('const [pulling, setPulling] = useState(false)');
+        });
+
+        it('tracks pushing state', () => {
+            expect(source).toContain('const [pushing, setPushing] = useState(false)');
+        });
     });
 
     describe('auto-selection', () => {
@@ -184,6 +200,139 @@ describe('RepoGitTab', () => {
 
         it('attaches keyDown handler to left panel', () => {
             expect(source).toContain('onKeyDown={handlePanelKeyDown}');
+        });
+    });
+
+    describe('git action handlers', () => {
+        it('defines handleFetch callback', () => {
+            expect(source).toContain('const handleFetch = useCallback');
+        });
+
+        it('defines handlePull callback', () => {
+            expect(source).toContain('const handlePull = useCallback');
+        });
+
+        it('defines handlePush callback', () => {
+            expect(source).toContain('const handlePush = useCallback');
+        });
+
+        it('handleFetch POSTs to /git/fetch endpoint', () => {
+            const fetchBlock = source.match(/handleFetch[\s\S]*?(?=const handlePull)/);
+            expect(fetchBlock).toBeTruthy();
+            expect(fetchBlock![0]).toContain('/git/fetch');
+        });
+
+        it('handlePull POSTs to /git/pull endpoint', () => {
+            const pullBlock = source.match(/handlePull[\s\S]*?(?=const handlePush)/);
+            expect(pullBlock).toBeTruthy();
+            expect(pullBlock![0]).toContain('/git/pull');
+        });
+
+        it('handlePush POSTs to /git/push endpoint', () => {
+            const pushBlock = source.match(/handlePush[\s\S]*?(?=const handleSelect)/);
+            expect(pushBlock).toBeTruthy();
+            expect(pushBlock![0]).toContain('/git/push');
+        });
+
+        it('handlePull sends rebase: true in body', () => {
+            expect(source).toContain("JSON.stringify({ rebase: true })");
+        });
+
+        it('handlePull sets Content-Type header', () => {
+            expect(source).toContain("'Content-Type': 'application/json'");
+        });
+
+        it('all action handlers use POST method', () => {
+            const fetchBlock = source.match(/handleFetch[\s\S]*?(?=const handlePull)/);
+            const pullBlock = source.match(/handlePull[\s\S]*?(?=const handlePush)/);
+            const pushBlock = source.match(/handlePush[\s\S]*?(?=const handleSelect)/);
+            expect(fetchBlock![0]).toContain("method: 'POST'");
+            expect(pullBlock![0]).toContain("method: 'POST'");
+            expect(pushBlock![0]).toContain("method: 'POST'");
+        });
+
+        it('handleFetch guards against concurrent calls', () => {
+            expect(source).toContain('if (fetching) return');
+        });
+
+        it('handlePull guards against concurrent calls', () => {
+            expect(source).toContain('if (pulling) return');
+        });
+
+        it('handlePush guards against concurrent calls', () => {
+            expect(source).toContain('if (pushing) return');
+        });
+
+        it('handleFetch calls refreshAll on success', () => {
+            // After the fetch endpoint call, refreshAll should be invoked
+            const fetchBlock = source.match(/handleFetch[\s\S]*?(?=const handlePull)/);
+            expect(fetchBlock).toBeTruthy();
+            expect(fetchBlock![0]).toContain('refreshAll()');
+        });
+
+        it('handlePull calls refreshAll on success', () => {
+            const pullBlock = source.match(/handlePull[\s\S]*?(?=const handlePush)/);
+            expect(pullBlock).toBeTruthy();
+            expect(pullBlock![0]).toContain('refreshAll()');
+        });
+
+        it('handlePush calls refreshAll on success', () => {
+            const pushBlock = source.match(/handlePush[\s\S]*?(?=const handleSelect)/);
+            expect(pushBlock).toBeTruthy();
+            expect(pushBlock![0]).toContain('refreshAll()');
+        });
+
+        it('handleFetch sets actionError on failure', () => {
+            const fetchBlock = source.match(/handleFetch[\s\S]*?(?=const handlePull)/);
+            expect(fetchBlock).toBeTruthy();
+            expect(fetchBlock![0]).toContain('setActionError');
+            expect(fetchBlock![0]).toContain("'Fetch failed'");
+        });
+
+        it('handlePull sets actionError on failure', () => {
+            const pullBlock = source.match(/handlePull[\s\S]*?(?=const handlePush)/);
+            expect(pullBlock).toBeTruthy();
+            expect(pullBlock![0]).toContain('setActionError');
+            expect(pullBlock![0]).toContain("'Pull failed'");
+        });
+
+        it('handlePush sets actionError on failure', () => {
+            const pushBlock = source.match(/handlePush[\s\S]*?(?=const handleSelect)/);
+            expect(pushBlock).toBeTruthy();
+            expect(pushBlock![0]).toContain('setActionError');
+            expect(pushBlock![0]).toContain("'Push failed'");
+        });
+
+        it('clears actionError before each action', () => {
+            expect(source).toContain('setActionError(null)');
+        });
+
+        it('shows action error toast', () => {
+            expect(source).toContain('data-testid="git-action-error"');
+        });
+
+        it('passes onFetch to GitPanelHeader', () => {
+            expect(source).toContain('onFetch={handleFetch}');
+        });
+
+        it('passes onPull to GitPanelHeader', () => {
+            expect(source).toContain('onPull={handlePull}');
+        });
+
+        it('passes onPush to GitPanelHeader', () => {
+            expect(source).toContain('onPush={handlePush}');
+        });
+
+        it('passes fetching state to GitPanelHeader', () => {
+            expect(source).toContain('fetching={fetching}');
+        });
+
+        it('passes pulling state to GitPanelHeader', () => {
+            expect(source).toContain('pulling={pulling}');
+        });
+
+        it('passes pushing state to GitPanelHeader', () => {
+            expect(source).toContain('pushing={pushing}');
         });
     });
 

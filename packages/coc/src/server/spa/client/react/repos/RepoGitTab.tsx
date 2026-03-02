@@ -37,6 +37,10 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     const [refreshing, setRefreshing] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [refreshError, setRefreshError] = useState<string | null>(null);
+    const [actionError, setActionError] = useState<string | null>(null);
+    const [fetching, setFetching] = useState(false);
+    const [pulling, setPulling] = useState(false);
+    const [pushing, setPushing] = useState(false);
     const [rightPanelView, setRightPanelView] = useState<RightPanelView | null>(null);
 
     // Branch-range state (lifted from BranchChanges)
@@ -134,6 +138,57 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             .catch(err => setRefreshError(err.message || 'Refresh failed'))
             .finally(() => setRefreshing(false));
     }, [refreshing, rightPanelView, fetchCommits, fetchBranchRange]);
+
+    // Git action handlers
+    const handleFetch = useCallback(async () => {
+        if (fetching) return;
+        setFetching(true);
+        setActionError(null);
+        try {
+            await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/fetch`, {
+                method: 'POST',
+            });
+            refreshAll();
+        } catch (err: any) {
+            setActionError(err.message || 'Fetch failed');
+        } finally {
+            setFetching(false);
+        }
+    }, [fetching, workspaceId, refreshAll]);
+
+    const handlePull = useCallback(async () => {
+        if (pulling) return;
+        setPulling(true);
+        setActionError(null);
+        try {
+            await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/pull`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ rebase: true }),
+            });
+            refreshAll();
+        } catch (err: any) {
+            setActionError(err.message || 'Pull failed');
+        } finally {
+            setPulling(false);
+        }
+    }, [pulling, workspaceId, refreshAll]);
+
+    const handlePush = useCallback(async () => {
+        if (pushing) return;
+        setPushing(true);
+        setActionError(null);
+        try {
+            await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/push`, {
+                method: 'POST',
+            });
+            refreshAll();
+        } catch (err: any) {
+            setActionError(err.message || 'Push failed');
+        } finally {
+            setPushing(false);
+        }
+    }, [pushing, workspaceId, refreshAll]);
 
     const handleSelect = useCallback((commit: GitCommitItem) => {
         setRightPanelView({ type: 'commit', commit });
@@ -254,11 +309,22 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                     behind={behind}
                     refreshing={refreshing}
                     onRefresh={refreshAll}
+                    onFetch={handleFetch}
+                    onPull={handlePull}
+                    onPush={handlePush}
+                    fetching={fetching}
+                    pulling={pulling}
+                    pushing={pushing}
                 />
                 {scenarioBanner}
                 {refreshError && (
                     <div className="px-4 py-1.5 text-xs text-[#d32f2f] dark:text-[#f48771] bg-[#fdecea] dark:bg-[#3c2020] border-b border-[#e0e0e0] dark:border-[#3c3c3c]" data-testid="git-refresh-error">
                         {refreshError}
+                    </div>
+                )}
+                {actionError && (
+                    <div className="px-4 py-1.5 text-xs text-[#d32f2f] dark:text-[#f48771] bg-[#fdecea] dark:bg-[#3c2020] border-b border-[#e0e0e0] dark:border-[#3c3c3c]" data-testid="git-action-error">
+                        {actionError}
                     </div>
                 )}
                 <BranchChanges

@@ -11,11 +11,17 @@ interface GitPanelHeaderProps {
     behind: number;
     refreshing: boolean;
     onRefresh: () => void;
+    onFetch?: () => void;
+    onPull?: () => void;
+    onPush?: () => void;
+    fetching?: boolean;
+    pulling?: boolean;
+    pushing?: boolean;
 }
 
 const spinKeyframes = `@keyframes gitRefreshSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } .git-refresh-spin { animation: gitRefreshSpin 1s linear infinite; }`;
 
-export function GitPanelHeader({ branch, ahead, behind, refreshing, onRefresh }: GitPanelHeaderProps) {
+export function GitPanelHeader({ branch, ahead, behind, refreshing, onRefresh, onFetch, onPull, onPush, fetching, pulling, pushing }: GitPanelHeaderProps) {
     const hasAheadBehind = ahead > 0 || behind > 0;
 
     return (
@@ -50,6 +56,50 @@ export function GitPanelHeader({ branch, ahead, behind, refreshing, onRefresh }:
 
             {/* Spacer */}
             <div className="flex-1" />
+
+            {/* Git action buttons */}
+            {onFetch && (
+                <button
+                    className="git-action-btn flex items-center gap-1 px-1.5 py-0.5 rounded text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#3c3c3c] transition-colors text-[#616161] dark:text-[#999] disabled:opacity-50"
+                    onClick={onFetch}
+                    disabled={fetching}
+                    title="Fetch from remote"
+                    data-testid="git-fetch-btn"
+                >
+                    <svg className={`w-3 h-3 ${fetching ? 'git-refresh-spin' : ''}`} viewBox="0 0 16 16" fill="currentColor">
+                        <path d="M8 1a.5.5 0 01.5.5v5.793l2.146-2.147a.5.5 0 01.708.708l-3 3a.5.5 0 01-.708 0l-3-3a.5.5 0 11.708-.708L7.5 7.293V1.5A.5.5 0 018 1zM2 13.5a.5.5 0 01.5-.5h11a.5.5 0 010 1h-11a.5.5 0 01-.5-.5z" />
+                    </svg>
+                    Fetch
+                </button>
+            )}
+            {onPull && (
+                <button
+                    className="git-action-btn flex items-center gap-1 px-1.5 py-0.5 rounded text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#3c3c3c] transition-colors text-[#616161] dark:text-[#999] disabled:opacity-50"
+                    onClick={onPull}
+                    disabled={pulling}
+                    title="Pull --rebase from remote"
+                    data-testid="git-pull-btn"
+                >
+                    <svg className={`w-3 h-3 ${pulling ? 'git-refresh-spin' : ''}`} viewBox="0 0 16 16" fill="currentColor">
+                        <path fillRule="evenodd" d="M8 1a.5.5 0 01.5.5v11.793l3.146-3.147a.5.5 0 01.708.708l-4 4a.5.5 0 01-.708 0l-4-4a.5.5 0 01.708-.708L7.5 13.293V1.5A.5.5 0 018 1z" />
+                    </svg>
+                    Pull
+                </button>
+            )}
+            {onPush && (
+                <button
+                    className="git-action-btn flex items-center gap-1 px-1.5 py-0.5 rounded text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#3c3c3c] transition-colors text-[#616161] dark:text-[#999] disabled:opacity-50"
+                    onClick={onPush}
+                    disabled={pushing}
+                    title="Push to remote"
+                    data-testid="git-push-btn"
+                >
+                    <svg className={`w-3 h-3 ${pushing ? 'git-refresh-spin' : ''}`} viewBox="0 0 16 16" fill="currentColor">
+                        <path fillRule="evenodd" d="M8 15a.5.5 0 01-.5-.5V2.707L4.354 5.854a.5.5 0 11-.708-.708l4-4a.5.5 0 01.708 0l4 4a.5.5 0 01-.708.708L8.5 2.707V14.5a.5.5 0 01-.5.5z" />
+                    </svg>
+                    Push
+                </button>
+            )}
 
             {/* Refresh button */}
             <button
