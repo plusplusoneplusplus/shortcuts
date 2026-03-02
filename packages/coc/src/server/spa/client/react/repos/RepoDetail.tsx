@@ -275,7 +275,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                         {activeSubTab === 'queue' && <RepoQueueTab workspaceId={ws.id} />}
                         {activeSubTab === 'schedules' && <RepoSchedulesTab workspaceId={ws.id} />}
                         {activeSubTab === 'chat' && <RepoChatTab workspaceId={ws.id} workspacePath={ws.rootPath} initialSessionId={state.selectedChatSessionId} newChatTrigger={newChatTrigger} newChatTriggerProcessedRef={newChatTriggerProcessedRef} />}
-                        {activeSubTab === 'git' && <RepoGitTab workspaceId={ws.id} />}
+                        {activeSubTab === 'git' && <RepoGitTab key={ws.id} workspaceId={ws.id} />}
                     </div>
                 )}
             </div>

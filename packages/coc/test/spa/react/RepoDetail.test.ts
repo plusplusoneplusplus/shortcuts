@@ -345,7 +345,14 @@ describe('RepoDetail Git tab wiring', () => {
     });
 
     it('passes workspaceId to RepoGitTab', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('RepoGitTab workspaceId={ws.id}');
+        expect(REPO_DETAIL_SOURCE).toContain('workspaceId={ws.id}');
+    });
+
+    it('mounts a fresh RepoGitTab on every repo switch via key={ws.id}', () => {
+        // Ensure key prop is set so React fully remounts (and resets all state)
+        // when the user switches between repos, preventing stale actionError/
+        // refreshError from a previous repo appearing in the new one.
+        expect(REPO_DETAIL_SOURCE).toContain('<RepoGitTab key={ws.id}');
     });
 });
 
