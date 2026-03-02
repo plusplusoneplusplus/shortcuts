@@ -303,6 +303,8 @@ export interface AIInvokerOptions {
     workingDirectory?: string;
     /** Timeout in ms */
     timeoutMs?: number;
+    /** Custom tools to register on the AI session (SDK-native tools, not MCP). */
+    tools?: import('../copilot-sdk-wrapper/types').Tool<any>[];
 }
 
 /**

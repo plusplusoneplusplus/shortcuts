@@ -21,3 +21,5 @@ export { MemoryRetriever } from './memory-retriever';
 export { createWriteMemoryTool, WriteMemoryToolOptions, WriteMemoryArgs } from './write-memory-tool';
 export { MemoryAggregator } from './memory-aggregator';
 export type { AggregatorOptions } from './memory-aggregator';
+export { withMemory } from './with-memory';
+export type { WithMemoryOptions } from './with-memory';

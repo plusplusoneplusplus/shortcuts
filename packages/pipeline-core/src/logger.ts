@@ -32,7 +32,9 @@ export enum LogCategory {
     /** Task management operations */
     TASKS = 'Tasks',
     /** Git operations */
-    GIT = 'Git'
+    GIT = 'Git',
+    /** Memory system operations */
+    Memory = 'Memory'
 }
 
 /**
