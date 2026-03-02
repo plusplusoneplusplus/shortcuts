@@ -104,6 +104,19 @@ describe('BottomSheet', () => {
         expect(panel.style.maxHeight).toBe('60vh');
     });
 
+    it('mousedown inside the sheet does NOT propagate to document', () => {
+        const documentHandler = vi.fn();
+        document.addEventListener('mousedown', documentHandler);
+        render(
+            <BottomSheet isOpen={true} onClose={vi.fn()}>
+                <div data-testid="inner">Content</div>
+            </BottomSheet>
+        );
+        fireEvent.mouseDown(screen.getByTestId('bottomsheet-panel'));
+        document.removeEventListener('mousedown', documentHandler);
+        expect(documentHandler).not.toHaveBeenCalled();
+    });
+
     it('drag handle element is present', () => {
         render(
             <BottomSheet isOpen={true} onClose={vi.fn()}>

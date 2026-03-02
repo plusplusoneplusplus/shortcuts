@@ -91,7 +91,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
 
     // Close more-menu when clicking outside
     useEffect(() => {
-        if (!moreMenuOpen) return;
+        if (!moreMenuOpen || isMobile) return;
         const handler = (e: MouseEvent) => {
             if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
                 setMoreMenuOpen(false);

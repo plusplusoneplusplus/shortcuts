@@ -93,6 +93,7 @@ export function BottomSheet({ isOpen, onClose, title, children, height = 60 }: B
                     transition: 'transform 300ms ease-out',
                 }}
                 onClick={e => e.stopPropagation()}
+                onMouseDown={e => e.stopPropagation()}
             >
                 {/* Drag handle */}
                 <div

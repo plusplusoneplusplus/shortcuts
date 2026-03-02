@@ -104,6 +104,10 @@ describe('RepoDetail mobile: overflow menu', () => {
     it('closes more-menu on outside click', () => {
         expect(REPO_DETAIL_SOURCE).toContain('moreMenuRef.current && !moreMenuRef.current.contains');
     });
+
+    it('click-outside mousedown listener is skipped on mobile', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('if (!moreMenuOpen || isMobile) return;');
+    });
 });
 
 describe('RepoDetail mobile: New Chat button deduplication', () => {
