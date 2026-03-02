@@ -233,46 +233,17 @@ describe('QueueTaskDetail', () => {
     });
 
     describe('hoverable file paths', () => {
-        it('imports toForwardSlashes from pipeline-core', () => {
-            expect(source).toContain("import { toForwardSlashes } from '@plusplusoneplusplus/pipeline-core/utils/path-utils'");
+        it('imports FilePathLink from shared', () => {
+            expect(source).toContain('FilePathLink');
         });
 
         it('defines FilePathValue component', () => {
             expect(source).toContain('function FilePathValue(');
         });
 
-        it('FilePathValue renders a file-path-link span with data-full-path', () => {
+        it('FilePathValue uses shared FilePathLink component', () => {
             const filePathValueSection = source.substring(source.indexOf('function FilePathValue'));
-            expect(filePathValueSection).toContain('className="file-path-link break-all"');
-            expect(filePathValueSection).toContain('data-full-path={normalized}');
-            expect(filePathValueSection).toContain('title={normalized}');
-        });
-
-        it('FilePathValue uses toForwardSlashes to normalize the path', () => {
-            const filePathValueSection = source.substring(
-                source.indexOf('function FilePathValue'),
-                source.indexOf('function FilePathValue') + 500,
-            );
-            expect(filePathValueSection).toContain('toForwardSlashes(value)');
-        });
-
-        it('FilePathValue uses shortenFilePath to display a shortened path', () => {
-            const filePathValueSection = source.substring(
-                source.indexOf('function FilePathValue'),
-                source.indexOf('function FilePathValue') + 500,
-            );
-            expect(filePathValueSection).toContain('shortenFilePath(normalized)');
-            expect(filePathValueSection).toContain('{shortened}');
-        });
-
-        it('defines shortenFilePath helper', () => {
-            expect(source).toContain('function shortenFilePath(');
-            const fn = source.substring(source.indexOf('function shortenFilePath'));
-            // Shortens Unix home paths
-            expect(fn).toContain('\\/Users\\/');
-            expect(fn).toContain('\\/home\\/');
-            // Shortens Windows drive paths
-            expect(fn).toContain('[A-Za-z]:\\/Users\\/');
+            expect(filePathValueSection).toContain('<FilePathLink path={value}');
         });
 
         it('uses FilePathValue for Working Directory', () => {
@@ -285,6 +256,12 @@ describe('QueueTaskDetail', () => {
 
         it('uses FilePathValue for Plan File', () => {
             expect(source).toContain('<FilePathValue label="Plan File" value={payload.planFilePath}');
+        });
+
+        it('uses FilePathValue for metadata file path fields', () => {
+            expect(source).toContain('<FilePathValue label="File" value={payload.filePath}');
+            expect(source).toContain('<FilePathValue label="Target Folder" value={payload.targetFolder}');
+            expect(source).toContain('<FilePathValue label="Rules Folder" value={payload.rulesFolder}');
         });
 
         it('does not use MetaRow for file-path fields', () => {

@@ -7,7 +7,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { fetchApi } from '../hooks/useApi';
 import { getApiBase } from '../utils/config';
-import { Badge, Button, Spinner } from '../shared';
+import { Badge, Button, Spinner, linkifyFilePaths } from '../shared';
 import { ConversationTurnBubble } from './ConversationTurnBubble';
 import { ConversationMetadataPopover, getSessionIdFromProcess } from './ConversationMetadataPopover';
 import { formatDuration, statusIcon, statusLabel } from '../utils/format';
@@ -307,9 +307,15 @@ export function ProcessDetail() {
                         </a>
                     </div>
                 )}
-                <div className="text-sm text-[#1e1e1e] dark:text-[#cccccc] break-words">
-                    {process.fullPrompt || process.promptPreview || process.id}
-                </div>
+                <div
+                    className="text-sm text-[#1e1e1e] dark:text-[#cccccc] break-words"
+                    dangerouslySetInnerHTML={{
+                        __html: linkifyFilePaths(
+                            (process.fullPrompt || process.promptPreview || process.id)
+                                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                        ),
+                    }}
+                />
                 {resumeFeedback && (
                     <div className={`mt-2 text-xs ${resumeFeedback.type === 'error' ? 'text-[#f14c4c]' : 'text-[#6a9955] dark:text-[#89d185]'}`}>
                         {resumeFeedback.message}

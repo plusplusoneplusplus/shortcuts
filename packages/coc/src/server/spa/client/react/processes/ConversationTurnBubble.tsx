@@ -11,48 +11,13 @@ import { Marked } from 'marked';
 import { useDisplaySettings } from '../hooks/useDisplaySettings';
 import { fetchApi } from '../hooks/useApi';
 import { copyToClipboard } from '../utils/format';
+import { linkifyFilePaths } from '../shared/file-path-utils';
 import { toForwardSlashes } from '@plusplusoneplusplus/pipeline-core/utils/path-utils';
 
 const chatMarked = new Marked({
     gfm: true,
     breaks: true,
 });
-
-/** Shorten common prefixes for display. */
-function shortenFilePath(p: string): string {
-    if (!p) return '';
-    return p
-        .replace(/^\/Users\/[^/]+\/Documents\/Projects\//, '')
-        .replace(/^\/Users\/[^/]+\//, '~/')
-        .replace(/^\/home\/[^/]+\//, '~/')
-        .replace(/^[A-Za-z]:\/Users\/[^/]+\/Documents\/Projects\//, '')
-        .replace(/^[A-Za-z]:\/Users\/[^/]+\//, '~/');
-}
-
-/**
- * Post-process HTML to wrap file paths in interactive `.file-path-link` spans.
- * Only operates on text outside HTML tags and `<code>` blocks.
- */
-const FILE_PATH_RE = /(?:\/(?:Users|home|tmp|var|etc|opt|usr|mnt|Volumes)[^\s&"'<>()]*|(?<![/\w])[A-Za-z]:[/\\][\w./@\\-]+)/g;
-
-function linkifyFilePaths(html: string): string {
-    // Track whether we're inside <code> or <pre> by scanning tags
-    let insideCode = 0;
-    return html.replace(/(<\/?(code|pre)[^>]*>)|(<[^>]+>)|([^<]+)/gi, (_match, codeTag, codeTagName, otherTag, text) => {
-        if (codeTag) {
-            if (codeTag[1] === '/') insideCode = Math.max(0, insideCode - 1);
-            else insideCode++;
-            return codeTag;
-        }
-        if (otherTag) return otherTag;
-        if (!text || insideCode > 0) return text || '';
-        return text.replace(FILE_PATH_RE, (pathMatch: string) => {
-            const normalized = toForwardSlashes(pathMatch);
-            const short = shortenFilePath(normalized);
-            return `<span class="file-path-link" data-full-path="${normalized}" title="${normalized}">${short}</span>`;
-        });
-    });
-}
 
 /**
  * Pre-normalize Windows-style paths (backslash) to forward slashes before markdown

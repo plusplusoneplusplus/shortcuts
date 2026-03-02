@@ -9,13 +9,12 @@ import { useQueue } from '../context/QueueContext';
 import { useApp } from '../context/AppContext';
 import { fetchApi } from '../hooks/useApi';
 import { getApiBase } from '../utils/config';
-import { Badge, Spinner, Button, cn, ImageGallery, SuggestionChips } from '../shared';
+import { Badge, Spinner, Button, cn, ImageGallery, SuggestionChips, FilePathLink } from '../shared';
 import { ConversationTurnBubble } from '../processes/ConversationTurnBubble';
 import { ConversationMetadataPopover, getSessionIdFromProcess } from '../processes/ConversationMetadataPopover';
 import { formatDuration, statusIcon, statusLabel } from '../utils/format';
 import { useImagePaste } from '../hooks/useImagePaste';
 import { ImagePreviews } from '../shared/ImagePreviews';
-import { toForwardSlashes } from '@plusplusoneplusplus/pipeline-core/utils/path-utils';
 import type { ClientConversationTurn } from '../types/dashboard';
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
@@ -802,25 +801,11 @@ function MetaRow({ label, value, breakAll }: { label: string; value: string; bre
     );
 }
 
-function shortenFilePath(p: string): string {
-    if (!p) return '';
-    return p
-        .replace(/^\/Users\/[^/]+\/Documents\/Projects\//, '')
-        .replace(/^\/Users\/[^/]+\//, '~/')
-        .replace(/^\/home\/[^/]+\//, '~/')
-        .replace(/^[A-Za-z]:\/Users\/[^/]+\/Documents\/Projects\//, '')
-        .replace(/^[A-Za-z]:\/Users\/[^/]+\//, '~/');
-}
-
 function FilePathValue({ label, value }: { label: string; value: string }) {
-    const normalized = toForwardSlashes(value);
-    const shortened = shortenFilePath(normalized);
     return (
         <>
             <span className="text-[#848484]">{label}</span>
-            <span className="file-path-link break-all" data-full-path={normalized} title={normalized}>
-                {shortened}
-            </span>
+            <FilePathLink path={value} />
         </>
     );
 }
@@ -907,7 +892,7 @@ function PendingTaskPayload({ task }: { task: any }) {
             <div>
                 {hasClariMeta && (
                     <div className="grid grid-cols-[140px_1fr] gap-x-4 gap-y-2 text-sm mb-3">
-                        {payload.filePath && <MetaRow label="File" value={payload.filePath} breakAll />}
+                        {payload.filePath && <FilePathValue label="File" value={payload.filePath} />}
                         {payload.skillName && <MetaRow label="Skill Name" value={payload.skillName} />}
                         {payload.instructionType && <MetaRow label="Instruction Type" value={payload.instructionType} />}
                         {payload.model && <MetaRow label="Model" value={payload.model} />}
@@ -948,7 +933,7 @@ function PendingTaskPayload({ task }: { task: any }) {
                 <h3 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2">Task Generation Details</h3>
                 <div className="grid grid-cols-[140px_1fr] gap-x-4 gap-y-2 text-sm mb-3">
                     {payload.name && <MetaRow label="Task Name" value={payload.name} />}
-                    {payload.targetFolder && <MetaRow label="Target Folder" value={payload.targetFolder} breakAll />}
+                    {payload.targetFolder && <FilePathValue label="Target Folder" value={payload.targetFolder} />}
                     {payload.depth && <MetaRow label="Depth" value={payload.depth} />}
                     {payload.mode && <MetaRow label="Mode" value={payload.mode} />}
                     {payload.model && <MetaRow label="Model" value={payload.model} />}
@@ -973,7 +958,7 @@ function PendingTaskPayload({ task }: { task: any }) {
                 <div className="grid grid-cols-[140px_1fr] gap-x-4 gap-y-2 text-sm">
                     {payload.commitSha && <MetaRow label="Commit SHA" value={payload.commitSha} />}
                     {payload.diffType && <MetaRow label="Diff Type" value={payload.diffType} />}
-                    {payload.rulesFolder && <MetaRow label="Rules Folder" value={payload.rulesFolder} />}
+                    {payload.rulesFolder && <FilePathValue label="Rules Folder" value={payload.rulesFolder} />}
                 </div>
                 {imagesSection}
             </div>

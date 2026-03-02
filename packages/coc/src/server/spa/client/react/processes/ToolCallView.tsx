@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useMemo, useRef, useCallback } from 'react';
-import { cn } from '../shared';
+import { cn, FilePathLink, shortenFilePath } from '../shared';
 import { computeLineDiff, type DiffLine } from '../../diff-utils';
 import { ToolResultPopover } from './ToolResultPopover';
 
@@ -61,11 +61,7 @@ function parseArgsObject(args: any): Record<string, any> | null {
 }
 
 function shortenPath(p: string): string {
-    if (!p) return '';
-    return p
-        .replace(/^\/Users\/[^/]+\/Documents\/Projects\//, '')
-        .replace(/^\/Users\/[^/]+\//, '~/')
-        .replace(/^\/home\/[^/]+\//, '~/');
+    return shortenFilePath(p);
 }
 
 function isImageDataUrl(s: string): boolean {
@@ -196,7 +192,7 @@ function EditToolView({ args }: { args: Record<string, any> }) {
         <div className="space-y-1.5">
             {filePath && (
                 <div className="text-[10px] uppercase text-[#848484] mb-0.5">
-                    📁 {shortenPath(filePath)}
+                    📁 <FilePathLink path={filePath} />
                 </div>
             )}
             {diffLines ? (
@@ -233,7 +229,7 @@ function CreateToolView({ args }: { args: Record<string, any> }) {
         <div className="space-y-1.5">
             {filePath && (
                 <div className="text-[10px] uppercase text-[#848484] mb-0.5">
-                    📁 {shortenPath(filePath)}
+                    📁 <FilePathLink path={filePath} />
                 </div>
             )}
             {fileText && (
@@ -268,7 +264,7 @@ function ViewToolView({ args, result }: { args: Record<string, any>; result: str
             <div className="space-y-1.5">
                 {filePath && (
                     <div className="text-[10px] uppercase text-[#848484] mb-0.5">
-                        📁 {shortenPath(filePath)}
+                        📁 <FilePathLink path={filePath} />
                     </div>
                 )}
                 <img
@@ -285,7 +281,7 @@ function ViewToolView({ args, result }: { args: Record<string, any>; result: str
         <div className="space-y-1.5">
             {/* File path + optional range badge + language tag */}
             <div className="flex items-center gap-2 text-[10px] text-[#848484]">
-                {filePath && <span className="uppercase">📁 {shortenPath(filePath)}</span>}
+                {filePath && <span className="uppercase">📁 <FilePathLink path={filePath} /></span>}
                 {viewRange && (
                     <span className="bg-[#e0e0e0] dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] px-1 rounded text-[9px]">
                         L{viewRange[0]}–{viewRange[1] === -1 ? 'EOF' : `L${viewRange[1]}`}
@@ -340,6 +336,8 @@ export function ToolCallView({
     const args = formatArgs(toolCall.args);
     const hasDetails = args || toolCall.result || toolCall.error;
     const summary = getToolSummary(name, argsObj);
+    const summaryIsPath = !!summary && ['view', 'edit', 'create', 'glob', 'grep'].includes(name)
+        && argsObj && (argsObj.path || argsObj.filePath);
     const duration = formatDuration(toolCall.startTime, toolCall.endTime);
     const resultText = typeof toolCall.result === 'string' ? toolCall.result : '';
     const isResultTruncated = resultText.length > MAX_RESULT_LENGTH;
@@ -428,7 +426,11 @@ export function ToolCallView({
                 )}
                 <span className="tool-call-name font-medium text-[#0078d4] dark:text-[#3794ff]">{name}</span>
                 {summary && (
-                    <span className="text-[#848484] truncate min-w-0" title={summary}>
+                    <span
+                        className={cn('text-[#848484] truncate min-w-0', summaryIsPath && 'file-path-link')}
+                        title={summary}
+                        {...(summaryIsPath ? { 'data-full-path': argsObj.path || argsObj.filePath } : {})}
+                    >
                         {summary}
                     </span>
                 )}
