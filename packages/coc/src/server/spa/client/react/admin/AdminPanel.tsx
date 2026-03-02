@@ -113,7 +113,7 @@ export function AdminPanel() {
 
     const handleSaveConfig = useCallback(async () => {
         const errors: string[] = [];
-        if (!configForm.model?.trim()) errors.push('Model must be non-empty');
+        // model is optional — only validate if user typed something
         const parallel = Number(configForm.parallel);
         if (isNaN(parallel) || parallel < 1) errors.push('Parallelism must be at least 1');
         const timeoutStr = configForm.timeout.trim();
@@ -135,7 +135,8 @@ export function AdminPanel() {
         }
         setConfigSaving(true);
         try {
-            const payload: Record<string, unknown> = { model: configForm.model, parallel, output: configForm.output };
+            const payload: Record<string, unknown> = { parallel, output: configForm.output };
+            if (configForm.model?.trim()) payload.model = configForm.model.trim();
             // Empty timeout = clear from config (send null); present = send value
             payload.timeout = timeoutValue;
             const res = await fetch(getApiBase() + '/admin/config', {

@@ -199,6 +199,104 @@ describe('AdminPanel', () => {
         expect(toggle.checked).toBe(false);
     });
 
+    it('save config with blank model omits model from payload', async () => {
+        let capturedBody: any = null;
+        mockFetch.mockImplementation((url: string, options?: any) => {
+            if (url.includes('/admin/config') && options?.method === 'PUT') {
+                capturedBody = JSON.parse(options.body);
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        resolved: { parallel: 3, output: 'table' },
+                        sources: {},
+                    }),
+                });
+            }
+            if (url.includes('/admin/config')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        resolved: { model: '', parallel: 3, output: 'table' },
+                        sources: {},
+                    }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        await act(async () => {
+            renderWithProviders();
+        });
+
+        // Wait for config to load
+        await waitFor(() => {
+            expect(screen.getAllByText('Save').length).toBeGreaterThan(0);
+        });
+
+        await act(async () => {
+            fireEvent.click(screen.getAllByText('Save')[0]);
+        });
+
+        await waitFor(() => {
+            const putCalls = mockFetch.mock.calls.filter(
+                ([url, opts]: [string, any]) => url.includes('/admin/config') && opts?.method === 'PUT'
+            );
+            expect(putCalls.length).toBe(1);
+        });
+
+        // model must NOT be in payload when blank
+        expect(capturedBody).not.toBeNull();
+        expect('model' in capturedBody).toBe(false);
+    });
+
+    it('save config with non-empty model includes model in payload', async () => {
+        let capturedBody: any = null;
+        mockFetch.mockImplementation((url: string, options?: any) => {
+            if (url.includes('/admin/config') && options?.method === 'PUT') {
+                capturedBody = JSON.parse(options.body);
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        resolved: { model: 'gpt-4', parallel: 2, output: 'table' },
+                        sources: { model: 'file' },
+                    }),
+                });
+            }
+            if (url.includes('/admin/config')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        resolved: { model: 'gpt-4', parallel: 2, output: 'table' },
+                        sources: { model: 'file' },
+                    }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        await act(async () => {
+            renderWithProviders();
+        });
+
+        await waitFor(() => {
+            expect(screen.getByDisplayValue('gpt-4')).toBeDefined();
+        });
+
+        await act(async () => {
+            fireEvent.click(screen.getAllByText('Save')[0]);
+        });
+
+        await waitFor(() => {
+            const putCalls = mockFetch.mock.calls.filter(
+                ([url, opts]: [string, any]) => url.includes('/admin/config') && opts?.method === 'PUT'
+            );
+            expect(putCalls.length).toBe(1);
+        });
+
+        expect(capturedBody).not.toBeNull();
+        expect(capturedBody.model).toBe('gpt-4');
+    });
+
     it('Display toggle sends PUT with showReportIntent when clicked', async () => {
         mockFetch.mockImplementation((url: string, options?: any) => {
             if (url.includes('/admin/config') && options?.method === 'PUT') {
