@@ -97,7 +97,15 @@ describe('CommitDetail', () => {
             expect(source).toContain('data-testid="diff-loading"');
         });
 
-        it('renders diff content in a pre block', () => {
+        it('uses UnifiedDiffViewer for diff display', () => {
+            expect(source).toContain('<UnifiedDiffViewer');
+        });
+
+        it('imports UnifiedDiffViewer', () => {
+            expect(source).toContain("import { UnifiedDiffViewer } from './UnifiedDiffViewer'");
+        });
+
+        it('renders diff content with data-testid', () => {
             expect(source).toContain('data-testid="diff-content"');
         });
 

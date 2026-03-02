@@ -9,6 +9,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { fetchApi } from '../hooks/useApi';
 import { Spinner, Button } from '../shared';
+import { UnifiedDiffViewer } from './UnifiedDiffViewer';
 
 export interface BranchFileDiffProps {
     workspaceId: string;
@@ -62,9 +63,7 @@ export function BranchFileDiff({ workspaceId, filePath }: BranchFileDiffProps) {
                         <Button variant="secondary" size="sm" onClick={handleRetry} data-testid="branch-file-diff-retry-btn">Retry</Button>
                     </div>
                 ) : diff ? (
-                    <pre className="p-3 text-xs font-mono bg-[#f5f5f5] dark:bg-[#2d2d2d] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded overflow-x-auto whitespace-pre" data-testid="branch-file-diff-content">
-                        {diff}
-                    </pre>
+                    <UnifiedDiffViewer diff={diff} data-testid="branch-file-diff-content" />
                 ) : (
                     <div className="text-xs text-[#848484]" data-testid="branch-file-diff-empty">(empty diff)</div>
                 )}

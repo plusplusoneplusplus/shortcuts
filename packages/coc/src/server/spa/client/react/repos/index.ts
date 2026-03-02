@@ -8,3 +8,5 @@ export { BranchFileDiff } from './BranchFileDiff';
 export { GitPanelHeader } from './GitPanelHeader';
 export type { CommitDetailProps } from './CommitDetail';
 export type { BranchFileDiffProps } from './BranchFileDiff';
+export { UnifiedDiffViewer } from './UnifiedDiffViewer';
+export type { UnifiedDiffViewerProps } from './UnifiedDiffViewer';

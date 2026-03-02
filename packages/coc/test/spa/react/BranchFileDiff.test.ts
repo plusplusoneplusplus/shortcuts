@@ -170,17 +170,16 @@ describe('BranchFileDiff', () => {
     });
 
     describe('diff rendering', () => {
-        it('renders diff in a <pre> element', () => {
-            expect(source).toContain('<pre');
+        it('uses UnifiedDiffViewer for diff display', () => {
+            expect(source).toContain('<UnifiedDiffViewer');
         });
 
         it('has diff content data-testid', () => {
             expect(source).toContain('data-testid="branch-file-diff-content"');
         });
 
-        it('uses styling consistent with CommitDetail diff', () => {
-            expect(source).toContain('p-3 text-xs font-mono bg-[#f5f5f5] dark:bg-[#2d2d2d]');
-            expect(source).toContain('whitespace-pre');
+        it('imports UnifiedDiffViewer', () => {
+            expect(source).toContain("import { UnifiedDiffViewer } from './UnifiedDiffViewer'");
         });
 
         it('shows empty diff message', () => {

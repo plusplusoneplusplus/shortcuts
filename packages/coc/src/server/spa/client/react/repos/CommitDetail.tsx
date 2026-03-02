@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { fetchApi } from '../hooks/useApi';
 import { Spinner, Button } from '../shared';
 import { copyToClipboard } from '../utils/format';
+import { UnifiedDiffViewer } from './UnifiedDiffViewer';
 
 export interface CommitDetailProps {
     workspaceId: string;
@@ -160,9 +161,7 @@ export function CommitDetail({ workspaceId, hash, subject, author, date, parentH
                         <Button variant="secondary" size="sm" onClick={handleRetryDiff} data-testid="retry-diff-btn">Retry</Button>
                     </div>
                 ) : diff ? (
-                    <pre className="p-3 text-xs font-mono bg-[#f5f5f5] dark:bg-[#2d2d2d] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded overflow-x-auto whitespace-pre" data-testid="diff-content">
-                        {diff}
-                    </pre>
+                    <UnifiedDiffViewer diff={diff} data-testid="diff-content" />
                 ) : (
                     <div className="text-xs text-[#848484]" data-testid="diff-empty">(empty diff)</div>
                 )}
