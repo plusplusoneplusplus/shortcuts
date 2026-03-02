@@ -65,7 +65,7 @@ export function CommitDetail({ workspaceId, hash, filePath }: CommitDetailProps)
                         <Button variant="secondary" size="sm" onClick={handleRetryDiff} data-testid="retry-diff-btn">Retry</Button>
                     </div>
                 ) : diff ? (
-                    <UnifiedDiffViewer diff={diff} data-testid="diff-content" />
+                    <UnifiedDiffViewer diff={diff} fileName={filePath} data-testid="diff-content" />
                 ) : (
                     <div className="text-xs text-[#848484]" data-testid="diff-empty">(empty diff)</div>
                 )}

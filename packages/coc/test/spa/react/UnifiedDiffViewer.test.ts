@@ -141,5 +141,41 @@ describe('UnifiedDiffViewer', () => {
         it('imports useMemo from react', () => {
             expect(source).toContain('useMemo');
         });
+
+        it('imports getLanguageFromFileName from useSyntaxHighlight', () => {
+            expect(source).toContain('getLanguageFromFileName');
+            expect(source).toContain("from './useSyntaxHighlight'");
+        });
+
+        it('imports highlightLine from useSyntaxHighlight', () => {
+            expect(source).toContain('highlightLine');
+        });
+    });
+
+    describe('fileName prop and syntax highlighting', () => {
+        it('accepts optional fileName prop', () => {
+            expect(source).toContain('fileName?: string');
+        });
+
+        it('destructures fileName from props', () => {
+            expect(source).toContain('fileName,');
+        });
+
+        it('derives language from fileName using useMemo', () => {
+            expect(source).toContain('getLanguageFromFileName(fileName)');
+        });
+
+        it('calls highlightLine for code content', () => {
+            expect(source).toContain('highlightLine(content, language)');
+        });
+
+        it('uses dangerouslySetInnerHTML for highlighted content', () => {
+            expect(source).toContain('dangerouslySetInnerHTML');
+        });
+
+        it('separates prefix character from code content', () => {
+            expect(source).toContain('line[0]');
+            expect(source).toContain('line.slice(1)');
+        });
     });
 });

@@ -63,7 +63,7 @@ export function BranchFileDiff({ workspaceId, filePath }: BranchFileDiffProps) {
                         <Button variant="secondary" size="sm" onClick={handleRetry} data-testid="branch-file-diff-retry-btn">Retry</Button>
                     </div>
                 ) : diff ? (
-                    <UnifiedDiffViewer diff={diff} data-testid="branch-file-diff-content" />
+                    <UnifiedDiffViewer diff={diff} fileName={filePath} data-testid="branch-file-diff-content" />
                 ) : (
                     <div className="text-xs text-[#848484]" data-testid="branch-file-diff-empty">(empty diff)</div>
                 )}

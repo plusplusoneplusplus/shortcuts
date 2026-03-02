@@ -3,12 +3,15 @@
  *
  * Classifies each line by its prefix and applies appropriate background/text
  * colors for added, removed, hunk-header, and metadata lines.
+ * Code content lines are syntax-highlighted using highlight.js token spans.
  */
 
 import { useMemo } from 'react';
+import { getLanguageFromFileName, highlightLine } from './useSyntaxHighlight';
 
 export interface UnifiedDiffViewerProps {
     diff: string;
+    fileName?: string;
     'data-testid'?: string;
 }
 
@@ -30,8 +33,9 @@ function classifyLine(line: string): LineType {
     return 'context';
 }
 
-export function UnifiedDiffViewer({ diff, 'data-testid': testId }: UnifiedDiffViewerProps) {
+export function UnifiedDiffViewer({ diff, fileName, 'data-testid': testId }: UnifiedDiffViewerProps) {
     const lines = useMemo(() => diff.split('\n'), [diff]);
+    const language = useMemo(() => getLanguageFromFileName(fileName), [fileName]);
 
     return (
         <div
@@ -40,6 +44,17 @@ export function UnifiedDiffViewer({ diff, 'data-testid': testId }: UnifiedDiffVi
         >
             {lines.map((line, i) => {
                 const type = classifyLine(line);
+                if ((type === 'added' || type === 'removed' || type === 'context') && line.length > 0) {
+                    const prefix = line[0];
+                    const content = line.slice(1);
+                    const html = highlightLine(content, language);
+                    return (
+                        <div key={i} className={`whitespace-pre px-3 ${LINE_CLASSES[type]}`}>
+                            <span>{prefix}</span>
+                            <span dangerouslySetInnerHTML={{ __html: html }} />
+                        </div>
+                    );
+                }
                 return (
                     <div key={i} className={`whitespace-pre px-3 ${LINE_CLASSES[type]}`}>
                         {line || '\u00a0'}
