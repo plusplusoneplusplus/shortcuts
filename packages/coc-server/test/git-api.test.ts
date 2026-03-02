@@ -1,10 +1,11 @@
 /**
  * Git API Endpoint Tests
  *
- * Tests for the three git commit API routes:
+ * Tests for the git commit API routes:
  * - GET /api/workspaces/:id/git/commits
  * - GET /api/workspaces/:id/git/commits/:hash/files
  * - GET /api/workspaces/:id/git/commits/:hash/diff
+ * - GET /api/workspaces/:id/git/commits/:hash/files/:filePath/diff
  *
  * Uses mocked execGitSync via vi.mock to avoid actual git calls.
  * Cross-platform compatible (Linux/Mac/Windows).
@@ -270,6 +271,64 @@ describe('Git API endpoints', () => {
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc123def456/diff`);
             expect(res.status).toBe(200);
             expect(res.json().diff).toBe('');
+        });
+    });
+
+    // ========================================================================
+    // GET /api/workspaces/:id/git/commits/:hash/files/*/diff
+    // ========================================================================
+
+    describe('GET /api/workspaces/:id/git/commits/:hash/files/*/diff', () => {
+        it('returns diff for a specific file in a commit', async () => {
+            const diffOutput = 'diff --git a/src/index.ts b/src/index.ts\n--- a/src/index.ts\n+++ b/src/index.ts\n@@ -1 +1 @@\n-old\n+new';
+            mockExecSync.mockReturnValue(diffOutput);
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc123def456/files/${encodeURIComponent('src/index.ts')}/diff`);
+            expect(res.status).toBe(200);
+            const data = res.json();
+            expect(data.diff).toBe(diffOutput);
+        });
+
+        it('returns 404 for unknown workspace', async () => {
+            const res = await request(`${base()}/api/workspaces/unknown-ws/git/commits/abc123def456/files/${encodeURIComponent('src/index.ts')}/diff`);
+            expect(res.status).toBe(404);
+        });
+
+        it('returns cached result on second request', async () => {
+            const diffOutput = 'diff --git a/f.ts b/f.ts\n-old\n+new';
+            mockExecSync.mockReturnValue(diffOutput);
+
+            const res1 = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc123def456/files/${encodeURIComponent('f.ts')}/diff`);
+            expect(res1.status).toBe(200);
+            expect(res1.json().diff).toBe(diffOutput);
+
+            mockExecSync.mockReset();
+            const res2 = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc123def456/files/${encodeURIComponent('f.ts')}/diff`);
+            expect(res2.status).toBe(200);
+            expect(res2.json().diff).toBe(diffOutput);
+            // execSync should not have been called again
+            expect(mockExecSync).not.toHaveBeenCalled();
+        });
+
+        it('returns error on git failure', async () => {
+            mockExecSync.mockImplementation(() => {
+                throw new Error('bad object deadbeef');
+            });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/deadbeef1234/files/${encodeURIComponent('src/index.ts')}/diff`);
+            expect(res.status).toBe(400);
+            const data = res.json();
+            expect(data.error).toContain('Failed to get commit file diff');
+        });
+
+        it('handles deeply nested file paths', async () => {
+            const diffOutput = 'diff for nested file';
+            mockExecSync.mockReturnValue(diffOutput);
+
+            const filePath = 'packages/coc-server/src/api-handler.ts';
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc123def456/files/${encodeURIComponent(filePath)}/diff`);
+            expect(res.status).toBe(200);
+            expect(res.json().diff).toBe(diffOutput);
         });
     });
 

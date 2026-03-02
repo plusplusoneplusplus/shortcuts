@@ -463,6 +463,37 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         },
     });
 
+    // GET /api/workspaces/:id/git/commits/:hash/files/*/diff — Per-file diff for a commit
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/commits\/([a-f0-9]{4,40})\/files\/(.+)\/diff$/,
+        handler: async (_req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const hash = match![2];
+            const filePath = decodeURIComponent(match![3]);
+            const workspaces = await store.getWorkspaces();
+            const ws = workspaces.find(w => w.id === id);
+            if (!ws) {
+                return handleAPIError(res, notFound('Workspace'));
+            }
+
+            const cacheKey = `${id}:commit-file-diff:${hash}:${filePath}`;
+            const cached = gitCache.get<{ diff: string }>(cacheKey);
+            if (cached) {
+                return sendJSON(res, 200, cached);
+            }
+
+            try {
+                const diff = execGitSync(`show --format="" --patch ${hash} -- ${filePath}`, ws.rootPath);
+                const result = { diff };
+                gitCache.set(cacheKey, result);
+                sendJSON(res, 200, result);
+            } catch (err: any) {
+                return handleAPIError(res, badRequest('Failed to get commit file diff: ' + (err.message || 'unknown error')));
+            }
+        },
+    });
+
     // GET /api/workspaces/:id/git/branch-range — Detect feature branch commit range
     routes.push({
         method: 'GET',
