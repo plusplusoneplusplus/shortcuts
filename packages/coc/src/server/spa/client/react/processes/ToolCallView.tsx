@@ -139,6 +139,16 @@ function getToolSummary(toolName: string, args: any): string {
     }
 }
 
+function formatStartTime(startTime?: string): string {
+    if (!startTime) return '';
+    const d = new Date(startTime);
+    if (isNaN(d.getTime())) return '';
+    const hh = String(d.getUTCHours()).padStart(2, '0');
+    const mm = String(d.getUTCMinutes()).padStart(2, '0');
+    const ss = String(d.getUTCSeconds()).padStart(2, '0');
+    return `${hh}:${mm}:${ss}Z`;
+}
+
 function formatDuration(startTime?: string, endTime?: string): string {
     if (!startTime) return '';
     const start = new Date(startTime).getTime();
@@ -339,6 +349,7 @@ export function ToolCallView({
     const summaryIsPath = !!summary && ['view', 'edit', 'create', 'glob', 'grep'].includes(name)
         && argsObj && (argsObj.path || argsObj.filePath);
     const duration = formatDuration(toolCall.startTime, toolCall.endTime);
+    const startTimeLabel = formatStartTime(toolCall.startTime);
     const resultText = typeof toolCall.result === 'string' ? toolCall.result : '';
     const isResultTruncated = resultText.length > MAX_RESULT_LENGTH;
     const visibleResult = isResultTruncated ? `${resultText.slice(0, TRUNCATED_RESULT_LENGTH)}\n... (output truncated)` : resultText;
@@ -434,11 +445,14 @@ export function ToolCallView({
                         {summary}
                     </span>
                 )}
+                {startTimeLabel && (
+                    <span className="text-[#848484] ml-auto shrink-0">{startTimeLabel}</span>
+                )}
                 {duration && (
-                    <span className="text-[#848484] ml-auto">{duration}</span>
+                    <span className={cn('text-[#848484] shrink-0', !startTimeLabel && 'ml-auto')}>{duration}</span>
                 )}
                 {hasDetails && (
-                    <span className={cn('text-[#848484]', !duration && 'ml-auto')}>{expanded ? '▼' : '▶'}</span>
+                    <span className={cn('text-[#848484]', !duration && !startTimeLabel && 'ml-auto')}>{expanded ? '▼' : '▶'}</span>
                 )}
             </div>
             {hasDetails && (
