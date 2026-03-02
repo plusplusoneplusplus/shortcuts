@@ -19,3 +19,5 @@ export type {
 export { FileMemoryStore, computeRepoHash } from './memory-store';
 export { MemoryRetriever } from './memory-retriever';
 export { createWriteMemoryTool, WriteMemoryToolOptions, WriteMemoryArgs } from './write-memory-tool';
+export { MemoryAggregator } from './memory-aggregator';
+export type { AggregatorOptions } from './memory-aggregator';
