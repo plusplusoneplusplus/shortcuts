@@ -21,6 +21,7 @@ import type { Route } from './types';
 import { handleProcessStream } from './sse-handler';
 import { handleAPIError, invalidJSON, missingFields, notFound, badRequest, internalError, APIError } from './errors';
 import { saveImagesToTempFiles, cleanupTempDir, isImageDataUrl } from './image-utils';
+import { gitCache } from './git-cache';
 
 /**
  * Bridge interface for executing follow-up messages on existing AI sessions.
@@ -331,6 +332,17 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             const parsed = url.parse(req.url || '/', true);
             const limit = Math.min(Math.max(parseInt(String(parsed.query.limit || '50'), 10) || 50, 1), 200);
             const skip = Math.max(parseInt(String(parsed.query.skip || '0'), 10) || 0, 0);
+            const refresh = parsed.query.refresh === 'true';
+
+            if (refresh) {
+                gitCache.invalidateMutable(id);
+            }
+
+            const cacheKey = `${id}:commits:${limit}:${skip}`;
+            const cached = gitCache.get<{ commits: any[]; unpushedCount: number }>(cacheKey);
+            if (cached) {
+                return sendJSON(res, 200, cached);
+            }
 
             try {
                 const format = '%H%n%h%n%s%n%an%n%aI%n%P%n%b';
@@ -375,7 +387,9 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                     // No upstream tracking branch
                 }
 
-                sendJSON(res, 200, { commits, unpushedCount });
+                const result = { commits, unpushedCount };
+                gitCache.set(cacheKey, result);
+                sendJSON(res, 200, result);
             } catch {
                 sendJSON(res, 200, { commits: [], unpushedCount: 0 });
             }
@@ -395,6 +409,12 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                 return handleAPIError(res, notFound('Workspace'));
             }
 
+            const cacheKey = `${id}:commit-files:${hash}`;
+            const cached = gitCache.get<{ files: any[] }>(cacheKey);
+            if (cached) {
+                return sendJSON(res, 200, cached);
+            }
+
             try {
                 const raw = execGitSync(`diff-tree --no-commit-id -r --name-status ${hash}`, ws.rootPath);
                 const files: Array<{ status: string; path: string }> = [];
@@ -404,7 +424,9 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                         files.push({ status: status.charAt(0), path: pathParts.join('\t') });
                     }
                 }
-                sendJSON(res, 200, { files });
+                const result = { files };
+                gitCache.set(cacheKey, result);
+                sendJSON(res, 200, result);
             } catch (err: any) {
                 return handleAPIError(res, badRequest('Failed to get commit files: ' + (err.message || 'unknown error')));
             }
@@ -424,9 +446,17 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                 return handleAPIError(res, notFound('Workspace'));
             }
 
+            const cacheKey = `${id}:commit-diff:${hash}`;
+            const cached = gitCache.get<{ diff: string }>(cacheKey);
+            if (cached) {
+                return sendJSON(res, 200, cached);
+            }
+
             try {
                 const diff = execGitSync(`show --format="" --patch ${hash}`, ws.rootPath);
-                sendJSON(res, 200, { diff });
+                const result = { diff };
+                gitCache.set(cacheKey, result);
+                sendJSON(res, 200, result);
             } catch (err: any) {
                 return handleAPIError(res, badRequest('Failed to get commit diff: ' + (err.message || 'unknown error')));
             }
@@ -437,7 +467,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
     routes.push({
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/branch-range$/,
-        handler: async (_req, res, match) => {
+        handler: async (req, res, match) => {
             const id = decodeURIComponent(match![1]);
             const workspaces = await store.getWorkspaces();
             const ws = workspaces.find(w => w.id === id);
@@ -445,12 +475,28 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                 return handleAPIError(res, notFound('Workspace'));
             }
 
+            const parsed = url.parse(req.url || '/', true);
+            const refresh = parsed.query.refresh === 'true';
+
+            if (refresh) {
+                gitCache.invalidateMutable(id);
+            }
+
+            const cacheKey = `${id}:branch-range`;
+            const cached = gitCache.get(cacheKey);
+            if (cached) {
+                return sendJSON(res, 200, cached);
+            }
+
             try {
                 const rangeService = getGitRangeService();
                 const range = rangeService.detectCommitRange(ws.rootPath);
                 if (!range) {
-                    return sendJSON(res, 200, { onDefaultBranch: true });
+                    const result = { onDefaultBranch: true };
+                    gitCache.set(cacheKey, result);
+                    return sendJSON(res, 200, result);
                 }
+                gitCache.set(cacheKey, range);
                 sendJSON(res, 200, range);
             } catch {
                 sendJSON(res, 200, { onDefaultBranch: true });

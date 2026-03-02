@@ -17,6 +17,7 @@ import { registerApiRoutes } from '../src/api-handler';
 import type { Route } from '../src/types';
 import { createMockProcessStore } from './helpers/mock-process-store';
 import type { MockProcessStore } from './helpers/mock-process-store';
+import { gitCache } from '../src/git-cache';
 
 // ============================================================================
 // Mock execGitSync and child_process
@@ -96,6 +97,7 @@ describe('Git API endpoints', () => {
 
     beforeEach(() => {
         mockExecSync.mockReset();
+        gitCache.clear();
     });
 
     const base = () => `http://127.0.0.1:${port}`;

@@ -18,6 +18,7 @@ import { registerApiRoutes } from '../src/api-handler';
 import type { Route } from '../src/types';
 import { createMockProcessStore } from './helpers/mock-process-store';
 import type { MockProcessStore } from './helpers/mock-process-store';
+import { gitCache } from '../src/git-cache';
 
 // ============================================================================
 // Mock GitRangeService and child_process
@@ -160,6 +161,7 @@ describe('Git Branch Range API endpoints', () => {
         mockGetRangeDiff.mockReset();
         mockGetFileDiff.mockReset();
         mockExecSync.mockReset();
+        gitCache.clear();
     });
 
     // ========================================================================

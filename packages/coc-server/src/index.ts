@@ -130,6 +130,9 @@ export {
 export { createSuggestFollowUpsTool } from './suggest-follow-ups-tool';
 export type { FollowUpSuggestion } from './suggest-follow-ups-tool';
 
+// In-memory git cache
+export { GitCacheService, gitCache } from './git-cache';
+
 // Centralized error handling
 export {
     APIError,

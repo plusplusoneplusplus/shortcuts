@@ -46,8 +46,9 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     const [ahead, setAhead] = useState(0);
     const [behind, setBehind] = useState(0);
 
-    const fetchCommits = useCallback(() => {
-        return fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/commits?limit=50`)
+    const fetchCommits = useCallback((refresh = false) => {
+        const qs = refresh ? '&refresh=true' : '';
+        return fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/commits?limit=50${qs}`)
             .then(data => {
                 const loaded = data.commits || [];
                 setCommits(loaded);
@@ -56,8 +57,9 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             });
     }, [workspaceId]);
 
-    const fetchBranchRange = useCallback(() => {
-        return fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/branch-range`)
+    const fetchBranchRange = useCallback((refresh = false) => {
+        const qs = refresh ? '?refresh=true' : '';
+        return fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/branch-range${qs}`)
             .then(data => {
                 if (data.onDefaultBranch) {
                     setOnDefaultBranch(true);
@@ -111,7 +113,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         setRefreshing(true);
         setRefreshError(null);
         const prevSelectedHash = rightPanelView?.type === 'commit' ? rightPanelView.commit.hash : null;
-        Promise.all([fetchCommits(), fetchBranchRange()])
+        Promise.all([fetchCommits(true), fetchBranchRange(true)])
             .then(([loaded]) => {
                 // Retain selection if the commit still exists
                 if (prevSelectedHash) {
