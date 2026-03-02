@@ -113,7 +113,7 @@ export function ChatSessionSidebar({
             <div className="flex items-center gap-1.5 text-[10px] text-[#848484] mt-0.5 ml-5">
                 <span>{session.turnCount != null ? `${session.turnCount} turns` : '—'}</span>
                 <span>·</span>
-                <span>{formatRelativeTime(session.createdAt)}</span>
+                <span>{formatRelativeTime(session.lastActivityAt || session.createdAt)}</span>
                 {session.status === 'failed' && (
                     <>
                         <span>·</span>

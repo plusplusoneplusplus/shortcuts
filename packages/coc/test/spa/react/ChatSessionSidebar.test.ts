@@ -106,8 +106,8 @@ describe('ChatSessionSidebar', () => {
             expect(source).toContain('turns');
         });
 
-        it('shows relative time', () => {
-            expect(source).toContain('formatRelativeTime(session.createdAt)');
+        it('shows relative time using lastActivityAt with createdAt fallback', () => {
+            expect(source).toContain('formatRelativeTime(session.lastActivityAt || session.createdAt)');
         });
 
         it('calls onSelectSession with session id on click', () => {

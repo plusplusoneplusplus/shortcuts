@@ -118,6 +118,15 @@ describe('useChatSessions', () => {
         it('reads turnCount from chatMeta with fallback', () => {
             expect(source).toContain('task.chatMeta?.turnCount ?? task.turnCount');
         });
+
+        it('maps lastActivityAt from chatMeta numeric epoch to ISO string', () => {
+            expect(source).toContain("typeof task.chatMeta?.lastActivityAt === 'number'");
+            expect(source).toContain('new Date(task.chatMeta.lastActivityAt).toISOString()');
+        });
+
+        it('passes through string lastActivityAt from chatMeta', () => {
+            expect(source).toContain('task.chatMeta?.lastActivityAt');
+        });
     });
 
     describe('state management', () => {

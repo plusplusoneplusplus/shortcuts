@@ -31,6 +31,9 @@ function toSessionItem(task: any): ChatSessionItem {
         completedAt: typeof task.completedAt === 'number'
             ? new Date(task.completedAt).toISOString()
             : task.completedAt,
+        lastActivityAt: typeof task.chatMeta?.lastActivityAt === 'number'
+            ? new Date(task.chatMeta.lastActivityAt).toISOString()
+            : task.chatMeta?.lastActivityAt,
         firstMessage: task.chatMeta?.firstMessage || task.firstMessage || task.payload?.prompt || '',
         turnCount: task.chatMeta?.turnCount ?? task.turnCount,
     };

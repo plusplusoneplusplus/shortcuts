@@ -60,6 +60,7 @@ export interface ChatSessionItem {
     status: string;        // 'running' | 'completed' | 'failed' | 'cancelled'
     createdAt: string;     // ISO timestamp
     completedAt?: string;  // ISO timestamp
+    lastActivityAt?: string; // ISO timestamp — last conversation activity
     firstMessage: string;  // first user prompt (for preview, may be truncated by server)
     turnCount?: number;    // number of conversation turns (from enriched history)
 }
