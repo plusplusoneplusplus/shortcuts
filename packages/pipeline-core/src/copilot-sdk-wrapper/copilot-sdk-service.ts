@@ -343,6 +343,13 @@ export class CopilotSDKService {
         'ECONNRESET',
     ];
 
+    /** Patterns indicating a disposed/closed JSON-RPC connection */
+    private static readonly CONNECTION_DISPOSED_PATTERNS = [
+        'Connection is disposed',
+        'connection closed',
+        'Connection got disposed',
+    ];
+
     private constructor() {
         // Private constructor for singleton pattern
     }
@@ -835,49 +842,16 @@ export class CopilotSDKService {
 
         const { session } = entry;
         const startTime = Date.now();
-        const timeoutMs = options?.timeoutMs ?? CopilotSDKService.DEFAULT_TIMEOUT_MS;
 
         // Track for cancellation during the call
         this.trackSession(session);
 
         try {
-            let response: string;
-            let tokenUsage: TokenUsage | undefined;
-            let turnCount = 0;
-            let capturedToolCalls: ToolCall[] | undefined;
-
-            if ((options?.onStreamingChunk || timeoutMs > 120000) && session.on && session.send) {
-                const idleTimeoutMs = options?.idleTimeoutMs ?? CopilotSDKService.DEFAULT_IDLE_TIMEOUT_MS;
-                const streamingResult = await this.sendWithStreaming(
-                    session, prompt, timeoutMs, options?.onStreamingChunk, undefined, options?.onToolEvent, idleTimeoutMs, options?.attachments,
-                );
-                response = streamingResult.response;
-                tokenUsage = streamingResult.tokenUsage;
-                turnCount = streamingResult.turnCount;
-                capturedToolCalls = streamingResult.toolCalls;
-            } else {
-                const sendResult = await this.sendWithTimeout(session, prompt, timeoutMs, options?.attachments);
-                response = sendResult?.data?.content || '';
-            }
-
-            // Update last-used timestamp
-            entry.lastUsedAt = Date.now();
-
-            const durationMs = Date.now() - startTime;
-            logger.debug(LogCategory.AI,
-                `CopilotSDKService [${sessionId}]: Follow-up completed in ${durationMs}ms`);
-
-            if (!response && turnCount > 0) {
-                return { success: true, response: '', sessionId, tokenUsage, toolCalls: capturedToolCalls };
-            }
-            if (!response) {
-                return { success: false, error: 'No response received', sessionId, tokenUsage, toolCalls: capturedToolCalls };
-            }
-
-            return { success: true, response, sessionId, tokenUsage, toolCalls: capturedToolCalls };
-
+            return await this.executeFollowUpSend(entry, sessionId, prompt, options, startTime);
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
+            const isConnectionError = CopilotSDKService.isConnectionDisposedError(error);
+
             logger.error(LogCategory.AI,
                 `CopilotSDKService [${sessionId}]: Follow-up failed: ${errorMessage}`,
                 error instanceof Error ? error : undefined);
@@ -885,6 +859,27 @@ export class CopilotSDKService {
             // Destroy the broken session
             this.keptAliveSessions.delete(sessionId);
             try { await session.destroy(); } catch { /* ignore */ }
+
+            // Retry once via resume if this was a connection error
+            if (isConnectionError) {
+                logger.info(LogCategory.AI,
+                    `CopilotSDKService [${sessionId}]: Connection disposed, attempting resume-and-retry`);
+                const resumed = await this.resumeKeptAliveSession(sessionId, options);
+                if (resumed) {
+                    this.trackSession(resumed.session);
+                    try {
+                        return await this.executeFollowUpSend(resumed, sessionId, prompt, options, startTime);
+                    } catch (retryError) {
+                        const retryMsg = retryError instanceof Error ? retryError.message : String(retryError);
+                        logger.error(LogCategory.AI,
+                            `CopilotSDKService [${sessionId}]: Retry after resume also failed: ${retryMsg}`);
+                        this.keptAliveSessions.delete(sessionId);
+                        try { await resumed.session.destroy(); } catch { /* ignore */ }
+                    } finally {
+                        this.untrackSession(sessionId);
+                    }
+                }
+            }
 
             return { success: false, error: `Follow-up error: ${errorMessage}`, sessionId };
         } finally {
@@ -1047,6 +1042,73 @@ export class CopilotSDKService {
      */
     private untrackSession(sessionId: string): void {
         this.activeSessions.delete(sessionId);
+    }
+
+    /**
+     * Check whether an error indicates a disposed/closed JSON-RPC connection.
+     */
+    private static isConnectionDisposedError(error: unknown): boolean {
+        if (error instanceof Error) {
+            const msg = error.message;
+            if (CopilotSDKService.CONNECTION_DISPOSED_PATTERNS.some(p => msg.includes(p))) {
+                return true;
+            }
+            if ('code' in error && (error as any).code === 2) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Execute the follow-up send (non-streaming or streaming) on a session entry.
+     * Extracted to allow retry without duplicating logic.
+     */
+    private async executeFollowUpSend(
+        entry: KeptAliveSession,
+        sessionId: string,
+        prompt: string,
+        options: SendFollowUpOptions | undefined,
+        startTime: number,
+    ): Promise<SDKInvocationResult> {
+        const logger = getLogger();
+        const { session } = entry;
+        const timeoutMs = options?.timeoutMs ?? CopilotSDKService.DEFAULT_TIMEOUT_MS;
+
+        let response: string;
+        let tokenUsage: TokenUsage | undefined;
+        let turnCount = 0;
+        let capturedToolCalls: ToolCall[] | undefined;
+
+        if ((options?.onStreamingChunk || timeoutMs > 120000) && session.on && session.send) {
+            const idleTimeoutMs = options?.idleTimeoutMs ?? CopilotSDKService.DEFAULT_IDLE_TIMEOUT_MS;
+            const streamingResult = await this.sendWithStreaming(
+                session, prompt, timeoutMs, options?.onStreamingChunk, undefined, options?.onToolEvent, idleTimeoutMs, options?.attachments,
+            );
+            response = streamingResult.response;
+            tokenUsage = streamingResult.tokenUsage;
+            turnCount = streamingResult.turnCount;
+            capturedToolCalls = streamingResult.toolCalls;
+        } else {
+            const sendResult = await this.sendWithTimeout(session, prompt, timeoutMs, options?.attachments);
+            response = sendResult?.data?.content || '';
+        }
+
+        // Update last-used timestamp
+        entry.lastUsedAt = Date.now();
+
+        const durationMs = Date.now() - startTime;
+        logger.debug(LogCategory.AI,
+            `CopilotSDKService [${sessionId}]: Follow-up completed in ${durationMs}ms`);
+
+        if (!response && turnCount > 0) {
+            return { success: true, response: '', sessionId, tokenUsage, toolCalls: capturedToolCalls };
+        }
+        if (!response) {
+            return { success: false, error: 'No response received', sessionId, tokenUsage, toolCalls: capturedToolCalls };
+        }
+
+        return { success: true, response, sessionId, tokenUsage, toolCalls: capturedToolCalls };
     }
 
     /**
