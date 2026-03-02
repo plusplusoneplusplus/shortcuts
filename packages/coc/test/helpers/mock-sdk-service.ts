@@ -22,6 +22,7 @@ export interface MockCopilotSDKService {
     sendFollowUp: ReturnType<typeof vi.fn>;
     hasKeptAliveSession: ReturnType<typeof vi.fn>;
     canResumeSession: ReturnType<typeof vi.fn>;
+    transform: ReturnType<typeof vi.fn>;
 }
 
 /** Configuration for SDK service mock behavior */
@@ -56,6 +57,7 @@ export interface MockSDKServiceResult {
     mockSendFollowUp: ReturnType<typeof vi.fn>;
     mockHasKeptAliveSession: ReturnType<typeof vi.fn>;
     mockCanResumeSession: ReturnType<typeof vi.fn>;
+    mockTransform: ReturnType<typeof vi.fn>;
     /** Reset all mocks to their initial configured state */
     resetAll: () => void;
 }
@@ -94,6 +96,7 @@ export function createMockSDKService(options?: MockSDKServiceOptions): MockSDKSe
     const mockSendFollowUp = vi.fn().mockResolvedValue(sendFollowUpResponse);
     const mockHasKeptAliveSession = vi.fn().mockReturnValue(hasKeptAliveSessionResult);
     const mockCanResumeSession = vi.fn().mockResolvedValue(canResumeSessionResult);
+    const mockTransform = vi.fn().mockResolvedValue('Generated Title');
 
     const service: MockCopilotSDKService = {
         sendMessage: mockSendMessage,
@@ -101,6 +104,7 @@ export function createMockSDKService(options?: MockSDKServiceOptions): MockSDKSe
         sendFollowUp: mockSendFollowUp,
         hasKeptAliveSession: mockHasKeptAliveSession,
         canResumeSession: mockCanResumeSession,
+        transform: mockTransform,
     };
 
     const resetAll = () => {
@@ -109,6 +113,7 @@ export function createMockSDKService(options?: MockSDKServiceOptions): MockSDKSe
         mockSendFollowUp.mockReset().mockResolvedValue(sendFollowUpResponse);
         mockHasKeptAliveSession.mockReset().mockReturnValue(hasKeptAliveSessionResult);
         mockCanResumeSession.mockReset().mockResolvedValue(canResumeSessionResult);
+        mockTransform.mockReset().mockResolvedValue('Generated Title');
     };
 
     return {
@@ -118,6 +123,7 @@ export function createMockSDKService(options?: MockSDKServiceOptions): MockSDKSe
         mockSendFollowUp,
         mockHasKeptAliveSession,
         mockCanResumeSession,
+        mockTransform,
         resetAll,
     };
 }

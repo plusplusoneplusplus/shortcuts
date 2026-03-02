@@ -1155,6 +1155,42 @@ export class CopilotSDKService {
     }
 
     /**
+     * Sends a one-shot prompt and returns a parsed value of type T.
+     * Uses `gpt-4.1` by default. Throws on AI unavailability or parse failure.
+     *
+     * @param prompt  The instruction sent to the model.
+     * @param parse   Map the raw AI response string to T. Defaults to identity cast.
+     * @param options Override model, timeout, or working directory.
+     */
+    public async transform<T = string>(
+        prompt: string,
+        parse?: (raw: string) => T,
+        options?: { model?: string; timeoutMs?: number; cwd?: string },
+    ): Promise<T> {
+        const logger = getLogger();
+        try {
+            const result = await this.sendMessage({
+                prompt,
+                model: options?.model ?? 'gpt-4.1',
+                timeoutMs: options?.timeoutMs ?? CopilotSDKService.DEFAULT_TIMEOUT_MS,
+                keepAlive: false,
+                workingDirectory: options?.cwd,
+            });
+
+            if (!result.success) {
+                throw new Error(result.error || 'AI transform failed');
+            }
+
+            const raw = result.response ?? '';
+            return parse ? parse(raw) : raw as unknown as T;
+        } catch (error) {
+            const msg = error instanceof Error ? error.message : String(error);
+            logger.error(LogCategory.AI, `CopilotSDKService.transform: ${msg}`);
+            throw error instanceof Error ? error : new Error(msg);
+        }
+    }
+
+    /**
      * Dispose of the service and release all resources.
      */
     public dispose(): void {
