@@ -6,6 +6,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useQueue } from '../context/QueueContext';
 import { Button, cn } from '../shared';
+import { BottomSheet } from '../shared/BottomSheet';
+import { useBreakpoint } from '../hooks/useBreakpoint';
 import { RepoInfoTab } from './RepoInfoTab';
 import { PipelinesTab } from './PipelinesTab';
 import { TasksPanel } from '../tasks/TasksPanel';
@@ -40,7 +42,9 @@ export const SUB_TABS: { key: RepoSubTab; label: string }[] = [
 export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const { state, dispatch } = useApp();
     const { state: queueState, dispatch: queueDispatch } = useQueue();
+    const { isMobile } = useBreakpoint();
     const [editOpen, setEditOpen] = useState(false);
+    const [moreMenuOpen, setMoreMenuOpen] = useState(false);
     const [generateDialog, setGenerateDialog] = useState<{
         open: boolean;
         minimized: boolean;
@@ -59,6 +63,43 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const [newChatTrigger, setNewChatTrigger] = useState<{ count: number; readOnly: boolean }>({ count: 0, readOnly: false });
     const newChatTriggerProcessedRef = useRef(0);
     const tabStripRef = useRef<HTMLDivElement>(null);
+    const moreMenuRef = useRef<HTMLDivElement>(null);
+    const [tabScrollState, setTabScrollState] = useState<{ canScrollLeft: boolean; canScrollRight: boolean }>({ canScrollLeft: false, canScrollRight: false });
+
+    // Track tab strip scroll state for gradient affordance
+    const updateTabScrollState = useCallback(() => {
+        const el = tabStripRef.current;
+        if (!el) return;
+        setTabScrollState({
+            canScrollLeft: el.scrollLeft > 2,
+            canScrollRight: el.scrollLeft + el.clientWidth < el.scrollWidth - 2,
+        });
+    }, []);
+
+    useEffect(() => {
+        const el = tabStripRef.current;
+        if (!el) return;
+        updateTabScrollState();
+        el.addEventListener('scroll', updateTabScrollState, { passive: true });
+        const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(updateTabScrollState) : null;
+        ro?.observe(el);
+        return () => {
+            el.removeEventListener('scroll', updateTabScrollState);
+            ro?.disconnect();
+        };
+    }, [updateTabScrollState]);
+
+    // Close more-menu when clicking outside
+    useEffect(() => {
+        if (!moreMenuOpen) return;
+        const handler = (e: MouseEvent) => {
+            if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
+                setMoreMenuOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [moreMenuOpen]);
 
     // Auto-scroll active tab into view when sub-tab changes
     useEffect(() => {
@@ -144,94 +185,172 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     return (
         <div id="repo-detail-content" className="flex flex-col h-full min-h-0 min-w-0">
             {/* Header */}
-            <div className="repo-detail-header flex items-center gap-3 px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
-                <span
-                    className="inline-block w-3.5 h-3.5 rounded-full flex-shrink-0"
-                    style={{ background: color }}
-                />
-                <h1 className="text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc] flex-1">{ws.name}</h1>
-                {activeSubTab === 'queue' && isRepoPaused && (
-                    <Button
-                        variant="secondary"
-                        size="sm"
-                        disabled={isPauseResumeLoading}
-                        onClick={handleResumeQueue}
-                        data-testid="repo-header-resume-btn"
-                    >
-                        ▶ Resume Queue
-                    </Button>
-                )}
-                <div className="relative inline-flex" ref={newChatDropdownRef} data-testid="repo-new-chat-split-btn">
-                    <Button
-                        variant="primary"
-                        size="sm"
-                        onClick={() => handleNewChatFromTopBar(false)}
-                        title="Start a new chat"
-                        data-testid="repo-new-chat-btn"
-                        className="rounded-r-none"
-                    >
-                        + New Chat
-                    </Button>
-                    <Button
-                        variant="primary"
-                        size="sm"
-                        onClick={() => setNewChatDropdownOpen(prev => !prev)}
-                        data-testid="repo-new-chat-dropdown-toggle"
-                        className="rounded-l-none border-l border-white/30 px-1.5"
-                    >
-                        ▾
-                    </Button>
-                    {newChatDropdownOpen && (
-                        <div
-                            className="absolute right-0 top-full mt-1 w-52 bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded shadow-lg z-50"
-                            data-testid="repo-new-chat-dropdown-menu"
+            <div className={cn(
+                'repo-detail-header flex gap-3 px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c]',
+                isMobile ? 'flex-col' : 'items-center'
+            )}>
+                {/* Title row */}
+                <div className="flex items-center gap-3 min-w-0">
+                    <span
+                        className="inline-block w-3.5 h-3.5 rounded-full flex-shrink-0"
+                        style={{ background: color }}
+                    />
+                    <h1 className="text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc] flex-1 truncate">{ws.name}</h1>
+                </div>
+                {/* Action buttons */}
+                <div className="flex items-center gap-2 flex-shrink-0">
+                    {activeSubTab === 'queue' && isRepoPaused && (
+                        <Button
+                            variant="secondary"
+                            size="sm"
+                            disabled={isPauseResumeLoading}
+                            onClick={handleResumeQueue}
+                            data-testid="repo-header-resume-btn"
                         >
-                            <button
-                                className="w-full text-left px-3 py-2 text-xs hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
-                                data-testid="repo-new-chat-option-normal"
-                                onClick={() => { setNewChatDropdownOpen(false); handleNewChatFromTopBar(false); }}
+                            ▶ Resume Queue
+                        </Button>
+                    )}
+                    {/* New Chat — hidden on mobile when Chat tab is active (dedup with sidebar) */}
+                    {!(isMobile && activeSubTab === 'chat') && (
+                        <div className="relative inline-flex" ref={newChatDropdownRef} data-testid="repo-new-chat-split-btn">
+                            <Button
+                                variant="primary"
+                                size="sm"
+                                onClick={() => handleNewChatFromTopBar(false)}
+                                title="Start a new chat"
+                                data-testid="repo-new-chat-btn"
+                                className="rounded-r-none"
                             >
-                                New Chat
-                            </button>
-                            <button
-                                className="w-full text-left px-3 py-2 text-xs hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
-                                data-testid="repo-new-chat-option-readonly"
-                                onClick={() => { setNewChatDropdownOpen(false); handleNewChatFromTopBar(true); }}
+                                + New Chat
+                            </Button>
+                            <Button
+                                variant="primary"
+                                size="sm"
+                                onClick={() => setNewChatDropdownOpen(prev => !prev)}
+                                data-testid="repo-new-chat-dropdown-toggle"
+                                className="rounded-l-none border-l border-white/30 px-1.5"
                             >
-                                New Chat (Read-Only)
-                            </button>
+                                ▾
+                            </Button>
+                            {newChatDropdownOpen && (
+                                <div
+                                    className="absolute right-0 top-full mt-1 w-52 bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded shadow-lg z-50"
+                                    data-testid="repo-new-chat-dropdown-menu"
+                                >
+                                    <button
+                                        className="w-full text-left px-3 py-2 text-xs hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
+                                        data-testid="repo-new-chat-option-normal"
+                                        onClick={() => { setNewChatDropdownOpen(false); handleNewChatFromTopBar(false); }}
+                                    >
+                                        New Chat
+                                    </button>
+                                    <button
+                                        className="w-full text-left px-3 py-2 text-xs hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
+                                        data-testid="repo-new-chat-option-readonly"
+                                        onClick={() => { setNewChatDropdownOpen(false); handleNewChatFromTopBar(true); }}
+                                    >
+                                        New Chat (Read-Only)
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     )}
-                </div>
-                <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id })}
-                    title="Queue a new task"
-                    data-testid="repo-queue-task-btn"
-                >
-                    + Queue Task
-                </Button>
-                <Button variant="primary" size="sm" id="repo-generate-btn" data-testid="repo-generate-btn" onClick={() => handleOpenGenerateDialog()} className="relative">
-                    ✨ Generate Plan
-                    {generateDialog.open && generateDialog.minimized && (
-                        <span data-testid="generate-minimized-badge" className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-[#0078d4] border-2 border-white dark:border-[#252526]" />
+                    {/* On mobile: collapse Queue Task, Generate, Edit, Remove into overflow menu */}
+                    {isMobile ? (
+                        <div className="relative" ref={moreMenuRef} data-testid="repo-more-menu-container">
+                            <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => setMoreMenuOpen(prev => !prev)}
+                                data-testid="repo-more-menu-btn"
+                                title="More actions"
+                            >
+                                ⋯
+                            </Button>
+                            {moreMenuOpen && (
+                                <BottomSheet isOpen onClose={() => setMoreMenuOpen(false)} title="Actions">
+                                    <div className="flex flex-col" data-testid="repo-more-menu-items">
+                                        <button
+                                            className="w-full text-left px-4 py-3 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
+                                            data-testid="repo-more-queue-task"
+                                            onClick={() => { setMoreMenuOpen(false); queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id }); }}
+                                        >
+                                            + Queue Task
+                                        </button>
+                                        <button
+                                            className="w-full text-left px-4 py-3 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
+                                            data-testid="repo-more-generate"
+                                            onClick={() => { setMoreMenuOpen(false); handleOpenGenerateDialog(); }}
+                                        >
+                                            ✨ Generate Plan
+                                        </button>
+                                        <button
+                                            className="w-full text-left px-4 py-3 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
+                                            data-testid="repo-more-edit"
+                                            onClick={() => { setMoreMenuOpen(false); setEditOpen(true); }}
+                                        >
+                                            Edit
+                                        </button>
+                                        <button
+                                            className="w-full text-left px-4 py-3 text-sm text-red-600 dark:text-red-400 hover:bg-red-500/10"
+                                            data-testid="repo-more-remove"
+                                            onClick={() => { setMoreMenuOpen(false); handleRemove(); }}
+                                        >
+                                            Remove
+                                        </button>
+                                    </div>
+                                </BottomSheet>
+                            )}
+                        </div>
+                    ) : (
+                        <>
+                            <Button
+                                variant="primary"
+                                size="sm"
+                                onClick={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id })}
+                                title="Queue a new task"
+                                data-testid="repo-queue-task-btn"
+                            >
+                                + Queue Task
+                            </Button>
+                            <Button variant="primary" size="sm" id="repo-generate-btn" data-testid="repo-generate-btn" onClick={() => handleOpenGenerateDialog()} className="relative">
+                                ✨ Generate Plan
+                                {generateDialog.open && generateDialog.minimized && (
+                                    <span data-testid="generate-minimized-badge" className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-[#0078d4] border-2 border-white dark:border-[#252526]" />
+                                )}
+                            </Button>
+                            <Button variant="secondary" size="sm" id="repo-edit-btn" data-testid="repo-edit-btn" onClick={() => setEditOpen(true)}>Edit</Button>
+                            <Button variant="danger" size="sm" id="repo-remove-btn" data-testid="repo-remove-btn" onClick={handleRemove}>Remove</Button>
+                        </>
                     )}
-                </Button>
-                <Button variant="secondary" size="sm" id="repo-edit-btn" data-testid="repo-edit-btn" onClick={() => setEditOpen(true)}>Edit</Button>
-                <Button variant="danger" size="sm" id="repo-remove-btn" data-testid="repo-remove-btn" onClick={handleRemove}>Remove</Button>
+                </div>
             </div>
 
             {/* Sub-tab bar */}
-            <div
-                ref={tabStripRef}
-                className={cn(
-                    'flex border-b border-[#e0e0e0] dark:border-[#3c3c3c] px-4',
-                    'overflow-x-auto scrollbar-hide'
+            <div className="relative" data-testid="repo-sub-tab-strip-container">
+                {/* Left scroll fade */}
+                {tabScrollState.canScrollLeft && (
+                    <div
+                        className="absolute left-0 top-0 bottom-0 w-6 pointer-events-none z-10 bg-gradient-to-r from-white dark:from-[#1e1e1e] to-transparent"
+                        data-testid="tab-scroll-fade-left"
+                    />
                 )}
-                style={{ WebkitOverflowScrolling: 'touch' }}
-                data-testid="repo-sub-tab-strip"
-            >
+                {/* Right scroll fade */}
+                {tabScrollState.canScrollRight && (
+                    <div
+                        className="absolute right-0 top-0 bottom-0 w-6 pointer-events-none z-10 bg-gradient-to-l from-white dark:from-[#1e1e1e] to-transparent"
+                        data-testid="tab-scroll-fade-right"
+                    />
+                )}
+                <div
+                    ref={tabStripRef}
+                    className={cn(
+                        'flex border-b border-[#e0e0e0] dark:border-[#3c3c3c] px-4',
+                        'overflow-x-auto scrollbar-hide'
+                    )}
+                    style={{ WebkitOverflowScrolling: 'touch' }}
+                    data-testid="repo-sub-tab-strip"
+                >
                 {SUB_TABS.map(t => (
                     <button
                         key={t.key}
@@ -262,6 +381,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                         )}
                     </button>
                 ))}
+                </div>
             </div>
 
             {/* Sub-tab content */}

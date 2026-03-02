@@ -11,6 +11,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { fetchApi } from '../hooks/useApi';
 import { getApiBase } from '../utils/config';
 import { Button, Spinner, SuggestionChips } from '../shared';
+import { ResponsiveSidebar } from '../shared/ResponsiveSidebar';
 import { ConversationTurnBubble } from '../processes/ConversationTurnBubble';
 import { ConversationMetadataPopover } from '../processes/ConversationMetadataPopover';
 import { useImagePaste } from '../hooks/useImagePaste';
@@ -18,6 +19,7 @@ import { ImagePreviews } from '../shared/ImagePreviews';
 import { ChatSessionSidebar } from '../chat/ChatSessionSidebar';
 import { useChatSessions } from '../chat/useChatSessions';
 import { useChatReadState } from '../chat/useChatReadState';
+import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useQueue } from '../context/QueueContext';
 import { usePreferences } from '../hooks/usePreferences';
 import { SlashCommandMenu } from './SlashCommandMenu';
@@ -67,6 +69,8 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
     const readState = useChatReadState(workspaceId);
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { model: savedModel, setModel: persistModel } = usePreferences();
+    const { isMobile } = useBreakpoint();
+    const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
     const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
     const [chatTaskId, setChatTaskId] = useState<string | null>(null);
@@ -426,6 +430,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
         const session = sessionsHook.sessions.find(s => s.id === taskId);
         if (session?.turnCount != null) readState.markRead(taskId, session.turnCount);
         location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/chat/' + encodeURIComponent(taskId);
+        setMobileSidebarOpen(false);
     }, [isStreaming, loadSession, workspaceId, sessionsHook.sessions, readState]);
 
     const handleNewChat = useCallback((initialReadOnly = false) => {
@@ -651,6 +656,16 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
 
     const renderStartScreen = () => (
         <div className="flex flex-col items-center justify-center h-full p-8 gap-4">
+            {isMobile && (
+                <button
+                    className="self-start p-1 rounded hover:bg-[#e0e0e0] dark:hover:bg-[#3c3c3c] text-[#616161] dark:text-[#999] text-sm"
+                    onClick={() => setMobileSidebarOpen(true)}
+                    data-testid="chat-mobile-sessions-btn-start"
+                    title="Show sessions"
+                >
+                    ☰ Sessions
+                </button>
+            )}
             <div className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]">Chat with this repository</div>
             <div className="w-full max-w-md relative">
                 <textarea
@@ -718,6 +733,16 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
                 <div className="flex items-center gap-2">
+                    {isMobile && (
+                        <button
+                            className="p-1 rounded hover:bg-[#e0e0e0] dark:hover:bg-[#3c3c3c] text-[#616161] dark:text-[#999]"
+                            onClick={() => setMobileSidebarOpen(true)}
+                            data-testid="chat-mobile-sessions-btn"
+                            title="Show sessions"
+                        >
+                            ☰
+                        </button>
+                    )}
                     <span className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]">Chat</span>
                     {task?.type === 'readonly-chat' && (
                         <span
@@ -858,20 +883,33 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
 
     // --- render ---
 
+    const sidebarContent = (
+        <ChatSessionSidebar
+            className={isMobile ? 'h-full' : 'w-80 flex-shrink-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c]'}
+            workspaceId={workspaceId}
+            sessions={sessionsHook.sessions}
+            activeTaskId={selectedTaskId}
+            onSelectSession={handleSelectSession}
+            onNewChat={(readOnly) => handleNewChat(readOnly)}
+            onCancelSession={(taskId) => void handleCancelChat(taskId)}
+            loading={sessionsHook.loading}
+            isUnread={readState.isUnread}
+        />
+    );
+
     return (
         <div className="flex h-full overflow-hidden" data-testid="chat-split-panel">
-            {/* Left sidebar — fixed width */}
-            <ChatSessionSidebar
-                className="w-80 flex-shrink-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c]"
-                workspaceId={workspaceId}
-                sessions={sessionsHook.sessions}
-                activeTaskId={selectedTaskId}
-                onSelectSession={handleSelectSession}
-                onNewChat={(readOnly) => handleNewChat(readOnly)}
-                onCancelSession={(taskId) => void handleCancelChat(taskId)}
-                loading={sessionsHook.loading}
-                isUnread={readState.isUnread}
-            />
+            {/* Left sidebar — ResponsiveSidebar (drawer on mobile, fixed on desktop) */}
+            {isMobile ? (
+                <ResponsiveSidebar
+                    isOpen={mobileSidebarOpen}
+                    onClose={() => setMobileSidebarOpen(false)}
+                >
+                    {sidebarContent}
+                </ResponsiveSidebar>
+            ) : (
+                sidebarContent
+            )}
             {/* Right panel — grows to fill */}
             <div className="flex-1 min-w-0 overflow-hidden flex flex-col">
                 {!chatTaskId ? renderStartScreen() : renderConversation()}
