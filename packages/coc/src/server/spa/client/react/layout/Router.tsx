@@ -102,7 +102,16 @@ export function parseChatDeepLink(hash: string): string | null {
     return null;
 }
 
-export const VALID_REPO_SUB_TABS: Set<string> = new Set(['info', 'pipelines', 'tasks', 'queue', 'schedules', 'chat']);
+export function parseGitCommitDeepLink(hash: string): string | null {
+    const cleaned = hash.replace(/^#/, '');
+    const parts = cleaned.split('/');
+    if (parts[0] === 'repos' && parts[1] && parts[2] === 'git' && parts[3]) {
+        return decodeURIComponent(parts[3]);
+    }
+    return null;
+}
+
+export const VALID_REPO_SUB_TABS: Set<string> = new Set(['info', 'git', 'pipelines', 'tasks', 'queue', 'schedules', 'chat']);
 
 export function Router() {
     const { state, dispatch } = useApp();
@@ -176,6 +185,12 @@ export function Router() {
                         dispatch({ type: 'SET_SELECTED_CHAT_SESSION', id: decodeURIComponent(parts[3]) });
                     } else if (parts[2] === 'chat') {
                         dispatch({ type: 'SET_SELECTED_CHAT_SESSION', id: null });
+                    }
+                    // Git commit deep-link handling
+                    if (parts[2] === 'git' && parts[3]) {
+                        dispatch({ type: 'SET_GIT_COMMIT_HASH', hash: decodeURIComponent(parts[3]) });
+                    } else if (parts[2] === 'git') {
+                        dispatch({ type: 'SET_GIT_COMMIT_HASH', hash: null });
                     }
                 }
             }

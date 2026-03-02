@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { tabFromHash, VALID_REPO_SUB_TABS, VALID_WIKI_PROJECT_TABS, VALID_WIKI_ADMIN_TABS, parseProcessDeepLink, parseWikiDeepLink, parsePipelineDeepLink, parseQueueDeepLink, parseChatDeepLink } from '../../../src/server/spa/client/react/layout/Router';
+import { tabFromHash, VALID_REPO_SUB_TABS, VALID_WIKI_PROJECT_TABS, VALID_WIKI_ADMIN_TABS, parseProcessDeepLink, parseWikiDeepLink, parsePipelineDeepLink, parseQueueDeepLink, parseChatDeepLink, parseGitCommitDeepLink } from '../../../src/server/spa/client/react/layout/Router';
 
 // ─── tabFromHash ─────────────────────────────────────────────────
 
@@ -102,12 +102,16 @@ describe('VALID_REPO_SUB_TABS', () => {
         expect(VALID_REPO_SUB_TABS.has('chat')).toBe(true);
     });
 
+    it('includes "git"', () => {
+        expect(VALID_REPO_SUB_TABS.has('git')).toBe(true);
+    });
+
     it('does not include unknown tab', () => {
         expect(VALID_REPO_SUB_TABS.has('settings')).toBe(false);
     });
 
-    it('has exactly 6 entries', () => {
-        expect(VALID_REPO_SUB_TABS.size).toBe(6);
+    it('has exactly 7 entries', () => {
+        expect(VALID_REPO_SUB_TABS.size).toBe(7);
     });
 });
 
@@ -941,5 +945,123 @@ describe('handleHash chat dispatch simulation', () => {
         const dispatches = simulateChatHash('#repos/r1/chat/task-1');
         expect(dispatches).toContainEqual({ type: 'SET_SELECTED_REPO', id: 'r1' });
         expect(dispatches).toContainEqual({ type: 'SET_SELECTED_CHAT_SESSION', id: 'task-1' });
+    });
+});
+
+// ─── parseGitCommitDeepLink ─────────────────────────────────────
+
+describe('parseGitCommitDeepLink', () => {
+    it('parses #repos/my-repo/git/abc1234', () => {
+        expect(parseGitCommitDeepLink('#repos/my-repo/git/abc1234')).toBe('abc1234');
+    });
+
+    it('URL-decodes the commit hash', () => {
+        expect(parseGitCommitDeepLink('#repos/my-repo/git/abc%2F1')).toBe('abc/1');
+    });
+
+    it('returns null when commit hash is missing', () => {
+        expect(parseGitCommitDeepLink('#repos/my-repo/git')).toBeNull();
+    });
+
+    it('returns null for non-git sub-tab', () => {
+        expect(parseGitCommitDeepLink('#repos/my-repo/pipelines')).toBeNull();
+    });
+
+    it('returns null for non-repo hash', () => {
+        expect(parseGitCommitDeepLink('#wiki/something')).toBeNull();
+    });
+
+    it('returns null for empty hash', () => {
+        expect(parseGitCommitDeepLink('#')).toBeNull();
+    });
+
+    it('returns null for empty string', () => {
+        expect(parseGitCommitDeepLink('')).toBeNull();
+    });
+
+    it('handles URL-encoded repo ID', () => {
+        expect(parseGitCommitDeepLink('#repos/my%20repo/git/abc1234')).toBe('abc1234');
+    });
+
+    it('returns null from bare #repos', () => {
+        expect(parseGitCommitDeepLink('#repos')).toBeNull();
+    });
+
+    it('handles full 40-char SHA', () => {
+        const fullSha = 'a'.repeat(40);
+        expect(parseGitCommitDeepLink(`#repos/r1/git/${fullSha}`)).toBe(fullSha);
+    });
+});
+
+// ─── git deep-link integration ──────────────────────────────────
+
+describe('git deep-link integration', () => {
+    it('tabFromHash returns "repos" for #repos/ws-abc/git/abc1234', () => {
+        expect(tabFromHash('#repos/ws-abc/git/abc1234')).toBe('repos');
+    });
+
+    it('parseGitCommitDeepLink and tabFromHash compose correctly for a git deep link', () => {
+        const hash = '#repos/ws-abc/git/abc1234';
+        expect(tabFromHash(hash)).toBe('repos');
+        expect(parseGitCommitDeepLink(hash)).toBe('abc1234');
+    });
+});
+
+// ─── handleHash git dispatch simulation ─────────────────────────
+
+describe('handleHash git dispatch simulation', () => {
+    function simulateGitHash(rawHash: string): Array<{ type: string; [key: string]: any }> {
+        const dispatches: Array<{ type: string; [key: string]: any }> = [];
+        const hash = rawHash.replace(/^#/, '');
+        const tab = tabFromHash('#' + hash);
+        if (tab === 'repos') {
+            const parts = hash.split('/');
+            if (parts.length >= 2 && parts[0] === 'repos' && parts[1]) {
+                dispatches.push({ type: 'SET_SELECTED_REPO', id: decodeURIComponent(parts[1]) });
+                if (parts.length >= 3 && VALID_REPO_SUB_TABS.has(parts[2])) {
+                    dispatches.push({ type: 'SET_REPO_SUB_TAB', tab: parts[2] });
+                }
+                // Git commit deep-link handling (mirrors Router.tsx)
+                if (parts[2] === 'git' && parts[3]) {
+                    dispatches.push({ type: 'SET_GIT_COMMIT_HASH', hash: decodeURIComponent(parts[3]) });
+                } else if (parts[2] === 'git') {
+                    dispatches.push({ type: 'SET_GIT_COMMIT_HASH', hash: null });
+                }
+            }
+        }
+        return dispatches;
+    }
+
+    it('dispatches SET_GIT_COMMIT_HASH with commit hash for #repos/r1/git/abc1234', () => {
+        const dispatches = simulateGitHash('#repos/r1/git/abc1234');
+        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'git' });
+        expect(dispatches).toContainEqual({ type: 'SET_GIT_COMMIT_HASH', hash: 'abc1234' });
+    });
+
+    it('dispatches SET_GIT_COMMIT_HASH with null for #repos/r1/git (no hash)', () => {
+        const dispatches = simulateGitHash('#repos/r1/git');
+        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'git' });
+        expect(dispatches).toContainEqual({ type: 'SET_GIT_COMMIT_HASH', hash: null });
+    });
+
+    it('does not dispatch SET_GIT_COMMIT_HASH for #repos/r1/pipelines', () => {
+        const dispatches = simulateGitHash('#repos/r1/pipelines');
+        expect(dispatches.find(d => d.type === 'SET_GIT_COMMIT_HASH')).toBeUndefined();
+    });
+
+    it('does not dispatch SET_GIT_COMMIT_HASH for #repos/r1 (no sub-tab)', () => {
+        const dispatches = simulateGitHash('#repos/r1');
+        expect(dispatches.find(d => d.type === 'SET_GIT_COMMIT_HASH')).toBeUndefined();
+    });
+
+    it('URL-decodes the commit hash in dispatch', () => {
+        const dispatches = simulateGitHash('#repos/r1/git/abc%2Fone');
+        expect(dispatches).toContainEqual({ type: 'SET_GIT_COMMIT_HASH', hash: 'abc/one' });
+    });
+
+    it('dispatches SET_SELECTED_REPO alongside git commit selection', () => {
+        const dispatches = simulateGitHash('#repos/r1/git/abc1234');
+        expect(dispatches).toContainEqual({ type: 'SET_SELECTED_REPO', id: 'r1' });
+        expect(dispatches).toContainEqual({ type: 'SET_GIT_COMMIT_HASH', hash: 'abc1234' });
     });
 });

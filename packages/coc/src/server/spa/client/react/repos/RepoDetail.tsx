@@ -145,6 +145,9 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
 
     const switchSubTab = (tab: RepoSubTab) => {
         dispatch({ type: 'SET_REPO_SUB_TAB', tab });
+        if (tab !== 'git') {
+            dispatch({ type: 'SET_GIT_COMMIT_HASH', hash: null });
+        }
         // Update hash
         const suffix = tab !== 'info' ? '/' + tab : '';
         location.hash = '#repos/' + encodeURIComponent(ws.id) + suffix;

@@ -19,6 +19,7 @@ import { CommitDetail } from './CommitDetail';
 import { BranchChanges } from './BranchChanges';
 import { BranchFileDiff } from './BranchFileDiff';
 import { GitPanelHeader } from './GitPanelHeader';
+import { useApp } from '../context/AppContext';
 import type { GitCommitItem } from './CommitList';
 import type { BranchRangeInfo } from './BranchChanges';
 
@@ -32,6 +33,8 @@ type RightPanelView =
     | { type: 'branch-file'; filePath: string };
 
 export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
+    const { state, dispatch } = useApp();
+    const initialCommitHash = state.selectedGitCommitHash;
     const [commits, setCommits] = useState<GitCommitItem[]>([]);
     const [unpushedCount, setUnpushedCount] = useState(0);
     const [loading, setLoading] = useState(true);
@@ -102,11 +105,11 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         setError(null);
         Promise.all([fetchCommits(), fetchBranchRange()])
             .then(([loaded]) => {
-                if (loaded.length > 0) {
-                    setRightPanelView({ type: 'commit', commit: loaded[0] });
-                } else {
-                    setRightPanelView(null);
-                }
+                const target = initialCommitHash
+                    ? loaded.find((c: GitCommitItem) => c.hash.startsWith(initialCommitHash))
+                    : null;
+                const first = target ?? (loaded.length > 0 ? loaded[0] : null);
+                setRightPanelView(first ? { type: 'commit', commit: first } : null);
             })
             .catch(err => setError(err.message || 'Failed to load commits'))
             .finally(() => setLoading(false));
@@ -201,7 +204,9 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
 
     const handleSelect = useCallback((commit: GitCommitItem) => {
         setRightPanelView({ type: 'commit', commit });
-    }, []);
+        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/git/' + commit.hash;
+        dispatch({ type: 'SET_GIT_COMMIT_HASH', hash: commit.hash });
+    }, [workspaceId, dispatch]);
 
     const handleFileSelect = useCallback((filePath: string) => {
         setRightPanelView({ type: 'branch-file', filePath });

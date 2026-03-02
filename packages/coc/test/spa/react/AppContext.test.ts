@@ -28,6 +28,7 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         selectedChatSessionId: null,
         conversationCache: {},
         wsStatus: 'closed',
+        selectedGitCommitHash: null,
         ...overrides,
     };
 }
@@ -570,6 +571,32 @@ describe('AppContext reducer', () => {
             const result = appReducer(state, { type: 'SET_WS_STATUS', status: 'open' });
             expect(result.selectedId).toBe('p1');
             expect(result.wsStatus).toBe('open');
+        });
+    });
+
+    // ── SET_GIT_COMMIT_HASH ────────────────────────────────────────
+    describe('SET_GIT_COMMIT_HASH', () => {
+        it('sets selectedGitCommitHash to a string', () => {
+            const result = appReducer(makeState(), { type: 'SET_GIT_COMMIT_HASH', hash: 'abc1234' });
+            expect(result.selectedGitCommitHash).toBe('abc1234');
+        });
+
+        it('clears selectedGitCommitHash to null', () => {
+            const state = makeState({ selectedGitCommitHash: 'abc1234' });
+            const result = appReducer(state, { type: 'SET_GIT_COMMIT_HASH', hash: null });
+            expect(result.selectedGitCommitHash).toBeNull();
+        });
+
+        it('overwrites existing selectedGitCommitHash', () => {
+            const state = makeState({ selectedGitCommitHash: 'old' });
+            const result = appReducer(state, { type: 'SET_GIT_COMMIT_HASH', hash: 'new' });
+            expect(result.selectedGitCommitHash).toBe('new');
+        });
+
+        it('does not affect other state fields', () => {
+            const state = makeState({ selectedRepoId: 'r1' });
+            const result = appReducer(state, { type: 'SET_GIT_COMMIT_HASH', hash: 'abc1234' });
+            expect(result.selectedRepoId).toBe('r1');
         });
     });
 });

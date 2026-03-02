@@ -568,4 +568,34 @@ describe('RepoGitTab', () => {
             expect(source).toContain("setRightPanelView({ type: 'commit', commit })");
         });
     });
+
+    describe('deep-link support', () => {
+        it('imports useApp from AppContext', () => {
+            expect(source).toContain("import { useApp } from '../context/AppContext'");
+        });
+
+        it('reads selectedGitCommitHash from context state', () => {
+            expect(source).toContain('state.selectedGitCommitHash');
+        });
+
+        it('uses startsWith to match initial commit hash against loaded commits', () => {
+            expect(source).toContain('c.hash.startsWith(initialCommitHash)');
+        });
+
+        it('falls back to first commit when deep-link hash not found', () => {
+            expect(source).toContain('target ?? (loaded.length > 0 ? loaded[0] : null)');
+        });
+
+        it('handleSelect updates location.hash with commit URL', () => {
+            expect(source).toContain("location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/git/' + commit.hash");
+        });
+
+        it('handleSelect dispatches SET_GIT_COMMIT_HASH action', () => {
+            expect(source).toContain("dispatch({ type: 'SET_GIT_COMMIT_HASH', hash: commit.hash })");
+        });
+
+        it('handleSelect includes workspaceId and dispatch as dependencies', () => {
+            expect(source).toContain('[workspaceId, dispatch]');
+        });
+    });
 });

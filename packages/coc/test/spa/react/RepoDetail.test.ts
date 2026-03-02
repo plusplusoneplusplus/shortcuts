@@ -444,3 +444,25 @@ describe('RepoDetail New Chat button in header', () => {
         expect(block).toContain('handleNewChatFromTopBar(false)');
     });
 });
+
+describe('RepoDetail switchSubTab git deep-link', () => {
+    it('dispatches SET_GIT_COMMIT_HASH with null when switching away from git', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("dispatch({ type: 'SET_GIT_COMMIT_HASH', hash: null })");
+    });
+
+    it('only clears git commit hash when switching to non-git tab', () => {
+        const switchFnStart = REPO_DETAIL_SOURCE.indexOf('const switchSubTab');
+        const switchFnBody = REPO_DETAIL_SOURCE.slice(switchFnStart, switchFnStart + 400);
+        expect(switchFnBody).toContain("tab !== 'git'");
+    });
+
+    it('does not clear git commit hash when switching to git tab', () => {
+        const switchFnStart = REPO_DETAIL_SOURCE.indexOf('const switchSubTab');
+        const switchFnBody = REPO_DETAIL_SOURCE.slice(switchFnStart, switchFnStart + 400);
+        expect(switchFnBody).toContain("if (tab !== 'git')");
+        // Ensure the dispatch is inside the conditional (not unconditional)
+        const hashDispatchIdx = switchFnBody.indexOf("SET_GIT_COMMIT_HASH");
+        const ifIdx = switchFnBody.indexOf("if (tab !== 'git')");
+        expect(hashDispatchIdx).toBeGreaterThan(ifIdx);
+    });
+});
