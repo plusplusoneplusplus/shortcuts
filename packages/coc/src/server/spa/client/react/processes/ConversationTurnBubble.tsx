@@ -10,6 +10,7 @@ import { mergeConsecutiveContentItems } from './timeline-utils';
 import { Marked } from 'marked';
 import { useDisplaySettings } from '../hooks/useDisplaySettings';
 import { fetchApi } from '../hooks/useApi';
+import { copyToClipboard } from '../utils/format';
 import { toForwardSlashes } from '@plusplusoneplusplus/pipeline-core/utils/path-utils';
 
 const chatMarked = new Marked({
@@ -486,6 +487,7 @@ export function ConversationTurnBubble({ turn, taskId }: ConversationTurnBubbleP
     const userContentHtml = isUser ? toContentHtml(turn.content || '') : '';
     const [collapsedTaskIds, setCollapsedTaskIds] = useState<Record<string, boolean>>({});
     const [showRaw, setShowRaw] = useState(false);
+    const [copied, setCopied] = useState(false);
     const { showReportIntent } = useDisplaySettings();
 
     // Lazy image fetching state
@@ -604,12 +606,18 @@ export function ConversationTurnBubble({ turn, taskId }: ConversationTurnBubbleP
                     <button
                         className="bubble-copy-btn text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] opacity-0 group-hover:opacity-100 transition-opacity text-[10px]"
                         title="Copy to clipboard"
-                        onClick={() => {
+                        onClick={async () => {
                             const text = showRaw ? buildRawContent(turn) : (turn.content || '');
-                            navigator.clipboard?.writeText(text).catch(() => {});
+                            try {
+                                await copyToClipboard(text);
+                                setCopied(true);
+                                setTimeout(() => setCopied(false), 1500);
+                            } catch (e) {
+                                console.error('Copy failed:', e);
+                            }
                         }}
                     >
-                        📋
+                        {copied ? '✓' : '📋'}
                     </button>
                 </div>
 

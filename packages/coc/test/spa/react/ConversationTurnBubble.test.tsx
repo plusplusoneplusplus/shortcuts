@@ -3,9 +3,10 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { ConversationTurnBubble } from '../../../src/server/spa/client/react/processes/ConversationTurnBubble';
 import type { ClientConversationTurn } from '../../../src/server/spa/client/react/types/dashboard';
+import * as formatUtils from '../../../src/server/spa/client/react/utils/format';
 
 // Mock useDisplaySettings — module-level cache, no provider needed
 vi.mock('../../../src/server/spa/client/react/hooks/useDisplaySettings', () => ({
@@ -137,20 +138,15 @@ describe('ConversationTurnBubble — semantic hooks', () => {
         expect(container.querySelector('.bubble-copy-btn')).toBeTruthy();
     });
 
-    it('copies turn.content to clipboard when .bubble-copy-btn is clicked', () => {
-        const writeText = vi.fn().mockResolvedValue(undefined);
-        Object.defineProperty(navigator, 'clipboard', {
-            value: { writeText },
-            writable: true,
-            configurable: true,
-        });
+    it('copies turn.content to clipboard when .bubble-copy-btn is clicked', async () => {
+        const spy = vi.spyOn(formatUtils, 'copyToClipboard').mockResolvedValue(undefined);
 
         const { container } = render(
             <ConversationTurnBubble turn={makeTurn({ role: 'assistant', content: 'Copy me!' })} />
         );
         const btn = container.querySelector('.bubble-copy-btn') as HTMLButtonElement;
-        fireEvent.click(btn);
-        expect(writeText).toHaveBeenCalledWith('Copy me!');
+        await act(async () => { fireEvent.click(btn); });
+        expect(spy).toHaveBeenCalledWith('Copy me!');
     });
 
     // --- group class on inner bubble (for group-hover) ---
@@ -479,5 +475,72 @@ describe('ConversationTurnBubble — suggest_follow_ups hidden', () => {
         );
         expect(container.querySelector('[data-tool-id="grep-1"]')).toBeTruthy();
         expect(container.querySelector('[data-tool-id="suggest-1"]')).toBeNull();
+    });
+});
+
+import { afterEach } from 'vitest';
+
+describe('ConversationTurnBubble — copy button feedback', () => {
+    beforeEach(() => {
+        vi.restoreAllMocks();
+        vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it('shows ✓ after successful copy and resets after 1.5s', async () => {
+        vi.spyOn(formatUtils, 'copyToClipboard').mockResolvedValue(undefined);
+
+        const { container } = render(
+            <ConversationTurnBubble turn={makeTurn({ role: 'user', content: 'Hello' })} />
+        );
+        const btn = container.querySelector('.bubble-copy-btn') as HTMLButtonElement;
+        expect(btn.textContent).toBe('📋');
+
+        await act(async () => { fireEvent.click(btn); });
+        expect(btn.textContent).toBe('✓');
+
+        // After 1.5s, should reset
+        await act(async () => { vi.advanceTimersByTime(1500); });
+        expect(btn.textContent).toBe('📋');
+    });
+
+    it('keeps 📋 when copy fails', async () => {
+        vi.spyOn(formatUtils, 'copyToClipboard').mockRejectedValue(new Error('denied'));
+        const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+        const { container } = render(
+            <ConversationTurnBubble turn={makeTurn({ role: 'user', content: 'Hello' })} />
+        );
+        const btn = container.querySelector('.bubble-copy-btn') as HTMLButtonElement;
+
+        await act(async () => { fireEvent.click(btn); });
+        expect(btn.textContent).toBe('📋');
+        expect(consoleSpy).toHaveBeenCalledWith('Copy failed:', expect.any(Error));
+    });
+
+    it('uses copyToClipboard utility (not navigator.clipboard directly)', async () => {
+        const spy = vi.spyOn(formatUtils, 'copyToClipboard').mockResolvedValue(undefined);
+
+        const { container } = render(
+            <ConversationTurnBubble turn={makeTurn({ role: 'assistant', content: 'test content' })} />
+        );
+        const btn = container.querySelector('.bubble-copy-btn') as HTMLButtonElement;
+        await act(async () => { fireEvent.click(btn); });
+        expect(spy).toHaveBeenCalledTimes(1);
+        expect(spy).toHaveBeenCalledWith('test content');
+    });
+
+    it('copies empty string when turn.content is undefined', async () => {
+        const spy = vi.spyOn(formatUtils, 'copyToClipboard').mockResolvedValue(undefined);
+
+        const { container } = render(
+            <ConversationTurnBubble turn={makeTurn({ role: 'user', content: undefined as any })} />
+        );
+        const btn = container.querySelector('.bubble-copy-btn') as HTMLButtonElement;
+        await act(async () => { fireEvent.click(btn); });
+        expect(spy).toHaveBeenCalledWith('');
     });
 });
