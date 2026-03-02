@@ -227,12 +227,12 @@ suite('CopilotSDKService - Client Initialization', () => {
         resetCopilotSDKService();
     });
 
-    test('ensureClient should throw when disposed', async () => {
+    test('createClient should throw when disposed', async () => {
         const service = getCopilotSDKService();
         service.dispose();
 
         try {
-            await service.ensureClient();
+            await service.createClient();
             assert.fail('Should have thrown error');
         } catch (error) {
             assert.ok(error instanceof Error, 'Should throw Error');
@@ -240,13 +240,13 @@ suite('CopilotSDKService - Client Initialization', () => {
         }
     });
 
-    test('ensureClient should throw when SDK not available', async () => {
+    test('createClient should throw when SDK not available', async () => {
         const service = getCopilotSDKService();
 
         // In test environment without SDK, this should fail
         // We test that it throws an appropriate error
         try {
-            await service.ensureClient();
+            await service.createClient();
             // If SDK is available in test environment, this is also valid
         } catch (error) {
             assert.ok(error instanceof Error, 'Should throw Error');

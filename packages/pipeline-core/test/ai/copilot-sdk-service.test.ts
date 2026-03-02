@@ -52,8 +52,9 @@ describe('CopilotSDKService - Client Initialization', () => {
 
         const serviceAny = service as any;
         serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
-        await serviceAny.initializeClient('/some/project/path');
+        await service.createClient('/some/project/path');
 
         expect(trustedFolder.ensureFolderTrusted).toHaveBeenCalledWith('/some/project/path');
     });
@@ -63,20 +64,22 @@ describe('CopilotSDKService - Client Initialization', () => {
 
         const serviceAny = service as any;
         serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
-        await serviceAny.initializeClient(undefined);
+        await service.createClient(undefined);
 
         expect(trustedFolder.ensureFolderTrusted).not.toHaveBeenCalled();
     });
 
-    it('should call ensureFolderTrusted for each new cwd when client is re-created', async () => {
+    it('should call ensureFolderTrusted for each new cwd when clients are created', async () => {
         const { MockCopilotClient } = createMockSDKModule();
 
         const serviceAny = service as any;
         serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
-        await serviceAny.initializeClient('/first/path');
-        await serviceAny.initializeClient('/second/path');
+        await service.createClient('/first/path');
+        await service.createClient('/second/path');
 
         expect(trustedFolder.ensureFolderTrusted).toHaveBeenCalledTimes(2);
         expect(trustedFolder.ensureFolderTrusted).toHaveBeenCalledWith('/first/path');
@@ -91,9 +94,10 @@ describe('CopilotSDKService - Client Initialization', () => {
 
         const serviceAny = service as any;
         serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
         // Should not throw — ensureFolderTrusted errors are non-fatal
-        await serviceAny.initializeClient('/some/path');
+        await service.createClient('/some/path');
 
         expect(capturedOptions).toHaveLength(1);
         expect(capturedOptions[0].cwd).toBe('/some/path');
@@ -2405,7 +2409,7 @@ describe('CopilotSDKService - Client Invalidation on Stream Error', () => {
         resetCopilotSDKService();
     });
 
-    it('invalidates client when createSession throws a stream-destroyed error', async () => {
+    it('returns error when createSession throws a stream-destroyed error', async () => {
         const { MockCopilotClient, mockClient } = createMockSDKModule();
         mockClient.createSession.mockRejectedValue(
             new Error('Cannot call write after a stream was destroyed')
@@ -2415,7 +2419,7 @@ describe('CopilotSDKService - Client Invalidation on Stream Error', () => {
         serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake' };
 
-        // First call — should fail with stream error and invalidate client
+        // Should fail with stream error
         const result = await service.sendMessage({
             prompt: 'test',
             workingDirectory: '/test/dir',
@@ -2423,13 +2427,9 @@ describe('CopilotSDKService - Client Invalidation on Stream Error', () => {
 
         expect(result.success).toBe(false);
         expect(result.error).toContain('stream was destroyed');
-
-        // Client should be nulled out so next call creates a fresh one
-        expect(serviceAny.client).toBeNull();
-        expect(serviceAny.clientCwd).toBeUndefined();
     });
 
-    it('does NOT invalidate client on non-stream errors', async () => {
+    it('does NOT affect other sessions on non-stream errors', async () => {
         const { MockCopilotClient, mockClient } = createMockSDKModule();
         mockClient.createSession.mockRejectedValue(new Error('Model not found'));
 
@@ -2444,12 +2444,9 @@ describe('CopilotSDKService - Client Invalidation on Stream Error', () => {
 
         expect(result.success).toBe(false);
         expect(result.error).toContain('Model not found');
-
-        // Client should still be present
-        expect(serviceAny.client).not.toBeNull();
     });
 
-    it('creates a fresh client on retry after stream-destroyed invalidation', async () => {
+    it('creates a fresh client per session so stream errors are isolated', async () => {
         // Track how many CopilotClient instances are created
         let clientCount = 0;
         const mockClient1 = {
@@ -2481,16 +2478,15 @@ describe('CopilotSDKService - Client Invalidation on Stream Error', () => {
         serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake' };
 
-        // First call — stream error, client invalidated
+        // First call — stream error on this client (isolated)
         const result1 = await service.sendMessage({
             prompt: 'test',
             workingDirectory: '/test/dir',
         });
         expect(result1.success).toBe(false);
-        expect(serviceAny.client).toBeNull();
         expect(clientCount).toBe(1);
 
-        // Second call — should create new client and succeed
+        // Second call — fresh client, succeeds
         const result2 = await service.sendMessage({
             prompt: 'test',
             workingDirectory: '/test/dir',
@@ -2500,22 +2496,20 @@ describe('CopilotSDKService - Client Invalidation on Stream Error', () => {
         expect(clientCount).toBe(2);
     });
 
-    it('installs and removes stream error guard with client lifecycle', async () => {
+    it('installs stream error guard when SDK module is loaded', async () => {
         const { MockCopilotClient } = createMockSDKModule();
         const serviceAny = service as any;
+
+        // Before SDK module load — no guard
+        expect(serviceAny.streamErrorGuardHandler).toBeNull();
+
+        // Set up sdkModule as if it was loaded fresh (simulates ensureSDKModule)
         serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        serviceAny.availabilityCache = { available: true, sdkPath: '/fake' };
+        serviceAny.installStreamErrorGuard();
 
-        // Before client creation — no guard
-        expect(serviceAny.streamErrorGuardHandler).toBeNull();
-
-        await serviceAny.initializeClient('/test/dir');
-
-        // After client creation — guard installed
+        // After loading — guard installed
         expect(serviceAny.streamErrorGuardHandler).not.toBeNull();
-
-        // After invalidation — guard removed
-        serviceAny.invalidateClient();
-        expect(serviceAny.streamErrorGuardHandler).toBeNull();
     });
 
 });

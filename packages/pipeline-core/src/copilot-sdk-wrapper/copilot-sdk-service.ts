@@ -80,6 +80,7 @@ interface StreamingResult {
  */
 interface KeptAliveSession {
     session: ICopilotSession;
+    client: ICopilotClient;
     createdAt: number;
     lastUsedAt: number;
     workingDirectory?: string;
@@ -306,10 +307,7 @@ export function tryConvertImageFileToDataUrl(filePath: string): string | null {
 export class CopilotSDKService {
     private static instance: CopilotSDKService | null = null;
 
-    private client: ICopilotClient | null = null;
-    private clientCwd: string | undefined = undefined;
     private sdkModule: { CopilotClient: new (options?: ICopilotClientOptions) => ICopilotClient } | null = null;
-    private initializationPromise: Promise<void> | null = null;
     private availabilityCache: SDKAvailabilityResult | null = null;
     private disposed = false;
 
@@ -445,71 +443,52 @@ export class CopilotSDKService {
     }
 
     /**
-     * Discard the current client without waiting for a graceful stop.
-     * Called when the underlying stream is known to be broken — attempting
-     * `client.stop()` would itself fail on the destroyed stream.
+     * Discard the given client without waiting for a graceful stop.
+     * Called when the underlying stream is known to be broken.
      */
-    private invalidateClient(): void {
-        if (this.client) {
-            this.client.stop().catch(() => {});
-            this.client = null;
-            this.clientCwd = undefined;
-            this.initializationPromise = null;
-        }
-        this.removeStreamErrorGuard();
+    private invalidateClient(client: ICopilotClient): void {
+        client.stop().catch(() => {});
     }
 
     /**
-     * Ensure the SDK client is initialized with the specified working directory.
-     * If the working directory changes, a new client is created.
-     * Uses lazy initialization to avoid startup overhead.
+     * Create a new SDK client with the specified working directory.
+     * Each session gets its own client (child process) for full isolation.
      *
      * @param cwd Optional working directory for the client
      * @throws Error if SDK is not available or initialization fails
      */
-    public async ensureClient(cwd?: string): Promise<ICopilotClient> {
+    public async createClient(cwd?: string): Promise<ICopilotClient> {
         if (this.disposed) {
             throw new Error('CopilotSDKService has been disposed');
         }
 
-        // Check if we can reuse the existing client (same cwd)
-        if (this.client && this.clientCwd === cwd) {
-            return this.client;
-        }
+        await this.ensureSDKModule();
 
-        // If cwd changed, stop the old client first
-        if (this.client && this.clientCwd !== cwd) {
-            const logger = getLogger();
-            logger.debug(LogCategory.AI, `CopilotSDKService: Working directory changed from '${this.clientCwd}' to '${cwd}', creating new client`);
-            try {
-                await this.client.stop();
-            } catch (error) {
-                logger.debug(LogCategory.AI, `CopilotSDKService: Warning: Error stopping old client: ${error}`);
-            }
-            this.client = null;
-            this.clientCwd = undefined;
-        }
-
-        // Use a promise to prevent concurrent initialization
-        if (this.initializationPromise) {
-            await this.initializationPromise;
-            if (this.client && this.clientCwd === cwd) {
-                return this.client;
-            }
+        if (!this.sdkModule) {
+            throw new Error('Failed to load Copilot SDK module');
         }
 
         const logger = getLogger();
-        logger.debug(LogCategory.AI, `CopilotSDKService: Initializing SDK client with cwd: ${cwd || '(default)'}`);
 
-        this.initializationPromise = this.initializeClient(cwd);
-        await this.initializationPromise;
-        this.initializationPromise = null;
-
-        if (!this.client) {
-            throw new Error('Failed to initialize Copilot SDK client');
+        const options: ICopilotClientOptions = {};
+        if (cwd) {
+            if (!fs.existsSync(cwd)) {
+                logger.warn(LogCategory.AI,
+                    `CopilotSDKService: Working directory does not exist: ${cwd}. ` +
+                    'The SDK will fail with ERR_STREAM_DESTROYED because child_process.spawn ' +
+                    'requires an existing cwd. Ensure the caller passes a valid directory.');
+            }
+            options.cwd = cwd;
+            try {
+                ensureFolderTrusted(cwd);
+            } catch {
+                // Non-fatal: trust dialog will appear if this fails
+            }
         }
 
-        return this.client;
+        logger.debug(LogCategory.AI, `CopilotSDKService: Creating new CopilotClient with options: ${JSON.stringify(options)}`);
+        const client = new this.sdkModule.CopilotClient(options);
+        return client;
     }
 
     /**
@@ -533,11 +512,12 @@ export class CopilotSDKService {
         }
 
         let session: ICopilotSession | null = null;
+        let client: ICopilotClient | null = null;
         let result: SDKInvocationResult | null = null;
 
         try {
-            // Create/reuse client with the specified working directory
-            const client = await this.ensureClient(options.workingDirectory);
+            // Create a fresh client for this session (per-session isolation)
+            client = await this.createClient(options.workingDirectory);
 
             // Build session options
             const sessionOptions: ISessionOptions = {};
@@ -713,11 +693,11 @@ export class CopilotSDKService {
             logger.error(LogCategory.AI, `CopilotSDKService [${session?.sessionId ?? 'no-session'}]: Request failed after ${durationMs}ms`, error instanceof Error ? error : undefined);
 
             // When the underlying JSON-RPC stream is destroyed, the client is
-            // no longer usable.  Null it out so the next call creates a fresh one
-            // instead of reusing the dead connection.
-            if (CopilotSDKService.isStreamDestroyedError(errorMessage)) {
-                logger.debug(LogCategory.AI, 'CopilotSDKService: Stream destroyed — invalidating client for next retry');
-                this.invalidateClient();
+            // no longer usable. Invalidate it so it doesn't leak.
+            if (CopilotSDKService.isStreamDestroyedError(errorMessage) && client) {
+                logger.debug(LogCategory.AI, 'CopilotSDKService: Stream destroyed — invalidating client');
+                this.invalidateClient(client);
+                client = null; // prevent double-stop in finally
             }
 
             result = {
@@ -732,10 +712,11 @@ export class CopilotSDKService {
             if (session) {
                 this.untrackSession(session.sessionId);
                 if (options.keepAlive && result?.success) {
-                    // Preserve session for follow-up messages
+                    // Preserve session and its client for follow-up messages
                     const now = Date.now();
                     this.keptAliveSessions.set(session.sessionId, {
                         session,
+                        client: client!,
                         createdAt: now,
                         lastUsedAt: now,
                         workingDirectory: options.workingDirectory,
@@ -750,6 +731,21 @@ export class CopilotSDKService {
                     } catch (destroyError) {
                         logger.debug(LogCategory.AI, `CopilotSDKService [${session.sessionId}]: Warning: Error destroying session: ${destroyError}`);
                     }
+                    // Stop the per-session client
+                    if (client) {
+                        try {
+                            await client.stop();
+                        } catch {
+                            // ignore — client may already be dead
+                        }
+                    }
+                }
+            } else if (client) {
+                // Session was never created but client was — clean up client
+                try {
+                    await client.stop();
+                } catch {
+                    // ignore
                 }
             }
         }
@@ -766,8 +762,10 @@ export class CopilotSDKService {
         const timeoutMs = options?.timeoutMs ?? CopilotSDKService.DEFAULT_TIMEOUT_MS;
 
         try {
-            const client = await this.ensureClient(options?.workingDirectory);
+            const client = await this.createClient(options?.workingDirectory);
             if (typeof client.resumeSession !== 'function') {
+                // Client doesn't support resume — stop it
+                try { await client.stop(); } catch { /* ignore */ }
                 return undefined;
             }
 
@@ -786,6 +784,7 @@ export class CopilotSDKService {
             const now = Date.now();
             const entry: KeptAliveSession = {
                 session,
+                client,
                 createdAt: now,
                 lastUsedAt: now,
                 workingDirectory: options?.workingDirectory,
@@ -856,9 +855,10 @@ export class CopilotSDKService {
                 `CopilotSDKService [${sessionId}]: Follow-up failed: ${errorMessage}`,
                 error instanceof Error ? error : undefined);
 
-            // Destroy the broken session
+            // Destroy the broken session and its client
             this.keptAliveSessions.delete(sessionId);
             try { await session.destroy(); } catch { /* ignore */ }
+            try { await entry.client.stop(); } catch { /* ignore */ }
 
             // Retry once via resume if this was a connection error
             if (isConnectionError) {
@@ -875,6 +875,7 @@ export class CopilotSDKService {
                             `CopilotSDKService [${sessionId}]: Retry after resume also failed: ${retryMsg}`);
                         this.keptAliveSessions.delete(sessionId);
                         try { await resumed.session.destroy(); } catch { /* ignore */ }
+                        try { await resumed.client.stop(); } catch { /* ignore */ }
                     } finally {
                         this.untrackSession(sessionId);
                     }
@@ -910,6 +911,11 @@ export class CopilotSDKService {
         } catch (error) {
             logger.debug(LogCategory.AI,
                 `CopilotSDKService [${sessionId}]: Warning: Error destroying kept-alive session: ${error}`);
+        }
+        try {
+            await entry.client.stop();
+        } catch {
+            // ignore — client may already be dead
         }
         return true;
     }
@@ -955,6 +961,7 @@ export class CopilotSDKService {
             if (entry) {
                 this.keptAliveSessions.delete(sessionId);
                 try { await entry.session.destroy(); } catch { /* ignore */ }
+                try { await entry.client.stop(); } catch { /* ignore */ }
                 logger.debug(LogCategory.AI,
                     `CopilotSDKService [${sessionId}]: Idle kept-alive session cleaned up`);
             }
@@ -1126,10 +1133,14 @@ export class CopilotSDKService {
         await Promise.allSettled(abortPromises);
         this.activeSessions.clear();
 
-        // Destroy all kept-alive sessions
+        // Destroy all kept-alive sessions and their per-session clients
         const keepAlivePromises: Promise<void>[] = [];
         for (const [, entry] of this.keptAliveSessions) {
-            keepAlivePromises.push(entry.session.destroy().catch(() => {}));
+            keepAlivePromises.push(
+                entry.session.destroy().catch(() => {}).then(() =>
+                    entry.client.stop().catch(() => {})
+                )
+            );
         }
         this.keptAliveSessions.clear();
         if (this.keepAliveCleanupTimer) {
@@ -1137,17 +1148,6 @@ export class CopilotSDKService {
             this.keepAliveCleanupTimer = undefined;
         }
         await Promise.allSettled(keepAlivePromises);
-
-        if (this.client) {
-            try {
-                await this.client.stop();
-                logger.debug(LogCategory.AI, 'CopilotSDKService: Client stopped');
-            } catch (error) {
-                logger.debug(LogCategory.AI, `CopilotSDKService: Warning: Error stopping client: ${error}`);
-            }
-            this.client = null;
-            this.clientCwd = undefined;
-        }
 
         this.removeStreamErrorGuard();
         this.sdkModule = null;
@@ -1257,11 +1257,14 @@ export class CopilotSDKService {
     }
 
     /**
-     * Initialize the SDK client with optional working directory.
-     * 
-     * @param cwd Optional working directory for the CLI process
+     * Ensure the SDK module is loaded (lazy initialization).
+     * Does NOT create a client — clients are created per-session by createClient().
      */
-    private async initializeClient(cwd?: string): Promise<void> {
+    private async ensureSDKModule(): Promise<void> {
+        if (this.sdkModule) {
+            return;
+        }
+
         const sdkPath = this.findSDKPath();
         if (!sdkPath) {
             throw new Error('Copilot SDK not found');
@@ -1273,42 +1276,17 @@ export class CopilotSDKService {
             throw new Error('SDK module not loaded');
         }
 
-        // Create client with cwd option if specified
-        const options: ICopilotClientOptions = {};
-        if (cwd) {
-            if (!fs.existsSync(cwd)) {
-                const logger = getLogger();
-                logger.warn(LogCategory.AI,
-                    `CopilotSDKService: Working directory does not exist: ${cwd}. ` +
-                    'The SDK will fail with ERR_STREAM_DESTROYED because child_process.spawn ' +
-                    'requires an existing cwd. Ensure the caller passes a valid directory.');
-            }
-            options.cwd = cwd;
-            // Pre-register the working directory as trusted to bypass the
-            // interactive folder trust confirmation dialog
-            try {
-                ensureFolderTrusted(cwd);
-            } catch {
-                // Non-fatal: trust dialog will appear if this fails
-            }
-        }
-
-        const logger = getLogger();
-        logger.debug(LogCategory.AI, `CopilotSDKService: Creating CopilotClient with options: ${JSON.stringify(options)}`);
-
-        // Install a temporary uncaughtException handler *before* creating the
-        // client.  The SDK's own stdio error handler (`connectViaStdio`) re-
-        // throws `ERR_STREAM_DESTROYED` from an event listener when the CLI
-        // process's stdin is written to after the process exits.  That thrown
-        // error becomes an uncaught exception and crashes the host process.
-        //
-        // We absorb this specific class of errors here so that the normal
-        // error-return path in `sendMessage` can surface them gracefully and
-        // `invalidateClient()` can replace the dead client.
+        // Install the stream error guard once when SDK is first loaded
         this.installStreamErrorGuard();
+    }
 
-        this.client = new this.sdkModule.CopilotClient(options);
-        this.clientCwd = cwd;
+    /**
+     * Initialize the SDK client with optional working directory.
+     * @deprecated Use createClient() instead. Kept for test compatibility.
+     * @param cwd Optional working directory for the CLI process
+     */
+    private async initializeClient(cwd?: string): Promise<void> {
+        await this.ensureSDKModule();
     }
 
     // ------------------------------------------------------------------
@@ -1339,8 +1317,7 @@ export class CopilotSDKService {
             if (CopilotSDKService.isStreamDestroyedError(err.message || String(err))) {
                 logger.debug(LogCategory.AI,
                     `CopilotSDKService: Absorbed uncaught stream error: ${err.message}`);
-                this.invalidateClient();
-                return; // Swallow — normal error path already reported this
+                return; // Swallow — per-session error path already handles this
             }
             // Not ours — re-throw so the default handler picks it up
             throw err;

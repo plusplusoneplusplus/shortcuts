@@ -62,10 +62,14 @@ describe('CopilotSDKService - Follow-up Retry on Disposed Connection', () => {
         serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
         serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
+        // Create a mock client to attach to the kept-alive entry
+        const mockClientInstance = new MockCopilotClient();
+
         // Simulate kept-alive session already in memory
         const now = Date.now();
         serviceAny.keptAliveSessions.set('sess-1', {
             session: initialSession,
+            client: mockClientInstance,
             createdAt: now,
             lastUsedAt: now,
             workingDirectory: '/test',

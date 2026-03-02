@@ -198,7 +198,7 @@ export function createE2EMockSDKService(options?: E2EMockAIOptions): E2EMockAICo
         hasKeptAliveSession: mockHasKeptAliveSession,
         canResumeSession: mockCanResumeSession,
         // Stubs for methods the executor may reference but doesn't critically need
-        ensureClient: () => Promise.resolve(),
+        createClient: () => Promise.resolve(),
         destroyKeptAliveSession: () => Promise.resolve(),
         abortSession: () => {},
         hasActiveSession: () => false,

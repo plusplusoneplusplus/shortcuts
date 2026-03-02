@@ -372,4 +372,140 @@ describe('CopilotSDKService - Keep-Alive', () => {
         expect(serviceAny.keptAliveSessions.size).toBe(0);
         expect(serviceAny.keepAliveCleanupTimer).toBeUndefined();
     });
+
+    // ========================================================================
+    // Test 12: Per-session client isolation — each session gets its own client
+    // ========================================================================
+    it('should create a separate client per session (no shared client)', async () => {
+        let clientCount = 0;
+        const session1 = createMockSession({ sessionId: 'session-a' });
+        const session2 = createMockSession({ sessionId: 'session-b' });
+        const clients: any[] = [];
+
+        class MockCopilotClient {
+            createSession: ReturnType<typeof vi.fn>;
+            resumeSession = vi.fn().mockRejectedValue(new Error('not found'));
+            stop = vi.fn().mockResolvedValue(undefined);
+            constructor() {
+                clientCount++;
+                const session = clientCount === 1 ? session1 : session2;
+                this.createSession = vi.fn().mockResolvedValue(session);
+                clients.push(this);
+            }
+        }
+
+        const serviceAny = service as any;
+        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+
+        // Send two keepAlive messages with different cwds
+        const result1 = await service.sendMessage({
+            prompt: 'Hello',
+            workingDirectory: '/project-a',
+            keepAlive: true,
+            loadDefaultMcpConfig: false,
+        });
+        expect(result1.success).toBe(true);
+
+        const result2 = await service.sendMessage({
+            prompt: 'World',
+            workingDirectory: '/project-b',
+            keepAlive: true,
+            loadDefaultMcpConfig: false,
+        });
+        expect(result2.success).toBe(true);
+
+        // Two separate clients should have been created
+        expect(clientCount).toBe(2);
+        expect(clients.length).toBe(2);
+
+        // Both sessions should still be alive (different cwd didn't kill first session)
+        expect(serviceAny.keptAliveSessions.has('session-a')).toBe(true);
+        expect(serviceAny.keptAliveSessions.has('session-b')).toBe(true);
+
+        // Each kept-alive entry should have its own client
+        const entryA = serviceAny.keptAliveSessions.get('session-a');
+        const entryB = serviceAny.keptAliveSessions.get('session-b');
+        expect(entryA.client).toBe(clients[0]);
+        expect(entryB.client).toBe(clients[1]);
+        expect(entryA.client).not.toBe(entryB.client);
+    });
+
+    // ========================================================================
+    // Test 13: Client is stopped when session is destroyed (non-keepAlive)
+    // ========================================================================
+    it('should stop the per-session client when session is not kept alive', async () => {
+        const mockSession = createMockSession();
+        const mockClientStop = vi.fn().mockResolvedValue(undefined);
+
+        class MockCopilotClient {
+            createSession = vi.fn().mockResolvedValue(mockSession);
+            resumeSession = vi.fn().mockRejectedValue(new Error('not found'));
+            stop = mockClientStop;
+            constructor() {}
+        }
+
+        const serviceAny = service as any;
+        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+
+        const result = await service.sendMessage({
+            prompt: 'Hello',
+            workingDirectory: '/test',
+            keepAlive: false,
+            loadDefaultMcpConfig: false,
+        });
+
+        expect(result.success).toBe(true);
+        // Session destroyed
+        expect(mockSession.destroy).toHaveBeenCalled();
+        // Client stopped
+        expect(mockClientStop).toHaveBeenCalled();
+    });
+
+    // ========================================================================
+    // Test 14: cleanup() stops clients for all kept-alive sessions
+    // ========================================================================
+    it('should stop clients for all kept-alive sessions on cleanup()', async () => {
+        const session1 = createMockSession({ sessionId: 'session-1' });
+        const session2 = createMockSession({ sessionId: 'session-2' });
+        let callCount = 0;
+        const clientStops: ReturnType<typeof vi.fn>[] = [];
+
+        class MockCopilotClient {
+            createSession: ReturnType<typeof vi.fn>;
+            resumeSession = vi.fn().mockRejectedValue(new Error('not found'));
+            stop = vi.fn().mockResolvedValue(undefined);
+            constructor() {
+                callCount++;
+                this.createSession = vi.fn().mockResolvedValue(
+                    callCount === 1 ? session1 : session2
+                );
+                clientStops.push(this.stop);
+            }
+        }
+
+        const serviceAny = service as any;
+        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+
+        await service.sendMessage({
+            prompt: 'Hello', workingDirectory: '/test',
+            keepAlive: true, loadDefaultMcpConfig: false,
+        });
+        await service.sendMessage({
+            prompt: 'World', workingDirectory: '/test',
+            keepAlive: true, loadDefaultMcpConfig: false,
+        });
+
+        expect(serviceAny.keptAliveSessions.size).toBe(2);
+
+        await service.cleanup();
+
+        // Both sessions destroyed AND both clients stopped
+        expect(session1.destroy).toHaveBeenCalled();
+        expect(session2.destroy).toHaveBeenCalled();
+        expect(clientStops[0]).toHaveBeenCalled();
+        expect(clientStops[1]).toHaveBeenCalled();
+    });
 });

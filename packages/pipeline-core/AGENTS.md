@@ -12,7 +12,7 @@ Pure Node.js AI pipeline engine. No VS Code dependencies. Used by CoC CLI, Deep 
 | **runtime** | `src/runtime/` | `runWithPolicy` (timeout + retry + cancellation), `withTimeout`, `withRetry`, backoff strategies |
 | **queue** | `src/queue/` | `TaskQueueManager` (priority queue) + `QueueExecutor` (concurrency control, events) |
 | **ai** | `src/ai/` | AI types, CLI shell escaping, prompt builder, program utils, timeout defaults |
-| **copilot-sdk** | `src/copilot-sdk-wrapper/` | `CopilotSDKService` (session pooling, follow-up retry on disposed connection), `ModelRegistry`, MCP config loader, trusted folders |
+| **copilot-sdk** | `src/copilot-sdk-wrapper/` | `CopilotSDKService` (per-session client isolation, follow-up retry on disposed connection), `ModelRegistry`, MCP config loader, trusted folders |
 | **process-store** | `src/process-store.ts`, `src/file-process-store.ts` | Abstract `ProcessStore` + `FileProcessStore` (JSON, atomic writes, 500-process cap) |
 | **map-reduce** | `src/map-reduce/` | `MapReduceExecutor`, concurrency limiter, splitters, reducers, pre-built job factories |
 | **pipeline** | `src/pipeline/` | YAML pipeline executor, CSV reader, template engine, filter executor, skill/prompt resolvers |
