@@ -2,6 +2,7 @@
  * TaskTreeItem — individual row in a Miller column.
  */
 
+import { useRef } from 'react';
 import { cn } from '../shared';
 import { isContextFile, isTaskFolder, isTaskDocumentGroup, isTaskDocument } from '../hooks/useTaskTree';
 import type { TaskNode, TaskFolder, TaskDocumentGroup, TaskDocument } from '../hooks/useTaskTree';
@@ -152,6 +153,49 @@ export function TaskTreeItem({
         onDragStart?.(e);
     };
 
+    // Long-press to open context menu on mobile/touch devices
+    const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const longPressFired = useRef(false);
+
+    const handleTouchStart = (e: React.TouchEvent) => {
+        longPressFired.current = false;
+        const touch = e.touches[0];
+        const x = touch.clientX;
+        const y = touch.clientY;
+        longPressTimer.current = setTimeout(() => {
+            longPressFired.current = true;
+            if (isFolder && onFolderContextMenu) {
+                onFolderContextMenu(item as TaskFolder, x, y);
+            } else if (canOpenFileContextMenu && onFileContextMenu) {
+                onFileContextMenu(item as TaskDocument | TaskDocumentGroup, x, y);
+            }
+        }, 500);
+    };
+
+    const handleTouchEnd = () => {
+        if (longPressTimer.current !== null) {
+            clearTimeout(longPressTimer.current);
+            longPressTimer.current = null;
+        }
+    };
+
+    const handleTouchMove = () => {
+        // Cancel long press if the user scrolls
+        if (longPressTimer.current !== null) {
+            clearTimeout(longPressTimer.current);
+            longPressTimer.current = null;
+        }
+    };
+
+    const handleClickWithLongPress = () => {
+        // Suppress click if it was triggered by a long press
+        if (longPressFired.current) {
+            longPressFired.current = false;
+            return;
+        }
+        handleClick();
+    };
+
     return (
         <li
             className={cn(
@@ -175,7 +219,7 @@ export function TaskTreeItem({
             onDragEnter={isFolder ? onDragEnter : undefined}
             onDragLeave={isFolder ? onDragLeave : undefined}
             onDrop={isFolder ? onDrop : undefined}
-            onClick={handleClick}
+            onClick={handleClickWithLongPress}
             onContextMenu={(e) => {
                 if (e.shiftKey) {
                     // Keep the browser's native context menu when Shift is held.
@@ -192,6 +236,9 @@ export function TaskTreeItem({
                 }
             }}
             title={tooltip}
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
+            onTouchMove={handleTouchMove}
             data-testid={`task-tree-item-${displayName}`}
             data-file-path={!isFolder && path ? path : undefined}
         >
