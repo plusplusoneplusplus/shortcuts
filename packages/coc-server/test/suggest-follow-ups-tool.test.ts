@@ -27,7 +27,7 @@ describe('createSuggestFollowUpsTool', () => {
                     items: { type: 'string' },
                     minItems: 2,
                     maxItems: 3,
-                    description: '2-3 short follow-up questions the user might ask next',
+                    description: '2-3 short follow-up action phrases the user might take next (imperative, not questions)',
                 },
             },
             required: ['suggestions'],

@@ -432,7 +432,7 @@ export class CLITaskExecutor implements TaskExecutor {
         try {
             const suggestTools = this.followUpSuggestions.enabled ? [createSuggestFollowUpsTool()] : [];
             const followUpMessage = this.followUpSuggestions.enabled
-                ? `${message}\n\nWhen suggesting follow-ups, provide exactly ${this.followUpSuggestions.count} suggestions.`
+                ? `${message}\n\nWhen suggesting follow-ups, provide exactly ${this.followUpSuggestions.count} suggestions. Each suggestion must be a short imperative action phrase (not a question), for example: "Show me an example", "Explain the retry config", "Generate the fix".`
                 : message;
             const result = await this.aiService.sendFollowUp(process.sdkSessionId, followUpMessage, {
                 workingDirectory,
@@ -728,7 +728,7 @@ export class CLITaskExecutor implements TaskExecutor {
             const isChatTask = task.type === 'chat' || task.type === 'readonly-chat';
             const tools = (isChatTask && this.followUpSuggestions.enabled) ? [createSuggestFollowUpsTool()] : undefined;
             const countSuffix = (isChatTask && this.followUpSuggestions.enabled)
-                ? `\n\nWhen suggesting follow-ups, provide exactly ${this.followUpSuggestions.count} suggestions.`
+                ? `\n\nWhen suggesting follow-ups, provide exactly ${this.followUpSuggestions.count} suggestions. Each suggestion must be a short imperative action phrase (not a question), for example: "Show me an example", "Explain the retry config", "Generate the fix".`
                 : '';
             return this.executeWithAI(task, prompt + countSuffix, tools ? { tools } : undefined);
         }

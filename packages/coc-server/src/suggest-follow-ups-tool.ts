@@ -19,7 +19,7 @@ export interface FollowUpSuggestion {
 export function createSuggestFollowUpsTool() {
     return defineTool<FollowUpSuggestion>('suggest_follow_ups', {
         description:
-            'After completing your response, call this tool to suggest 2-3 brief follow-up questions the user might want to ask next. Each suggestion should be a concise, actionable question directly related to the conversation context.',
+            'After completing your response, call this tool to suggest 2-3 brief follow-up actions the user might want to take next. Each suggestion should be a short, direct action phrase (imperative, not a question) that continues the conversation — e.g., "Show an example", "Explain the config options", "Generate the fix".',
         parameters: {
             type: 'object',
             properties: {
@@ -28,7 +28,7 @@ export function createSuggestFollowUpsTool() {
                     items: { type: 'string' },
                     minItems: 2,
                     maxItems: 3,
-                    description: '2-3 short follow-up questions the user might ask next',
+                    description: '2-3 short follow-up action phrases the user might take next (imperative, not questions)',
                 },
             },
             required: ['suggestions'],
