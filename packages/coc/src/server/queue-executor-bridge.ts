@@ -298,6 +298,9 @@ export class CLITaskExecutor implements TaskExecutor {
                 // Non-fatal
             }
 
+            // Generate a human-readable title (fire-and-forget, non-blocking)
+            this.generateTitleIfNeeded(processId, combinedTurns);
+
             return {
                 success: true,
                 result,
@@ -363,6 +366,38 @@ export class CLITaskExecutor implements TaskExecutor {
             // Safe fallback: if we cannot verify liveness, treat as unavailable.
             return false;
         }
+    }
+
+    /**
+     * Generate a human-readable title for a process from its first user message.
+     * Fire-and-forget: failures are logged as warnings but never block execution.
+     * Idempotent: skips if the process already has a title.
+     */
+    private generateTitleIfNeeded(processId: string, turns: ConversationTurn[]): void {
+        const logger = getLogger();
+        const firstUserContent = turns.find(t => t.role === 'user')?.content ?? '';
+        if (!firstUserContent) return;
+
+        // Use void to explicitly fire-and-forget
+        void (async () => {
+            try {
+                const existing = await this.store.getProcess(processId);
+                if (existing?.title) return;
+
+                const truncated = firstUserContent.substring(0, 400);
+                const title: string = await (this.aiService as any).transform(
+                    `Summarise the following user message as a short title (max 8 words, no punctuation):\n\n"${truncated}"`,
+                    (raw: string) => raw.trim().replace(/[".]/g, ''),
+                    { model: 'gpt-4.1', cwd: this.defaultWorkingDirectory },
+                );
+                if (title) {
+                    await this.store.updateProcess(processId, { title });
+                }
+            } catch (err) {
+                const errMsg = err instanceof Error ? err.message : String(err);
+                logger.warn(LogCategory.AI, `Title generation failed for ${processId}: ${errMsg}`);
+            }
+        })();
     }
 
     /**
@@ -516,6 +551,9 @@ export class CLITaskExecutor implements TaskExecutor {
                 result: result.response || undefined,
             });
             this.store.emitProcessComplete(processId, 'completed', `${duration}ms`);
+
+            // Generate a human-readable title if not already set (fire-and-forget)
+            this.generateTitleIfNeeded(processId, [...cleanTurns, assistantTurn]);
 
         } catch (error) {
             const errorMsg = error instanceof Error ? error.message : String(error);
