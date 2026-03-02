@@ -13,6 +13,7 @@ import * as vscode from 'vscode';
 import { TaskManager } from './task-manager';
 import { TasksTreeDataProvider } from './tree-data-provider';
 import { TaskFolderItem } from './task-folder-item';
+import { TaskDocumentItem } from './task-document-item';
 import { loadRelatedItems } from './related-items-loader';
 import { AITaskCreationOptions } from './types';
 import { AITaskDialogService } from './ai-task-dialog';
@@ -131,6 +132,21 @@ export function registerTasksAICommands(
                     item,
                     aiProcessManager,
                     'from-feature'
+                );
+            }
+        )
+    );
+
+    // Update Document with AI
+    disposables.push(
+        vscode.commands.registerCommand(
+            'tasksViewer.updateDocumentWithAI',
+            async (item: TaskDocumentItem) => {
+                await updateDocumentWithAI(
+                    item,
+                    taskManager,
+                    treeDataProvider,
+                    aiProcessManager
                 );
             }
         )
@@ -674,6 +690,126 @@ async function createTaskFromFeature(
                 } else if (action === 'Retry') {
                     await createTaskFromFeature(taskManager, treeDataProvider, folderItem);
                 }
+            }
+        }
+    );
+}
+
+// ============================================================================
+// Update Document with AI
+// ============================================================================
+
+/**
+ * Build prompt for updating an existing document
+ */
+function buildUpdateDocumentPrompt(filePath: string, fileContent: string, userDescription: string): string {
+    const normalizedPath = toForwardSlashes(filePath);
+    return [
+        `Update the following document based on the user's request.`,
+        ``,
+        `**File path (you MUST save changes to this exact file):** ${normalizedPath}`,
+        ``,
+        `**User's request:** ${userDescription}`,
+        ``,
+        `**Current file content:**`,
+        '```markdown',
+        fileContent,
+        '```',
+        ``,
+        `**IMPORTANT:** Save the updated content back to: ${normalizedPath}`,
+        `Do not create a new file. Modify only this file.`,
+    ].join('\n');
+}
+
+/**
+ * Update an existing document with AI assistance
+ */
+async function updateDocumentWithAI(
+    item: TaskDocumentItem,
+    taskManager: TaskManager,
+    treeDataProvider: TasksTreeDataProvider,
+    processManager?: IAIProcessManager
+): Promise<void> {
+    const backend = getAIBackendSetting();
+    if (backend === 'clipboard') {
+        await vscode.window.showWarningMessage(
+            'AI Service is in clipboard mode. Update document is not available in clipboard mode.',
+            'Open Settings'
+        ).then(action => {
+            if (action === 'Open Settings') {
+                vscode.commands.executeCommand(
+                    'workbench.action.openSettings',
+                    'workspaceShortcuts.aiService.backend'
+                );
+            }
+        });
+        return;
+    }
+
+    const userDescription = await vscode.window.showInputBox({
+        prompt: 'Describe the update you want to make',
+        placeHolder: 'e.g., Add an acceptance criteria section, fix typos, update the status',
+        validateInput: (value) => {
+            if (!value || value.trim().length < 3) {
+                return 'Please enter a description (at least 3 characters)';
+            }
+            return undefined;
+        }
+    });
+
+    if (!userDescription) {
+        return;
+    }
+
+    let fileContent: string;
+    try {
+        fileContent = await fs.promises.readFile(item.filePath, 'utf-8');
+    } catch (error) {
+        const err = error instanceof Error ? error : new Error(String(error));
+        vscode.window.showErrorMessage(`Failed to read file: ${err.message}`);
+        return;
+    }
+
+    const prompt = buildUpdateDocumentPrompt(item.filePath, fileContent, userDescription);
+    const workspaceRoot = taskManager.getWorkspaceRoot();
+
+    await vscode.window.withProgress(
+        {
+            location: vscode.ProgressLocation.Notification,
+            title: 'Updating document with AI...',
+            cancellable: true
+        },
+        async (progress, token) => {
+            try {
+                progress.report({ message: 'Updating document...' });
+
+                const aiInvoker = createAIInvoker({
+                    workingDirectory: workspaceRoot,
+                    featureName: 'Update Document',
+                    clipboardFallback: false,
+                    approvePermissions: true,
+                    processManager,
+                    cancellationToken: token
+                });
+
+                const result = await aiInvoker(prompt);
+
+                if (token.isCancellationRequested || result.error === 'Cancelled') {
+                    vscode.window.showInformationMessage('Document update cancelled');
+                    return;
+                }
+
+                if (!result.success) {
+                    throw new Error(result.error || 'Failed to update document');
+                }
+
+                treeDataProvider.refresh();
+                vscode.window.showInformationMessage('Document updated');
+
+            } catch (error) {
+                const err = error instanceof Error ? error : new Error(String(error));
+                logger.error(LogCategory.TASKS, 'Error updating document with AI', err);
+                vscode.window.showErrorMessage(`Failed to update document: ${err.message}`);
             }
         }
     );
@@ -1455,6 +1591,7 @@ export {
 export const buildCreateTaskPromptWithNameForTesting = buildCreateTaskPromptWithName;
 export const buildCreateFromFeaturePromptForTesting = buildCreateFromFeaturePrompt;
 export const buildCreateTaskPromptForTesting = buildCreateTaskPrompt;
+export const buildUpdateDocumentPromptForTesting = buildUpdateDocumentPrompt;
 
 /**
  * Export image temp-file helpers for testing

@@ -1921,6 +1921,12 @@
         "icon": "$(sparkle)"
       },
       {
+        "command": "tasksViewer.updateDocumentWithAI",
+        "title": "Update Document with AI...",
+        "category": "Tasks",
+        "icon": "$(sparkle)"
+      },
+      {
         "command": "tasksViewer.markAsReviewed",
         "title": "Mark as Reviewed",
         "category": "Tasks",
@@ -2521,6 +2527,11 @@
           "command": "tasksViewer.unarchiveDocument",
           "when": "view == tasksView && viewItem == archivedTaskDocument",
           "group": "document@2"
+        },
+        {
+          "command": "tasksViewer.updateDocumentWithAI",
+          "when": "view == tasksView && viewItem =~ /^taskDocument(_future|_inProgress|_done)?(_reviewed|_needsReReview)?$/",
+          "group": "ai@1"
         },
         {
           "command": "tasksViewer.copyRelativePath",
@@ -3362,6 +3373,10 @@
         },
         {
           "command": "tasksViewer.createFromFeature",
+          "when": "false"
+        },
+        {
+          "command": "tasksViewer.updateDocumentWithAI",
           "when": "false"
         },
         {

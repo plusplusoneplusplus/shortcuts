@@ -17,7 +17,8 @@ import {
     generateFallbackTaskName,
     buildCreateTaskPromptWithNameForTesting,
     buildCreateFromFeaturePromptForTesting,
-    buildCreateTaskPromptForTesting
+    buildCreateTaskPromptForTesting,
+    buildUpdateDocumentPromptForTesting
 } from '../../shortcuts/tasks-viewer/ai-task-commands';
 
 suite('AI Task Commands Tests', () => {
@@ -480,6 +481,54 @@ suite('AI Task Commands Tests', () => {
             const prompt = buildCreateTaskPromptForTesting('Test', targetPath);
             
             assert.ok(prompt.includes('.plan.md'), 'Should specify .plan.md file format');
+        });
+    });
+
+    suite('buildUpdateDocumentPrompt', () => {
+        test('should include file path in prompt', () => {
+            const filePath = path.join(tempDir, 'test.plan.md');
+            const fileContent = '# My Task\n\nSome content here.';
+            const userDescription = 'Add an acceptance criteria section';
+
+            const prompt = buildUpdateDocumentPromptForTesting(filePath, fileContent, userDescription);
+
+            assert.ok(prompt.includes(fileContent), 'Should include current file content');
+            assert.ok(prompt.includes(userDescription), 'Should include user description');
+            assert.ok(prompt.includes('Save the updated content back to'), 'Should instruct to save to same file');
+            assert.ok(prompt.includes('Do not create a new file'), 'Should instruct not to create new file');
+        });
+
+        test('should include file path twice for emphasis', () => {
+            const filePath = '/workspace/tasks/my-feature.plan.md';
+            const fileContent = '# Feature\n\nContent';
+            const userDescription = 'Fix typos';
+
+            const prompt = buildUpdateDocumentPromptForTesting(filePath, fileContent, userDescription);
+
+            // File path should appear at least twice (once in header, once in IMPORTANT footer)
+            const occurrences = prompt.split(filePath.replace(/\\/g, '/')).length - 1;
+            assert.ok(occurrences >= 2, `File path should appear at least twice, got ${occurrences}`);
+        });
+
+        test('should wrap file content in markdown code fence', () => {
+            const filePath = '/workspace/tasks/test.plan.md';
+            const fileContent = '# My Task';
+            const userDescription = 'Update it';
+
+            const prompt = buildUpdateDocumentPromptForTesting(filePath, fileContent, userDescription);
+
+            assert.ok(prompt.includes('```markdown'), 'Should use markdown code fence');
+            assert.ok(prompt.includes('```'), 'Should close code fence');
+        });
+
+        test('should normalize backslashes to forward slashes in file path', () => {
+            const filePath = 'C:\\workspace\\tasks\\test.plan.md';
+            const fileContent = '# Task';
+            const userDescription = 'Update it';
+
+            const prompt = buildUpdateDocumentPromptForTesting(filePath, fileContent, userDescription);
+
+            assert.ok(prompt.includes('C:/workspace/tasks/test.plan.md'), 'Should normalize backslashes');
         });
     });
 });
