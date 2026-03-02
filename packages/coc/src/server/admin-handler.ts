@@ -104,6 +104,8 @@ export interface AdminRouteOptions {
     getQueueManager?: () => TaskQueueManager | undefined;
     /** Lazy getter for queue persistence (for import restore). */
     getQueuePersistence?: () => QueuePersistence | undefined;
+    /** Exit code to use for restart (injected to avoid circular import). Defaults to 75. */
+    restartExitCode?: number;
 }
 
 /**
@@ -427,6 +429,23 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             }
 
             sendJSON(res, 200, result);
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // POST /api/admin/restart — Rebuild & restart the server
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'POST',
+        pattern: '/api/admin/restart',
+        handler: async (_req, res) => {
+            const exitCode = options.restartExitCode ?? 75;
+            sendJSON(res, 200, { message: 'Server is restarting...' });
+
+            // Give the response time to flush, then exit with the restart code
+            setTimeout(() => {
+                process.exit(exitCode);
+            }, 200);
         },
     });
 }

@@ -25,6 +25,7 @@ export const EXIT_CODES = {
     EXECUTION_ERROR: 1,
     CONFIG_ERROR: 2,
     AI_UNAVAILABLE: 3,
+    RESTART_REQUESTED: 75,
     CANCELLED: 130,
 } as const;
 

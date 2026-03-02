@@ -63,6 +63,10 @@ export function AdminPanel() {
     const [wipeStatus, setWipeStatus] = useState<string>('');
     const [wipePreview, setWipePreview] = useState<string | null>(null);
 
+    // Restart
+    const [restarting, setRestarting] = useState(false);
+    const [restartStatus, setRestartStatus] = useState<string>('');
+
     const loadStats = useCallback(async () => {
         setStatsLoading(true);
         try {
@@ -348,6 +352,40 @@ export function AdminPanel() {
         setWipeStatus('Cancelled.');
     }, []);
 
+    const handleRestart = useCallback(async () => {
+        setRestarting(true);
+        setRestartStatus('Sending restart request…');
+        try {
+            const res = await fetch(getApiBase() + '/admin/restart', { method: 'POST' });
+            if (res.ok) {
+                setRestartStatus('Server is restarting. Waiting for it to come back…');
+                addToast('Restart initiated — rebuilding…', 'success');
+                // Poll until the server comes back, then reload the page
+                const poll = () => {
+                    setTimeout(async () => {
+                        try {
+                            const ping = await fetch(getApiBase() + '/admin/data/stats', { signal: AbortSignal.timeout(2000) });
+                            if (ping.ok) {
+                                setRestartStatus('Server is back!');
+                                window.location.reload();
+                                return;
+                            }
+                        } catch { /* server still down */ }
+                        poll();
+                    }, 3000);
+                };
+                poll();
+            } else {
+                const body = await res.json().catch(() => ({}));
+                setRestartStatus('Restart failed: ' + (body.error || res.statusText));
+                setRestarting(false);
+            }
+        } catch (err: any) {
+            setRestartStatus('Restart failed: ' + (err.message || 'Network error'));
+            setRestarting(false);
+        }
+    }, [addToast]);
+
     const sources: Record<string, string> = config?.sources ?? {};
     const resolved = config?.resolved ?? {};
 
@@ -570,6 +608,18 @@ export function AdminPanel() {
                     <pre id="admin-import-preview" className="text-xs bg-black/5 dark:bg-white/5 p-2 rounded mb-2 whitespace-pre-wrap">{importPreview}</pre>
                 )}
                 {importStatus && <div id="admin-import-status" className="text-xs text-[#848484]">{importStatus}</div>}
+            </Card>
+
+            {/* Server Restart */}
+            <Card className="p-4">
+                <h3 className="text-sm font-semibold mb-2 text-[#1e1e1e] dark:text-[#cccccc]">Server Management</h3>
+                <p className="text-xs text-[#616161] dark:text-[#999] mb-3">Rebuild and restart the server. Useful when code changes need to be reflected without manual CLI access.</p>
+                <div className="flex items-center gap-2">
+                    <Button id="admin-restart-btn" variant="secondary" size="sm" onClick={handleRestart} disabled={restarting}>
+                        {restarting ? <><Spinner size="sm" /> Restarting…</> : 'Rebuild & Restart'}
+                    </Button>
+                </div>
+                {restartStatus && <div id="admin-restart-status" className="text-xs text-[#848484] mt-2">{restartStatus}</div>}
             </Card>
 
             {/* Danger Zone */}
