@@ -17,42 +17,46 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
-import { OutputFileManager } from './output-file-manager';
+import type { ResolveCommentsPayload, RunPipelinePayload, TaskGenerationPayload } from '@plusplusoneplusplus/coc-server';
 import {
-    QueueExecutor,
-    createQueueExecutor,
-    TaskQueueManager,
-    QueuedTask,
-    TaskExecutor,
-    TaskExecutionResult,
-    getCopilotSDKService,
+    cleanupTempDir,
+    createSuggestFollowUpsTool,
+    isAIClarificationPayload, isChatPayload,
+    isCustomTaskPayload,
+    isFollowPromptPayload,
+    isResolveCommentsPayload,
+    isRunPipelinePayload,
+    isTaskGenerationPayload,
+    saveImagesToTempFiles,
+} from '@plusplusoneplusplus/coc-server';
+import type { AIProcess, Attachment, ConversationTurn, CopilotSDKService, ProcessStore, SelectedContext, TimelineItem, Tool, ToolEvent } from '@plusplusoneplusplus/pipeline-core';
+import {
     approveAllPermissions,
-    DEFAULT_AI_TIMEOUT_MS,
-    getLogger,
-    LogCategory,
+    buildCreateFromFeaturePrompt,
     buildCreateTaskPrompt,
     buildCreateTaskPromptWithName,
-    buildCreateFromFeaturePrompt,
     buildDeepModePrompt,
-    gatherFeatureContext,
-    parsePipelineYAMLSync,
+    createQueueExecutor,
+    DEFAULT_AI_TIMEOUT_MS,
     executePipeline,
-    toNativePath,
+    gatherFeatureContext,
+    getCopilotSDKService,
+    getLogger,
+    LogCategory,
     mergeConsecutiveContentItems,
+    parsePipelineYAMLSync,
+    QueuedTask,
+    QueueExecutor,
+    TaskExecutionResult,
+    TaskExecutor,
+    TaskQueueManager,
+    toNativePath,
 } from '@plusplusoneplusplus/pipeline-core';
-import type { ProcessStore, AIProcess, ConversationTurn, ToolEvent, TimelineItem, CopilotSDKService, SelectedContext, Attachment, Tool } from '@plusplusoneplusplus/pipeline-core';
+import * as fs from 'fs';
+import * as path from 'path';
 import { createCLIAIInvoker } from '../ai-invoker';
-import {
-    saveImagesToTempFiles, cleanupTempDir,
-    isFollowPromptPayload, isAIClarificationPayload, isChatPayload,
-    isCustomTaskPayload, isTaskGenerationPayload, isRunPipelinePayload,
-    isResolveCommentsPayload,
-    createSuggestFollowUpsTool,
-} from '@plusplusoneplusplus/coc-server';
-import type { TaskGenerationPayload, RunPipelinePayload, ResolveCommentsPayload } from '@plusplusoneplusplus/coc-server';
 import { ImageBlobStore } from './image-blob-store';
+import { OutputFileManager } from './output-file-manager';
 
 // ============================================================================
 // Constants
@@ -60,7 +64,7 @@ import { ImageBlobStore } from './image-blob-store';
 
 /** Prompt prefix prepended to read-only chat messages to instruct the AI not to modify files. */
 export const READONLY_PROMPT_PREFIX =
-    'IMPORTANT: You are in read-only mode. You MUST NOT create, edit, delete, or modify any files or source code. Only use read-only tools (grep, glob, view, cat, find, ls). If the user asks you to make changes, explain what changes would be needed but do not execute them.\n\n';
+    'IMPORTANT: You are in read-only mode. You MUST NOT create, edit, delete, or modify any files or source code that\'s tracked by the git. Special files like task plan markdown files are exempt from this rule. If the user asks you to make changes, explain what changes would be needed but do not execute them.\n\n';
 
 // ============================================================================
 // Types
@@ -438,7 +442,7 @@ export class CLITaskExecutor implements TaskExecutor {
                     // Append tool timeline item
                     const timelineType = event.type === 'tool-start' ? 'tool-start'
                         : event.type === 'tool-complete' ? 'tool-complete'
-                        : 'tool-failed';
+                            : 'tool-failed';
                     const now = new Date();
                     this.appendTimelineItem(processId, {
                         type: timelineType,
@@ -727,107 +731,107 @@ export class CLITaskExecutor implements TaskExecutor {
         }
 
         try {
-        const availability = await this.aiService.isAvailable();
-        if (!availability.available) {
-            throw new Error(`Copilot SDK not available: ${availability.error || 'unknown reason'}`);
-        }
+            const availability = await this.aiService.isAvailable();
+            if (!availability.available) {
+                throw new Error(`Copilot SDK not available: ${availability.error || 'unknown reason'}`);
+            }
 
-        const workingDirectory = this.getWorkingDirectory(task);
-        const timeoutMs = task.config.timeoutMs || this.defaultTimeoutMs;
+            const workingDirectory = this.getWorkingDirectory(task);
+            const timeoutMs = task.config.timeoutMs || this.defaultTimeoutMs;
 
-        const result = await this.aiService.sendMessage({
-            prompt,
-            model: task.config.model,
-            workingDirectory,
-            timeoutMs,
-            keepAlive: true,
-            attachments,
-            tools: options?.tools,
-            onPermissionRequest: this.approvePermissions ? approveAllPermissions : undefined,
-            // Stream response chunks to the process store for real-time UI updates
-            onStreamingChunk: (chunk: string) => {
-                // Accumulate output for disk persistence
-                const existing = this.outputBuffers.get(processId) ?? '';
-                this.outputBuffers.set(processId, existing + chunk);
-                // Append content timeline item
-                this.appendTimelineItem(processId, { type: 'content', timestamp: new Date(), content: chunk });
-                try {
-                    this.store.emitProcessOutput(processId, chunk);
-                } catch {
-                    // Non-fatal: store may be a stub
-                }
-                // Check throttle conditions and flush if necessary
-                this.checkThrottleAndFlush(processId);
-            },
-            // Emit tool lifecycle events for real-time tool card rendering in the SPA
-            onToolEvent: (event: ToolEvent) => {
-                // Intercept suggestion tool completions — emit as dedicated SSE event
-                if (event.type === 'tool-complete' && event.toolName === 'suggest_follow_ups') {
+            const result = await this.aiService.sendMessage({
+                prompt,
+                model: task.config.model,
+                workingDirectory,
+                timeoutMs,
+                keepAlive: true,
+                attachments,
+                tools: options?.tools,
+                onPermissionRequest: this.approvePermissions ? approveAllPermissions : undefined,
+                // Stream response chunks to the process store for real-time UI updates
+                onStreamingChunk: (chunk: string) => {
+                    // Accumulate output for disk persistence
+                    const existing = this.outputBuffers.get(processId) ?? '';
+                    this.outputBuffers.set(processId, existing + chunk);
+                    // Append content timeline item
+                    this.appendTimelineItem(processId, { type: 'content', timestamp: new Date(), content: chunk });
                     try {
-                        const parsed = JSON.parse(event.result || '{}');
-                        const suggestions: string[] = Array.isArray(parsed?.suggestions) ? parsed.suggestions : [];
-                        if (suggestions.length > 0) {
-                            this.pendingSuggestions.set(processId, suggestions);
-                            this.store.emitProcessEvent(processId, {
-                                type: 'suggestions',
-                                suggestions,
-                                turnIndex: 1,
-                            });
-                        }
+                        this.store.emitProcessOutput(processId, chunk);
                     } catch {
-                        // Malformed suggestions — ignore silently
+                        // Non-fatal: store may be a stub
                     }
-                    return;
-                }
+                    // Check throttle conditions and flush if necessary
+                    this.checkThrottleAndFlush(processId);
+                },
+                // Emit tool lifecycle events for real-time tool card rendering in the SPA
+                onToolEvent: (event: ToolEvent) => {
+                    // Intercept suggestion tool completions — emit as dedicated SSE event
+                    if (event.type === 'tool-complete' && event.toolName === 'suggest_follow_ups') {
+                        try {
+                            const parsed = JSON.parse(event.result || '{}');
+                            const suggestions: string[] = Array.isArray(parsed?.suggestions) ? parsed.suggestions : [];
+                            if (suggestions.length > 0) {
+                                this.pendingSuggestions.set(processId, suggestions);
+                                this.store.emitProcessEvent(processId, {
+                                    type: 'suggestions',
+                                    suggestions,
+                                    turnIndex: 1,
+                                });
+                            }
+                        } catch {
+                            // Malformed suggestions — ignore silently
+                        }
+                        return;
+                    }
 
-                // Append tool timeline item
-                const timelineType = event.type === 'tool-start' ? 'tool-start'
-                    : event.type === 'tool-complete' ? 'tool-complete'
-                    : 'tool-failed';
-                const now = new Date();
-                this.appendTimelineItem(processId, {
-                    type: timelineType,
-                    timestamp: now,
-                    toolCall: {
-                        id: event.toolCallId,
-                        name: event.toolName || 'unknown',
-                        status: event.type === 'tool-start' ? 'running'
-                            : event.type === 'tool-complete' ? 'completed' : 'failed',
-                        startTime: now,
-                        ...(event.type !== 'tool-start' ? { endTime: now } : {}),
-                        args: event.parameters || {},
-                        result: event.result,
-                        error: event.error,
-                        ...(event.parentToolCallId ? { parentToolCallId: event.parentToolCallId } : {}),
-                    },
-                });
-                try {
-                    this.store.emitProcessEvent(processId, {
-                        type: event.type,
-                        toolCallId: event.toolCallId,
-                        toolName: event.toolName,
-                        ...(event.parentToolCallId ? { parentToolCallId: event.parentToolCallId } : {}),
-                        parameters: event.parameters,
-                        result: event.result,
-                        error: event.error,
+                    // Append tool timeline item
+                    const timelineType = event.type === 'tool-start' ? 'tool-start'
+                        : event.type === 'tool-complete' ? 'tool-complete'
+                            : 'tool-failed';
+                    const now = new Date();
+                    this.appendTimelineItem(processId, {
+                        type: timelineType,
+                        timestamp: now,
+                        toolCall: {
+                            id: event.toolCallId,
+                            name: event.toolName || 'unknown',
+                            status: event.type === 'tool-start' ? 'running'
+                                : event.type === 'tool-complete' ? 'completed' : 'failed',
+                            startTime: now,
+                            ...(event.type !== 'tool-start' ? { endTime: now } : {}),
+                            args: event.parameters || {},
+                            result: event.result,
+                            error: event.error,
+                            ...(event.parentToolCallId ? { parentToolCallId: event.parentToolCallId } : {}),
+                        },
                     });
-                } catch {
-                    // Non-fatal: store may be a stub
-                }
-                // Trigger throttled flush so tool-only sessions persist timeline
-                this.checkThrottleAndFlush(processId);
-            },
-        });
+                    try {
+                        this.store.emitProcessEvent(processId, {
+                            type: event.type,
+                            toolCallId: event.toolCallId,
+                            toolName: event.toolName,
+                            ...(event.parentToolCallId ? { parentToolCallId: event.parentToolCallId } : {}),
+                            parameters: event.parameters,
+                            result: event.result,
+                            error: event.error,
+                        });
+                    } catch {
+                        // Non-fatal: store may be a stub
+                    }
+                    // Trigger throttled flush so tool-only sessions persist timeline
+                    this.checkThrottleAndFlush(processId);
+                },
+            });
 
-        if (!result.success) {
-            throw new Error(result.error || 'AI execution failed');
-        }
+            if (!result.success) {
+                throw new Error(result.error || 'AI execution failed');
+            }
 
-        return {
-            response: result.response || '(Task completed via tool execution — no text response produced)',
-            sessionId: result.sessionId,
-            toolCalls: result.toolCalls,
-        };
+            return {
+                response: result.response || '(Task completed via tool execution — no text response produced)',
+                sessionId: result.sessionId,
+                toolCalls: result.toolCalls,
+            };
         } finally {
             if (imageTempDir) { cleanupTempDir(imageTempDir); }
         }
@@ -946,8 +950,8 @@ export class CLITaskExecutor implements TaskExecutor {
                         pipelineProgress: {
                             phase: progress.phase === 'splitting' ? 'filter'
                                 : progress.phase === 'mapping' ? 'map'
-                                : progress.phase === 'reducing' ? 'reduce'
-                                : 'map',
+                                    : progress.phase === 'reducing' ? 'reduce'
+                                        : 'map',
                             totalItems: progress.totalItems,
                             completedItems: progress.completedItems,
                             failedItems: progress.failedItems,
