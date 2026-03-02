@@ -278,6 +278,12 @@ async function enrichChatTasks(
             if (!process) continue;
             const turns = process.conversationTurns ?? [];
             const firstUserTurn = turns.find(t => t.role === 'user');
+            // Compute lastActivityAt from the last turn's timestamp, falling back to completedAt then createdAt
+            const lastTurn = turns.length > 0 ? turns[turns.length - 1] : undefined;
+            const lastTurnTs = lastTurn?.timestamp ? new Date(lastTurn.timestamp).getTime() : NaN;
+            const lastActivityAt = Number.isFinite(lastTurnTs)
+                ? lastTurnTs
+                : (task.completedAt as number) ?? (task.createdAt as number) ?? 0;
             task.chatMeta = {
                 turnCount: turns.length,
                 firstMessage: firstUserTurn
@@ -285,6 +291,7 @@ async function enrichChatTasks(
                         ? firstUserTurn.content.substring(0, 117) + '...'
                         : firstUserTurn.content)
                     : undefined,
+                lastActivityAt,
             };
             // Sync process status back to the task so follow-up messages
             // that set the process to 'running' are reflected in the history endpoint.
@@ -779,9 +786,15 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
                 );
             }
 
-            // Enrich chat tasks with conversation metadata when filtering by chat type
+            // Enrich chat tasks with conversation metadata when filtering by chat type,
+            // then re-sort by lastActivityAt so recently-active conversations surface first
             if (typeFilter === 'chat') {
                 await enrichChatTasks(history, store);
+                history.sort((a, b) => {
+                    const ta = ((a as any).chatMeta?.lastActivityAt as number) ?? (a.createdAt as number) ?? 0;
+                    const tb = ((b as any).chatMeta?.lastActivityAt as number) ?? (b.createdAt as number) ?? 0;
+                    return tb - ta;
+                });
             }
 
             sendJSON(res, 200, { history });

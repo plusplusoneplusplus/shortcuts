@@ -1620,6 +1620,267 @@ describe('Queue Handler', () => {
     });
 
     // ========================================================================
+    // lastActivityAt enrichment and sort
+    // ========================================================================
+
+    describe('Chat lastActivityAt enrichment', () => {
+        it('should set lastActivityAt from last conversation turn timestamp', async () => {
+            const store = new FileProcessStore({ dataDir });
+            const lastTurnTime = new Date('2025-06-15T10:30:00Z');
+
+            await store.addProcess({
+                id: 'proc-activity-1',
+                type: 'clarification',
+                promptPreview: 'test',
+                fullPrompt: 'test prompt',
+                status: 'completed',
+                startTime: new Date(),
+                conversationTurns: [
+                    { role: 'user', content: 'Hello', timestamp: new Date('2025-06-15T10:00:00Z'), turnIndex: 0 },
+                    { role: 'assistant', content: 'Hi!', timestamp: new Date('2025-06-15T10:05:00Z'), turnIndex: 1 },
+                    { role: 'user', content: 'Follow-up', timestamp: lastTurnTime, turnIndex: 2 },
+                ],
+            } as any);
+
+            const repoRoot = path.resolve('/test/last-activity-turns');
+            const crypto = require('crypto');
+            const repoId = crypto.createHash('sha256').update(repoRoot).digest('hex').substring(0, 16);
+            const queuesDir = path.join(dataDir, 'queues');
+            fs.mkdirSync(queuesDir, { recursive: true });
+            fs.writeFileSync(path.join(queuesDir, `repo-${repoId}.json`), JSON.stringify({
+                version: 3,
+                savedAt: new Date().toISOString(),
+                repoRootPath: repoRoot,
+                repoId,
+                isPaused: false,
+                pending: [],
+                history: [{
+                    id: 'task-activity-1',
+                    type: 'chat',
+                    priority: 'normal',
+                    status: 'completed',
+                    createdAt: Date.now() - 60000,
+                    completedAt: Date.now() - 30000,
+                    payload: { prompt: 'Hello' },
+                    displayName: 'Activity test chat',
+                    processId: 'proc-activity-1',
+                    repoId,
+                }],
+            }));
+
+            const srv = await startServer();
+            const res = await request(`${srv.url}/api/queue/history?type=chat`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            const task = body.history.find((t: any) => t.id === 'task-activity-1');
+            expect(task).toBeDefined();
+            expect(task.chatMeta).toBeDefined();
+            expect(task.chatMeta.lastActivityAt).toBe(lastTurnTime.getTime());
+        });
+
+        it('should fall back to completedAt when turns have no timestamps', async () => {
+            // Write process JSON directly to simulate turns without valid timestamps
+            // (bypasses addProcess serialization which requires Date objects)
+            const processesDir = path.join(dataDir, 'processes');
+            fs.mkdirSync(processesDir, { recursive: true });
+            fs.writeFileSync(path.join(processesDir, 'proc-no-ts.json'), JSON.stringify({
+                workspaceId: '',
+                process: {
+                    id: 'proc-no-ts',
+                    type: 'clarification',
+                    promptPreview: 'test',
+                    fullPrompt: 'test prompt',
+                    status: 'completed',
+                    startTime: new Date().toISOString(),
+                    conversationTurns: [
+                        { role: 'user', content: 'Hello', turnIndex: 0 },
+                        { role: 'assistant', content: 'Hi!', turnIndex: 1 },
+                    ],
+                },
+            }));
+            // Update index so the store can find the process
+            fs.writeFileSync(path.join(processesDir, 'index.json'), JSON.stringify({
+                processes: [{
+                    id: 'proc-no-ts',
+                    type: 'clarification',
+                    status: 'completed',
+                    promptPreview: 'test',
+                    startTime: new Date().toISOString(),
+                    workspaceId: '',
+                }],
+            }));
+
+            const completedAt = Date.now() - 5000;
+            const repoRoot = path.resolve('/test/last-activity-no-ts');
+            const crypto = require('crypto');
+            const repoId = crypto.createHash('sha256').update(repoRoot).digest('hex').substring(0, 16);
+            const queuesDir = path.join(dataDir, 'queues');
+            fs.mkdirSync(queuesDir, { recursive: true });
+            fs.writeFileSync(path.join(queuesDir, `repo-${repoId}.json`), JSON.stringify({
+                version: 3,
+                savedAt: new Date().toISOString(),
+                repoRootPath: repoRoot,
+                repoId,
+                isPaused: false,
+                pending: [],
+                history: [{
+                    id: 'task-no-ts',
+                    type: 'chat',
+                    priority: 'normal',
+                    status: 'completed',
+                    createdAt: Date.now() - 60000,
+                    completedAt,
+                    payload: { prompt: 'Hello' },
+                    displayName: 'No timestamp chat',
+                    processId: 'proc-no-ts',
+                    repoId,
+                }],
+            }));
+
+            const srv = await startServer();
+            const res = await request(`${srv.url}/api/queue/history?type=chat`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            const task = body.history.find((t: any) => t.id === 'task-no-ts');
+            expect(task).toBeDefined();
+            expect(task.chatMeta.lastActivityAt).toBe(completedAt);
+        });
+
+        it('should fall back to createdAt when no turns and no completedAt', async () => {
+            const store = new FileProcessStore({ dataDir });
+
+            await store.addProcess({
+                id: 'proc-empty',
+                type: 'clarification',
+                promptPreview: 'test',
+                fullPrompt: 'test prompt',
+                status: 'completed',
+                startTime: new Date(),
+                conversationTurns: [],
+            } as any);
+
+            const createdAt = Date.now() - 120000;
+            const repoRoot = path.resolve('/test/last-activity-empty');
+            const crypto = require('crypto');
+            const repoId = crypto.createHash('sha256').update(repoRoot).digest('hex').substring(0, 16);
+            const queuesDir = path.join(dataDir, 'queues');
+            fs.mkdirSync(queuesDir, { recursive: true });
+            fs.writeFileSync(path.join(queuesDir, `repo-${repoId}.json`), JSON.stringify({
+                version: 3,
+                savedAt: new Date().toISOString(),
+                repoRootPath: repoRoot,
+                repoId,
+                isPaused: false,
+                pending: [],
+                history: [{
+                    id: 'task-empty-turns',
+                    type: 'chat',
+                    priority: 'normal',
+                    status: 'completed',
+                    createdAt,
+                    payload: { prompt: 'Hello' },
+                    displayName: 'Empty turns chat',
+                    processId: 'proc-empty',
+                    repoId,
+                }],
+            }));
+
+            const srv = await startServer();
+            const res = await request(`${srv.url}/api/queue/history?type=chat`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            const task = body.history.find((t: any) => t.id === 'task-empty-turns');
+            expect(task).toBeDefined();
+            expect(task.chatMeta.lastActivityAt).toBe(createdAt);
+        });
+
+        it('should sort by lastActivityAt so recently-active conversations come first', async () => {
+            const store = new FileProcessStore({ dataDir });
+
+            // Older chat with recent follow-up activity
+            await store.addProcess({
+                id: 'proc-old-active',
+                type: 'clarification',
+                promptPreview: 'test',
+                fullPrompt: 'test prompt',
+                status: 'completed',
+                startTime: new Date(),
+                conversationTurns: [
+                    { role: 'user', content: 'Original question', timestamp: new Date('2025-01-01T10:00:00Z'), turnIndex: 0 },
+                    { role: 'assistant', content: 'Answer', timestamp: new Date('2025-01-01T10:05:00Z'), turnIndex: 1 },
+                    { role: 'user', content: 'Follow-up!', timestamp: new Date('2025-06-15T12:00:00Z'), turnIndex: 2 },
+                ],
+            } as any);
+
+            // Newer chat with no follow-up
+            await store.addProcess({
+                id: 'proc-new-idle',
+                type: 'clarification',
+                promptPreview: 'test',
+                fullPrompt: 'test prompt',
+                status: 'completed',
+                startTime: new Date(),
+                conversationTurns: [
+                    { role: 'user', content: 'New question', timestamp: new Date('2025-06-01T10:00:00Z'), turnIndex: 0 },
+                    { role: 'assistant', content: 'New answer', timestamp: new Date('2025-06-01T10:05:00Z'), turnIndex: 1 },
+                ],
+            } as any);
+
+            const repoRoot = path.resolve('/test/last-activity-sort');
+            const crypto = require('crypto');
+            const repoId = crypto.createHash('sha256').update(repoRoot).digest('hex').substring(0, 16);
+            const queuesDir = path.join(dataDir, 'queues');
+            fs.mkdirSync(queuesDir, { recursive: true });
+            fs.writeFileSync(path.join(queuesDir, `repo-${repoId}.json`), JSON.stringify({
+                version: 3,
+                savedAt: new Date().toISOString(),
+                repoRootPath: repoRoot,
+                repoId,
+                isPaused: false,
+                pending: [],
+                history: [
+                    {
+                        id: 'task-old-active',
+                        type: 'chat',
+                        priority: 'normal',
+                        status: 'completed',
+                        createdAt: new Date('2025-01-01T10:00:00Z').getTime(),
+                        completedAt: new Date('2025-01-01T10:05:00Z').getTime(),
+                        payload: { prompt: 'Original question' },
+                        displayName: 'Old but active chat',
+                        processId: 'proc-old-active',
+                        repoId,
+                    },
+                    {
+                        id: 'task-new-idle',
+                        type: 'chat',
+                        priority: 'normal',
+                        status: 'completed',
+                        createdAt: new Date('2025-06-01T10:00:00Z').getTime(),
+                        completedAt: new Date('2025-06-01T10:05:00Z').getTime(),
+                        payload: { prompt: 'New question' },
+                        displayName: 'Newer but idle chat',
+                        processId: 'proc-new-idle',
+                        repoId,
+                    },
+                ],
+            }));
+
+            const srv = await startServer();
+            const res = await request(`${srv.url}/api/queue/history?type=chat`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.history).toHaveLength(2);
+
+            // The old chat with recent follow-up (lastActivityAt: 2025-06-15) should come first
+            // despite having an older createdAt than the newer chat (lastActivityAt: 2025-06-01)
+            expect(body.history[0].id).toBe('task-old-active');
+            expect(body.history[1].id).toBe('task-new-idle');
+            expect(body.history[0].chatMeta.lastActivityAt).toBeGreaterThan(body.history[1].chatMeta.lastActivityAt);
+        });
+    });
+
+    // ========================================================================
     // Task config
     // ========================================================================
 
