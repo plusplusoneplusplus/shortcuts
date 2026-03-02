@@ -6,7 +6,7 @@
 import { useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { useBreakpoint } from '../hooks/useBreakpoint';
-import type { DashboardTab } from '../types/dashboard';
+import type { DashboardTab, RepoSubTab } from '../types/dashboard';
 
 // ── Inline SVG icon components (24×24, currentColor) ───────────────────
 
@@ -59,6 +59,30 @@ function BookOpenIconFilled() {
     );
 }
 
+function ChevronLeftIcon() {
+    return (
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
+        </svg>
+    );
+}
+
+function ChatBubbleIconOutline() {
+    return (
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.76c0 1.6 1.123 2.994 2.707 3.227 1.068.157 2.148.279 3.238.364.466.037.893.281 1.153.671L12 21l2.652-3.978c.26-.39.687-.634 1.153-.67 1.09-.086 2.17-.208 3.238-.365 1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" />
+        </svg>
+    );
+}
+
+function ChatBubbleIconFilled() {
+    return (
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6">
+            <path fillRule="evenodd" d="M4.848 2.771A49.144 49.144 0 0 1 12 2.25c2.43 0 4.817.178 7.152.52 1.978.292 3.348 2.024 3.348 3.97v6.02c0 1.946-1.37 3.678-3.348 3.97a48.901 48.901 0 0 1-3.476.383.39.39 0 0 0-.297.18l-2.755 4.133a.75.75 0 0 1-1.248 0l-2.755-4.133a.39.39 0 0 0-.297-.18 48.9 48.9 0 0 1-3.476-.384c-1.978-.29-3.348-2.024-3.348-3.97V6.741c0-1.946 1.37-3.68 3.348-3.97Z" clipRule="evenodd" />
+        </svg>
+    );
+}
+
 // ── Nav items ──────────────────────────────────────────────────────────
 
 interface NavItem {
@@ -73,6 +97,20 @@ const NAV_ITEMS: NavItem[] = [
     { tab: 'wiki', label: 'Wiki', icon: (active) => active ? <BookOpenIconFilled /> : <BookOpenIconOutline /> },
 ];
 
+// ── Contextual repo nav items ──────────────────────────────────────────
+
+interface RepoNavItem {
+    id: 'back' | RepoSubTab;
+    label: string;
+    icon: (active: boolean) => JSX.Element;
+}
+
+const REPO_NAV_ITEMS: RepoNavItem[] = [
+    { id: 'back', label: 'Back', icon: () => <ChevronLeftIcon /> },
+    { id: 'queue', label: 'Queue', icon: (active) => active ? <PlayCircleIconFilled /> : <PlayCircleIconOutline /> },
+    { id: 'chat', label: 'Chat', icon: (active) => active ? <ChatBubbleIconFilled /> : <ChatBubbleIconOutline /> },
+];
+
 // ── Component ──────────────────────────────────────────────────────────
 
 export function BottomNav() {
@@ -84,7 +122,46 @@ export function BottomNav() {
         location.hash = '#' + tab;
     }, [dispatch]);
 
+    const goBack = useCallback(() => {
+        dispatch({ type: 'SET_SELECTED_REPO', id: null });
+        location.hash = '#repos';
+    }, [dispatch]);
+
+    const switchRepoSubTab = useCallback((tab: RepoSubTab, repoId: string) => {
+        dispatch({ type: 'SET_REPO_SUB_TAB', tab });
+        location.hash = `#repos/${repoId}/${tab}`;
+    }, [dispatch]);
+
     if (!isMobile) return null;
+
+    const { selectedRepoId, activeRepoSubTab } = state;
+
+    if (selectedRepoId) {
+        return (
+            <nav
+                className="fixed bottom-0 left-0 right-0 z-[8000] h-14 flex items-center justify-around border-t border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]"
+                style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+                aria-label="Repo navigation"
+                data-testid="bottom-nav"
+            >
+                {REPO_NAV_ITEMS.map(({ id, label, icon }) => {
+                    const active = id !== 'back' && activeRepoSubTab === id;
+                    return (
+                        <button
+                            key={id}
+                            className={`flex-1 h-full flex flex-col items-center justify-center gap-0.5 ${active ? 'text-[#0078d4]' : 'text-[#616161] dark:text-[#999999]'}`}
+                            data-tab={id}
+                            aria-current={active ? 'page' : undefined}
+                            onClick={() => id === 'back' ? goBack() : switchRepoSubTab(id as RepoSubTab, selectedRepoId)}
+                        >
+                            {icon(active)}
+                            <span className="text-[10px] font-medium">{label}</span>
+                        </button>
+                    );
+                })}
+            </nav>
+        );
+    }
 
     return (
         <nav
