@@ -112,7 +112,7 @@ describe('GitPanelHeader', () => {
         });
 
         it('has max-width for truncation', () => {
-            expect(source).toContain('max-w-[180px]');
+            expect(source).toContain('max-w-[360px]');
         });
 
         it('renders a git branch SVG icon', () => {

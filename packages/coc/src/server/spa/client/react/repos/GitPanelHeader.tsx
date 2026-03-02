@@ -33,7 +33,7 @@ export function GitPanelHeader({ branch, ahead, behind, refreshing, onRefresh, o
         >
             {/* Branch pill */}
             <span
-                className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-mono font-medium bg-[#e8e8e8] dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#ccc] rounded-full truncate max-w-[180px]"
+                className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-mono font-medium bg-[#e8e8e8] dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#ccc] rounded-full truncate max-w-[360px]"
                 title={branch}
                 data-testid="git-branch-pill"
             >
