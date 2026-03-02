@@ -1078,4 +1078,285 @@ describe('file-preview-tooltip CSS rules', () => {
         const block = extractBlock('.file-preview-tooltip');
         expect(block).toContain('min-height: 80px');
     });
+
+    it('tooltip CSS does not override pointer-events to auto', () => {
+        const block = extractBlock('.file-preview-tooltip');
+        expect(block).not.toContain('pointer-events: auto');
+    });
+});
+
+describe('tooltip non-overlapping vertical safe zone (Fix 1)', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+        vi.resetModules();
+        document.body.innerHTML = '';
+        delete (window as any).__COC_FILE_PATH_PREVIEW_DELEGATION__;
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+        vi.restoreAllMocks();
+        document.body.innerHTML = '';
+    });
+
+    it('above placement: bottom of tooltip does not exceed link top - gap', async () => {
+        const fullPath = '/Users/test/Documents/Projects/shortcuts/src/app.ts';
+        document.body.innerHTML = `
+            <div>
+                <span class="file-path-link" data-full-path="${fullPath}">app.ts</span>
+            </div>
+        `;
+
+        const fetchMock = vi.fn();
+        mockWorkspaceAndPreview(fetchMock);
+        vi.stubGlobal('fetch', fetchMock as any);
+
+        Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1200 });
+        Object.defineProperty(window, 'innerHeight', { configurable: true, value: 600 });
+
+        // Link near bottom forces above placement
+        vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function(this: HTMLElement): DOMRect {
+            if (this.classList?.contains('file-path-link')) {
+                return makeRect(100, 520, 200, 20); // bottom = 540
+            }
+            if (this.classList?.contains('file-preview-tooltip')) {
+                return makeRect(0, 0, 600, 300);
+            }
+            return makeRect(0, 0, 0, 0);
+        });
+
+        try {
+            await import('../../../src/server/spa/client/react/file-path-preview');
+            await hoverAndWait(document.querySelector('.file-path-link') as HTMLElement);
+
+            const tooltip = document.querySelector('.file-preview-tooltip') as HTMLElement;
+            const top = parseFloat(tooltip.style.top);
+            const maxHeight = parseFloat(tooltip.style.maxHeight);
+
+            // rect.top=520, gap=6 → bottom edge must be ≤ 514
+            expect(top + maxHeight).toBeLessThanOrEqual(514);
+        } finally {
+            Object.defineProperty(window, 'innerWidth', { configurable: true, value: 0 });
+            Object.defineProperty(window, 'innerHeight', { configurable: true, value: 0 });
+        }
+    });
+
+    it('falls back to below placement when above space is insufficient', async () => {
+        const fullPath = '/Users/test/Documents/Projects/shortcuts/src/app.ts';
+        document.body.innerHTML = `
+            <div>
+                <span class="file-path-link" data-full-path="${fullPath}">app.ts</span>
+            </div>
+        `;
+
+        const fetchMock = vi.fn();
+        mockWorkspaceAndPreview(fetchMock);
+        vi.stubGlobal('fetch', fetchMock as any);
+
+        Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1200 });
+        Object.defineProperty(window, 'innerHeight', { configurable: true, value: 300 });
+
+        // Link near both top and bottom so above maxHeight < 80 → fall back to below
+        vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function(this: HTMLElement): DOMRect {
+            if (this.classList?.contains('file-path-link')) {
+                return makeRect(100, 60, 200, 20); // bottom=80, top=60
+            }
+            if (this.classList?.contains('file-preview-tooltip')) {
+                return makeRect(0, 0, 600, 400);
+            }
+            return makeRect(0, 0, 0, 0);
+        });
+
+        try {
+            await import('../../../src/server/spa/client/react/file-path-preview');
+            await hoverAndWait(document.querySelector('.file-path-link') as HTMLElement);
+
+            const tooltip = document.querySelector('.file-preview-tooltip') as HTMLElement;
+            const top = parseFloat(tooltip.style.top);
+            const maxHeight = parseFloat(tooltip.style.maxHeight);
+
+            // When above space < 80px and fall-back to below: top should be >= rect.bottom + gap = 86
+            expect(top).toBeGreaterThanOrEqual(86);
+            expect(maxHeight).toBeGreaterThanOrEqual(80);
+        } finally {
+            Object.defineProperty(window, 'innerWidth', { configurable: true, value: 0 });
+            Object.defineProperty(window, 'innerHeight', { configurable: true, value: 0 });
+        }
+    });
+});
+
+describe('pointer-events grace period on tooltip show (Fix 2)', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+        vi.resetModules();
+        document.body.innerHTML = '';
+        delete (window as any).__COC_FILE_PATH_PREVIEW_DELEGATION__;
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+        vi.restoreAllMocks();
+        document.body.innerHTML = '';
+    });
+
+    it('tooltip has pointer-events:none immediately after hover', async () => {
+        const fullPath = '/Users/test/Documents/Projects/shortcuts/src/app.ts';
+        document.body.innerHTML = `
+            <div>
+                <span class="file-path-link" data-full-path="${fullPath}">app.ts</span>
+            </div>
+        `;
+
+        const fetchMock = vi.fn();
+        mockWorkspaceAndPreview(fetchMock);
+        vi.stubGlobal('fetch', fetchMock as any);
+
+        await import('../../../src/server/spa/client/react/file-path-preview');
+
+        const link = document.querySelector('.file-path-link') as HTMLElement;
+        link.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+        // Advance just past HOVER_DELAY_MS (250) but not past the 150ms pointer-events timer
+        await vi.advanceTimersByTimeAsync(260);
+        await Promise.resolve();
+
+        const tooltip = document.querySelector('.file-preview-tooltip') as HTMLElement;
+        expect(tooltip?.style.pointerEvents).toBe('none');
+    });
+
+    it('pointer-events is restored after 150ms grace period', async () => {
+        const fullPath = '/Users/test/Documents/Projects/shortcuts/src/app.ts';
+        document.body.innerHTML = `
+            <div>
+                <span class="file-path-link" data-full-path="${fullPath}">app.ts</span>
+            </div>
+        `;
+
+        const fetchMock = vi.fn();
+        mockWorkspaceAndPreview(fetchMock);
+        vi.stubGlobal('fetch', fetchMock as any);
+
+        await import('../../../src/server/spa/client/react/file-path-preview');
+
+        const link = document.querySelector('.file-path-link') as HTMLElement;
+        link.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+        // Advance past HOVER_DELAY_MS + 150ms grace period + microtasks
+        await vi.advanceTimersByTimeAsync(450);
+        await Promise.resolve();
+        await Promise.resolve();
+
+        const tooltip = document.querySelector('.file-preview-tooltip') as HTMLElement;
+        expect(tooltip?.style.pointerEvents).toBe('');
+    });
+});
+
+describe('click-through fallback on tooltip click (Fix 3)', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+        vi.resetModules();
+        document.body.innerHTML = '';
+        delete (window as any).__COC_FILE_PATH_PREVIEW_DELEGATION__;
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+        vi.restoreAllMocks();
+        document.body.innerHTML = '';
+    });
+
+    it('clicking tooltip body dispatches open event for underlying link', async () => {
+        const fullPath = '/Users/test/Documents/Projects/shortcuts/src/app.ts';
+        document.body.innerHTML = `
+            <div>
+                <span class="file-path-link" data-full-path="${fullPath}">app.ts</span>
+            </div>
+        `;
+
+        const fetchMock = vi.fn();
+        mockWorkspaceAndPreview(fetchMock);
+        vi.stubGlobal('fetch', fetchMock as any);
+
+        await import('../../../src/server/spa/client/react/file-path-preview');
+        await hoverAndWait(document.querySelector('.file-path-link') as HTMLElement);
+
+        const tooltip = document.querySelector('.file-preview-tooltip') as HTMLElement;
+        expect(tooltip).not.toBeNull();
+
+        const link = document.querySelector('.file-path-link') as HTMLElement;
+
+        // jsdom does not implement elementFromPoint — stub it on the document
+        const originalEFP = (document as any).elementFromPoint;
+        (document as any).elementFromPoint = (_x: number, _y: number) => link;
+
+        const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+
+        try {
+            // Click on tooltip body (not a button/anchor)
+            const tooltipBody = tooltip.querySelector('.file-preview-tooltip-body') as HTMLElement;
+            tooltipBody.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: 150, clientY: 300 }));
+
+            expect(dispatchSpy).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    type: 'coc-open-markdown-review',
+                    detail: { filePath: fullPath },
+                })
+            );
+        } finally {
+            (document as any).elementFromPoint = originalEFP;
+        }
+    });
+
+    it('clicking a button inside tooltip does not trigger click-through', async () => {
+        const fullPath = '/Users/test/projects/shortcuts/.vscode/tasks/coc/plan.md';
+        document.body.innerHTML = `
+            <span class="file-path-link" data-full-path="${fullPath}">plan.md</span>
+        `;
+
+        const fetchMock = vi.fn().mockImplementation((url: string) => {
+            if (url.includes('/files/preview')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: async () => ({
+                        path: fullPath,
+                        fileName: 'plan.md',
+                        lines: ['# Plan'],
+                        totalLines: 1,
+                        truncated: false,
+                    }),
+                });
+            }
+            return Promise.resolve({
+                ok: true,
+                json: async () => ({
+                    workspaces: [{ id: 'ws-1', rootPath: '/Users/test/projects/shortcuts' }],
+                }),
+            });
+        });
+        vi.stubGlobal('fetch', fetchMock as any);
+
+        await import('../../../src/server/spa/client/react/file-path-preview');
+
+        const link = document.querySelector('.file-path-link') as HTMLElement;
+        link.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+        await vi.advanceTimersByTimeAsync(300);
+        for (let i = 0; i < 10; i++) await Promise.resolve();
+
+        const originalEFP = (document as any).elementFromPoint;
+        (document as any).elementFromPoint = (_x: number, _y: number) => link;
+
+        const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+
+        try {
+            // Click the goto button — should dispatch coc-reveal-in-panel, NOT coc-open-markdown-review via click-through
+            const btn = document.querySelector('.file-preview-goto-btn') as HTMLElement;
+            if (btn) {
+                btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: 150, clientY: 300 }));
+                const openCalls = dispatchSpy.mock.calls.filter(
+                    ([e]: any[]) => (e as Event)?.type === 'coc-open-markdown-review'
+                );
+                expect(openCalls.length).toBe(0);
+            }
+        } finally {
+            (document as any).elementFromPoint = originalEFP;
+        }
+    });
 });

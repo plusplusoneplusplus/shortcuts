@@ -48,6 +48,7 @@ const TOOLTIP_VIEWPORT_PADDING_PX = 16;
 const TOOLTIP_EDGE_MARGIN_PX = 8;
 const TOOLTIP_DEFAULT_MAX_WIDTH_PX = 960;
 const TOOLTIP_DEFAULT_MAX_HEIGHT_PX = 560;
+const TOOLTIP_MIN_USEFUL_HEIGHT_PX = 80;
 
 const previewCache = new Map<string, CacheEntry>();
 
@@ -233,6 +234,7 @@ function positionTooltip(target: HTMLElement): void {
 
     let left = rect.left;
     let top = rect.bottom + TOOLTIP_GAP_PX;
+    let isAbove = false;
 
     if (left + tipWidth > window.innerWidth - TOOLTIP_VIEWPORT_PADDING_PX) {
         left = window.innerWidth - tipWidth - TOOLTIP_VIEWPORT_PADDING_PX;
@@ -240,13 +242,33 @@ function positionTooltip(target: HTMLElement): void {
     if (left < TOOLTIP_EDGE_MARGIN_PX) left = TOOLTIP_EDGE_MARGIN_PX;
 
     if (top + tipHeight > window.innerHeight - TOOLTIP_VIEWPORT_PADDING_PX) {
-        top = rect.top - tipHeight - TOOLTIP_GAP_PX;
-        if (top < TOOLTIP_EDGE_MARGIN_PX) top = TOOLTIP_EDGE_MARGIN_PX;
+        // Try placing above the link
+        const aboveTop = rect.top - tipHeight - TOOLTIP_GAP_PX;
+        top = Math.max(TOOLTIP_EDGE_MARGIN_PX, aboveTop);
+        isAbove = true;
     }
 
-    // Clamp max-height to available viewport space so content scrolls instead of overflowing
-    const availableHeight = window.innerHeight - top - TOOLTIP_VIEWPORT_PADDING_PX;
-    tip.style.maxHeight = `${Math.max(Math.min(availableHeight, TOOLTIP_DEFAULT_MAX_HEIGHT_PX), 80)}px`;
+    // Compute max-height so the tooltip never intrudes into the link's bounding rect.
+    let maxHeight: number;
+    if (isAbove) {
+        // Bottom edge of tooltip must stay at or above rect.top - TOOLTIP_GAP_PX
+        maxHeight = Math.min(rect.top - TOOLTIP_GAP_PX - top, TOOLTIP_DEFAULT_MAX_HEIGHT_PX);
+        if (maxHeight < TOOLTIP_MIN_USEFUL_HEIGHT_PX) {
+            // Not enough room above — fall back to below with scroll
+            top = rect.bottom + TOOLTIP_GAP_PX;
+            maxHeight = Math.min(
+                window.innerHeight - TOOLTIP_VIEWPORT_PADDING_PX - top,
+                TOOLTIP_DEFAULT_MAX_HEIGHT_PX,
+            );
+        }
+    } else {
+        maxHeight = Math.min(
+            window.innerHeight - TOOLTIP_VIEWPORT_PADDING_PX - top,
+            TOOLTIP_DEFAULT_MAX_HEIGHT_PX,
+        );
+    }
+
+    tip.style.maxHeight = `${Math.max(maxHeight, TOOLTIP_MIN_USEFUL_HEIGHT_PX)}px`;
 
     tip.style.left = `${left}px`;
     tip.style.top = `${top}px`;
@@ -385,6 +407,15 @@ async function showTooltip(target: HTMLElement): Promise<void> {
     renderLoading(fullPath);
     positionTooltip(target);
 
+    // Brief pointer-events grace period: keep the link clickable if the tooltip
+    // renders briefly over it before the cursor has moved away.
+    if (tooltipEl) {
+        tooltipEl.style.pointerEvents = 'none';
+        setTimeout(() => {
+            if (tooltipEl) tooltipEl.style.pointerEvents = '';
+        }, 150);
+    }
+
     const cached = getFromCache(fullPath);
     if (cached) {
         if (activeTarget !== target || reqId !== activeRequestId) return;
@@ -471,6 +502,37 @@ function initFilePathPreviewDelegation(): void {
         hideTooltip();
         window.dispatchEvent(new CustomEvent('coc-reveal-in-panel', {
             detail: { filePath: taskPath },
+        }));
+    });
+
+    // Click-through fallback: if the tooltip covers the link and the user clicks
+    // on the tooltip body (not a button/anchor), find the underlying .file-path-link
+    // and open it.
+    document.body.addEventListener('click', (event) => {
+        if (!tooltipEl) return;
+        const t = event.target as HTMLElement;
+        if (!tooltipEl.contains(t)) return;
+        if (t.closest('button, a, [role="button"]')) return;
+
+        const x = (event as MouseEvent).clientX;
+        const y = (event as MouseEvent).clientY;
+
+        tooltipEl.style.display = 'none';
+        const beneath = document.elementFromPoint(x, y);
+        tooltipEl.style.display = 'block';
+
+        const link = findPathLink(beneath);
+        if (!link) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        const fullPath = link.getAttribute('data-full-path');
+        if (!fullPath) return;
+
+        hideTooltip();
+        window.dispatchEvent(new CustomEvent('coc-open-markdown-review', {
+            detail: { filePath: fullPath },
         }));
     });
 
