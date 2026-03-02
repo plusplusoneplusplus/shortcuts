@@ -244,8 +244,8 @@ export function QueueTaskDetail() {
                 return;
             }
 
-            await waitForFollowUpCompletion(selectedProcessId);
             clearImages();
+            await waitForFollowUpCompletion(selectedProcessId);
         } catch (error: any) {
             setFollowUpError(error?.message || 'Failed to send follow-up message.');
             removeStreamingAssistantPlaceholder();

@@ -590,9 +590,9 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
                 return;
             }
             if (chatTaskId) sessionsHook.updateSessionStatus(chatTaskId, 'running');
+            followUpImagePaste.clearImages();
             await waitForFollowUpCompletion(processId);
             sessionsHook.refresh();
-            followUpImagePaste.clearImages();
         } catch (err: any) {
             setError(err?.message ?? 'Failed to send follow-up message.');
             removeStreamingPlaceholder();

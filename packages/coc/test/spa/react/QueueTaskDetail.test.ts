@@ -55,14 +55,15 @@ describe('QueueTaskDetail', () => {
             expect(sendFollowUpSection).toContain(': undefined');
         });
 
-        it('clears images after successful follow-up', () => {
+        it('clears images immediately after send (before waiting for completion)', () => {
             const sendFollowUpSection = source.substring(source.indexOf('const sendFollowUp'));
-            // clearImages() should appear after waitForFollowUpCompletion and before the catch
+            // clearImages() should appear before waitForFollowUpCompletion and before the catch
             const waitIdx = sendFollowUpSection.indexOf('await waitForFollowUpCompletion');
             const clearIdx = sendFollowUpSection.indexOf('clearImages()');
             const catchIdx = sendFollowUpSection.indexOf('} catch');
             expect(waitIdx).toBeGreaterThan(-1);
-            expect(clearIdx).toBeGreaterThan(waitIdx);
+            expect(clearIdx).toBeGreaterThan(-1);
+            expect(clearIdx).toBeLessThan(waitIdx);
             expect(clearIdx).toBeLessThan(catchIdx);
         });
 
