@@ -3,6 +3,8 @@ export { RepoChatTab } from './RepoChatTab';
 export { RepoGitTab } from './RepoGitTab';
 export { CommitList } from './CommitList';
 export { CommitDetail } from './CommitDetail';
+export { CommitTooltip } from './CommitTooltip';
+export type { CommitTooltipProps } from './CommitTooltip';
 export { BranchChanges } from './BranchChanges';
 export { BranchFileDiff } from './BranchFileDiff';
 export { GitPanelHeader } from './GitPanelHeader';

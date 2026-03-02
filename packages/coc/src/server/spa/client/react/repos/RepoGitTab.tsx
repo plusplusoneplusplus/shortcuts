@@ -28,6 +28,7 @@ interface RepoGitTabProps {
 
 type RightPanelView =
     | { type: 'commit'; commit: GitCommitItem }
+    | { type: 'commit-file'; hash: string; filePath: string }
     | { type: 'branch-file'; filePath: string };
 
 export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
@@ -116,14 +117,19 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         if (refreshing) return;
         setRefreshing(true);
         setRefreshError(null);
-        const prevSelectedHash = rightPanelView?.type === 'commit' ? rightPanelView.commit.hash : null;
+        const prevSelectedHash = rightPanelView?.type === 'commit' ? rightPanelView.commit.hash : rightPanelView?.type === 'commit-file' ? rightPanelView.hash : null;
         Promise.all([fetchCommits(true), fetchBranchRange(true)])
             .then(([loaded]) => {
                 // Retain selection if the commit still exists
                 if (prevSelectedHash) {
                     const found = loaded.find((c: GitCommitItem) => c.hash === prevSelectedHash);
                     if (found) {
-                        setRightPanelView({ type: 'commit', commit: found });
+                        // Preserve commit-file view if that's the current type
+                        if (rightPanelView?.type === 'commit-file') {
+                            // keep as-is
+                        } else {
+                            setRightPanelView({ type: 'commit', commit: found });
+                        }
                     } else if (loaded.length > 0) {
                         setRightPanelView({ type: 'commit', commit: loaded[0] });
                     } else {
@@ -201,6 +207,10 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         setRightPanelView({ type: 'branch-file', filePath });
     }, []);
 
+    const handleCommitFileSelect = useCallback((hash: string, filePath: string) => {
+        setRightPanelView({ type: 'commit-file', hash, filePath });
+    }, []);
+
     // Keyboard shortcut: R to refresh when focused in left panel
     const handlePanelKeyDown = useCallback((e: React.KeyboardEvent) => {
         if (e.key === 'r' || e.key === 'R') {
@@ -229,7 +239,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
 
     const unpushed = commits.slice(0, unpushedCount);
     const history = commits.slice(unpushedCount);
-    const selectedCommit = rightPanelView?.type === 'commit' ? rightPanelView.commit : null;
+    const selectedCommit = rightPanelView?.type === 'commit' ? rightPanelView.commit : rightPanelView?.type === 'commit-file' ? commits.find(c => c.hash === rightPanelView.hash) ?? null : null;
     const selectedBranchFile = rightPanelView?.type === 'branch-file' ? rightPanelView.filePath : null;
 
     // Scenario banner
@@ -262,6 +272,8 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 commits={unpushed}
                 selectedHash={selectedCommit?.hash}
                 onSelect={handleSelect}
+                onFileSelect={handleCommitFileSelect}
+                workspaceId={workspaceId}
                 showEmpty
                 emptyMessage="Nothing to push — you're up to date"
             />
@@ -270,6 +282,8 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 commits={history}
                 selectedHash={selectedCommit?.hash}
                 onSelect={handleSelect}
+                onFileSelect={handleCommitFileSelect}
+                workspaceId={workspaceId}
                 defaultCollapsed={unpushedCount > 0}
             />
         </>
@@ -280,11 +294,13 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             key={rightPanelView.commit.hash}
             workspaceId={workspaceId}
             hash={rightPanelView.commit.hash}
-            subject={rightPanelView.commit.subject}
-            author={rightPanelView.commit.author}
-            date={rightPanelView.commit.date}
-            parentHashes={rightPanelView.commit.parentHashes}
-            body={rightPanelView.commit.body}
+        />
+    ) : rightPanelView?.type === 'commit-file' ? (
+        <CommitDetail
+            key={`${rightPanelView.hash}-${rightPanelView.filePath}`}
+            workspaceId={workspaceId}
+            hash={rightPanelView.hash}
+            filePath={rightPanelView.filePath}
         />
     ) : rightPanelView?.type === 'branch-file' ? (
         <BranchFileDiff

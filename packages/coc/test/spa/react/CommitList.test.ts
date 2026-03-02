@@ -2,7 +2,7 @@
  * Tests for CommitList component source structure.
  *
  * Validates exports, props, single-select behavior, keyboard navigation,
- * and rendering patterns.
+ * hover tooltip, expandable file list, and rendering patterns.
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -55,6 +55,14 @@ describe('CommitList', () => {
 
         it('accepts optional onSelect callback', () => {
             expect(source).toContain('onSelect');
+        });
+
+        it('accepts optional onFileSelect callback', () => {
+            expect(source).toContain('onFileSelect?: (hash: string, filePath: string) => void');
+        });
+
+        it('accepts optional workspaceId prop', () => {
+            expect(source).toContain('workspaceId?: string');
         });
 
         it('accepts optional loading prop', () => {
@@ -125,14 +133,125 @@ describe('CommitList', () => {
             expect(source).toContain('bg-blue-50');
             expect(source).toContain('dark:bg-blue-900/20');
         });
+    });
 
-        it('does not use accordion expand/collapse', () => {
-            expect(source).not.toContain('expandedHash');
-            expect(source).not.toContain('toggleExpand');
+    describe('expandable file list', () => {
+        it('tracks expandedHash state', () => {
+            expect(source).toContain('expandedHash');
+            expect(source).toContain('setExpandedHash');
         });
 
-        it('does not render CommitDetail inline', () => {
-            expect(source).not.toContain('<CommitDetail');
+        it('caches fetched files by hash', () => {
+            expect(source).toContain('fileCache');
+            expect(source).toContain('setFileCache');
+        });
+
+        it('tracks filesLoading state', () => {
+            expect(source).toContain('filesLoading');
+            expect(source).toContain('setFilesLoading');
+        });
+
+        it('fetches files from /git/commits/:hash/files API', () => {
+            expect(source).toContain('/git/commits/');
+            expect(source).toContain('/files');
+        });
+
+        it('imports fetchApi for file list fetching', () => {
+            expect(source).toContain("import { fetchApi }");
+        });
+
+        it('toggles expand/collapse on commit click via handleCommitClick', () => {
+            expect(source).toContain('handleCommitClick');
+            expect(source).toContain('expandedHash === commit.hash');
+        });
+
+        it('renders expanded file list section with data-testid', () => {
+            expect(source).toContain('commit-files-');
+        });
+
+        it('has commit-files-loading indicator', () => {
+            expect(source).toContain('data-testid="commit-files-loading"');
+        });
+
+        it('has commit-file-list data-testid', () => {
+            expect(source).toContain('data-testid="commit-file-list"');
+        });
+
+        it('calls onFileSelect when a file is clicked', () => {
+            expect(source).toContain('onFileSelect?.(commit.hash, f.path)');
+        });
+
+        it('shows file status badge (A/M/D)', () => {
+            expect(source).toContain('f.status');
+        });
+
+        it('shows file path', () => {
+            expect(source).toContain('f.path');
+        });
+
+        it('has status labels for file changes', () => {
+            expect(source).toContain("A: 'Added'");
+            expect(source).toContain("M: 'Modified'");
+            expect(source).toContain("D: 'Deleted'");
+        });
+
+        it('has status colors for file changes', () => {
+            expect(source).toContain("A: 'text-[#16825d]'");
+            expect(source).toContain("M: 'text-[#0078d4]'");
+            expect(source).toContain("D: 'text-[#d32f2f]'");
+        });
+
+        it('only fetches files when workspaceId is provided', () => {
+            expect(source).toContain('workspaceId');
+            expect(source).toContain('!fileCache[commit.hash] && workspaceId');
+        });
+    });
+
+    describe('hover tooltip', () => {
+        it('tracks hoveredCommit state', () => {
+            expect(source).toContain('hoveredCommit');
+            expect(source).toContain('setHoveredCommit');
+        });
+
+        it('tracks tooltipAnchorRect state', () => {
+            expect(source).toContain('tooltipAnchorRect');
+            expect(source).toContain('setTooltipAnchorRect');
+        });
+
+        it('uses 250ms hover delay', () => {
+            expect(source).toContain('250');
+        });
+
+        it('has handleRowMouseEnter callback', () => {
+            expect(source).toContain('handleRowMouseEnter');
+        });
+
+        it('has handleRowMouseLeave callback', () => {
+            expect(source).toContain('handleRowMouseLeave');
+        });
+
+        it('clears timer on mouse leave', () => {
+            expect(source).toContain('clearTimeout(hoverTimerRef.current)');
+        });
+
+        it('cleans up timer on unmount', () => {
+            expect(source).toContain('if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)');
+        });
+
+        it('renders CommitTooltip when hovered', () => {
+            expect(source).toContain('<CommitTooltip');
+        });
+
+        it('imports CommitTooltip', () => {
+            expect(source).toContain("import { CommitTooltip } from './CommitTooltip'");
+        });
+
+        it('attaches onMouseEnter to commit rows', () => {
+            expect(source).toContain('onMouseEnter');
+        });
+
+        it('attaches onMouseLeave to commit rows', () => {
+            expect(source).toContain('onMouseLeave');
         });
     });
 

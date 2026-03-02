@@ -3,7 +3,7 @@
  *
  * Validates exports, props, API usage, split layout, state management,
  * auto-selection, refresh behaviour, scenario banner, GitPanelHeader
- * integration, and rendering of the git commit history tab.
+ * integration, commit-file view, and rendering of the git commit history tab.
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -95,9 +95,10 @@ describe('RepoGitTab', () => {
             expect(source).toContain('setRightPanelView');
         });
 
-        it('defines RightPanelView type with commit and branch-file variants', () => {
+        it('defines RightPanelView type with commit, commit-file, and branch-file variants', () => {
             expect(source).toContain("type RightPanelView");
             expect(source).toContain("{ type: 'commit'; commit: GitCommitItem }");
+            expect(source).toContain("{ type: 'commit-file'; hash: string; filePath: string }");
             expect(source).toContain("{ type: 'branch-file'; filePath: string }");
         });
 
@@ -178,6 +179,10 @@ describe('RepoGitTab', () => {
 
         it('preserves branch-file view during refresh', () => {
             expect(source).toContain("rightPanelView?.type === 'branch-file'");
+        });
+
+        it('preserves commit-file view during refresh', () => {
+            expect(source).toContain("rightPanelView?.type === 'commit-file'");
         });
 
         it('handles refresh errors without blocking', () => {
@@ -264,7 +269,6 @@ describe('RepoGitTab', () => {
         });
 
         it('handleFetch calls refreshAll on success', () => {
-            // After the fetch endpoint call, refreshAll should be invoked
             const fetchBlock = source.match(/handleFetch[\s\S]*?(?=const handlePull)/);
             expect(fetchBlock).toBeTruthy();
             expect(fetchBlock![0]).toContain('refreshAll()');
@@ -491,12 +495,26 @@ describe('RepoGitTab', () => {
             expect(source).toContain('onSelect=');
         });
 
-        it('passes subject to CommitDetail', () => {
-            expect(source).toContain('subject={rightPanelView.commit.subject}');
+        it('passes onFileSelect to CommitList', () => {
+            expect(source).toContain('onFileSelect={handleCommitFileSelect}');
         });
 
-        it('passes body to CommitDetail', () => {
-            expect(source).toContain('body={rightPanelView.commit.body}');
+        it('passes workspaceId to CommitList', () => {
+            expect(source).toContain('workspaceId={workspaceId}');
+        });
+
+        it('passes only workspaceId and hash to CommitDetail for full commit diff', () => {
+            // CommitDetail for a commit no longer receives subject/author/date/body
+            expect(source).not.toContain('subject={rightPanelView.commit.subject}');
+            expect(source).not.toContain('body={rightPanelView.commit.body}');
+        });
+
+        it('passes filePath to CommitDetail for per-file diff', () => {
+            expect(source).toContain('filePath={rightPanelView.filePath}');
+        });
+
+        it('uses compound key for commit-file detail panel', () => {
+            expect(source).toContain('key={`${rightPanelView.hash}-${rightPanelView.filePath}`}');
         });
 
         it('uses key prop on CommitDetail to force remount on hash change', () => {
@@ -519,16 +537,25 @@ describe('RepoGitTab', () => {
             expect(source).toContain('selectedFile={selectedBranchFile}');
         });
 
-        it('derives selectedCommit from rightPanelView', () => {
-            expect(source).toContain("rightPanelView?.type === 'commit' ? rightPanelView.commit : null");
+        it('derives selectedCommit from rightPanelView (commit or commit-file)', () => {
+            expect(source).toContain("rightPanelView?.type === 'commit'");
+            expect(source).toContain("rightPanelView?.type === 'commit-file'");
         });
 
         it('derives selectedBranchFile from rightPanelView', () => {
             expect(source).toContain("rightPanelView?.type === 'branch-file' ? rightPanelView.filePath : null");
         });
 
-        it('defines handleFileSelect callback', () => {
+        it('defines handleFileSelect callback for branch files', () => {
             expect(source).toContain('const handleFileSelect = useCallback');
+        });
+
+        it('defines handleCommitFileSelect callback for commit files', () => {
+            expect(source).toContain('const handleCommitFileSelect = useCallback');
+        });
+
+        it('handleCommitFileSelect sets right panel to commit-file view', () => {
+            expect(source).toContain("setRightPanelView({ type: 'commit-file', hash, filePath })");
         });
 
         it('handleFileSelect sets right panel to branch-file view', () => {

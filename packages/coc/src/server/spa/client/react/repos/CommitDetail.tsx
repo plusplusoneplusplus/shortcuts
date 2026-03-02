@@ -1,153 +1,59 @@
 /**
- * CommitDetail — right-panel detail view for a selected commit.
+ * CommitDetail — right-panel diff-only view for a selected commit.
  *
- * Shows commit subject header, metadata, changed files list, and the
- * full unified diff. Diff is always fetched on mount (no toggle).
+ * Shows the unified diff for the full commit or a single file.
+ * Metadata, file list, and commit body are displayed in the left panel
+ * via CommitList tooltip and expandable file list.
  */
 
 import { useState, useEffect, useCallback } from 'react';
 import { fetchApi } from '../hooks/useApi';
 import { Spinner, Button } from '../shared';
-import { copyToClipboard } from '../utils/format';
 import { UnifiedDiffViewer } from './UnifiedDiffViewer';
 
 export interface CommitDetailProps {
     workspaceId: string;
     hash: string;
-    subject: string;
-    author: string;
-    date: string;
-    parentHashes: string[];
-    body?: string;
+    filePath?: string;
 }
 
-interface FileChange {
-    status: string;
-    path: string;
-}
-
-const STATUS_LABELS: Record<string, string> = {
-    A: 'Added',
-    M: 'Modified',
-    D: 'Deleted',
-    R: 'Renamed',
-    C: 'Copied',
-    T: 'Type changed',
-};
-
-const STATUS_COLORS: Record<string, string> = {
-    A: 'text-[#16825d]',
-    M: 'text-[#0078d4]',
-    D: 'text-[#d32f2f]',
-};
-
-export function CommitDetail({ workspaceId, hash, subject, author, date, parentHashes, body }: CommitDetailProps) {
-    const [files, setFiles] = useState<FileChange[]>([]);
-    const [filesLoading, setFilesLoading] = useState(true);
-    const [filesError, setFilesError] = useState<string | null>(null);
+export function CommitDetail({ workspaceId, hash, filePath }: CommitDetailProps) {
     const [diff, setDiff] = useState<string | null>(null);
     const [diffLoading, setDiffLoading] = useState(true);
     const [diffError, setDiffError] = useState<string | null>(null);
-    const [copied, setCopied] = useState(false);
 
-    useEffect(() => {
-        setFilesLoading(true);
-        setFilesError(null);
-        fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${hash}/files`)
-            .then(data => setFiles(data.files || []))
-            .catch(err => setFilesError(err.message || 'Failed to load files'))
-            .finally(() => setFilesLoading(false));
-    }, [workspaceId, hash]);
+    const diffUrl = filePath
+        ? `/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${hash}/files/${encodeURIComponent(filePath)}/diff`
+        : `/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${hash}/diff`;
 
-    // Always fetch diff on mount / hash change
+    // Always fetch diff on mount / hash / filePath change
     useEffect(() => {
         setDiffLoading(true);
         setDiffError(null);
         setDiff(null);
-        fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${hash}/diff`)
+        fetchApi(diffUrl)
             .then(data => setDiff(data.diff || ''))
             .catch(err => setDiffError(err.message || 'Failed to load diff'))
             .finally(() => setDiffLoading(false));
-    }, [workspaceId, hash]);
-
-    const handleCopyHash = () => {
-        copyToClipboard(hash).then(() => {
-            setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
-        });
-    };
+    }, [diffUrl]);
 
     const handleRetryDiff = useCallback(() => {
         setDiffLoading(true);
         setDiffError(null);
-        fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${hash}/diff`)
+        fetchApi(diffUrl)
             .then(data => setDiff(data.diff || ''))
             .catch(err => setDiffError(err.message || 'Failed to load diff'))
             .finally(() => setDiffLoading(false));
-    }, [workspaceId, hash]);
-
-    const formattedDate = (() => {
-        try { return new Date(date).toLocaleString(); } catch { return date; }
-    })();
+    }, [diffUrl]);
 
     return (
         <div className="commit-detail flex flex-col h-full overflow-y-auto" data-testid="commit-detail">
-            {/* Header bar */}
-            <div className="px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526]" data-testid="commit-detail-header">
-                <div className="flex items-center gap-2 mb-1">
-                    <span className="text-sm font-semibold text-[#1e1e1e] dark:text-[#ccc] flex-1 truncate">{subject}</span>
-                    <span className="font-mono text-xs bg-[#e8e8e8] dark:bg-[#3c3c3c] px-2 py-0.5 rounded text-[#0078d4] dark:text-[#3794ff] flex-shrink-0">{hash.substring(0, 8)}</span>
-                    <Button variant="secondary" size="sm" onClick={handleCopyHash} data-testid="copy-hash-btn">
-                        {copied ? 'Copied!' : 'Copy Hash'}
-                    </Button>
-                </div>
-                <div className="flex flex-wrap items-center gap-3 text-xs text-[#616161] dark:text-[#999]">
-                    <span>Author: <strong className="text-[#1e1e1e] dark:text-[#ccc]">{author}</strong></span>
-                    <span>Date: {formattedDate}</span>
-                    {parentHashes.length > 0 && (
-                        <span>Parents: {parentHashes.map(p => p.substring(0, 7)).join(', ')}</span>
-                    )}
-                </div>
-            </div>
-
-            {/* Commit body / description */}
-            {body && (
-                <div className="px-4 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]" data-testid="commit-body">
-                    <pre className="text-xs text-[#1e1e1e] dark:text-[#ccc] whitespace-pre-wrap font-sans leading-relaxed m-0">{body}</pre>
+            {/* Diff label */}
+            {filePath && (
+                <div className="px-4 py-2 text-xs font-mono text-[#616161] dark:text-[#999] border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526]" data-testid="diff-file-path">
+                    {filePath}
                 </div>
             )}
-
-            {/* Files list */}
-            <div className="px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
-                {filesLoading ? (
-                    <div className="flex items-center gap-2 text-xs text-[#848484]" data-testid="files-loading">
-                        <Spinner size="sm" /> Loading files...
-                    </div>
-                ) : filesError ? (
-                    <div className="text-xs text-[#d32f2f] dark:text-[#f48771]" data-testid="files-error">{filesError}</div>
-                ) : files.length === 0 ? (
-                    <div className="text-xs text-[#848484]" data-testid="no-files-changed">No files changed</div>
-                ) : (
-                    <div data-testid="file-change-list">
-                        <div className="text-xs font-medium text-[#616161] dark:text-[#999] mb-1">
-                            {files.length} file{files.length !== 1 ? 's' : ''} changed
-                        </div>
-                        <div className="flex flex-col gap-0.5">
-                            {files.map((f, i) => (
-                                <div key={i} className="flex items-center gap-2 text-xs py-0.5">
-                                    <span
-                                        className={`font-mono font-bold w-4 text-center ${STATUS_COLORS[f.status] || 'text-[#848484]'}`}
-                                        title={STATUS_LABELS[f.status] || f.status}
-                                    >
-                                        {f.status}
-                                    </span>
-                                    <span className="font-mono text-[#1e1e1e] dark:text-[#ccc] break-all">{f.path}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
-            </div>
 
             {/* Diff view — always visible */}
             <div className="px-4 py-3 flex-1 min-h-0" data-testid="diff-section">

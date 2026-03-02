@@ -1,8 +1,8 @@
 /**
  * Tests for CommitDetail component source structure.
  *
- * Validates exports, props, API usage, always-visible diff,
- * error handling with retry, and rendering of the commit detail panel.
+ * Validates exports, props, diff-only rendering (no header/metadata/file list),
+ * per-file diff support, error handling with retry, and the simplified API.
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -40,7 +40,7 @@ describe('CommitDetail', () => {
         });
     });
 
-    describe('component signature', () => {
+    describe('component signature — diff-only props', () => {
         it('accepts workspaceId prop', () => {
             expect(source).toContain('workspaceId: string');
         });
@@ -49,35 +49,28 @@ describe('CommitDetail', () => {
             expect(source).toContain('hash: string');
         });
 
-        it('accepts subject prop', () => {
-            expect(source).toContain('subject: string');
+        it('accepts optional filePath prop', () => {
+            expect(source).toContain('filePath?: string');
         });
 
-        it('accepts author prop', () => {
-            expect(source).toContain('author: string');
+        it('does NOT accept subject prop', () => {
+            expect(source).not.toMatch(/^\s+subject:\s+string/m);
         });
 
-        it('accepts date prop', () => {
-            expect(source).toContain('date: string');
+        it('does NOT accept author prop', () => {
+            expect(source).not.toMatch(/^\s+author:\s+string/m);
         });
 
-        it('accepts parentHashes prop', () => {
-            expect(source).toContain('parentHashes: string[]');
+        it('does NOT accept date prop', () => {
+            expect(source).not.toMatch(/^\s+date:\s+string/m);
         });
 
-        it('accepts optional body prop', () => {
-            expect(source).toContain('body?: string');
-        });
-    });
-
-    describe('files API integration', () => {
-        it('fetches from /git/commits/:hash/files endpoint', () => {
-            expect(source).toContain('/git/commits/');
-            expect(source).toContain('/files');
+        it('does NOT accept parentHashes prop', () => {
+            expect(source).not.toContain('parentHashes: string[]');
         });
 
-        it('imports fetchApi', () => {
-            expect(source).toContain("import { fetchApi }");
+        it('does NOT accept body prop', () => {
+            expect(source).not.toContain('body?: string');
         });
     });
 
@@ -87,7 +80,6 @@ describe('CommitDetail', () => {
         });
 
         it('auto-fetches diff on mount (no toggle button)', () => {
-            // Diff is fetched in a useEffect, not on button click
             expect(source).not.toContain('View Full Diff');
             expect(source).not.toContain('Hide Diff');
             expect(source).not.toContain('data-testid="view-diff-btn"');
@@ -120,19 +112,33 @@ describe('CommitDetail', () => {
         });
     });
 
-    describe('error handling', () => {
-        it('tracks files error state', () => {
-            expect(source).toContain('filesError');
-            expect(source).toContain('setFilesError');
+    describe('per-file diff support', () => {
+        it('builds diffUrl based on filePath presence', () => {
+            expect(source).toContain('const diffUrl = filePath');
         });
 
+        it('constructs per-file diff URL with /files/:filePath/diff', () => {
+            expect(source).toContain('/files/');
+            expect(source).toContain('/diff');
+        });
+
+        it('falls back to full commit diff URL when no filePath', () => {
+            expect(source).toContain('/git/commits/${hash}/diff');
+        });
+
+        it('shows file path label when filePath is provided', () => {
+            expect(source).toContain('data-testid="diff-file-path"');
+        });
+
+        it('only renders file path label when filePath exists', () => {
+            expect(source).toContain('filePath &&');
+        });
+    });
+
+    describe('error handling', () => {
         it('tracks diff error state', () => {
             expect(source).toContain('diffError');
             expect(source).toContain('setDiffError');
-        });
-
-        it('shows visible error for files loading failure', () => {
-            expect(source).toContain('data-testid="files-error"');
         });
 
         it('shows visible error for diff loading failure', () => {
@@ -141,98 +147,41 @@ describe('CommitDetail', () => {
 
         it('does NOT silently catch errors', () => {
             expect(source).toContain('catch(err');
-            expect(source).not.toContain('catch(() => setFiles([]))');
         });
     });
 
-    describe('header bar', () => {
-        it('has header section with data-testid', () => {
-            expect(source).toContain('data-testid="commit-detail-header"');
+    describe('removed sections — metadata moved to left panel', () => {
+        it('does NOT have commit-detail-header', () => {
+            expect(source).not.toContain('data-testid="commit-detail-header"');
         });
 
-        it('displays commit subject as title', () => {
-            expect(source).toContain('{subject}');
+        it('does NOT have commit-body section', () => {
+            expect(source).not.toContain('data-testid="commit-body"');
         });
 
-        it('displays short hash badge', () => {
-            expect(source).toContain('hash.substring(0, 8)');
-        });
-    });
-
-    describe('metadata rendering', () => {
-        it('displays author name', () => {
-            expect(source).toContain('{author}');
+        it('does NOT have file-change-list section', () => {
+            expect(source).not.toContain('data-testid="file-change-list"');
         });
 
-        it('displays formatted date', () => {
-            expect(source).toContain('formattedDate');
+        it('does NOT have files-loading indicator', () => {
+            expect(source).not.toContain('data-testid="files-loading"');
         });
 
-        it('displays parent hashes', () => {
-            expect(source).toContain('parentHashes');
+        it('does NOT have files-error indicator', () => {
+            expect(source).not.toContain('data-testid="files-error"');
         });
 
-        it('has Copy Hash button', () => {
-            expect(source).toContain('Copy Hash');
-            expect(source).toContain('data-testid="copy-hash-btn"');
+        it('does NOT have no-files-changed indicator', () => {
+            expect(source).not.toContain('data-testid="no-files-changed"');
         });
 
-        it('imports copyToClipboard utility', () => {
-            expect(source).toContain("import { copyToClipboard }");
+        it('does NOT have Copy Hash button', () => {
+            expect(source).not.toContain('Copy Hash');
+            expect(source).not.toContain('data-testid="copy-hash-btn"');
         });
 
-        it('shows Copied! feedback', () => {
-            expect(source).toContain('Copied!');
-        });
-    });
-
-    describe('file change list', () => {
-        it('shows files changed count', () => {
-            expect(source).toContain('files.length');
-            expect(source).toContain('file');
-            expect(source).toContain('changed');
-        });
-
-        it('renders file status (A/M/D)', () => {
-            expect(source).toContain('f.status');
-        });
-
-        it('renders file path', () => {
-            expect(source).toContain('f.path');
-        });
-
-        it('has status labels for Added, Modified, Deleted', () => {
-            expect(source).toContain("A: 'Added'");
-            expect(source).toContain("M: 'Modified'");
-            expect(source).toContain("D: 'Deleted'");
-        });
-
-        it('has data-testid for file change list', () => {
-            expect(source).toContain('data-testid="file-change-list"');
-        });
-
-        it('has loading state for files', () => {
-            expect(source).toContain('data-testid="files-loading"');
-        });
-
-        it('shows empty state when no files changed', () => {
-            expect(source).toContain('No files changed');
-            expect(source).toContain('data-testid="no-files-changed"');
-        });
-    });
-
-    describe('commit body / description', () => {
-        it('has commit body section with data-testid', () => {
-            expect(source).toContain('data-testid="commit-body"');
-        });
-
-        it('only renders body when present', () => {
-            expect(source).toContain('{body}');
-            expect(source).toContain('body &&');
-        });
-
-        it('renders body text in a pre element with word wrap', () => {
-            expect(source).toContain('whitespace-pre-wrap');
+        it('does NOT import copyToClipboard', () => {
+            expect(source).not.toContain('copyToClipboard');
         });
     });
 
