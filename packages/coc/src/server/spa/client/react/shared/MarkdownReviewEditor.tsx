@@ -493,6 +493,18 @@ export function MarkdownReviewEditor({
         addToast('Resolve prompt copied to clipboard.', 'success');
     }, [copyResolvePrompt, rawContent, filePath, addToast]);
 
+    const handleCopyWithContext = useCallback(async () => {
+        const text = savedSelection?.text || rawContent;
+        const pathLabel = filePath || '(unknown file)';
+        const formatted = `${pathLabel}\n\`\`\`\n${text}\n\`\`\``;
+        try {
+            await navigator.clipboard.writeText(formatted);
+            addToast('Copied with context', 'success');
+        } catch {
+            addToast('Failed to copy — clipboard access denied', 'error');
+        }
+    }, [savedSelection, rawContent, filePath, addToast]);
+
     const handleSwitchToReview = useCallback(() => {
         if (isDirty) {
             if (!window.confirm('You have unsaved changes. Discard and switch to Preview?')) return;
@@ -607,6 +619,12 @@ export function MarkdownReviewEditor({
                             icon: '💬',
                             disabled: !savedSelection,
                             onClick: handleAddCommentFromMenu,
+                        },
+                        {
+                            label: 'Copy with Context',
+                            icon: '📋',
+                            disabled: !rawContent,
+                            onClick: handleCopyWithContext,
                         },
                         { label: '', separator: true, onClick: () => {} },
                         {

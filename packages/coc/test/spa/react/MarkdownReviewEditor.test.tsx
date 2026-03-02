@@ -429,6 +429,117 @@ describe('MarkdownReviewEditor', () => {
         });
     });
 
+    // ── Copy with Context tests ──
+
+    describe('Copy with Context', () => {
+        async function renderAndWaitForContent() {
+            const result = render(
+                <MarkdownReviewEditor wsId="ws1" filePath="test.md" fetchMode="tasks" />
+            );
+            await waitFor(() => {
+                expect(document.querySelector('#task-preview-body')).toBeTruthy();
+            });
+            return result;
+        }
+
+        function openContextMenu() {
+            const preview = document.querySelector('#task-preview-body')!;
+            fireEvent.contextMenu(preview, { clientX: 100, clientY: 100 });
+        }
+
+        it('renders "Copy with Context" menu item', async () => {
+            await renderAndWaitForContent();
+            openContextMenu();
+
+            const menu = screen.getByTestId('context-menu');
+            expect(menu).toBeTruthy();
+            expect(screen.getByText('Copy with Context')).toBeTruthy();
+        });
+
+        it('"Copy with Context" is always enabled when content is loaded', async () => {
+            await renderAndWaitForContent();
+            openContextMenu();
+
+            const btn = screen.getByText('Copy with Context').closest('button');
+            expect(btn).toBeTruthy();
+            expect(btn!.disabled).toBe(false);
+        });
+
+        it('copies full document with file path when no selection', async () => {
+            const writeTextMock = vi.fn().mockResolvedValue(undefined);
+            Object.assign(navigator, { clipboard: { writeText: writeTextMock } });
+
+            await renderAndWaitForContent();
+            openContextMenu();
+
+            await act(async () => {
+                fireEvent.click(screen.getByText('Copy with Context'));
+            });
+
+            expect(writeTextMock).toHaveBeenCalledTimes(1);
+            const copied = writeTextMock.mock.calls[0][0] as string;
+            expect(copied).toContain('test.md');
+            expect(copied).toContain('```');
+            expect(copied).toContain('Hello');
+            expect(mockAddToast).toHaveBeenCalledWith('Copied with context', 'success');
+        });
+
+        it('copies selected text with file path when selection exists', async () => {
+            const writeTextMock = vi.fn().mockResolvedValue(undefined);
+            Object.assign(navigator, { clipboard: { writeText: writeTextMock } });
+
+            await renderAndWaitForContent();
+            const preview = document.querySelector('#task-preview-body')! as HTMLElement;
+            simulateTextSelection(preview);
+            openContextMenu();
+
+            await act(async () => {
+                fireEvent.click(screen.getByText('Copy with Context'));
+            });
+
+            expect(writeTextMock).toHaveBeenCalledTimes(1);
+            const copied = writeTextMock.mock.calls[0][0] as string;
+            expect(copied).toContain('test.md');
+            expect(copied).toContain('```');
+            expect(mockAddToast).toHaveBeenCalledWith('Copied with context', 'success');
+        });
+
+        it('shows error toast when clipboard write fails', async () => {
+            Object.assign(navigator, { clipboard: { writeText: vi.fn().mockRejectedValue(new Error('denied')) } });
+
+            await renderAndWaitForContent();
+            openContextMenu();
+
+            await act(async () => {
+                fireEvent.click(screen.getByText('Copy with Context'));
+            });
+
+            expect(mockAddToast).toHaveBeenCalledWith('Failed to copy — clipboard access denied', 'error');
+        });
+
+        it('uses "(unknown file)" when filePath is empty', async () => {
+            const writeTextMock = vi.fn().mockResolvedValue(undefined);
+            Object.assign(navigator, { clipboard: { writeText: writeTextMock } });
+
+            const result = render(
+                <MarkdownReviewEditor wsId="ws1" filePath="" fetchMode="tasks" />
+            );
+            await waitFor(() => {
+                expect(document.querySelector('#task-preview-body')).toBeTruthy();
+            });
+
+            const preview = document.querySelector('#task-preview-body')!;
+            fireEvent.contextMenu(preview, { clientX: 100, clientY: 100 });
+
+            await act(async () => {
+                fireEvent.click(screen.getByText('Copy with Context'));
+            });
+
+            const copied = writeTextMock.mock.calls[0][0] as string;
+            expect(copied).toContain('(unknown file)');
+        });
+    });
+
     // ── Mode toggle tests ──
 
     describe('mode toggle', () => {
