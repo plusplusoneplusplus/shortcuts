@@ -87,7 +87,7 @@ describe('ToolCallView — start time display', () => {
         );
         const header = getHeader(container);
         const spans = Array.from(header.querySelectorAll('span'));
-        const startTimeSpan = spans.find(s => s.textContent === '07:07:28Z');
+        const startTimeSpan = spans.find(s => s.textContent === '03/02 07:07:28Z');
         expect(startTimeSpan).toBeDefined();
         expect(startTimeSpan!.className).toContain('ml-auto');
     });

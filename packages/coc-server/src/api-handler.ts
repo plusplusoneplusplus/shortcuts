@@ -64,7 +64,8 @@ export async function parseBody(req: http.IncomingMessage): Promise<any> {
         req.on('end', () => {
             try {
                 const raw = Buffer.concat(chunks).toString('utf-8').trim();
-                resolve(raw ? JSON.parse(raw) : {});
+                if (!raw) { reject(new Error('Empty body')); return; }
+                resolve(JSON.parse(raw));
             } catch {
                 reject(new Error('Invalid JSON'));
             }
