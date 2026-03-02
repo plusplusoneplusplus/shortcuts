@@ -193,3 +193,25 @@ export function getLastUsedDepth(context: vscode.ExtensionContext): VSCodeDepth 
 export function saveLastUsedDepth(context: vscode.ExtensionContext, depth: string): void {
     context.workspaceState.update(LAST_USED_DEPTH_KEY, depth);
 }
+
+// ============================================================================
+// Persistent Location Selection
+// ============================================================================
+
+/** Storage key for last-used task creation location */
+const LAST_USED_LOCATION_KEY = 'workspaceShortcuts.aiTask.lastUsedLocation';
+
+/**
+ * Get the last-used task location from workspace state.
+ * Defaults to empty string (root) when no preference exists.
+ */
+export function getLastUsedLocation(context: vscode.ExtensionContext): string {
+    return context.workspaceState.get<string>(LAST_USED_LOCATION_KEY) ?? '';
+}
+
+/**
+ * Save the selected task location to workspace state for persistence.
+ */
+export function saveLastUsedLocation(context: vscode.ExtensionContext, location: string): void {
+    context.workspaceState.update(LAST_USED_LOCATION_KEY, location);
+}

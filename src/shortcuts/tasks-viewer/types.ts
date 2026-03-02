@@ -169,6 +169,9 @@ export interface RelatedItemsConfig {
     lastUpdated?: string;
 }
 
+/** Sentinel value used when AI should choose the target folder automatically */
+export const AUTO_FOLDER_SENTINEL = '__auto__';
+
 /** Task creation mode */
 export type TaskCreationMode = 'create' | 'from-feature';
 

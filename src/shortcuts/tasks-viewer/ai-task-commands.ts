@@ -15,7 +15,7 @@ import { TasksTreeDataProvider } from './tree-data-provider';
 import { TaskFolderItem } from './task-folder-item';
 import { TaskDocumentItem } from './task-document-item';
 import { loadRelatedItems } from './related-items-loader';
-import { AITaskCreationOptions } from './types';
+import { AITaskCreationOptions, AUTO_FOLDER_SENTINEL } from './types';
 import { AITaskDialogService } from './ai-task-dialog';
 import { createAIInvoker, IAIProcessManager, Attachment } from '../ai-service';
 import { getAIBackendSetting } from '../ai-service/ai-config-helpers';
@@ -228,9 +228,11 @@ async function executeAITaskCreation(
     processManager?: IAIProcessManager
 ): Promise<void> {
     const isFromFeature = options.mode === 'from-feature';
-    const location = isFromFeature 
+    const rawLocation = isFromFeature 
         ? options.fromFeatureOptions?.location || ''
         : options.createOptions?.location || '';
+    const isAutoFolder = rawLocation === AUTO_FOLDER_SENTINEL;
+    const location = isAutoFolder ? '' : rawLocation;
     const model = isFromFeature
         ? options.fromFeatureOptions?.model
         : options.createOptions?.model;
@@ -250,10 +252,17 @@ async function executeAITaskCreation(
         },
         async (progress, token) => {
             try {
-                progress.report({ message: 'Generating task content...' });
+                if (isAutoFolder) {
+                    progress.report({ message: 'AI is selecting folder and generating task...' });
+                } else {
+                    progress.report({ message: 'Generating task content...' });
+                }
 
                 // Compute target folder path
-                const targetFolderPath = dialogService.getAbsoluteFolderPath(location);
+                const tasksRoot = taskManager.getTasksFolder();
+                const targetFolderPath = isAutoFolder
+                    ? tasksRoot
+                    : dialogService.getAbsoluteFolderPath(location);
                 
                 taskManager.ensureFoldersExist();
                 
@@ -263,6 +272,16 @@ async function executeAITaskCreation(
                     ensureDirectoryExists(targetFolderPath);
                 }
                 
+                // Build auto-folder context when needed
+                let autoFolderContext: { tasksRoot: string; existingFolders: string[] } | undefined;
+                if (isAutoFolder) {
+                    const featureFolders = await taskManager.getFeatureFolders();
+                    autoFolderContext = {
+                        tasksRoot,
+                        existingFolders: featureFolders.map(f => f.relativePath)
+                    };
+                }
+
                 const workspaceRoot = taskManager.getWorkspaceRoot();
                 let prompt: string;
                 let featureName: string;
@@ -279,7 +298,7 @@ async function executeAITaskCreation(
                         prompt = await buildDeepModePrompt(context, opts.focus, opts.name, targetFolderPath, workspaceRoot);
                         progress.report({ message: `Creating task with AI (Deep mode)...` });
                     } else {
-                        prompt = buildCreateFromFeaturePrompt(context, opts.focus, opts.name, targetFolderPath);
+                        prompt = buildCreateFromFeaturePrompt(context, opts.focus, opts.name, targetFolderPath, autoFolderContext);
                     }
                     featureName = `Task from Feature: ${folderName}`;
                 } else if (options.createOptions) {
@@ -287,7 +306,8 @@ async function executeAITaskCreation(
                     prompt = buildCreateTaskPromptWithName(
                         opts.name,
                         opts.description,
-                        targetFolderPath
+                        targetFolderPath,
+                        autoFolderContext
                     );
                     featureName = 'AI Task Creation';
                 } else {
@@ -330,8 +350,10 @@ async function executeAITaskCreation(
 
                     treeDataProvider.refresh();
                     
+                    // In auto mode, scan from tasks root since AI picks the subfolder
+                    const searchBase = isAutoFolder ? tasksRoot : targetFolderPath;
                     // Parse file path from AI response and open it
-                    const createdFile = parseCreatedFilePath(result.response, targetFolderPath);
+                    const createdFile = parseCreatedFilePath(result.response, searchBase);
                     if (createdFile && fs.existsSync(createdFile)) {
                         await vscode.commands.executeCommand(
                             'vscode.openWith',
@@ -1095,7 +1117,40 @@ You MUST save the file to this EXACT directory: ${targetPath}
  * Build prompt for creating a task with a specific name
  * If name is empty, prompt AI to also generate a filename
  */
-function buildCreateTaskPromptWithName(name: string | undefined, description: string, targetPath: string): string {
+function buildCreateTaskPromptWithName(
+    name: string | undefined,
+    description: string,
+    targetPath: string,
+    autoFolderContext?: { tasksRoot: string; existingFolders: string[] }
+): string {
+    if (autoFolderContext) {
+        const { tasksRoot, existingFolders } = autoFolderContext;
+        const tasksRootFwd = toForwardSlashes(tasksRoot);
+        const folderList = existingFolders.length > 0 ? existingFolders.join(', ') : '(none yet)';
+        const descriptionPart = description ? `\n\nDescription: ${description}` : '';
+        const filenameInstruction = name && name.trim()
+            ? `- Save the file as: <chosen-folder>/${name}.plan.md`
+            : `- Choose a descriptive kebab-case filename ending in .plan.md`;
+
+        return `Create a task document based on this description:${descriptionPart || '\n\n(General task)'}
+
+Generate a comprehensive markdown task document with:
+- Clear title and description
+- Acceptance criteria
+- Subtasks (if applicable)
+- Notes section
+
+**FOLDER SELECTION (Auto mode)**
+Tasks root: ${tasksRootFwd}
+Existing feature folders: ${folderList}
+- Pick the most relevant existing folder, OR create a new one (kebab-case, max 3 words).
+- Create the folder if it doesn't exist.
+${filenameInstruction}
+- Full path pattern: ${tasksRootFwd}/<chosen-folder>/<filename>.plan.md
+- Do NOT save to any other location
+- Do NOT use your session state or any other directory`;
+    }
+
     targetPath = toForwardSlashes(targetPath);
     const descriptionPart = description
         ? `\n\nDescription: ${description}`
@@ -1145,9 +1200,15 @@ You MUST save the file to this EXACT directory: ${targetPath}
  * @param focus - Task focus/description
  * @param name - Optional task name for the filename
  * @param targetPath - Target directory path
+ * @param autoFolderContext - When set, AI picks the target folder from existing ones
  */
-function buildCreateFromFeaturePrompt(context: SelectedContext, focus: string, name: string | undefined, targetPath: string): string {
-    targetPath = toForwardSlashes(targetPath);
+function buildCreateFromFeaturePrompt(
+    context: SelectedContext,
+    focus: string,
+    name: string | undefined,
+    targetPath: string,
+    autoFolderContext?: { tasksRoot: string; existingFolders: string[] }
+): string {
     let contextText = '';
 
     if (context.description) {
@@ -1172,6 +1233,31 @@ function buildCreateFromFeaturePrompt(context: SelectedContext, focus: string, n
     if (context.relatedFiles && context.relatedFiles.length > 0) {
         contextText += `Related Source Files:\n${context.relatedFiles.slice(0, 20).join('\n')}\n\n`;
     }
+
+    if (autoFolderContext) {
+        const { tasksRoot, existingFolders } = autoFolderContext;
+        const tasksRootFwd = toForwardSlashes(tasksRoot);
+        const folderList = existingFolders.length > 0 ? existingFolders.join(', ') : '(none yet)';
+        const filenameInstruction = name && name.trim()
+            ? `- Save the file as: <chosen-folder>/${name}.plan.md`
+            : `- Choose a descriptive kebab-case filename ending in .plan.md`;
+
+        return `Can you draft a plan given User's ask: ${focus || 'Create an implementation task'}
+
+Context:
+${contextText}
+**FOLDER SELECTION (Auto mode)**
+Tasks root: ${tasksRootFwd}
+Existing feature folders: ${folderList}
+- Pick the most relevant existing folder, OR create a new one (kebab-case, max 3 words).
+- Create the folder if it doesn't exist.
+${filenameInstruction}
+- Full path pattern: ${tasksRootFwd}/<chosen-folder>/<filename>.plan.md
+- Do NOT save to any other location
+- Do NOT use your session state or any other directory`;
+    }
+
+    targetPath = toForwardSlashes(targetPath);
 
     // Build filename instruction based on whether name is provided
     const filenameInstruction = name && name.trim()

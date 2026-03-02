@@ -484,6 +484,94 @@ suite('AI Task Commands Tests', () => {
         });
     });
 
+    suite('buildCreateTaskPromptWithNameForTesting - Auto Folder Mode', () => {
+        test('should include FOLDER SELECTION section when autoFolderContext is provided', () => {
+            const tasksRoot = '/workspace/.vscode/tasks';
+            const existingFolders = ['coc', 'deep-wiki', 'tasks-viewer'];
+            const autoFolderContext = { tasksRoot, existingFolders };
+
+            const prompt = buildCreateTaskPromptWithNameForTesting(undefined, 'Add retry logic', '/ignored', autoFolderContext);
+
+            assert.ok(prompt.includes('**FOLDER SELECTION (Auto mode)**'), 'Should have FOLDER SELECTION header');
+            assert.ok(prompt.includes(tasksRoot.replace(/\\/g, '/')), 'Should include tasks root');
+            assert.ok(prompt.includes('coc, deep-wiki, tasks-viewer'), 'Should list existing folders');
+            assert.ok(prompt.includes('Pick the most relevant existing folder'), 'Should instruct folder picking');
+            assert.ok(prompt.includes('Create the folder if it doesn\'t exist'), 'Should instruct folder creation');
+            assert.ok(!prompt.includes('**IMPORTANT: Output Location Requirement**'), 'Should NOT have fixed-path instruction');
+        });
+
+        test('should include exact filename hint when name is provided in auto mode', () => {
+            const autoFolderContext = { tasksRoot: '/tasks', existingFolders: ['feat-a'] };
+            const prompt = buildCreateTaskPromptWithNameForTesting('my-task', 'desc', '/ignored', autoFolderContext);
+
+            assert.ok(prompt.includes('my-task.plan.md'), 'Should mention provided filename');
+            assert.ok(!prompt.includes('Choose a descriptive'), 'Should not ask AI to choose filename');
+        });
+
+        test('should ask AI to choose filename when name is absent in auto mode', () => {
+            const autoFolderContext = { tasksRoot: '/tasks', existingFolders: [] };
+            const prompt = buildCreateTaskPromptWithNameForTesting(undefined, 'desc', '/ignored', autoFolderContext);
+
+            assert.ok(prompt.includes('Choose a descriptive kebab-case filename'), 'Should ask AI to choose filename');
+        });
+
+        test('should show (none yet) when existing folders list is empty', () => {
+            const autoFolderContext = { tasksRoot: '/tasks', existingFolders: [] };
+            const prompt = buildCreateTaskPromptWithNameForTesting(undefined, 'desc', '/ignored', autoFolderContext);
+
+            assert.ok(prompt.includes('(none yet)'), 'Should indicate no existing folders');
+        });
+    });
+
+    suite('buildCreateFromFeaturePromptForTesting - Auto Folder Mode', () => {
+        test('should include FOLDER SELECTION section when autoFolderContext is provided', () => {
+            const tasksRoot = '/workspace/.vscode/tasks';
+            const existingFolders = ['coc', 'pipeline-core'];
+            const autoFolderContext = { tasksRoot, existingFolders };
+            const context: SelectedContext = { description: 'Feature X' };
+
+            const prompt = buildCreateFromFeaturePromptForTesting(context, 'Implement X', undefined, '/ignored', autoFolderContext);
+
+            assert.ok(prompt.includes('**FOLDER SELECTION (Auto mode)**'), 'Should have FOLDER SELECTION header');
+            assert.ok(prompt.includes(tasksRoot.replace(/\\/g, '/')), 'Should include tasks root');
+            assert.ok(prompt.includes('coc, pipeline-core'), 'Should list existing folders');
+            assert.ok(!prompt.includes('**IMPORTANT: Output Location Requirement**'), 'Should NOT have fixed-path instruction');
+        });
+
+        test('should include context and folder selection together', () => {
+            const autoFolderContext = { tasksRoot: '/tasks', existingFolders: ['feat-a'] };
+            const context: SelectedContext = {
+                description: 'Auth feature',
+                planContent: 'Plan: OAuth2 flow'
+            };
+
+            const prompt = buildCreateFromFeaturePromptForTesting(context, 'Add login', undefined, '/ignored', autoFolderContext);
+
+            assert.ok(prompt.includes('Auth feature'), 'Should include feature description');
+            assert.ok(prompt.includes('Plan: OAuth2 flow'), 'Should include plan content');
+            assert.ok(prompt.includes('**FOLDER SELECTION (Auto mode)**'), 'Should have auto folder section');
+        });
+
+        test('should include exact filename when name provided in auto mode', () => {
+            const autoFolderContext = { tasksRoot: '/tasks', existingFolders: ['feat-a'] };
+            const context: SelectedContext = {};
+
+            const prompt = buildCreateFromFeaturePromptForTesting(context, 'Test', 'my-plan', '/ignored', autoFolderContext);
+
+            assert.ok(prompt.includes('my-plan.plan.md'), 'Should mention provided filename');
+        });
+
+        test('should fall back to fixed-path mode when autoFolderContext is absent', () => {
+            const context: SelectedContext = { description: 'Feature' };
+
+            const prompt = buildCreateFromFeaturePromptForTesting(context, 'Test', undefined, '/fixed/path');
+
+            assert.ok(prompt.includes('**IMPORTANT: Output Location Requirement**'), 'Should have fixed-path instruction');
+            assert.ok(prompt.includes('/fixed/path'), 'Should include fixed target path');
+            assert.ok(!prompt.includes('**FOLDER SELECTION'), 'Should NOT have auto folder section');
+        });
+    });
+
     suite('buildUpdateDocumentPrompt', () => {
         test('should include file path in prompt', () => {
             const filePath = path.join(tempDir, 'test.plan.md');

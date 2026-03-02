@@ -16,9 +16,10 @@ import {
     TaskCreationMode,
     FeatureContext
 } from './types';
-import { getAvailableModels, getLastUsedAIModel, saveLastUsedAIModel, getLastUsedDepth, saveLastUsedDepth } from '../ai-service/ai-config-helpers';
+import { getAvailableModels, getLastUsedAIModel, saveLastUsedAIModel, getLastUsedDepth, saveLastUsedDepth, getLastUsedLocation, saveLastUsedLocation } from '../ai-service/ai-config-helpers';
 import { skillExists } from '@plusplusoneplusplus/pipeline-core';
 import { getSharedDialogCSS } from '../shared/webview/dialog-styles';
+import { AUTO_FOLDER_SENTINEL } from './types';
 
 /** Folder option for the dropdown */
 interface FolderOption {
@@ -121,6 +122,7 @@ export class AITaskDialogService {
         const models = getAvailableModels();
         const defaultModel = getLastUsedAIModel(this.context);
         const defaultDepth = getLastUsedDepth(this.context);
+        const defaultLocation = options?.preselectedFolder ?? getLastUsedLocation(this.context);
         const workspaceRoot = this.taskManager.getWorkspaceRoot();
         const hasDeepSkill = skillExists('go-deep', workspaceRoot);
 
@@ -132,7 +134,7 @@ export class AITaskDialogService {
             defaultModel,
             defaultDepth,
             hasDeepSkill,
-            options?.preselectedFolder,
+            defaultLocation,
             options?.initialMode,
             options?.featureContext
         );
@@ -196,6 +198,11 @@ export class AITaskDialogService {
                     // Save the selected depth for future dialogs
                     if (message.depth) {
                         saveLastUsedDepth(this.context, message.depth);
+                    }
+
+                    // Save the selected location for future dialogs (create mode only)
+                    if (message.mode === 'create' && message.location !== undefined) {
+                        saveLastUsedLocation(this.context, message.location);
                     }
 
                     this.pendingResolve({
@@ -308,6 +315,7 @@ export class AITaskDialogService {
         const initialModeJson = JSON.stringify(initialMode || 'create');
         const hasDeepSkillJson = JSON.stringify(hasDeepSkill);
         const featureContextJson = JSON.stringify(featureContext || null);
+        const autoFolderSentinelJson = JSON.stringify(AUTO_FOLDER_SENTINEL);
 
         // Determine if we have any feature folders
         const hasFeatureFolders = folders.some(f => f.isFeatureFolder);
@@ -484,7 +492,8 @@ export class AITaskDialogService {
                     <select id="taskLocation">
                         <!-- Populated by JavaScript -->
                     </select>
-                    <div class="hint">Select where to create the task</div>
+                    <div class="hint" id="locationHint">Select where to create the task</div>
+                    <div class="hint" id="autoFolderHint" style="display:none;color:var(--vscode-descriptionForeground);">✨ AI will choose an existing folder or create a new one based on the task.</div>
                 </div>
                 
                 <div class="form-group">
@@ -590,6 +599,7 @@ export class AITaskDialogService {
             const initialMode = ${initialModeJson};
             const hasDeepSkill = ${hasDeepSkillJson};
             const featureContext = ${featureContextJson};
+            const AUTO_FOLDER_SENTINEL = ${autoFolderSentinelJson};
             const hasFeatureFolders = folders.some(f => f.isFeatureFolder);
             
             // Current mode
@@ -604,6 +614,8 @@ export class AITaskDialogService {
             // DOM elements - Create mode
             const taskNameInput = document.getElementById('taskName');
             const taskLocationSelect = document.getElementById('taskLocation');
+            const locationHint = document.getElementById('locationHint');
+            const autoFolderHint = document.getElementById('autoFolderHint');
             const taskDescriptionInput = document.getElementById('taskDescription');
             const aiModelCreateSelect = document.getElementById('aiModelCreate');
             const nameGroup = document.getElementById('nameGroup');
@@ -682,7 +694,24 @@ export class AITaskDialogService {
                 });
             }
             
+            function updateLocationHints() {
+                const isAuto = taskLocationSelect.value === AUTO_FOLDER_SENTINEL;
+                if (locationHint) { locationHint.style.display = isAuto ? 'none' : ''; }
+                if (autoFolderHint) { autoFolderHint.style.display = isAuto ? '' : 'none'; }
+            }
+
             // Populate location dropdown (all folders for create mode)
+            // Prepend ✨ Auto option
+            (function() {
+                const autoOption = document.createElement('option');
+                autoOption.value = AUTO_FOLDER_SENTINEL;
+                autoOption.textContent = '✨ Auto (AI decides)';
+                if (preselectedFolder === AUTO_FOLDER_SENTINEL) {
+                    autoOption.selected = true;
+                }
+                taskLocationSelect.appendChild(autoOption);
+            })();
+
             folders.forEach(folder => {
                 const option = document.createElement('option');
                 option.value = folder.relativePath;
@@ -692,6 +721,9 @@ export class AITaskDialogService {
                 }
                 taskLocationSelect.appendChild(option);
             });
+
+            taskLocationSelect.addEventListener('change', updateLocationHints);
+            updateLocationHints();
             
             // Populate feature location dropdown (feature folders only)
             if (hasFeatureFolders && featureLocationSelect) {
