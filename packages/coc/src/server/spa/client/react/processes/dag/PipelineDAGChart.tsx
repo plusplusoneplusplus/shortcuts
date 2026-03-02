@@ -152,18 +152,11 @@ export function PipelineDAGChart({ data, isDark, onNodeClick, now, phaseDetails,
         (zoomContainerRef as React.MutableRefObject<HTMLDivElement | null>).current = node;
     }, [zoomContainerRef]);
 
-    // Auto-fit to view on mount in preview mode
-    useEffect(() => {
-        if (!previewMode) return;
-        // Use rAF to ensure container has been laid out before measuring
-        const id = requestAnimationFrame(() => fitToView());
-        return () => cancelAnimationFrame(id);
-    }, [previewMode, fitToView]);
-
     const selectedDetail = selectedPhase && phaseDetails?.[selectedPhase] ? phaseDetails[selectedPhase] : null;
 
     return (
-        <div ref={mergedRef} data-testid="dag-chart-container" className="relative" style={{ overflow: 'hidden', maxHeight: previewMode ? 180 : 300, cursor: zoomState.isDragging ? 'grabbing' : 'grab' }}>
+        <div ref={mergedRef} data-testid="dag-chart-container" className="relative" style={{ cursor: zoomState.isDragging ? 'grabbing' : 'grab' }}>
+        <div style={{ overflow: 'hidden', maxHeight: previewMode ? 180 : 300 }}>
         <DAGBreadcrumb nodes={data.nodes} isDark={isDark} />
         <svg
             ref={svgRef}
@@ -253,6 +246,7 @@ export function PipelineDAGChart({ data, isDark, onNodeClick, now, phaseDetails,
             })()}
             </g>
         </svg>
+        </div>
         <ZoomControls
             zoomLabel={zoomLabel}
             onZoomIn={zoomIn}

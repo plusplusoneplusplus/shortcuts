@@ -322,4 +322,39 @@ describe('TaskSearchResults', () => {
         // Should not throw
         fireEvent.contextMenu(screen.getByTestId('search-result-no-ctx'));
     });
+
+    it('renders future status search result with opacity-60 and italic', () => {
+        const doc = makeDocument({ baseName: 'future-item', fileName: 'future-item.md', status: 'future' });
+
+        render(
+            <TaskSearchResults
+                results={[doc]}
+                query="future"
+                commentCounts={{}}
+                wsId="ws1"
+                onFileClick={vi.fn()}
+            />,
+        );
+
+        const row = screen.getByTestId('search-result-future-item');
+        expect(row.className).toContain('opacity-60');
+        expect(row.className).toContain('italic');
+    });
+
+    it('does not render opacity-60 for pending status in search results', () => {
+        const doc = makeDocument({ baseName: 'pending-item', fileName: 'pending-item.md', status: 'pending' });
+
+        render(
+            <TaskSearchResults
+                results={[doc]}
+                query="pending"
+                commentCounts={{}}
+                wsId="ws1"
+                onFileClick={vi.fn()}
+            />,
+        );
+
+        const row = screen.getByTestId('search-result-pending-item');
+        expect(row.className).not.toContain('opacity-60');
+    });
 });

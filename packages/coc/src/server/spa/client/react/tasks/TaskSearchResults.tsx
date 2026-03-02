@@ -91,6 +91,7 @@ export function TaskSearchResults({ results, query, commentCounts, onFileClick, 
                                 'flex items-center gap-2 px-2 py-1.5 cursor-pointer text-xs transition-colors',
                                 'hover:bg-black/[0.04] dark:hover:bg-white/[0.04]',
                                 item.isArchived && 'opacity-60 italic',
+                                status === 'future' && 'opacity-60 italic',
                             )}
                             onClick={() => itemPath && onFileClick(itemPath)}
                             onContextMenu={(e) => {

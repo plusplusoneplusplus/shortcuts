@@ -377,7 +377,9 @@ describe('PipelineDAGChart — zoom and pan', () => {
     it('container has overflow hidden', () => {
         render(<PipelineDAGChart data={makeData()} isDark={false} />);
         const container = screen.getByTestId('dag-chart-container');
-        expect(container.style.overflow).toBe('hidden');
+        // overflow hidden is on the inner wrapper, not the outer container
+        const inner = container.firstElementChild as HTMLElement;
+        expect(inner.style.overflow).toBe('hidden');
     });
 });
 
@@ -395,13 +397,16 @@ describe('PipelineDAGChart — preview mode', () => {
     it('uses smaller maxHeight in preview mode', () => {
         render(<PipelineDAGChart data={makeData()} isDark={false} previewMode />);
         const container = screen.getByTestId('dag-chart-container');
-        expect(container.style.maxHeight).toBe('180px');
+        // maxHeight is on the inner overflow wrapper, not the outer container
+        const inner = container.firstElementChild as HTMLElement;
+        expect(inner.style.maxHeight).toBe('180px');
     });
 
     it('uses larger maxHeight in non-preview mode', () => {
         render(<PipelineDAGChart data={makeData()} isDark={false} />);
         const container = screen.getByTestId('dag-chart-container');
-        expect(container.style.maxHeight).toBe('300px');
+        const inner = container.firstElementChild as HTMLElement;
+        expect(inner.style.maxHeight).toBe('300px');
     });
 
     it('SVG has maxHeight style in preview mode', () => {

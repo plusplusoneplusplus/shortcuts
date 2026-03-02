@@ -358,6 +358,26 @@ describe('TaskTreeItem — archived styling', () => {
         expect(li.className).toContain('opacity-60');
         expect(li.className).toContain('italic');
     });
+
+    it('renders future status file with opacity-60 and italic', () => {
+        renderItem({ item: makeDocument({ status: 'future' }) });
+        const li = screen.getByTestId('task-tree-item-task');
+        expect(li.className).toContain('opacity-60');
+        expect(li.className).toContain('italic');
+    });
+
+    it('renders future status document group with opacity-60 and italic', () => {
+        renderItem({ item: makeDocumentGroup({ documents: [{ baseName: 'design', docType: 'spec', fileName: 'design.spec.md', relativePath: '', isArchived: false, status: 'future' }] }) });
+        const li = screen.getByTestId('task-tree-item-design');
+        expect(li.className).toContain('opacity-60');
+        expect(li.className).toContain('italic');
+    });
+
+    it('does not render opacity-60 for pending status', () => {
+        renderItem({ item: makeDocument({ status: 'pending' }) });
+        const li = screen.getByTestId('task-tree-item-task');
+        expect(li.className).not.toContain('opacity-60');
+    });
 });
 
 describe('TaskTreeItem — tooltip', () => {

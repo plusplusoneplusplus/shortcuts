@@ -124,6 +124,7 @@ export function TaskTreeItem({
             ? item.documents[0]?.status
             : undefined;
     const isArchived = isTaskDocument(item) ? item.isArchived : isTaskDocumentGroup(item) ? item.isArchived : false;
+    const isFuture = status === 'future';
     const isArchiveFolder = isFolder && ((item as TaskFolder).relativePath === 'archive' || (item as TaskFolder).name === 'archive');
     const tooltip = !isFolder ? buildFileTooltip(path, commentCount, status) : undefined;
 
@@ -161,6 +162,7 @@ export function TaskTreeItem({
                 isSelected && 'bg-[#0078d4]/5',
                 isContext && 'opacity-50',
                 isArchived && 'opacity-60 italic',
+                isFuture && 'opacity-60 italic',
                 isArchiveFolder && 'opacity-60 italic',
                 !isFolder && 'miller-file-row',
                 isDragSource && 'opacity-40',
