@@ -8,6 +8,7 @@ import { Card, Button, Spinner, useToast, ToastContainer } from '../shared';
 import { getApiBase } from '../utils/config';
 import { escapeHtml } from '../utils/format';
 import { invalidateDisplaySettings } from '../hooks/useDisplaySettings';
+import { PreferencesSection } from './PreferencesSection';
 
 function formatBytes(bytes: number): string {
     if (bytes === 0) return '0 B';
@@ -570,6 +571,12 @@ export function AdminPanel() {
                 </div>
                 <Button size="sm" onClick={handleSaveChatSettings} loading={chatSaving}>Save</Button>
             </Card>
+
+            {/* Preferences */}
+            <PreferencesSection
+                onError={msg => addToast(msg, 'error')}
+                onSuccess={msg => addToast(msg, 'success')}
+            />
 
             {/* Export Data */}
             <Card className="p-4">
