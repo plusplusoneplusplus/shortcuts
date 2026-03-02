@@ -12,6 +12,7 @@ import {
     folderToNodes,
     isGitMetadataFolder,
     filterGitMetadataFolders,
+    filterTaskItems,
     type TaskFolder,
     type TaskDocumentGroup,
     type TaskDocument,
@@ -411,5 +412,67 @@ describe('folderToNodes with contextDocuments', () => {
         expect(nodes[1]).toBe(mockGroup);
         expect(nodes[2]).toBe(mockDoc);
         expect(nodes[3]).toBe(contextDoc);
+    });
+});
+
+// ── filterTaskItems ──────────────────────────────────────────────────────
+
+describe('filterTaskItems — archive sorting', () => {
+    const nonArchiveDoc: TaskDocument = {
+        baseName: 'my-feature',
+        fileName: 'my-feature.plan.md',
+        relativePath: 'coc/my-feature.plan.md',
+        isArchived: false,
+    };
+
+    const archiveDoc: TaskDocument = {
+        baseName: 'old-feature',
+        fileName: 'old-feature.plan.md',
+        relativePath: 'archive/coc/old-feature.plan.md',
+        isArchived: true,
+    };
+
+    const nonArchiveGroup: TaskDocumentGroup = {
+        baseName: 'alpha-task',
+        documents: [{ ...nonArchiveDoc, baseName: 'alpha-task', fileName: 'alpha-task.plan.md' }],
+        isArchived: false,
+    };
+
+    const archiveGroup: TaskDocumentGroup = {
+        baseName: 'beta-task',
+        documents: [{ ...archiveDoc, baseName: 'beta-task', fileName: 'beta-task.plan.md' }],
+        isArchived: true,
+    };
+
+    it('places non-archived items before archived items in search results', () => {
+        const results = filterTaskItems([archiveDoc, nonArchiveDoc], 'feature');
+        expect(results[0]).toBe(nonArchiveDoc);
+        expect(results[1]).toBe(archiveDoc);
+    });
+
+    it('sorts alphabetically within each archive group', () => {
+        const docA: TaskDocument = { baseName: 'aaa', fileName: 'aaa.md', isArchived: false };
+        const docZ: TaskDocument = { baseName: 'zzz', fileName: 'zzz.md', isArchived: false };
+        const archA: TaskDocument = { baseName: 'aaa-arch', fileName: 'aaa-arch.md', isArchived: true };
+        const archZ: TaskDocument = { baseName: 'zzz-arch', fileName: 'zzz-arch.md', isArchived: true };
+
+        const results = filterTaskItems([archZ, docZ, archA, docA], 'a');
+        expect(results.map((r) => r.baseName)).toEqual(['aaa', 'aaa-arch', 'zzz-arch']);
+    });
+
+    it('works with TaskDocumentGroup items', () => {
+        const results = filterTaskItems([archiveGroup, nonArchiveGroup], 'task');
+        expect(results[0]).toBe(nonArchiveGroup);
+        expect(results[1]).toBe(archiveGroup);
+    });
+
+    it('returns only non-archived items when none match archive pattern', () => {
+        const results = filterTaskItems([nonArchiveDoc, nonArchiveGroup], 'task');
+        expect(results.every((r) => !r.isArchived)).toBe(true);
+    });
+
+    it('returns empty array when query matches nothing', () => {
+        const results = filterTaskItems([archiveDoc, nonArchiveDoc], 'zzznomatch');
+        expect(results).toHaveLength(0);
     });
 });

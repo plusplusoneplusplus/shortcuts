@@ -148,7 +148,12 @@ export function filterTaskItems(
 
             return haystack.some((field) => field.toLowerCase().includes(q));
         })
-        .sort((a, b) => a.baseName.localeCompare(b.baseName));
+        .sort((a, b) => {
+            const aArchived = a.isArchived ? 1 : 0;
+            const bArchived = b.isArchived ? 1 : 0;
+            if (aArchived !== bArchived) return aArchived - bArchived;
+            return a.baseName.localeCompare(b.baseName);
+        });
 }
 
 // ── Hook ───────────────────────────────────────────────────────────────
