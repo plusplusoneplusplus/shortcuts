@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { Task, ReviewStatus, TaskStatus } from './types';
+import { createDimmedTaskUri } from './task-decoration-provider';
 
 /**
  * Tree item representing a task in the Tasks Viewer
@@ -22,8 +23,10 @@ export class TaskItem extends vscode.TreeItem {
         this.description = this.formatDescription(task);
         this.iconPath = this.getIconPath(task.isArchived, task.status, 'unreviewed');
 
-        // Set resourceUri for drag-and-drop support
-        this.resourceUri = vscode.Uri.file(task.filePath);
+        // Set resourceUri for drag-and-drop support and file decoration
+        this.resourceUri = (task.isArchived || task.status === 'future')
+            ? createDimmedTaskUri(task.filePath)
+            : vscode.Uri.file(task.filePath);
 
         // Click to open in Markdown Review Editor
         this.command = {

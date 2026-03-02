@@ -413,6 +413,8 @@ If no status is specified in frontmatter, tasks default to `pending`.
 
 Tasks marked as `future` are hidden from the main view by default (controlled by `workspaceShortcuts.tasksViewer.showFuture` setting). This allows capturing ideas without cluttering the active task list.
 
+Future and archived items are visually dimmed (grayed out label text) via `TaskDecorationProvider`, a `FileDecorationProvider` that applies `disabledForeground` color to tree items whose `resourceUri` uses the `shortcuts-task-dimmed` URI scheme.
+
 ### Status Commands
 
 - `tasksViewer.markAsFuture` - Mark task as future

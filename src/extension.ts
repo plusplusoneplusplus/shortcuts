@@ -48,7 +48,7 @@ import {
 import { createVSCodeFileWatcherFactory } from './shortcuts/markdown-comments/vscode-file-watcher';
 import { NotificationManager } from './shortcuts/notification-manager';
 import { getExtensionLogger, getFirstWorkspaceFolder, LogCategory } from './shortcuts/shared';
-import { TaskManager, TasksCommands, TasksDragDropController, TasksTreeDataProvider, ReviewStatusManager, registerTasksDiscoveryCommands, registerTasksAICommands } from './shortcuts/tasks-viewer';
+import { TaskManager, TasksCommands, TasksDragDropController, TasksTreeDataProvider, ReviewStatusManager, registerTasksDiscoveryCommands, registerTasksAICommands, TaskDecorationProvider } from './shortcuts/tasks-viewer';
 import { ThemeManager } from './shortcuts/theme-manager';
 import {
     PipelineManager,
@@ -293,6 +293,11 @@ export async function activate(context: vscode.ExtensionContext) {
                 canSelectMany: true,
                 dragAndDropController: tasksDragDropController
             });
+
+            // Register file decoration provider for dimmed (future/archived) task items
+            context.subscriptions.push(
+                vscode.window.registerFileDecorationProvider(new TaskDecorationProvider())
+            );
 
             // Update view description with task count
             const updateTasksViewDescription = async () => {

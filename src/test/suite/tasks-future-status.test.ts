@@ -10,7 +10,10 @@ import {
     Task, 
     TaskDocument,
     TaskDocumentItem,
+    TaskDocumentGroupItem,
     TaskStatus,
+    TaskDecorationProvider,
+    DIMMED_TASK_SCHEME,
     updateTaskStatus
 } from '../../shortcuts/tasks-viewer';
 
@@ -644,6 +647,174 @@ status: future
             assert.ok(nestedTask, 'Nested task should be found');
             assert.strictEqual(nestedTask.status, 'future', 'Status should be parsed');
             assert.ok(nestedTask.relativePath, 'Should have relative path');
+        });
+    });
+
+    suite('File Decoration for Dimmed Items', () => {
+        test('TaskItem with future status should use dimmed URI scheme', () => {
+            const task: Task = {
+                name: 'future-task',
+                filePath: path.join(os.tmpdir(), 'future-task.md'),
+                modifiedTime: new Date(),
+                isArchived: false,
+                status: 'future'
+            };
+            const item = new TaskItem(task);
+            assert.strictEqual(item.resourceUri?.scheme, DIMMED_TASK_SCHEME, 'Future task should have dimmed scheme');
+        });
+
+        test('TaskItem with pending status should use file URI scheme', () => {
+            const task: Task = {
+                name: 'pending-task',
+                filePath: path.join(os.tmpdir(), 'pending-task.md'),
+                modifiedTime: new Date(),
+                isArchived: false,
+                status: 'pending'
+            };
+            const item = new TaskItem(task);
+            assert.strictEqual(item.resourceUri?.scheme, 'file', 'Pending task should have file scheme');
+        });
+
+        test('TaskItem without status should use file URI scheme', () => {
+            const task: Task = {
+                name: 'no-status-task',
+                filePath: path.join(os.tmpdir(), 'no-status-task.md'),
+                modifiedTime: new Date(),
+                isArchived: false
+            };
+            const item = new TaskItem(task);
+            assert.strictEqual(item.resourceUri?.scheme, 'file', 'No-status task should have file scheme');
+        });
+
+        test('TaskItem with archived status should use dimmed URI scheme', () => {
+            const task: Task = {
+                name: 'archived-task',
+                filePath: path.join(os.tmpdir(), 'archived-task.md'),
+                modifiedTime: new Date(),
+                isArchived: true
+            };
+            const item = new TaskItem(task);
+            assert.strictEqual(item.resourceUri?.scheme, DIMMED_TASK_SCHEME, 'Archived task should have dimmed scheme');
+        });
+
+        test('TaskDocumentItem with future status should use dimmed URI scheme', () => {
+            const doc: TaskDocument = {
+                baseName: 'future-doc',
+                fileName: 'future-doc.plan.md',
+                filePath: path.join(os.tmpdir(), 'future-doc.plan.md'),
+                modifiedTime: new Date(),
+                isArchived: false,
+                status: 'future',
+                docType: 'plan'
+            };
+            const item = new TaskDocumentItem(doc);
+            assert.strictEqual(item.resourceUri?.scheme, DIMMED_TASK_SCHEME, 'Future doc should have dimmed scheme');
+        });
+
+        test('TaskDocumentItem with pending status should use file URI scheme', () => {
+            const doc: TaskDocument = {
+                baseName: 'active-doc',
+                fileName: 'active-doc.plan.md',
+                filePath: path.join(os.tmpdir(), 'active-doc.plan.md'),
+                modifiedTime: new Date(),
+                isArchived: false,
+                status: 'pending',
+                docType: 'plan'
+            };
+            const item = new TaskDocumentItem(doc);
+            assert.strictEqual(item.resourceUri?.scheme, 'file', 'Pending doc should have file scheme');
+        });
+
+        test('TaskDocumentGroupItem with all-future docs should use dimmed URI scheme', () => {
+            const docs: TaskDocument[] = [
+                {
+                    baseName: 'group1',
+                    fileName: 'group1.plan.md',
+                    filePath: path.join(os.tmpdir(), 'group1.plan.md'),
+                    modifiedTime: new Date(),
+                    isArchived: false,
+                    status: 'future',
+                    docType: 'plan'
+                },
+                {
+                    baseName: 'group1',
+                    fileName: 'group1.spec.md',
+                    filePath: path.join(os.tmpdir(), 'group1.spec.md'),
+                    modifiedTime: new Date(),
+                    isArchived: false,
+                    status: 'future',
+                    docType: 'spec'
+                }
+            ];
+            const group = new TaskDocumentGroupItem('group1', docs);
+            assert.strictEqual(group.resourceUri?.scheme, DIMMED_TASK_SCHEME, 'All-future group should have dimmed scheme');
+        });
+
+        test('TaskDocumentGroupItem with mixed statuses should not use dimmed URI scheme', () => {
+            const docs: TaskDocument[] = [
+                {
+                    baseName: 'group2',
+                    fileName: 'group2.plan.md',
+                    filePath: path.join(os.tmpdir(), 'group2.plan.md'),
+                    modifiedTime: new Date(),
+                    isArchived: false,
+                    status: 'future',
+                    docType: 'plan'
+                },
+                {
+                    baseName: 'group2',
+                    fileName: 'group2.spec.md',
+                    filePath: path.join(os.tmpdir(), 'group2.spec.md'),
+                    modifiedTime: new Date(),
+                    isArchived: false,
+                    status: 'pending',
+                    docType: 'spec'
+                }
+            ];
+            const group = new TaskDocumentGroupItem('group2', docs);
+            assert.ok(
+                group.resourceUri === undefined || group.resourceUri.scheme !== DIMMED_TASK_SCHEME,
+                'Mixed-status group should not have dimmed scheme'
+            );
+        });
+
+        test('TaskDocumentGroupItem with archived flag should use dimmed URI scheme', () => {
+            const docs: TaskDocument[] = [
+                {
+                    baseName: 'archived-group',
+                    fileName: 'archived-group.plan.md',
+                    filePath: path.join(os.tmpdir(), 'archived-group.plan.md'),
+                    modifiedTime: new Date(),
+                    isArchived: true,
+                    docType: 'plan'
+                }
+            ];
+            const group = new TaskDocumentGroupItem('archived-group', docs, true);
+            assert.strictEqual(group.resourceUri?.scheme, DIMMED_TASK_SCHEME, 'Archived group should have dimmed scheme');
+        });
+    });
+
+    suite('TaskDecorationProvider', () => {
+        test('should return decoration for dimmed URI scheme', () => {
+            const provider = new TaskDecorationProvider();
+            const uri = vscode.Uri.from({ scheme: DIMMED_TASK_SCHEME, path: '/test.md' });
+            const decoration = provider.provideFileDecoration(uri);
+            assert.ok(decoration, 'Should return a decoration');
+            assert.ok((decoration as vscode.FileDecoration).color, 'Decoration should have a color');
+        });
+
+        test('should return undefined for file URI scheme', () => {
+            const provider = new TaskDecorationProvider();
+            const uri = vscode.Uri.file('/test.md');
+            const decoration = provider.provideFileDecoration(uri);
+            assert.strictEqual(decoration, undefined, 'Should not return decoration for file scheme');
+        });
+
+        test('should return undefined for other URI schemes', () => {
+            const provider = new TaskDecorationProvider();
+            const uri = vscode.Uri.from({ scheme: 'untitled', path: '/test.md' });
+            const decoration = provider.provideFileDecoration(uri);
+            assert.strictEqual(decoration, undefined, 'Should not return decoration for untitled scheme');
         });
     });
 });

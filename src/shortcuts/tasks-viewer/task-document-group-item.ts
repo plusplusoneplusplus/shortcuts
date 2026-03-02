@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { TaskDocument, ReviewStatus } from './types';
+import { createDimmedTaskUri } from './task-decoration-provider';
 
 /**
  * Aggregate review status for a document group
@@ -36,6 +37,11 @@ export class TaskDocumentGroupItem extends vscode.TreeItem {
         
         this.tooltip = this.buildTooltip();
         this.iconPath = this.getIconPath('none-reviewed');
+        
+        // Set resourceUri for file decoration (dimmed for archived/all-future groups)
+        if (isArchived || (documents.length > 0 && documents.every(d => d.status === 'future'))) {
+            this.resourceUri = createDimmedTaskUri(documents[0]?.filePath || baseName);
+        }
     }
 
     /**
