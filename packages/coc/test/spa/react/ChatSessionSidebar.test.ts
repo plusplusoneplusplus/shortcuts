@@ -383,4 +383,41 @@ describe('ChatSessionSidebar', () => {
             expect(source).toContain('New Chat (Read-Only)');
         });
     });
+
+    describe('unread indicators', () => {
+        it('accepts optional isUnread prop', () => {
+            expect(source).toContain('isUnread?: (sessionId: string, turnCount?: number) => boolean');
+        });
+
+        it('destructures isUnread from props', () => {
+            expect(source).toContain('isUnread,');
+        });
+
+        it('computes showUnread flag combining isUnread and active check', () => {
+            expect(source).toContain('isUnread && activeTaskId !== session.id && isUnread(session.id, session.turnCount)');
+        });
+
+        it('renders unread dot with correct styling and data-testid', () => {
+            expect(source).toContain('data-testid="unread-dot"');
+            expect(source).toContain('w-2 h-2 rounded-full bg-[#3794ff] flex-shrink-0');
+        });
+
+        it('applies font-semibold to unread session text', () => {
+            expect(source).toContain("cn('truncate', showUnread && 'font-semibold')");
+        });
+
+        it('does not show unread dot for active session', () => {
+            expect(source).toContain('activeTaskId !== session.id');
+        });
+
+        it('only renders unread dot when showUnread is true', () => {
+            expect(source).toContain('{showUnread && (');
+        });
+
+        it('works without isUnread prop (backward compat)', () => {
+            // isUnread is optional with ?:, default undefined means showUnread is always false
+            expect(source).toContain('isUnread?: (sessionId: string, turnCount?: number) => boolean');
+            expect(source).toContain('!!(isUnread &&');
+        });
+    });
 });

@@ -24,6 +24,7 @@ export interface ChatSessionSidebarProps {
     loading: boolean;
     pinnedIds?: string[];
     onTogglePin?: (taskId: string) => void;
+    isUnread?: (sessionId: string, turnCount?: number) => boolean;
 }
 
 export function ChatSessionSidebar({
@@ -36,6 +37,7 @@ export function ChatSessionSidebar({
     loading,
     pinnedIds = [],
     onTogglePin,
+    isUnread,
 }: ChatSessionSidebarProps) {
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; sessionId: string } | null>(null);
     const [newChatDropdownOpen, setNewChatDropdownOpen] = useState(false);
@@ -74,7 +76,9 @@ export function ChatSessionSidebar({
         },
     ] : [];
 
-    const renderCard = (session: ChatSessionItem, isPinned: boolean) => (
+    const renderCard = (session: ChatSessionItem, isPinned: boolean) => {
+        const showUnread = !!(isUnread && activeTaskId !== session.id && isUnread(session.id, session.turnCount));
+        return (
         <Card
             key={session.id}
             className={cn(
@@ -96,7 +100,10 @@ export function ChatSessionSidebar({
                 ) : (
                     <span className="flex-shrink-0">{statusIcon(session.status)}</span>
                 )}
-                <span className="truncate">
+                {showUnread && (
+                    <span className="w-2 h-2 rounded-full bg-[#3794ff] flex-shrink-0 mt-1" data-testid="unread-dot" />
+                )}
+                <span className={cn('truncate', showUnread && 'font-semibold')}>
                     {session.firstMessage.length > 60
                         ? session.firstMessage.slice(0, 60) + '…'
                         : session.firstMessage || 'Chat session'}
@@ -133,7 +140,8 @@ export function ChatSessionSidebar({
                 )}
             </div>
         </Card>
-    );
+        );
+    };
 
     return (
         <div className={cn('flex flex-col overflow-hidden', className)} data-testid="chat-session-sidebar">

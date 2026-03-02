@@ -17,6 +17,7 @@ import { useImagePaste } from '../hooks/useImagePaste';
 import { ImagePreviews } from '../shared/ImagePreviews';
 import { ChatSessionSidebar } from '../chat/ChatSessionSidebar';
 import { useChatSessions } from '../chat/useChatSessions';
+import { useChatReadState } from '../chat/useChatReadState';
 import { useQueue } from '../context/QueueContext';
 import { usePreferences } from '../hooks/usePreferences';
 import { SlashCommandMenu } from './SlashCommandMenu';
@@ -63,6 +64,7 @@ function getConversationTurns(data: any, task?: any): ClientConversationTurn[] {
 
 export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newChatTrigger, newChatTriggerProcessedRef }: RepoChatTabProps) {
     const sessionsHook = useChatSessions(workspaceId);
+    const readState = useChatReadState(workspaceId);
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { model: savedModel, setModel: persistModel } = usePreferences();
 
@@ -211,7 +213,9 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
                 fetchApi(`/processes/${encodeURIComponent(pid)}`)
                     .then(data => {
                         if (currentChatTaskIdRef.current === ownerChatTaskId) {
-                            setTurnsAndCache(getConversationTurns(data));
+                            const turns = getConversationTurns(data);
+                            setTurnsAndCache(turns);
+                            readState.markRead(ownerChatTaskId, turns.length);
                         }
                     })
                     .catch(() => {})
@@ -353,7 +357,11 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
             eventSourceRef.current = null;
             setIsStreaming(false);
             fetchApi(`/processes/${encodeURIComponent(pid)}`)
-                .then(data => setTurnsAndCache(getConversationTurns(data)))
+                .then(data => {
+                    const turns = getConversationTurns(data);
+                    setTurnsAndCache(turns);
+                    if (chatTaskId) readState.markRead(chatTaskId, turns.length);
+                })
                 .catch(() => {});
         };
 
@@ -415,8 +423,10 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
         setSessionExpired(false);
         setSuggestions([]);
         loadSession(taskId);
+        const session = sessionsHook.sessions.find(s => s.id === taskId);
+        if (session?.turnCount != null) readState.markRead(taskId, session.turnCount);
         location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/chat/' + encodeURIComponent(taskId);
-    }, [isStreaming, loadSession, workspaceId]);
+    }, [isStreaming, loadSession, workspaceId, sessionsHook.sessions, readState]);
 
     const handleNewChat = useCallback((initialReadOnly = false) => {
         if (isStreaming) stopStreaming();
@@ -860,6 +870,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
                 onNewChat={(readOnly) => handleNewChat(readOnly)}
                 onCancelSession={(taskId) => void handleCancelChat(taskId)}
                 loading={sessionsHook.loading}
+                isUnread={readState.isUnread}
             />
             {/* Right panel — grows to fill */}
             <div className="flex-1 min-w-0 overflow-hidden flex flex-col">
