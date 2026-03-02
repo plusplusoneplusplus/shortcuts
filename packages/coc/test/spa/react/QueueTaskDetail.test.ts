@@ -232,6 +232,24 @@ describe('QueueTaskDetail', () => {
         });
     });
 
+    describe('scroll-to-bottom on task selection', () => {
+        it('has a useEffect with selectedTaskId and loading in the dependency array', () => {
+            expect(source).toContain('[selectedTaskId, loading]');
+        });
+
+        it('scrolls to bottom unconditionally when selectedTaskId changes and not loading', () => {
+            // The effect must not have the near-bottom guard (distFromBottom < 100)
+            const taskSelectSection = source.substring(
+                source.indexOf('Scroll to bottom when a new task is selected'),
+                source.indexOf('[selectedTaskId, loading]') + 30,
+            );
+            expect(taskSelectSection).toContain('if (!selectedTaskId || loading) return');
+            expect(taskSelectSection).toContain('el.scrollTop = el.scrollHeight');
+            // Must NOT include the near-bottom guard from the streaming effect
+            expect(taskSelectSection).not.toContain('distFromBottom < 100');
+        });
+    });
+
     describe('hoverable file paths', () => {
         it('imports FilePathLink from shared', () => {
             expect(source).toContain('FilePathLink');

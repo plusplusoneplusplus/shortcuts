@@ -270,6 +270,13 @@ export function QueueTaskDetail() {
         }
     }, [turns]);
 
+    // Scroll to bottom when a new task is selected (after loading completes).
+    useEffect(() => {
+        if (!selectedTaskId || loading) return;
+        const el = document.getElementById('queue-task-conversation');
+        if (el) el.scrollTop = el.scrollHeight;
+    }, [selectedTaskId, loading]);
+
     // Track scroll position for scroll-to-bottom button.
     useEffect(() => {
         const el = document.getElementById('queue-task-conversation');
