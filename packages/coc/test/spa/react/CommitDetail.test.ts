@@ -1,8 +1,9 @@
 /**
  * Tests for CommitDetail component source structure.
  *
- * Validates exports, props, diff-only rendering (no header/metadata/file list),
- * per-file diff support, error handling with retry, and the simplified API.
+ * Validates exports, props (diff + optional metadata), diff-only rendering,
+ * commit info header section, per-file diff support, error handling with retry,
+ * and the API integration.
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -40,7 +41,7 @@ describe('CommitDetail', () => {
         });
     });
 
-    describe('component signature — diff-only props', () => {
+    describe('component signature — diff and metadata props', () => {
         it('accepts workspaceId prop', () => {
             expect(source).toContain('workspaceId: string');
         });
@@ -53,24 +54,24 @@ describe('CommitDetail', () => {
             expect(source).toContain('filePath?: string');
         });
 
-        it('does NOT accept subject prop', () => {
-            expect(source).not.toMatch(/^\s+subject:\s+string/m);
+        it('accepts optional subject prop', () => {
+            expect(source).toContain('subject?: string');
         });
 
-        it('does NOT accept author prop', () => {
-            expect(source).not.toMatch(/^\s+author:\s+string/m);
+        it('accepts optional author prop', () => {
+            expect(source).toContain('author?: string');
         });
 
-        it('does NOT accept date prop', () => {
-            expect(source).not.toMatch(/^\s+date:\s+string/m);
+        it('accepts optional date prop', () => {
+            expect(source).toContain('date?: string');
         });
 
-        it('does NOT accept parentHashes prop', () => {
-            expect(source).not.toContain('parentHashes: string[]');
+        it('accepts optional parentHashes prop', () => {
+            expect(source).toContain('parentHashes?: string[]');
         });
 
-        it('does NOT accept body prop', () => {
-            expect(source).not.toContain('body?: string');
+        it('accepts optional body prop', () => {
+            expect(source).toContain('body?: string');
         });
     });
 
@@ -150,13 +151,62 @@ describe('CommitDetail', () => {
         });
     });
 
-    describe('removed sections — metadata moved to left panel', () => {
-        it('does NOT have commit-detail-header', () => {
-            expect(source).not.toContain('data-testid="commit-detail-header"');
+    describe('commit info header — metadata in right panel', () => {
+        it('has commit-info-header section', () => {
+            expect(source).toContain('data-testid="commit-info-header"');
         });
 
-        it('does NOT have commit-body section', () => {
-            expect(source).not.toContain('data-testid="commit-body"');
+        it('has commit-info-subject section', () => {
+            expect(source).toContain('data-testid="commit-info-subject"');
+        });
+
+        it('has commit-info-author section', () => {
+            expect(source).toContain('data-testid="commit-info-author"');
+        });
+
+        it('has commit-info-date section', () => {
+            expect(source).toContain('data-testid="commit-info-date"');
+        });
+
+        it('has commit-info-hash with short hash and Copy button', () => {
+            expect(source).toContain('data-testid="commit-info-hash"');
+            expect(source).toContain('data-testid="commit-info-copy-hash-btn"');
+            expect(source).toContain('hash.substring(0, 8)');
+        });
+
+        it('has commit-info-parents section', () => {
+            expect(source).toContain('data-testid="commit-info-parents"');
+        });
+
+        it('has commit-info-body section', () => {
+            expect(source).toContain('data-testid="commit-info-body"');
+        });
+
+        it('imports copyToClipboard', () => {
+            expect(source).toContain('copyToClipboard');
+        });
+
+        it('has handleCopyHash callback', () => {
+            expect(source).toContain('handleCopyHash');
+        });
+
+        it('has Copied! feedback text', () => {
+            expect(source).toContain('Copied!');
+        });
+
+        it('has body expand/collapse toggle', () => {
+            expect(source).toContain('data-testid="commit-info-body-toggle"');
+            expect(source).toContain('bodyExpanded');
+            expect(source).toContain('Show more');
+            expect(source).toContain('Show less');
+        });
+
+        it('conditionally renders metadata when hasMetadata is truthy', () => {
+            expect(source).toContain('hasMetadata');
+        });
+
+        it('formats date using toLocaleString', () => {
+            expect(source).toContain('toLocaleString');
         });
 
         it('does NOT have file-change-list section', () => {
@@ -173,15 +223,6 @@ describe('CommitDetail', () => {
 
         it('does NOT have no-files-changed indicator', () => {
             expect(source).not.toContain('data-testid="no-files-changed"');
-        });
-
-        it('does NOT have Copy Hash button', () => {
-            expect(source).not.toContain('Copy Hash');
-            expect(source).not.toContain('data-testid="copy-hash-btn"');
-        });
-
-        it('does NOT import copyToClipboard', () => {
-            expect(source).not.toContain('copyToClipboard');
         });
     });
 

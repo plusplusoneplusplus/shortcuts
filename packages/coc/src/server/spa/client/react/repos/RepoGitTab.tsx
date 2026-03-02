@@ -294,6 +294,11 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             key={rightPanelView.commit.hash}
             workspaceId={workspaceId}
             hash={rightPanelView.commit.hash}
+            subject={rightPanelView.commit.subject}
+            author={rightPanelView.commit.author}
+            date={rightPanelView.commit.date}
+            parentHashes={rightPanelView.commit.parentHashes}
+            body={rightPanelView.commit.body}
         />
     ) : rightPanelView?.type === 'commit-file' ? (
         <CommitDetail
@@ -318,7 +323,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         <div className="repo-git-tab flex flex-col lg:flex-row h-full overflow-hidden" data-testid="repo-git-tab">
             {/* Left panel — commit list */}
             <aside
-                className="w-full lg:w-[320px] lg:shrink-0 overflow-y-auto border-b lg:border-b-0 lg:border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]"
+                className="w-full lg:w-[400px] lg:shrink-0 overflow-y-auto border-b lg:border-b-0 lg:border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]"
                 data-testid="git-commit-list-panel"
                 onKeyDown={handlePanelKeyDown}
             >

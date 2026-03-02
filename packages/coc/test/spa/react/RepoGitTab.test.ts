@@ -419,7 +419,7 @@ describe('RepoGitTab', () => {
         });
 
         it('sets fixed width on left panel at breakpoint', () => {
-            expect(source).toContain('lg:w-[320px]');
+            expect(source).toContain('lg:w-[400px]');
         });
 
         it('has empty state when no commit is selected', () => {
@@ -503,10 +503,12 @@ describe('RepoGitTab', () => {
             expect(source).toContain('workspaceId={workspaceId}');
         });
 
-        it('passes only workspaceId and hash to CommitDetail for full commit diff', () => {
-            // CommitDetail for a commit no longer receives subject/author/date/body
-            expect(source).not.toContain('subject={rightPanelView.commit.subject}');
-            expect(source).not.toContain('body={rightPanelView.commit.body}');
+        it('passes metadata props to CommitDetail for full commit view', () => {
+            expect(source).toContain('subject={rightPanelView.commit.subject}');
+            expect(source).toContain('author={rightPanelView.commit.author}');
+            expect(source).toContain('date={rightPanelView.commit.date}');
+            expect(source).toContain('parentHashes={rightPanelView.commit.parentHashes}');
+            expect(source).toContain('body={rightPanelView.commit.body}');
         });
 
         it('passes filePath to CommitDetail for per-file diff', () => {
