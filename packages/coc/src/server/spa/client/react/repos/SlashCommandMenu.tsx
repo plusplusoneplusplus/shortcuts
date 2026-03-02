@@ -68,6 +68,7 @@ export function SlashCommandMenu({
                 bottom: position ? `calc(100% - ${position.top}px + 4px)` : '100%',
                 left: position?.left ?? 0,
                 minWidth: 220,
+                maxWidth: 480,
             }}
             data-testid="slash-command-menu"
         >
@@ -75,7 +76,7 @@ export function SlashCommandMenu({
                 <div
                     key={skill.name}
                     data-menu-item
-                    className={`px-3 py-1.5 cursor-pointer flex items-center gap-2 ${
+                    className={`px-3 py-1.5 cursor-pointer flex items-center gap-2 min-w-0 overflow-hidden ${
                         i === highlightIndex
                             ? 'bg-[#e8e8e8] dark:bg-[#37373d]'
                             : 'hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e]'
@@ -85,7 +86,7 @@ export function SlashCommandMenu({
                     <span className="text-yellow-500">⚡</span>
                     <span className="font-medium text-[#1e1e1e] dark:text-[#cccccc]">{skill.name}</span>
                     {skill.description && (
-                        <span className="text-xs text-[#848484] truncate">— {skill.description}</span>
+                        <span className="text-xs text-[#848484] truncate min-w-0">— {skill.description}</span>
                     )}
                 </div>
             ))}
