@@ -490,12 +490,16 @@ function QueueTaskItem({ task, status, now, selected, onClick, onContextMenu }: 
 
     return (
         <Card className={cn("p-2 cursor-pointer", selected && "ring-2 ring-[#0078d4]", task.frozen && "opacity-60 italic")} onClick={onClick} onContextMenu={onContextMenu} data-task-id={task.id}>
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc]">
-                    <span>{icon}</span>
-                    <span>{name}</span>
-                    {elapsed && <span className="text-[10px] text-[#848484]">{elapsed}</span>}
+            <div className="flex items-center justify-between gap-1.5">
+                <div className="flex items-center gap-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] min-w-0">
+                    <span className="shrink-0">{icon}</span>
+                    <span className="truncate">{name}</span>
                 </div>
+                {elapsed && (
+                    <span className="text-[10px] text-[#848484] shrink-0 whitespace-nowrap tabular-nums">
+                        {elapsed}
+                    </span>
+                )}
             </div>
             {promptPreview && (
                 <div className="text-[10px] text-[#848484] mt-0.5 truncate">{promptPreview}</div>
