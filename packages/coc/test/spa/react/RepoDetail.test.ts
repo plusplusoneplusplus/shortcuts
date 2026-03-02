@@ -403,7 +403,7 @@ describe('RepoDetail New Chat button in header', () => {
     });
 
     it('newChatTrigger state is an object with count and readOnly', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('{ count: 0, readOnly: false }');
+        expect(REPO_DETAIL_SOURCE).toContain('{ count: 0, readOnly: false, useProjectRoot: false }');
     });
 
     it('passes newChatTrigger prop to RepoChatTab', () => {
@@ -428,6 +428,26 @@ describe('RepoDetail New Chat button in header', () => {
         expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-new-chat-dropdown-menu"');
         expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-new-chat-option-normal"');
         expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-new-chat-option-readonly"');
+    });
+
+    it('renders project-root option in dropdown', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-new-chat-option-project-root"');
+        expect(REPO_DETAIL_SOURCE).toContain('New Chat (Project Root)');
+    });
+
+    it('project-root option calls handleNewChatFromTopBar(false, true)', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('handleNewChatFromTopBar(false, true)');
+    });
+
+    it('handleNewChatFromTopBar accepts useProjectRoot parameter', () => {
+        const fnStart = REPO_DETAIL_SOURCE.indexOf('const handleNewChatFromTopBar');
+        const fnBody = REPO_DETAIL_SOURCE.slice(fnStart, fnStart + 300);
+        expect(fnBody).toContain('useProjectRoot');
+    });
+
+    it('newChatTrigger state includes useProjectRoot', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('useProjectRoot: false');
+        expect(REPO_DETAIL_SOURCE).toContain('useProjectRoot');
     });
 
     it('read-only option calls handleNewChatFromTopBar(true)', () => {

@@ -1081,7 +1081,7 @@ export class CLITaskExecutor implements TaskExecutor {
             return task.payload.workingDirectory || this.defaultWorkingDirectory;
         }
         if (isChatPayload(task.payload)) {
-            return task.payload.folderPath || this.defaultWorkingDirectory;
+            return task.payload.workingDirectory || task.payload.folderPath || this.defaultWorkingDirectory;
         }
         if (isAIClarificationPayload(task.payload)) {
             return task.payload.workingDirectory || this.defaultWorkingDirectory;

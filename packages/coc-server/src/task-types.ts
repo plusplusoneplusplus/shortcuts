@@ -75,6 +75,7 @@ export interface ChatPayload {
     skillNames?: string[];
     workspaceId?: string;
     folderPath?: string;
+    workingDirectory?: string;
 }
 
 export interface TaskGenerationPayload {

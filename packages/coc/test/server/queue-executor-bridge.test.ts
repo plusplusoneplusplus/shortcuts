@@ -281,6 +281,66 @@ describe('CLITaskExecutor', () => {
                 prompt: expect.stringContaining('Chat message'),
             }));
         });
+
+        it('should use payload.workingDirectory as CWD for chat tasks', async () => {
+            const executor = new CLITaskExecutor(store, { workingDirectory: '/default/cwd' });
+
+            const task: QueuedTask = {
+                id: 'chat-wd',
+                type: 'chat',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: { kind: 'chat' as const, prompt: 'Hello', workingDirectory: '/project/root' },
+                config: {},
+            };
+
+            await executor.execute(task);
+
+            expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+                workingDirectory: '/project/root',
+            }));
+        });
+
+        it('should fall back to folderPath when workingDirectory is absent', async () => {
+            const executor = new CLITaskExecutor(store, { workingDirectory: '/default/cwd' });
+
+            const task: QueuedTask = {
+                id: 'chat-fp',
+                type: 'chat',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: { kind: 'chat' as const, prompt: 'Hello', folderPath: '/folder/path' },
+                config: {},
+            };
+
+            await executor.execute(task);
+
+            expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+                workingDirectory: '/folder/path',
+            }));
+        });
+
+        it('should fall back to defaultWorkingDirectory when neither workingDirectory nor folderPath are set', async () => {
+            const executor = new CLITaskExecutor(store, { workingDirectory: '/default/cwd' });
+
+            const task: QueuedTask = {
+                id: 'chat-def',
+                type: 'chat',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: { kind: 'chat' as const, prompt: 'Hello' },
+                config: {},
+            };
+
+            await executor.execute(task);
+
+            expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+                workingDirectory: '/default/cwd',
+            }));
+        });
     });
 
     // ========================================================================

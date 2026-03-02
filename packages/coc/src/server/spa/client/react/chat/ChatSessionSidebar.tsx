@@ -19,7 +19,7 @@ export interface ChatSessionSidebarProps {
     sessions: ChatSessionItem[];
     activeTaskId: string | null;
     onSelectSession: (taskId: string) => void;
-    onNewChat: (readOnly: boolean) => void;
+    onNewChat: (readOnly: boolean, useProjectRoot?: boolean) => void;
     onCancelSession?: (taskId: string) => void;
     loading: boolean;
     pinnedIds?: string[];
@@ -179,6 +179,13 @@ export function ChatSessionSidebar({
                                 onClick={() => { setNewChatDropdownOpen(false); onNewChat(true); }}
                             >
                                 New Chat (Read-Only)
+                            </button>
+                            <button
+                                className="w-full text-left px-3 py-2 text-xs hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
+                                data-testid="new-chat-option-project-root"
+                                onClick={() => { setNewChatDropdownOpen(false); onNewChat(false, true); }}
+                            >
+                                New Chat (Project Root)
                             </button>
                         </div>
                     )}

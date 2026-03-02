@@ -109,7 +109,7 @@ describe('RepoChatTab', () => {
         });
 
         it('passes onNewChat callback to ChatSessionSidebar with readOnly forwarding', () => {
-            expect(source).toContain('onNewChat={(readOnly) => handleNewChat(readOnly)}');
+            expect(source).toContain('onNewChat={(readOnly, projectRoot) => handleNewChat(readOnly, projectRoot)}');
         });
     });
 
@@ -1237,7 +1237,7 @@ describe('RepoChatTab', () => {
 
     describe('newChatTrigger prop', () => {
         it('accepts optional newChatTrigger prop as object', () => {
-            expect(source).toContain('newChatTrigger?: { count: number; readOnly: boolean }');
+            expect(source).toContain('newChatTrigger?: { count: number; readOnly: boolean; useProjectRoot?: boolean }');
         });
 
         it('destructures newChatTrigger from props', () => {
@@ -1254,7 +1254,7 @@ describe('RepoChatTab', () => {
                 source.indexOf('prevTriggerRef'),
                 source.indexOf('prevTriggerRef') + 500
             );
-            expect(triggerEffect).toContain('handleNewChat(newChatTrigger.readOnly)');
+            expect(triggerEffect).toContain('handleNewChat(newChatTrigger.readOnly, newChatTrigger.useProjectRoot');
         });
 
         it('compares newChatTrigger.count against prevTriggerRef', () => {

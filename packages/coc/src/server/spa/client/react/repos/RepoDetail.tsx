@@ -60,7 +60,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         return !!queueState.repoQueueMap[ws.id]?.stats?.isPaused;
     }, [queueState.repoQueueMap[ws.id]?.stats?.isPaused]);
     const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
-    const [newChatTrigger, setNewChatTrigger] = useState<{ count: number; readOnly: boolean }>({ count: 0, readOnly: false });
+    const [newChatTrigger, setNewChatTrigger] = useState<{ count: number; readOnly: boolean; useProjectRoot: boolean }>({ count: 0, readOnly: false, useProjectRoot: false });
     const newChatTriggerProcessedRef = useRef(0);
     const tabStripRef = useRef<HTMLDivElement>(null);
     const moreMenuRef = useRef<HTMLDivElement>(null);
@@ -172,8 +172,8 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         return () => document.removeEventListener('mousedown', handler);
     }, [newChatDropdownOpen]);
 
-    const handleNewChatFromTopBar = useCallback((readOnly = false) => {
-        setNewChatTrigger(prev => ({ count: prev.count + 1, readOnly }));
+    const handleNewChatFromTopBar = useCallback((readOnly = false, useProjectRoot = false) => {
+        setNewChatTrigger(prev => ({ count: prev.count + 1, readOnly, useProjectRoot }));
         switchSubTab('chat');
     }, []);
 
@@ -253,6 +253,13 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                         onClick={() => { setNewChatDropdownOpen(false); handleNewChatFromTopBar(true); }}
                                     >
                                         New Chat (Read-Only)
+                                    </button>
+                                    <button
+                                        className="w-full text-left px-3 py-2 text-xs hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
+                                        data-testid="repo-new-chat-option-project-root"
+                                        onClick={() => { setNewChatDropdownOpen(false); handleNewChatFromTopBar(false, true); }}
+                                    >
+                                        New Chat (Project Root)
                                     </button>
                                 </div>
                             )}

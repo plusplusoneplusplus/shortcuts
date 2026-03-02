@@ -51,7 +51,7 @@ describe('ChatSessionSidebar', () => {
         });
 
         it('accepts onNewChat callback with readOnly parameter', () => {
-            expect(source).toContain('onNewChat: (readOnly: boolean) => void');
+            expect(source).toContain('onNewChat: (readOnly: boolean, useProjectRoot?: boolean) => void');
         });
 
         it('accepts loading flag', () => {
@@ -356,12 +356,25 @@ describe('ChatSessionSidebar', () => {
             expect(source).toContain('data-testid="new-chat-option-readonly"');
         });
 
+        it('renders project-root new-chat option', () => {
+            expect(source).toContain('data-testid="new-chat-option-project-root"');
+            expect(source).toContain('New Chat (Project Root)');
+        });
+
         it('normal option calls onNewChat(false)', () => {
             expect(source).toContain('onNewChat(false)');
         });
 
         it('read-only option calls onNewChat(true)', () => {
             expect(source).toContain('onNewChat(true)');
+        });
+
+        it('project-root option calls onNewChat(false, true)', () => {
+            expect(source).toContain('onNewChat(false, true)');
+        });
+
+        it('onNewChat prop accepts optional useProjectRoot parameter', () => {
+            expect(source).toContain('onNewChat: (readOnly: boolean, useProjectRoot?: boolean) => void');
         });
 
         it('dropdown options close the dropdown before invoking callback', () => {
