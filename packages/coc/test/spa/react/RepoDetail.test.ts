@@ -384,9 +384,19 @@ describe('RepoDetail New Chat button in header', () => {
         expect(fnBody).toContain("switchSubTab('chat')");
     });
 
-    it('increments newChatTrigger state on click', () => {
+    it('handleNewChatFromTopBar accepts readOnly parameter with default false', () => {
+        const fnStart = REPO_DETAIL_SOURCE.indexOf('const handleNewChatFromTopBar');
+        const fnBody = REPO_DETAIL_SOURCE.slice(fnStart, fnStart + 300);
+        expect(fnBody).toContain('readOnly = false');
+    });
+
+    it('increments newChatTrigger count and sets readOnly on click', () => {
         expect(REPO_DETAIL_SOURCE).toContain('setNewChatTrigger');
-        expect(REPO_DETAIL_SOURCE).toContain('prev => prev + 1');
+        expect(REPO_DETAIL_SOURCE).toContain('prev.count + 1');
+    });
+
+    it('newChatTrigger state is an object with count and readOnly', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('{ count: 0, readOnly: false }');
     });
 
     it('passes newChatTrigger prop to RepoChatTab', () => {
@@ -397,5 +407,33 @@ describe('RepoDetail New Chat button in header', () => {
         const idx = REPO_DETAIL_SOURCE.indexOf('repo-new-chat-btn');
         const block = REPO_DETAIL_SOURCE.substring(Math.max(0, idx - 300), idx);
         expect(block).toContain('title=');
+    });
+
+    it('renders split button container with data-testid', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-new-chat-split-btn"');
+    });
+
+    it('renders dropdown toggle button', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-new-chat-dropdown-toggle"');
+    });
+
+    it('renders dropdown menu with normal and read-only options', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-new-chat-dropdown-menu"');
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-new-chat-option-normal"');
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-new-chat-option-readonly"');
+    });
+
+    it('read-only option calls handleNewChatFromTopBar(true)', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('handleNewChatFromTopBar(true)');
+    });
+
+    it('normal option calls handleNewChatFromTopBar(false)', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('handleNewChatFromTopBar(false)');
+    });
+
+    it('primary button calls handleNewChatFromTopBar(false)', () => {
+        const idx = REPO_DETAIL_SOURCE.indexOf('repo-new-chat-btn');
+        const block = REPO_DETAIL_SOURCE.substring(Math.max(0, idx - 300), idx);
+        expect(block).toContain('handleNewChatFromTopBar(false)');
     });
 });

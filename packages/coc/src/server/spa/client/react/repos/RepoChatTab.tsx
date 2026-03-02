@@ -28,7 +28,7 @@ interface RepoChatTabProps {
     workspaceId: string;
     workspacePath?: string;
     initialSessionId?: string | null;
-    newChatTrigger?: number;
+    newChatTrigger?: { count: number; readOnly: boolean };
     newChatTriggerProcessedRef?: React.MutableRefObject<number>;
 }
 
@@ -418,7 +418,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
         location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/chat/' + encodeURIComponent(taskId);
     }, [isStreaming, loadSession, workspaceId]);
 
-    const handleNewChat = useCallback(() => {
+    const handleNewChat = useCallback((initialReadOnly = false) => {
         if (isStreaming) stopStreaming();
         currentChatTaskIdRef.current = null;
         setSelectedTaskId(null);
@@ -429,6 +429,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
         setSessionExpired(false);
         setSuggestions([]);
         setInputValue('');
+        setReadOnly(initialReadOnly);
         initialImagePaste.clearImages();
         followUpImagePaste.clearImages();
         location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/chat';
@@ -438,9 +439,9 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
     const localTriggerRef = useRef(0);
     const prevTriggerRef = newChatTriggerProcessedRef ?? localTriggerRef;
     useEffect(() => {
-        if (newChatTrigger && newChatTrigger !== prevTriggerRef.current) {
-            prevTriggerRef.current = newChatTrigger;
-            handleNewChat();
+        if (newChatTrigger && newChatTrigger.count !== prevTriggerRef.current) {
+            prevTriggerRef.current = newChatTrigger.count;
+            handleNewChat(newChatTrigger.readOnly);
         }
     }, [newChatTrigger, handleNewChat]);
 
@@ -856,7 +857,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
                 sessions={sessionsHook.sessions}
                 activeTaskId={selectedTaskId}
                 onSelectSession={handleSelectSession}
-                onNewChat={handleNewChat}
+                onNewChat={(readOnly) => handleNewChat(readOnly)}
                 onCancelSession={(taskId) => void handleCancelChat(taskId)}
                 loading={sessionsHook.loading}
             />

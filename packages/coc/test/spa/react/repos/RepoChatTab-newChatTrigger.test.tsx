@@ -94,7 +94,7 @@ describe('RepoChatTab newChatTrigger', () => {
             <Wrap>
                 <RepoChatTab
                     workspaceId="ws-1"
-                    newChatTrigger={1}
+                    newChatTrigger={{ count: 1, readOnly: false }}
                     newChatTriggerProcessedRef={parentRef}
                 />
             </Wrap>,
@@ -113,7 +113,7 @@ describe('RepoChatTab newChatTrigger', () => {
             <Wrap>
                 <RepoChatTab
                     workspaceId="ws-1"
-                    newChatTrigger={1}
+                    newChatTrigger={{ count: 1, readOnly: false }}
                     newChatTriggerProcessedRef={parentRef}
                 />
             </Wrap>,
@@ -128,10 +128,10 @@ describe('RepoChatTab newChatTrigger', () => {
         const parentRef = { current: 0 };
 
         function Harness() {
-            const [trigger, setTrigger] = useState(0);
+            const [trigger, setTrigger] = useState({ count: 0, readOnly: false });
             return (
                 <>
-                    <button data-testid="inc" onClick={() => setTrigger(prev => prev + 1)}>inc</button>
+                    <button data-testid="inc" onClick={() => setTrigger(prev => ({ count: prev.count + 1, readOnly: false }))}>inc</button>
                     <RepoChatTab
                         workspaceId="ws-1"
                         newChatTrigger={trigger}
@@ -143,7 +143,7 @@ describe('RepoChatTab newChatTrigger', () => {
 
         render(<Wrap><Harness /></Wrap>);
 
-        // Initially trigger=0, ref=0 → no fire
+        // Initially trigger.count=0, ref=0 → no fire
         expect(parentRef.current).toBe(0);
 
         // Increment trigger while mounted
@@ -161,7 +161,7 @@ describe('RepoChatTab newChatTrigger', () => {
             <Wrap>
                 <RepoChatTab
                     workspaceId="ws-1"
-                    newChatTrigger={0}
+                    newChatTrigger={{ count: 0, readOnly: false }}
                 />
             </Wrap>,
         );
@@ -182,11 +182,11 @@ describe('RepoChatTab newChatTrigger', () => {
 
         function Harness() {
             const [showChat, setShowChat] = useState(true);
-            const [trigger, setTrigger] = useState(0);
+            const [trigger, setTrigger] = useState({ count: 0, readOnly: false });
             return (
                 <>
                     <button data-testid="toggle" onClick={() => setShowChat(s => !s)}>toggle</button>
-                    <button data-testid="new-chat" onClick={() => { setTrigger(t => t + 1); setShowChat(true); }}>new</button>
+                    <button data-testid="new-chat" onClick={() => { setTrigger(t => ({ count: t.count + 1, readOnly: false })); setShowChat(true); }}>new</button>
                     {showChat && (
                         <RepoChatTab
                             workspaceId="ws-1"
@@ -200,7 +200,7 @@ describe('RepoChatTab newChatTrigger', () => {
 
         render(<Wrap><Harness /></Wrap>);
 
-        // Step 1: Initially mounted, trigger=0, ref stays 0 (no new chat fired)
+        // Step 1: Initially mounted, trigger.count=0, ref stays 0 (no new chat fired)
         expect(parentRef.current).toBe(0);
 
         // Step 2: Unmount chat tab (switch to another tab)

@@ -108,8 +108,8 @@ describe('RepoChatTab', () => {
             expect(source).toContain('onSelectSession={handleSelectSession}');
         });
 
-        it('passes onNewChat callback to ChatSessionSidebar', () => {
-            expect(source).toContain('onNewChat={handleNewChat}');
+        it('passes onNewChat callback to ChatSessionSidebar with readOnly forwarding', () => {
+            expect(source).toContain('onNewChat={(readOnly) => handleNewChat(readOnly)}');
         });
     });
 
@@ -357,7 +357,12 @@ describe('RepoChatTab', () => {
             expect(handler).toContain('stopStreaming()');
         });
 
-        it('resets all state', () => {
+        it('accepts initialReadOnly parameter with default false', () => {
+            const handler = source.substring(source.indexOf('const handleNewChat'));
+            expect(handler).toContain('initialReadOnly = false');
+        });
+
+        it('resets all state including readOnly', () => {
             const handler = source.substring(source.indexOf('const handleNewChat'));
             expect(handler).toContain('setSelectedTaskId(null)');
             expect(handler).toContain('setChatTaskId(null)');
@@ -366,6 +371,7 @@ describe('RepoChatTab', () => {
             expect(handler).toContain('setError(null)');
             expect(handler).toContain('setSessionExpired(false)');
             expect(handler).toContain("setInputValue('')");
+            expect(handler).toContain('setReadOnly(initialReadOnly)');
         });
 
         it('clears currentChatTaskIdRef', () => {
@@ -1230,8 +1236,8 @@ describe('RepoChatTab', () => {
     });
 
     describe('newChatTrigger prop', () => {
-        it('accepts optional newChatTrigger prop', () => {
-            expect(source).toContain('newChatTrigger?: number');
+        it('accepts optional newChatTrigger prop as object', () => {
+            expect(source).toContain('newChatTrigger?: { count: number; readOnly: boolean }');
         });
 
         it('destructures newChatTrigger from props', () => {
@@ -1243,18 +1249,26 @@ describe('RepoChatTab', () => {
             expect(source).toContain('newChatTriggerProcessedRef ?? localTriggerRef');
         });
 
-        it('calls handleNewChat when newChatTrigger changes', () => {
+        it('calls handleNewChat with readOnly when newChatTrigger changes', () => {
             const triggerEffect = source.substring(
                 source.indexOf('prevTriggerRef'),
-                source.indexOf('prevTriggerRef') + 400
+                source.indexOf('prevTriggerRef') + 500
             );
-            expect(triggerEffect).toContain('handleNewChat()');
+            expect(triggerEffect).toContain('handleNewChat(newChatTrigger.readOnly)');
         });
 
-        it('skips initial trigger value of 0', () => {
+        it('compares newChatTrigger.count against prevTriggerRef', () => {
             const triggerEffect = source.substring(
                 source.indexOf('prevTriggerRef'),
-                source.indexOf('prevTriggerRef') + 400
+                source.indexOf('prevTriggerRef') + 500
+            );
+            expect(triggerEffect).toContain('newChatTrigger.count !== prevTriggerRef.current');
+        });
+
+        it('skips initial trigger value', () => {
+            const triggerEffect = source.substring(
+                source.indexOf('prevTriggerRef'),
+                source.indexOf('prevTriggerRef') + 500
             );
             expect(triggerEffect).toContain('newChatTrigger &&');
         });

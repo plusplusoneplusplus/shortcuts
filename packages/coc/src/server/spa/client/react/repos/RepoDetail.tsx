@@ -56,7 +56,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         return !!queueState.repoQueueMap[ws.id]?.stats?.isPaused;
     }, [queueState.repoQueueMap[ws.id]?.stats?.isPaused]);
     const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
-    const [newChatTrigger, setNewChatTrigger] = useState(0);
+    const [newChatTrigger, setNewChatTrigger] = useState<{ count: number; readOnly: boolean }>({ count: 0, readOnly: false });
     const newChatTriggerProcessedRef = useRef(0);
     const tabStripRef = useRef<HTMLDivElement>(null);
 
@@ -113,8 +113,23 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         setGenerateDialog({ open: true, minimized: false, targetFolder });
     }, []);
 
-    const handleNewChatFromTopBar = useCallback(() => {
-        setNewChatTrigger(prev => prev + 1);
+    const [newChatDropdownOpen, setNewChatDropdownOpen] = useState(false);
+    const newChatDropdownRef = useRef<HTMLDivElement>(null);
+
+    // Close dropdown when clicking outside
+    useEffect(() => {
+        if (!newChatDropdownOpen) return;
+        const handler = (e: MouseEvent) => {
+            if (newChatDropdownRef.current && !newChatDropdownRef.current.contains(e.target as Node)) {
+                setNewChatDropdownOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [newChatDropdownOpen]);
+
+    const handleNewChatFromTopBar = useCallback((readOnly = false) => {
+        setNewChatTrigger(prev => ({ count: prev.count + 1, readOnly }));
         switchSubTab('chat');
     }, []);
 
@@ -146,15 +161,48 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                         ▶ Resume Queue
                     </Button>
                 )}
-                <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={handleNewChatFromTopBar}
-                    title="Start a new chat"
-                    data-testid="repo-new-chat-btn"
-                >
-                    + New Chat
-                </Button>
+                <div className="relative inline-flex" ref={newChatDropdownRef} data-testid="repo-new-chat-split-btn">
+                    <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={() => handleNewChatFromTopBar(false)}
+                        title="Start a new chat"
+                        data-testid="repo-new-chat-btn"
+                        className="rounded-r-none"
+                    >
+                        + New Chat
+                    </Button>
+                    <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={() => setNewChatDropdownOpen(prev => !prev)}
+                        data-testid="repo-new-chat-dropdown-toggle"
+                        className="rounded-l-none border-l border-white/30 px-1.5"
+                    >
+                        ▾
+                    </Button>
+                    {newChatDropdownOpen && (
+                        <div
+                            className="absolute right-0 top-full mt-1 w-52 bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded shadow-lg z-50"
+                            data-testid="repo-new-chat-dropdown-menu"
+                        >
+                            <button
+                                className="w-full text-left px-3 py-2 text-xs hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
+                                data-testid="repo-new-chat-option-normal"
+                                onClick={() => { setNewChatDropdownOpen(false); handleNewChatFromTopBar(false); }}
+                            >
+                                New Chat
+                            </button>
+                            <button
+                                className="w-full text-left px-3 py-2 text-xs hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
+                                data-testid="repo-new-chat-option-readonly"
+                                onClick={() => { setNewChatDropdownOpen(false); handleNewChatFromTopBar(true); }}
+                            >
+                                New Chat (Read-Only)
+                            </button>
+                        </div>
+                    )}
+                </div>
                 <Button
                     variant="primary"
                     size="sm"

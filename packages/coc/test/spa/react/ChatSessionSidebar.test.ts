@@ -50,8 +50,8 @@ describe('ChatSessionSidebar', () => {
             expect(source).toContain('onSelectSession: (taskId: string) => void');
         });
 
-        it('accepts onNewChat callback', () => {
-            expect(source).toContain('onNewChat: () => void');
+        it('accepts onNewChat callback with readOnly parameter', () => {
+            expect(source).toContain('onNewChat: (readOnly: boolean) => void');
         });
 
         it('accepts loading flag', () => {
@@ -64,13 +64,18 @@ describe('ChatSessionSidebar', () => {
             expect(source).toContain('>Chats<');
         });
 
-        it('renders New Chat button', () => {
+        it('renders New Chat split button', () => {
+            expect(source).toContain('data-testid="new-chat-split-btn"');
             expect(source).toContain('data-testid="new-chat-btn"');
             expect(source).toContain('New Chat');
         });
 
-        it('New Chat button calls onNewChat', () => {
-            expect(source).toContain('onClick={onNewChat}');
+        it('New Chat primary button calls onNewChat with false', () => {
+            expect(source).toContain('onClick={() => onNewChat(false)}');
+        });
+
+        it('renders dropdown toggle button', () => {
+            expect(source).toContain('data-testid="new-chat-dropdown-toggle"');
         });
 
         it('New Chat button uses primary variant', () => {
@@ -142,6 +147,10 @@ describe('ChatSessionSidebar', () => {
     });
 
     describe('imports', () => {
+        it('imports useState, useCallback, useRef, useEffect from react', () => {
+            expect(source).toContain("import { useState, useCallback, useRef, useEffect } from 'react'");
+        });
+
         it('imports Card, Button, Spinner, cn from shared', () => {
             expect(source).toContain("import { Card, Button, Spinner, cn } from '../shared'");
         });
@@ -308,6 +317,70 @@ describe('ChatSessionSidebar', () => {
         it('renders ContextMenu component when context menu is open', () => {
             expect(source).toContain('<ContextMenu');
             expect(source).toContain('closeContextMenu');
+        });
+    });
+
+    describe('new chat dropdown — split button', () => {
+        it('renders split button container with data-testid', () => {
+            expect(source).toContain('data-testid="new-chat-split-btn"');
+        });
+
+        it('renders dropdown toggle button with caret', () => {
+            expect(source).toContain('data-testid="new-chat-dropdown-toggle"');
+            expect(source).toContain('▾');
+        });
+
+        it('manages newChatDropdownOpen state', () => {
+            expect(source).toContain('newChatDropdownOpen');
+            expect(source).toContain('setNewChatDropdownOpen');
+        });
+
+        it('uses a ref for outside-click detection', () => {
+            expect(source).toContain('newChatDropdownRef');
+        });
+
+        it('closes dropdown on outside click via mousedown listener', () => {
+            expect(source).toContain("document.addEventListener('mousedown', handler)");
+            expect(source).toContain("document.removeEventListener('mousedown', handler)");
+        });
+
+        it('renders dropdown menu with data-testid when open', () => {
+            expect(source).toContain('data-testid="new-chat-dropdown-menu"');
+        });
+
+        it('renders normal new-chat option', () => {
+            expect(source).toContain('data-testid="new-chat-option-normal"');
+        });
+
+        it('renders read-only new-chat option', () => {
+            expect(source).toContain('data-testid="new-chat-option-readonly"');
+        });
+
+        it('normal option calls onNewChat(false)', () => {
+            expect(source).toContain('onNewChat(false)');
+        });
+
+        it('read-only option calls onNewChat(true)', () => {
+            expect(source).toContain('onNewChat(true)');
+        });
+
+        it('dropdown options close the dropdown before invoking callback', () => {
+            // Both menu items call setNewChatDropdownOpen(false) before onNewChat
+            const menu = source.substring(source.indexOf('new-chat-dropdown-menu'));
+            expect(menu).toContain('setNewChatDropdownOpen(false); onNewChat(false)');
+            expect(menu).toContain('setNewChatDropdownOpen(false); onNewChat(true)');
+        });
+
+        it('dropdown toggle button has rounded-l-none class for split appearance', () => {
+            expect(source).toContain('rounded-l-none');
+        });
+
+        it('primary button has rounded-r-none class for split appearance', () => {
+            expect(source).toContain('rounded-r-none');
+        });
+
+        it('read-only option text contains "Read-Only"', () => {
+            expect(source).toContain('New Chat (Read-Only)');
         });
     });
 });

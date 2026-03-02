@@ -6,7 +6,7 @@
  * Supports pinning chats to the top of the list.
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { Card, Button, Spinner, cn } from '../shared';
 import { statusIcon, formatRelativeTime } from '../utils/format';
 import { ContextMenu } from '../tasks/comments/ContextMenu';
@@ -19,7 +19,7 @@ export interface ChatSessionSidebarProps {
     sessions: ChatSessionItem[];
     activeTaskId: string | null;
     onSelectSession: (taskId: string) => void;
-    onNewChat: () => void;
+    onNewChat: (readOnly: boolean) => void;
     onCancelSession?: (taskId: string) => void;
     loading: boolean;
     pinnedIds?: string[];
@@ -38,6 +38,20 @@ export function ChatSessionSidebar({
     onTogglePin,
 }: ChatSessionSidebarProps) {
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; sessionId: string } | null>(null);
+    const [newChatDropdownOpen, setNewChatDropdownOpen] = useState(false);
+    const newChatDropdownRef = useRef<HTMLDivElement>(null);
+
+    // Close dropdown when clicking outside
+    useEffect(() => {
+        if (!newChatDropdownOpen) return;
+        const handler = (e: MouseEvent) => {
+            if (newChatDropdownRef.current && !newChatDropdownRef.current.contains(e.target as Node)) {
+                setNewChatDropdownOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [newChatDropdownOpen]);
 
     const pinSet = new Set(pinnedIds);
     const pinnedSessions = pinnedIds
@@ -126,9 +140,41 @@ export function ChatSessionSidebar({
             {/* Header with New Chat button */}
             <div className="p-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] flex items-center justify-between">
                 <span className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]">Chats</span>
-                <Button variant="primary" size="sm" onClick={onNewChat} data-testid="new-chat-btn">
-                    New Chat
-                </Button>
+                <div className="relative inline-flex" ref={newChatDropdownRef} data-testid="new-chat-split-btn">
+                    <Button variant="primary" size="sm" onClick={() => onNewChat(false)} data-testid="new-chat-btn" className="rounded-r-none">
+                        New Chat
+                    </Button>
+                    <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={() => setNewChatDropdownOpen(prev => !prev)}
+                        data-testid="new-chat-dropdown-toggle"
+                        className="rounded-l-none border-l border-white/30 px-1.5"
+                    >
+                        ▾
+                    </Button>
+                    {newChatDropdownOpen && (
+                        <div
+                            className="absolute right-0 top-full mt-1 w-52 bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded shadow-lg z-50"
+                            data-testid="new-chat-dropdown-menu"
+                        >
+                            <button
+                                className="w-full text-left px-3 py-2 text-xs hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
+                                data-testid="new-chat-option-normal"
+                                onClick={() => { setNewChatDropdownOpen(false); onNewChat(false); }}
+                            >
+                                New Chat
+                            </button>
+                            <button
+                                className="w-full text-left px-3 py-2 text-xs hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
+                                data-testid="new-chat-option-readonly"
+                                onClick={() => { setNewChatDropdownOpen(false); onNewChat(true); }}
+                            >
+                                New Chat (Read-Only)
+                            </button>
+                        </div>
+                    )}
+                </div>
             </div>
 
             {/* Session list */}
