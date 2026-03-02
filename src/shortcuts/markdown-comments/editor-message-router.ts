@@ -55,7 +55,7 @@ export interface AskAIContext {
 export interface WebviewMessage {
     type: 'addComment' | 'editComment' | 'deleteComment' | 'resolveComment' |
     'reopenComment' | 'updateContent' | 'ready' | 'generatePrompt' |
-    'copyPrompt' | 'sendToChat' | 'sendCommentToChat' | 'sendToCLIInteractive' | 'sendToCLIBackground' | 'resolveAll' | 'deleteAll' | 'requestState' | 'resolveImagePath' | 'openFile' | 'askAI' | 'askAIInteractive' | 'askAIQueued' | 'collapsedSectionsChanged' | 'requestPromptFiles' | 'requestSkills' | 'executeWorkPlan' | 'executeWorkPlanWithSkill' | 'promptSearch' | 'followPromptDialogResult' | 'copyFollowPrompt' | 'requestUpdateDocumentDialog' | 'updateDocument' | 'requestRefreshPlanDialog' | 'refreshPlan' | 'chatInCLI' | 'copyWithContext';
+    'copyPrompt' | 'sendToChat' | 'sendCommentToChat' | 'sendToCLIInteractive' | 'sendToCLIBackground' | 'resolveAll' | 'deleteAll' | 'requestState' | 'resolveImagePath' | 'openFile' | 'askAI' | 'askAIInteractive' | 'askAIQueued' | 'collapsedSectionsChanged' | 'requestPromptFiles' | 'requestSkills' | 'executeWorkPlan' | 'executeWorkPlanWithSkill' | 'promptSearch' | 'followPromptDialogResult' | 'copyFollowPrompt' | 'requestUpdateDocumentDialog' | 'updateDocument' | 'requestRefreshPlanDialog' | 'refreshPlan' | 'chatInCLI' | 'copyWithContext' | 'readFilePreview';
     commentId?: string;
     content?: string;
     selection?: {
@@ -84,6 +84,8 @@ export interface WebviewMessage {
     instruction?: string;
     selectedText?: string;
     filePath?: string;
+    requestId?: string;
+    full?: boolean;
 }
 
 /** Storage key prefix for collapsed sections (per file) */
@@ -181,6 +183,8 @@ export class EditorMessageRouter {
                 return this.handleChatInCLI(message, ctx);
             case 'copyWithContext':
                 return this.handleCopyWithContext(message, ctx);
+            case 'readFilePreview':
+                return this.handleReadFilePreview(message, ctx);
             default:
                 return {};
         }
@@ -649,6 +653,100 @@ export class EditorMessageRouter {
             }
         } catch (error) {
             this.host.showError(`Error opening file: ${error}`);
+        }
+        return {};
+    }
+
+    // --- File preview ---
+
+    private async handleReadFilePreview(message: WebviewMessage, ctx: MessageContext): Promise<DispatchResult> {
+        if (!message.path || !message.requestId) {
+            return {};
+        }
+
+        const requestId = message.requestId as string;
+        const filePath = message.path as string;
+        const full = message.full === true;
+        const maxLines = full ? 500 : 50;
+
+        try {
+            const { filePath: pathWithoutFragment, lineNumber } = parseLineFragment(filePath);
+            const resolved = resolveFilePath(pathWithoutFragment, ctx.fileDir, ctx.workspaceRoot);
+
+            if (!resolved.exists) {
+                this.host.postMessage({
+                    type: 'filePreviewResult',
+                    requestId,
+                    path: filePath,
+                    content: undefined,
+                    language: '',
+                    lineCount: 0,
+                    full,
+                    error: 'File not found'
+                });
+                return {};
+            }
+
+            const result = await this.host.readFileLines(resolved.resolvedPath, maxLines);
+            if (!result) {
+                this.host.postMessage({
+                    type: 'filePreviewResult',
+                    requestId,
+                    path: filePath,
+                    content: undefined,
+                    language: '',
+                    lineCount: 0,
+                    full,
+                    error: 'Could not read file'
+                });
+                return {};
+            }
+
+            const ext = path.extname(resolved.resolvedPath).replace('.', '').toLowerCase();
+            const languageMap: Record<string, string> = {
+                ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript',
+                py: 'python', rb: 'ruby', rs: 'rust', go: 'go', java: 'java',
+                cs: 'csharp', cpp: 'cpp', c: 'c', h: 'c', hpp: 'cpp',
+                md: 'markdown', json: 'json', yaml: 'yaml', yml: 'yaml',
+                html: 'html', css: 'css', scss: 'scss', less: 'less',
+                sh: 'bash', bash: 'bash', zsh: 'bash', ps1: 'powershell',
+                sql: 'sql', xml: 'xml', toml: 'toml', ini: 'ini'
+            };
+            const language = languageMap[ext] || ext || 'plaintext';
+
+            // If a line number anchor is specified, offset the content
+            let content = result.content;
+            if (lineNumber && lineNumber > 1 && !full) {
+                const allLines = result.totalLines <= maxLines
+                    ? result.content.split('\n')
+                    : (await this.host.readFile(resolved.resolvedPath))?.split('\n');
+                if (allLines) {
+                    const start = Math.max(0, lineNumber - 1);
+                    content = allLines.slice(start, start + maxLines).join('\n');
+                }
+            }
+
+            this.host.postMessage({
+                type: 'filePreviewResult',
+                requestId,
+                path: resolved.resolvedPath,
+                content,
+                language,
+                lineCount: result.totalLines,
+                full,
+                error: undefined
+            });
+        } catch (error) {
+            this.host.postMessage({
+                type: 'filePreviewResult',
+                requestId,
+                path: filePath,
+                content: undefined,
+                language: '',
+                lineCount: 0,
+                full,
+                error: `Error reading file: ${error}`
+            });
         }
         return {};
     }

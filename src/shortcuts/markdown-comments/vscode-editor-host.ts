@@ -75,6 +75,19 @@ export class VscodeEditorHost implements EditorHost {
         }
     }
 
+    async readFileLines(filePath: string, maxLines: number): Promise<{ content: string; totalLines: number } | undefined> {
+        try {
+            const full = await fs.promises.readFile(filePath, 'utf-8');
+            const lines = full.split('\n');
+            const totalLines = lines.length;
+            const content = lines.slice(0, maxLines).join('\n');
+            return { content, totalLines };
+        } catch (error) {
+            console.error(`Error reading file lines: ${filePath}`, error);
+            return undefined;
+        }
+    }
+
     async fileExists(filePath: string): Promise<boolean> {
         return fs.existsSync(filePath);
     }

@@ -21,6 +21,7 @@ export interface EditorHost {
     openFile(uri: string, lineNumber?: number): Promise<void>;
     openExternalUrl(url: string): Promise<void>;
     readFile(filePath: string): Promise<string | undefined>;
+    readFileLines(filePath: string, maxLines: number): Promise<{ content: string; totalLines: number } | undefined>;
     fileExists(filePath: string): Promise<boolean>;
 
     // --- Document editing ---

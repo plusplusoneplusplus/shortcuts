@@ -166,6 +166,13 @@ export function openFile(path: string): void {
     postMessage({ type: 'openFile', path });
 }
 
+/**
+ * Request a file preview from the extension host
+ */
+export function requestFilePreview(path: string, requestId: string, full?: boolean): void {
+    postMessage({ type: 'readFilePreview', path, requestId, full });
+}
+
 import { AICommandMode, AskAIContext } from './types';
 
 /**

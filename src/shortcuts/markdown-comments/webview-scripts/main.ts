@@ -7,6 +7,7 @@
  */
 
 import { initDomHandlers, rebuildAISubmenu, rebuildPredefinedSubmenu, updateAIActionMenuAvailability, updateActionItemsSubmenu, updateExecuteWorkPlanSubmenu, updatePromptFileSubmenu, updateSkillSubmenu } from './dom-handlers';
+import { initFilePathPreview, handleFilePreviewResult } from './file-path-preview';
 import { initFollowPromptDialog, showFollowPromptDialog } from './follow-prompt-dialog';
 import { initRefreshPlanDialog, showRefreshPlanDialog } from './refresh-plan-dialog';
 import { initUpdateDocumentDialog, showUpdateDocumentDialog } from './update-document-dialog';
@@ -35,6 +36,10 @@ function init(): void {
     // Initialize DOM handlers
     initDomHandlers();
     console.log('[Webview] DOM handlers initialized');
+
+    // Initialize file path preview (hover + click)
+    initFilePathPreview();
+    console.log('[Webview] File path preview initialized');
 
     // Initialize panel manager
     initPanelManager();
@@ -164,6 +169,10 @@ function handleMessage(message: ExtensionMessage): void {
         case 'showRefreshPlanDialog':
             // Show the Refresh Plan dialog
             showRefreshPlanDialog();
+            break;
+
+        case 'filePreviewResult':
+            handleFilePreviewResult(message);
             break;
     }
 }

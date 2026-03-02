@@ -70,6 +70,11 @@ class MockEditorHost implements EditorHost {
         return this.returnValues.get('readFile') as string | undefined;
     }
 
+    async readFileLines(filePath: string, maxLines: number): Promise<{ content: string; totalLines: number } | undefined> {
+        this.recordCall('readFileLines', filePath, maxLines);
+        return this.returnValues.get('readFileLines') as { content: string; totalLines: number } | undefined;
+    }
+
     async fileExists(filePath: string): Promise<boolean> {
         this.recordCall('fileExists', filePath);
         return (this.returnValues.get('fileExists') as boolean) ?? false;
@@ -411,7 +416,164 @@ suite('EditorMessageRouter', () => {
         assert.ok(mockHost.wasMethodCalled('showWarning'));
     });
 
-    // --- Image resolution ---
+    // --- File preview ---
+
+    test('readFilePreview returns error for missing file', async () => {
+        const message: WebviewMessage = {
+            type: 'readFilePreview',
+            path: 'nonexistent-file.ts',
+            requestId: 'req-1'
+        } as any;
+        const ctx = createTestContext();
+
+        await router.dispatch(message, ctx);
+
+        assert.ok(mockHost.postedMessages.length > 0);
+        const posted = mockHost.postedMessages[0] as any;
+        assert.strictEqual(posted.type, 'filePreviewResult');
+        assert.strictEqual(posted.requestId, 'req-1');
+        assert.strictEqual(posted.error, 'File not found');
+    });
+
+    test('readFilePreview returns file content for existing file', async () => {
+        // Create a temp file
+        const testFile = path.join(tempDir, 'preview-test.ts');
+        const content = Array.from({ length: 100 }, (_, i) => `line ${i + 1}`).join('\n');
+        fs.writeFileSync(testFile, content, 'utf-8');
+
+        mockHost.setReturnValue('readFileLines', {
+            content: Array.from({ length: 50 }, (_, i) => `line ${i + 1}`).join('\n'),
+            totalLines: 100
+        });
+
+        const message: WebviewMessage = {
+            type: 'readFilePreview',
+            path: testFile,
+            requestId: 'req-2'
+        } as any;
+        const ctx = createTestContext({ fileDir: tempDir, workspaceRoot: tempDir });
+
+        await router.dispatch(message, ctx);
+
+        assert.ok(mockHost.postedMessages.length > 0);
+        const posted = mockHost.postedMessages[0] as any;
+        assert.strictEqual(posted.type, 'filePreviewResult');
+        assert.strictEqual(posted.requestId, 'req-2');
+        assert.strictEqual(posted.language, 'typescript');
+        assert.strictEqual(posted.lineCount, 100);
+        assert.ok(!posted.error);
+        assert.ok(posted.content.includes('line 1'));
+    });
+
+    test('readFilePreview handles full flag for larger content', async () => {
+        const testFile = path.join(tempDir, 'full-test.js');
+        const content = Array.from({ length: 200 }, (_, i) => `// line ${i + 1}`).join('\n');
+        fs.writeFileSync(testFile, content, 'utf-8');
+
+        mockHost.setReturnValue('readFileLines', {
+            content,
+            totalLines: 200
+        });
+
+        const message: WebviewMessage = {
+            type: 'readFilePreview',
+            path: testFile,
+            requestId: 'req-3',
+            full: true
+        } as any;
+        const ctx = createTestContext({ fileDir: tempDir, workspaceRoot: tempDir });
+
+        await router.dispatch(message, ctx);
+
+        assert.ok(mockHost.postedMessages.length > 0);
+        const posted = mockHost.postedMessages[0] as any;
+        assert.strictEqual(posted.type, 'filePreviewResult');
+        assert.strictEqual(posted.requestId, 'req-3');
+        assert.strictEqual(posted.language, 'javascript');
+        assert.ok(!posted.error);
+    });
+
+    test('readFilePreview returns error when readFileLines fails', async () => {
+        const testFile = path.join(tempDir, 'fail-test.py');
+        fs.writeFileSync(testFile, 'print("hello")', 'utf-8');
+
+        // readFileLines returns undefined to simulate failure
+        mockHost.setReturnValue('readFileLines', undefined);
+
+        const message: WebviewMessage = {
+            type: 'readFilePreview',
+            path: testFile,
+            requestId: 'req-4'
+        } as any;
+        const ctx = createTestContext({ fileDir: tempDir, workspaceRoot: tempDir });
+
+        await router.dispatch(message, ctx);
+
+        assert.ok(mockHost.postedMessages.length > 0);
+        const posted = mockHost.postedMessages[0] as any;
+        assert.strictEqual(posted.type, 'filePreviewResult');
+        assert.strictEqual(posted.requestId, 'req-4');
+        assert.strictEqual(posted.error, 'Could not read file');
+    });
+
+    test('readFilePreview ignores message with missing path', async () => {
+        const message: WebviewMessage = {
+            type: 'readFilePreview',
+            path: '',
+            requestId: 'req-5'
+        } as any;
+        const ctx = createTestContext();
+
+        await router.dispatch(message, ctx);
+
+        assert.strictEqual(mockHost.postedMessages.length, 0);
+    });
+
+    test('readFilePreview ignores message with missing requestId', async () => {
+        const message: WebviewMessage = {
+            type: 'readFilePreview',
+            path: 'some-file.ts',
+            requestId: ''
+        } as any;
+        const ctx = createTestContext();
+
+        await router.dispatch(message, ctx);
+
+        assert.strictEqual(mockHost.postedMessages.length, 0);
+    });
+
+    test('readFilePreview maps common extensions to language names', async () => {
+        const extensions: Record<string, string> = {
+            'test.ts': 'typescript',
+            'test.py': 'python',
+            'test.rs': 'rust',
+            'test.go': 'go',
+            'test.json': 'json',
+            'test.yaml': 'yaml',
+            'test.css': 'css',
+            'test.md': 'markdown'
+        };
+
+        for (const [fileName, expectedLang] of Object.entries(extensions)) {
+            const filePath = path.join(tempDir, fileName);
+            fs.writeFileSync(filePath, 'content', 'utf-8');
+
+            mockHost.setReturnValue('readFileLines', { content: 'content', totalLines: 1 });
+            mockHost.postedMessages.length = 0;
+
+            const message: WebviewMessage = {
+                type: 'readFilePreview',
+                path: filePath,
+                requestId: `req-lang-${fileName}`
+            } as any;
+            const ctx = createTestContext({ fileDir: tempDir, workspaceRoot: tempDir });
+
+            await router.dispatch(message, ctx);
+
+            const posted = mockHost.postedMessages[0] as any;
+            assert.strictEqual(posted.language, expectedLang, `Expected ${expectedLang} for ${fileName}`);
+        }
+    });
 
     test('resolveImagePath posts resolved URI when found', async () => {
         mockHost.setReturnValue('resolveImageToWebviewUri', 'https://webview/image.png');

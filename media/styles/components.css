@@ -827,6 +827,147 @@ body.vscode-light .hljs-type {
     box-sizing: border-box;
 }
 
+/* ==============================
+ * File Path Preview
+ * ============================== */
+
+/* Interactive file-path-link spans */
+.file-path-link {
+    cursor: pointer;
+    border-radius: 3px;
+    transition: background-color 0.15s ease;
+}
+
+.file-path-link:hover {
+    text-decoration: underline;
+    background-color: var(--vscode-editor-hoverHighlightBackground, rgba(38, 79, 120, 0.25));
+}
+
+/* Hover tooltip */
+.file-preview-tooltip {
+    position: fixed;
+    max-width: 520px;
+    min-width: 280px;
+    max-height: 360px;
+    overflow: hidden;
+    background: var(--vscode-editorHoverWidget-background, var(--vscode-editor-background, #1e1e1e));
+    border: 1px solid var(--vscode-editorHoverWidget-border, var(--vscode-widget-border, #454545));
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    z-index: 1100;
+    font-size: 12px;
+    display: flex;
+    flex-direction: column;
+}
+
+.file-preview-tooltip .file-preview-header {
+    padding: 6px 10px;
+    font-weight: 600;
+    font-size: 12px;
+    color: var(--vscode-foreground, #cccccc);
+    border-bottom: 1px solid var(--vscode-widget-border, #454545);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    background: var(--vscode-editorGroupHeader-tabsBackground, rgba(0, 0, 0, 0.2));
+    border-radius: 6px 6px 0 0;
+}
+
+.file-preview-tooltip .file-preview-body {
+    overflow: auto;
+    max-height: 280px;
+    padding: 8px 10px;
+    margin: 0;
+    font-family: var(--vscode-editor-font-family, 'Consolas', 'Courier New', monospace);
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--vscode-editor-foreground, #d4d4d4);
+    background: var(--vscode-editor-background, #1e1e1e);
+    white-space: pre;
+    tab-size: 4;
+}
+
+.file-preview-tooltip .file-preview-body code {
+    font-family: inherit;
+    font-size: inherit;
+    background: none;
+    padding: 0;
+}
+
+.file-preview-loading {
+    color: var(--vscode-descriptionForeground, #888);
+    font-style: italic;
+    padding: 12px;
+}
+
+.file-preview-error {
+    color: var(--vscode-errorForeground, #f48771);
+    padding: 8px 12px;
+}
+
+.file-preview-line-num {
+    display: inline-block;
+    min-width: 3ch;
+    margin-right: 12px;
+    text-align: right;
+    color: var(--vscode-editorLineNumber-foreground, #858585);
+    user-select: none;
+    pointer-events: none;
+}
+
+.file-preview-truncated {
+    padding: 4px 10px 6px;
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground, #888);
+    border-top: 1px solid var(--vscode-widget-border, #454545);
+}
+
+.file-preview-tooltip .file-preview-footer {
+    padding: 4px 10px 6px;
+    font-size: 10px;
+    color: var(--vscode-descriptionForeground, #888);
+    border-top: 1px solid var(--vscode-widget-border, #454545);
+    text-align: center;
+}
+
+/* File preview dialog (modal) */
+.file-preview-dialog {
+    max-width: 800px;
+    width: 90%;
+    max-height: 85vh;
+}
+
+.file-preview-dialog-path {
+    padding: 4px 0 12px;
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground, #888);
+    word-break: break-all;
+    font-family: var(--vscode-editor-font-family, monospace);
+}
+
+.file-preview-dialog-code {
+    margin: 0;
+    padding: 12px;
+    overflow: auto;
+    max-height: calc(85vh - 200px);
+    background: var(--vscode-editor-background, #1e1e1e);
+    border: 1px solid var(--vscode-widget-border, #454545);
+    border-radius: 4px;
+    font-family: var(--vscode-editor-font-family, 'Consolas', 'Courier New', monospace);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--vscode-editor-foreground, #d4d4d4);
+    white-space: pre;
+    tab-size: 4;
+}
+
+.file-preview-dialog-code code {
+    font-family: inherit;
+    font-size: inherit;
+    background: none;
+    padding: 0;
+}
+
 .form-group textarea:focus {
     outline: none;
     border-color: var(--vscode-focusBorder, #007acc);
