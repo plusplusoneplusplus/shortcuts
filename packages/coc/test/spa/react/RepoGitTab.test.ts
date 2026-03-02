@@ -303,6 +303,27 @@ describe('RepoGitTab', () => {
             expect(pushBlock![0]).toContain("'Push failed'");
         });
 
+        it('handleFetch checks result.success and throws on false', () => {
+            const fetchBlock = source.match(/handleFetch[\s\S]*?(?=const handlePull)/);
+            expect(fetchBlock).toBeTruthy();
+            expect(fetchBlock![0]).toContain('result.success === false');
+            expect(fetchBlock![0]).toContain('result.error');
+        });
+
+        it('handlePull checks result.success and throws on false', () => {
+            const pullBlock = source.match(/handlePull[\s\S]*?(?=const handlePush)/);
+            expect(pullBlock).toBeTruthy();
+            expect(pullBlock![0]).toContain('result.success === false');
+            expect(pullBlock![0]).toContain('result.error');
+        });
+
+        it('handlePush checks result.success and throws on false', () => {
+            const pushBlock = source.match(/handlePush[\s\S]*?(?=const handleSelect)/);
+            expect(pushBlock).toBeTruthy();
+            expect(pushBlock![0]).toContain('result.success === false');
+            expect(pushBlock![0]).toContain('result.error');
+        });
+
         it('clears actionError before each action', () => {
             expect(source).toContain('setActionError(null)');
         });

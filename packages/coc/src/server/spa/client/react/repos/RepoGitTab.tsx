@@ -145,9 +145,10 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         setFetching(true);
         setActionError(null);
         try {
-            await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/fetch`, {
+            const result = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/fetch`, {
                 method: 'POST',
             });
+            if (result.success === false) throw new Error(result.error || 'Fetch failed');
             refreshAll();
         } catch (err: any) {
             setActionError(err.message || 'Fetch failed');
@@ -161,11 +162,12 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         setPulling(true);
         setActionError(null);
         try {
-            await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/pull`, {
+            const result = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/pull`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ rebase: true }),
             });
+            if (result.success === false) throw new Error(result.error || 'Pull failed');
             refreshAll();
         } catch (err: any) {
             setActionError(err.message || 'Pull failed');
@@ -179,9 +181,10 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         setPushing(true);
         setActionError(null);
         try {
-            await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/push`, {
+            const result = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/push`, {
                 method: 'POST',
             });
+            if (result.success === false) throw new Error(result.error || 'Push failed');
             refreshAll();
         } catch (err: any) {
             setActionError(err.message || 'Push failed');
