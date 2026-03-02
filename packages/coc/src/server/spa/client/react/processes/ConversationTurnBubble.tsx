@@ -555,7 +555,7 @@ export function ConversationTurnBubble({ turn, taskId }: ConversationTurnBubbleP
                         {isUser ? 'You' : 'Assistant'}
                     </span>
                     {turn.timestamp && (
-                        <span className="ml-auto timestamp">{new Date(turn.timestamp).toLocaleTimeString()}</span>
+                        <span className="ml-auto timestamp">{new Date(turn.timestamp).toLocaleDateString(undefined, { month: '2-digit', day: '2-digit' })} {new Date(turn.timestamp).toLocaleTimeString()}</span>
                     )}
                     {turn.streaming && (
                         <span className="text-[#f14c4c] streaming-indicator">Live</span>

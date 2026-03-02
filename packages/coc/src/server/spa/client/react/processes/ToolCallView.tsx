@@ -143,10 +143,12 @@ function formatStartTime(startTime?: string): string {
     if (!startTime) return '';
     const d = new Date(startTime);
     if (isNaN(d.getTime())) return '';
+    const MM = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(d.getUTCDate()).padStart(2, '0');
     const hh = String(d.getUTCHours()).padStart(2, '0');
     const mm = String(d.getUTCMinutes()).padStart(2, '0');
     const ss = String(d.getUTCSeconds()).padStart(2, '0');
-    return `${hh}:${mm}:${ss}Z`;
+    return `${MM}/${dd} ${hh}:${mm}:${ss}Z`;
 }
 
 function formatDuration(startTime?: string, endTime?: string): string {
