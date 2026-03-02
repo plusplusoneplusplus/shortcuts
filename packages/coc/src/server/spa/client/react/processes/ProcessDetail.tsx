@@ -9,6 +9,7 @@ import { fetchApi } from '../hooks/useApi';
 import { getApiBase } from '../utils/config';
 import { Badge, Button, Spinner, linkifyFilePaths } from '../shared';
 import { ConversationTurnBubble } from './ConversationTurnBubble';
+import { ConversationMiniMap } from './ConversationMiniMap';
 import { ConversationMetadataPopover, getSessionIdFromProcess } from './ConversationMetadataPopover';
 import { formatDuration, statusIcon, statusLabel } from '../utils/format';
 import { PipelineDAGSection } from './dag';
@@ -63,6 +64,7 @@ export function ProcessDetail() {
     const [processDetails, setProcessDetails] = useState<any>(null);
     const eventSourceRef = useRef<EventSource | null>(null);
     const turnsContainerRef = useRef<HTMLDivElement>(null);
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
     const [now, setNow] = useState(Date.now());
     const [resumeLaunching, setResumeLaunching] = useState(false);
     const [resumeFeedback, setResumeFeedback] = useState<{ type: 'success' | 'error'; message: string; command?: string } | null>(null);
@@ -268,92 +270,102 @@ export function ProcessDetail() {
     };
 
     return (
-        <div id="detail-content" className="flex-1 overflow-y-auto p-4">
-            {/* Header */}
-            <div className="mb-4 pb-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
-                <div className="flex items-center justify-between gap-3 mb-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                        <Badge status={process.status}>
-                            {statusIcon(process.status)} {statusLabel(process.status)}
-                        </Badge>
-                        {duration && (
-                            <span className="text-xs text-[#848484]">{duration}</span>
-                        )}
+        <div className="flex-1 flex overflow-hidden">
+            <div id="detail-content" className="flex-1 overflow-y-auto p-4" ref={scrollContainerRef}>
+                {/* Header */}
+                <div className="mb-4 pb-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
+                    <div className="flex items-center justify-between gap-3 mb-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                            <Badge status={process.status}>
+                                {statusIcon(process.status)} {statusLabel(process.status)}
+                            </Badge>
+                            {duration && (
+                                <span className="text-xs text-[#848484]">{duration}</span>
+                            )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                            {resumeSessionId && (
+                                <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    loading={resumeLaunching}
+                                    onClick={() => { void launchInteractiveResume(); }}
+                                >
+                                    Resume CLI
+                                </Button>
+                            )}
+                            <ConversationMetadataPopover process={metadataProcess} turnsCount={turns.length} />
+                        </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                        {resumeSessionId && (
-                            <Button
-                                variant="secondary"
-                                size="sm"
-                                loading={resumeLaunching}
-                                onClick={() => { void launchInteractiveResume(); }}
+                    {wsName && wsId && (
+                        <div className="mb-1">
+                            <a
+                                href={`#repos/${encodeURIComponent(wsId)}`}
+                                onClick={navigateToRepo}
+                                className="inline-flex items-center gap-1 text-xs text-[#0078d4] dark:text-[#3794ff] hover:underline no-underline"
+                                title={`Go to repo: ${wsName}`}
                             >
-                                Resume CLI
-                            </Button>
-                        )}
-                        <ConversationMetadataPopover process={metadataProcess} turnsCount={turns.length} />
-                    </div>
+                                <span>📂</span>
+                                <span>{wsName}</span>
+                            </a>
+                        </div>
+                    )}
+                    <div
+                        className="text-sm text-[#1e1e1e] dark:text-[#cccccc] break-words"
+                        dangerouslySetInnerHTML={{
+                            __html: linkifyFilePaths(
+                                (process.fullPrompt || process.promptPreview || process.id)
+                                    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                            ),
+                        }}
+                    />
+                    {resumeFeedback && (
+                        <div className={`mt-2 text-xs ${resumeFeedback.type === 'error' ? 'text-[#f14c4c]' : 'text-[#6a9955] dark:text-[#89d185]'}`}>
+                            {resumeFeedback.message}
+                            {resumeFeedback.command && (
+                                <div className="mt-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] px-2 py-1 font-mono text-[11px] break-all text-[#1e1e1e] dark:text-[#cccccc]">
+                                    {resumeFeedback.command}
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
-                {wsName && wsId && (
-                    <div className="mb-1">
-                        <a
-                            href={`#repos/${encodeURIComponent(wsId)}`}
-                            onClick={navigateToRepo}
-                            className="inline-flex items-center gap-1 text-xs text-[#0078d4] dark:text-[#3794ff] hover:underline no-underline"
-                            title={`Go to repo: ${wsName}`}
-                        >
-                            <span>📂</span>
-                            <span>{wsName}</span>
-                        </a>
+
+                {/* Pipeline DAG visualization */}
+                <PipelineDAGSection process={metadataProcess} eventSourceRef={eventSourceRef} onScrollToConversation={scrollToTurn} />
+
+                {/* Conversation turns */}
+                {loading ? (
+                    <div className="flex items-center gap-2 text-[#848484] text-sm">
+                        <Spinner size="sm" /> Loading conversation...
+                    </div>
+                ) : turns.length === 0 ? (
+                    <div className="text-[#848484] text-sm">No conversation data available.</div>
+                ) : (
+                    <div className="space-y-3" ref={turnsContainerRef}>
+                        {turns.map((turn, i) => (
+                            <ConversationTurnBubble key={i} turn={turn} />
+                        ))}
                     </div>
                 )}
-                <div
-                    className="text-sm text-[#1e1e1e] dark:text-[#cccccc] break-words"
-                    dangerouslySetInnerHTML={{
-                        __html: linkifyFilePaths(
-                            (process.fullPrompt || process.promptPreview || process.id)
-                                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-                        ),
-                    }}
-                />
-                {resumeFeedback && (
-                    <div className={`mt-2 text-xs ${resumeFeedback.type === 'error' ? 'text-[#f14c4c]' : 'text-[#6a9955] dark:text-[#89d185]'}`}>
-                        {resumeFeedback.message}
-                        {resumeFeedback.command && (
-                            <div className="mt-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] px-2 py-1 font-mono text-[11px] break-all text-[#1e1e1e] dark:text-[#cccccc]">
-                                {resumeFeedback.command}
-                            </div>
-                        )}
+
+                {/* Footer for terminal processes without a session */}
+                {process.status !== 'running' && process.status !== 'queued' && !resumeSessionId && (
+                    <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3">
+                        <div className="text-[#848484] text-sm text-center">
+                            Follow-up chat is not available for this process type.
+                        </div>
                     </div>
                 )}
             </div>
 
-            {/* Pipeline DAG visualization */}
-            <PipelineDAGSection process={metadataProcess} eventSourceRef={eventSourceRef} onScrollToConversation={scrollToTurn} />
-
-            {/* Conversation turns */}
-            {loading ? (
-                <div className="flex items-center gap-2 text-[#848484] text-sm">
-                    <Spinner size="sm" /> Loading conversation...
-                </div>
-            ) : turns.length === 0 ? (
-                <div className="text-[#848484] text-sm">No conversation data available.</div>
-            ) : (
-                <div className="space-y-3" ref={turnsContainerRef}>
-                    {turns.map((turn, i) => (
-                        <ConversationTurnBubble key={i} turn={turn} />
-                    ))}
-                </div>
-            )}
-
-            {/* Footer for terminal processes without a session */}
-            {process.status !== 'running' && process.status !== 'queued' && !resumeSessionId && (
-                <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3">
-                    <div className="text-[#848484] text-sm text-center">
-                        Follow-up chat is not available for this process type.
-                    </div>
-                </div>
-            )}
+            {/* Conversation Mini Map */}
+            <ConversationMiniMap
+                turns={turns}
+                scrollContainerRef={scrollContainerRef}
+                turnsContainerRef={turnsContainerRef}
+                isStreaming={process.status === 'running'}
+            />
         </div>
     );
 }
